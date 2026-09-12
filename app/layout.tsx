@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next"
+import Script from "next/script"
 import {
   Bricolage_Grotesque,
   Geist_Mono,
@@ -102,6 +103,14 @@ export default function RootLayout({
         fontSerif.variable
       )}
     >
+      <head>
+        <Script
+          data-website-id="dfid_o6k8AKdqSx0tSKXpu3eqO"
+          data-domain="opensend.cc"
+          src="https://datafa.st/js/script.js"
+          strategy="afterInteractive"
+        />
+      </head>
       <body>
         <ThemeProvider>
           <ProgressProvider>
