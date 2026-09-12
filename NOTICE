@@ -1,0 +1,8 @@
+Opensend
+Copyright 2026 Panara Studios
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file in the repository root.
+
+This product includes the Amazon SES Convex component in packages/ses,
+originally developed as part of k4stack and also licensed under Apache-2.0.

@@ -1,0 +1,861 @@
+/* Ownstack design system: Tailwind v4 + shadcn/ui (base-nova) theme.
+   Source of truth: the Claude Design project tokens (tokens/*.css), which follow
+   the reference render: neutral gray page, near-black accent, gradient controls with
+   hairline shadows, 6 / 8 / 14 / 20 / 999 radii, Geist + Geist Mono +
+   Instrument Serif Italic.
+
+   Naming: shadcn semantic names (--primary, --accent, --muted …) stay so the
+   components port 1:1. Raw palette tokens keep the design-system names except
+    the one collision: the design system's raw blue lives at --primary here
+   (shadcn's --accent is the hover/focus tint, which the system maps to bg-subtle). */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ───────────────────────── raw tokens ───────────────────────── */
+
+:root {
+  /* neutrals */
+  --neutral-0: #ffffff;
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a3a3a3;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-800: #262626;
+  --neutral-950: #0a0a0a;
+
+  /* base */
+  --bg: #fafafa;
+  --bg-subtle: #f5f5f5;
+  --surface: #ffffff;
+  --surface-tint: #fafafa;
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+  --fg: #0a0a0a;
+  --fg-muted: #737373;
+  --fg-faint: #a3a3a3;
+
+  /* accent (one accent, one job): near-black, Vercel/Linear-style */
+  --brand: #262626; /* top of the button gradient, the ink you actually see */
+  --brand-light: #404040; /* text / icon accent */
+  --brand-hover: #171717;
+  --brand-press: #0a0a0a;
+  --brand-soft: #f5f5f5;
+  --brand-border: #171717;
+  --brand-fg: #ffffff;
+  --brand-icon: #525252;
+  /* heading accent phrase (h1/h2/h3 em): a clearly lighter gray so it stays
+     readable against the near-black heading gradient */
+  --brand-accent: #a3a3a3;
+
+  /* status */
+  --danger: #dc2626;
+  --danger-fg: #ffffff;
+  --danger-soft: #fef2f2;
+  --warning: #d97706;
+  --warning-fg: #ffffff;
+  --warning-soft: #fffbeb;
+  --success: #16a34a;
+  --success-fg: #ffffff;
+  --success-soft: #f0fdf4;
+  --info: #2563eb;
+  --info-fg: #ffffff;
+  --info-soft: #eff6ff;
+
+  /* terminal: same near-black in both modes */
+  --terminal-bg: #0a0a0a;
+  --terminal-fg: #f5f5f5;
+  --terminal-dot: #404040;
+
+  /* gradients (controls and pills are never flat fills) */
+  --gradient-primary: linear-gradient(180deg, #33363b 0%, #171717 100%);
+  --gradient-primary-hover: linear-gradient(180deg, #26262a 0%, #0a0a0a 100%);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f1f1f1 100%);
+  --gradient-surface-hover: linear-gradient(180deg, #ffffff 0%, #e9e9e9 100%);
+  /* grey/white twin of --gradient-primary; tracks --gradient-surface in both modes */
+  --gradient-secondary: var(--gradient-surface);
+  --gradient-secondary-hover: var(--gradient-surface-hover);
+  /* heading accent phrase: same 180deg sheen as the secondary button,
+     in a readable gray so it sits next to the ink title gradient */
+  --gradient-title-em: linear-gradient(180deg, #c8c8c8 0%, #8f8f8f 100%);
+  --gradient-pill: linear-gradient(180deg, #ffffff 0%, #f6f6f6 100%);
+  /* card panel: a 2% ink cast at the top settling into 25% white */
+  --gradient-panel: linear-gradient(
+    180deg,
+    rgb(10 10 10 / 0.02) 0%,
+    rgb(255 255 255 / 0.25) 50%,
+    rgb(255 255 255 / 0.25) 100%
+  );
+  --gradient-panel-highlight: linear-gradient(
+    0deg,
+    rgb(10 10 10 / 0.07) 0%,
+    rgb(255 255 255 / 0.25) 50%,
+    rgb(255 255 255 / 0.25) 100%
+  );
+  /* double border: a 10% black line with a 1px white line beneath it */
+  --border-double: rgb(17 17 17 / 0.1);
+  --border-double-glow: #ffffff;
+  /* corner mark: the hairline arms drawn where two frame rules cross (odd size) */
+  --corner-mark: var(--fg-faint);
+  --corner-mark-size: 13px;
+  /* hatching: the 45° hairlines that fill the gutters either side of the column */
+  --hatch-line: rgb(17 17 17 / 0.06);
+  /* glass controls: a white sheen rising from the bottom over a translucent fill,
+     plus a bevel overlay that catches light on the top edge */
+  --glass-fill: rgb(0 0 0 / 0.06);
+  --glass-fill-soft: rgb(0 0 0 / 0.01);
+  --gradient-glass: linear-gradient(
+    to top,
+    rgb(255 255 255 / 0) 0%,
+    rgb(255 255 255 / 0.24) 100%
+  );
+  --gradient-bevel: linear-gradient(
+    to bottom,
+    rgb(153 153 153 / 0) 5%,
+    rgb(255 255 255 / 0.24) 20%,
+    rgb(153 153 153 / 0.24) 45%,
+    rgb(255 255 255 / 0) 100%
+  );
+
+  /* shape */
+  --radius-chip: 6px; /* checkbox, kbd, small chips */
+  --radius-control-sm: 8px; /* 32px buttons */
+  --radius-control: 10px; /* 36 / 40px buttons, inputs, icon tiles */
+  --radius-card: 14px; /* cards, pricing tiers, panels, popovers */
+  --radius-frame: 20px; /* device frames, dialogs, terminal */
+  --radius-pill: 999px;
+  --radius: var(--radius-control);
+
+  /* elevation */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
+  /* the control bevel: four inner highlights, five soft drops, one hairline ring */
+  --shadow-glass:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.06),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.16),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.12),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.32),
+    0 6px 12px 0 rgb(0 0 0 / 0.02), 0 3px 6px 0 rgb(0 0 0 / 0.03),
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 0.5px 0.5px 0 rgb(0 0 0 / 0.06),
+    0 3px 6px 0 rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.06);
+  /* the accent button keeps these bright highlights in dark mode too, no .dark override */
+  --shadow-glass-accent:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.06),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.16),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.12),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.32),
+    0 6px 12px 0 rgb(0 0 0 / 0.02), 0 3px 6px 0 rgb(0 0 0 / 0.03),
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 0.5px 0.5px 0 rgb(0 0 0 / 0.06),
+    0 3px 6px 0 rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.06);
+  /* same bevel, half the drop: badges and pills */
+  --shadow-glass-soft:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.06),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.16),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.12),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.32),
+    0 6px 12px 0 rgb(0 0 0 / 0.01), 0 3px 6px 0 rgb(0 0 0 / 0.015),
+    0 1px 2px 0 rgb(0 0 0 / 0.015), 0 0.5px 0.5px 0 rgb(0 0 0 / 0.03),
+    0 3px 6px 0 rgb(0 0 0 / 0.02), 0 0 0 1px rgb(0 0 0 / 0.06);
+  /* inner highlights only: solid accent chips */
+  --shadow-glass-flat:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.06),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.16),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.12),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.32),
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --shadow-control: var(--shadow-glass);
+  --shadow-control-accent: var(--shadow-glass-accent);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  /* card panel: near-black hairline ring + four stacked soft drops */
+  --shadow-panel:
+    0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px -0.5px rgb(0 0 0 / 0.03),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.05),
+    0 5px 5px -2.5px rgb(0 0 0 / 0.03), 0 16px 16px -8px rgb(0 0 0 / 0.04);
+  --shadow-tile:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.5), 0 2px 4px -1px rgb(0 0 0 / 0.05);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-lifted: 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px rgb(0 0 0 / 0.1);
+
+  /* spacing / sizing */
+  --section-y: 80px;
+  --section-y-mobile: 64px;
+  --card-padding: 24px;
+  --cell-padding: 24px;
+  --column-max: 1120px;
+  --control-h-sm: 32px;
+  --control-h: 36px;
+  --control-h-lg: 40px;
+  --row-h: 40px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-control: 120ms;
+  --dur-press: 160ms;
+  --ease-press: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --dur-popover: 200ms;
+
+  /* ── shadcn semantic aliases ── */
+  --background: var(--bg);
+  --background-subtle: var(--bg-subtle);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface);
+  --popover-foreground: var(--fg);
+  --primary: var(--brand);
+  --primary-hover: var(--brand-hover);
+  --primary-soft: var(--brand-soft);
+  --primary-border: var(--brand-border);
+  --primary-icon: var(--brand-icon);
+  --primary-foreground: var(--brand-fg);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--fg);
+  --secondary-border: var(--border-strong);
+  --muted: var(--bg-subtle);
+  --muted-foreground: var(--fg-muted);
+  --faint-foreground: var(--fg-faint);
+  --accent: var(--bg-subtle);
+  --accent-foreground: var(--fg);
+  --selected: var(--surface-tint);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-fg);
+  --destructive-soft: var(--danger-soft);
+  --warning-foreground: var(--warning-fg);
+  --success-foreground: var(--success-fg);
+  --info-foreground: var(--info-fg);
+  --input: var(--border);
+  --ring: var(--brand);
+
+  --chart-1: #262626;
+  --chart-2: #525252;
+  --chart-3: #a3a3a3;
+  --chart-4: #737373;
+  --chart-5: #d4d4d4;
+
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-fg);
+  --sidebar-accent: var(--surface-tint);
+  --sidebar-accent-foreground: var(--brand);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
+}
+
+.dark {
+  --bg: #000000;
+  --bg-subtle: #19191a;
+  --surface: #141415;
+  --surface-tint: #161616;
+  --border: rgb(255 255 255 / 0.1);
+  --border-strong: rgb(255 255 255 / 0.15);
+  --fg: #fafafa;
+  --fg-muted: #a1a1a1;
+  --fg-faint: #737373;
+
+  /* Vercel-style flip: the accent goes near-white in dark mode, with dark
+     foreground on the light controls */
+  --brand: #ededed;
+  --brand-light: #fafafa;
+  --brand-hover: #ffffff;
+  --brand-press: #d4d4d4;
+  --brand-soft: #1c1c1c;
+  --brand-border: #ededed;
+  --brand-fg: #0a0a0a;
+  --brand-icon: #a3a3a3;
+  /* heading accent phrase: mid gray, readable against the white heading
+     gradient on the black page */
+  --brand-accent: #737373;
+
+  --danger: #f87171;
+  --danger-fg: #0a0a0a;
+  --danger-soft: #2a1414;
+  --warning: #fbbf24;
+  --warning-fg: #0a0a0a;
+  --warning-soft: #2a2011;
+  --success: #4ade80;
+  --success-fg: #0a0a0a;
+  --success-soft: #0f2418;
+  --info: #60a5fa;
+  --info-fg: #0a0a0a;
+  --info-soft: #152033;
+
+  /* the accent button flips to a near-white gradient in dark mode (Vercel-style);
+     --brand-fg keeps the label dark on it */
+  --gradient-primary: linear-gradient(180deg, #ffffff 0%, #e5e5e5 100%);
+  --gradient-primary-hover: linear-gradient(180deg, #ffffff 0%, #d4d4d4 100%);
+  --gradient-surface: linear-gradient(180deg, #1c1c1c 0%, #141414 100%);
+  --gradient-surface-hover: linear-gradient(180deg, #232323 0%, #191919 100%);
+  --gradient-title-em: linear-gradient(180deg, #8a8a8a 0%, #5c5c5c 100%);
+  --gradient-pill: linear-gradient(180deg, #1c1c1c 0%, #151515 100%);
+  --gradient-panel: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.02) 0%,
+    rgb(23 24 27 / 0.25) 50%,
+    rgb(23 24 27 / 0.25) 100%
+  );
+  --gradient-panel-highlight: linear-gradient(
+    0deg,
+    rgb(255 255 255 / 0.07) 0%,
+    rgb(23 24 27 / 0.25) 50%,
+    rgb(23 24 27 / 0.25) 100%
+  );
+  --border-double: #171717;
+  --border-double-glow: rgb(23 23 23 / 0.31);
+  --corner-mark: var(--neutral-600);
+  --hatch-line: rgb(255 255 255 / 0.05);
+  --glass-fill: rgb(255 255 255 / 0.04);
+  --glass-fill-soft: rgb(255 255 255 / 0.01);
+  --gradient-glass: linear-gradient(
+    to top,
+    rgb(255 255 255 / 0) 0%,
+    rgb(255 255 255 / 0.06) 100%
+  );
+  --gradient-bevel: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0) 5%,
+    rgb(255 255 255 / 0.07) 20%,
+    rgb(255 255 255 / 0.05) 45%,
+    rgb(255 255 255 / 0) 100%
+  );
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-glass:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.02),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.05),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.04),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.08),
+    0 6px 12px 0 rgb(0 0 0 / 0.08), 0 3px 6px 0 rgb(0 0 0 / 0.06),
+    0 1px 2px 0 rgb(0 0 0 / 0.06), 0 0.5px 0.5px 0 rgb(0 0 0 / 0.1),
+    0 0 0 1px rgb(255 255 255 / 0.08);
+  --shadow-glass-soft:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.01),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.02),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.04),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.08),
+    0 6px 12px 0 rgb(0 0 0 / 0.01), 0 3px 6px 0 rgb(0 0 0 / 0.01),
+    0 1px 2px 0 rgb(0 0 0 / 0.01), 0 0.5px 0.5px 0 rgb(0 0 0 / 0.02),
+    0 3px 6px 0 rgb(0 0 0 / 0.01), 0 0 0 1px rgb(255 255 255 / 0.08);
+  --shadow-glass-flat:
+    inset 0 -12px 16px 0 rgb(255 255 255 / 0.06),
+    inset 0 4px 16px 0 rgb(255 255 255 / 0.16),
+    inset 0 0.75px 0.25px 0 rgb(255 255 255 / 0.12),
+    inset 0 0.25px 0.25px 0 rgb(255 255 255 / 0.32),
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --shadow-control: var(--shadow-glass);
+  --shadow-control-accent: var(--shadow-glass-accent);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-panel:
+    0 0 0 1px rgb(255 255 255 / 0.08), 0 1px 1px -0.5px rgb(0 0 0 / 0.2),
+    0 3px 3px -1.5px rgb(0 0 0 / 0.25), 0 5px 5px -2.5px rgb(0 0 0 / 0.2),
+    0 16px 16px -8px rgb(0 0 0 / 0.3);
+  --shadow-tile:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.25), 0 2px 4px -1px rgb(0 0 0 / 0.1);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.6);
+  --shadow-lifted: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 40px rgb(0 0 0 / 0.7);
+
+  --chart-3: #525252;
+  --chart-5: #404040;
+
+  --sidebar: var(--bg-subtle);
+}
+
+/* ───────────────────────── tailwind theme ───────────────────────── */
+
+@theme inline {
+  /* fonts (exposed by next/font in app/layout.tsx) */
+  --font-sans:
+    var(--font-geist-sans), "Bricolage Grotesque", ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono:
+    var(--font-geist-mono), "Geist Mono", ui-monospace, SFMono-Regular,
+    monospace;
+  --font-serif:
+    var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
+  --font-heading: var(--font-sans);
+
+  /* colors */
+  --color-background: var(--background);
+  --color-background-subtle: var(--background-subtle);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-tint: var(--surface-tint);
+  --color-glass: var(--glass-fill);
+  --color-glass-soft: var(--glass-fill-soft);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-border: var(--primary-border);
+  --color-primary-icon: var(--primary-icon);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-border: var(--secondary-border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-selected: var(--selected);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-double: var(--border-double);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-terminal: var(--terminal-bg);
+  --color-terminal-foreground: var(--terminal-fg);
+  --color-terminal-dot: var(--terminal-dot);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* radii: 4 / 6 / 8 / 10 / 14 / 20 / 999 */
+  --radius-xs: 4px;
+  --radius-sm: var(--radius-chip);
+  --radius-md: var(--radius-control-sm);
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-frame);
+  --radius-3xl: 24px;
+  --radius-4xl: var(--radius-pill);
+
+  /* shadows: the four tiny ones; shadcn's default scale maps onto them */
+  --shadow-2xs: var(--shadow-xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-card);
+  --shadow-md: var(--shadow-float);
+  --shadow-lg: var(--shadow-lifted);
+  --shadow-xl: var(--shadow-lifted);
+  --shadow-2xl: var(--shadow-lifted);
+  --shadow-card: var(--shadow-card);
+  --shadow-glass: var(--shadow-glass);
+  --shadow-glass-accent: var(--shadow-glass-accent);
+  --shadow-glass-soft: var(--shadow-glass-soft);
+  --shadow-glass-flat: var(--shadow-glass-flat);
+  --shadow-control: var(--shadow-control);
+  --shadow-control-accent: var(--shadow-control-accent);
+  --shadow-tile: var(--shadow-tile);
+  --shadow-float: var(--shadow-float);
+  --shadow-lifted: var(--shadow-lifted);
+  --shadow-panel: var(--shadow-panel);
+
+  /* type roles */
+  --text-display-lg: 4rem;
+  --text-display-lg--line-height: 1.02;
+  --text-display-lg--letter-spacing: -0.035em;
+  --text-display-lg--font-weight: 600;
+  --text-display: 3.5rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.03em;
+  --text-display--font-weight: 600;
+  --text-h1: 2.75rem;
+  --text-h1--line-height: 1.1;
+  --text-h1--letter-spacing: -0.025em;
+  --text-h1--font-weight: 600;
+  --text-h2: 2rem;
+  --text-h2--line-height: 1.15;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h2--font-weight: 600;
+  --text-h3: 1.375rem;
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.01em;
+  --text-h3--font-weight: 600;
+  --text-h4: 1.0625rem;
+  --text-h4--line-height: 1.35;
+  --text-h4--letter-spacing: -0.005em;
+  --text-h4--font-weight: 600;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.6;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.5;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 500;
+  --text-mono: 0.875rem;
+  --text-mono--line-height: 1.5;
+
+  /* sizing */
+  --spacing-control-sm: var(--control-h-sm);
+  --spacing-control: var(--control-h);
+  --spacing-control-lg: var(--control-h-lg);
+  --spacing-row: var(--row-h);
+  --container-column: var(--column-max);
+
+  /* motion */
+  --ease-out: var(--ease-out);
+  --ease-press: var(--ease-press);
+  --ease-in-out: var(--ease-out);
+  --default-transition-duration: var(--dur-control);
+  --default-transition-timing-function: var(--ease-out);
+  /* logo marquee: two identical sets in a w-max track, loop at -50% */
+  --animate-marquee: marquee 48s linear infinite;
+
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  --animate-infinite-ribbon: infinite-ribbon var(--ribbon-duration) linear
+    infinite;
+  --animate-infinite-ribbon-reverse: infinite-ribbon-reverse
+    var(--ribbon-duration) linear infinite;
+
+  @keyframes infinite-ribbon {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes infinite-ribbon-reverse {
+    from {
+      transform: translateX(-50%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+}
+
+/* ───────────────────────── base ───────────────────────── */
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-body text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold text-balance;
+  }
+  h1 {
+    @apply text-h1 max-md:text-[2rem];
+  }
+  h2 {
+    @apply text-h2 max-md:text-[1.625rem];
+  }
+  h3 {
+    @apply text-h3;
+  }
+  h4 {
+    @apply text-h4;
+  }
+
+  /* the one accent phrase per heading: same face, secondary-button sheen
+     so it reads as the lighter twin of the ink title gradient */
+  h1 em,
+  h2 em,
+  h3 em,
+  .display em {
+    @apply font-sans not-italic;
+    background-image: var(--gradient-title-em);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-decoration: none;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  /* parent .title-gradient already clips its own fill. Restate the em
+     gradient so the phrase does not inherit the ink clip. */
+  .title-gradient em {
+    background-image: var(--gradient-title-em);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    @apply font-mono text-mono;
+  }
+
+  a {
+    @apply transition-colors;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+/* ───────────────────────── patterns ───────────────────────── */
+
+/* double border: a 10% line with a 1px white line underneath, one side at a time */
+@utility border-double-t {
+  border-top: 1px solid var(--border-double);
+  box-shadow: 0 -1px var(--border-double-glow);
+}
+@utility border-double-b {
+  border-bottom: 1px solid var(--border-double);
+  box-shadow: 0 1px var(--border-double-glow);
+}
+@utility border-double-l {
+  border-left: 1px solid var(--border-double);
+  box-shadow: -1px 0 var(--border-double-glow);
+}
+@utility border-double-r {
+  border-right: 1px solid var(--border-double);
+  box-shadow: 1px 0 var(--border-double-glow);
+}
+
+/* corner marks: hairline arms (--corner-mark, --corner-mark-size) centred on
+   each point where two frame rules cross, drawn only along rules that are
+   there, so a crossing reads as a +, a T or an L depending on what meets.
+   A box paints its marks from one pseudo-element as background layers, so
+   it has to be positioned. A mark sits on the 1px rule along that edge,
+   whether it's the box's own border or the rails' / a neighbour's border
+   just outside: both centre 0.5px past the padding edge, so one offset fits
+   every case. Each box only draws the arms that run along its own edges;
+   neighbours' arms add up to the full shape.
+
+   corners: a box with neighbours (a grid cell). An L at each corner, one arm
+   along each of the box's two edges, pointing into the box.
+   corners-t / corners-b: a box spanning the column, marking where its top /
+   bottom rule meets the rails. The rail arm runs through, above and below;
+   the rule arm points inward, since nothing continues past the rail. */
+@utility corners {
+  &::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: calc((var(--corner-mark-size) + 1px) / -2);
+    /* --bleed-r: how far the box runs past the line on its right (the grid
+       bleeds 1px under the right rail), so the marks stay on that line */
+    right: calc(var(--bleed-r, 0px) - (var(--corner-mark-size) + 1px) / 2);
+    /* the crossing, measured in from the pseudo-element's edge */
+    --arm: calc((var(--corner-mark-size) - 1px) / 2);
+    /* one arm: the crossing pixel plus half a mark */
+    --len: calc((var(--corner-mark-size) + 1px) / 2);
+    --ink: linear-gradient(var(--corner-mark), var(--corner-mark));
+    /* two layers per corner, the vertical arm then the horizontal one:
+       top left, top right, bottom left, bottom right */
+    background-image:
+      var(--ink), var(--ink), var(--ink), var(--ink), var(--ink), var(--ink),
+      var(--ink), var(--ink);
+    background-size:
+      1px var(--len),
+      var(--len) 1px,
+      1px var(--len),
+      var(--len) 1px,
+      1px var(--len),
+      var(--len) 1px,
+      1px var(--len),
+      var(--len) 1px;
+    background-position:
+      left var(--arm) top var(--arm),
+      left var(--arm) top var(--arm),
+      right var(--arm) top var(--arm),
+      right var(--arm) top var(--arm),
+      left var(--arm) bottom var(--arm),
+      left var(--arm) bottom var(--arm),
+      right var(--arm) bottom var(--arm),
+      right var(--arm) bottom var(--arm);
+    background-repeat: no-repeat;
+  }
+}
+@utility corners-t {
+  &::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: calc((var(--corner-mark-size) + 1px) / -2);
+    right: calc(var(--bleed-r, 0px) - (var(--corner-mark-size) + 1px) / 2);
+    bottom: auto;
+    height: var(--corner-mark-size);
+    --arm: calc((var(--corner-mark-size) - 1px) / 2);
+    --len: calc((var(--corner-mark-size) + 1px) / 2);
+    --ink: linear-gradient(var(--corner-mark), var(--corner-mark));
+    /* per corner: the full rail arm, then the inward rule arm */
+    background-image: var(--ink), var(--ink), var(--ink), var(--ink);
+    background-size:
+      1px var(--corner-mark-size),
+      var(--len) 1px,
+      1px var(--corner-mark-size),
+      var(--len) 1px;
+    background-position:
+      left var(--arm) top 0,
+      left var(--arm) top var(--arm),
+      right var(--arm) top 0,
+      right var(--arm) top var(--arm);
+    background-repeat: no-repeat;
+  }
+}
+@utility corners-b {
+  &::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: calc((var(--corner-mark-size) + 1px) / -2);
+    right: calc(var(--bleed-r, 0px) - (var(--corner-mark-size) + 1px) / 2);
+    top: auto;
+    height: var(--corner-mark-size);
+    --arm: calc((var(--corner-mark-size) - 1px) / 2);
+    --len: calc((var(--corner-mark-size) + 1px) / 2);
+    --ink: linear-gradient(var(--corner-mark), var(--corner-mark));
+    /* per corner: the full rail arm, then the inward rule arm */
+    background-image: var(--ink), var(--ink), var(--ink), var(--ink);
+    background-size:
+      1px var(--corner-mark-size),
+      var(--len) 1px,
+      1px var(--corner-mark-size),
+      var(--len) 1px;
+    background-position:
+      left var(--arm) bottom 0,
+      left var(--arm) bottom var(--arm),
+      right var(--arm) bottom 0,
+      right var(--arm) bottom var(--arm);
+    background-repeat: no-repeat;
+  }
+}
+
+@layer components {
+  /* bounded column with the two rails (double borders, as in the reference) */
+  .rails {
+    @apply mx-auto w-full max-w-column border-double-l border-double-r bg-background;
+    /* each border-double-* sets box-shadow; restate so both rails keep their glow */
+    box-shadow:
+      -1px 0 var(--border-double-glow),
+      1px 0 var(--border-double-glow);
+  }
+  /* a band of the column, closed by a rule with a corner mark at each end */
+  .section {
+    @apply corners-b relative py-20 border-double-b max-md:py-16;
+  }
+  .display {
+    @apply text-display max-md:text-[2.5rem] max-md:leading-[1.08];
+  }
+  .display-lg {
+    @apply text-display-lg max-md:text-[2.5rem] max-md:leading-[1.08];
+  }
+  /* section eyebrow: white gradient capsule, hairline border, tinted icon */
+  .pill {
+    @apply relative inline-flex h-7 items-center gap-1.5 overflow-hidden rounded-full border border-transparent bg-glass-soft bg-(image:--gradient-glass) px-3 text-[13px] font-medium whitespace-nowrap text-foreground shadow-glass-soft backdrop-blur-[2px] [&_svg]:size-3.5 [&_svg]:text-primary-icon;
+  }
+  /* 40px rounded tile that holds a feature icon */
+  .icon-tile {
+    @apply inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface/50 text-primary shadow-tile dark:bg-surface [&_svg]:size-[18px];
+  }
+  /* card frame: the 18px outer shell. 10% line, 1px white glow outside, 8px gutter, blur. */
+  .frame {
+    @apply min-w-0 rounded-[18px] border border-border-double p-2 shadow-[0_0_0_1px_var(--border-double-glow)] backdrop-blur-[8px];
+  }
+  /* card panel: the 14px inner surface. Ink-cast gradient + hairline ring. */
+  .panel {
+    @apply rounded-xl bg-(image:--gradient-panel) p-6 shadow-panel;
+  }
+  /* section title: graphite-to-ink gradient fill */
+  .title-gradient {
+    background: linear-gradient(#484c4e, #1b2023);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .dark .title-gradient {
+    background: linear-gradient(#ffffff, #999999);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .terminal {
+    @apply rounded-2xl bg-terminal p-4 font-mono text-mono text-terminal-foreground;
+  }
+  /* 1px cells, each closed on the bottom and right, with a corner mark at
+     every crossing. The grid runs 1px into the right rail, and 1px into the
+     section's bottom rule when it ends the section, so the outer cells'
+     borders land on the frame lines instead of doubling them. The opaque
+     cell background keeps the 10% border from stacking on the line below. */
+  .grid-cells {
+    position: relative;
+    margin-right: -1px;
+    --bleed-r: 1px;
+  }
+  .section > .grid-cells:last-child {
+    margin-bottom: -1px;
+  }
+  .grid-cells > * {
+    @apply corners relative min-w-0 bg-background p-6 border-double-b border-double-r;
+    /* a cell's own right border is the line, so its marks need no shift */
+    --bleed-r: 0px;
+    box-shadow:
+      0 1px var(--border-double-glow),
+      1px 0 var(--border-double-glow);
+  }
+  /* the gutters either side of the column: 1px hatching at 45°, 8px apart */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--hatch-line) 0 1px,
+      transparent 1px 8px
+    );
+  }
+  /* 8px dot grid, the background texture inside the column */
+  .dotgrid {
+    background-image: radial-gradient(
+      var(--border-strong) 1px,
+      transparent 1px
+    );
+    background-size: 8px 8px;
+    opacity: 0.5;
+  }
+}
