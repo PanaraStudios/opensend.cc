@@ -12,6 +12,37 @@ const SOCIAL_ICONS = {
   youtube: YouTubeIcon,
 }
 
+const DATAFAST_WIDGET_ID = "6aa5879fc6baa5ba34653f81"
+
+function datafastRecentSrc(theme: "light" | "dark") {
+  const params = new URLSearchParams({
+    mainTextSize: "12",
+    primaryColor: theme === "dark" ? "#fafafa" : "#0a0a0a",
+    theme,
+  })
+
+  return `https://datafa.st/widgets/${DATAFAST_WIDGET_ID}/recent?${params}`
+}
+
+/* DataFast only accepts theme=light|dark on the iframe URL, so both
+   embeds sit in the DOM and Tailwind shows the one that matches `.dark`. */
+function DataFastRecentWidget({ theme }: { theme: "light" | "dark" }) {
+  return (
+    <iframe
+      src={datafastRecentSrc(theme)}
+      className={
+        theme === "dark"
+          ? "hidden h-[288px] w-full border-0 bg-transparent dark:block"
+          : "h-[288px] w-full border-0 bg-transparent dark:hidden"
+      }
+      frameBorder={0}
+      allowTransparency
+      title="DataFast Widget"
+      loading="lazy"
+    />
+  )
+}
+
 /* Footer: the brand block plus link columns inside the rails under a 1px
    top border, then the bottom row with the copyright notice and the social
    links. Rises into view as one block. Phones stack everything; tablets (sm)
@@ -27,14 +58,8 @@ export function SiteFooter() {
             <p className="max-w-xs text-small text-muted-foreground">
               {FOOTER.tagline}
             </p>
-            <a
-              href={FOOTER.company.href}
-              target="_blank"
-              rel="noreferrer"
-              className="w-fit text-small text-muted-foreground hover:text-foreground"
-            >
-              {FOOTER.company.label}
-            </a>
+            <DataFastRecentWidget theme="light" />
+            <DataFastRecentWidget theme="dark" />
           </div>
           {FOOTER.columns.map((column) => (
             <div key={column.title} className="flex flex-col gap-3">
