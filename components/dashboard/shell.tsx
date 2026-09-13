@@ -241,6 +241,11 @@ function DashboardSidebar({
                       <SidebarMenuButton
                         isActive={pathMatches(pathname, item.href)}
                         tooltip={item.title}
+                        className={
+                          pathMatches(pathname, item.href)
+                            ? "bg-muted font-medium text-foreground"
+                            : undefined
+                        }
                         render={<Link href={item.href} />}
                       >
                         <Icon />
@@ -260,6 +265,11 @@ function DashboardSidebar({
             <SidebarMenuButton
               isActive={pathname.startsWith("/settings")}
               tooltip="Settings"
+              className={
+                pathname.startsWith("/settings")
+                  ? "bg-muted font-medium text-foreground"
+                  : undefined
+              }
               render={<Link href="/settings" />}
             >
               <SettingsIcon />
