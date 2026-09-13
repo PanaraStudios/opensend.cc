@@ -64,7 +64,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col gap-6 p-6 md:p-8">
+      <div className="flex min-w-0 flex-1 flex-col gap-6 p-6 [--page-pad:--spacing(6)] md:p-8 md:[--page-pad:--spacing(8)]">
         {children}
       </div>
     </div>

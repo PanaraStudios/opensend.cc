@@ -31,11 +31,16 @@ import {
   ResourceTable,
   SearchField,
   StatusBadge,
-  Surface,
   Th,
 } from "@/components/dashboard/primitives"
 import { REGIONS } from "@/lib/dashboard/types"
-import { formatDate, isDomainName, regionLabel } from "@/lib/dashboard/format"
+import {
+  dnsHost,
+  domainDnsRecords,
+  formatDate,
+  isDomainName,
+  regionLabel,
+} from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 
 export function AddDomainDialog({
@@ -300,6 +305,19 @@ export function DomainDetail() {
     )
   }
 
+  const records = domainDnsRecords(domain)
+  const pendingRecords = records.filter((record) => record.status !== "verified")
+  const domainId = domain.id
+
+  function runVerification() {
+    verifyDomain(domainId)
+    toast.add({
+      type: "success",
+      title: "Domain verified",
+      description: "All DNS records now report as verified.",
+    })
+  }
+
   return (
     <>
       <div className="space-y-1">
@@ -315,19 +333,7 @@ export function DomainDetail() {
         </Button>
         <PageHeader title={domain.name}>
           {domain.status !== "verified" ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                verifyDomain(domain.id)
-                toast.add({
-                  type: "success",
-                  title: "Domain verified",
-                  description: "All DNS records now report as verified.",
-                })
-              }}
-            >
-              Restart verification
-            </Button>
+            <Button onClick={runVerification}>Verify DNS Records</Button>
           ) : null}
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
             Delete
@@ -345,57 +351,93 @@ export function DomainDetail() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList variant="line">
           <TabsTrigger value="records">Records</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="settings">Configuration</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {tab === "records" ? (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Add these records at your DNS provider. Opensend reads the values AWS
-            returns for DKIM and SPF — API callers never see AWS credentials.
-          </p>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Type</Th>
-                <Th>Name</Th>
-                <Th>Value</Th>
-                <Th>TTL</Th>
-                <Th>Priority</Th>
-                <Th>Status</Th>
-              </>
-            }
-          >
-            {domain.records.map((record) => (
-              <TableRow key={record.id}>
-                <TableCell>
-                  <span className="font-mono text-[13px]">{record.type}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {record.kind}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <MonoValue copyValue={record.name}>{record.name}</MonoValue>
-                </TableCell>
-                <TableCell className="max-w-xs">
-                  <MonoValue copyValue={record.value}>{record.value}</MonoValue>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {record.ttl}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {record.priority ?? "—"}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={record.status} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
+        <div className="lined-bleed corners-t corners-b relative border-double-t border-double-b bg-background">
+          <div className="px-6 py-4 text-small text-muted-foreground md:px-10">
+            Add these records at your DNS provider. Copy Name and Content
+            exactly. Opensend reads the values AWS returns for DKIM and SPF —
+            API callers never see AWS credentials. DNS changes can take up to 72
+            hours to propagate.
+          </div>
+          {pendingRecords.length > 0 ? (
+            <div className="border-double-t px-6 py-3 text-small md:px-10">
+              <span className="text-foreground">
+                Waiting on {pendingRecords.length}{" "}
+                {pendingRecords.length === 1 ? "record" : "records"}
+              </span>
+              {": "}
+              <span className="text-muted-foreground">
+                {pendingRecords
+                  .map((record) => `${record.kind} ${record.type}`)
+                  .join(", ")}
+                .{" "}
+              </span>
+              <button
+                type="button"
+                className="underline underline-offset-4"
+                onClick={runVerification}
+              >
+                Restart verification
+              </button>
+            </div>
+          ) : null}
+          <div className="border-double-t">
+            <ResourceTable
+              flush
+              headers={
+                <>
+                  <Th>Type</Th>
+                  <Th>Name</Th>
+                  <Th>Content</Th>
+                  <Th>TTL</Th>
+                  <Th>Priority</Th>
+                  <Th>Status</Th>
+                </>
+              }
+            >
+              {records.map((record) => {
+                const host = dnsHost(record.name, domain.name)
+                return (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-mono text-[13px]">
+                          {record.type}
+                        </span>
+                        <span className="text-caption text-muted-foreground">
+                          {record.kind}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <MonoValue copyValue={host}>{host}</MonoValue>
+                    </TableCell>
+                    <TableCell className="max-w-md whitespace-normal">
+                      <MonoValue copyValue={record.value}>
+                        <span className="break-all">{record.value}</span>
+                      </MonoValue>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {record.ttl}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {record.priority ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={record.status} />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </ResourceTable>
+          </div>
         </div>
       ) : (
-        <Surface className="max-w-lg">
+        <div className="max-w-xl space-y-6">
           <Field orientation="horizontal">
             <FieldLabel htmlFor="open-tracking">
               <span className="flex flex-col gap-1">
@@ -418,7 +460,8 @@ export function DomainDetail() {
               <span className="flex flex-col gap-1">
                 Click tracking
                 <FieldDescription>
-                  Rewrites links so clicks can be attributed.
+                  Rewrites links so clicks can be attributed. Adds a Tracking
+                  CNAME on the Records tab.
                 </FieldDescription>
               </span>
             </FieldLabel>
@@ -470,8 +513,8 @@ export function DomainDetail() {
               <span className="flex flex-col gap-1">
                 Receiving
                 <FieldDescription>
-                  Accept inbound mail on this domain. Messages show under Emails
-                  → Receiving.
+                  Accept inbound mail on this domain. Adds an inbound MX on
+                  Records. Messages show under Emails → Receiving.
                 </FieldDescription>
               </span>
             </FieldLabel>
@@ -483,7 +526,7 @@ export function DomainDetail() {
               }
             />
           </Field>
-        </Surface>
+        </div>
       )}
 
       <ConfirmDelete

@@ -14,7 +14,7 @@ export type DomainStatus =
   | "failed"
   | "temporary_failure"
 
-export type RecordKind = "DKIM" | "SPF" | "DMARC" | "MX"
+export type RecordKind = "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
 export type DnsType = "CNAME" | "MX" | "TXT"
 export type TlsMode = "opportunistic" | "enforced"
 export type TopicDefault = "opt_in" | "opt_out"
