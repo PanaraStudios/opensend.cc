@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
       { source: "/login", destination: "/waitlist", permanent: false },
       { source: "/signup", destination: "/waitlist", permanent: false },
       { source: "/forgot-password", destination: "/waitlist", permanent: false },
+      { source: "/audience", destination: "/contacts", permanent: false },
     ]
   },
 }
