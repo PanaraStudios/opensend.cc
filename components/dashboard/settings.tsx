@@ -635,8 +635,8 @@ export function SettingsUnsubscribe() {
         description="Contacts land here from broadcast footers. Public topics are listed so they can stay on the mail they want."
       />
       <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={save} className="flex flex-col self-stretch">
-          <Surface className="min-h-full flex-1">
+        <form onSubmit={save} className="grid self-stretch">
+          <Surface>
             <Field>
               <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
               <Input
