@@ -129,7 +129,7 @@ export function Surface({
   className?: string
 }) {
   return (
-    <div className={cn("frame grid", className)}>
+    <div className={cn("frame surface-shell", className)}>
       <div className="panel space-y-5">{children}</div>
     </div>
   )

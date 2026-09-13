@@ -859,3 +859,16 @@
     opacity: 0.5;
   }
 }
+
+/* Paired cards: the frame is the grid item and must stretch. The panel then
+   grows with a 0% flex basis so it covers the cell instead of hugging copy. */
+.surface-shell {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.surface-shell > .panel {
+  flex: 1 1 0%;
+  min-height: 0;
+}

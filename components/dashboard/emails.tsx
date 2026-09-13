@@ -329,7 +329,7 @@ export function EmailDetail() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <Surface>
           <h2 className="text-sm font-medium">Metadata</h2>
           <dl className="grid gap-3 text-sm">

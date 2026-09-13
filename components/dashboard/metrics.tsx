@@ -54,7 +54,7 @@ export function MetricsView() {
         title="Metrics"
         description="Account-level delivery for this workspace. Numbers come from the same events as Emails and Logs."
       />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard label="Sent" value={String(sent.length)} />
         <MetricCard
           label="Delivered"

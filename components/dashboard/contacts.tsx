@@ -351,7 +351,7 @@ export function ContactDetail() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <Surface>
           <h2 className="text-sm font-medium">Profile</h2>
           <div className="grid gap-4 sm:grid-cols-2">
