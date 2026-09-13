@@ -385,7 +385,7 @@ export function DomainDetail() {
               </button>
             </div>
           ) : null}
-          <div className="border-double-t [&_table]:table-fixed [&_table]:w-full">
+          <div className="border-double-t [&_[data-slot=table-container]]:overflow-visible [&_table]:w-full [&_table]:table-fixed">
             <ResourceTable
               flush
               headers={
@@ -403,7 +403,7 @@ export function DomainDetail() {
                 const host = dnsHost(record.name, domain.name)
                 return (
                   <TableRow key={record.id}>
-                    <TableCell className="w-[7.5rem]">
+                    <TableCell className="w-24 min-w-0">
                       <div className="flex flex-col gap-0.5">
                         <span className="font-mono text-[13px]">
                           {record.type}
@@ -413,23 +413,23 @@ export function DomainDetail() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="w-[14rem]">
+                    <TableCell className="w-40 min-w-0">
                       <MonoValue copyValue={host}>{host}</MonoValue>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
                       <MonoValue copyValue={record.value}>
                         <span className="block max-w-full truncate">
                           {record.value}
                         </span>
                       </MonoValue>
                     </TableCell>
-                    <TableCell className="w-20 text-muted-foreground">
+                    <TableCell className="w-16 min-w-0 text-muted-foreground">
                       {record.ttl}
                     </TableCell>
-                    <TableCell className="w-24 text-muted-foreground">
+                    <TableCell className="w-20 min-w-0 text-muted-foreground">
                       {record.priority ?? "—"}
                     </TableCell>
-                    <TableCell className="w-36">
+                    <TableCell className="w-32 min-w-0">
                       <StatusBadge status={record.status} />
                     </TableCell>
                   </TableRow>
