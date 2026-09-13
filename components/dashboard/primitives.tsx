@@ -129,7 +129,7 @@ export function Surface({
   className?: string
 }) {
   return (
-    <div className={cn("frame flex h-full flex-col", className)}>
+    <div className={cn("frame flex flex-col self-stretch", className)}>
       <div className="panel flex min-h-0 flex-1 flex-col space-y-5">
         {children}
       </div>
