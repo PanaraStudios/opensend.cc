@@ -30,8 +30,12 @@ import {
   PageHeader,
   ResourceTable,
   SearchField,
+  SectionTabs,
+  Surface,
   Th,
+  Toolbar,
 } from "@/components/dashboard/primitives"
+import { AUDIENCE_TABS } from "@/lib/dashboard/nav"
 import { contactTopicStatus, segmentContactCount } from "@/lib/dashboard/data"
 import { formatDate, isEmail } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -191,7 +195,7 @@ export function ContactsView() {
   return (
     <>
       <PageHeader
-        title="Contacts"
+        title="Audience"
         description="Every address you can send a broadcast to. Import, segment, and manage topic preferences from here."
       >
         <Button onClick={() => setOpen(true)}>
@@ -199,7 +203,8 @@ export function ContactsView() {
           Add contact
         </Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center gap-2">
+      <SectionTabs items={AUDIENCE_TABS} />
+      <Toolbar>
         <SearchField
           value={query}
           onChange={setQuery}
@@ -214,7 +219,7 @@ export function ContactsView() {
             label: `${item.name} (${segmentContactCount(state.contacts, item.id)})`,
           }))}
         />
-      </div>
+      </Toolbar>
       {rows.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -347,7 +352,7 @@ export function ContactDetail() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-xl border border-border bg-surface p-6">
+        <Surface>
           <h2 className="text-sm font-medium">Profile</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field>
@@ -389,9 +394,33 @@ export function ContactDetail() {
               }
             />
           </Field>
-        </section>
+          {state.properties.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {state.properties.map((property) => (
+                <Field key={property.id}>
+                  <FieldLabel htmlFor={`prop-${property.key}`}>
+                    {property.name}
+                  </FieldLabel>
+                  <Input
+                    id={`prop-${property.key}`}
+                    type={property.type === "number" ? "number" : "text"}
+                    value={contact.properties?.[property.key] ?? ""}
+                    onChange={(event) =>
+                      updateContact(contact.id, {
+                        properties: {
+                          ...(contact.properties ?? {}),
+                          [property.key]: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </Field>
+              ))}
+            </div>
+          ) : null}
+        </Surface>
 
-        <section className="space-y-4 rounded-xl border border-border bg-surface p-6">
+        <Surface>
           <h2 className="text-sm font-medium">Segments</h2>
           <p className="text-sm text-muted-foreground">
             Segments are internal groups. Contacts never see these names.
@@ -425,9 +454,9 @@ export function ContactDetail() {
               ))
             )}
           </div>
-        </section>
+        </Surface>
 
-        <section className="space-y-4 rounded-xl border border-border bg-surface p-6 lg:col-span-2">
+        <Surface className="lg:col-span-2">
           <h2 className="text-sm font-medium">Topics</h2>
           <p className="text-sm text-muted-foreground">
             Topics appear on the preference page. Public topics can be managed
@@ -483,7 +512,7 @@ export function ContactDetail() {
               })}
             </ResourceTable>
           )}
-        </section>
+        </Surface>
       </div>
 
       <ConfirmDelete

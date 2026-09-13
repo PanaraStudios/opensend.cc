@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { WebhooksView } from "@/components/dashboard/emails"
+import { WebhooksView } from "@/components/dashboard/webhooks"
 
 export const metadata: Metadata = {
   title: "Webhooks",

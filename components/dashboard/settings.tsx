@@ -24,8 +24,10 @@ import {
   EmptyState,
   MoreMenu,
   MoreMenuItem,
+  ExportStatusBadge,
   PageHeader,
   ResourceTable,
+  Surface,
   Th,
 } from "@/components/dashboard/primitives"
 import { SETTINGS_NAV, pathMatches } from "@/lib/dashboard/nav"
@@ -42,9 +44,9 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <aside className="w-full shrink-0 border-b border-border md:w-56 md:border-r md:border-b-0">
+      <aside className="w-full shrink-0 border-double-b md:w-56 md:border-r md:border-b-0 md:border-double-r">
         <div className="px-6 py-6 md:px-5">
-          <h1 className="text-sm font-medium">Settings</h1>
+          <h1 className="title-gradient text-h4">Settings</h1>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:px-3 md:pb-6">
           {SETTINGS_NAV.map((item) => (
@@ -90,10 +92,8 @@ export function SettingsGeneral() {
         title="General"
         description="Workspace identity. Self-hosted Opensend keeps this on your Convex deployment — nothing is sent to us."
       />
-      <form
-        onSubmit={save}
-        className="max-w-lg space-y-5 rounded-xl border border-border bg-surface p-6"
-      >
+      <form onSubmit={save} className="max-w-lg">
+        <Surface>
         <Field>
           <FieldLabel htmlFor="team-name">Workspace name</FieldLabel>
           <Input
@@ -116,6 +116,7 @@ export function SettingsGeneral() {
           </FieldDescription>
         </Field>
         <Button type="submit">Save</Button>
+        </Surface>
       </form>
     </>
   )
@@ -126,7 +127,7 @@ export function SettingsTeam() {
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState("")
   const [email, setEmail] = React.useState("")
-  const [role, setRole] = React.useState<MemberRole>("developer")
+  const [role, setRole] = React.useState<MemberRole>("member")
   const [error, setError] = React.useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
@@ -152,7 +153,7 @@ export function SettingsTeam() {
     toast.add({ type: "success", title: "Member invited" })
     setName("")
     setEmail("")
-    setRole("developer")
+    setRole("member")
     setError(null)
     setOpen(false)
   }
@@ -221,8 +222,7 @@ export function SettingsTeam() {
                     className="h-8 rounded-lg border border-input bg-background px-2 text-[13px] dark:bg-surface"
                   >
                     <option value="admin">Admin</option>
-                    <option value="developer">Developer</option>
-                    <option value="viewer">Viewer</option>
+                    <option value="member">Member</option>
                   </select>
                 )}
               </TableCell>
@@ -298,8 +298,7 @@ export function SettingsTeam() {
                   className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
                 >
                   <option value="admin">Admin</option>
-                  <option value="developer">Developer</option>
-                  <option value="viewer">Viewer</option>
+                  <option value="member">Member</option>
                 </select>
               </Field>
             </FieldGroup>
@@ -357,10 +356,8 @@ export function SettingsSes() {
         title="Amazon SES"
         description="Connect the AWS account that pays for delivery. Credentials stay on this server. API callers never receive them."
       />
-      <form
-        onSubmit={save}
-        className="max-w-lg space-y-5 rounded-xl border border-border bg-surface p-6"
-      >
+      <form onSubmit={save} className="max-w-lg">
+        <Surface>
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Connection</span>
           <Badge variant={ses.connected ? "success" : "warning"} dot>
@@ -418,6 +415,7 @@ export function SettingsSes() {
           </FieldDescription>
         </Field>
         <Button type="submit">Save connection</Button>
+        </Surface>
       </form>
     </>
   )
@@ -433,7 +431,7 @@ export function SettingsSmtp() {
         title="SMTP"
         description="Send through the same API keys using any SMTP client. Username is resend; the password is an Opensend API key."
       />
-      <div className="max-w-lg space-y-5 rounded-xl border border-border bg-surface p-6">
+      <Surface className="max-w-lg">
         <Field orientation="horizontal">
           <FieldLabel htmlFor="smtp-enabled">
             <span className="flex flex-col gap-1">
@@ -480,7 +478,260 @@ export function SettingsSmtp() {
           <FieldLabel>Password</FieldLabel>
           <Input readOnly value="Your Opensend API key" />
         </Field>
+      </Surface>
+    </>
+  )
+}
+
+export function SettingsBilling() {
+  const { state, updateSettings } = useDashboard()
+
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const billingEmail = String(form.get("billingEmail") ?? "").trim()
+    if (billingEmail && !isEmail(billingEmail)) {
+      toast.add({ type: "warning", title: "Enter a valid billing email" })
+      return
+    }
+    updateSettings({
+      billingEmail: billingEmail || state.settings.billingEmail,
+    })
+    toast.add({ type: "success", title: "Billing email saved" })
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Billing"
+        description="Self-hosted Opensend has no subscription. This page matches the Resend billing layout so Cloud can land later."
+      />
+      <Surface className="max-w-lg">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Plan</span>
+          <Badge variant="secondary">Self-hosted</Badge>
+        </div>
+        <p className="text-small text-muted-foreground">
+          You pay Amazon for delivery. Nothing is billed to Opensend.
+        </p>
+        <form onSubmit={save} className="space-y-4">
+          <Field>
+            <FieldLabel htmlFor="billing-email">Billing email</FieldLabel>
+            <Input
+              id="billing-email"
+              name="billingEmail"
+              type="email"
+              key={state.settings.billingEmail}
+              defaultValue={state.settings.billingEmail}
+            />
+            <FieldDescription>
+              Invoices and usage notices for a future Cloud plan.
+            </FieldDescription>
+          </Field>
+          <Button type="submit">Save</Button>
+        </form>
+      </Surface>
+      <Surface className="max-w-lg">
+        <h2 className="text-sm font-medium">Invoices</h2>
+        <p className="text-small text-muted-foreground">
+          No invoices on this deployment.
+        </p>
+      </Surface>
+    </>
+  )
+}
+
+export function SettingsSso() {
+  const { state, updateSettings } = useDashboard()
+  const sso = state.settings.sso
+
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    updateSettings({
+      sso: {
+        ...sso,
+        issuer: String(form.get("issuer") ?? "").trim(),
+        clientId: String(form.get("clientId") ?? "").trim(),
+      },
+    })
+    toast.add({ type: "success", title: "SSO saved" })
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Single Sign-On"
+        description="Let the team sign in with your identity provider. Auth is not wired yet; this stores the connection locally."
+      />
+      <form onSubmit={save} className="max-w-lg">
+        <Surface>
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor="sso-enabled">
+              <span className="flex flex-col gap-1">
+                Enable SSO
+                <FieldDescription>
+                  Members must use the identity provider once this is on.
+                </FieldDescription>
+              </span>
+            </FieldLabel>
+            <Switch
+              id="sso-enabled"
+              checked={sso.enabled}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  sso: { ...sso, enabled: checked },
+                })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="sso-issuer">Issuer URL</FieldLabel>
+            <Input
+              id="sso-issuer"
+              name="issuer"
+              key={sso.issuer}
+              defaultValue={sso.issuer}
+              placeholder="https://idp.example.com"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="sso-client">Client ID</FieldLabel>
+            <Input
+              id="sso-client"
+              name="clientId"
+              key={sso.clientId}
+              defaultValue={sso.clientId}
+            />
+          </Field>
+          <Button type="submit">Save connection</Button>
+        </Surface>
+      </form>
+    </>
+  )
+}
+
+export function SettingsUnsubscribe() {
+  const { state, updateSettings } = useDashboard()
+  const page = state.settings.unsubscribe
+
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    updateSettings({
+      unsubscribe: {
+        heading: String(form.get("heading") ?? page.heading),
+        body: String(form.get("body") ?? page.body),
+        brandName: String(form.get("brandName") ?? page.brandName),
+      },
+    })
+    toast.add({ type: "success", title: "Unsubscribe page saved" })
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Unsubscribe page"
+        description="Contacts land here from broadcast footers. Public topics are listed so they can stay on the mail they want."
+      />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <form onSubmit={save}>
+          <Surface>
+            <Field>
+              <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
+              <Input
+                id="unsub-brand"
+                name="brandName"
+                key={page.brandName}
+                defaultValue={page.brandName}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="unsub-heading">Heading</FieldLabel>
+              <Input
+                id="unsub-heading"
+                name="heading"
+                key={page.heading}
+                defaultValue={page.heading}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="unsub-body">Body</FieldLabel>
+              <Input
+                id="unsub-body"
+                name="body"
+                key={page.body}
+                defaultValue={page.body}
+              />
+            </Field>
+            <Button type="submit">Save</Button>
+          </Surface>
+        </form>
+        <Surface>
+          <p className="font-mono text-caption text-muted-foreground">Preview</p>
+          <p className="text-small text-muted-foreground">{page.brandName}</p>
+          <h2 className="text-h4">{page.heading}</h2>
+          <p className="text-small text-muted-foreground">{page.body}</p>
+          <ul className="space-y-2 text-sm">
+            {state.topics
+              .filter((topic) => topic.visibility === "public")
+              .map((topic) => (
+                <li key={topic.id} className="flex items-center justify-between">
+                  <span>{topic.name}</span>
+                  <Badge variant="secondary">Topic</Badge>
+                </li>
+              ))}
+          </ul>
+        </Surface>
       </div>
+    </>
+  )
+}
+
+export function SettingsExports() {
+  const { state } = useDashboard()
+
+  return (
+    <>
+      <PageHeader
+        title="Exports"
+        description="Admin exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
+      />
+      {state.exports.length === 0 ? (
+        <EmptyState
+          icon={UsersIcon}
+          title="No exports"
+          description="Use Export on a list page. Members can view the job; only admins can download."
+        />
+      ) : (
+        <ResourceTable
+          headers={
+            <>
+              <Th>Resource</Th>
+              <Th>Status</Th>
+              <Th>Rows</Th>
+              <Th>Created</Th>
+              <Th>Expires</Th>
+            </>
+          }
+        >
+          {state.exports.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell className="font-medium">{item.resource}</TableCell>
+              <TableCell>
+                <ExportStatusBadge status={item.status} />
+              </TableCell>
+              <TableCell className="text-muted-foreground">{item.rows}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatDate(item.createdAt)}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatDate(item.expiresAt)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </ResourceTable>
+      )}
     </>
   )
 }

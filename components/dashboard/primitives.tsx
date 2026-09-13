@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { SearchIcon } from "lucide-react"
 
 import { toast } from "@/components/ui/toast"
@@ -39,8 +41,23 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { statusLabel } from "@/lib/dashboard/format"
-import type { DomainStatus } from "@/lib/dashboard/types"
+import {
+  automationStatusLabel,
+  broadcastStatusLabel,
+  emailStatusLabel,
+  exportStatusLabel,
+  statusLabel,
+  templateStatusLabel,
+} from "@/lib/dashboard/format"
+import { tabActive } from "@/lib/dashboard/nav"
+import type {
+  AutomationStatus,
+  BroadcastStatus,
+  DomainStatus,
+  EmailStatus,
+  ExportStatus,
+  TemplateStatus,
+} from "@/lib/dashboard/types"
 import { CheckIcon, CopyIcon, MoreHorizontalIcon } from "lucide-react"
 
 export function PageHeader({
@@ -55,9 +72,9 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="title-gradient text-h3">{title}</h1>
         {description ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">
+          <p className="max-w-2xl text-small text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -67,6 +84,53 @@ export function PageHeader({
           {children}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+export function SectionTabs({
+  items,
+}: {
+  items: readonly { href: string; title: string }[]
+}) {
+  const pathname = usePathname()
+
+  return (
+    <nav
+      aria-label="Section"
+      className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-border bg-secondary p-1"
+    >
+      {items.map((item) => {
+        const active = tabActive(pathname, item.href)
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "inline-flex h-8 items-center rounded-full px-4 text-sm font-medium whitespace-nowrap transition-colors",
+              active
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {item.title}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
+export function Surface({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("frame", className)}>
+      <div className="panel space-y-5">{children}</div>
     </div>
   )
 }
@@ -103,13 +167,15 @@ export function ResourceTable({
   children: React.ReactNode
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <Table>
-        <TableHeader>
-          <TableRow>{headers}</TableRow>
-        </TableHeader>
-        <TableBody>{children}</TableBody>
-      </Table>
+    <div className="frame">
+      <div className="panel overflow-hidden p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>{headers}</TableRow>
+          </TableHeader>
+          <TableBody>{children}</TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
@@ -136,15 +202,17 @@ export function EmptyState({
   children?: React.ReactNode
 }) {
   return (
-    <Empty className="min-h-72 border border-dashed border-border bg-surface/50">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Icon className="size-4" />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-      {children ? <EmptyContent>{children}</EmptyContent> : null}
+    <Empty className="frame min-h-72">
+      <div className="panel flex w-full flex-col items-center gap-3 py-10">
+        <EmptyHeader>
+          <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
+            <Icon className="size-4" />
+          </EmptyMedia>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
+        </EmptyHeader>
+        {children ? <EmptyContent>{children}</EmptyContent> : null}
+      </div>
     </Empty>
   )
 }
@@ -162,6 +230,68 @@ export function StatusBadge({ status }: { status: DomainStatus }) {
   return (
     <Badge variant={variant} dot>
       {statusLabel(status)}
+    </Badge>
+  )
+}
+
+export function EmailStatusBadge({ status }: { status: EmailStatus }) {
+  const variant =
+    status === "delivered" || status === "opened" || status === "clicked"
+      ? "success"
+      : status === "bounced" || status === "failed" || status === "complained"
+        ? "destructive"
+        : status === "scheduled" || status === "queued" || status === "delivery_delayed"
+          ? "warning"
+          : status === "canceled" || status === "suppressed"
+            ? "secondary"
+            : "outline"
+
+  return (
+    <Badge variant={variant} dot>
+      {emailStatusLabel(status)}
+    </Badge>
+  )
+}
+
+export function BroadcastStatusBadge({ status }: { status: BroadcastStatus }) {
+  const variant =
+    status === "sent"
+      ? "success"
+      : status === "scheduled" || status === "queued"
+        ? "warning"
+        : status === "canceled"
+          ? "secondary"
+          : "outline"
+
+  return (
+    <Badge variant={variant} dot>
+      {broadcastStatusLabel(status)}
+    </Badge>
+  )
+}
+
+export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
+  return (
+    <Badge variant={status === "published" ? "success" : "secondary"} dot>
+      {templateStatusLabel(status)}
+    </Badge>
+  )
+}
+
+export function AutomationStatusBadge({ status }: { status: AutomationStatus }) {
+  return (
+    <Badge variant={status === "enabled" ? "success" : "secondary"} dot>
+      {automationStatusLabel(status)}
+    </Badge>
+  )
+}
+
+export function ExportStatusBadge({ status }: { status: ExportStatus }) {
+  const variant =
+    status === "ready" ? "success" : status === "processing" ? "warning" : "secondary"
+  return (
+    <Badge variant={variant} dot>
+      {exportStatusLabel(status)}
     </Badge>
   )
 }
@@ -302,4 +432,8 @@ export function FilterSelect({
       ))}
     </select>
   )
+}
+
+export function Toolbar({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2">{children}</div>
 }

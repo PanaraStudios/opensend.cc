@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { BroadcastsView } from "@/components/dashboard/emails"
+import { BroadcastsView } from "@/components/dashboard/broadcasts"
 
 export const metadata: Metadata = {
   title: "Broadcasts",

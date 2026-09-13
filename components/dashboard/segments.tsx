@@ -27,8 +27,11 @@ import {
   PageHeader,
   ResourceTable,
   SearchField,
+  SectionTabs,
+  Surface,
   Th,
 } from "@/components/dashboard/primitives"
+import { AUDIENCE_TABS } from "@/lib/dashboard/nav"
 import { segmentContactCount } from "@/lib/dashboard/data"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -111,7 +114,7 @@ export function SegmentsView() {
   return (
     <>
       <PageHeader
-        title="Segments"
+        title="Audience"
         description="Group contacts for your own organization. Send a broadcast to a segment without exposing the grouping to subscribers."
       >
         <Button onClick={() => setOpen(true)}>
@@ -119,6 +122,7 @@ export function SegmentsView() {
           Create segment
         </Button>
       </PageHeader>
+      <SectionTabs items={AUDIENCE_TABS} />
       <SearchField
         value={query}
         onChange={setQuery}
@@ -252,7 +256,7 @@ export function SegmentDetail() {
         </p>
       </div>
 
-      <section className="max-w-lg space-y-2 rounded-xl border border-border bg-surface p-6">
+      <Surface className="max-w-lg">
         <Field>
           <FieldLabel htmlFor="segment-rename">Name</FieldLabel>
           <Input
@@ -264,7 +268,7 @@ export function SegmentDetail() {
             Only your team sees this name. It is not shown on unsubscribe pages.
           </FieldDescription>
         </Field>
-      </section>
+      </Surface>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

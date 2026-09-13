@@ -31,6 +31,7 @@ import {
   ResourceTable,
   SearchField,
   StatusBadge,
+  Surface,
   Th,
 } from "@/components/dashboard/primitives"
 import { REGIONS } from "@/lib/dashboard/types"
@@ -394,7 +395,7 @@ export function DomainDetail() {
           </ResourceTable>
         </div>
       ) : (
-        <div className="max-w-lg space-y-6 rounded-xl border border-border bg-surface p-6">
+        <Surface className="max-w-lg">
           <Field orientation="horizontal">
             <FieldLabel htmlFor="open-tracking">
               <span className="flex flex-col gap-1">
@@ -464,7 +465,25 @@ export function DomainDetail() {
               <span className="font-mono">send</span>.
             </FieldDescription>
           </Field>
-        </div>
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor="receiving">
+              <span className="flex flex-col gap-1">
+                Receiving
+                <FieldDescription>
+                  Accept inbound mail on this domain. Messages show under Emails
+                  → Receiving.
+                </FieldDescription>
+              </span>
+            </FieldLabel>
+            <Switch
+              id="receiving"
+              checked={domain.receiving}
+              onCheckedChange={(checked) =>
+                updateDomain(domain.id, { receiving: checked })
+              }
+            />
+          </Field>
+        </Surface>
       )}
 
       <ConfirmDelete

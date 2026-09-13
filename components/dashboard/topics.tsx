@@ -27,8 +27,10 @@ import {
   PageHeader,
   ResourceTable,
   SearchField,
+  SectionTabs,
   Th,
 } from "@/components/dashboard/primitives"
+import { AUDIENCE_TABS } from "@/lib/dashboard/nav"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Topic, TopicDefault, TopicVisibility } from "@/lib/dashboard/types"
@@ -311,7 +313,7 @@ export function TopicsView() {
   return (
     <>
       <PageHeader
-        title="Topics"
+        title="Audience"
         description="User-facing preference categories. Unlike segments, topics appear on the unsubscribe page so contacts can stay on the mail they want."
       >
         <Button onClick={() => setOpen(true)}>
@@ -319,6 +321,7 @@ export function TopicsView() {
           Create topic
         </Button>
       </PageHeader>
+      <SectionTabs items={AUDIENCE_TABS} />
       <SearchField
         value={query}
         onChange={setQuery}

@@ -12,27 +12,40 @@ import {
 import {
   createId,
   createToken,
+  createWebhookSecret,
   defaultTopicSubscription,
+  emptyBroadcastStats,
   recordsForDomain,
   SEED_STATE,
   tokenParts,
 } from "./data"
 import type {
   ApiKeyPermission,
+  AutomationStatus,
+  Broadcast,
+  BroadcastStatus,
   Contact,
   CreateApiKeyResult,
+  CreateWebhookResult,
   DashboardState,
   Domain,
+  EmailStatus,
+  EmailTemplate,
   MemberRole,
+  PropertyType,
   Region,
+  SentEmail,
   Settings,
+  SuppressionReason,
+  TemplateStatus,
   TopicDefault,
   TopicSubscription,
   TopicVisibility,
   TlsMode,
+  WebhookEvent,
 } from "./types"
 
-const STORAGE_KEY = "opensend.dashboard.v1"
+const STORAGE_KEY = "opensend.dashboard.v2"
 const CHANGE_EVENT = "opensend-dashboard"
 
 const SERVER_SNAPSHOT = JSON.stringify(SEED_STATE)
@@ -48,10 +61,7 @@ function parseState(raw: string): DashboardState {
     if (!Array.isArray(parsed.domains) || !Array.isArray(parsed.contacts)) {
       return SEED_STATE
     }
-    if (!Array.isArray(parsed.segments) || !Array.isArray(parsed.topics)) {
-      return SEED_STATE
-    }
-    if (!Array.isArray(parsed.apiKeys) || !Array.isArray(parsed.members)) {
+    if (!Array.isArray(parsed.emails) || !Array.isArray(parsed.broadcasts)) {
       return SEED_STATE
     }
     if (!isRecord(parsed.settings)) return SEED_STATE
@@ -87,7 +97,7 @@ function subscribe(onStoreChange: () => void) {
   }
 }
 
-function update(mutator: (current: DashboardState) => DashboardState) {
+function mutate(mutator: (current: DashboardState) => DashboardState) {
   writeState(mutator(parseState(readRaw())))
 }
 
@@ -100,7 +110,11 @@ export type DashboardStore = {
     patch: Partial<
       Pick<
         Domain,
-        "openTracking" | "clickTracking" | "tls" | "customReturnPath"
+        | "openTracking"
+        | "clickTracking"
+        | "tls"
+        | "customReturnPath"
+        | "receiving"
       >
     >
   ) => void
@@ -113,7 +127,9 @@ export type DashboardStore = {
   }) => Contact
   updateContact: (
     id: string,
-    patch: Partial<Pick<Contact, "firstName" | "lastName" | "unsubscribed">>
+    patch: Partial<
+      Pick<Contact, "firstName" | "lastName" | "unsubscribed" | "properties">
+    >
   ) => void
   deleteContact: (id: string) => void
   setContactSegments: (id: string, segmentIds: string[]) => void
@@ -136,6 +152,10 @@ export type DashboardStore = {
     patch: Partial<Pick<import("./types").Topic, "name" | "description" | "visibility">>
   ) => void
   deleteTopic: (id: string) => void
+  addProperty: (input: { name: string; key: string; type: PropertyType }) => {
+    id: string
+  }
+  deleteProperty: (id: string) => void
   createApiKey: (input: {
     name: string
     permission: ApiKeyPermission
@@ -148,6 +168,59 @@ export type DashboardStore = {
     >
   ) => void
   deleteApiKey: (id: string) => void
+  sendEmail: (input: {
+    from: string
+    to: string
+    subject: string
+    text: string
+    scheduledAt?: number | null
+  }) => SentEmail
+  cancelEmail: (id: string) => void
+  addReceived: (input: {
+    from: string
+    to: string
+    subject: string
+    text: string
+  }) => void
+  addSuppression: (input: { email: string; reason: SuppressionReason }) => void
+  removeSuppression: (id: string) => void
+  addBroadcast: (input: {
+    name: string
+    subject: string
+    preview: string
+    segmentId: string | null
+    topicId: string | null
+  }) => { id: string }
+  updateBroadcast: (
+    id: string,
+    patch: Partial<
+      Pick<Broadcast, "name" | "subject" | "preview" | "html" | "segmentId" | "topicId">
+    >
+  ) => void
+  setBroadcastStatus: (id: string, status: BroadcastStatus) => void
+  deleteBroadcast: (id: string) => void
+  addTemplate: (input: { name: string; subject: string }) => { id: string }
+  updateTemplate: (
+    id: string,
+    patch: Partial<Pick<EmailTemplate, "name" | "subject" | "html" | "variables">>
+  ) => void
+  setTemplateStatus: (id: string, status: TemplateStatus) => void
+  duplicateTemplate: (id: string) => void
+  deleteTemplate: (id: string) => void
+  addAutomation: (input: { name: string; trigger: string }) => { id: string }
+  setAutomationStatus: (id: string, status: AutomationStatus) => void
+  deleteAutomation: (id: string) => void
+  createWebhook: (input: {
+    endpoint: string
+    events: WebhookEvent[]
+  }) => CreateWebhookResult
+  updateWebhook: (
+    id: string,
+    patch: Partial<Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">>
+  ) => void
+  deleteWebhook: (id: string) => void
+  rotateWebhookSecret: (id: string) => string
+  addExport: (resource: string, rows: number) => void
   updateSettings: (patch: Partial<Settings> | ((current: Settings) => Settings)) => void
   inviteMember: (input: { name: string; email: string; role: MemberRole }) => void
   updateMemberRole: (id: string, role: MemberRole) => void
@@ -175,9 +248,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       clickTracking: false,
       tls: "opportunistic",
       customReturnPath: "send",
+      receiving: false,
       records: recordsForDomain(name, input.region, "not_started"),
     }
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       domains: [domain, ...current.domains],
     }))
@@ -185,7 +259,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const deleteDomain = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       domains: current.domains.filter((domain) => domain.id !== id),
       apiKeys: current.apiKeys.map((key) =>
@@ -198,10 +272,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     (
       id: string,
       patch: Partial<
-        Pick<Domain, "openTracking" | "clickTracking" | "tls" | "customReturnPath">
+        Pick<
+          Domain,
+          | "openTracking"
+          | "clickTracking"
+          | "tls"
+          | "customReturnPath"
+          | "receiving"
+        >
       >
     ) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         domains: current.domains.map((domain) =>
           domain.id === id ? { ...domain, ...patch } : domain
@@ -212,7 +293,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   const verifyDomain = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       domains: current.domains.map((domain) =>
         domain.id === id
@@ -236,6 +317,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       lastName: string
       segmentIds?: string[]
     }) => {
+      const current = parseState(readRaw())
       const contact: Contact = {
         id: createId("con"),
         email: input.email.trim().toLowerCase(),
@@ -244,14 +326,15 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
         unsubscribed: false,
         segmentIds: input.segmentIds ?? [],
-        topics: parseState(readRaw()).topics.map((topic) => ({
+        topics: current.topics.map((topic) => ({
           topicId: topic.id,
           subscription: defaultTopicSubscription(topic),
         })),
+        properties: {},
       }
-      update((current) => ({
-        ...current,
-        contacts: [contact, ...current.contacts],
+      mutate((prev) => ({
+        ...prev,
+        contacts: [contact, ...prev.contacts],
       }))
       return contact
     },
@@ -261,9 +344,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const updateContact = useCallback(
     (
       id: string,
-      patch: Partial<Pick<Contact, "firstName" | "lastName" | "unsubscribed">>
+      patch: Partial<
+        Pick<Contact, "firstName" | "lastName" | "unsubscribed" | "properties">
+      >
     ) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         contacts: current.contacts.map((contact) =>
           contact.id === id ? { ...contact, ...patch } : contact
@@ -274,14 +359,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   const deleteContact = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       contacts: current.contacts.filter((contact) => contact.id !== id),
     }))
   }, [])
 
   const setContactSegments = useCallback((id: string, segmentIds: string[]) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       contacts: current.contacts.map((contact) =>
         contact.id === id ? { ...contact, segmentIds } : contact
@@ -291,7 +376,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const setContactTopic = useCallback(
     (id: string, topicId: string, subscription: TopicSubscription) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         contacts: current.contacts.map((contact) => {
           if (contact.id !== id) return contact
@@ -312,7 +397,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const addSegment = useCallback((name: string) => {
     const id = createId("seg")
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       segments: [
         { id, name: name.trim(), createdAt: Date.now() },
@@ -323,7 +408,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateSegment = useCallback((id: string, name: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       segments: current.segments.map((segment) =>
         segment.id === id ? { ...segment, name: name.trim() } : segment
@@ -332,13 +417,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const deleteSegment = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       segments: current.segments.filter((segment) => segment.id !== id),
       contacts: current.contacts.map((contact) => ({
         ...contact,
         segmentIds: contact.segmentIds.filter((segmentId) => segmentId !== id),
       })),
+      broadcasts: current.broadcasts.map((broadcast) =>
+        broadcast.segmentId === id ? { ...broadcast, segmentId: null } : broadcast
+      ),
     }))
   }, [])
 
@@ -350,7 +438,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       visibility: TopicVisibility
     }) => {
       const id = createId("top")
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         topics: [
           {
@@ -374,7 +462,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       id: string,
       patch: Partial<Pick<import("./types").Topic, "name" | "description" | "visibility">>
     ) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         topics: current.topics.map((topic) =>
           topic.id === id ? { ...topic, ...patch } : topic
@@ -385,14 +473,54 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   const deleteTopic = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       topics: current.topics.filter((topic) => topic.id !== id),
       contacts: current.contacts.map((contact) => ({
         ...contact,
         topics: contact.topics.filter((item) => item.topicId !== id),
       })),
+      broadcasts: current.broadcasts.map((broadcast) =>
+        broadcast.topicId === id ? { ...broadcast, topicId: null } : broadcast
+      ),
     }))
+  }, [])
+
+  const addProperty = useCallback(
+    (input: { name: string; key: string; type: PropertyType }) => {
+      const id = createId("prop")
+      mutate((current) => ({
+        ...current,
+        properties: [
+          {
+            id,
+            name: input.name.trim(),
+            key: input.key.trim().toLowerCase().replace(/\s+/g, "_"),
+            type: input.type,
+            createdAt: Date.now(),
+          },
+          ...current.properties,
+        ],
+      }))
+      return { id }
+    },
+    []
+  )
+
+  const deleteProperty = useCallback((id: string) => {
+    mutate((current) => {
+      const property = current.properties.find((item) => item.id === id)
+      return {
+        ...current,
+        properties: current.properties.filter((item) => item.id !== id),
+        contacts: current.contacts.map((contact) => {
+          if (!property) return contact
+          const next = { ...contact.properties }
+          delete next[property.key]
+          return { ...contact, properties: next }
+        }),
+      }
+    })
   }, [])
 
   const createApiKey = useCallback(
@@ -414,7 +542,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
         lastUsedAt: null,
       }
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         apiKeys: [key, ...current.apiKeys],
       }))
@@ -430,7 +558,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         Pick<import("./types").ApiKey, "name" | "permission" | "domainId">
       >
     ) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         apiKeys: current.apiKeys.map((key) => {
           if (key.id !== id) return key
@@ -450,15 +578,408 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   const deleteApiKey = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       apiKeys: current.apiKeys.filter((key) => key.id !== id),
     }))
   }, [])
 
+  const sendEmail = useCallback(
+    (input: {
+      from: string
+      to: string
+      subject: string
+      text: string
+      scheduledAt?: number | null
+    }) => {
+      const scheduled = input.scheduledAt ?? null
+      const status: EmailStatus = scheduled ? "scheduled" : "sent"
+      const email: SentEmail = {
+        id: createId("em"),
+        from: input.from.trim(),
+        to: input.to.trim().toLowerCase(),
+        subject: input.subject.trim(),
+        status,
+        createdAt: Date.now(),
+        scheduledAt: scheduled,
+        html: `<p>${input.text.trim()}</p>`,
+        text: input.text.trim(),
+        broadcastId: null,
+        events: [
+          {
+            id: createId("evt"),
+            type: status,
+            at: Date.now(),
+          },
+        ],
+      }
+      mutate((current) => ({
+        ...current,
+        emails: [email, ...current.emails],
+        logs: [
+          {
+            id: createId("log"),
+            method: "POST",
+            path: "/emails",
+            status: 200,
+            createdAt: Date.now(),
+            durationMs: 64,
+            emailId: email.id,
+          },
+          ...current.logs,
+        ],
+      }))
+      return email
+    },
+    []
+  )
+
+  const cancelEmail = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      emails: current.emails.map((email) =>
+        email.id === id && email.status === "scheduled"
+          ? {
+              ...email,
+              status: "canceled",
+              events: [
+                ...email.events,
+                { id: createId("evt"), type: "canceled", at: Date.now() },
+              ],
+            }
+          : email
+      ),
+    }))
+  }, [])
+
+  const addReceived = useCallback(
+    (input: { from: string; to: string; subject: string; text: string }) => {
+      mutate((current) => ({
+        ...current,
+        received: [
+          {
+            id: createId("rcv"),
+            from: input.from.trim(),
+            to: input.to.trim().toLowerCase(),
+            subject: input.subject.trim(),
+            createdAt: Date.now(),
+            html: `<p>${input.text.trim()}</p>`,
+            text: input.text.trim(),
+          },
+          ...current.received,
+        ],
+      }))
+    },
+    []
+  )
+
+  const addSuppression = useCallback(
+    (input: { email: string; reason: SuppressionReason }) => {
+      mutate((current) => ({
+        ...current,
+        suppressions: [
+          {
+            id: createId("sup"),
+            email: input.email.trim().toLowerCase(),
+            reason: input.reason,
+            createdAt: Date.now(),
+          },
+          ...current.suppressions,
+        ],
+      }))
+    },
+    []
+  )
+
+  const removeSuppression = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      suppressions: current.suppressions.filter((item) => item.id !== id),
+    }))
+  }, [])
+
+  const addBroadcast = useCallback(
+    (input: {
+      name: string
+      subject: string
+      preview: string
+      segmentId: string | null
+      topicId: string | null
+    }) => {
+      const id = createId("brd")
+      mutate((current) => ({
+        ...current,
+        broadcasts: [
+          {
+            id,
+            name: input.name.trim(),
+            subject: input.subject.trim(),
+            preview: input.preview.trim(),
+            html: `<p>${input.preview.trim()}</p>`,
+            status: "draft",
+            segmentId: input.segmentId,
+            topicId: input.topicId,
+            createdAt: Date.now(),
+            scheduledAt: null,
+            sentAt: null,
+            stats: emptyBroadcastStats(),
+          },
+          ...current.broadcasts,
+        ],
+      }))
+      return { id }
+    },
+    []
+  )
+
+  const updateBroadcast = useCallback(
+    (
+      id: string,
+      patch: Partial<
+        Pick<Broadcast, "name" | "subject" | "preview" | "html" | "segmentId" | "topicId">
+      >
+    ) => {
+      mutate((current) => ({
+        ...current,
+        broadcasts: current.broadcasts.map((item) =>
+          item.id === id ? { ...item, ...patch } : item
+        ),
+      }))
+    },
+    []
+  )
+
+  const setBroadcastStatus = useCallback(
+    (id: string, status: BroadcastStatus) => {
+      mutate((current) => ({
+        ...current,
+        broadcasts: current.broadcasts.map((item) => {
+          if (item.id !== id) return item
+          if (status === "sent") {
+            const recipients = item.segmentId
+              ? current.contacts.filter((contact) =>
+                  contact.segmentIds.includes(item.segmentId!)
+                ).length
+              : current.contacts.length
+            return {
+              ...item,
+              status,
+              sentAt: Date.now(),
+              stats: {
+                recipients,
+                delivered: recipients,
+                opened: 0,
+                clicked: 0,
+                bounced: 0,
+              },
+            }
+          }
+          return { ...item, status }
+        }),
+      }))
+    },
+    []
+  )
+
+  const deleteBroadcast = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      broadcasts: current.broadcasts.filter((item) => item.id !== id),
+    }))
+  }, [])
+
+  const addTemplate = useCallback((input: { name: string; subject: string }) => {
+    const id = createId("tpl")
+    mutate((current) => ({
+      ...current,
+      templates: [
+        {
+          id,
+          name: input.name.trim(),
+          subject: input.subject.trim(),
+          html: "<p></p>",
+          status: "draft",
+          variables: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        ...current.templates,
+      ],
+    }))
+    return { id }
+  }, [])
+
+  const updateTemplate = useCallback(
+    (
+      id: string,
+      patch: Partial<Pick<EmailTemplate, "name" | "subject" | "html" | "variables">>
+    ) => {
+      mutate((current) => ({
+        ...current,
+        templates: current.templates.map((item) =>
+          item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item
+        ),
+      }))
+    },
+    []
+  )
+
+  const setTemplateStatus = useCallback((id: string, status: TemplateStatus) => {
+    mutate((current) => ({
+      ...current,
+      templates: current.templates.map((item) =>
+        item.id === id ? { ...item, status, updatedAt: Date.now() } : item
+      ),
+    }))
+  }, [])
+
+  const duplicateTemplate = useCallback((id: string) => {
+    mutate((current) => {
+      const source = current.templates.find((item) => item.id === id)
+      if (!source) return current
+      return {
+        ...current,
+        templates: [
+          {
+            ...source,
+            id: createId("tpl"),
+            name: `${source.name} copy`,
+            status: "draft",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+          ...current.templates,
+        ],
+      }
+    })
+  }, [])
+
+  const deleteTemplate = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      templates: current.templates.filter((item) => item.id !== id),
+    }))
+  }, [])
+
+  const addAutomation = useCallback(
+    (input: { name: string; trigger: string }) => {
+      const id = createId("atm")
+      mutate((current) => ({
+        ...current,
+        automations: [
+          {
+            id,
+            name: input.name.trim(),
+            trigger: input.trigger.trim(),
+            status: "disabled",
+            createdAt: Date.now(),
+            runs: 0,
+          },
+          ...current.automations,
+        ],
+      }))
+      return { id }
+    },
+    []
+  )
+
+  const setAutomationStatus = useCallback(
+    (id: string, status: AutomationStatus) => {
+      mutate((current) => ({
+        ...current,
+        automations: current.automations.map((item) =>
+          item.id === id ? { ...item, status } : item
+        ),
+      }))
+    },
+    []
+  )
+
+  const deleteAutomation = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      automations: current.automations.filter((item) => item.id !== id),
+    }))
+  }, [])
+
+  const createWebhook = useCallback(
+    (input: {
+      endpoint: string
+      events: WebhookEvent[]
+    }): CreateWebhookResult => {
+      const secret = createWebhookSecret()
+      const webhook = {
+        id: createId("wh"),
+        endpoint: input.endpoint.trim(),
+        events: input.events,
+        enabled: true,
+        signingSecretLast4: secret.slice(-4),
+        createdAt: Date.now(),
+      }
+      mutate((current) => ({
+        ...current,
+        webhooks: [webhook, ...current.webhooks],
+      }))
+      return { webhook, secret }
+    },
+    []
+  )
+
+  const updateWebhook = useCallback(
+    (
+      id: string,
+      patch: Partial<Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">>
+    ) => {
+      mutate((current) => ({
+        ...current,
+        webhooks: current.webhooks.map((item) =>
+          item.id === id ? { ...item, ...patch } : item
+        ),
+      }))
+    },
+    []
+  )
+
+  const deleteWebhook = useCallback((id: string) => {
+    mutate((current) => ({
+      ...current,
+      webhooks: current.webhooks.filter((item) => item.id !== id),
+    }))
+  }, [])
+
+  const rotateWebhookSecret = useCallback((id: string) => {
+    const secret = createWebhookSecret()
+    mutate((current) => ({
+      ...current,
+      webhooks: current.webhooks.map((item) =>
+        item.id === id
+          ? { ...item, signingSecretLast4: secret.slice(-4) }
+          : item
+      ),
+    }))
+    return secret
+  }, [])
+
+  const addExport = useCallback((resource: string, rows: number) => {
+    mutate((current) => ({
+      ...current,
+      exports: [
+        {
+          id: createId("exp"),
+          resource,
+          status: "ready",
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 7 * 86_400_000,
+          rows,
+        },
+        ...current.exports,
+      ],
+    }))
+  }, [])
+
   const updateSettings = useCallback(
     (patch: Partial<Settings> | ((current: Settings) => Settings)) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         settings:
           typeof patch === "function"
@@ -471,7 +992,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const inviteMember = useCallback(
     (input: { name: string; email: string; role: MemberRole }) => {
-      update((current) => ({
+      mutate((current) => ({
         ...current,
         members: [
           ...current.members,
@@ -490,7 +1011,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   const updateMemberRole = useCallback((id: string, role: MemberRole) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       members: current.members.map((member) =>
         member.id === id ? { ...member, role } : member
@@ -499,14 +1020,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const removeMember = useCallback((id: string) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       members: current.members.filter((member) => member.id !== id || member.you),
     }))
   }, [])
 
   const updateSes = useCallback((patch: Partial<Settings["ses"]>) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       settings: {
         ...current.settings,
@@ -516,7 +1037,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateSmtp = useCallback((patch: Partial<Settings["smtp"]>) => {
-    update((current) => ({
+    mutate((current) => ({
       ...current,
       settings: {
         ...current.settings,
@@ -547,9 +1068,33 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       addTopic,
       updateTopic,
       deleteTopic,
+      addProperty,
+      deleteProperty,
       createApiKey,
       updateApiKey,
       deleteApiKey,
+      sendEmail,
+      cancelEmail,
+      addReceived,
+      addSuppression,
+      removeSuppression,
+      addBroadcast,
+      updateBroadcast,
+      setBroadcastStatus,
+      deleteBroadcast,
+      addTemplate,
+      updateTemplate,
+      setTemplateStatus,
+      duplicateTemplate,
+      deleteTemplate,
+      addAutomation,
+      setAutomationStatus,
+      deleteAutomation,
+      createWebhook,
+      updateWebhook,
+      deleteWebhook,
+      rotateWebhookSecret,
+      addExport,
       updateSettings,
       inviteMember,
       updateMemberRole,
@@ -575,9 +1120,33 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       addTopic,
       updateTopic,
       deleteTopic,
+      addProperty,
+      deleteProperty,
       createApiKey,
       updateApiKey,
       deleteApiKey,
+      sendEmail,
+      cancelEmail,
+      addReceived,
+      addSuppression,
+      removeSuppression,
+      addBroadcast,
+      updateBroadcast,
+      setBroadcastStatus,
+      deleteBroadcast,
+      addTemplate,
+      updateTemplate,
+      setTemplateStatus,
+      duplicateTemplate,
+      deleteTemplate,
+      addAutomation,
+      setAutomationStatus,
+      deleteAutomation,
+      createWebhook,
+      updateWebhook,
+      deleteWebhook,
+      rotateWebhookSecret,
+      addExport,
       updateSettings,
       inviteMember,
       updateMemberRole,
