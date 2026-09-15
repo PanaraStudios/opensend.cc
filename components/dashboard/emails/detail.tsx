@@ -5,11 +5,6 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card"
 import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
 import {
   Empty,
@@ -236,6 +231,29 @@ export function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
   )
 }
 
+const PREVIEW_HTML_CLASS =
+  "text-body text-foreground [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h1]:mb-2 [&_h1]:font-heading [&_h1]:text-h4 [&_h2]:mb-2 [&_h2]:font-heading [&_h2]:text-h4 [&_li]:mt-1 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_p+_p]:mt-3 [&_strong]:font-medium [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5"
+
+function EmailPreview({ subject, html }: { subject: string; html: string }) {
+  return (
+    <article className="rounded-xl border border-border bg-background p-5">
+      <h2 className="font-heading text-h4 text-foreground">{subject}</h2>
+      <div
+        className={`mt-4 ${PREVIEW_HTML_CLASS}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </article>
+  )
+}
+
+function EmailSource({ value }: { value: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-xl border border-border bg-muted/40 p-4 font-mono text-mono whitespace-pre-wrap text-foreground">
+      {value}
+    </pre>
+  )
+}
+
 export function EmailBodyTabs({
   from,
   to,
@@ -260,39 +278,38 @@ export function EmailBodyTabs({
   const raw = `From: ${from}\nTo: ${to}\nSubject: ${subject}\n\n${text}`
 
   return (
-    <Card>
-      <Tabs value={tab} onValueChange={setTab}>
-        <CardHeader className="border-b">
-          <TabsList>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-            <TabsTrigger value="text">Plain text</TabsTrigger>
-            <TabsTrigger value="html">HTML</TabsTrigger>
-            <TabsTrigger value="raw">Raw</TabsTrigger>
-            {showInsights ? <TabsTrigger value="insights">Insights</TabsTrigger> : null}
-          </TabsList>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <TabsContent value="preview">
-            <div
-              className="prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
+    <div className="frame">
+      <div className="panel overflow-hidden p-0">
+        <Tabs value={tab} onValueChange={setTab} className="gap-0">
+          <div className="overflow-x-auto border-b border-border px-3 py-2.5">
+            <TabsList>
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="text">Plain text</TabsTrigger>
+              <TabsTrigger value="html">HTML</TabsTrigger>
+              <TabsTrigger value="raw">Raw</TabsTrigger>
+              {showInsights ? (
+                <TabsTrigger value="insights">Insights</TabsTrigger>
+              ) : null}
+            </TabsList>
+          </div>
+          <TabsContent value="preview" className="p-4">
+            <EmailPreview subject={subject} html={html} />
           </TabsContent>
-          <TabsContent value="text">
-            <pre className="font-mono text-mono whitespace-pre-wrap">{text}</pre>
+          <TabsContent value="text" className="p-4">
+            <EmailSource value={text} />
           </TabsContent>
-          <TabsContent value="html">
-            <pre className="font-mono text-mono whitespace-pre-wrap">{html}</pre>
+          <TabsContent value="html" className="p-4">
+            <EmailSource value={html} />
           </TabsContent>
-          <TabsContent value="raw">
-            <pre className="font-mono text-mono whitespace-pre-wrap">{raw}</pre>
+          <TabsContent value="raw" className="p-4">
+            <EmailSource value={raw} />
           </TabsContent>
           {showInsights ? (
-            <TabsContent value="insights">
+            <TabsContent value="insights" className="p-4">
               {insights.length === 0 ? (
-                <Empty>
+                <Empty className="min-h-40 py-8">
                   <EmptyHeader>
-                    <EmptyMedia variant="icon">
+                    <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
                       <Eye />
                     </EmptyMedia>
                     <EmptyTitle>No opens or clicks</EmptyTitle>
@@ -305,13 +322,15 @@ export function EmailBodyTabs({
               ) : (
                 <ItemGroup>
                   {insights.map((event) => (
-                    <Item key={event.id} size="sm">
+                    <Item key={event.id} size="sm" variant="muted">
                       <ItemMedia variant="icon">
                         {event.type === "clicked" ? <CursorClick /> : <Eye />}
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle>{emailStatusLabel(event.type)}</ItemTitle>
-                        <ItemDescription>{formatDateTime(event.at)}</ItemDescription>
+                        <ItemDescription>
+                          {formatDateTime(event.at)}
+                        </ItemDescription>
                       </ItemContent>
                     </Item>
                   ))}
@@ -319,9 +338,9 @@ export function EmailBodyTabs({
               )}
             </TabsContent>
           ) : null}
-        </CardContent>
-      </Tabs>
-    </Card>
+        </Tabs>
+      </div>
+    </div>
   )
 }
 
