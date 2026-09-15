@@ -14,7 +14,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -31,7 +36,13 @@ import {
   Th,
 } from "@/components/dashboard/primitives"
 import { SETTINGS_NAV, pathMatches } from "@/lib/dashboard/nav"
-import { formatDate, initials, isEmail, regionLabel, roleLabel } from "@/lib/dashboard/format"
+import {
+  formatDate,
+  initials,
+  isEmail,
+  regionLabel,
+  roleLabel,
+} from "@/lib/dashboard/format"
 import { REGIONS } from "@/lib/dashboard/types"
 import type { MemberRole, Region } from "@/lib/dashboard/types"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -72,50 +83,60 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 }
 
 export function SettingsGeneral() {
-  const { state, updateSettings } = useDashboard()
+  const { state, teams, activeTeamId, updateSettings } = useDashboard()
 
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const teamName = String(form.get("teamName") ?? "").trim()
-    const teamSlug = String(form.get("teamSlug") ?? "").trim().toLowerCase()
+    const teamSlug = String(form.get("teamSlug") ?? "")
+      .trim()
+      .toLowerCase()
+    const nextName = teamName || state.settings.teamName
+    const nextSlug = teamSlug || state.settings.teamSlug
+    if (
+      teams.some((team) => team.id !== activeTeamId && team.slug === nextSlug)
+    ) {
+      toast.add({ type: "error", title: "That slug is already in use" })
+      return
+    }
     updateSettings({
-      teamName: teamName || state.settings.teamName,
-      teamSlug: teamSlug || state.settings.teamSlug,
+      teamName: nextName,
+      teamSlug: nextSlug,
     })
-    toast.add({ type: "success", title: "Workspace saved" })
+    toast.add({ type: "success", title: "Team saved" })
   }
 
   return (
     <>
       <PageHeader
         title="General"
-        description="Workspace identity. Self-hosted Opensend keeps this on your Convex deployment — nothing is sent to us."
+        description="Team identity. Self-hosted Opensend keeps this on your Convex deployment — nothing is sent to us."
       />
       <form onSubmit={save} className="max-w-lg">
         <Surface>
-        <Field>
-          <FieldLabel htmlFor="team-name">Workspace name</FieldLabel>
-          <Input
-            id="team-name"
-            name="teamName"
-            key={state.settings.teamName}
-            defaultValue={state.settings.teamName}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="team-slug">Slug</FieldLabel>
-          <Input
-            id="team-slug"
-            name="teamSlug"
-            key={state.settings.teamSlug}
-            defaultValue={state.settings.teamSlug}
-          />
-          <FieldDescription>
-            Used in the sidebar and future invite URLs.
-          </FieldDescription>
-        </Field>
-        <Button type="submit">Save</Button>
+          <Field>
+            <FieldLabel htmlFor="team-name">Team name</FieldLabel>
+            <Input
+              id="team-name"
+              name="teamName"
+              key={state.settings.teamName}
+              defaultValue={state.settings.teamName}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="team-slug">Slug</FieldLabel>
+            <Input
+              id="team-slug"
+              name="teamSlug"
+              key={state.settings.teamSlug}
+              defaultValue={state.settings.teamSlug}
+            />
+            <FieldDescription>
+              Used in the sidebar and future invite URLs.
+            </FieldDescription>
+          </Field>
+          <Button type="submit">Save</Button>
         </Surface>
       </form>
     </>
@@ -303,7 +324,11 @@ export function SettingsTeam() {
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Send invite</Button>
@@ -358,63 +383,63 @@ export function SettingsSes() {
       />
       <form onSubmit={save} className="max-w-lg">
         <Surface>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Connection</span>
-          <Badge variant={ses.connected ? "success" : "warning"} dot>
-            {ses.connected ? "Connected" : "Not connected"}
-          </Badge>
-        </div>
-        <Field>
-          <FieldLabel htmlFor="ses-region">Region</FieldLabel>
-          <select
-            id="ses-region"
-            name="region"
-            key={ses.region}
-            defaultValue={ses.region}
-            className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-          >
-            {REGIONS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label} ({item.code})
-              </option>
-            ))}
-          </select>
-          <FieldDescription>
-            Current: {regionLabel(ses.region)}
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="ses-key">Access key</FieldLabel>
-          <Input
-            id="ses-key"
-            name="accessKey"
-            type="password"
-            autoComplete="off"
-            placeholder={
-              ses.accessKeyLast4
-                ? `Stored key ending in ${ses.accessKeyLast4}`
-                : "AKIA…"
-            }
-          />
-          <FieldDescription>
-            Leave blank to keep the existing key. Only the last four characters
-            are displayed after save.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="ses-config">Configuration set</FieldLabel>
-          <Input
-            id="ses-config"
-            name="configurationSet"
-            key={ses.configurationSet}
-            defaultValue={ses.configurationSet}
-            placeholder="opensend-prod"
-          />
-          <FieldDescription>
-            Used for event publishing (bounces, complaints, deliveries).
-          </FieldDescription>
-        </Field>
-        <Button type="submit">Save connection</Button>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Connection</span>
+            <Badge variant={ses.connected ? "success" : "warning"} dot>
+              {ses.connected ? "Connected" : "Not connected"}
+            </Badge>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="ses-region">Region</FieldLabel>
+            <select
+              id="ses-region"
+              name="region"
+              key={ses.region}
+              defaultValue={ses.region}
+              className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
+            >
+              {REGIONS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label} ({item.code})
+                </option>
+              ))}
+            </select>
+            <FieldDescription>
+              Current: {regionLabel(ses.region)}
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="ses-key">Access key</FieldLabel>
+            <Input
+              id="ses-key"
+              name="accessKey"
+              type="password"
+              autoComplete="off"
+              placeholder={
+                ses.accessKeyLast4
+                  ? `Stored key ending in ${ses.accessKeyLast4}`
+                  : "AKIA…"
+              }
+            />
+            <FieldDescription>
+              Leave blank to keep the existing key. Only the last four
+              characters are displayed after save.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="ses-config">Configuration set</FieldLabel>
+            <Input
+              id="ses-config"
+              name="configurationSet"
+              key={ses.configurationSet}
+              defaultValue={ses.configurationSet}
+              placeholder="opensend-prod"
+            />
+            <FieldDescription>
+              Used for event publishing (bounces, complaints, deliveries).
+            </FieldDescription>
+          </Field>
+          <Button type="submit">Save connection</Button>
         </Surface>
       </form>
     </>
@@ -668,7 +693,9 @@ export function SettingsUnsubscribe() {
           </Surface>
         </form>
         <Surface>
-          <p className="font-mono text-caption text-muted-foreground">Preview</p>
+          <p className="font-mono text-caption text-muted-foreground">
+            Preview
+          </p>
           <p className="text-small text-muted-foreground">{page.brandName}</p>
           <h2 className="text-h4">{page.heading}</h2>
           <p className="text-small text-muted-foreground">{page.body}</p>
@@ -676,7 +703,10 @@ export function SettingsUnsubscribe() {
             {state.topics
               .filter((topic) => topic.visibility === "public")
               .map((topic) => (
-                <li key={topic.id} className="flex items-center justify-between">
+                <li
+                  key={topic.id}
+                  className="flex items-center justify-between"
+                >
                   <span>{topic.name}</span>
                   <Badge variant="secondary">Topic</Badge>
                 </li>
@@ -721,7 +751,9 @@ export function SettingsExports() {
               <TableCell>
                 <ExportStatusBadge status={item.status} />
               </TableCell>
-              <TableCell className="text-muted-foreground">{item.rows}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {item.rows}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(item.createdAt)}
               </TableCell>
