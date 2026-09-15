@@ -551,8 +551,8 @@ const received: ReceivedEmail[] = [
     to: "hello@opensend.cc",
     subject: "Re: Welcome to Opensend",
     createdAt: hoursAgo(3),
-    html: "<p>Thanks — domain verified on our side too.</p>",
-    text: "Thanks — domain verified on our side too.",
+    html: "<p>Thanks, domain verified on our side too.</p>",
+    text: "Thanks, domain verified on our side too.",
   },
   {
     id: "rcv_inbound",
