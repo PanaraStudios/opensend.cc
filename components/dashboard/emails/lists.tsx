@@ -348,23 +348,25 @@ export function ReceivingView() {
 
   return (
     <EmailsChrome>
-      {receivingDomain ? (
-        <p className="text-sm text-muted-foreground">
-          Receiving on{" "}
-          <span className="font-mono">inbound@{receivingDomain.name}</span>
-        </p>
-      ) : null}
-      <EmailsToolbar
-        query={query}
-        onQueryChange={setQuery}
-        placeholder="Search received…"
-        range={range}
-        onRangeChange={setRange}
-        onExport={() => {
-          addExport("Received emails", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
-      />
+      <div className="flex flex-col gap-2">
+        {receivingDomain ? (
+          <p className="text-sm text-muted-foreground">
+            Receiving on{" "}
+            <span className="font-mono">inbound@{receivingDomain.name}</span>
+          </p>
+        ) : null}
+        <EmailsToolbar
+          query={query}
+          onQueryChange={setQuery}
+          placeholder="Search received…"
+          range={range}
+          onRangeChange={setRange}
+          onExport={() => {
+            addExport("Received emails", rows.length)
+            toast.add({ type: "success", title: "Export started" })
+          }}
+        />
+      </div>
       {rows.length === 0 ? (
         <EmptyState
           icon={Inbox}
@@ -437,6 +439,12 @@ export function SuppressionsView() {
     return inDateRange(item.createdAt, range)
   })
 
+  function reset() {
+    setEmail("")
+    setReason("manual")
+    setError(null)
+  }
+
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!isEmail(email)) {
@@ -445,9 +453,7 @@ export function SuppressionsView() {
     }
     addSuppression({ email, reason })
     toast.add({ type: "success", title: "Address suppressed" })
-    setEmail("")
-    setReason("manual")
-    setError(null)
+    reset()
     setOpen(false)
   }
 
@@ -524,7 +530,7 @@ export function SuppressionsView() {
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!next) setError(null)
+          if (!next) reset()
           setOpen(next)
         }}
       >
@@ -544,6 +550,7 @@ export function SuppressionsView() {
                   id="sup-email"
                   type="email"
                   value={email}
+                  autoFocus
                   onChange={(event) => {
                     setEmail(event.target.value)
                     setError(null)
