@@ -31,6 +31,7 @@ import {
   ResourceTable,
   SearchField,
   StatusBadge,
+  Surface,
   Th,
 } from "@/components/dashboard/primitives"
 import { REGIONS } from "@/lib/dashboard/types"
@@ -356,90 +357,90 @@ export function DomainDetail() {
       </Tabs>
 
       {tab === "records" ? (
-        <div className="lined-bleed corners-t corners-b relative border-double-t border-double-b bg-background">
-          <div className="px-6 py-4 text-small text-muted-foreground md:px-10">
+        <div className="space-y-4">
+          <p className="max-w-2xl text-sm text-muted-foreground">
             Add these records at your DNS provider. Copy Name and Content
             exactly. Opensend reads the values AWS returns for DKIM and SPF —
             API callers never see AWS credentials. DNS changes can take up to 72
             hours to propagate.
-          </div>
+          </p>
           {pendingRecords.length > 0 ? (
-            <div className="border-double-t px-6 py-3 text-small md:px-10">
-              <span className="text-foreground">
-                Waiting on {pendingRecords.length}{" "}
-                {pendingRecords.length === 1 ? "record" : "records"}
-              </span>
-              {": "}
-              <span className="text-muted-foreground">
-                {pendingRecords
-                  .map((record) => `${record.kind} ${record.type}`)
-                  .join(", ")}
-                .{" "}
-              </span>
-              <button
-                type="button"
-                className="underline underline-offset-4"
-                onClick={runVerification}
-              >
-                Restart verification
-              </button>
-            </div>
+            <Surface>
+              <p className="text-small">
+                <span className="text-foreground">
+                  Waiting on {pendingRecords.length}{" "}
+                  {pendingRecords.length === 1 ? "record" : "records"}
+                </span>
+                {": "}
+                <span className="text-muted-foreground">
+                  {pendingRecords
+                    .map((record) => `${record.kind} ${record.type}`)
+                    .join(", ")}
+                  .{" "}
+                </span>
+                <button
+                  type="button"
+                  className="underline underline-offset-4"
+                  onClick={runVerification}
+                >
+                  Restart verification
+                </button>
+              </p>
+            </Surface>
           ) : null}
-          <div className="border-double-t [&_[data-slot=table-container]]:overflow-visible [&_table]:w-full [&_table]:table-fixed">
-            <ResourceTable
-              flush
-              headers={
-                <>
-                  <Th>Type</Th>
-                  <Th>Name</Th>
-                  <Th>Content</Th>
-                  <Th>TTL</Th>
-                  <Th>Priority</Th>
-                  <Th>Status</Th>
-                </>
-              }
-            >
-              {records.map((record) => {
-                const host = dnsHost(record.name, domain.name)
-                return (
-                  <TableRow key={record.id}>
-                    <TableCell className="w-24 min-w-0">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[13px]">
-                          {record.type}
-                        </span>
-                        <span className="text-caption text-muted-foreground">
-                          {record.kind}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="w-40 min-w-0">
-                      <MonoValue copyValue={host}>{host}</MonoValue>
-                    </TableCell>
-                    <TableCell className="min-w-0">
-                      <MonoValue copyValue={record.value}>
-                        <span className="block max-w-full truncate">
-                          {record.value}
-                        </span>
-                      </MonoValue>
-                    </TableCell>
-                    <TableCell className="w-16 min-w-0 text-muted-foreground">
-                      {record.ttl}
-                    </TableCell>
-                    <TableCell className="w-20 min-w-0 text-muted-foreground">
-                      {record.priority ?? "—"}
-                    </TableCell>
-                    <TableCell className="w-32 min-w-0">
-                      <StatusBadge status={record.status} />
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </ResourceTable>
-          </div>
+          <ResourceTable
+            className="[&_table]:table-fixed"
+            headers={
+              <>
+                <Th className="w-24">Type</Th>
+                <Th className="w-40">Name</Th>
+                <Th>Content</Th>
+                <Th className="w-16">TTL</Th>
+                <Th className="w-20">Priority</Th>
+                <Th className="w-32">Status</Th>
+              </>
+            }
+          >
+            {records.map((record) => {
+              const host = dnsHost(record.name, domain.name)
+              return (
+                <TableRow key={record.id}>
+                  <TableCell className="w-24 min-w-0">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-[13px]">
+                        {record.type}
+                      </span>
+                      <span className="text-caption text-muted-foreground">
+                        {record.kind}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="w-40 min-w-0">
+                    <MonoValue copyValue={host}>{host}</MonoValue>
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    <MonoValue copyValue={record.value}>
+                      <span className="block max-w-full truncate">
+                        {record.value}
+                      </span>
+                    </MonoValue>
+                  </TableCell>
+                  <TableCell className="w-16 min-w-0 text-muted-foreground">
+                    {record.ttl}
+                  </TableCell>
+                  <TableCell className="w-20 min-w-0 text-muted-foreground">
+                    {record.priority ?? "—"}
+                  </TableCell>
+                  <TableCell className="w-32 min-w-0">
+                    <StatusBadge status={record.status} />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </ResourceTable>
         </div>
       ) : (
-        <div className="max-w-xl space-y-6">
+        <Surface className="max-w-xl">
           <Field orientation="horizontal">
             <FieldLabel htmlFor="open-tracking">
               <span className="flex flex-col gap-1">
@@ -528,7 +529,7 @@ export function DomainDetail() {
               }
             />
           </Field>
-        </div>
+        </Surface>
       )}
 
       <ConfirmDelete
