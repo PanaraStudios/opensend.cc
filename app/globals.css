@@ -841,21 +841,6 @@
       0 1px var(--border-double-glow),
       1px 0 var(--border-double-glow);
   }
-  /* App chrome: left-aligned column against the sidebar. The sidebar's
-     double-r is the left rail; this paints the right rail so hatch can
-     show past it. Horizontal rules use corners-t / corners-b so crossings
-     read as +———+. */
-  .dashboard-rails {
-    @apply relative flex min-h-full min-w-0 w-full flex-col bg-background border-double-r;
-    margin-right: auto;
-    box-shadow: 1px 0 var(--border-double-glow);
-  }
-  /* Bleed a band to the rails, then close it with + marks at each end. */
-  .lined-bleed {
-    position: relative;
-    margin-left: calc(-1 * var(--page-pad, 1.5rem));
-    margin-right: calc(-1 * var(--page-pad, 1.5rem));
-  }
   /* the gutters either side of the column: 1px hatching at 45°, 8px apart */
   .hatch {
     background-image: repeating-linear-gradient(
