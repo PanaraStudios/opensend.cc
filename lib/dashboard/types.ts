@@ -119,6 +119,7 @@ export type ContactProperty = {
   key: string
   name: string
   type: PropertyType
+  fallbackValue?: string
   createdAt: number
 }
 

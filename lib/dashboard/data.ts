@@ -301,12 +301,20 @@ const topics: Topic[] = [
   },
 ]
 
+export const DEFAULT_CONTACT_PROPERTIES = [
+  { key: "email", name: "Email", type: "string" },
+  { key: "first_name", name: "First name", type: "string" },
+  { key: "last_name", name: "Last name", type: "string" },
+  { key: "unsubscribed", name: "Unsubscribed", type: "boolean" },
+] as const
+
 const properties: ContactProperty[] = [
   {
     id: "prop_company",
     key: "company",
     name: "Company",
     type: "string",
+    fallbackValue: "Acme",
     createdAt: daysAgo(38),
   },
   {
@@ -314,6 +322,7 @@ const properties: ContactProperty[] = [
     key: "plan",
     name: "Plan",
     type: "string",
+    fallbackValue: "Free",
     createdAt: daysAgo(30),
   },
   {
@@ -321,6 +330,7 @@ const properties: ContactProperty[] = [
     key: "seats",
     name: "Seats",
     type: "number",
+    fallbackValue: "1",
     createdAt: daysAgo(16),
   },
 ]
