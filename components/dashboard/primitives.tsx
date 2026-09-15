@@ -90,15 +90,22 @@ export function PageHeader({
 
 export function SectionTabs({
   items,
+  label = "Section",
+  className,
 }: {
   items: readonly { href: string; title: string }[]
+  label?: string
+  className?: string
 }) {
   const pathname = usePathname()
 
   return (
     <nav
-      aria-label="Section"
-      className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-border bg-secondary p-1"
+      aria-label={label}
+      className={cn(
+        "inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-border bg-secondary p-1",
+        className
+      )}
     >
       {items.map((item) => {
         const active = tabActive(pathname, item.href)

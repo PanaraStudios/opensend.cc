@@ -63,7 +63,6 @@ import { Toaster } from "@/components/ui/toast"
 import { DASHBOARD_NAV, navItemActive, SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
 import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
-import { cn } from "@/lib/utils"
 
 const ICONS = {
   mails: MailsIcon,
@@ -284,7 +283,6 @@ function DashboardSidebar() {
 
 function DashboardChrome({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false)
-  const pathname = usePathname()
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -328,14 +326,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
               </Button>
             </div>
           </header>
-          <div
-            className={cn(
-              "flex flex-1 flex-col",
-              pathname.startsWith("/settings")
-                ? "min-h-0"
-                : "w-full gap-6 px-6 py-8 md:px-10"
-            )}
-          >
+          <div className="flex w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
             {children}
           </div>
         </SidebarInset>
