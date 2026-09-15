@@ -211,17 +211,15 @@ export function EmptyState({
   children?: React.ReactNode
 }) {
   return (
-    <Empty className="frame min-h-72">
-      <div className="panel flex w-full flex-col items-center gap-3 py-10">
-        <EmptyHeader>
-          <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
-            <Icon className="size-4" />
-          </EmptyMedia>
-          <EmptyTitle>{title}</EmptyTitle>
-          <EmptyDescription>{description}</EmptyDescription>
-        </EmptyHeader>
-        {children ? <EmptyContent>{children}</EmptyContent> : null}
-      </div>
+    <Empty className="panel min-h-72 border-0 py-10">
+      <EmptyHeader>
+        <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
+          <Icon className="size-4" />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      {children ? <EmptyContent>{children}</EmptyContent> : null}
     </Empty>
   )
 }

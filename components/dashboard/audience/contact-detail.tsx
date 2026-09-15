@@ -3,9 +3,16 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import { XIcon } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -29,7 +36,7 @@ import {
   Th,
 } from "@/components/dashboard/primitives"
 import { AudienceDetailHeader } from "@/components/dashboard/audience/shared"
-import { Mail, Send, User } from "@/components/dashboard/icons"
+import { Mail, Plus, Send, User } from "@/components/dashboard/icons"
 import { contactTopicStatus } from "@/lib/dashboard/data"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -53,16 +60,110 @@ function HistorySection({
   )
 }
 
+function SegmentMembership({
+  contactId,
+  segmentIds,
+}: {
+  contactId: string
+  segmentIds: string[]
+}) {
+  const { state, setContactSegments } = useDashboard()
+  const assigned = state.segments.filter((segment) =>
+    segmentIds.includes(segment.id)
+  )
+  const available = state.segments.filter(
+    (segment) => !segmentIds.includes(segment.id)
+  )
+
+  return (
+    <Surface>
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium">Segment membership</h2>
+        <p className="text-sm text-muted-foreground">
+          Add this contact to groups you target in broadcasts. Recipients never
+          see these names.
+        </p>
+      </div>
+      {state.segments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No segments yet.{" "}
+          <Link href="/segments" className="underline underline-offset-4">
+            Create one
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {assigned.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Not in any segments yet.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {assigned.map((segment) => (
+                <li key={segment.id}>
+                  <Badge variant="secondary" size="lg" className="pr-1">
+                    <Link
+                      href={`/segments/${segment.id}`}
+                      className="hover:underline"
+                    >
+                      {segment.name}
+                    </Link>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Remove from ${segment.name}`}
+                      onClick={() =>
+                        setContactSegments(
+                          contactId,
+                          segmentIds.filter((id) => id !== segment.id)
+                        )
+                      }
+                    >
+                      <XIcon />
+                    </Button>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+          {available.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" size="sm" className="w-fit" />}
+              >
+                <Plus data-icon="inline-start" />
+                Add to segment
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-44">
+                {available.map((segment) => (
+                  <DropdownMenuItem
+                    key={segment.id}
+                    onClick={() =>
+                      setContactSegments(contactId, [
+                        ...segmentIds,
+                        segment.id,
+                      ])
+                    }
+                  >
+                    {segment.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      )}
+    </Surface>
+  )
+}
+
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const {
-    state,
-    updateContact,
-    deleteContact,
-    setContactSegments,
-    setContactTopic,
-  } = useDashboard()
+  const { state, updateContact, deleteContact, setContactTopic } =
+    useDashboard()
   const contact = state.contacts.find((item) => item.id === id)
   const [pendingDelete, setPendingDelete] = React.useState(false)
 
@@ -195,41 +296,10 @@ export function ContactDetail() {
               ) : null}
             </Surface>
 
-            <Surface>
-              <h2 className="text-sm font-medium">Segments</h2>
-              <p className="text-sm text-muted-foreground">
-                Segments are internal groups. Contacts never see these names.
-              </p>
-              <div className="space-y-2">
-                {state.segments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No segments yet.{" "}
-                    <Link href="/segments" className="underline underline-offset-4">
-                      Create one
-                    </Link>
-                    .
-                  </p>
-                ) : (
-                  state.segments.map((segment) => (
-                    <label
-                      key={segment.id}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={contact.segmentIds.includes(segment.id)}
-                        onCheckedChange={(checked) => {
-                          const next = new Set(contact.segmentIds)
-                          if (checked === true) next.add(segment.id)
-                          else next.delete(segment.id)
-                          setContactSegments(contact.id, [...next])
-                        }}
-                      />
-                      {segment.name}
-                    </label>
-                  ))
-                )}
-              </div>
-            </Surface>
+            <SegmentMembership
+              contactId={contact.id}
+              segmentIds={contact.segmentIds}
+            />
 
             <Surface className="lg:col-span-2">
               <h2 className="text-sm font-medium">Topics</h2>
