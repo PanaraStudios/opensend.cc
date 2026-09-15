@@ -47,6 +47,10 @@ import {
   MoreMenuItem,
 } from "@/components/dashboard/primitives"
 import { emailStatusLabel, formatDateTime } from "@/lib/dashboard/format"
+import {
+  tokenizeHtml,
+  type HtmlTokenKind,
+} from "@/lib/dashboard/highlight-html"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
 
@@ -246,10 +250,32 @@ function EmailPreview({ subject, html }: { subject: string; html: string }) {
   )
 }
 
+const SOURCE_WELL =
+  "overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap"
+
+const HTML_TOKEN_CLASS: Record<HtmlTokenKind, string> = {
+  text: "text-foreground",
+  tag: "text-info",
+  attr: "text-warning",
+  string: "text-success",
+  comment: "text-muted-foreground",
+  punct: "text-muted-foreground",
+}
+
 function EmailSource({ value }: { value: string }) {
+  return <pre className={`${SOURCE_WELL} text-foreground`}>{value}</pre>
+}
+
+function EmailHtmlSource({ value }: { value: string }) {
+  const tokens = React.useMemo(() => tokenizeHtml(value), [value])
+
   return (
-    <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap text-foreground">
-      {value}
+    <pre className={SOURCE_WELL}>
+      {tokens.map((token, index) => (
+        <span key={index} className={HTML_TOKEN_CLASS[token.kind]}>
+          {token.value}
+        </span>
+      ))}
     </pre>
   )
 }
@@ -299,7 +325,7 @@ export function EmailBodyTabs({
             <EmailSource value={text} />
           </TabsContent>
           <TabsContent value="html" className="p-5">
-            <EmailSource value={html} />
+            <EmailHtmlSource value={html} />
           </TabsContent>
           <TabsContent value="raw" className="p-5">
             <EmailSource value={raw} />
