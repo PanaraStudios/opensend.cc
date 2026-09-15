@@ -36,7 +36,6 @@ function DataFastRecentWidget({ theme }: { theme: "light" | "dark" }) {
           : "h-[288px] w-full border-0 bg-transparent dark:hidden"
       }
       frameBorder={0}
-      allowTransparency
       title="DataFast Widget"
       loading="lazy"
     />
