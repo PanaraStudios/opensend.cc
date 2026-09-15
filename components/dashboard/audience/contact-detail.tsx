@@ -34,6 +34,25 @@ import { contactTopicStatus } from "@/lib/dashboard/data"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 
+function HistorySection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium">{title}</h2>
+      <div className="frame">
+        <div className="panel p-3">
+          <ItemGroup>{children}</ItemGroup>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -281,78 +300,69 @@ export function ContactDetail() {
           ) : (
             <div className="flex flex-col gap-6">
               {emails.length > 0 ? (
-                <section className="space-y-3">
-                  <h2 className="text-sm font-medium">Emails</h2>
-                  <ItemGroup>
-                    {emails.map((email) => (
-                      <Item
-                        key={email.id}
-                        size="sm"
-                        render={<Link href={`/emails/${email.id}`} />}
-                      >
-                        <ItemMedia variant="icon">
-                          <Mail />
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle>{email.subject}</ItemTitle>
-                          <ItemDescription>
-                            {formatDateTime(email.createdAt)}
-                          </ItemDescription>
-                        </ItemContent>
-                        <EmailStatusBadge status={email.status} />
-                      </Item>
-                    ))}
-                  </ItemGroup>
-                </section>
+                <HistorySection title="Emails">
+                  {emails.map((email) => (
+                    <Item
+                      key={email.id}
+                      size="sm"
+                      render={<Link href={`/emails/${email.id}`} />}
+                    >
+                      <ItemMedia variant="icon">
+                        <Mail />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{email.subject}</ItemTitle>
+                        <ItemDescription>
+                          {formatDateTime(email.createdAt)}
+                        </ItemDescription>
+                      </ItemContent>
+                      <EmailStatusBadge status={email.status} />
+                    </Item>
+                  ))}
+                </HistorySection>
               ) : null}
               {broadcasts.length > 0 ? (
-                <section className="space-y-3">
-                  <h2 className="text-sm font-medium">Broadcasts</h2>
-                  <ItemGroup>
-                    {broadcasts.map((broadcast) => (
-                      <Item
-                        key={broadcast.id}
-                        size="sm"
-                        render={<Link href={`/broadcasts/${broadcast.id}`} />}
-                      >
-                        <ItemMedia variant="icon">
-                          <Send />
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle>{broadcast.name}</ItemTitle>
-                          <ItemDescription>
-                            {broadcast.subject} ·{" "}
-                            {formatDate(broadcast.sentAt ?? broadcast.createdAt)}
-                          </ItemDescription>
-                        </ItemContent>
-                      </Item>
-                    ))}
-                  </ItemGroup>
-                </section>
+                <HistorySection title="Broadcasts">
+                  {broadcasts.map((broadcast) => (
+                    <Item
+                      key={broadcast.id}
+                      size="sm"
+                      render={<Link href={`/broadcasts/${broadcast.id}`} />}
+                    >
+                      <ItemMedia variant="icon">
+                        <Send />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{broadcast.name}</ItemTitle>
+                        <ItemDescription>
+                          {broadcast.subject} ·{" "}
+                          {formatDate(broadcast.sentAt ?? broadcast.createdAt)}
+                        </ItemDescription>
+                      </ItemContent>
+                    </Item>
+                  ))}
+                </HistorySection>
               ) : null}
               {received.length > 0 ? (
-                <section className="space-y-3">
-                  <h2 className="text-sm font-medium">Received</h2>
-                  <ItemGroup>
-                    {received.map((email) => (
-                      <Item
-                        key={email.id}
-                        size="sm"
-                        render={<Link href={`/emails/receiving/${email.id}`} />}
-                      >
-                        <ItemMedia variant="icon">
-                          <Mail />
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle>{email.subject}</ItemTitle>
-                          <ItemDescription>
-                            {formatDateTime(email.createdAt)}
-                          </ItemDescription>
-                        </ItemContent>
-                      </Item>
-                    ))}
-                  </ItemGroup>
-                </section>
+                <HistorySection title="Received">
+                  {received.map((email) => (
+                    <Item
+                      key={email.id}
+                      size="sm"
+                      render={<Link href={`/emails/receiving/${email.id}`} />}
+                    >
+                      <ItemMedia variant="icon">
+                        <Mail />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{email.subject}</ItemTitle>
+                        <ItemDescription>
+                          {formatDateTime(email.createdAt)}
+                        </ItemDescription>
+                      </ItemContent>
+                    </Item>
+                  ))}
+                </HistorySection>
               ) : null}
             </div>
           )}
