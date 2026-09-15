@@ -16,9 +16,18 @@ import {
   defaultTopicSubscription,
   emptyBroadcastStats,
   recordsForDomain,
-  SEED_STATE,
   tokenParts,
 } from "./data"
+import {
+  activeWorkspace,
+  createTeamInRoot,
+  listTeams,
+  parseRoot,
+  seedRoot,
+  serializeRoot,
+  switchTeamInRoot,
+  type DashboardRoot,
+} from "./teams"
 import type {
   ApiKeyPermission,
   AutomationStatus,
@@ -37,6 +46,7 @@ import type {
   SentEmail,
   Settings,
   SuppressionReason,
+  Team,
   TemplateStatus,
   TopicDefault,
   TopicSubscription,
@@ -45,31 +55,11 @@ import type {
   WebhookEvent,
 } from "./types"
 
-const STORAGE_KEY = "opensend.dashboard.v2"
+const STORAGE_KEY = "opensend.dashboard.v3"
+const LEGACY_STORAGE_KEY = "opensend.dashboard.v2"
 const CHANGE_EVENT = "opensend-dashboard"
 
-const SERVER_SNAPSHOT = JSON.stringify(SEED_STATE)
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function parseState(raw: string): DashboardState {
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed)) return SEED_STATE
-    if (!Array.isArray(parsed.domains) || !Array.isArray(parsed.contacts)) {
-      return SEED_STATE
-    }
-    if (!Array.isArray(parsed.emails) || !Array.isArray(parsed.broadcasts)) {
-      return SEED_STATE
-    }
-    if (!isRecord(parsed.settings)) return SEED_STATE
-    return parsed as DashboardState
-  } catch {
-    return SEED_STATE
-  }
-}
+const SERVER_SNAPSHOT = serializeRoot(seedRoot())
 
 function emitChange() {
   window.dispatchEvent(new Event(CHANGE_EVENT))
@@ -77,14 +67,22 @@ function emitChange() {
 
 function readRaw(): string {
   try {
-    return localStorage.getItem(STORAGE_KEY) ?? SERVER_SNAPSHOT
+    const current = localStorage.getItem(STORAGE_KEY)
+    if (current) return current
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (legacy) {
+      const migrated = serializeRoot(parseRoot(legacy))
+      localStorage.setItem(STORAGE_KEY, migrated)
+      return migrated
+    }
+    return SERVER_SNAPSHOT
   } catch {
     return SERVER_SNAPSHOT
   }
 }
 
-function writeState(next: DashboardState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+function writeRoot(next: DashboardRoot) {
+  localStorage.setItem(STORAGE_KEY, serializeRoot(next))
   emitChange()
 }
 
@@ -97,12 +95,30 @@ function subscribe(onStoreChange: () => void) {
   }
 }
 
+function mutateRoot(mutator: (current: DashboardRoot) => DashboardRoot) {
+  writeRoot(mutator(parseRoot(readRaw())))
+}
+
 function mutate(mutator: (current: DashboardState) => DashboardState) {
-  writeState(mutator(parseState(readRaw())))
+  mutateRoot((root) => {
+    const current = root.workspaces[root.activeTeamId]
+    if (!current) return root
+    return {
+      ...root,
+      workspaces: {
+        ...root.workspaces,
+        [root.activeTeamId]: mutator(current),
+      },
+    }
+  })
 }
 
 export type DashboardStore = {
   state: DashboardState
+  teams: Team[]
+  activeTeamId: string
+  switchTeam: (id: string) => void
+  createTeam: (name: string) => { id: string }
   addDomain: (input: { name: string; region: Region }) => Domain
   deleteDomain: (id: string) => void
   updateDomain: (
@@ -149,7 +165,9 @@ export type DashboardStore = {
   }) => { id: string }
   updateTopic: (
     id: string,
-    patch: Partial<Pick<import("./types").Topic, "name" | "description" | "visibility">>
+    patch: Partial<
+      Pick<import("./types").Topic, "name" | "description" | "visibility">
+    >
   ) => void
   deleteTopic: (id: string) => void
   addProperty: (input: { name: string; key: string; type: PropertyType }) => {
@@ -194,7 +212,10 @@ export type DashboardStore = {
   updateBroadcast: (
     id: string,
     patch: Partial<
-      Pick<Broadcast, "name" | "subject" | "preview" | "html" | "segmentId" | "topicId">
+      Pick<
+        Broadcast,
+        "name" | "subject" | "preview" | "html" | "segmentId" | "topicId"
+      >
     >
   ) => void
   setBroadcastStatus: (id: string, status: BroadcastStatus) => void
@@ -202,7 +223,9 @@ export type DashboardStore = {
   addTemplate: (input: { name: string; subject: string }) => { id: string }
   updateTemplate: (
     id: string,
-    patch: Partial<Pick<EmailTemplate, "name" | "subject" | "html" | "variables">>
+    patch: Partial<
+      Pick<EmailTemplate, "name" | "subject" | "html" | "variables">
+    >
   ) => void
   setTemplateStatus: (id: string, status: TemplateStatus) => void
   duplicateTemplate: (id: string) => void
@@ -216,13 +239,21 @@ export type DashboardStore = {
   }) => CreateWebhookResult
   updateWebhook: (
     id: string,
-    patch: Partial<Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">>
+    patch: Partial<
+      Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">
+    >
   ) => void
   deleteWebhook: (id: string) => void
   rotateWebhookSecret: (id: string) => string
   addExport: (resource: string, rows: number) => void
-  updateSettings: (patch: Partial<Settings> | ((current: Settings) => Settings)) => void
-  inviteMember: (input: { name: string; email: string; role: MemberRole }) => void
+  updateSettings: (
+    patch: Partial<Settings> | ((current: Settings) => Settings)
+  ) => void
+  inviteMember: (input: {
+    name: string
+    email: string
+    role: MemberRole
+  }) => void
   updateMemberRole: (id: string, role: MemberRole) => void
   removeMember: (id: string) => void
   updateSes: (patch: Partial<Settings["ses"]>) => void
@@ -234,7 +265,10 @@ const DashboardContext = createContext<DashboardStore | null>(null)
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const raw = useSyncExternalStore(subscribe, readRaw, () => SERVER_SNAPSHOT)
-  const state = useMemo(() => parseState(raw), [raw])
+  const root = useMemo(() => parseRoot(raw), [raw])
+  const state = useMemo(() => activeWorkspace(root), [root])
+  const teams = useMemo(() => listTeams(root), [root])
+  const activeTeamId = root.activeTeamId
 
   const addDomain = useCallback((input: { name: string; region: Region }) => {
     const name = input.name.trim().toLowerCase()
@@ -317,7 +351,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       lastName: string
       segmentIds?: string[]
     }) => {
-      const current = parseState(readRaw())
+      const current = activeWorkspace(parseRoot(readRaw()))
       const contact: Contact = {
         id: createId("con"),
         email: input.email.trim().toLowerCase(),
@@ -380,7 +414,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         ...current,
         contacts: current.contacts.map((contact) => {
           if (contact.id !== id) return contact
-          const hasTopic = contact.topics.some((item) => item.topicId === topicId)
+          const hasTopic = contact.topics.some(
+            (item) => item.topicId === topicId
+          )
           return {
             ...contact,
             topics: hasTopic
@@ -425,7 +461,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         segmentIds: contact.segmentIds.filter((segmentId) => segmentId !== id),
       })),
       broadcasts: current.broadcasts.map((broadcast) =>
-        broadcast.segmentId === id ? { ...broadcast, segmentId: null } : broadcast
+        broadcast.segmentId === id
+          ? { ...broadcast, segmentId: null }
+          : broadcast
       ),
     }))
   }, [])
@@ -460,7 +498,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const updateTopic = useCallback(
     (
       id: string,
-      patch: Partial<Pick<import("./types").Topic, "name" | "description" | "visibility">>
+      patch: Partial<
+        Pick<import("./types").Topic, "name" | "description" | "visibility">
+      >
     ) => {
       mutate((current) => ({
         ...current,
@@ -537,8 +577,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         tokenPrefix: prefix,
         tokenLast4: last4,
         permission: input.permission,
-        domainId:
-          input.permission === "sending_access" ? input.domainId : null,
+        domainId: input.permission === "sending_access" ? input.domainId : null,
         createdAt: Date.now(),
         lastUsedAt: null,
       }
@@ -736,7 +775,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     (
       id: string,
       patch: Partial<
-        Pick<Broadcast, "name" | "subject" | "preview" | "html" | "segmentId" | "topicId">
+        Pick<
+          Broadcast,
+          "name" | "subject" | "preview" | "html" | "segmentId" | "topicId"
+        >
       >
     ) => {
       mutate((current) => ({
@@ -788,31 +830,36 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const addTemplate = useCallback((input: { name: string; subject: string }) => {
-    const id = createId("tpl")
-    mutate((current) => ({
-      ...current,
-      templates: [
-        {
-          id,
-          name: input.name.trim(),
-          subject: input.subject.trim(),
-          html: "<p></p>",
-          status: "draft",
-          variables: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-        ...current.templates,
-      ],
-    }))
-    return { id }
-  }, [])
+  const addTemplate = useCallback(
+    (input: { name: string; subject: string }) => {
+      const id = createId("tpl")
+      mutate((current) => ({
+        ...current,
+        templates: [
+          {
+            id,
+            name: input.name.trim(),
+            subject: input.subject.trim(),
+            html: "<p></p>",
+            status: "draft",
+            variables: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+          ...current.templates,
+        ],
+      }))
+      return { id }
+    },
+    []
+  )
 
   const updateTemplate = useCallback(
     (
       id: string,
-      patch: Partial<Pick<EmailTemplate, "name" | "subject" | "html" | "variables">>
+      patch: Partial<
+        Pick<EmailTemplate, "name" | "subject" | "html" | "variables">
+      >
     ) => {
       mutate((current) => ({
         ...current,
@@ -824,14 +871,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     []
   )
 
-  const setTemplateStatus = useCallback((id: string, status: TemplateStatus) => {
-    mutate((current) => ({
-      ...current,
-      templates: current.templates.map((item) =>
-        item.id === id ? { ...item, status, updatedAt: Date.now() } : item
-      ),
-    }))
-  }, [])
+  const setTemplateStatus = useCallback(
+    (id: string, status: TemplateStatus) => {
+      mutate((current) => ({
+        ...current,
+        templates: current.templates.map((item) =>
+          item.id === id ? { ...item, status, updatedAt: Date.now() } : item
+        ),
+      }))
+    },
+    []
+  )
 
   const duplicateTemplate = useCallback((id: string) => {
     mutate((current) => {
@@ -928,7 +978,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const updateWebhook = useCallback(
     (
       id: string,
-      patch: Partial<Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">>
+      patch: Partial<
+        Pick<import("./types").Webhook, "endpoint" | "events" | "enabled">
+      >
     ) => {
       mutate((current) => ({
         ...current,
@@ -1022,7 +1074,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const removeMember = useCallback((id: string) => {
     mutate((current) => ({
       ...current,
-      members: current.members.filter((member) => member.id !== id || member.you),
+      members: current.members.filter(
+        (member) => member.id !== id || member.you
+      ),
     }))
   }, [])
 
@@ -1046,13 +1100,31 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const switchTeam = useCallback((id: string) => {
+    mutateRoot((current) => switchTeamInRoot(current, id))
+  }, [])
+
+  const createTeam = useCallback((name: string) => {
+    let createdId = ""
+    mutateRoot((current) => {
+      const created = createTeamInRoot(current, name)
+      createdId = created.teamId
+      return created.root
+    })
+    return { id: createdId }
+  }, [])
+
   const resetDemo = useCallback(() => {
-    writeState(SEED_STATE)
+    writeRoot(seedRoot())
   }, [])
 
   const value = useMemo<DashboardStore>(
     () => ({
       state,
+      teams,
+      activeTeamId,
+      switchTeam,
+      createTeam,
       addDomain,
       deleteDomain,
       updateDomain,
@@ -1105,6 +1177,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
+      teams,
+      activeTeamId,
+      switchTeam,
+      createTeam,
       addDomain,
       deleteDomain,
       updateDomain,

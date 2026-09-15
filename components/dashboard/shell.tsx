@@ -6,14 +6,12 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpenIcon,
   ChartColumnIcon,
-  ChevronsUpDownIcon,
   FileCodeIcon,
   GlobeIcon,
   KeyRoundIcon,
   LogOutIcon,
   MailsIcon,
   MegaphoneIcon,
-  RotateCcwIcon,
   ScrollTextIcon,
   SearchIcon,
   SettingsIcon,
@@ -22,7 +20,8 @@ import {
   WorkflowIcon,
 } from "lucide-react"
 
-import { Logo, LogoMark } from "@/components/logo"
+import { TeamSwitcher } from "@/components/dashboard/team-switcher"
+import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/marketing/theme-toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -42,7 +41,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
@@ -62,11 +60,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/toast"
-import {
-  DASHBOARD_NAV,
-  navItemActive,
-  SETTINGS_NAV,
-} from "@/lib/dashboard/nav"
+import { DASHBOARD_NAV, navItemActive, SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
 import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
 
@@ -169,54 +163,6 @@ function CommandMenu({
   )
 }
 
-function WorkspaceSwitcher() {
-  const { state, resetDemo } = useDashboard()
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <SidebarMenuButton
-            size="lg"
-            className="h-10 data-open:bg-sidebar-accent"
-          />
-        }
-      >
-        <span className="icon-tile size-7 rounded-lg">
-          <LogoMark className="size-4" />
-        </span>
-        <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-          <span className="truncate font-medium">{state.settings.teamName}</span>
-          <span className="truncate font-mono text-caption text-muted-foreground">
-            {state.settings.teamSlug}
-          </span>
-        </span>
-        <ChevronsUpDownIcon className="ml-auto size-4 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-          <DropdownMenuItem disabled>
-            <LogoMark className="size-4" />
-            {state.settings.teamName}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem render={<Link href="/settings" />}>
-            <SettingsIcon />
-            Workspace settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={resetDemo}>
-            <RotateCcwIcon />
-            Reset demo data
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 function DashboardSidebar() {
   const pathname = usePathname()
   const { state } = useDashboard()
@@ -225,12 +171,12 @@ function DashboardSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      className="border-double-r bg-background/90 backdrop-blur-md"
+      className="bg-background/90 border-double-r backdrop-blur-md"
     >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <WorkspaceSwitcher />
+            <TeamSwitcher />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -283,9 +229,7 @@ function DashboardSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Docs"
-              render={
-                <Link href="/docs" target="_blank" rel="noreferrer" />
-              }
+              render={<Link href="/docs" target="_blank" rel="noreferrer" />}
             >
               <BookOpenIcon />
               <span>Docs</span>
@@ -302,7 +246,9 @@ function DashboardSidebar() {
                 }
               >
                 <Avatar size="sm">
-                  <AvatarFallback>{initials(you?.name ?? "You")}</AvatarFallback>
+                  <AvatarFallback>
+                    {initials(you?.name ?? "You")}
+                  </AvatarFallback>
                 </Avatar>
                 <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">

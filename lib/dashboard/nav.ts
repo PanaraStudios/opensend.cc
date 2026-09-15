@@ -82,3 +82,18 @@ export function navItemActive(pathname: string, item: NavItem): boolean {
 export function tabActive(pathname: string, href: string): boolean {
   return pathname === href
 }
+
+const TEAM_SAFE_PATHS = new Set<string>([
+  ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
+  ...EMAIL_TABS.map((item) => item.href),
+  ...AUDIENCE_TABS.map((item) => item.href),
+  ...SETTINGS_NAV.map((item) => item.href),
+])
+
+/** Keep list/settings routes when switching teams; drop record detail ids. */
+export function teamSafePath(pathname: string): string {
+  if (TEAM_SAFE_PATHS.has(pathname)) return pathname
+  const parent = pathname.replace(/\/[^/]+$/, "")
+  if (TEAM_SAFE_PATHS.has(parent)) return parent
+  return "/emails"
+}
