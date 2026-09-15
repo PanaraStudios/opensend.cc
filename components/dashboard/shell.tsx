@@ -213,11 +213,7 @@ function WorkspaceSwitcher() {
   )
 }
 
-function DashboardSidebar({
-  onSearch,
-}: {
-  onSearch: () => void
-}) {
+function DashboardSidebar() {
   const pathname = usePathname()
   const { state } = useDashboard()
   const you = state.members.find((member) => member.you)
@@ -231,17 +227,6 @@ function DashboardSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <WorkspaceSwitcher />
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={onSearch} tooltip="Search">
-              <SearchIcon />
-              <span>Search</span>
-              <Kbd className="ml-auto group-data-[collapsible=icon]:hidden">
-                ⌘K
-              </Kbd>
-            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -362,14 +347,14 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="hatch min-h-svh">
       <SidebarProvider>
-        <DashboardSidebar onSearch={() => setSearchOpen(true)} />
+        <DashboardSidebar />
         <SidebarInset className="min-w-0 bg-background">
           <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
             <SidebarTrigger className="-ml-1" />
             <Button
               variant="outline"
               size="sm"
-              className="hidden min-w-48 justify-start text-muted-foreground md:inline-flex"
+              className="min-w-0 justify-start text-muted-foreground md:min-w-48"
               onClick={() => setSearchOpen(true)}
             >
               <SearchIcon />
