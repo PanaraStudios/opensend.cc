@@ -99,6 +99,10 @@ function mutateRoot(mutator: (current: DashboardRoot) => DashboardRoot) {
   writeRoot(mutator(parseRoot(readRaw())))
 }
 
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.filter(Boolean))]
+}
+
 function mutate(mutator: (current: DashboardState) => DashboardState) {
   mutateRoot((root) => {
     const current = root.workspaces[root.activeTeamId]
@@ -137,10 +141,22 @@ export type DashboardStore = {
   verifyDomain: (id: string) => void
   addContact: (input: {
     email: string
-    firstName: string
-    lastName: string
+    firstName?: string
+    lastName?: string
+    unsubscribed?: boolean
+    properties?: Record<string, string>
     segmentIds?: string[]
   }) => Contact
+  upsertContacts: (
+    inputs: Array<{
+      email: string
+      firstName?: string
+      lastName?: string
+      unsubscribed?: boolean
+      properties?: Record<string, string>
+      segmentIds?: string[]
+    }>
+  ) => { created: number; updated: number }
   updateContact: (
     id: string,
     patch: Partial<
@@ -148,12 +164,15 @@ export type DashboardStore = {
     >
   ) => void
   deleteContact: (id: string) => void
+  deleteContacts: (ids: string[]) => void
   setContactSegments: (id: string, segmentIds: string[]) => void
+  addContactsToSegments: (ids: string[], segmentIds: string[]) => void
   setContactTopic: (
     id: string,
     topicId: string,
     subscription: TopicSubscription
   ) => void
+  subscribeContactsToTopics: (ids: string[], topicIds: string[]) => void
   addSegment: (name: string) => { id: string }
   updateSegment: (id: string, name: string) => void
   deleteSegment: (id: string) => void
@@ -170,7 +189,12 @@ export type DashboardStore = {
     >
   ) => void
   deleteTopic: (id: string) => void
-  addProperty: (input: { name: string; key: string; type: PropertyType }) => {
+  addProperty: (input: {
+    name: string
+    key: string
+    type: PropertyType
+    fallbackValue?: string
+  }) => {
     id: string
   }
   deleteProperty: (id: string) => void
@@ -347,30 +371,93 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const addContact = useCallback(
     (input: {
       email: string
-      firstName: string
-      lastName: string
+      firstName?: string
+      lastName?: string
+      unsubscribed?: boolean
+      properties?: Record<string, string>
       segmentIds?: string[]
     }) => {
       const current = activeWorkspace(parseRoot(readRaw()))
       const contact: Contact = {
         id: createId("con"),
         email: input.email.trim().toLowerCase(),
-        firstName: input.firstName.trim(),
-        lastName: input.lastName.trim(),
+        firstName: input.firstName?.trim() ?? "",
+        lastName: input.lastName?.trim() ?? "",
         createdAt: Date.now(),
-        unsubscribed: false,
+        unsubscribed: input.unsubscribed ?? false,
         segmentIds: input.segmentIds ?? [],
         topics: current.topics.map((topic) => ({
           topicId: topic.id,
           subscription: defaultTopicSubscription(topic),
         })),
-        properties: {},
+        properties: input.properties ?? {},
       }
       mutate((prev) => ({
         ...prev,
         contacts: [contact, ...prev.contacts],
       }))
       return contact
+    },
+    []
+  )
+
+  const upsertContacts = useCallback(
+    (
+      inputs: Array<{
+        email: string
+        firstName?: string
+        lastName?: string
+        unsubscribed?: boolean
+        properties?: Record<string, string>
+        segmentIds?: string[]
+      }>
+    ) => {
+      let created = 0
+      let updated = 0
+      mutate((current) => {
+        const contacts = [...current.contacts]
+        for (const input of inputs) {
+          const email = input.email.trim().toLowerCase()
+          if (!email) continue
+          const index = contacts.findIndex((contact) => contact.email === email)
+          if (index === -1) {
+            contacts.unshift({
+              id: createId("con"),
+              email,
+              firstName: input.firstName?.trim() ?? "",
+              lastName: input.lastName?.trim() ?? "",
+              createdAt: Date.now(),
+              unsubscribed: input.unsubscribed ?? false,
+              segmentIds: uniqueIds(input.segmentIds ?? []),
+              topics: current.topics.map((topic) => ({
+                topicId: topic.id,
+                subscription: defaultTopicSubscription(topic),
+              })),
+              properties: input.properties ?? {},
+            })
+            created += 1
+            continue
+          }
+          const existing = contacts[index]
+          contacts[index] = {
+            ...existing,
+            firstName: input.firstName?.trim() || existing.firstName,
+            lastName: input.lastName?.trim() || existing.lastName,
+            unsubscribed: input.unsubscribed ?? existing.unsubscribed,
+            segmentIds: uniqueIds([
+              ...existing.segmentIds,
+              ...(input.segmentIds ?? []),
+            ]),
+            properties: {
+              ...existing.properties,
+              ...(input.properties ?? {}),
+            },
+          }
+          updated += 1
+        }
+        return { ...current, contacts }
+      })
+      return { created, updated }
     },
     []
   )
@@ -399,6 +486,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const deleteContacts = useCallback((ids: string[]) => {
+    const remove = new Set(ids)
+    mutate((current) => ({
+      ...current,
+      contacts: current.contacts.filter((contact) => !remove.has(contact.id)),
+    }))
+  }, [])
+
   const setContactSegments = useCallback((id: string, segmentIds: string[]) => {
     mutate((current) => ({
       ...current,
@@ -407,6 +502,24 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       ),
     }))
   }, [])
+
+  const addContactsToSegments = useCallback(
+    (ids: string[], segmentIds: string[]) => {
+      const selected = new Set(ids)
+      mutate((current) => ({
+        ...current,
+        contacts: current.contacts.map((contact) =>
+          selected.has(contact.id)
+            ? {
+                ...contact,
+                segmentIds: uniqueIds([...contact.segmentIds, ...segmentIds]),
+              }
+            : contact
+        ),
+      }))
+    },
+    []
+  )
 
   const setContactTopic = useCallback(
     (id: string, topicId: string, subscription: TopicSubscription) => {
@@ -425,6 +538,29 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 )
               : [...contact.topics, { topicId, subscription }],
           }
+        }),
+      }))
+    },
+    []
+  )
+
+  const subscribeContactsToTopics = useCallback(
+    (ids: string[], topicIds: string[]) => {
+      const selected = new Set(ids)
+      mutate((current) => ({
+        ...current,
+        contacts: current.contacts.map((contact) => {
+          if (!selected.has(contact.id)) return contact
+          let topics = [...contact.topics]
+          for (const topicId of topicIds) {
+            const index = topics.findIndex((item) => item.topicId === topicId)
+            if (index === -1) {
+              topics = [...topics, { topicId, subscription: "subscribed" }]
+            } else {
+              topics[index] = { ...topics[index], subscription: "subscribed" }
+            }
+          }
+          return { ...contact, topics }
         }),
       }))
     },
@@ -527,8 +663,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addProperty = useCallback(
-    (input: { name: string; key: string; type: PropertyType }) => {
+    (input: {
+      name: string
+      key: string
+      type: PropertyType
+      fallbackValue?: string
+    }) => {
       const id = createId("prop")
+      const fallbackValue = input.fallbackValue?.trim()
       mutate((current) => ({
         ...current,
         properties: [
@@ -537,6 +679,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             name: input.name.trim(),
             key: input.key.trim().toLowerCase().replace(/\s+/g, "_"),
             type: input.type,
+            fallbackValue: fallbackValue || undefined,
             createdAt: Date.now(),
           },
           ...current.properties,
@@ -1130,10 +1273,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       updateDomain,
       verifyDomain,
       addContact,
+      upsertContacts,
       updateContact,
       deleteContact,
+      deleteContacts,
       setContactSegments,
+      addContactsToSegments,
       setContactTopic,
+      subscribeContactsToTopics,
       addSegment,
       updateSegment,
       deleteSegment,
@@ -1186,10 +1333,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       updateDomain,
       verifyDomain,
       addContact,
+      upsertContacts,
       updateContact,
       deleteContact,
+      deleteContacts,
       setContactSegments,
+      addContactsToSegments,
       setContactTopic,
+      subscribeContactsToTopics,
       addSegment,
       updateSegment,
       deleteSegment,

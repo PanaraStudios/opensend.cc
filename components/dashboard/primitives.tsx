@@ -211,8 +211,8 @@ export function EmptyState({
   children?: React.ReactNode
 }) {
   return (
-    <Empty className="frame min-h-72">
-      <div className="panel flex w-full flex-col items-center gap-3 py-10">
+    <div className="frame">
+      <Empty className="panel min-h-72 border-0 py-10">
         <EmptyHeader>
           <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
             <Icon className="size-4" />
@@ -221,8 +221,8 @@ export function EmptyState({
           <EmptyDescription>{description}</EmptyDescription>
         </EmptyHeader>
         {children ? <EmptyContent>{children}</EmptyContent> : null}
-      </div>
-    </Empty>
+      </Empty>
+    </div>
   )
 }
 
@@ -249,7 +249,9 @@ export function EmailStatusBadge({ status }: { status: EmailStatus }) {
       ? "success"
       : status === "bounced" || status === "failed" || status === "complained"
         ? "destructive"
-        : status === "scheduled" || status === "queued" || status === "delivery_delayed"
+        : status === "scheduled" ||
+            status === "queued" ||
+            status === "delivery_delayed"
           ? "warning"
           : status === "canceled" || status === "suppressed"
             ? "secondary"
@@ -287,7 +289,11 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   )
 }
 
-export function AutomationStatusBadge({ status }: { status: AutomationStatus }) {
+export function AutomationStatusBadge({
+  status,
+}: {
+  status: AutomationStatus
+}) {
   return (
     <Badge variant={status === "enabled" ? "success" : "secondary"} dot>
       {automationStatusLabel(status)}
@@ -297,7 +303,11 @@ export function AutomationStatusBadge({ status }: { status: AutomationStatus }) 
 
 export function ExportStatusBadge({ status }: { status: ExportStatus }) {
   const variant =
-    status === "ready" ? "success" : status === "processing" ? "warning" : "secondary"
+    status === "ready"
+      ? "success"
+      : status === "processing"
+        ? "warning"
+        : "secondary"
   return (
     <Badge variant={variant} dot>
       {exportStatusLabel(status)}
@@ -349,11 +359,7 @@ export function MonoValue({
   )
 }
 
-export function MoreMenu({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export function MoreMenu({ children }: { children: React.ReactNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
