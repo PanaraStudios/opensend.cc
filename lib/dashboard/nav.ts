@@ -53,8 +53,8 @@ export const SETTINGS_NAV = [
   { href: "/settings/team", title: "Team" },
   { href: "/settings/exports", title: "Exports" },
   { href: "/settings/billing", title: "Billing" },
-  { href: "/settings/sso", title: "Single Sign-On" },
-  { href: "/settings/unsubscribe", title: "Unsubscribe page" },
+  { href: "/settings/sso", title: "SSO" },
+  { href: "/settings/unsubscribe", title: "Unsubscribe" },
   { href: "/settings/ses", title: "Amazon SES" },
   { href: "/settings/smtp", title: "SMTP" },
 ] as const

@@ -1,8 +1,6 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,46 +25,45 @@ import {
   ExportStatusBadge,
   PageHeader,
   ResourceTable,
+  SectionTabs,
   Surface,
   Th,
 } from "@/components/dashboard/primitives"
-import { SETTINGS_NAV, pathMatches } from "@/lib/dashboard/nav"
+import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { formatDate, initials, isEmail, regionLabel, roleLabel } from "@/lib/dashboard/format"
 import { REGIONS } from "@/lib/dashboard/types"
 import type { MemberRole, Region } from "@/lib/dashboard/types"
 import { useDashboard } from "@/lib/dashboard/store"
-import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UsersIcon } from "lucide-react"
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <aside className="w-full shrink-0 border-double-b md:w-56 md:border-r md:border-b-0 md:border-double-r">
-        <div className="px-6 py-6 md:px-5">
-          <h1 className="title-gradient text-h4">Settings</h1>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:px-3 md:pb-6">
-          {SETTINGS_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground",
-                pathMatches(pathname, item.href) &&
-                  "bg-muted font-medium text-foreground"
-              )}
-            >
-              {item.title}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col gap-6 p-6 md:p-8">
-        {children}
-      </div>
+    <>
+      <PageHeader title="Settings" />
+      <SectionTabs
+        items={SETTINGS_NAV}
+        label="Settings"
+        className="max-w-full flex-nowrap overflow-x-auto"
+      />
+      {children}
+    </>
+  )
+}
+
+function SettingsLead({
+  children,
+  actions,
+}: {
+  children: React.ReactNode
+  actions?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <p className="max-w-2xl text-small text-muted-foreground">{children}</p>
+      {actions ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </div>
   )
 }
@@ -88,10 +85,10 @@ export function SettingsGeneral() {
 
   return (
     <>
-      <PageHeader
-        title="General"
-        description="Workspace identity. Self-hosted Opensend keeps this on your Convex deployment — nothing is sent to us."
-      />
+      <SettingsLead>
+        Workspace identity. Self-hosted Opensend keeps this on your Convex
+        deployment — nothing is sent to us.
+      </SettingsLead>
       <form onSubmit={save} className="max-w-lg">
         <Surface>
         <Field>
@@ -160,12 +157,12 @@ export function SettingsTeam() {
 
   return (
     <>
-      <PageHeader
-        title="Team"
-        description="Admins can invite members and change roles. Authorization is always checked server-side once auth is wired."
+      <SettingsLead
+        actions={<Button onClick={() => setOpen(true)}>Invite</Button>}
       >
-        <Button onClick={() => setOpen(true)}>Invite</Button>
-      </PageHeader>
+        Admins can invite members and change roles. Authorization is always
+        checked server-side once auth is wired.
+      </SettingsLead>
       {state.members.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -352,10 +349,10 @@ export function SettingsSes() {
 
   return (
     <>
-      <PageHeader
-        title="Amazon SES"
-        description="Connect the AWS account that pays for delivery. Credentials stay on this server. API callers never receive them."
-      />
+      <SettingsLead>
+        Connect the AWS account that pays for delivery. Credentials stay on this
+        server. API callers never receive them.
+      </SettingsLead>
       <form onSubmit={save} className="max-w-lg">
         <Surface>
         <div className="flex items-center justify-between">
@@ -427,10 +424,10 @@ export function SettingsSmtp() {
 
   return (
     <>
-      <PageHeader
-        title="SMTP"
-        description="Send through the same API keys using any SMTP client. Username is resend; the password is an Opensend API key."
-      />
+      <SettingsLead>
+        Send through the same API keys using any SMTP client. Username is
+        resend; the password is an Opensend API key.
+      </SettingsLead>
       <Surface className="max-w-lg">
         <Field orientation="horizontal">
           <FieldLabel htmlFor="smtp-enabled">
@@ -502,10 +499,10 @@ export function SettingsBilling() {
 
   return (
     <>
-      <PageHeader
-        title="Billing"
-        description="Self-hosted Opensend has no subscription. This page matches the Resend billing layout so Cloud can land later."
-      />
+      <SettingsLead>
+        Self-hosted Opensend has no subscription. This page matches the Resend
+        billing layout so Cloud can land later.
+      </SettingsLead>
       <Surface className="max-w-lg">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Plan</span>
@@ -560,10 +557,10 @@ export function SettingsSso() {
 
   return (
     <>
-      <PageHeader
-        title="Single Sign-On"
-        description="Let the team sign in with your identity provider. Auth is not wired yet; this stores the connection locally."
-      />
+      <SettingsLead>
+        Let the team sign in with your identity provider. Auth is not wired yet;
+        this stores the connection locally.
+      </SettingsLead>
       <form onSubmit={save} className="max-w-lg">
         <Surface>
           <Field orientation="horizontal">
@@ -630,10 +627,10 @@ export function SettingsUnsubscribe() {
 
   return (
     <>
-      <PageHeader
-        title="Unsubscribe page"
-        description="Contacts land here from broadcast footers. Public topics are listed so they can stay on the mail they want."
-      />
+      <SettingsLead>
+        Contacts land here from broadcast footers. Public topics are listed so
+        they can stay on the mail they want.
+      </SettingsLead>
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <form onSubmit={save} className="flex flex-col self-stretch">
           <Surface className="min-h-0 flex-1">
@@ -693,10 +690,10 @@ export function SettingsExports() {
 
   return (
     <>
-      <PageHeader
-        title="Exports"
-        description="Admin exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
-      />
+      <SettingsLead>
+        Admin exports from Emails, Broadcasts, Contacts, Segments, Domains,
+        Logs, and API keys. Ready files stay available for 7 days.
+      </SettingsLead>
       {state.exports.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
