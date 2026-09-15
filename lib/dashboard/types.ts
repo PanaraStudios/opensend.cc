@@ -8,13 +8,10 @@ export const REGIONS = [
 export type Region = (typeof REGIONS)[number]["value"]
 
 export type DomainStatus =
-  | "not_started"
-  | "pending"
-  | "verified"
-  | "failed"
-  | "temporary_failure"
+  "not_started" | "pending" | "verified" | "failed" | "temporary_failure"
 
-export type RecordKind = "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
+export type RecordKind =
+  "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
 export type DnsType = "CNAME" | "MX" | "TXT"
 export type TlsMode = "opportunistic" | "enforced"
 export type TopicDefault = "opt_in" | "opt_out"
@@ -38,11 +35,7 @@ export type EmailStatus =
   | "suppressed"
 
 export type BroadcastStatus =
-  | "draft"
-  | "scheduled"
-  | "queued"
-  | "sent"
-  | "canceled"
+  "draft" | "scheduled" | "queued" | "sent" | "canceled"
 
 export type TemplateStatus = "draft" | "published"
 export type AutomationStatus = "enabled" | "disabled"
@@ -255,6 +248,12 @@ export type ExportJob = {
   createdAt: number
   expiresAt: number
   rows: number
+}
+
+export type Team = {
+  id: string
+  name: string
+  slug: string
 }
 
 export type Settings = {
