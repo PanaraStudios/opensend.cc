@@ -44,7 +44,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
       <SectionTabs
         items={SETTINGS_NAV}
         label="Settings"
-        className="max-w-full flex-nowrap overflow-x-auto"
+        className="max-w-full flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       />
       {children}
     </>
