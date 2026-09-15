@@ -20,8 +20,8 @@ export type NavItem = {
 export const DASHBOARD_NAV: NavItem[] = [
   { href: "/emails", title: "Emails", icon: "mails" },
   { href: "/broadcasts", title: "Broadcasts", icon: "megaphone" },
-  { href: "/templates", title: "Templates", icon: "file" },
   { href: "/automations", title: "Automations", icon: "workflow" },
+  { href: "/templates", title: "Templates", icon: "file" },
   {
     href: "/contacts",
     title: "Audience",
