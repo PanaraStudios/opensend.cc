@@ -119,7 +119,11 @@ export type DashboardStore = {
   activeTeamId: string
   switchTeam: (id: string) => void
   createTeam: (name: string) => { id: string }
-  addDomain: (input: { name: string; region: Region }) => Domain
+  addDomain: (input: {
+    name: string
+    region: Region
+    customReturnPath?: string
+  }) => Domain
   deleteDomain: (id: string) => void
   updateDomain: (
     id: string,
@@ -134,7 +138,7 @@ export type DashboardStore = {
       >
     >
   ) => void
-  verifyDomain: (id: string) => void
+  beginDomainVerification: (id: string) => void
   addContact: (input: {
     email: string
     firstName: string
@@ -270,27 +274,31 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const teams = useMemo(() => listTeams(root), [root])
   const activeTeamId = root.activeTeamId
 
-  const addDomain = useCallback((input: { name: string; region: Region }) => {
-    const name = input.name.trim().toLowerCase()
-    const domain: Domain = {
-      id: createId("dom"),
-      name,
-      region: input.region,
-      status: "not_started",
-      createdAt: Date.now(),
-      openTracking: false,
-      clickTracking: false,
-      tls: "opportunistic",
-      customReturnPath: "send",
-      receiving: false,
-      records: recordsForDomain(name, input.region, "not_started"),
-    }
-    mutate((current) => ({
-      ...current,
-      domains: [domain, ...current.domains],
-    }))
-    return domain
-  }, [])
+  const addDomain = useCallback(
+    (input: { name: string; region: Region; customReturnPath?: string }) => {
+      const name = input.name.trim().toLowerCase()
+      const returnPath = input.customReturnPath?.trim() || "send"
+      const domain: Domain = {
+        id: createId("dom"),
+        name,
+        region: input.region,
+        status: "not_started",
+        createdAt: Date.now(),
+        openTracking: false,
+        clickTracking: false,
+        tls: "opportunistic",
+        customReturnPath: returnPath,
+        receiving: false,
+        records: recordsForDomain(name, input.region, "not_started", returnPath),
+      }
+      mutate((current) => ({
+        ...current,
+        domains: [domain, ...current.domains],
+      }))
+      return domain
+    },
+    []
+  )
 
   const deleteDomain = useCallback((id: string) => {
     mutate((current) => ({
@@ -318,28 +326,30 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     ) => {
       mutate((current) => ({
         ...current,
-        domains: current.domains.map((domain) =>
-          domain.id === id ? { ...domain, ...patch } : domain
-        ),
+        domains: current.domains.map((domain) => {
+          if (domain.id !== id) return domain
+          const next = { ...domain, ...patch }
+          if (patch.customReturnPath !== undefined) {
+            const returnPath = patch.customReturnPath.trim() || "send"
+            next.customReturnPath = returnPath
+            next.records = domain.records.map((record) =>
+              record.kind === "SPF"
+                ? { ...record, name: `${returnPath}.${domain.name}` }
+                : record
+            )
+          }
+          return next
+        }),
       }))
     },
     []
   )
 
-  const verifyDomain = useCallback((id: string) => {
+  const beginDomainVerification = useCallback((id: string) => {
     mutate((current) => ({
       ...current,
       domains: current.domains.map((domain) =>
-        domain.id === id
-          ? {
-              ...domain,
-              status: "verified",
-              records: domain.records.map((record) => ({
-                ...record,
-                status: "verified" as const,
-              })),
-            }
-          : domain
+        domain.id === id ? { ...domain, status: "pending" as const } : domain
       ),
     }))
   }, [])
@@ -1128,7 +1138,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       addDomain,
       deleteDomain,
       updateDomain,
-      verifyDomain,
+      beginDomainVerification,
       addContact,
       updateContact,
       deleteContact,
@@ -1184,7 +1194,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       addDomain,
       deleteDomain,
       updateDomain,
-      verifyDomain,
+      beginDomainVerification,
       addContact,
       updateContact,
       deleteContact,

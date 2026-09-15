@@ -69,8 +69,10 @@ export function tokenParts(token: string): { prefix: string; last4: string } {
 export function recordsForDomain(
   name: string,
   region: Region,
-  status: DomainStatus
+  status: DomainStatus,
+  returnPath = "send"
 ): DnsRecord[] {
+  const returnHost = `${returnPath}.${name}`
   return [
     {
       id: createId("rec"),
@@ -85,7 +87,7 @@ export function recordsForDomain(
       id: createId("rec"),
       kind: "SPF",
       type: "MX",
-      name: `send.${name}`,
+      name: returnHost,
       value: `feedback-smtp.${region}.amazonses.com`,
       ttl: "Auto",
       priority: 10,
@@ -95,7 +97,7 @@ export function recordsForDomain(
       id: createId("rec"),
       kind: "SPF",
       type: "TXT",
-      name: `send.${name}`,
+      name: returnHost,
       value: "v=spf1 include:amazonses.com ~all",
       ttl: "Auto",
       status,
@@ -168,7 +170,7 @@ const domains: Domain[] = [
     id: "dom_updates",
     name: "updates.opensend.cc",
     region: "us-east-1",
-    status: "pending",
+    status: "partially_verified",
     createdAt: daysAgo(2),
     openTracking: true,
     clickTracking: true,
@@ -183,7 +185,7 @@ const domains: Domain[] = [
         name: "opensend._domainkey.updates.opensend.cc",
         value: "opensend._domainkey.updates.opensend.cc.dkim.opensend.cc",
         ttl: "Auto",
-        status: "pending",
+        status: "verified",
       },
       {
         id: "rec_updates_mx",
@@ -193,7 +195,7 @@ const domains: Domain[] = [
         value: "feedback-smtp.us-east-1.amazonses.com",
         ttl: "Auto",
         priority: 10,
-        status: "not_started",
+        status: "verified",
       },
       {
         id: "rec_updates_spf",
@@ -202,7 +204,7 @@ const domains: Domain[] = [
         name: "send.updates.opensend.cc",
         value: "v=spf1 include:amazonses.com ~all",
         ttl: "Auto",
-        status: "not_started",
+        status: "pending",
       },
       {
         id: "rec_updates_dmarc",

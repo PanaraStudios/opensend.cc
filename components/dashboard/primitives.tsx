@@ -230,9 +230,11 @@ export function StatusBadge({ status }: { status: DomainStatus }) {
   const variant =
     status === "verified"
       ? "success"
-      : status === "pending" || status === "temporary_failure"
+      : status === "pending" ||
+          status === "temporary_failure" ||
+          status === "partially_verified"
         ? "warning"
-        : status === "failed"
+        : status === "failed" || status === "partially_failed"
           ? "destructive"
           : "secondary"
 
