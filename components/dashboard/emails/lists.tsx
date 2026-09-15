@@ -439,7 +439,7 @@ export function SuppressionsView() {
     return inDateRange(item.createdAt, range)
   })
 
-  function resetForm() {
+  function reset() {
     setEmail("")
     setReason("manual")
     setError(null)
@@ -453,7 +453,7 @@ export function SuppressionsView() {
     }
     addSuppression({ email, reason })
     toast.add({ type: "success", title: "Address suppressed" })
-    resetForm()
+    reset()
     setOpen(false)
   }
 
@@ -530,7 +530,7 @@ export function SuppressionsView() {
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!next) resetForm()
+          if (!next) reset()
           setOpen(next)
         }}
       >
