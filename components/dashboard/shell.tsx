@@ -363,44 +363,42 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
     <div className="hatch min-h-svh">
       <SidebarProvider>
         <DashboardSidebar onSearch={() => setSearchOpen(true)} />
-        <SidebarInset className="min-w-0 bg-transparent">
-          <div className="dashboard-rails">
-            <header className="corners-b sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-double-b bg-background/80 px-4 backdrop-blur-md md:px-6">
-              <SidebarTrigger className="-ml-1" />
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden min-w-48 justify-start text-muted-foreground md:inline-flex"
-                onClick={() => setSearchOpen(true)}
-              >
-                <SearchIcon />
-                Search
-                <Kbd className="ml-auto">⌘K</Kbd>
-              </Button>
-              <div className="ml-auto flex items-center gap-1">
-                <ThemeToggle />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  nativeButton={false}
-                  className="md:hidden"
-                  render={<Link href="/" />}
-                  aria-label="Marketing site"
-                >
-                  <Logo variant="mark" />
-                </Button>
-              </div>
-            </header>
-            <div
-              className={cn(
-                "flex flex-1 flex-col",
-                pathname.startsWith("/settings")
-                  ? "min-h-0"
-                  : "gap-6 px-6 py-8 [--page-pad:--spacing(6)] md:px-10 md:[--page-pad:--spacing(10)]"
-              )}
+        <SidebarInset className="min-w-0 bg-background">
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
+            <SidebarTrigger className="-ml-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden min-w-48 justify-start text-muted-foreground md:inline-flex"
+              onClick={() => setSearchOpen(true)}
             >
-              {children}
+              <SearchIcon />
+              Search
+              <Kbd className="ml-auto">⌘K</Kbd>
+            </Button>
+            <div className="ml-auto flex items-center gap-1">
+              <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                nativeButton={false}
+                className="md:hidden"
+                render={<Link href="/" />}
+                aria-label="Marketing site"
+              >
+                <Logo variant="mark" />
+              </Button>
             </div>
+          </header>
+          <div
+            className={cn(
+              "flex flex-1 flex-col",
+              pathname.startsWith("/settings")
+                ? "min-h-0"
+                : "w-full gap-6 px-6 py-8 md:px-10"
+            )}
+          >
+            {children}
           </div>
         </SidebarInset>
         <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />

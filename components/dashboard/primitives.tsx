@@ -162,45 +162,22 @@ export function SearchField({
 export function ResourceTable({
   children,
   headers,
-  flush = false,
-}: {
-  headers: React.ReactNode
-  children: React.ReactNode
-  flush?: boolean
-}) {
-  return (
-    <div
-      className={
-        flush
-          ? "bg-background"
-          : "lined-bleed corners-t corners-b relative border-double-t border-double-b bg-background"
-      }
-    >
-      <Table>
-        <TableHeader>
-          <TableRow>{headers}</TableRow>
-        </TableHeader>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </div>
-  )
-}
-
-export function LinedCallout({
-  children,
   className,
 }: {
+  headers: React.ReactNode
   children: React.ReactNode
   className?: string
 }) {
   return (
-    <div
-      className={cn(
-        "lined-bleed corners-t corners-b relative border-double-t border-double-b bg-background px-6 py-4 text-small text-muted-foreground md:px-10",
-        className
-      )}
-    >
-      {children}
+    <div className={cn("frame", className)}>
+      <div className="panel overflow-hidden p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>{headers}</TableRow>
+          </TableHeader>
+          <TableBody>{children}</TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
@@ -227,8 +204,8 @@ export function EmptyState({
   children?: React.ReactNode
 }) {
   return (
-    <Empty className="lined-bleed corners-t corners-b relative min-h-72 border-double-t border-double-b">
-      <div className="flex w-full flex-col items-center gap-3 py-10">
+    <Empty className="frame min-h-72">
+      <div className="panel flex w-full flex-col items-center gap-3 py-10">
         <EmptyHeader>
           <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
             <Icon className="size-4" />
