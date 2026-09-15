@@ -39,6 +39,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -194,20 +195,24 @@ function WorkspaceSwitcher() {
         <ChevronsUpDownIcon className="ml-auto size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-        <DropdownMenuItem disabled>
-          <LogoMark className="size-4" />
-          {state.settings.teamName}
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+          <DropdownMenuItem disabled>
+            <LogoMark className="size-4" />
+            {state.settings.teamName}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/settings" />}>
-          <SettingsIcon />
-          Workspace settings
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={resetDemo}>
-          <RotateCcwIcon />
-          Reset demo data
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem render={<Link href="/settings" />}>
+            <SettingsIcon />
+            Workspace settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={resetDemo}>
+            <RotateCcwIcon />
+            Reset demo data
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -310,15 +315,17 @@ function DashboardSidebar() {
                 </span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" className="w-56">
-                <DropdownMenuLabel>Account</DropdownMenuLabel>
-                <DropdownMenuItem render={<Link href="/settings" />}>
-                  <SettingsIcon />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem render={<Link href="/" />}>
-                  <LogOutIcon />
-                  Back to site
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Account</DropdownMenuLabel>
+                  <DropdownMenuItem render={<Link href="/settings" />}>
+                    <SettingsIcon />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/" />}>
+                    <LogOutIcon />
+                    Back to site
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>

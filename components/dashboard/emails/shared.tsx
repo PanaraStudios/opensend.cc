@@ -113,9 +113,12 @@ export function presetFromRange(range: DateRange | undefined): RangePreset | "cu
   return "custom"
 }
 
-export function rangeLabel(range: DateRange | undefined): string {
+export function rangeLabel(
+  range: DateRange | undefined,
+  allowAllTime = false
+): string {
   const preset = presetFromRange(range)
-  if (preset === "all") return "All time"
+  if (preset === "all") return allowAllTime ? "All time" : "Date range"
   if (preset !== "custom") {
     return RANGE_PRESETS.find((item) => item.value === preset)?.label ?? "Date range"
   }
@@ -205,7 +208,7 @@ export function DateRangePicker({
         render={<Button variant="outline" className="h-8" />}
       >
         <CalendarDate data-icon="inline-start" />
-        {rangeLabel(range)}
+        {rangeLabel(range, allowAllTime)}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-3">
         <div className="flex flex-col gap-3">
@@ -228,7 +231,14 @@ export function DateRangePicker({
           <Calendar
             mode="range"
             selected={range}
-            onSelect={onRangeChange}
+            onSelect={(next) => {
+              if (!next?.from) {
+                onRangeChange(allowAllTime ? undefined : defaultEmailRange())
+                return
+              }
+              onRangeChange(next)
+              if (next.to) setOpen(false)
+            }}
             defaultMonth={range?.to ?? range?.from ?? new Date(DEMO_NOW)}
             autoFocus
           />
@@ -299,12 +309,12 @@ export function EmailsToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <InputGroup className="h-8! max-w-xs overflow-hidden">
+      <InputGroup className="h-8! w-full max-w-xs min-w-0 overflow-hidden">
         <InputGroupAddon>
           <Search />
         </InputGroupAddon>
         <InputGroupInput
-          className="h-full! min-w-0"
+          className="h-full! min-w-0 overflow-hidden"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={placeholder}
