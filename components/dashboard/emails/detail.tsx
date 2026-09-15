@@ -236,10 +236,10 @@ const PREVIEW_HTML_CLASS =
 
 function EmailPreview({ subject, html }: { subject: string; html: string }) {
   return (
-    <article className="rounded-xl border border-border bg-background p-5">
+    <article>
       <h2 className="font-heading text-h4 text-foreground">{subject}</h2>
       <div
-        className={`mt-4 ${PREVIEW_HTML_CLASS}`}
+        className={`mt-3 ${PREVIEW_HTML_CLASS}`}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </article>
@@ -248,7 +248,7 @@ function EmailPreview({ subject, html }: { subject: string; html: string }) {
 
 function EmailSource({ value }: { value: string }) {
   return (
-    <pre className="overflow-x-auto rounded-xl border border-border bg-muted/40 p-4 font-mono text-mono whitespace-pre-wrap text-foreground">
+    <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap text-foreground">
       {value}
     </pre>
   )
@@ -292,20 +292,20 @@ export function EmailBodyTabs({
               ) : null}
             </TabsList>
           </div>
-          <TabsContent value="preview" className="p-4">
+          <TabsContent value="preview" className="p-5">
             <EmailPreview subject={subject} html={html} />
           </TabsContent>
-          <TabsContent value="text" className="p-4">
+          <TabsContent value="text" className="p-5">
             <EmailSource value={text} />
           </TabsContent>
-          <TabsContent value="html" className="p-4">
+          <TabsContent value="html" className="p-5">
             <EmailSource value={html} />
           </TabsContent>
-          <TabsContent value="raw" className="p-4">
+          <TabsContent value="raw" className="p-5">
             <EmailSource value={raw} />
           </TabsContent>
           {showInsights ? (
-            <TabsContent value="insights" className="p-4">
+            <TabsContent value="insights" className="p-5">
               {insights.length === 0 ? (
                 <Empty className="min-h-40 py-8">
                   <EmptyHeader>
