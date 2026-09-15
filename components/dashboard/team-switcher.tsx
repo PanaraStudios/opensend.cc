@@ -37,7 +37,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { SidebarMenuButton } from "@/components/ui/sidebar"
+import { SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
 import { toast } from "@/components/ui/toast"
 import { SEED_TEAM_ID, slugifyTeamName } from "@/lib/dashboard/teams"
 import { teamSafePath } from "@/lib/dashboard/nav"
@@ -161,6 +161,7 @@ function CreateTeamDialog({
 export function TeamSwitcher() {
   const router = useRouter()
   const pathname = usePathname()
+  const { isMobile } = useSidebar()
   const { teams, activeTeamId, switchTeam, resetDemo } = useDashboard()
   const [createOpen, setCreateOpen] = React.useState(false)
   const active = teams.find((team) => team.id === activeTeamId) ??
@@ -197,7 +198,12 @@ export function TeamSwitcher() {
           </span>
           <ChevronsUpDownIcon className="ml-auto size-4 text-muted-foreground" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent
+          align="start"
+          side={isMobile ? "bottom" : "right"}
+          sideOffset={8}
+          className="w-64"
+        >
           <DropdownMenuGroup>
             <DropdownMenuLabel>Teams</DropdownMenuLabel>
             {teams.map((team) => {
