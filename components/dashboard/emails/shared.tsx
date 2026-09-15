@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
@@ -29,18 +28,26 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CalendarDate, Download, Search } from "@/components/dashboard/icons"
 import { DEMO_NOW } from "@/lib/dashboard/data"
+import {
+  RANGE_PRESETS,
+  rangeAfterCalendarClear,
+  rangeFromPreset,
+  rangeLabel,
+  presetFromRange,
+  shouldCloseDateRangePicker,
+} from "@/lib/dashboard/email-range"
 import { EMAIL_TABS, tabActive } from "@/lib/dashboard/nav"
 import type { SuppressionReason } from "@/lib/dashboard/types"
 
-export const RANGE_PRESETS = [
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "15d", label: "Last 15 days" },
-  { value: "30d", label: "Last 30 days" },
-] as const
-
-export type RangePreset = (typeof RANGE_PRESETS)[number]["value"] | "all"
+export {
+  RANGE_PRESETS,
+  defaultEmailRange,
+  inDateRange,
+  rangeFromPreset,
+  rangeLabel,
+  presetFromRange,
+  type RangePreset,
+} from "@/lib/dashboard/email-range"
 
 export const STATUS_ITEMS = [
   { value: "all", label: "All statuses" },
@@ -69,73 +76,6 @@ export const REASON_ITEMS = [
 ] as const
 
 export type SelectOption = { value: string; label: string }
-
-export function defaultEmailRange(): DateRange {
-  return rangeFromPreset("15d") ?? { from: new Date(DEMO_NOW) }
-}
-
-export function rangeFromPreset(
-  preset: RangePreset,
-  now = DEMO_NOW
-): DateRange | undefined {
-  const current = new Date(now)
-  switch (preset) {
-    case "today":
-      return { from: startOfDay(current), to: endOfDay(current) }
-    case "yesterday": {
-      const yesterday = subDays(current, 1)
-      return { from: startOfDay(yesterday), to: endOfDay(yesterday) }
-    }
-    case "7d":
-      return { from: startOfDay(subDays(current, 6)), to: endOfDay(current) }
-    case "15d":
-      return { from: startOfDay(subDays(current, 14)), to: endOfDay(current) }
-    case "30d":
-      return { from: startOfDay(subDays(current, 29)), to: endOfDay(current) }
-    case "all":
-      return undefined
-  }
-}
-
-export function presetFromRange(range: DateRange | undefined): RangePreset | "custom" {
-  if (!range?.from) return "all"
-  const presets: RangePreset[] = ["today", "yesterday", "7d", "15d", "30d"]
-  for (const preset of presets) {
-    const candidate = rangeFromPreset(preset)
-    if (
-      candidate?.from &&
-      isSameDay(candidate.from, range.from) &&
-      (!range.to || !candidate.to || isSameDay(range.to, candidate.to))
-    ) {
-      return preset
-    }
-  }
-  return "custom"
-}
-
-export function rangeLabel(
-  range: DateRange | undefined,
-  allowAllTime = false
-): string {
-  const preset = presetFromRange(range)
-  if (preset === "all") return allowAllTime ? "All time" : "Date range"
-  if (preset !== "custom") {
-    return RANGE_PRESETS.find((item) => item.value === preset)?.label ?? "Date range"
-  }
-  if (!range?.from) return "Date range"
-  if (!range.to) return format(range.from, "MMM d, yyyy")
-  return `${format(range.from, "MMM d")} - ${format(range.to, "MMM d, yyyy")}`
-}
-
-export function inDateRange(
-  timestamp: number,
-  range: DateRange | undefined
-): boolean {
-  if (!range?.from) return true
-  const start = startOfDay(range.from).getTime()
-  const end = endOfDay(range.to ?? range.from).getTime()
-  return timestamp >= start && timestamp <= end
-}
 
 export function filterEmailHaystack(
   query: string,
@@ -204,9 +144,7 @@ export function DateRangePicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={<Button variant="outline" className="h-8" />}
-      >
+      <PopoverTrigger render={<Button variant="outline" className="h-8" />}>
         <CalendarDate data-icon="inline-start" />
         {rangeLabel(range, allowAllTime)}
       </PopoverTrigger>
@@ -233,11 +171,11 @@ export function DateRangePicker({
             selected={range}
             onSelect={(next) => {
               if (!next?.from) {
-                onRangeChange(allowAllTime ? undefined : defaultEmailRange())
+                onRangeChange(rangeAfterCalendarClear(allowAllTime))
                 return
               }
               onRangeChange(next)
-              if (next.to) setOpen(false)
+              if (shouldCloseDateRangePicker(next)) setOpen(false)
             }}
             defaultMonth={range?.to ?? range?.from ?? new Date(DEMO_NOW)}
             autoFocus
@@ -309,12 +247,12 @@ export function EmailsToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <InputGroup className="h-8! w-full max-w-xs min-w-0 overflow-hidden">
+      <InputGroup className="h-8! max-w-xs overflow-hidden">
         <InputGroupAddon>
           <Search />
         </InputGroupAddon>
         <InputGroupInput
-          className="h-full! min-w-0 overflow-hidden"
+          className="h-full! min-w-0"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={placeholder}
