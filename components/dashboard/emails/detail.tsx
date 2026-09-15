@@ -281,7 +281,7 @@ export function EmailBodyTabs({
     <div className="frame">
       <div className="panel overflow-hidden p-0">
         <Tabs value={tab} onValueChange={setTab} className="gap-0">
-          <div className="overflow-x-auto border-b border-border px-3 py-2.5">
+          <div className="overflow-x-auto border-b border-border px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsList>
               <TabsTrigger value="preview">Preview</TabsTrigger>
               <TabsTrigger value="text">Plain text</TabsTrigger>
