@@ -247,7 +247,9 @@ export function EmailStatusBadge({ status }: { status: EmailStatus }) {
       ? "success"
       : status === "bounced" || status === "failed" || status === "complained"
         ? "destructive"
-        : status === "scheduled" || status === "queued" || status === "delivery_delayed"
+        : status === "scheduled" ||
+            status === "queued" ||
+            status === "delivery_delayed"
           ? "warning"
           : status === "canceled" || status === "suppressed"
             ? "secondary"
@@ -285,7 +287,11 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   )
 }
 
-export function AutomationStatusBadge({ status }: { status: AutomationStatus }) {
+export function AutomationStatusBadge({
+  status,
+}: {
+  status: AutomationStatus
+}) {
   return (
     <Badge variant={status === "enabled" ? "success" : "secondary"} dot>
       {automationStatusLabel(status)}
@@ -295,7 +301,11 @@ export function AutomationStatusBadge({ status }: { status: AutomationStatus }) 
 
 export function ExportStatusBadge({ status }: { status: ExportStatus }) {
   const variant =
-    status === "ready" ? "success" : status === "processing" ? "warning" : "secondary"
+    status === "ready"
+      ? "success"
+      : status === "processing"
+        ? "warning"
+        : "secondary"
   return (
     <Badge variant={variant} dot>
       {exportStatusLabel(status)}
@@ -347,11 +357,7 @@ export function MonoValue({
   )
 }
 
-export function MoreMenu({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export function MoreMenu({ children }: { children: React.ReactNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger

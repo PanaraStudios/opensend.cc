@@ -131,7 +131,9 @@ function SegmentMembership({
           {available.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="outline" size="sm" className="w-fit" />}
+                render={
+                  <Button variant="outline" size="sm" className="w-fit" />
+                }
               >
                 <Plus data-icon="inline-start" />
                 Add to segment
@@ -141,10 +143,7 @@ function SegmentMembership({
                   <DropdownMenuItem
                     key={segment.id}
                     onClick={() =>
-                      setContactSegments(contactId, [
-                        ...segmentIds,
-                        segment.id,
-                      ])
+                      setContactSegments(contactId, [...segmentIds, segment.id])
                     }
                   >
                     {segment.name}
@@ -152,7 +151,14 @@ function SegmentMembership({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : null}
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              In every segment.{" "}
+              <Link href="/segments" className="underline underline-offset-4">
+                Manage segments
+              </Link>
+            </p>
+          )}
         </div>
       )}
     </Surface>
@@ -198,7 +204,10 @@ export function ContactDetail() {
   const broadcasts = state.broadcasts
     .filter((broadcast) => {
       if (broadcast.status !== "sent") return false
-      if (broadcast.segmentId && !contact.segmentIds.includes(broadcast.segmentId)) {
+      if (
+        broadcast.segmentId &&
+        !contact.segmentIds.includes(broadcast.segmentId)
+      ) {
         return false
       }
       return true
@@ -236,7 +245,9 @@ export function ContactDetail() {
                     id="first"
                     value={contact.firstName}
                     onChange={(event) =>
-                      updateContact(contact.id, { firstName: event.target.value })
+                      updateContact(contact.id, {
+                        firstName: event.target.value,
+                      })
                     }
                   />
                 </Field>
@@ -246,7 +257,9 @@ export function ContactDetail() {
                     id="last"
                     value={contact.lastName}
                     onChange={(event) =>
-                      updateContact(contact.id, { lastName: event.target.value })
+                      updateContact(contact.id, {
+                        lastName: event.target.value,
+                      })
                     }
                   />
                 </Field>
@@ -256,8 +269,8 @@ export function ContactDetail() {
                   <span className="flex flex-col gap-1">
                     Subscribed
                     <FieldDescription>
-                      Off means this contact will not receive broadcasts, even if
-                      they are opted in to a topic.
+                      Off means this contact will not receive broadcasts, even
+                      if they are opted in to a topic.
                     </FieldDescription>
                   </span>
                 </FieldLabel>
@@ -304,8 +317,8 @@ export function ContactDetail() {
             <Surface className="lg:col-span-2">
               <h2 className="text-sm font-medium">Topics</h2>
               <p className="text-sm text-muted-foreground">
-                Topics appear on the preference page. Public topics can be managed
-                by the contact; private topics stay off that page.
+                Topics appear on the preference page. Public topics can be
+                managed by the contact; private topics stay off that page.
               </p>
               {state.topics.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -337,7 +350,7 @@ export function ContactDetail() {
                             </div>
                           ) : null}
                         </TableCell>
-                        <TableCell className="capitalize text-muted-foreground">
+                        <TableCell className="text-muted-foreground capitalize">
                           {topic.visibility}
                         </TableCell>
                         <TableCell>
@@ -361,7 +374,9 @@ export function ContactDetail() {
           </div>
         </TabsContent>
         <TabsContent value="history">
-          {emails.length === 0 && received.length === 0 && broadcasts.length === 0 ? (
+          {emails.length === 0 &&
+          received.length === 0 &&
+          broadcasts.length === 0 ? (
             <EmptyState
               icon={Mail}
               title="No marketing history"
