@@ -80,11 +80,19 @@ export function statusLabel(status: DomainStatus): string {
       return "Pending"
     case "verified":
       return "Verified"
+    case "partially_verified":
+      return "Partially verified"
+    case "partially_failed":
+      return "Partially failed"
     case "failed":
       return "Failed"
     case "temporary_failure":
       return "Temporary failure"
   }
+}
+
+export function domainNeedsVerification(status: DomainStatus): boolean {
+  return status !== "verified"
 }
 
 export function emailStatusLabel(status: EmailStatus): string {

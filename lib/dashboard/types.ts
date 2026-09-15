@@ -8,7 +8,13 @@ export const REGIONS = [
 export type Region = (typeof REGIONS)[number]["value"]
 
 export type DomainStatus =
-  "not_started" | "pending" | "verified" | "failed" | "temporary_failure"
+  | "not_started"
+  | "pending"
+  | "verified"
+  | "partially_verified"
+  | "partially_failed"
+  | "failed"
+  | "temporary_failure"
 
 export type RecordKind =
   "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
