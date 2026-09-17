@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import { CloudIcon } from "lucide-react"
-import { GitHubIcon } from "@/components/marketing/github-icon"
+import { GitHubIcon } from "@/components/brand-icons"
 import { WaitlistForm } from "@/components/marketing/waitlist-form"
 import { Button } from "@/components/ui/button"
 import { COMPANY_URL, GITHUB_URL, WAITLIST } from "@/content/landing"

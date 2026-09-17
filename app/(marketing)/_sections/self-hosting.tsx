@@ -1,5 +1,4 @@
 import {
-  ArchiveRestoreIcon,
   ArrowUpRightIcon,
   ContainerIcon,
   GlobeIcon,
@@ -14,7 +13,6 @@ import { StackLogoMark } from "@/components/marketing/stack-logos"
 import { SELF_HOST } from "@/content/landing"
 
 const ICONS: Record<string, LucideIcon> = {
-  "archive-restore": ArchiveRestoreIcon,
   container: ContainerIcon,
   users: UsersIcon,
   globe: GlobeIcon,
@@ -45,21 +43,16 @@ export function SelfHosting() {
               className="absolute top-5 bottom-5 left-[18px] w-px bg-border"
             />
             {SELF_HOST.stack.layers.map((layer) => {
-              const Icon = layer.icon ? ICONS[layer.icon] : null
               return (
                 <li
                   key={layer.label}
                   className="relative flex items-center gap-3 py-2.5"
                 >
                   <span className="icon-tile size-9 [&_svg]:size-4">
-                    {Icon ? (
-                      <Icon strokeWidth={1.5} />
-                    ) : layer.logo ? (
-                      <StackLogoMark
-                        logo={{ id: layer.logo, name: layer.label }}
-                        className="size-[18px]"
-                      />
-                    ) : null}
+                    <StackLogoMark
+                      logo={{ id: layer.logo, name: layer.label }}
+                      className="size-[18px]"
+                    />
                   </span>
                   <span className="flex min-w-0 flex-1 items-baseline justify-between gap-3">
                     <span className="min-w-0 text-small font-medium">
@@ -107,7 +100,7 @@ export function SelfHosting() {
           className="inline-flex items-center gap-1 text-small font-medium text-primary hover:text-primary-hover"
         >
           {SELF_HOST.offer.label}
-          <ArrowUpRightIcon className="size-3.5" />
+          <ArrowUpRightIcon className="size-3.5 shrink-0" />
         </a>
         <p className="text-caption font-normal text-faint-foreground">
           {SELF_HOST.offer.note}

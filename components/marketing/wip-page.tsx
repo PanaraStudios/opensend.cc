@@ -1,7 +1,7 @@
 import Link from "next/link"
 
 import { ArrowRightIcon, type LucideIcon } from "lucide-react"
-import { GitHubIcon } from "@/components/marketing/github-icon"
+import { GitHubIcon } from "@/components/brand-icons"
 import { Button } from "@/components/ui/button"
 import { GITHUB_URL } from "@/content/landing"
 

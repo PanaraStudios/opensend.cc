@@ -1,8 +1,7 @@
 import Link from "next/link"
 
-import { GitHubIcon } from "@/components/marketing/github-icon"
+import { GitHubIcon, XIcon, YouTubeIcon } from "@/components/brand-icons"
 import { Reveal } from "@/components/marketing/motion"
-import { XIcon, YouTubeIcon } from "@/components/marketing/social-icons"
 import { Logo } from "@/components/logo"
 import { FOOTER } from "@/content/landing"
 

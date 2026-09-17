@@ -126,7 +126,7 @@ export function Pricing() {
             href={`mailto:${PRICING.contact.email}`}
             className="inline-flex items-center gap-1 text-primary hover:text-primary-hover"
           >
-            <MailIcon className="size-3.5" strokeWidth={2} />
+            <MailIcon className="size-3.5 shrink-0" />
             Email me
           </a>{" "}
           or message me on{" "}

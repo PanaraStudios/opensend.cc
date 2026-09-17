@@ -47,7 +47,7 @@ export function PlatformTags({
           key={p.id}
           className="inline-flex h-6 items-center gap-1.5 rounded-md border border-border bg-surface/50 pr-2 pl-1.5 font-mono text-[11px] leading-none text-muted-foreground shadow-tile dark:bg-surface"
         >
-          <p.icon className="size-3 text-primary-icon" strokeWidth={2} />
+          <p.icon className="size-3 text-primary-icon" />
           {p.label}
         </li>
       ))}

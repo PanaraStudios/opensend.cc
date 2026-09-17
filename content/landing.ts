@@ -162,17 +162,14 @@ export const WHAT_YOU_GET = {
 
 /* ── 4. Self-hosting ── */
 
-export type StackLayer = { label: string; note: string } & (
-  | { logo: string; icon?: never }
-  | { icon: "archive-restore"; logo?: never }
-)
+export type StackLayer = { label: string; note: string; logo: string }
 
 export const SELF_HOST = {
   titleA: "Your email. Your server.",
   titleEm: "Your AWS bill.",
   sub: "opensend.cc is one Docker Compose file. Next.js, self-hosted Convex, Better Auth, and AWS SES. Your domains, data, and accounts stay on your infrastructure.",
   /* Left panel: the stack one deploy sets up, top to bottom. `logo` is a
-     file stem under /logos/stack; rows without one use the named icon. */
+     file stem under /logos/stack. */
   stack: {
     title: "What you end up with",
     layers: [

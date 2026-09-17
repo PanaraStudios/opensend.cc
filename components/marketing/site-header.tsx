@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useState } from "react"
 
 import { Logo } from "@/components/logo"
-import { GitHubIcon } from "@/components/marketing/github-icon"
+import { GitHubIcon } from "@/components/brand-icons"
 import { ThemeToggle } from "@/components/marketing/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { NAV } from "@/content/landing"

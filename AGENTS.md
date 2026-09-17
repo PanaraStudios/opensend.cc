@@ -18,4 +18,15 @@ Convex agent skills for common tasks can be installed by running
 
 <!-- convex-ai-end -->
 
+## Icons
+
+`lucide-react` is the only icon library. Import the suffixed names
+(`CheckIcon`, not `Check`) and type icon props as `LucideIcon`. Do not add a
+second icon package or a local module of inlined SVG paths. Lucide ships no
+brand marks, so those live in `components/brand-icons.tsx`; add new ones
+there rather than inlining a path at the call site.
+
+Lucide does not apply `shrink-0`. Primitives such as `Button` handle it via
+`[&_svg]:shrink-0`, so only add it when an icon sits directly in a flex row.
+
 After making changes, run `pnpm lint` and fix all errors.

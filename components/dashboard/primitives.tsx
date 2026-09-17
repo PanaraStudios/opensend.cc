@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { SearchIcon } from "lucide-react"
+import { SearchIcon, type LucideIcon } from "lucide-react"
 
 import { toast } from "@/components/ui/toast"
 import {
@@ -205,7 +205,7 @@ export function EmptyState({
   description,
   children,
 }: {
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
   title: string
   description: string
   children?: React.ReactNode
