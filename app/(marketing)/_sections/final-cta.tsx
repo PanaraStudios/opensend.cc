@@ -1,4 +1,4 @@
-import { ArrowRight } from "@/components/marketing/icons"
+import { ArrowRightIcon } from "lucide-react"
 
 import { Stagger, StaggerItem } from "@/components/marketing/motion"
 import { Button } from "@/components/ui/button"
@@ -44,7 +44,7 @@ export function FinalCta() {
             }
           >
             {CTA.primary}
-            <ArrowRight />
+            <ArrowRightIcon />
           </Button>
         </StaggerItem>
       </Stagger>

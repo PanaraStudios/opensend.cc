@@ -1,20 +1,20 @@
 import {
-  Browser,
-  Code,
-  Mail,
-  type MarketingIcon,
-} from "@/components/marketing/icons"
+  AppWindowIcon,
+  CodeIcon,
+  MailIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 import type { Platform } from "@/content/landing"
 import { cn } from "@/lib/utils"
 
 /* API, SMTP, dashboard, always in that order so tags read the same in every
    cell. */
-export const PLATFORMS: { id: Platform; label: string; icon: MarketingIcon }[] =
+export const PLATFORMS: { id: Platform; label: string; icon: LucideIcon }[] =
   [
-    { id: "api", label: "API", icon: Code },
-    { id: "smtp", label: "SMTP", icon: Mail },
-    { id: "dashboard", label: "Dashboard", icon: Browser },
+    { id: "api", label: "API", icon: CodeIcon },
+    { id: "smtp", label: "SMTP", icon: MailIcon },
+    { id: "dashboard", label: "Dashboard", icon: AppWindowIcon },
   ]
 
 export function formatPlatforms(platforms: Platform[]) {

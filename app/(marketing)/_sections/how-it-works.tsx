@@ -1,18 +1,18 @@
 import {
-  Container,
-  Link,
-  Send,
-  type MarketingIcon,
-} from "@/components/marketing/icons"
+  ContainerIcon,
+  LinkIcon,
+  SendIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 import { Stagger, StaggerItem } from "@/components/marketing/motion"
 import { SectionHeader } from "@/components/marketing/section-header"
 import { HOW_IT_WORKS } from "@/content/landing"
 
-const ICONS: Record<string, MarketingIcon> = {
-  container: Container,
-  link: Link,
-  send: Send,
+const ICONS: Record<string, LucideIcon> = {
+  container: ContainerIcon,
+  link: LinkIcon,
+  send: SendIcon,
 }
 
 /* Three cells in a row: h3 and one line, with the step number set large and

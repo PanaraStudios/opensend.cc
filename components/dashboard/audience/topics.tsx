@@ -33,7 +33,7 @@ import {
   AudienceDocsSheet,
   AudienceToolbar,
 } from "@/components/dashboard/audience/shared"
-import { Plus, Tag } from "@/components/dashboard/icons"
+import { PlusIcon, TagIcon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Topic, TopicDefault, TopicVisibility } from "@/lib/dashboard/types"
@@ -320,7 +320,7 @@ export function TopicsView() {
         <>
           <AudienceDocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Create topic
           </Button>
         </>
@@ -333,12 +333,12 @@ export function TopicsView() {
       />
       {rows.length === 0 ? (
         <EmptyState
-          icon={Tag}
+          icon={TagIcon}
           title="No topics"
           description="Create a topic, then attach it when you send a broadcast so contacts can unsubscribe from that type of email only."
         >
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Create topic
           </Button>
         </EmptyState>

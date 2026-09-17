@@ -56,7 +56,7 @@ import {
   AudienceToolbar,
   SUBSCRIBED_ITEMS,
 } from "@/components/dashboard/audience/shared"
-import { ChevronDown, Plus, Upload, Users } from "@/components/dashboard/icons"
+import { ChevronDownIcon, PlusIcon, UploadIcon, UsersIcon } from "lucide-react"
 import {
   parseCsv,
   parseUnsubscribed,
@@ -583,18 +583,18 @@ export function ContactsView() {
           <AudienceDocsButton onClick={() => setDocsOpen(true)} />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button />}>
-              <Plus data-icon="inline-start" />
+              <PlusIcon data-icon="inline-start" />
               Add Contacts
-              <ChevronDown data-icon="inline-end" />
+              <ChevronDownIcon data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setManualOpen(true)}>
-                  <Plus />
+                  <PlusIcon />
                   Add Manually
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <Upload />
+                  <UploadIcon />
                   Import CSV
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -609,7 +609,7 @@ export function ContactsView() {
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" className="h-8" />}>
               Edit
-              <ChevronDown data-icon="inline-end" />
+              <ChevronDownIcon data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuGroup>
@@ -664,12 +664,12 @@ export function ContactsView() {
       )}
       {rows.length === 0 ? (
         <EmptyState
-          icon={Users}
+          icon={UsersIcon}
           title="No contacts"
           description="Add a contact or import a CSV to start building your audience."
         >
           <Button onClick={() => setManualOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Add Contacts
           </Button>
         </EmptyState>

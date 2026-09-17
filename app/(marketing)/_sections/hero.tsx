@@ -1,4 +1,4 @@
-import { ArrowRight, Cloud } from "@/components/marketing/icons"
+import { ArrowRightIcon, CloudIcon } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 
@@ -37,7 +37,7 @@ export function Hero() {
             }
           >
             {CTA.primary}
-            <ArrowRight />
+            <ArrowRightIcon />
           </Button>
           <Button
             size="xl"
@@ -45,7 +45,7 @@ export function Hero() {
             nativeButton={false}
             render={<Link href={CTA.secondaryHref} />}
           >
-            <Cloud />
+            <CloudIcon />
             {CTA.secondary}
           </Button>
         </StaggerItem>

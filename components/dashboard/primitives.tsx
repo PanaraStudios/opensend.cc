@@ -243,22 +243,53 @@ export function StatusBadge({ status }: { status: DomainStatus }) {
   )
 }
 
-export function EmailStatusBadge({ status }: { status: EmailStatus }) {
-  const variant =
-    status === "delivered" || status === "opened" || status === "clicked"
-      ? "success"
-      : status === "bounced" || status === "failed" || status === "complained"
-        ? "destructive"
-        : status === "scheduled" ||
-            status === "queued" ||
-            status === "delivery_delayed"
-          ? "warning"
-          : status === "canceled" || status === "suppressed"
-            ? "secondary"
-            : "outline"
+export type EmailStatusBadgeVariant =
+  | "success"
+  | "destructive"
+  | "warning"
+  | "secondary"
+  | "outline"
 
+export function emailStatusBadgeVariant(
+  status: EmailStatus
+): EmailStatusBadgeVariant {
+  if (status === "delivered" || status === "opened" || status === "clicked") {
+    return "success"
+  }
+  if (status === "bounced" || status === "failed" || status === "complained") {
+    return "destructive"
+  }
+  if (
+    status === "scheduled" ||
+    status === "queued" ||
+    status === "delivery_delayed"
+  ) {
+    return "warning"
+  }
+  if (status === "canceled" || status === "suppressed") {
+    return "secondary"
+  }
+  return "outline"
+}
+
+export function emailStatusDotClassName(status: EmailStatus): string {
+  switch (emailStatusBadgeVariant(status)) {
+    case "success":
+      return "bg-success"
+    case "destructive":
+      return "bg-destructive"
+    case "warning":
+      return "bg-warning"
+    case "secondary":
+      return "bg-muted-foreground"
+    case "outline":
+      return "bg-foreground"
+  }
+}
+
+export function EmailStatusBadge({ status }: { status: EmailStatus }) {
   return (
-    <Badge variant={variant} dot>
+    <Badge variant={emailStatusBadgeVariant(status)} dot>
       {emailStatusLabel(status)}
     </Badge>
   )

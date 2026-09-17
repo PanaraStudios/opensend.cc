@@ -26,12 +26,12 @@ import {
   type SelectOption,
 } from "@/components/dashboard/emails/shared"
 import {
-  ArrowLeft,
-  BookOpen,
-  Download,
-  Search,
-  type DashboardIcon,
-} from "@/components/dashboard/icons"
+  ArrowLeftIcon,
+  BookOpenIcon,
+  DownloadIcon,
+  SearchIcon,
+  type LucideIcon,
+} from "lucide-react"
 import { AUDIENCE_TABS, tabActive } from "@/lib/dashboard/nav"
 
 export const SUBSCRIBED_ITEMS = [
@@ -108,7 +108,7 @@ export function AudienceToolbar({
     <div className="flex flex-wrap items-center gap-2">
       <InputGroup className="h-8! max-w-xs overflow-hidden">
         <InputGroupAddon>
-          <Search />
+          <SearchIcon />
         </InputGroupAddon>
         <InputGroupInput
           className="h-full! min-w-0"
@@ -149,7 +149,7 @@ export function AudienceToolbar({
           className="ml-auto"
           onClick={onExport}
         >
-          <Download />
+          <DownloadIcon />
         </Button>
       ) : null}
     </div>
@@ -163,7 +163,7 @@ export function AudienceDocsButton({
 }) {
   return (
     <Button variant="outline" onClick={onClick}>
-      <BookOpen data-icon="inline-start" />
+      <BookOpenIcon data-icon="inline-start" />
       Docs
     </Button>
   )
@@ -230,7 +230,7 @@ export function AudienceDetailHeader({
   backHref: string
   backLabel: string
   title: string
-  icon: DashboardIcon
+  icon: LucideIcon
   description?: string
   actions?: React.ReactNode
 }) {
@@ -243,7 +243,7 @@ export function AudienceDetailHeader({
         className="-ml-2 w-fit text-muted-foreground"
         render={<Link href={backHref} />}
       >
-        <ArrowLeft data-icon="inline-start" />
+        <ArrowLeftIcon data-icon="inline-start" />
         {backLabel}
       </Button>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

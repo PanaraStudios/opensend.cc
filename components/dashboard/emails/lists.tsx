@@ -51,7 +51,13 @@ import {
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
-import { BookOpen, Inbox, Mail, Plus, SlashCircle } from "@/components/dashboard/icons"
+import {
+  BookOpenIcon,
+  CircleSlashIcon,
+  InboxIcon,
+  MailIcon,
+  PlusIcon,
+} from "lucide-react"
 import {
   EmailsChrome,
   EmailsToolbar,
@@ -243,11 +249,11 @@ export function EmailsView() {
       actions={
         <>
           <Button variant="outline" onClick={() => setDocsOpen(true)}>
-            <BookOpen data-icon="inline-start" />
+            <BookOpenIcon data-icon="inline-start" />
             Docs
           </Button>
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Send email
           </Button>
         </>
@@ -272,12 +278,12 @@ export function EmailsView() {
       />
       {rows.length === 0 ? (
         <EmptyState
-          icon={Mail}
+          icon={MailIcon}
           title="No emails"
           description="Send a test message or wait for the API to land events here."
         >
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Send email
           </Button>
         </EmptyState>
@@ -369,7 +375,7 @@ export function ReceivingView() {
       </div>
       {rows.length === 0 ? (
         <EmptyState
-          icon={Inbox}
+          icon={InboxIcon}
           title="No received emails"
           description="Enable receiving on a verified domain, then send a message to that address."
         />
@@ -461,7 +467,7 @@ export function SuppressionsView() {
     <EmailsChrome
       actions={
         <Button onClick={() => setOpen(true)}>
-          <SlashCircle data-icon="inline-start" />
+          <CircleSlashIcon data-icon="inline-start" />
           Add suppression
         </Button>
       }
@@ -486,7 +492,7 @@ export function SuppressionsView() {
       />
       {rows.length === 0 ? (
         <EmptyState
-          icon={SlashCircle}
+          icon={CircleSlashIcon}
           title="No suppressions"
           description="Bounces and complaints will appear here. You can also add an address by hand."
         />

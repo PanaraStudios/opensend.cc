@@ -46,7 +46,7 @@ import {
   AudienceToolbar,
   propertyDisplayName,
 } from "@/components/dashboard/audience/shared"
-import { Database, Plus } from "@/components/dashboard/icons"
+import { DatabaseIcon, PlusIcon } from "lucide-react"
 import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/data"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -206,7 +206,7 @@ export function PropertiesView() {
         <>
           <AudienceDocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Add property
           </Button>
         </>
@@ -219,12 +219,12 @@ export function PropertiesView() {
       />
       {defaults.length === 0 && custom.length === 0 ? (
         <EmptyState
-          icon={Database}
+          icon={DatabaseIcon}
           title="No properties"
           description="Add a field such as company or plan, then fill it on each contact."
         >
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Add property
           </Button>
         </EmptyState>

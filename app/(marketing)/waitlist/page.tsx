@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
-import { Cloud } from "@/components/marketing/icons"
+import { CloudIcon } from "lucide-react"
 import { GitHubIcon } from "@/components/marketing/github-icon"
 import { WaitlistForm } from "@/components/marketing/waitlist-form"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,7 @@ export default function WaitlistPage() {
     <section className="section px-6 py-28 max-md:py-20">
       <div className="relative flex flex-col items-center gap-6 text-center">
         <span className="pill">
-          <Cloud strokeWidth={1.75} />
+          <CloudIcon strokeWidth={1.75} />
           {WAITLIST.label}
         </span>
         <h1 className="display title-gradient max-w-2xl text-balance">

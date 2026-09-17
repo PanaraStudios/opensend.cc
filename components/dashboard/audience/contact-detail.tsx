@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { XIcon } from "lucide-react"
+import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,7 +36,6 @@ import {
   Th,
 } from "@/components/dashboard/primitives"
 import { AudienceDetailHeader } from "@/components/dashboard/audience/shared"
-import { Mail, Plus, Send, User } from "@/components/dashboard/icons"
 import { contactTopicStatus } from "@/lib/dashboard/data"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -135,7 +134,7 @@ function SegmentMembership({
                   <Button variant="outline" size="sm" className="w-fit" />
                 }
               >
-                <Plus data-icon="inline-start" />
+                <PlusIcon data-icon="inline-start" />
                 Add to segment
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-44">
@@ -180,10 +179,10 @@ export function ContactDetail() {
           backHref="/contacts"
           backLabel="Contacts"
           title="Contact not found"
-          icon={User}
+          icon={UserIcon}
         />
         <EmptyState
-          icon={User}
+          icon={UserIcon}
           title="Contact not found"
           description="It may have been deleted from this workspace."
         >
@@ -220,7 +219,7 @@ export function ContactDetail() {
         backHref="/contacts"
         backLabel="Contacts"
         title={contact.email}
-        icon={User}
+        icon={UserIcon}
         description={`Created ${formatDate(contact.createdAt)}`}
         actions={
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
@@ -378,7 +377,7 @@ export function ContactDetail() {
           received.length === 0 &&
           broadcasts.length === 0 ? (
             <EmptyState
-              icon={Mail}
+              icon={MailIcon}
               title="No marketing history"
               description="Sends, broadcasts, and inbound replies for this address will show here."
             />
@@ -393,7 +392,7 @@ export function ContactDetail() {
                       render={<Link href={`/emails/${email.id}`} />}
                     >
                       <ItemMedia variant="icon">
-                        <Mail />
+                        <MailIcon />
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle>{email.subject}</ItemTitle>
@@ -415,7 +414,7 @@ export function ContactDetail() {
                       render={<Link href={`/broadcasts/${broadcast.id}`} />}
                     >
                       <ItemMedia variant="icon">
-                        <Send />
+                        <SendIcon />
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle>{broadcast.name}</ItemTitle>
@@ -437,7 +436,7 @@ export function ContactDetail() {
                       render={<Link href={`/emails/receiving/${email.id}`} />}
                     >
                       <ItemMedia variant="icon">
-                        <Mail />
+                        <MailIcon />
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle>{email.subject}</ItemTitle>

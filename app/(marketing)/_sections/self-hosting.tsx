@@ -1,24 +1,24 @@
 import {
-  ArchiveRestore,
-  ArrowUpRight,
-  Container,
-  Globe,
-  Send,
-  Users,
-  type MarketingIcon,
-} from "@/components/marketing/icons"
+  ArchiveRestoreIcon,
+  ArrowUpRightIcon,
+  ContainerIcon,
+  GlobeIcon,
+  SendIcon,
+  UsersIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/motion"
 import { SectionHeader } from "@/components/marketing/section-header"
 import { StackLogoMark } from "@/components/marketing/stack-logos"
 import { SELF_HOST } from "@/content/landing"
 
-const ICONS: Record<string, MarketingIcon> = {
-  "archive-restore": ArchiveRestore,
-  container: Container,
-  users: Users,
-  globe: Globe,
-  send: Send,
+const ICONS: Record<string, LucideIcon> = {
+  "archive-restore": ArchiveRestoreIcon,
+  container: ContainerIcon,
+  users: UsersIcon,
+  globe: GlobeIcon,
+  send: SendIcon,
 }
 
 /* The differentiator: centered header, then two matching .frame + .panel
@@ -107,7 +107,7 @@ export function SelfHosting() {
           className="inline-flex items-center gap-1 text-small font-medium text-primary hover:text-primary-hover"
         >
           {SELF_HOST.offer.label}
-          <ArrowUpRight className="size-3.5" />
+          <ArrowUpRightIcon className="size-3.5" />
         </a>
         <p className="text-caption font-normal text-faint-foreground">
           {SELF_HOST.offer.note}

@@ -25,21 +25,21 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
-  AlertCircle,
-  ArrowLeft,
-  Check,
-  CheckCircle,
-  Clock,
-  Copy,
-  CursorClick,
-  Eye,
-  Inbox,
-  Mail,
-  Play,
-  Send,
-  SlashCircle,
-} from "@/components/dashboard/icons"
-import type { DashboardIcon } from "@/components/dashboard/icons"
+  ArrowLeftIcon,
+  CheckIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleSlashIcon,
+  ClockIcon,
+  CopyIcon,
+  EyeIcon,
+  InboxIcon,
+  MailIcon,
+  MousePointerClickIcon,
+  PlayIcon,
+  SendIcon,
+  type LucideIcon,
+} from "lucide-react"
 import {
   EmailStatusBadge,
   EmptyState,
@@ -85,36 +85,36 @@ function EmailCopyButton({
       aria-label={label}
       onClick={() => void copy()}
     >
-      {copied ? <Check /> : <Copy />}
+      {copied ? <CheckIcon /> : <CopyIcon />}
     </Button>
   )
 }
 
-function eventIcon(event: TimelineEvent): DashboardIcon {
-  if (event.label === "Received") return Inbox
+function eventIcon(event: TimelineEvent): LucideIcon {
+  if (event.label === "Received") return InboxIcon
   switch (event.type) {
     case "queued":
-      return Play
+      return PlayIcon
     case "sent":
-      return Send
+      return SendIcon
     case "delivered":
-      return CheckCircle
+      return CircleCheckIcon
     case "opened":
-      return Eye
+      return EyeIcon
     case "clicked":
-      return CursorClick
+      return MousePointerClickIcon
     case "scheduled":
     case "delivery_delayed":
-      return Clock
+      return ClockIcon
     case "bounced":
     case "failed":
     case "complained":
-      return AlertCircle
+      return CircleAlertIcon
     case "canceled":
     case "suppressed":
-      return SlashCircle
+      return CircleSlashIcon
     default:
-      return Mail
+      return MailIcon
   }
 }
 
@@ -122,14 +122,14 @@ export function EmailDetailHeader({
   backHref,
   backLabel,
   title,
-  icon: Icon = Mail,
+  icon: Icon = MailIcon,
   status,
   actions,
 }: {
   backHref: string
   backLabel: string
   title: string
-  icon?: DashboardIcon
+  icon?: LucideIcon
   status?: EmailStatus
   actions?: React.ReactNode
 }) {
@@ -142,7 +142,7 @@ export function EmailDetailHeader({
         className="-ml-2 w-fit text-muted-foreground"
         render={<Link href={backHref} />}
       >
-        <ArrowLeft data-icon="inline-start" />
+        <ArrowLeftIcon data-icon="inline-start" />
         {backLabel}
       </Button>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -336,7 +336,7 @@ export function EmailBodyTabs({
                 <Empty className="min-h-40 py-8">
                   <EmptyHeader>
                     <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
-                      <Eye />
+                      <EyeIcon />
                     </EmptyMedia>
                     <EmptyTitle>No opens or clicks</EmptyTitle>
                     <EmptyDescription>
@@ -350,7 +350,7 @@ export function EmailBodyTabs({
                   {insights.map((event) => (
                     <Item key={event.id} size="sm" variant="muted">
                       <ItemMedia variant="icon">
-                        {event.type === "clicked" ? <CursorClick /> : <Eye />}
+                        {event.type === "clicked" ? <MousePointerClickIcon /> : <EyeIcon />}
                       </ItemMedia>
                       <ItemContent>
                         <ItemTitle>{emailStatusLabel(event.type)}</ItemTitle>
@@ -389,7 +389,7 @@ export function EmailDetail() {
           title="Email not found"
         />
         <EmptyState
-          icon={Mail}
+          icon={MailIcon}
           title="Email not found"
           description="It may have been pruned from this workspace."
         >
@@ -466,7 +466,7 @@ export function EmailDetail() {
           render={<Link href={`/logs?email=${email.id}`} />}
         >
           <ItemMedia variant="icon">
-            <Send />
+            <SendIcon />
           </ItemMedia>
           <ItemContent>
             <ItemTitle>POST /emails</ItemTitle>
@@ -500,10 +500,10 @@ export function ReceivedDetail() {
           backHref="/emails/receiving"
           backLabel="Emails"
           title="Email not found"
-          icon={Inbox}
+          icon={InboxIcon}
         />
         <EmptyState
-          icon={Inbox}
+          icon={InboxIcon}
           title="Email not found"
           description="Inbound mail may have been removed from this workspace."
         >
@@ -521,7 +521,7 @@ export function ReceivedDetail() {
         backHref="/emails/receiving"
         backLabel="Emails"
         title={email.from}
-        icon={Inbox}
+        icon={InboxIcon}
       />
       <EmailMetaStrip
         from={email.from}

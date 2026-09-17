@@ -1,11 +1,11 @@
 import {
-  ArrowRight,
-  Check,
-  Cloud,
-  Home,
-  Mail,
-  type MarketingIcon,
-} from "@/components/marketing/icons"
+  ArrowRightIcon,
+  CheckIcon,
+  CloudIcon,
+  HouseIcon,
+  MailIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/motion"
 import { SectionHeader } from "@/components/marketing/section-header"
@@ -14,9 +14,9 @@ import { Button } from "@/components/ui/button"
 import { PRICING } from "@/content/landing"
 import { cn } from "@/lib/utils"
 
-const TIER_ICONS: Record<string, MarketingIcon> = {
-  home: Home,
-  cloud: Cloud,
+const TIER_ICONS: Record<string, LucideIcon> = {
+  home: HouseIcon,
+  cloud: CloudIcon,
 }
 
 /* Two tiers side by side in the shared .frame + .panel shell: self-hosting
@@ -86,9 +86,9 @@ export function Pricing() {
                     />
                   }
                 >
-                  {tier.id === "cloud" ? <Cloud /> : null}
+                  {tier.id === "cloud" ? <CloudIcon /> : null}
                   {tier.cta.label}
-                  {tier.id === "cloud" ? null : <ArrowRight />}
+                  {tier.id === "cloud" ? null : <ArrowRightIcon />}
                 </Button>
                 <ul className="mt-6 flex flex-col gap-2.5 border-t border-border pt-6">
                   {tier.includes.map((item) => {
@@ -99,7 +99,7 @@ export function Pricing() {
                         key={label}
                         className="flex items-start gap-2.5 text-small text-muted-foreground"
                       >
-                        <Check
+                        <CheckIcon
                           className="mt-0.5 size-4 shrink-0 text-primary"
                           strokeWidth={2.5}
                         />
@@ -126,7 +126,7 @@ export function Pricing() {
             href={`mailto:${PRICING.contact.email}`}
             className="inline-flex items-center gap-1 text-primary hover:text-primary-hover"
           >
-            <Mail className="size-3.5" strokeWidth={2} />
+            <MailIcon className="size-3.5" strokeWidth={2} />
             Email me
           </a>{" "}
           or message me on{" "}

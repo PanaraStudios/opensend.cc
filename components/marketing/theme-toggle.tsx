@@ -2,7 +2,7 @@
 
 import { useTheme } from "next-themes"
 
-import { Moon, Sun } from "@/components/marketing/icons"
+import { MoonIcon, SunIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import {
@@ -28,8 +28,8 @@ export function ThemeToggle() {
           />
         }
       >
-        <Sun className="dark:hidden" />
-        <Moon className="hidden dark:block" />
+        <SunIcon className="dark:hidden" />
+        <MoonIcon className="hidden dark:block" />
       </TooltipTrigger>
       <TooltipContent>
         Toggle theme

@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, X } from "@/components/marketing/icons"
+import { MenuIcon, XIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import Link from "next/link"
 import { useState } from "react"
@@ -71,7 +71,7 @@ export function SiteHeader() {
             aria-label={open ? "Close menu" : "Open menu"}
             onClick={() => setOpen((v) => !v)}
           >
-            {open ? <X /> : <Menu />}
+            {open ? <XIcon /> : <MenuIcon />}
           </Button>
         </div>
       </div>

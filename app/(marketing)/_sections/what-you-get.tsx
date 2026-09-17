@@ -1,19 +1,19 @@
 import {
-  Announcement,
-  Browser,
-  ChartColumn,
-  Code,
-  Dataflow,
-  FileCode,
-  Flask,
-  Globe,
-  KeyRound,
-  Send,
-  Server,
-  ShieldTick,
-  Users,
-  type MarketingIcon,
-} from "@/components/marketing/icons"
+  AppWindowIcon,
+  ChartColumnIcon,
+  CodeIcon,
+  FileCodeIcon,
+  FlaskConicalIcon,
+  GlobeIcon,
+  KeyRoundIcon,
+  MegaphoneIcon,
+  SendIcon,
+  ServerIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+  WebhookIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 import { Stagger, StaggerItem } from "@/components/marketing/motion"
 import {
@@ -25,20 +25,20 @@ import { WHAT_YOU_GET } from "@/content/landing"
 import type { Platform } from "@/content/landing"
 import { cn } from "@/lib/utils"
 
-const ICONS: Record<string, MarketingIcon> = {
-  globe: Globe,
-  "key-round": KeyRound,
-  send: Send,
-  server: Server,
-  browser: Browser,
-  code: Code,
-  "file-code": FileCode,
-  dataflow: Dataflow,
-  users: Users,
-  announcement: Announcement,
-  "chart-column": ChartColumn,
-  "shield-tick": ShieldTick,
-  flask: Flask,
+const ICONS: Record<string, LucideIcon> = {
+  globe: GlobeIcon,
+  "key-round": KeyRoundIcon,
+  send: SendIcon,
+  server: ServerIcon,
+  browser: AppWindowIcon,
+  code: CodeIcon,
+  "file-code": FileCodeIcon,
+  dataflow: WebhookIcon,
+  users: UsersIcon,
+  announcement: MegaphoneIcon,
+  "chart-column": ChartColumnIcon,
+  "shield-tick": ShieldCheckIcon,
+  flask: FlaskConicalIcon,
 }
 
 /* What's inside, as one continuous grid. Row one: the three pillars (send,

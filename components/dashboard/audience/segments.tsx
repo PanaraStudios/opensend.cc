@@ -35,7 +35,7 @@ import {
   AudienceDocsSheet,
   AudienceToolbar,
 } from "@/components/dashboard/audience/shared"
-import { Layers, Plus } from "@/components/dashboard/icons"
+import { LayersIcon, PlusIcon } from "lucide-react"
 import { segmentContactCount } from "@/lib/dashboard/data"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -122,7 +122,7 @@ export function SegmentsView() {
         <>
           <AudienceDocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Create segment
           </Button>
         </>
@@ -139,12 +139,12 @@ export function SegmentsView() {
       />
       {rows.length === 0 ? (
         <EmptyState
-          icon={Layers}
+          icon={LayersIcon}
           title="No segments"
           description="Create a segment, then add contacts to it from the contact page or in bulk."
         >
           <Button onClick={() => setOpen(true)}>
-            <Plus data-icon="inline-start" />
+            <PlusIcon data-icon="inline-start" />
             Create segment
           </Button>
         </EmptyState>
@@ -228,10 +228,10 @@ export function SegmentDetail() {
           backHref="/segments"
           backLabel="Segments"
           title="Segment not found"
-          icon={Layers}
+          icon={LayersIcon}
         />
         <EmptyState
-          icon={Layers}
+          icon={LayersIcon}
           title="Segment not found"
           description="It may have been deleted from this workspace."
         >
@@ -258,7 +258,7 @@ export function SegmentDetail() {
         backHref="/segments"
         backLabel="Segments"
         title={segment.name}
-        icon={Layers}
+        icon={LayersIcon}
         description={`${members.length} contact${members.length === 1 ? "" : "s"} · Created ${formatDate(segment.createdAt)}`}
         actions={
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
@@ -292,7 +292,7 @@ export function SegmentDetail() {
         </div>
         {candidates.length === 0 ? (
           <EmptyState
-            icon={Layers}
+            icon={LayersIcon}
             title="No matching contacts"
             description="Add contacts first, then assign them to this segment."
           >

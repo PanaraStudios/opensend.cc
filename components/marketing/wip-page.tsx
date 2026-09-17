@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import { ArrowRight, type MarketingIcon } from "@/components/marketing/icons"
+import { ArrowRightIcon, type LucideIcon } from "lucide-react"
 import { GitHubIcon } from "@/components/marketing/github-icon"
 import { Button } from "@/components/ui/button"
 import { GITHUB_URL } from "@/content/landing"
@@ -15,7 +15,7 @@ export function WipPage({
 }: {
   label: string
   description: string
-  icon?: MarketingIcon
+  icon?: LucideIcon
 }) {
   return (
     <section className="section px-6 py-28 max-md:py-20">
@@ -37,7 +37,7 @@ export function WipPage({
             render={<Link href="/" />}
           >
             Back home
-            <ArrowRight />
+            <ArrowRightIcon />
           </Button>
           <Button
             size="xl"

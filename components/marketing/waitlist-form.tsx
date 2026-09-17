@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react"
 
 import { joinWaitlist } from "@/app/actions/waitlist"
-import { Check, Cloud } from "@/components/marketing/icons"
+import { CheckIcon, CloudIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FieldToast, ValidatedForm } from "@/components/ui/inline-toast"
 import { Input } from "@/components/ui/input"
@@ -47,7 +47,7 @@ export function WaitlistForm() {
         role="status"
       >
         <span className="pill">
-          <Check strokeWidth={1.75} />
+          <CheckIcon strokeWidth={1.75} />
           {alreadyJoined ? WAITLIST.alreadyJoined : WAITLIST.successTitle}
         </span>
         <p className="text-caption text-faint-foreground">
@@ -95,7 +95,7 @@ export function WaitlistForm() {
           className="sm:w-auto"
           disabled={pending}
         >
-          {pending ? <Spinner /> : <Cloud />}
+          {pending ? <Spinner /> : <CloudIcon />}
           {pending ? WAITLIST.submitting : WAITLIST.submit}
         </Button>
       </div>
