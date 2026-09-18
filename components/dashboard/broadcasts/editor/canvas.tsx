@@ -40,7 +40,7 @@ export function EmailCanvas({
   onSendAtChange,
 }: {
   item: Broadcast
-  editor: Editor | null
+  editor: Editor
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
 }) {
@@ -51,12 +51,12 @@ export function EmailCanvas({
   )
 
   function insertBlock(entry: PaletteItem) {
-    if (editor) insertAtCaret(editor, entry)
+    insertAtCaret(editor, entry)
   }
 
   function insertVariable(variable: EmailVariable) {
     editor
-      ?.chain()
+      .chain()
       .focus()
       .insertVariable({ name: variable.name, fallback: variable.fallback })
       .run()
@@ -91,14 +91,12 @@ export function EmailCanvas({
         {/* The engine paints its editing surface as the page and its container
             node as the paper. Here the canvas and the sheet above already are
             those, so inside the sheet both are flattened. */}
-        {editor ? (
-          <DragHandle
-            editor={editor}
-            className="flex size-6 cursor-grab items-center justify-center rounded-md text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111827] active:cursor-grabbing"
-          >
-            <GripVerticalIcon className="size-4" />
-          </DragHandle>
-        ) : null}
+        <DragHandle
+          editor={editor}
+          className="flex size-6 cursor-grab items-center justify-center rounded-md text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111827] active:cursor-grabbing"
+        >
+          <GripVerticalIcon className="size-4" />
+        </DragHandle>
         <EditorContent
           editor={editor}
           onDragOver={(event) => {
@@ -109,7 +107,7 @@ export function EmailCanvas({
           onDrop={(event) => {
             const id = event.dataTransfer.getData(PALETTE_DRAG_TYPE)
             const entry = PALETTE_ITEMS.find((one) => one.id === id)
-            if (!editor || !entry) return
+            if (!entry) return
             event.preventDefault()
             const spot = editor.view.posAtCoords({
               left: event.clientX,
@@ -122,7 +120,7 @@ export function EmailCanvas({
           data-testid="email-content"
         />
         <SlashMenu />
-        {editor ? <BubbleMenus /> : null}
+        <BubbleMenus />
       </div>
     </div>
   )

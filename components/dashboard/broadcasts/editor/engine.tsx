@@ -41,6 +41,33 @@ const THEME = extendTheme("minimal", {
     paddingLeft: 32,
     borderRadius: 8,
   },
+  link: { color: "#2563eb", textDecoration: "underline" },
+  button: {
+    backgroundColor: "#000000",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 600,
+    textDecoration: "none",
+    paddingTop: 12,
+    paddingRight: 20,
+    paddingBottom: 12,
+    paddingLeft: 20,
+    borderRadius: 8,
+  },
+  codeBlock: {
+    backgroundColor: "#f5f5f5",
+    paddingTop: 12,
+    paddingRight: 14,
+    paddingBottom: 12,
+    paddingLeft: 14,
+    borderRadius: 6,
+  },
+  inlineCode: {
+    backgroundColor: "#e5e7eb",
+    color: "#1e293b",
+    borderRadius: 4,
+  },
+  image: { borderRadius: 8 },
 })
 
 const BASE_EXTENSIONS = [
@@ -73,14 +100,16 @@ export function useEmailEngine({
 }: {
   content: Content
   onUpdate: (editor: Editor) => void
-}): Editor | null {
+}): Editor {
   const image = useEditorImage({ uploadImage })
   const extensions = React.useMemo(() => [...BASE_EXTENSIONS, image], [image])
 
   return useEditor({
     extensions,
     content,
-    immediatelyRender: false,
+    /* The editor screen only ever renders in the browser, after the saved
+       state has loaded, so there is no server pass to stay in step with. */
+    immediatelyRender: true,
     onUpdate: ({ editor }) => onUpdate(editor),
   })
 }
@@ -91,7 +120,7 @@ export function EmailEngineProvider({
   editor,
   children,
 }: {
-  editor: Editor | null
+  editor: Editor
   children: React.ReactNode
 }) {
   const value = React.useMemo(() => ({ editor }), [editor])

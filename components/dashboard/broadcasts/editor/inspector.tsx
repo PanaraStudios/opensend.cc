@@ -402,10 +402,12 @@ function NodePanel({ context }: { context: InspectorNodeContext }) {
         ) : null}
         {section === "typography" ? (
           <>
-            {typeof alignment === "string" ? (
+            {/* Null means "not set yet"; undefined means the node has no
+                such attribute. */}
+            {alignment !== undefined ? (
               <InspectorRow label="Alignment">
                 <AlignField
-                  value={alignment as EmailAlign}
+                  value={(alignment ?? "left") as EmailAlign}
                   testIdPrefix="inspector-align"
                   onValueChange={(next) => context.setAttr("alignment", next)}
                 />
@@ -549,10 +551,13 @@ function isPaddingSide(prop: string): prop is keyof typeof PADDING_SIDES {
 /* A theme group's inputs as rows. The four padding sides arrive as separate
    inputs and are shown as one box, where the first of them sits. */
 function ThemeGroupRows({
+  group,
   inputs,
   setGlobalStyle,
   batchSetGlobalStyle,
 }: {
+  /** The element the group styles; an input may name its own instead. */
+  group: PanelGroup["classReference"]
   inputs: ThemeInputs
   setGlobalStyle: InspectorDocumentContext["setGlobalStyle"]
   batchSetGlobalStyle: InspectorDocumentContext["batchSetGlobalStyle"]
@@ -566,7 +571,7 @@ function ThemeGroupRows({
   }
 
   return inputs.map((input) => {
-    const target = input.classReference
+    const target = input.classReference ?? group
     if (!target) return null
     if (isPaddingSide(input.prop)) {
       if (input !== sides[0] || sides.length < 4) return null
@@ -604,22 +609,75 @@ function ThemeGroupRows({
   })
 }
 
+const TEXT_PROPS: readonly KnownCssProperties[] = [
+  "color",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "textDecoration",
+]
+
+const PADDING_PROPS: readonly KnownCssProperties[] = [
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+]
+
+const FRAME_PROPS: readonly KnownCssProperties[] = [
+  "borderRadius",
+  "borderWidth",
+  "borderColor",
+]
+
+/* What each element group offers in the theme panel. The engine only lists
+   the values a theme sets, and its minimal theme sets none, so the panel
+   would otherwise be a column of empty headings. */
+const THEME_GROUP_PROPS: Record<string, readonly KnownCssProperties[]> = {
+  typography: TEXT_PROPS,
+  h1: [...TEXT_PROPS, ...PADDING_PROPS],
+  h2: [...TEXT_PROPS, ...PADDING_PROPS],
+  h3: [...TEXT_PROPS, ...PADDING_PROPS],
+  paragraph: [...TEXT_PROPS, ...PADDING_PROPS],
+  list: TEXT_PROPS,
+  "nested-list": TEXT_PROPS,
+  "list-item": TEXT_PROPS,
+  link: TEXT_PROPS,
+  image: FRAME_PROPS,
+  button: ["backgroundColor", ...TEXT_PROPS, ...PADDING_PROPS, ...FRAME_PROPS],
+  "code-block": [
+    "backgroundColor",
+    ...TEXT_PROPS,
+    ...PADDING_PROPS,
+    ...FRAME_PROPS,
+  ],
+  "inline-code": ["backgroundColor", ...TEXT_PROPS, ...FRAME_PROPS],
+}
+
+/** A group's rows: the fixed set for an element group, else what the engine
+    lists (the page and the paper). Values come from the engine either way. */
+function themeInputs(
+  group: PanelGroup,
+  findStyleValue: InspectorDocumentContext["findStyleValue"]
+): ThemeInputs {
+  const props = THEME_GROUP_PROPS[group.id ?? ""]
+  const target = group.classReference
+  if (!props || !target) return group.inputs
+  return props.map((prop) => ({
+    ...SUPPORTED_CSS_PROPERTIES[prop],
+    prop,
+    classReference: target,
+    value: findStyleValue(target, prop),
+  }))
+}
+
 /* The page and the paper are the theme's first two groups; the rest are the
    per-element groups the theme panel lists. */
 const PAGE_GROUPS = new Set(["body", "container"])
 
 export function Inspector({ onCollapse }: { onCollapse: () => void }) {
   const [panel, setPanel] = React.useState<"page" | "theme" | "css">("page")
-  const { editor } = useCurrentEditor()
-
-  /* The engine mounts after the first paint, and its inspector hooks expect
-     it to be there. */
-  if (!editor) {
-    return (
-      <aside className="h-full w-72 shrink-0 border-l border-border bg-background" />
-    )
-  }
-
   return (
     <EngineInspector.Root asChild>
       <aside
@@ -666,7 +724,11 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
                           {index > 0 ? <Separator /> : null}
                           <InspectorSection title={getPanelTitle(group)}>
                             <ThemeGroupRows
-                              inputs={group.inputs}
+                              group={group.classReference}
+                              inputs={themeInputs(
+                                group,
+                                context.findStyleValue
+                              )}
                               setGlobalStyle={context.setGlobalStyle}
                               batchSetGlobalStyle={context.batchSetGlobalStyle}
                             />

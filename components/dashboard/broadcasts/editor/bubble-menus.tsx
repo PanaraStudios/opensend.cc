@@ -6,6 +6,10 @@ import {
   bubbleMenuTriggers,
   useBubbleMenuContext,
 } from "@react-email/editor/ui"
+import {
+  getSelectionAlignment,
+  setTextAlignment,
+} from "@react-email/editor/utils"
 import { PluginKey } from "@tiptap/pm/state"
 import { useEditorState, type Editor } from "@tiptap/react"
 import {
@@ -179,9 +183,7 @@ function TextToolbar() {
       marks: MARKS.filter((mark) => current.isActive(mark.name)).map(
         (mark) => mark.name
       ),
-      alignment: ALIGNMENTS.find((item) =>
-        current.isActive({ alignment: item.value })
-      )?.value,
+      alignment: getSelectionAlignment(current),
     }),
   })
 
@@ -219,9 +221,7 @@ function TextToolbar() {
           aria-label={label}
           pressed={active.alignment === value}
           data-testid={`bubble-align-${value}`}
-          onPressedChange={() =>
-            editor.chain().focus().setAlignment(value).run()
-          }
+          onPressedChange={() => setTextAlignment(editor, value)}
         >
           <Icon />
         </Toggle>

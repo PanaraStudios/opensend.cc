@@ -17,6 +17,7 @@ import {
   type SlashCommandItem,
 } from "@react-email/editor/ui"
 import type { ChainedCommands, Editor, Range } from "@tiptap/core"
+import { NodeSelection } from "@tiptap/pm/state"
 import {
   BracesIcon,
   CodeXmlIcon,
@@ -251,12 +252,40 @@ export function insertAtPosition(
   insertAtCaret(editor, item)
 }
 
-/** Inserts after the selection, for the rail, which has no "/" text to
-    replace. Collapsing first matters: a block that was just inserted is still
-    selected, and the next insert would otherwise overwrite it. */
+/* Blocks that wrap other blocks: a new line goes after the whole wrapper,
+   not inside it. */
+const WRAPPERS = new Set([
+  "listItem",
+  "bulletList",
+  "orderedList",
+  "blockquote",
+])
+
+/** Inserts as a new block, for the rail, which has no "/" line to replace.
+    The engine's text commands convert the block the caret is in, which is
+    right on the empty "/" line and wrong from the rail, so unless the caret
+    already sits on an empty line a fresh one is opened below first. That also
+    keeps a just-inserted, still-selected block from being overwritten. */
 export function insertAtCaret(editor: Editor, item: PaletteItem): void {
-  const { to } = editor.state.selection
-  editor.commands.setTextSelection(to)
+  const { $to } = editor.state.selection
+  const onEmptyLine =
+    editor.state.selection.empty &&
+    $to.parent.type.name === "paragraph" &&
+    $to.parent.content.size === 0
+  if (!onEmptyLine) {
+    let after = $to.pos
+    /* A selected block (an image, a spacer) ends where the selection does. */
+    if (!(editor.state.selection instanceof NodeSelection) && $to.depth > 0) {
+      let depth = $to.depth
+      while (depth > 1 && WRAPPERS.has($to.node(depth - 1).type.name)) depth--
+      after = $to.after(depth)
+    }
+    editor
+      .chain()
+      .insertContentAt(after, { type: "paragraph" })
+      .setTextSelection(after + 1)
+      .run()
+  }
   const at = editor.state.selection.to
   item.run(editor, { from: at, to: at })
 }

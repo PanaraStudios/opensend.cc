@@ -120,6 +120,8 @@ function WhenField({
     zone: string
   }>({ options: [], zone: "" })
 
+  const latestQuery = React.useRef(query)
+
   function refresh(text: string) {
     const now = Date.now()
     setMenu({ options: scheduleOptions(text, now), zone: timeZoneLabel(now) })
@@ -138,11 +140,15 @@ function WhenField({
       }
       onInputValueChange={(text) => {
         setQuery(text)
+        latestQuery.current = text
         refresh(text)
       }}
       onOpenChange={(open) => {
         /* Opening on a chosen time lists every option again, not just it. */
-        if (open) refresh(selected && query === whenText(selected) ? "" : query)
+        /* Read from the ref: pasted text opens the menu in the same tick it
+           changes the query, before the state has caught up. */
+        const text = latestQuery.current
+        if (open) refresh(selected && text === whenText(selected) ? "" : text)
       }}
       onValueChange={(option: ScheduleOption | null) => {
         setSelected(option)

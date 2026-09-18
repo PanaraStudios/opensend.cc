@@ -16,9 +16,8 @@ import type { Broadcast } from "@/lib/dashboard/types"
 export type SaveState = "idle" | "saving" | "saved"
 
 export type BroadcastEditorState = {
-  /** The engine. Null until it mounts, and idle while the broadcast is
-      hand-written HTML. */
-  editor: Editor | null
+  /** The engine. Idle while the broadcast is hand-written HTML. */
+  editor: Editor
   mode: BroadcastEditorMode
   /** The email as it would be sent right now. */
   html: string
@@ -105,9 +104,9 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
   const engine = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
-      undoable: current?.can().undo() ?? false,
-      redoable: current?.can().redo() ?? false,
-      empty: current?.isEmpty ?? true,
+      undoable: current.can().undo(),
+      redoable: current.can().redo(),
+      empty: current.isEmpty,
     }),
   })
   const visual = mode === "visual"
@@ -116,7 +115,7 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     editor,
     mode,
     html,
-    empty: visual ? (engine?.empty ?? true) : !html.trim(),
+    empty: visual ? engine.empty : !html.trim(),
     setHtml: (next) => {
       setHtmlState(next)
       schedule(async () => updateBroadcast(id, { html: next }))
@@ -126,16 +125,15 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
       schedule(async () => updateBroadcast(id, { content: undefined, html }))
     },
     editVisually: () => {
-      if (!editor) return
       setMode("visual")
       modeRef.current = "visual"
       /* Emits an update, which exports and saves the parsed document. */
       editor.commands.setContent(emailContentHtml(html), { emitUpdate: true })
     },
-    undo: () => editor?.chain().focus().undo().run(),
-    redo: () => editor?.chain().focus().redo().run(),
-    undoable: visual && (engine?.undoable ?? false),
-    redoable: visual && (engine?.redoable ?? false),
+    undo: () => editor.chain().focus().undo().run(),
+    redo: () => editor.chain().focus().redo().run(),
+    undoable: visual && engine.undoable,
+    redoable: visual && engine.redoable,
     save,
     flush,
   }
