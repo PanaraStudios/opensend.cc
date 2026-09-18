@@ -13,6 +13,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
@@ -397,7 +398,10 @@ export function EmailCanvas({
     setDragLabel("Block")
   }
 
-  function onDragOver(event: DragOverEvent) {
+  /* Runs on every pointer move as well as on `over` changes: dnd-kit only
+     fires `onDragOver` when the hovered block changes, which would freeze the
+     before/after side at whatever it was when the pointer entered the block. */
+  function onDragOver(event: DragOverEvent | DragMoveEvent) {
     const { active, over } = event
     if (!over) {
       setDropTarget(null)
@@ -410,7 +414,12 @@ export function EmailCanvas({
       activeRect.top + activeRect.height / 2 >
         over.rect.top + over.rect.height / 2
     )
-    setDropTarget(resolveTarget(doc, String(over.id), after))
+    const next = resolveTarget(doc, String(over.id), after)
+    setDropTarget((current) =>
+      current?.container === next?.container && current?.index === next?.index
+        ? current
+        : next
+    )
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -483,6 +492,7 @@ export function EmailCanvas({
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={onDragStart}
+      onDragMove={onDragOver}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
       onDragCancel={() => {
