@@ -299,6 +299,17 @@ export const RawHtml = EmailNode.create({
 
 /* ----------------------------------------------------------------- footer */
 
+/* A footer reads as small print unless the theme or the block says otherwise. */
+const FOOTER_STYLE = {
+  fontSize: 12,
+  lineHeight: "18px",
+  color: "#6b7280",
+  textAlign: "center",
+} as const
+
+const FOOTER_EDITOR_STYLE =
+  "font-size:12px;line-height:18px;color:#6b7280;text-align:center"
+
 /** The closing note with the opt-out link. Its name matches the theme's
     `footer` group, which is where its look comes from. */
 export const Footer = EmailNode.create({
@@ -312,10 +323,15 @@ export const Footer = EmailNode.create({
   renderHTML({ HTMLAttributes }) {
     return [
       "div",
-      mergeAttributes(HTMLAttributes, {
-        "data-footer": "",
-        class: "node-footer",
-      }),
+      /* Defaults first, so a style set on the block wins over them. */
+      mergeAttributes(
+        {
+          "data-footer": "",
+          class: "node-footer",
+          style: FOOTER_EDITOR_STYLE,
+        },
+        HTMLAttributes
+      ),
       0,
     ]
   },
@@ -361,7 +377,7 @@ export const Footer = EmailNode.create({
   renderToReactEmail({ children, style }) {
     return (
       <Section>
-        <Text style={style}>{children}</Text>
+        <Text style={{ ...FOOTER_STYLE, ...style }}>{children}</Text>
       </Section>
     )
   },

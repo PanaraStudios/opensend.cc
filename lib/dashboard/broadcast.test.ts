@@ -5,9 +5,13 @@ import {
   audienceLabel,
   BROADCAST_STATUS_ORDER,
   broadcastActions,
+  broadcastEditorMode,
   broadcastEventRows,
+  broadcastFrom,
+  broadcastRecipients,
   broadcastUpdatedAt,
   emptyBroadcastStats,
+  fromAddresses,
   normalizeBroadcastStats,
   canTransitionBroadcast,
   transitionBroadcast,
@@ -201,5 +205,72 @@ describe("normalizeBroadcastStats", () => {
       ...emptyBroadcastStats(),
       recipients: 3,
     })
+  })
+})
+
+describe("broadcastEditorMode", () => {
+  it("opens an editor document visually", () => {
+    assert.equal(
+      broadcastEditorMode({ content: { type: "doc" }, html: "<p>x</p>" }),
+      "visual"
+    )
+  })
+
+  it("treats markup with no document behind it as hand-written", () => {
+    assert.equal(broadcastEditorMode({ html: "<p>Hello</p>" }), "html")
+  })
+
+  it("opens a blank broadcast visually", () => {
+    assert.equal(broadcastEditorMode({ html: "  " }), "visual")
+  })
+})
+
+describe("fromAddresses", () => {
+  const domains = [
+    { name: "a.dev", status: "verified" as const },
+    { name: "b.dev", status: "pending" as const },
+    { name: "c.dev", status: "verified" as const },
+  ]
+
+  it("offers one address per verified domain", () => {
+    assert.deepEqual(fromAddresses(domains), [
+      "Opensend <hello@a.dev>",
+      "Opensend <hello@c.dev>",
+    ])
+  })
+
+  it("falls back to the shared address with no verified domain", () => {
+    assert.deepEqual(fromAddresses([]), ["Opensend <hello@opensend.cc>"])
+  })
+
+  it("keeps a chosen sender only while its domain is verified", () => {
+    assert.equal(
+      broadcastFrom({ from: "Opensend <hello@c.dev>" }, domains),
+      "Opensend <hello@c.dev>"
+    )
+    assert.equal(
+      broadcastFrom({ from: "Opensend <hello@b.dev>" }, domains),
+      "Opensend <hello@a.dev>"
+    )
+    assert.equal(broadcastFrom({}, domains), "Opensend <hello@a.dev>")
+  })
+})
+
+describe("broadcastRecipients", () => {
+  const contacts = SEED_STATE.contacts
+
+  it("reaches everyone subscribed when there is no segment", () => {
+    const all = broadcastRecipients(contacts, { segmentId: null })
+    assert.equal(
+      all.length,
+      contacts.filter((contact) => !contact.unsubscribed).length
+    )
+  })
+
+  it("narrows to the segment and still skips the unsubscribed", () => {
+    const segmentId = SEED_STATE.segments[0]!.id
+    const some = broadcastRecipients(contacts, { segmentId })
+    assert.ok(some.every((contact) => contact.segmentIds.includes(segmentId)))
+    assert.ok(some.every((contact) => !contact.unsubscribed))
   })
 })

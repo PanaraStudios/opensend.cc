@@ -33,6 +33,7 @@ const ROW_CLASS =
 
 function InsertRow({
   dragId,
+  onDragEnd,
   label,
   hint,
   testId,
@@ -41,6 +42,7 @@ function InsertRow({
 }: {
   /** Set on rows that can also be dragged to a spot on the canvas. */
   dragId?: string
+  onDragEnd?: () => void
   label: string
   hint?: string
   testId: string
@@ -59,6 +61,7 @@ function InsertRow({
         event.dataTransfer.setData(PALETTE_DRAG_TYPE, dragId)
         event.dataTransfer.effectAllowed = "copy"
       }}
+      onDragEnd={onDragEnd}
       onClick={onClick}
     >
       {children}
@@ -108,6 +111,7 @@ function BlockMenu({
             <InsertRow
               key={item.id}
               dragId={item.id}
+              onDragEnd={() => onOpenChange(false)}
               label={item.label}
               hint={item.description}
               testId={`palette-${item.id}`}

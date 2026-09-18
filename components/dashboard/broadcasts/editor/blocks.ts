@@ -27,12 +27,15 @@ import {
   Heading2Icon,
   Heading3Icon,
   ImageIcon,
+  LayoutTemplateIcon,
   ListIcon,
   ListOrderedIcon,
   MailMinusIcon,
   MinusIcon,
   MousePointerClickIcon,
   MoveVerticalIcon,
+  PanelBottomIcon,
+  PanelTopIcon,
   Share2Icon,
   SquareIcon,
   TextQuoteIcon,
@@ -41,6 +44,7 @@ import {
 } from "lucide-react"
 
 import { YouTubeIcon } from "@/components/brand-icons"
+import { PATTERNS } from "@/components/dashboard/broadcasts/editor/patterns"
 
 /* One catalogue of everything that can be inserted. The insert rail and the
    "/" menu both read it, and each entry runs the engine's own command, so the
@@ -59,7 +63,7 @@ export type PaletteItem = {
 }
 
 export type PaletteMenu = {
-  id: "text" | "media" | "components" | "variables"
+  id: "text" | "media" | "components" | "sections" | "variables"
   label: string
   icon: PaletteIcon
   items: readonly PaletteItem[]
@@ -176,6 +180,42 @@ const COMPONENT_ITEMS: PaletteItem[] = [
   ),
 ]
 
+function pattern(
+  id: keyof typeof PATTERNS,
+  label: string,
+  description: string,
+  icon: PaletteIcon
+): PaletteItem {
+  return ours(
+    {
+      id: `section-${id}`,
+      label,
+      description,
+      icon,
+      keywords: [id, "section"],
+    },
+    (chain) => chain.insertContent(PATTERNS[id])
+  )
+}
+
+const SECTION_ITEMS: PaletteItem[] = [
+  pattern("header", "Header", "Brand line with a row of links", PanelTopIcon),
+  pattern("hero", "Hero", "Image, headline, text and a button", ImageIcon),
+  pattern("features", "Features", "Two benefits side by side", Columns2Icon),
+  pattern(
+    "call-to-action",
+    "Call to action",
+    "A tinted panel with one button",
+    MousePointerClickIcon
+  ),
+  pattern(
+    "sign-off",
+    "Sign-off",
+    "Divider, social links and the unsubscribe footer",
+    PanelBottomIcon
+  ),
+]
+
 export const PALETTE_MENUS: readonly PaletteMenu[] = [
   { id: "text", label: "Text", icon: TypeIcon, items: TEXT_ITEMS },
   { id: "media", label: "Media", icon: ImageIcon, items: MEDIA_ITEMS },
@@ -184,6 +224,12 @@ export const PALETTE_MENUS: readonly PaletteMenu[] = [
     label: "Components",
     icon: Columns2Icon,
     items: COMPONENT_ITEMS,
+  },
+  {
+    id: "sections",
+    label: "Sections",
+    icon: LayoutTemplateIcon,
+    items: SECTION_ITEMS,
   },
   { id: "variables", label: "Variables", icon: VariableIcon, items: [] },
 ]

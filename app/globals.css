@@ -886,3 +886,38 @@
   flex: 1 1 0%;
   min-height: 0;
 }
+/* The email editor's document. These are the few layout rules the engine
+   expects from a stylesheet; its look comes from the email theme, and its
+   menus are ours. Scoped to the paper so nothing else is touched. */
+#email-paper .tiptap [alignment="left"],
+#email-paper .tiptap .align-left {
+  text-align: left;
+}
+#email-paper .tiptap [alignment="center"],
+#email-paper .tiptap .align-center {
+  text-align: center;
+}
+#email-paper .tiptap [alignment="right"],
+#email-paper .tiptap .align-right {
+  text-align: right;
+}
+#email-paper .tiptap .node-columns {
+  display: flex;
+  width: 100%;
+}
+#email-paper .tiptap .node-column {
+  flex: 1;
+  min-width: 0;
+}
+#email-paper .tiptap .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #9ca3af;
+  pointer-events: none;
+}
+#email-paper .tiptap .ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
