@@ -12,6 +12,7 @@ import {
   DownloadIcon,
   MoreHorizontalIcon,
   SearchIcon,
+  XIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -54,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -580,6 +582,43 @@ export function MoreMenu({ children }: { children: React.ReactNode }) {
         {children}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** Floating bulk-action bar, pinned to the bottom of the content column while rows are selected. */
+export function SelectionBar({
+  count,
+  onClear,
+  children,
+}: {
+  count: number
+  onClear: () => void
+  children: React.ReactNode
+}) {
+  if (count === 0) return null
+  return (
+    <div className="pointer-events-none sticky bottom-6 z-40 order-last mt-auto flex h-0 items-end justify-center">
+      <div
+        role="toolbar"
+        aria-label="Bulk actions"
+        className="pointer-events-auto flex animate-in items-center gap-1 rounded-xl border border-border bg-surface p-1.5 shadow-lifted duration-200 fade-in slide-in-from-bottom-2"
+      >
+        <p className="px-2.5 text-sm font-medium tabular-nums">
+          {count} selected
+        </p>
+        <Separator orientation="vertical" className="h-5 self-center" />
+        {children}
+        <Separator orientation="vertical" className="h-5 self-center" />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Clear selection"
+          onClick={onClear}
+        >
+          <XIcon />
+        </Button>
+      </div>
+    </div>
   )
 }
 

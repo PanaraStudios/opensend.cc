@@ -8,6 +8,7 @@ import {
   BookOpenIcon,
   HouseIcon,
   LogOutIcon,
+  MonitorIcon,
   MoonIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
@@ -66,18 +67,13 @@ import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
 const APPEARANCE_OPTIONS = [
   { theme: "light", label: "Light", Icon: SunIcon },
   { theme: "dark", label: "Dark", Icon: MoonIcon },
+  { theme: "system", label: "System", Icon: MonitorIcon },
 ] as const
 
 /* Menu radio items so arrow keys, Enter, and assistive tech all reach them.
    The menu stays open so the change is visible before it closes. */
 function AppearanceItems() {
-  const { resolvedTheme, setTheme } = useTheme()
-  const mounted = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  )
-  const theme = mounted ? resolvedTheme : undefined
+  const { theme, setTheme } = useTheme()
 
   return (
     <DropdownMenuGroup>
@@ -225,12 +221,17 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Search" onClick={onSearch}>
+              <SidebarMenuItem className="mb-1">
+                <SidebarMenuButton
+                  variant="outline"
+                  tooltip="Search"
+                  onClick={onSearch}
+                >
                   <SearchIcon />
                   <span>Search</span>
-                  <Kbd className="ml-auto group-data-[collapsible=icon]:hidden">
-                    ⌘K
+                  <Kbd className="ml-auto px-1.5 group-data-[collapsible=icon]:hidden">
+                    <span>⌘</span>
+                    <span>K</span>
                   </Kbd>
                 </SidebarMenuButton>
               </SidebarMenuItem>

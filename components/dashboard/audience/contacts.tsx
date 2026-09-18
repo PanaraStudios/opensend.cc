@@ -43,6 +43,7 @@ import {
   MoreMenu,
   OptionSelect,
   ResourceTable,
+  SelectionBar,
   Th,
 } from "@/components/dashboard/primitives"
 import {
@@ -412,11 +413,13 @@ function BulkEditDialog({
   open,
   onOpenChange,
   selectedIds,
+  onApplied,
   mode,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedIds: string[]
+  onApplied: () => void
   mode: "segments" | "topics"
 }) {
   const { state, addContactsToSegments, subscribeContactsToTopics } =
@@ -441,6 +444,7 @@ function BulkEditDialog({
     }
     setPicked([])
     onOpenChange(false)
+    onApplied()
   }
 
   const options =
@@ -515,7 +519,7 @@ export function ContactsView() {
   const [manualOpen, setManualOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
-  const [selected, setSelected] = React.useState<string[]>([])
+  const [selection, setSelected] = React.useState<string[]>([])
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const [bulkDelete, setBulkDelete] = React.useState(false)
   const [bulkMode, setBulkMode] = React.useState<"segments" | "topics" | null>(
@@ -532,6 +536,9 @@ export function ContactsView() {
   })
 
   const visibleIds = rows.map((contact) => contact.id)
+  /* Bulk actions only ever touch rows the current filters still show. */
+  const visibleSet = new Set(visibleIds)
+  const selected = selection.filter((id) => visibleSet.has(id))
   const selectedSet = new Set(selected)
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
@@ -573,71 +580,61 @@ export function ContactsView() {
         </>
       }
     >
-      {selected.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium">{selected.length} selected</p>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="outline" className="h-8" />}
-            >
-              Edit
-              <ChevronDownIcon data-icon="inline-end" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => setBulkMode("segments")}>
-                  <LayersIcon />
-                  Add to segments
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setBulkMode("topics")}>
-                  <TagIcon />
-                  Subscribe to topics
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="outline"
-            className="h-8"
-            onClick={() => setBulkDelete(true)}
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search contacts…"
+        range={range}
+        onRangeChange={setRange}
+        filters={[
+          {
+            value: subscribed,
+            onChange: setSubscribed,
+            items: SUBSCRIBED_ITEMS,
+            "aria-label": "Filter by subscription",
+          },
+          {
+            value: segment,
+            onChange: setSegment,
+            items: segmentItems(state),
+            "aria-label": "Filter by segment",
+          },
+        ]}
+        onExport={() => {
+          addExport("Contacts", rows.length)
+          toast.add({ type: "success", title: "Export started" })
+        }}
+      />
+      <SelectionBar count={selected.length} onClear={() => setSelected([])}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" />}
           >
-            Delete
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-8"
-            onClick={() => setSelected([])}
-          >
-            Clear
-          </Button>
-        </div>
-      ) : (
-        <ListToolbar
-          query={query}
-          onQueryChange={setQuery}
-          placeholder="Search contacts…"
-          range={range}
-          onRangeChange={setRange}
-          filters={[
-            {
-              value: subscribed,
-              onChange: setSubscribed,
-              items: SUBSCRIBED_ITEMS,
-              "aria-label": "Filter by subscription",
-            },
-            {
-              value: segment,
-              onChange: setSegment,
-              items: segmentItems(state),
-              "aria-label": "Filter by segment",
-            },
-          ]}
-          onExport={() => {
-            addExport("Contacts", rows.length)
-            toast.add({ type: "success", title: "Export started" })
-          }}
-        />
-      )}
+            Edit
+            <ChevronDownIcon data-icon="inline-end" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="min-w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => setBulkMode("segments")}>
+                <LayersIcon />
+                Add to segments
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setBulkMode("topics")}>
+                <TagIcon />
+                Subscribe to topics
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="ghost"
+          className="text-destructive hover:text-destructive"
+          onClick={() => setBulkDelete(true)}
+        >
+          <Trash2Icon data-icon="inline-start" />
+          Delete
+        </Button>
+      </SelectionBar>
       {rows.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -733,6 +730,7 @@ export function ContactsView() {
           if (!next) setBulkMode(null)
         }}
         selectedIds={selected}
+        onApplied={() => setSelected([])}
         mode={bulkMode ?? "segments"}
       />
       <ConfirmDialog

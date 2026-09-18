@@ -246,10 +246,10 @@
   --sidebar-foreground: var(--fg);
   --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: var(--brand-fg);
-  /* hover/open tint and the raised active item; both track the glass system */
+  /* hover/open tint, and a flat, slightly stronger fill for the active item */
   --sidebar-accent: var(--glass-fill);
   --sidebar-accent-foreground: var(--fg);
-  --sidebar-active: var(--surface);
+  --sidebar-active: color-mix(in oklab, var(--fg) 9%, transparent);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--brand);
 }
