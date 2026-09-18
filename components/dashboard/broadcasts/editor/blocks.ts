@@ -16,8 +16,9 @@ import {
   TWO_COLUMNS,
   type SlashCommandItem,
 } from "@react-email/editor/ui"
-import type { Editor, Range } from "@tiptap/core"
+import type { ChainedCommands, Editor, Range } from "@tiptap/core"
 import {
+  BracesIcon,
   CodeXmlIcon,
   Columns2Icon,
   Columns3Icon,
@@ -28,13 +29,18 @@ import {
   ImageIcon,
   ListIcon,
   ListOrderedIcon,
+  MailMinusIcon,
   MinusIcon,
   MousePointerClickIcon,
+  MoveVerticalIcon,
+  Share2Icon,
   SquareIcon,
   TextQuoteIcon,
   TypeIcon,
   VariableIcon,
 } from "lucide-react"
+
+import { YouTubeIcon } from "@/components/brand-icons"
 
 /* One catalogue of everything that can be inserted. The insert rail and the
    "/" menu both read it, and each entry runs the engine's own command, so the
@@ -74,6 +80,18 @@ function fromEngine(
   }
 }
 
+/* An entry of our own: replaces the "/" text, then runs one more command. */
+function ours(
+  entry: Omit<PaletteItem, "run">,
+  insert: (chain: ChainedCommands) => ChainedCommands
+): PaletteItem {
+  return {
+    ...entry,
+    run: (editor, range) =>
+      insert(editor.chain().focus().deleteRange(range)).run(),
+  }
+}
+
 const TEXT_ITEMS: PaletteItem[] = [
   fromEngine("text", TypeIcon, TEXT),
   fromEngine("title", Heading1Icon, H1),
@@ -86,21 +104,27 @@ const TEXT_ITEMS: PaletteItem[] = [
 ]
 
 const MEDIA_ITEMS: PaletteItem[] = [
-  {
-    id: "image",
-    label: "Image",
-    description: "Picture from a URL or an upload",
-    icon: ImageIcon,
-    keywords: ["image", "picture", "photo", "img"],
-    run: (editor, range) => {
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .setImage({ src: "https://placehold.co/1072x536/png", alt: "" })
-        .run()
+  ours(
+    {
+      id: "image",
+      label: "Image",
+      description: "Picture from a URL or an upload",
+      icon: ImageIcon,
+      keywords: ["image", "picture", "photo", "img"],
     },
-  },
+    (chain) =>
+      chain.setImage({ src: "https://placehold.co/1072x536/png", alt: "" })
+  ),
+  ours(
+    {
+      id: "youtube",
+      label: "YouTube",
+      description: "Video thumbnail that links out",
+      icon: YouTubeIcon,
+      keywords: ["youtube", "video"],
+    },
+    (chain) => chain.insertYoutube()
+  ),
 ]
 
 const COMPONENT_ITEMS: PaletteItem[] = [
@@ -110,6 +134,46 @@ const COMPONENT_ITEMS: PaletteItem[] = [
   fromEngine("columns-2", Columns2Icon, TWO_COLUMNS),
   fromEngine("columns-3", Columns3Icon, THREE_COLUMNS),
   fromEngine("columns-4", Columns4Icon, FOUR_COLUMNS),
+  ours(
+    {
+      id: "spacer",
+      label: "Spacer",
+      description: "Empty vertical space",
+      icon: MoveVerticalIcon,
+      keywords: ["spacer", "space", "gap"],
+    },
+    (chain) => chain.insertSpacer()
+  ),
+  ours(
+    {
+      id: "social",
+      label: "Social links",
+      description: "A centred row of links",
+      icon: Share2Icon,
+      keywords: ["social", "links", "twitter", "linkedin", "github"],
+    },
+    (chain) => chain.insertSocialLinks()
+  ),
+  ours(
+    {
+      id: "footer",
+      label: "Unsubscribe footer",
+      description: "Closing note with the opt-out link",
+      icon: MailMinusIcon,
+      keywords: ["footer", "unsubscribe", "opt out"],
+    },
+    (chain) => chain.insertFooter()
+  ),
+  ours(
+    {
+      id: "html",
+      label: "HTML",
+      description: "Hand-written markup, sent as written",
+      icon: BracesIcon,
+      keywords: ["html", "code", "raw", "embed"],
+    },
+    (chain) => chain.insertHtml()
+  ),
 ]
 
 export const PALETTE_MENUS: readonly PaletteMenu[] = [
@@ -128,8 +192,12 @@ export const PALETTE_ITEMS: readonly PaletteItem[] = PALETTE_MENUS.flatMap(
   (menu) => menu.items
 )
 
-/** Inserts at the caret, for the rail, which has no "/" text to replace. */
+/** Inserts after the selection, for the rail, which has no "/" text to
+    replace. Collapsing first matters: a block that was just inserted is still
+    selected, and the next insert would otherwise overwrite it. */
 export function insertAtCaret(editor: Editor, item: PaletteItem): void {
-  const { from, to } = editor.state.selection
-  item.run(editor, { from, to })
+  const { to } = editor.state.selection
+  editor.commands.setTextSelection(to)
+  const at = editor.state.selection.to
+  item.run(editor, { from: at, to: at })
 }

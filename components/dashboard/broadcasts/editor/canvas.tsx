@@ -12,10 +12,7 @@ import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-men
 import { EmailHeaderForm } from "@/components/dashboard/broadcasts/editor/header-form"
 import { InsertRail } from "@/components/dashboard/broadcasts/editor/palette"
 import { SlashMenu } from "@/components/dashboard/broadcasts/editor/slash-menu"
-import {
-  formatVariable,
-  type EmailVariable,
-} from "@/lib/dashboard/email-variables"
+import type { EmailVariable } from "@/lib/dashboard/email-variables"
 import type { Broadcast } from "@/lib/dashboard/types"
 
 /* The page, the paper on it, and the engine's document inside the paper. The
@@ -56,7 +53,7 @@ export function EmailCanvas({
     editor
       ?.chain()
       .focus()
-      .insertContent(formatVariable(variable.name, variable.fallback))
+      .insertVariable({ name: variable.name, fallback: variable.fallback })
       .run()
   }
 

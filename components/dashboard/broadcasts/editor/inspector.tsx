@@ -261,6 +261,13 @@ function nodeSections(nodeType: string): NodeSection[] {
       return ["background", "padding", "border"]
     case "codeBlock":
       return ["padding", "border"]
+    case "youtube":
+    case "spacer":
+    case "html":
+    case "variable":
+      return ["attributes"]
+    case "footer":
+      return ["typography", "padding", "background"]
     default:
       return ["typography", "padding", "background", "border"]
   }
@@ -317,23 +324,48 @@ function AttrField({
   )
 }
 
+/* The values a node keeps as attributes rather than styles. */
+const NODE_ATTRIBUTES: Record<
+  string,
+  { name: string; label: string; type?: StyleInput["type"] }[]
+> = {
+  image: [
+    { name: "src", label: "Image URL" },
+    { name: "alt", label: "Alt text", type: "textarea" },
+  ],
+  youtube: [
+    { name: "video", label: "Video URL" },
+    { name: "alt", label: "Alt text" },
+    { name: "width", label: "Width", type: "number" },
+  ],
+  spacer: [{ name: "height", label: "Height", type: "number" }],
+  html: [{ name: "code", label: "HTML", type: "textarea" }],
+  variable: [
+    { name: "name", label: "Variable" },
+    { name: "fallback", label: "Fallback" },
+  ],
+}
+
+/* Names for our own nodes; the engine names its own. */
+const NODE_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  spacer: "Spacer",
+  html: "HTML",
+  variable: "Variable",
+  footer: "Footer",
+}
+
 function NodePanel({ context }: { context: InspectorNodeContext }) {
   const alignment = context.getAttr("alignment")
   return nodeSections(context.nodeType).map((section, index) => (
     <React.Fragment key={section}>
       {index > 0 ? <Separator /> : null}
       <InspectorSection>
-        {section === "attributes" ? (
-          <>
-            <AttrField context={context} name="src" label="Image URL" />
-            <AttrField
-              context={context}
-              name="alt"
-              label="Alt text"
-              type="textarea"
-            />
-          </>
-        ) : null}
+        {section === "attributes"
+          ? (NODE_ATTRIBUTES[context.nodeType] ?? []).map((field) => (
+              <AttrField key={field.name} context={context} {...field} />
+            ))
+          : null}
         {section === "link" ? (
           <AttrField context={context} name="href" label="URL" />
         ) : null}
@@ -663,7 +695,10 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
               {(context) => (
                 <>
                   <PanelHeader
-                    title={getNodeMeta(context.nodeType).label}
+                    title={
+                      NODE_LABELS[context.nodeType] ??
+                      getNodeMeta(context.nodeType).label
+                    }
                     icon={SquareIcon}
                     closeLabel="Collapse panel"
                     onClose={onCollapse}

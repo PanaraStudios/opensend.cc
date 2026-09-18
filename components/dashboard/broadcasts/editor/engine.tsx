@@ -15,6 +15,8 @@ import {
   type Editor,
 } from "@tiptap/react"
 
+import { CUSTOM_NODES } from "@/components/dashboard/broadcasts/editor/nodes"
+
 /* The document engine is React Email's editor: its nodes, its theming and its
    export. Everything drawn around it — rail, inspector, menus — is ours, so
    none of its stylesheets or prebuilt menus are imported. */
@@ -51,6 +53,7 @@ const BASE_EXTENSIONS = [
         : "Press '/' for commands",
   }),
   EmailTheming.configure({ theme: THEME }),
+  ...CUSTOM_NODES,
 ]
 
 /* There is no file storage behind the dashboard yet, so an uploaded picture
