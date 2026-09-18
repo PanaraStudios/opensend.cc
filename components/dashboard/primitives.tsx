@@ -1229,38 +1229,30 @@ type Suggestion = { value: string; create: boolean }
     is typed, and one that is not among them can be added under `createLabel`.
     Nothing changes until a row is picked. */
 export function SuggestInput({
-  id,
   value,
   onChange,
   options,
   placeholder,
   createLabel = "Create",
-  disabled,
   className,
   "aria-label": ariaLabel,
 }: {
-  id?: string
   value: string
   onChange: (value: string) => void
   options: readonly string[]
   placeholder?: string
   createLabel?: string
-  disabled?: boolean
   className?: string
   "aria-label"?: string
 }) {
   const [query, setQuery] = React.useState(value)
-  /* What the field falls back to when it closes without a pick. The pick
-     lands here first: the stored value arrives a render later. */
-  const settled = React.useRef(value)
+  /* The text follows the stored value whenever that changes: after a pick,
+     and when it is set from elsewhere. */
   const [seen, setSeen] = React.useState(value)
   if (seen !== value) {
     setSeen(value)
     setQuery(value)
   }
-  React.useEffect(() => {
-    settled.current = value
-  }, [value])
 
   const items = React.useMemo<Suggestion[]>(() => {
     const text = query.trim()
@@ -1279,27 +1271,22 @@ export function SuggestInput({
       items={items}
       filter={null}
       autoHighlight
-      disabled={disabled}
       value={null}
       inputValue={query}
       itemToStringLabel={(item: Suggestion) => item.value}
       onInputValueChange={setQuery}
       onOpenChange={(open) => {
-        if (!open) setQuery(settled.current)
+        /* Closed without a pick, what was typed is dropped. */
+        if (!open) setQuery(value)
       }}
       onValueChange={(item: Suggestion | null) => {
-        if (!item) return
-        settled.current = item.value
-        setQuery(item.value)
-        onChange(item.value)
+        if (item) onChange(item.value)
       }}
     >
       <ComboboxInput
-        id={id}
         className={cn("w-full", className)}
         aria-label={ariaLabel}
         placeholder={placeholder}
-        disabled={disabled}
         showTrigger={false}
       />
       <ComboboxContent>

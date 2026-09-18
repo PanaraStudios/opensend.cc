@@ -54,7 +54,6 @@ const send = (key: string, templateId = "tpl_live"): AutomationStep => ({
   key,
   type: "send_email",
   templateId,
-  subject: "",
   from: "",
   replyTo: "",
   variables: {},
@@ -85,10 +84,10 @@ describe("the workflow tree", () => {
   it("finds and replaces a nested step", () => {
     const next = replaceStep(steps, {
       ...send("no"),
-      subject: "Hi",
+      from: "hi@example.com",
     } as AutomationStep)
     const found = findStep(next, "no")
-    assert.equal(found?.type === "send_email" && found.subject, "Hi")
+    assert.equal(found?.type === "send_email" && found.from, "hi@example.com")
     assert.equal(findStep(steps, "no")?.type, "send_email")
   })
 
@@ -343,11 +342,11 @@ describe("runs", () => {
       failed: 0,
       cancelled: 0,
     })
-    assert.deepEqual(stepMetrics([waiting, done], "a"), {
+    assert.deepEqual(stepMetrics([waiting, done]).get("a"), {
       executions: 1,
       averageMs: 0,
     })
-    assert.deepEqual(stepMetrics([waiting], "wait"), {
+    assert.deepEqual(stepMetrics([waiting]).get("wait"), {
       executions: 1,
       averageMs: null,
     })
@@ -398,6 +397,5 @@ describe("migration", () => {
       createdAt: 5,
     })
     assert.deepEqual(next.steps, [])
-    assert.equal(next.updatedAt, 5)
   })
 })

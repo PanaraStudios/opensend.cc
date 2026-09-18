@@ -1,5 +1,6 @@
-import { rate } from "./format"
-import { uniqueSlug } from "./slug"
+import { RESERVED_PROPERTY_KEYS } from "./contacts"
+import { pluralize, rate } from "./format"
+import { uniqueName } from "./slug"
 import type {
   Automation,
   AutomationEvent,
@@ -65,7 +66,7 @@ export function operatorTakesValue(operator: AutomationRuleOperator): boolean {
 
 /* --------------------------------------------------------------- the tree */
 
-export type StepBranch = { id: string; label: string; steps: AutomationStep[] }
+type StepBranch = { id: string; label: string; steps: AutomationStep[] }
 
 /** The paths out of a step that branches, in the order they are drawn. */
 export function stepBranches(step: AutomationStep): StepBranch[] {
@@ -191,12 +192,11 @@ export function newStep(
   type: AutomationStepType,
   steps: readonly AutomationStep[]
 ): AutomationStep {
-  /* Keys are snake case, as the API spells them; slugs are dashed. */
-  const key = uniqueSlug(
+  const key = uniqueName(
     type,
-    flattenSteps(steps).map((step) => step.key.replace(/_/g, "-")),
-    type
-  ).replace(/-/g, "_")
+    flattenSteps(steps).map((step) => step.key),
+    "_"
+  )
   switch (type) {
     case "condition":
       return {
@@ -223,7 +223,6 @@ export function newStep(
         key,
         type,
         templateId: "",
-        subject: "",
         from: "",
         replyTo: "",
         variables: {},
@@ -250,7 +249,6 @@ export function duplicatedAutomation(
     name: `${source.name} copy`,
     status: "disabled",
     createdAt: now,
-    updatedAt: now,
   }
 }
 
@@ -282,21 +280,13 @@ const UNIT_NAMES: Record<string, keyof typeof UNIT_MS> = {
   weeks: "week",
 }
 
-export const MAX_DURATION_MS = 30 * UNIT_MS.day
+const MAX_DURATION_MS = 30 * UNIT_MS.day
 
 /** "10 minutes", "2h", "1h 30m", "1 week" as milliseconds. */
 export function parseDuration(text: string): number | null {
-  const parts = [
-    ...text
-      .trim()
-      .toLowerCase()
-      .matchAll(/(\d+)\s*([a-z]+)/g),
-  ]
-  const rest = text
-    .toLowerCase()
-    .replace(/(\d+)\s*([a-z]+)/g, "")
-    .trim()
-  if (parts.length === 0 || rest) return null
+  const clean = text.trim().toLowerCase()
+  if (!/^(\d+\s*[a-z]+\s*)+$/.test(clean)) return null
+  const parts = clean.matchAll(/(\d+)\s*([a-z]+)/g)
   let total = 0
   for (const [, amount, unit] of parts) {
     const name = UNIT_NAMES[unit!]
@@ -315,7 +305,7 @@ export function formatDuration(text: string): string | null {
       (name) => total % UNIT_MS[name] === 0
     ) ?? "minute"
   const count = Math.round(total / UNIT_MS[unit])
-  return `${count} ${unit}${count === 1 ? "" : "s"}`
+  return pluralize(count, unit)
 }
 
 export function durationError(text: string): string | null {
@@ -361,10 +351,22 @@ export type StepContext = {
   segments: readonly Pick<Segment, "id" | "name">[]
 }
 
+/** A rule's field, apart: `contact.email` is `email` of the contact. */
+export function splitField(field: string): {
+  scope: "event" | "contact"
+  property: string
+} {
+  const contact = field.startsWith("contact.")
+  return {
+    scope: contact ? "contact" : "event",
+    property: field.replace(/^(event|contact)\./, ""),
+  }
+}
+
 /** `event.plan is equal to "team"`, as a condition reads on its card. */
 export function ruleText(rule: AutomationRule): string {
   return [
-    rule.field.replace(/^(event|contact)\./, ""),
+    splitField(rule.field).property,
     RULE_OPERATOR_LABELS[rule.operator],
     operatorTakesValue(rule.operator) ? JSON.stringify(rule.value) : "",
   ]
@@ -387,6 +389,15 @@ const CONTACT_FIELD_LABELS: Record<string, string> = {
   last_name: "Last name",
   unsubscribed: "Unsubscribed",
 }
+
+/** The contact's own fields, as rules and references name them. */
+export const CONTACT_FIELDS: readonly string[] = RESERVED_PROPERTY_KEYS
+
+/** The ones an "update contact" step may change: the address is who the
+    contact is. */
+export const UPDATABLE_CONTACT_FIELDS = CONTACT_FIELDS.filter(
+  (key) => key !== "email"
+)
 
 /** A contact field by the name people know it by. */
 export function contactFieldLabel(property: string): string {
@@ -518,13 +529,13 @@ export function stepSummary(
 
 /* ------------------------------------------------------------------ rules */
 
-export type RuleScope = {
+type RuleScope = {
   event: Record<string, unknown>
   contact: Record<string, unknown>
 }
 
 /** The contact as rules and references see it, under the API's names. */
-export function contactScope(contact: Contact): Record<string, unknown> {
+function contactScope(contact: Contact): Record<string, unknown> {
   return {
     id: contact.id,
     email: contact.email,
@@ -535,7 +546,7 @@ export function contactScope(contact: Contact): Record<string, unknown> {
   }
 }
 
-export function resolveField(scope: RuleScope, field: string): unknown {
+function resolveField(scope: RuleScope, field: string): unknown {
   return field
     .trim()
     .split(".")
@@ -584,7 +595,7 @@ export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
   }
 }
 
-export function evaluateRules(
+function evaluateRules(
   step: Extract<AutomationStep, { type: "condition" }>,
   scope: RuleScope
 ): boolean {
@@ -625,6 +636,26 @@ export function payloadErrors(
   })
 }
 
+/** What happened at one step of a run. A step still running has no end. */
+export function runStep(
+  key: string,
+  type: AutomationRunStep["type"],
+  status: AutomationRunStep["status"],
+  at: number,
+  extra: Partial<Pick<AutomationRunStep, "output" | "error">> = {}
+): AutomationRunStep {
+  return {
+    key,
+    type,
+    status,
+    startedAt: at,
+    completedAt: status === "running" ? null : at,
+    output: null,
+    error: null,
+    ...extra,
+  }
+}
+
 /** Walks the workflow for one contact, as far as it goes without waiting:
     a delay or a wait for an event leaves the run running. */
 export function startRun(input: {
@@ -637,16 +668,10 @@ export function startRun(input: {
 }): AutomationRun {
   const { automation, contact, payload, context, now } = input
   const scope: RuleScope = { event: payload, contact: contactScope(contact) }
-  const done: AutomationRunStep[] = [
-    {
-      key: TRIGGER_KEY,
-      type: "trigger",
-      status: "completed",
-      startedAt: now,
-      completedAt: now,
+  const done = [
+    runStep(TRIGGER_KEY, "trigger", "completed", now, {
       output: { event_name: automation.trigger },
-      error: null,
-    },
+    }),
   ]
   /* Assigned inside `walk`, which narrowing cannot see into. */
   let status = "completed" as AutomationRunStatus
@@ -655,44 +680,35 @@ export function startRun(input: {
   const walk = (steps: readonly AutomationStep[]): boolean => {
     for (const step of steps) {
       const record = (
-        result: Pick<AutomationRunStep, "status"> &
-          Partial<Pick<AutomationRunStep, "output" | "error">>
-      ) =>
-        done.push({
-          key: step.key,
-          type: step.type,
-          startedAt: now,
-          completedAt: result.status === "running" ? null : now,
-          output: null,
-          error: null,
-          ...result,
-        })
+        status: AutomationRunStep["status"],
+        extra?: Partial<Pick<AutomationRunStep, "output" | "error">>
+      ) => done.push(runStep(step.key, step.type, status, now, extra))
 
       const problem = stepProblem(step, context)
       if (problem) {
-        record({ status: "failed", error: problem })
+        record("failed", { error: problem })
         status = "failed"
         return false
       }
       switch (step.type) {
         case "delay":
         case "wait_for_event":
-          record({ status: "running" })
+          record("running")
           status = "running"
           return false
         case "condition": {
           const met = evaluateRules(step, scope)
-          record({ status: "completed", output: { condition_met: met } })
+          record("completed", { output: { condition_met: met } })
           if (!walk(met ? step.met : step.notMet)) return false
           break
         }
         case "send_email":
           /* An unsubscribed contact is sent nothing; the rest still runs. */
-          record(
-            unsubscribed
-              ? { status: "skipped", output: { reason: "unsubscribed" } }
-              : { status: "completed", output: { to: contact.email } }
-          )
+          if (unsubscribed) {
+            record("skipped", { output: { reason: "unsubscribed" } })
+          } else {
+            record("completed", { output: { to: contact.email } })
+          }
           break
         case "contact_update": {
           const flag = step.fields.find(
@@ -701,8 +717,7 @@ export function startRun(input: {
           if (flag) {
             unsubscribed = flag.action === "change" && flag.value === "true"
           }
-          record({
-            status: "completed",
+          record("completed", {
             output: Object.fromEntries(
               step.fields.map((field) => [
                 field.property,
@@ -714,7 +729,7 @@ export function startRun(input: {
         }
         case "contact_delete":
         case "add_to_segment":
-          record({ status: "completed" })
+          record("completed")
           break
       }
     }
@@ -732,6 +747,20 @@ export function startRun(input: {
     completedAt: status === "running" ? null : now,
     steps: done,
   }
+}
+
+/* The history is saved with everything else on every change, so it is kept
+   to what the observability view can usefully show. */
+const MAX_RUNS_PER_AUTOMATION = 200
+
+/** The newest runs of each automation, given newest first. */
+export function keptRuns(runs: readonly AutomationRun[]): AutomationRun[] {
+  const counts = new Map<string, number>()
+  return runs.filter((run) => {
+    const count = (counts.get(run.automationId) ?? 0) + 1
+    counts.set(run.automationId, count)
+    return count <= MAX_RUNS_PER_AUTOMATION
+  })
 }
 
 /** Stops a run where it is. Only a run that is waiting can be stopped. */
@@ -759,19 +788,21 @@ export function automationRuns(
     .sort((a, b) => b.startedAt - a.startedAt)
 }
 
+/** A length of time in its nearest compact unit: "45s", "3m", "2h", "1d". */
+export function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`
+  return `${Math.round(seconds / 86_400)}d`
+}
+
 /** How long a run took, or has taken so far. */
 export function formatRunDuration(
   run: Pick<AutomationRun, "startedAt" | "completedAt">,
   now: number
 ): string {
-  const seconds = Math.max(
-    0,
-    Math.round(((run.completedAt ?? now) - run.startedAt) / 1000)
-  )
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`
-  return `${Math.round(seconds / 86_400)}d`
+  return formatElapsed((run.completedAt ?? now) - run.startedAt)
 }
 
 /** How the runs split by outcome, as whole percentages. */
@@ -788,40 +819,48 @@ export function runStatusRates(
   }
 }
 
-/** How often a step ran across the runs, and how long it took on average. */
+export type StepMetrics = { executions: number; averageMs: number | null }
+
+/** How often each step ran across the runs, and how long it took on
+    average, from one pass over them. */
 export function stepMetrics(
-  runs: readonly Pick<AutomationRun, "steps">[],
-  key: string
-): { executions: number; averageMs: number | null } {
-  const records = runs.flatMap((run) =>
-    run.steps.filter((step) => step.key === key)
-  )
-  const finished = records.flatMap((step) =>
-    step.completedAt === null ? [] : [step.completedAt - step.startedAt]
-  )
-  return {
-    executions: records.length,
-    averageMs:
-      finished.length === 0
-        ? null
-        : finished.reduce((sum, ms) => sum + ms, 0) / finished.length,
+  runs: readonly Pick<AutomationRun, "steps">[]
+): Map<string, StepMetrics> {
+  const totals = new Map<
+    string,
+    { executions: number; finished: number; ms: number }
+  >()
+  for (const run of runs) {
+    for (const step of run.steps) {
+      const entry = totals.get(step.key) ?? {
+        executions: 0,
+        finished: 0,
+        ms: 0,
+      }
+      entry.executions += 1
+      if (step.completedAt !== null) {
+        entry.finished += 1
+        entry.ms += step.completedAt - step.startedAt
+      }
+      totals.set(step.key, entry)
+    }
   }
+  return new Map(
+    [...totals].map(([key, entry]) => [
+      key,
+      {
+        executions: entry.executions,
+        averageMs: entry.finished === 0 ? null : entry.ms / entry.finished,
+      },
+    ])
+  )
 }
 
 /* -------------------------------------------------------------- migration */
 
 /** Automations saved before they had steps were a name and a trigger. */
 export function normalizeAutomation(
-  item: Omit<Automation, "steps" | "updatedAt"> &
-    Partial<Pick<Automation, "steps" | "updatedAt">>
+  item: Omit<Automation, "steps"> & Partial<Pick<Automation, "steps">>
 ): Automation {
-  return {
-    id: item.id,
-    name: item.name,
-    status: item.status,
-    trigger: item.trigger,
-    steps: item.steps ?? [],
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt ?? item.createdAt,
-  }
+  return { ...item, steps: item.steps ?? [] }
 }

@@ -36,6 +36,7 @@ import {
   TextFieldDialog,
   type SelectOption,
 } from "@/components/dashboard/primitives"
+import { automationStatusLabel } from "@/lib/dashboard/format"
 import {
   automationTasks,
   type AutomationTask,
@@ -48,7 +49,7 @@ export const AutomationIcon = WorkflowIcon
 export const EventIcon = ZapIcon
 
 export const STEP_ICONS: Record<AutomationRunStep["type"], LucideIcon> = {
-  trigger: ZapIcon,
+  trigger: EventIcon,
   condition: GitBranchIcon,
   delay: ClockIcon,
   wait_for_event: HourglassIcon,
@@ -60,8 +61,10 @@ export const STEP_ICONS: Record<AutomationRunStep["type"], LucideIcon> = {
 
 export const AUTOMATION_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
-  { value: "enabled", label: "Enabled" },
-  { value: "disabled", label: "Disabled" },
+  ...(["enabled", "disabled"] as const).map((value) => ({
+    value,
+    label: automationStatusLabel(value),
+  })),
 ]
 
 export function AutomationsChrome({
@@ -146,11 +149,14 @@ export function AutomationMenu({
   automation,
   inDetail = false,
   onDelete,
+  children,
 }: {
   automation: Automation
   inDetail?: boolean
   /** Replaces the plain delete, for a page that has to leave first. */
   onDelete?: () => void
+  /** Items only that page has, listed first. */
+  children?: React.ReactNode
 }) {
   const router = useRouter()
   const { updateAutomation, duplicateAutomation, deleteAutomation } =
@@ -164,18 +170,23 @@ export function AutomationMenu({
     <>
       <MoreMenu>
         <DropdownMenuGroup>
+          {children}
+          {/* The editor names the automation in its top bar, and starts and
+              stops it from there. */}
           {inDetail ? null : (
-            <DropdownMenuItem
-              render={<Link href={`/automations/${automation.id}`} />}
-            >
-              <EyeIcon />
-              Open automation
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem
+                render={<Link href={`/automations/${automation.id}`} />}
+              >
+                <EyeIcon />
+                Open automation
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setRenaming(true)}>
+                <PencilIcon />
+                Rename automation
+              </DropdownMenuItem>
+            </>
           )}
-          <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <PencilIcon />
-            Rename automation
-          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
               const copy = duplicateAutomation(automation.id)
@@ -187,19 +198,21 @@ export function AutomationMenu({
             <CopyIcon />
             Duplicate automation
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              if (toggle(automation).length === 0) return
-              toast.add({
-                type: "error",
-                title: "Not ready to start",
-                description: "Open the automation to see what is left to do.",
-              })
-            }}
-          >
-            {enabled ? <CirclePauseIcon /> : <CirclePlayIcon />}
-            {enabled ? "Disable automation" : "Enable automation"}
-          </DropdownMenuItem>
+          {inDetail ? null : (
+            <DropdownMenuItem
+              onClick={() => {
+                if (toggle(automation).length === 0) return
+                toast.add({
+                  type: "error",
+                  title: "Not ready to start",
+                  description: "Open the automation to see what is left to do.",
+                })
+              }}
+            >
+              {enabled ? <CirclePauseIcon /> : <CirclePlayIcon />}
+              {enabled ? "Disable automation" : "Enable automation"}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             variant="destructive"
             onClick={() => setDeleting(true)}

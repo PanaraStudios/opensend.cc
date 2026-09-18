@@ -34,6 +34,15 @@ export function AutomationsView() {
   const [status, setStatus] = React.useState("all")
   const [docsOpen, setDocsOpen] = React.useState(false)
 
+  /* Counted once, not once per row per keystroke of the search. */
+  const runCounts = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const run of state.automationRuns) {
+      counts.set(run.automationId, (counts.get(run.automationId) ?? 0) + 1)
+    }
+    return counts
+  }, [state.automationRuns])
+
   const needle = searchNeedle(query)
   const rows = state.automations.filter(
     (item) =>
@@ -117,11 +126,7 @@ export function AutomationsView() {
                 <AutomationStatusBadge status={item.status} />
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {
-                  state.automationRuns.filter(
-                    (run) => run.automationId === item.id
-                  ).length
-                }
+                {runCounts.get(item.id) ?? 0}
               </TableCell>
               <TableCell className="text-muted-foreground">
                 <RelativeTime at={item.createdAt} />

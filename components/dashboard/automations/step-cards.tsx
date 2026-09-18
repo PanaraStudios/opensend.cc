@@ -27,15 +27,19 @@ import {
 } from "@/components/dashboard/primitives"
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
 import {
+  CONTACT_FIELDS,
   contactFieldLabel,
   operatorTakesValue,
   RULE_OPERATOR_LABELS,
   ruleError,
   ruleText,
+  splitField,
   stepSummary,
   stepTasks,
   stepTitle,
+  UPDATABLE_CONTACT_FIELDS,
 } from "@/lib/dashboard/automation"
+import { formatVariable } from "@/lib/dashboard/email-variables"
 import { useDashboard } from "@/lib/dashboard/store"
 import {
   AUTOMATION_RULE_OPERATORS,
@@ -88,12 +92,25 @@ function useEventReferences(trigger: string): string[] {
   return (event?.schema ?? []).map((field) => `event.${field.key}`)
 }
 
-const CONTACT_REFERENCES = [
-  "contact.email",
-  "contact.first_name",
-  "contact.last_name",
-  "contact.unsubscribed",
-]
+const CONTACT_REFERENCES = CONTACT_FIELDS.map((key) => `contact.${key}`)
+
+/** The event box: a defined event, or the name of a new one. */
+function EventNameInput(props: {
+  value: string
+  onChange: (value: string) => void
+  "aria-label": string
+}) {
+  const { state } = useDashboard()
+  return (
+    <SuggestInput
+      {...props}
+      options={state.automationEvents.map((item) => item.name)}
+      placeholder="Type or select an event"
+      createLabel="Create event"
+      className="font-mono"
+    />
+  )
+}
 
 /* ---------------------------------------------------------------- trigger */
 
@@ -126,14 +143,10 @@ export function TriggerCard({
     >
       {selected ? (
         <div className="flex items-center gap-1">
-          <SuggestInput
+          <EventNameInput
             aria-label="Event"
             value={automation.trigger}
             onChange={onChange}
-            options={state.automationEvents.map((item) => item.name)}
-            placeholder="Type or select an event"
-            createLabel="Create event"
-            className="font-mono"
           />
           {event ? (
             <>
@@ -302,19 +315,14 @@ function WaitBody({
   step: StepOf<"wait_for_event">
   onChange: (step: AutomationStep) => void
 }) {
-  const { state } = useDashboard()
   const id = React.useId()
   return (
     <>
       <CardSection label="Event">
-        <SuggestInput
+        <EventNameInput
           aria-label="Event to wait for"
           value={step.eventName}
           onChange={(eventName) => onChange({ ...step, eventName })}
-          options={state.automationEvents.map((item) => item.name)}
-          placeholder="Type or select an event"
-          createLabel="Create event"
-          className="font-mono"
         />
       </CardSection>
       <CardSection label="Timeout in" htmlFor={id}>
@@ -382,7 +390,7 @@ function ConditionBody({
               </span>
             ) : null}
             <Badge variant="outline" className="shrink-0">
-              {rule.field.startsWith("contact.") ? "Contact" : trigger}
+              {splitField(rule.field).scope === "contact" ? "Contact" : trigger}
             </Badge>
             <span className="min-w-0 flex-1 truncate text-sm">
               {ruleText(rule)}
@@ -461,10 +469,10 @@ function RuleForm({
   const { state } = useDashboard()
   const eventReferences = useEventReferences(trigger)
   const [scope, setScope] = React.useState<"event" | "contact" | null>(
-    rule ? (rule.field.startsWith("contact.") ? "contact" : "event") : null
+    rule ? splitField(rule.field).scope : null
   )
   const [property, setProperty] = React.useState(
-    rule?.field.replace(/^(event|contact)\./, "") ?? ""
+    rule ? splitField(rule.field).property : ""
   )
   const [operator, setOperator] = React.useState<AutomationRuleOperator>(
     rule?.operator ?? "eq"
@@ -492,9 +500,9 @@ function RuleForm({
   }
   const properties =
     scope === "event"
-      ? eventReferences.map((name) => name.replace("event.", ""))
+      ? eventReferences.map((name) => splitField(name).property)
       : [
-          ...CONTACT_REFERENCES.map((name) => name.replace("contact.", "")),
+          ...CONTACT_FIELDS,
           ...state.properties.map((item) => `properties.${item.key}`),
         ]
 
@@ -647,7 +655,7 @@ function SendEmailBody({
               {template.variables.map((name) => (
                 <div key={name} className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                    {`{{{${name}}}}`}
+                    {formatVariable(name)}
                   </code>
                   <div className="w-44 shrink-0">
                     <SuggestInput
@@ -694,9 +702,7 @@ function UpdateContactBody({
 
   const taken = new Set(step.fields.map((field) => field.property))
   const properties = [
-    "first_name",
-    "last_name",
-    "unsubscribed",
+    ...UPDATABLE_CONTACT_FIELDS,
     ...state.properties.map((item) => item.key),
   ].filter((key) => !taken.has(key))
 

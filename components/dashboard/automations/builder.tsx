@@ -1,14 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import {
   ChartLineIcon,
-  CopyIcon,
   FlaskConicalIcon,
   PencilIcon,
   PlusIcon,
-  Trash2Icon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -47,6 +45,7 @@ import { toast } from "@/components/ui/toast"
 import { Observability } from "@/components/dashboard/automations/observability"
 import {
   AutomationIcon,
+  AutomationMenu,
   STEP_ICONS,
   useToggleAutomation,
 } from "@/components/dashboard/automations/shared"
@@ -60,7 +59,6 @@ import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
 import {
   AutomationStatusBadge,
   ConfirmDialog,
-  MoreMenu,
   OptionSelect,
   useDeleteRecord,
 } from "@/components/dashboard/primitives"
@@ -76,7 +74,6 @@ import {
   stepBranches,
   TRIGGER_KEY,
   type AutomationTask,
-  type StepSlot,
 } from "@/lib/dashboard/automation"
 import { useDashboard, useStoreHydrated } from "@/lib/dashboard/store"
 import type {
@@ -99,13 +96,7 @@ const VIEW_ITEMS = [
 
 type BuilderView = (typeof VIEW_ITEMS)[number]["value"]
 
-function AddStep({
-  slot,
-  onAdd,
-}: {
-  slot: StepSlot
-  onAdd: (slot: StepSlot, type: AutomationStepType) => void
-}) {
+function AddStep({ onAdd }: { onAdd: (type: AutomationStepType) => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -116,7 +107,6 @@ function AddStep({
             className="rounded-full bg-card"
             aria-label="Add step"
             data-testid="workflow-add-step"
-            data-workflow-card=""
           />
         }
       >
@@ -129,7 +119,7 @@ function AddStep({
             {group.types.map((type) => {
               const Icon = STEP_ICONS[type]
               return (
-                <DropdownMenuItem key={type} onClick={() => onAdd(slot, type)}>
+                <DropdownMenuItem key={type} onClick={() => onAdd(type)}>
                   <Icon />
                   {STEP_LABELS[type]}
                 </DropdownMenuItem>
@@ -176,9 +166,7 @@ function BuilderScreen({
   automation: Automation
   deleteAndLeave: (remove: () => void) => void
 }) {
-  const router = useRouter()
-  const { updateAutomation, duplicateAutomation, deleteAutomation } =
-    useDashboard()
+  const { updateAutomation, deleteAutomation } = useDashboard()
   const toggle = useToggleAutomation()
   const [view, setView] = React.useState<BuilderView>("editor")
   /* The card showing its settings: the trigger, or a step by key. A blank
@@ -189,7 +177,6 @@ function BuilderScreen({
   const [tasks, setTasks] = React.useState<AutomationTask[] | null>(null)
   const startRef = React.useRef<HTMLButtonElement>(null)
   const [testing, setTesting] = React.useState(false)
-  const [deleting, setDeleting] = React.useState(false)
   const [removing, setRemoving] = React.useState<AutomationStep | null>(null)
 
   const enabled = automation.status === "enabled"
@@ -208,43 +195,27 @@ function BuilderScreen({
         onRename={(name) => updateAutomation(automation.id, { name })}
         badge={<AutomationStatusBadge status={automation.status} />}
       >
-        <MoreMenu>
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              data-testid="automation-test"
-              onClick={() => {
-                if (enabled) setTesting(true)
-                else {
-                  toast.add({
-                    type: "error",
-                    title: "Start the automation before testing it.",
-                  })
-                }
-              }}
-            >
-              <FlaskConicalIcon />
-              Test event
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                const copy = duplicateAutomation(automation.id)
-                if (!copy) return
-                toast.add({ type: "success", title: "Automation duplicated" })
-                router.push(`/automations/${copy.id}`)
-              }}
-            >
-              <CopyIcon />
-              Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => setDeleting(true)}
-            >
-              <Trash2Icon />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </MoreMenu>
+        <AutomationMenu
+          automation={automation}
+          inDetail
+          onDelete={() => deleteAndLeave(() => deleteAutomation(automation.id))}
+        >
+          <DropdownMenuItem
+            data-testid="automation-test"
+            onClick={() => {
+              if (enabled) setTesting(true)
+              else {
+                toast.add({
+                  type: "error",
+                  title: "Start the automation before testing it.",
+                })
+              }
+            }}
+          >
+            <FlaskConicalIcon />
+            Test event
+          </DropdownMenuItem>
+        </AutomationMenu>
         <Button
           ref={startRef}
           size="sm"
@@ -324,10 +295,9 @@ function BuilderScreen({
                   ? undefined
                   : (slot) => (
                       <AddStep
-                        slot={slot}
-                        onAdd={(at, type) => {
+                        onAdd={(type) => {
                           const step = newStep(type, automation.steps)
-                          setSteps(insertStep(automation.steps, at, step))
+                          setSteps(insertStep(automation.steps, slot, step))
                           setSelected(step.key)
                         }}
                       />
@@ -365,16 +335,6 @@ function BuilderScreen({
         confirmLabel="Remove"
         onConfirm={() => {
           if (removing) setSteps(removeStep(automation.steps, removing.key))
-        }}
-      />
-      <ConfirmDialog
-        open={deleting}
-        onOpenChange={setDeleting}
-        title="Delete automation?"
-        description="Runs in flight stop, and the run history is removed."
-        onConfirm={() => {
-          deleteAndLeave(() => deleteAutomation(automation.id))
-          toast.add({ type: "success", title: "Automation deleted" })
         }}
       />
       <TestEventDialog

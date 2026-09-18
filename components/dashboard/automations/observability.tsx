@@ -32,21 +32,20 @@ import {
 } from "@/components/dashboard/primitives"
 import {
   automationRuns,
+  formatElapsed,
   formatRunDuration,
   runStatusRates,
   stepMetrics,
   stepSummary,
   stepTitle,
   TRIGGER_KEY,
+  type StepMetrics,
 } from "@/lib/dashboard/automation"
 import { DEMO_NOW } from "@/lib/dashboard/data"
 import { inDateRange } from "@/lib/dashboard/email-range"
+import { sentenceCase } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
-import type {
-  Automation,
-  AutomationRun,
-  AutomationRunStep,
-} from "@/lib/dashboard/types"
+import type { Automation, AutomationRun } from "@/lib/dashboard/types"
 
 /* How the automation is doing: its runs and its numbers on the left, and on
    the right the same graph as the editor, read-only, carrying what happened
@@ -54,16 +53,10 @@ import type {
 
 const RUN_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
-  { value: "running", label: "Running" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "cancelled", label: "Cancelled" },
+  ...(["running", "completed", "failed", "cancelled"] as const).map(
+    (value) => ({ value, label: sentenceCase(value) })
+  ),
 ]
-
-function formatMs(ms: number | null): string {
-  if (ms === null) return "—"
-  return formatRunDuration({ startedAt: 0, completedAt: ms }, 0)
-}
 
 /** A label over a value, inside a card of the graph. */
 function CardFact({
@@ -83,17 +76,16 @@ function CardFact({
 
 function StepFacts({
   stepKey,
-  runs,
+  metrics,
   run,
 }: {
   stepKey: string
-  runs: readonly AutomationRun[]
+  /** Across the runs in view; shown while no run is selected. */
+  metrics: StepMetrics | undefined
   run: AutomationRun | null
 }) {
   if (run) {
-    const record: AutomationRunStep | undefined = run.steps.find(
-      (step) => step.key === stepKey
-    )
+    const record = run.steps.find((step) => step.key === stepKey)
     if (!record) {
       return (
         <p className="text-sm text-muted-foreground">
@@ -110,7 +102,7 @@ function StepFacts({
           <CardFact label="Runtime">
             {record.completedAt === null
               ? "—"
-              : formatMs(record.completedAt - record.startedAt)}
+              : formatElapsed(record.completedAt - record.startedAt)}
           </CardFact>
         </div>
         {record.error ? (
@@ -119,12 +111,14 @@ function StepFacts({
       </div>
     )
   }
-  const metrics = stepMetrics(runs, stepKey)
+  const average = metrics?.averageMs ?? null
   return (
     <div className="flex gap-6">
-      <CardFact label="Executions">{metrics.executions}</CardFact>
+      <CardFact label="Executions">{metrics?.executions ?? 0}</CardFact>
       {stepKey === TRIGGER_KEY ? null : (
-        <CardFact label="Avg. runtime">{formatMs(metrics.averageMs)}</CardFact>
+        <CardFact label="Avg. runtime">
+          {average === null ? "—" : formatElapsed(average)}
+        </CardFact>
       )}
     </div>
   )
@@ -150,12 +144,23 @@ export function Observability({ automation }: { automation: Automation }) {
   const { pageRows, pagination } = usePagination(rows)
   const selected =
     tab === "runs" ? (runs.find((run) => run.id === selectedId) ?? null) : null
-  const rates = runStatusRates(runs)
-  const sent = runs.flatMap((run) =>
-    run.steps.filter(
-      (step) => step.type === "send_email" && step.status === "completed"
-    )
-  ).length
+  /* One pass over the runs for everything the cards and the stats show,
+     rather than one per card. */
+  const { metrics, rates, sent } = React.useMemo(
+    () => ({
+      metrics: stepMetrics(runs),
+      rates: runStatusRates(runs),
+      sent: runs.reduce(
+        (count, run) =>
+          count +
+          run.steps.filter(
+            (step) => step.type === "send_email" && step.status === "completed"
+          ).length,
+        0
+      ),
+    }),
+    [runs]
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
@@ -283,7 +288,11 @@ export function Observability({ automation }: { automation: Automation }) {
               icon={EventIcon}
               title={automation.trigger || "Custom event"}
             >
-              <StepFacts stepKey={TRIGGER_KEY} runs={runs} run={selected} />
+              <StepFacts
+                stepKey={TRIGGER_KEY}
+                metrics={metrics.get(TRIGGER_KEY)}
+                run={selected}
+              />
             </WorkflowCard>
           }
           renderStep={(step) => (
@@ -292,7 +301,11 @@ export function Observability({ automation }: { automation: Automation }) {
               title={stepTitle(step)}
               summary={stepSummary(step, state)}
             >
-              <StepFacts stepKey={step.key} runs={runs} run={selected} />
+              <StepFacts
+                stepKey={step.key}
+                metrics={metrics.get(step.key)}
+                run={selected}
+              />
             </WorkflowCard>
           )}
         />

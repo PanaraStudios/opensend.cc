@@ -52,7 +52,9 @@ function StepList({
             <Connector />
             {renderAdd ? (
               <>
-                {renderAdd({ parent, index })}
+                <div className="pointer-events-auto">
+                  {renderAdd({ parent, index })}
+                </div>
                 <Connector />
               </>
             ) : null}
@@ -97,7 +99,9 @@ function StepList({
       {!renderAdd || (last && stepBranches(last).length > 0) ? null : (
         <>
           <Connector />
-          {renderAdd({ parent, index: steps.length })}
+          <div className="pointer-events-auto">
+            {renderAdd({ parent, index: steps.length })}
+          </div>
         </>
       )}
     </div>
@@ -107,55 +111,43 @@ function StepList({
 export function WorkflowCanvas({
   trigger,
   steps,
-  className,
   ...props
 }: GraphProps & {
-  /** The first card. Null while the automation has no trigger yet. */
+  /** The first card. */
   trigger: React.ReactNode
   steps: readonly AutomationStep[]
-  className?: string
 }) {
   const [zoom, setZoom] = React.useState(2)
   const canvas = React.useRef<HTMLDivElement>(null)
   /* A graph wider than the canvas opens on its middle, where the trigger is,
-     rather than on its left edge. */
+     rather than on its left edge. Once: after that the view is the user's. */
   React.useLayoutEffect(() => {
     const element = canvas.current
     if (element) {
       element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
     }
-  }, [zoom])
+  }, [])
 
-  /* Dragging the background moves the canvas. A drag that starts on a card
-     or a control is left to it. */
+  /* Dragging the background moves the canvas. The graph lets presses through
+     everywhere but its cards and controls, so a press reaches the canvas only
+     where there is nothing to press; a menu a card opened is portaled out of
+     the canvas, and never is the target. */
   const drag = React.useRef<{ x: number; y: number } | null>(null)
-  const [panning, setPanning] = React.useState(false)
+  const endPan = () => {
+    drag.current = null
+  }
 
   return (
     /* The zoom control sits on the frame, not in what scrolls. */
-    <div className={cn("relative flex min-h-0 flex-1", className)}>
+    <div className="relative flex min-h-0 flex-1">
       <div
         ref={canvas}
         data-testid="workflow"
-        className={cn(
-          "min-h-0 flex-1 touch-none overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px]",
-          panning ? "cursor-grabbing select-none" : "cursor-grab"
-        )}
+        className="min-h-0 flex-1 cursor-grab touch-none overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing"
         onPointerDown={(event) => {
-          if (event.button !== 0) return
-          const target = event.target as HTMLElement
-          /* React bubbles events out of portals, so a press inside a menu or
-             a select list that a card opened arrives here too. Only a press
-             on the canvas itself, outside every card, starts a pan. */
-          if (
-            !event.currentTarget.contains(target) ||
-            target.closest("[data-workflow-card]")
-          ) {
-            return
-          }
+          if (event.button !== 0 || event.target !== event.currentTarget) return
           drag.current = { x: event.clientX, y: event.clientY }
           event.currentTarget.setPointerCapture(event.pointerId)
-          setPanning(true)
         }}
         onPointerMove={(event) => {
           if (!drag.current) return
@@ -163,19 +155,13 @@ export function WorkflowCanvas({
           event.currentTarget.scrollTop -= event.clientY - drag.current.y
           drag.current = { x: event.clientX, y: event.clientY }
         }}
-        onPointerUp={() => {
-          drag.current = null
-          setPanning(false)
-        }}
-        onPointerCancel={() => {
-          drag.current = null
-          setPanning(false)
-        }}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
       >
         <div
           /* Larger than the frame even when the graph is small, so there is
              always canvas to drag around. */
-          className="mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10"
+          className="pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10"
           style={{ zoom: ZOOM_STEPS[zoom] }}
         >
           {trigger}
@@ -250,9 +236,8 @@ export function WorkflowCard({
   return (
     <div
       data-testid={testId}
-      data-workflow-card=""
       className={cn(
-        "flex w-96 max-w-full cursor-auto flex-col gap-3 rounded-xl border bg-card p-3 shadow-card",
+        "pointer-events-auto flex w-96 max-w-full cursor-auto flex-col gap-3 rounded-xl border bg-card p-3 shadow-card",
         tone === "warning" ? "border-warning" : "border-border"
       )}
     >

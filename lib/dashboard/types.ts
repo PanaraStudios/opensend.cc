@@ -325,7 +325,6 @@ export type AutomationStep = { key: string } & (
       type: "send_email"
       templateId: string
       /** Empty keeps what the template says. */
-      subject: string
       from: string
       replyTo: string
       /** What fills each of the template's variables: a literal, or a
@@ -345,7 +344,6 @@ export type Automation = {
   trigger: string
   steps: AutomationStep[]
   createdAt: number
-  updatedAt: number
 }
 
 export const AUTOMATION_EVENT_FIELD_TYPES = [

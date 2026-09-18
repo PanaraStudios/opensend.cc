@@ -3,13 +3,13 @@ import { DEFAULT_RETURN_PATH } from "./domains"
 import { createId } from "./ids"
 import { defaultFromAddress } from "./format"
 import { DASHBOARD_USER_AGENT, LOG_USER_AGENTS } from "./logs"
+import { runStep } from "./automation"
 import type {
   ApiKey,
   ApiLog,
   Automation,
   AutomationEvent,
   AutomationRun,
-  AutomationRunStep,
   Broadcast,
   Contact,
   ContactProperty,
@@ -817,13 +817,11 @@ const automations: Automation[] = [
     status: "enabled",
     trigger: "user.created",
     createdAt: daysAgo(15),
-    updatedAt: daysAgo(12),
     steps: [
       {
         key: "send_welcome",
         type: "send_email",
         templateId: "tpl_welcome",
-        subject: "",
         from: "",
         replyTo: "",
         variables: {},
@@ -851,7 +849,6 @@ const automations: Automation[] = [
                 key: "send_nudge",
                 type: "send_email",
                 templateId: "tpl_reset",
-                subject: "Need a hand getting set up?",
                 from: "",
                 replyTo: "",
                 variables: {},
@@ -869,14 +866,12 @@ const automations: Automation[] = [
     status: "disabled",
     trigger: "subscription.cancelled",
     createdAt: daysAgo(9),
-    updatedAt: daysAgo(9),
     steps: [
       { key: "cool_off", type: "delay", duration: "1 week" },
       {
         key: "send_offer",
         type: "send_email",
         templateId: "tpl_invoice",
-        subject: "",
         from: "",
         replyTo: "",
         variables: {},
@@ -884,25 +879,6 @@ const automations: Automation[] = [
     ],
   },
 ]
-
-function seedRunStep(
-  key: string,
-  type: AutomationRunStep["type"],
-  status: AutomationRunStep["status"],
-  at: number,
-  extra: Partial<Pick<AutomationRunStep, "output" | "error">> = {}
-): AutomationRunStep {
-  return {
-    key,
-    type,
-    status,
-    startedAt: at,
-    completedAt: status === "running" ? null : at,
-    output: null,
-    error: null,
-    ...extra,
-  }
-}
 
 const automationRuns: AutomationRun[] = [
   {
@@ -914,18 +890,13 @@ const automationRuns: AutomationRun[] = [
     startedAt: hoursAgo(5),
     completedAt: null,
     steps: [
-      seedRunStep("start", "trigger", "completed", hoursAgo(5), {
+      runStep("start", "trigger", "completed", hoursAgo(5), {
         output: { event_name: "user.created" },
       }),
-      seedRunStep("send_welcome", "send_email", "completed", hoursAgo(5), {
+      runStep("send_welcome", "send_email", "completed", hoursAgo(5), {
         output: { to: "grace@hopper.dev" },
       }),
-      seedRunStep(
-        "wait_for_onboarding",
-        "wait_for_event",
-        "running",
-        hoursAgo(5)
-      ),
+      runStep("wait_for_onboarding", "wait_for_event", "running", hoursAgo(5)),
     ],
   },
   {
@@ -937,25 +908,20 @@ const automationRuns: AutomationRun[] = [
     startedAt: daysAgo(3),
     completedAt: daysAgo(2),
     steps: [
-      seedRunStep("start", "trigger", "completed", daysAgo(3), {
+      runStep("start", "trigger", "completed", daysAgo(3), {
         output: { event_name: "user.created" },
       }),
-      seedRunStep("send_welcome", "send_email", "completed", daysAgo(3), {
+      runStep("send_welcome", "send_email", "completed", daysAgo(3), {
         output: { to: "ada@example.com" },
       }),
-      seedRunStep(
+      runStep(
         "wait_for_onboarding",
         "wait_for_event",
         "completed",
         daysAgo(2),
         { output: { event_received: true } }
       ),
-      seedRunStep(
-        "add_to_customers",
-        "add_to_segment",
-        "completed",
-        daysAgo(2)
-      ),
+      runStep("add_to_customers", "add_to_segment", "completed", daysAgo(2)),
     ],
   },
   {
@@ -967,10 +933,10 @@ const automationRuns: AutomationRun[] = [
     startedAt: daysAgo(6),
     completedAt: daysAgo(6),
     steps: [
-      seedRunStep("start", "trigger", "completed", daysAgo(6), {
+      runStep("start", "trigger", "completed", daysAgo(6), {
         output: { event_name: "user.created" },
       }),
-      seedRunStep("send_welcome", "send_email", "failed", daysAgo(6), {
+      runStep("send_welcome", "send_email", "failed", daysAgo(6), {
         error: "The sender's domain is not verified",
       }),
     ],
@@ -984,18 +950,13 @@ const automationRuns: AutomationRun[] = [
     startedAt: daysAgo(8),
     completedAt: daysAgo(7),
     steps: [
-      seedRunStep("start", "trigger", "completed", daysAgo(8), {
+      runStep("start", "trigger", "completed", daysAgo(8), {
         output: { event_name: "user.created" },
       }),
-      seedRunStep("send_welcome", "send_email", "completed", daysAgo(8), {
+      runStep("send_welcome", "send_email", "completed", daysAgo(8), {
         output: { to: "margaret@hamilton.space" },
       }),
-      seedRunStep(
-        "wait_for_onboarding",
-        "wait_for_event",
-        "cancelled",
-        daysAgo(7)
-      ),
+      runStep("wait_for_onboarding", "wait_for_event", "cancelled", daysAgo(7)),
     ],
   },
 ]

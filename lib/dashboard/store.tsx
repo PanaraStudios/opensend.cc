@@ -13,6 +13,7 @@ import {
   duplicatedAutomation,
   eventNameError,
   flattenSteps,
+  keptRuns,
   startRun,
   UNTITLED_AUTOMATION,
 } from "./automation"
@@ -975,7 +976,6 @@ function deleteTemplate(id: string) {
 /** A new automation is blank and disabled; it is set up in the editor. */
 function addAutomation() {
   const id = createId("atm")
-  const now = Date.now()
   mutate((current) => ({
     ...current,
     automations: [
@@ -985,8 +985,7 @@ function addAutomation() {
         trigger: "",
         status: "disabled",
         steps: [],
-        createdAt: now,
-        updatedAt: now,
+        createdAt: Date.now(),
       },
       ...current.automations,
     ],
@@ -1015,7 +1014,8 @@ function withAutomationEvents(
               createdAt: Date.now(),
             },
           ],
-    [...events]
+    /* Never written to: with nothing to add, the same list comes back. */
+    events as AutomationEvent[]
   )
 }
 
@@ -1037,16 +1037,20 @@ function updateAutomation(
           : patch.name.trim() || UNTITLED_AUTOMATION,
       trigger: locked ? item.trigger : (patch.trigger?.trim() ?? item.trigger),
       steps: locked ? item.steps : (patch.steps ?? item.steps),
-      updatedAt: Date.now(),
+    }
+    const automations = current.automations.map((entry) =>
+      entry.id === id ? next : entry
+    )
+    /* A rename names no events. */
+    if (patch.trigger === undefined && patch.steps === undefined) {
+      return { ...current, automations }
     }
     const waitedFor = flattenSteps(next.steps).flatMap((step) =>
       step.type === "wait_for_event" ? [step.eventName] : []
     )
     return {
       ...current,
-      automations: current.automations.map((entry) =>
-        entry.id === id ? next : entry
-      ),
+      automations,
       automationEvents: withAutomationEvents(current.automationEvents, [
         next.trigger,
         ...waitedFor,
@@ -1059,7 +1063,7 @@ function setAutomationStatus(id: string, status: AutomationStatus) {
   mutate((current) => ({
     ...current,
     automations: current.automations.map((item) =>
-      item.id === id ? { ...item, status, updatedAt: Date.now() } : item
+      item.id === id ? { ...item, status } : item
     ),
   }))
 }
@@ -1096,8 +1100,7 @@ function deleteAutomation(id: string) {
 function runAutomation(
   id: string,
   input: { contactId: string; payload: Record<string, unknown> }
-): { id: string } | null {
-  const runId = createId("run")
+): boolean {
   let made = false
   mutate((current) => {
     const automation = current.automations.find((item) => item.id === id)
@@ -1106,9 +1109,9 @@ function runAutomation(
     made = true
     return {
       ...current,
-      automationRuns: [
+      automationRuns: keptRuns([
         startRun({
-          id: runId,
+          id: createId("run"),
           automation,
           contact,
           payload: input.payload,
@@ -1116,10 +1119,10 @@ function runAutomation(
           now: Date.now(),
         }),
         ...current.automationRuns,
-      ],
+      ]),
     }
   })
-  return made ? { id: runId } : null
+  return made
 }
 
 function cancelAutomationRun(id: string) {
