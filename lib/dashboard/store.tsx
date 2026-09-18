@@ -13,6 +13,7 @@ import {
   defaultTopicSubscription,
   normalizePropertyKey,
 } from "./contacts"
+import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
 import {
   DEFAULT_RETURN_PATH,
@@ -667,6 +668,7 @@ function addBroadcast(input: {
         subject: input.subject.trim(),
         preview: input.preview.trim(),
         html: `<p>${input.preview.trim()}</p>`,
+        content: emptyEmailDocument(),
         status: "draft",
         segmentId: input.segmentId,
         topicId: input.topicId,
@@ -687,7 +689,14 @@ function updateBroadcast(
   patch: Partial<
     Pick<
       Broadcast,
-      "name" | "subject" | "preview" | "html" | "segmentId" | "topicId"
+      | "name"
+      | "subject"
+      | "preview"
+      | "html"
+      | "content"
+      | "replyTo"
+      | "segmentId"
+      | "topicId"
     >
   >
 ) {
