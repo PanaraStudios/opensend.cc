@@ -1,3 +1,5 @@
+import type { EmailDocument } from "./email-document"
+
 export const REGIONS = [
   { value: "us-east-1", label: "North Virginia", code: "us-east-1" },
   { value: "eu-west-1", label: "Ireland", code: "eu-west-1" },
@@ -197,6 +199,11 @@ export type Broadcast = {
   subject: string
   preview: string
   html: string
+  /** Block tree behind `html`. Absent on records saved before the editor, and
+      on those the editor falls back to `html`. */
+  content?: EmailDocument
+  /** Overrides the sending domain's reply address for this send. */
+  replyTo?: string
   status: BroadcastStatus
   segmentId: string | null
   topicId: string | null
