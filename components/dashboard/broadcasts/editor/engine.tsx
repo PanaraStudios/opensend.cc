@@ -89,14 +89,26 @@ const BASE_EXTENSIONS = [
 ]
 
 /* There is no file storage behind the dashboard yet, so an uploaded picture
-   travels inside the document as a data URL. */
-function uploadImage(file: File): Promise<{ url: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve({ url: String(reader.result) })
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+   travels inside the document as a data URL, and the document lives in the
+   browser's few megabytes of storage. A photo straight off a phone would fill
+   that on its own, so it is drawn down to email width and re-encoded first;
+   1200px is twice the widest column, which is enough for a sharp screen. */
+const MAX_IMAGE_EDGE = 1200
+
+async function uploadImage(file: File): Promise<{ url: string }> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(
+    1,
+    MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height)
+  )
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  /* PNG keeps transparency (logos); photos are far smaller as JPEG. */
+  const type = file.type === "image/png" ? "image/png" : "image/jpeg"
+  return { url: canvas.toDataURL(type, 0.85) }
 }
 
 export function useEmailEngine({

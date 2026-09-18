@@ -30,6 +30,7 @@ import {
   FLOATING_SURFACE,
   TEXT_MARKS,
 } from "@/components/dashboard/broadcasts/editor/controls"
+import { normalizeHref } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
 
 /* Floating toolbars. The engine decides when each one shows and where it
@@ -60,23 +61,30 @@ function UrlForm({
   onApply: (href: string) => void
 }) {
   const [value, setValue] = React.useState(href)
+  const [invalid, setInvalid] = React.useState(false)
 
   return (
     <form
       className="flex items-center gap-1"
       onSubmit={(event) => {
         event.preventDefault()
-        onApply(value.trim())
+        const next = normalizeHref(value)
+        if (next === null) setInvalid(true)
+        else onApply(next)
       }}
     >
       <Input
         autoFocus
         value={value}
+        aria-invalid={invalid}
         className="h-control-sm w-60"
         placeholder="https://example.com"
         aria-label="URL"
         data-testid={testId}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          setValue(event.target.value)
+          setInvalid(false)
+        }}
       />
       <Button type="submit" size="icon-sm" aria-label="Apply URL">
         <CheckIcon />
@@ -125,12 +133,21 @@ function UrlToolbar({
       </Button>
       {href ? (
         <>
+          {/* A stored destination may predate the check above, or come from
+              pasted markup, so it is only offered to open when it is safe. */}
           <Button
             variant="ghost"
             size="icon-sm"
             nativeButton={false}
             aria-label="Open link"
-            render={<a href={href} target="_blank" rel="noreferrer" />}
+            disabled={normalizeHref(href) === null}
+            render={
+              <a
+                href={normalizeHref(href) ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+              />
+            }
           >
             <ExternalLinkIcon />
           </Button>

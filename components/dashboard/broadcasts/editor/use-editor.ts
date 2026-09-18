@@ -8,6 +8,7 @@ import {
 import { redoDepth, undoDepth } from "@tiptap/pm/history"
 import { useEditorState, type Editor } from "@tiptap/react"
 
+import { toast } from "@/components/ui/toast"
 import { useEmailEngine } from "@/components/dashboard/broadcasts/editor/engine"
 import {
   broadcastEditorMode,
@@ -41,6 +42,8 @@ export type BroadcastEditorState = {
   save: SaveState
   /** Saves and exports whatever is still waiting, right now. */
   flush: () => Promise<void>
+  /** The email as it stands right now, exported first if it has to be. */
+  exportHtml: () => Promise<string>
 }
 
 /* The document is cheap to save, so it goes out soon after typing stops. The
@@ -76,6 +79,10 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
   /* The work still owed to the store. Leaving the editor inside a debounce
      window must not drop it, so unmount flushes whatever is here. */
   const pending = React.useRef<(() => Promise<void>) | null>(null)
+  /* The export in flight, if any. A flush waits for it: a caller that goes on
+     to send, or to hand the markup over, must not do so with the one before. */
+  const running = React.useRef<Promise<void>>(Promise.resolve())
+  const busy = React.useRef(false)
   const exports = React.useRef(0)
 
   const flush = React.useCallback(() => {
@@ -83,37 +90,96 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     window.clearTimeout(timers.current.export)
     const job = pending.current
     pending.current = null
-    return (job ? job() : Promise.resolve()).then(() => setSave("saved"))
+    /* Nothing owed and nothing in flight: there is no save to report. */
+    if (!job && !busy.current) return running.current
+    if (job) {
+      busy.current = true
+      /* A save that failed must not take every later one down with it. */
+      running.current = running.current
+        .catch(() => {})
+        .then(job)
+        .finally(() => (busy.current = false))
+    }
+    return running.current.then(
+      () => setSave("saved"),
+      () => {
+        /* Most likely the browser's storage is full. The work is still in
+           the editor, so say so rather than showing a save that never ends. */
+        setSave("idle")
+        toast.add({
+          type: "error",
+          title: "Could not save this broadcast",
+          description: "Your browser storage may be full.",
+        })
+      }
+    )
   }, [])
 
-  /* Captured once: the engine owns the document from here on, and a new
-     object after every save would only make it reconfigure itself. */
-  const [initialContent] = React.useState(() => item.content ?? "")
-  const editor = useEmailEngine({
-    content: initialContent,
-    onUpdate: (current) => {
-      if (modeRef.current !== "visual") return
+  /* Read through refs: the engine keeps the handler it was created with. */
+  const previewRef = React.useRef(preview)
+  const editorRef = React.useRef<Editor | null>(null)
+
+  /* Owes the store a fresh export, soon; and the document, sooner. */
+  const requestExport = React.useCallback(
+    (saveDocument: boolean) => {
+      const current = editorRef.current
+      if (!current || modeRef.current !== "visual") return
       setSave("saving")
       pending.current = async () => {
         const turn = ++exports.current
         const email = await composeReactEmail({
           editor: current,
-          preview: preview || undefined,
+          preview: previewRef.current || undefined,
         })
         /* A newer export, or a switch to hand-written HTML, wins. */
         if (turn !== exports.current || modeRef.current !== "visual") return
         showHtml(email.html)
         updateBroadcast(id, { content: current.getJSON(), html: email.html })
       }
-      window.clearTimeout(timers.current.save)
-      timers.current.save = window.setTimeout(() => {
-        updateBroadcast(id, { content: current.getJSON() })
-        setSave("saved")
-      }, SAVE_MS)
+      if (saveDocument) {
+        window.clearTimeout(timers.current.save)
+        timers.current.save = window.setTimeout(() => {
+          updateBroadcast(id, { content: current.getJSON() })
+          setSave("saved")
+        }, SAVE_MS)
+      }
       window.clearTimeout(timers.current.export)
       timers.current.export = window.setTimeout(() => void flush(), EXPORT_MS)
     },
+    [flush, id, updateBroadcast]
+  )
+
+  /* Captured once: the engine owns the document from here on, and a new
+     object after every save would only make it reconfigure itself. Anything
+     that is not an engine document (a draft from the block editor that came
+     before it) is left out; its exported markup is what opens. */
+  const [initialContent] = React.useState(() =>
+    item.content?.type === "doc" ? item.content : ""
+  )
+  /* The engine edits the document itself as it mounts (it wraps the content
+     in its container and seeds the theme). That is not the author's doing, so
+     it is not saved: opening a draft must not mark it as edited. */
+  const settled = React.useRef(false)
+  const editor = useEmailEngine({
+    content: initialContent,
+    onUpdate: () => {
+      if (settled.current) requestExport(true)
+    },
   })
+  React.useEffect(() => {
+    editorRef.current = editor
+    const frame = window.requestAnimationFrame(() => {
+      settled.current = true
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [editor])
+
+  /* The inbox preview is part of the export, so editing it owes a new one. */
+  React.useEffect(() => {
+    if (previewRef.current === preview) return
+    previewRef.current = preview
+    requestExport(false)
+  }, [preview, requestExport])
 
   React.useEffect(() => () => void flush(), [flush])
 
@@ -150,6 +216,7 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     },
     editVisually: () => {
       changeMode("visual")
+      settled.current = true
       /* Emits an update, which saves and exports the parsed document. */
       editor.commands.setContent(emailContentHtml(html), { emitUpdate: true })
     },
@@ -159,5 +226,6 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     redoable: visual && engine.redoable,
     save,
     flush,
+    exportHtml: () => flush().then(() => htmlRef.current),
   }
 }

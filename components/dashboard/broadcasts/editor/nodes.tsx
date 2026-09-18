@@ -103,6 +103,9 @@ const Youtube = EmailNode.create({
         tag: "div[data-youtube]",
         getAttrs: (element) => ({
           video: element.getAttribute("data-youtube") ?? "",
+          alt: element.getAttribute("data-alt") ?? "Watch on YouTube",
+          width: Number(element.getAttribute("data-width")) || 536,
+          alignment: element.getAttribute("data-alignment") ?? "center",
         }),
       },
     ]
@@ -111,7 +114,14 @@ const Youtube = EmailNode.create({
     const id = youtubeVideoId(node.attrs.video)
     return [
       "div",
-      { "data-youtube": node.attrs.video, class: "node-youtube" },
+      {
+        /* Every attribute, so a copied block pastes back as it was. */
+        "data-youtube": node.attrs.video,
+        "data-alt": node.attrs.alt,
+        "data-width": node.attrs.width,
+        "data-alignment": node.attrs.alignment,
+        class: "node-youtube",
+      },
       id
         ? [
             "img",
@@ -207,12 +217,16 @@ const RawHtml = EmailNode.create({
     return [
       {
         tag: "div[data-raw-html]",
-        getAttrs: (element) => ({ code: element.innerHTML }),
+        getAttrs: (element) => ({
+          code: element.getAttribute("data-raw-html") ?? "",
+        }),
       },
     ]
   },
-  renderHTML() {
-    return ["div", { "data-raw-html": "" }]
+  renderHTML({ node }) {
+    /* The markup rides in the attribute, as text, so a copied block keeps
+       it without it ever being parsed into the clipboard's document. */
+    return ["div", { "data-raw-html": node.attrs.code }]
   },
   addNodeView() {
     return ({ node }) => {

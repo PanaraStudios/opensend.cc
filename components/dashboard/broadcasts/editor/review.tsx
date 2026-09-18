@@ -127,10 +127,13 @@ export function TestEmailDialog({
   open,
   onOpenChange,
   item,
+  exportHtml,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: Broadcast
+  /** The email as it stands right now, exported if it has to be. */
+  exportHtml: () => Promise<string>
 }) {
   const { state, sendEmail } = useDashboard()
   const [value, setValue] = React.useState("")
@@ -153,16 +156,18 @@ export function TestEmailDialog({
               setError("Enter a valid email address")
               return
             }
-            sendEmail({
-              from: broadcastFrom(item, state.domains),
-              to,
-              subject: `[Test] ${item.subject || item.name || "Untitled"}`,
-              text: item.preview || "Test send from the broadcast editor.",
-              html: item.html,
+            void exportHtml().then((html) => {
+              sendEmail({
+                from: broadcastFrom(item, state.domains),
+                to,
+                subject: `[Test] ${item.subject || item.name || "Untitled"}`,
+                text: item.preview || "Test send from the broadcast editor.",
+                html,
+              })
+              toast.add({ type: "success", title: `Test email sent to ${to}` })
+              onOpenChange(false)
+              setValue("")
             })
-            toast.add({ type: "success", title: `Test email sent to ${to}` })
-            onOpenChange(false)
-            setValue("")
           }}
         >
           <DialogHeader>

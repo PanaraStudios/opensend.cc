@@ -214,7 +214,10 @@ function EditorScreen({ item }: { item: Broadcast }) {
             )}
           </main>
 
-          {inspectorOpen ? (
+          {/* The panel edits the visual document. With the markup on screen,
+              or a broadcast that is hand-written, there is nothing for it to
+              act on, and a change made there would silently go nowhere. */}
+          {view !== "visual" || handWritten ? null : inspectorOpen ? (
             <Inspector onCollapse={collapseInspector} />
           ) : (
             <div className="flex shrink-0 flex-col border-l border-border p-1.5">
@@ -235,6 +238,7 @@ function EditorScreen({ item }: { item: Broadcast }) {
           open={testOpen}
           onOpenChange={setTestOpen}
           item={item}
+          exportHtml={editor.exportHtml}
         />
         <ConfirmDialog
           open={blocksOpen}

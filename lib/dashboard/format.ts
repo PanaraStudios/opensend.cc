@@ -185,6 +185,23 @@ export function isUrl(value: string): boolean {
   }
 }
 
+/** A destination typed into a link field, made safe to store and send. Merge
+    tags, in-page anchors, mail and phone links pass as they are; a bare
+    domain gets `https://`; anything else that is not a web address (a
+    `javascript:` URL, say) is refused with null. Empty stays empty. */
+export function normalizeHref(value: string): string | null {
+  const href = value.trim()
+  if (!href) return ""
+  if (href.startsWith("{{{") || href.startsWith("#")) return href
+  if (/^(mailto|tel):\S+$/i.test(href)) return href
+  if (isUrl(href)) return href
+  /* No scheme at all: read it as a domain. */
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(href) && isUrl(`https://${href}`)) {
+    return `https://${href}`
+  }
+  return null
+}
+
 export function pluralize(
   count: number,
   noun: string,

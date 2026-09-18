@@ -50,6 +50,7 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
 import { useDraftValue } from "@/components/dashboard/primitives"
+import { normalizeHref } from "@/lib/dashboard/format"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import {
   AlignField,
@@ -356,13 +357,57 @@ function AttrField({
       </InspectorRow>
     )
   }
+  const stored = (context.getAttr(name) as string | number | undefined) ?? ""
+  if (type === "textarea") {
+    return (
+      <DraftedAttrField
+        label={label}
+        testId={`inspector-${name}`}
+        value={String(stored)}
+        onCommit={(value) => context.setAttr(name, value)}
+      />
+    )
+  }
   return (
     <StyleField
       input={{ label, type }}
-      value={(context.getAttr(name) as string | number | undefined) ?? ""}
+      value={stored}
       testId={`inspector-${name}`}
-      onValueChange={(value) => context.setAttr(name, value)}
+      onValueChange={(value) => {
+        /* A destination that is not safe to send is not stored. */
+        const next = name === "href" ? normalizeHref(String(value)) : value
+        if (next !== null) context.setAttr(name, next)
+      }}
     />
+  )
+}
+
+/* Long text (an HTML block's markup, alt text) stays in a draft until the
+   field is left: each commit is a document change that repaints the block
+   and restarts the save, which is too much to do per keystroke. */
+function DraftedAttrField({
+  label,
+  testId,
+  value,
+  onCommit,
+}: {
+  label: string
+  testId: string
+  value: string
+  onCommit: (value: string) => void
+}) {
+  const { draft, setDraft, commitDraft } = useDraftValue(value, onCommit)
+  return (
+    <InspectorRow label={label} align="start">
+      <Textarea
+        rows={3}
+        value={draft}
+        aria-label={label}
+        data-testid={testId}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commitDraft}
+      />
+    </InspectorRow>
   )
 }
 
