@@ -912,17 +912,27 @@
   border-radius: 0;
   background-color: transparent;
 }
-#email-paper .tiptap [alignment="left"],
+/* Not on a table: `align` on a table places the table, as it does in an
+   inbox, and says nothing about the text in its cells. Pasted email markup
+   wraps everything in `<table align="center">`, and read as a text alignment
+   that centred every line of it. */
+#email-paper .tiptap [alignment="left"]:not(table),
 #email-paper .tiptap .align-left {
   text-align: left;
 }
-#email-paper .tiptap [alignment="center"],
+#email-paper .tiptap [alignment="center"]:not(table),
 #email-paper .tiptap .align-center {
   text-align: center;
 }
-#email-paper .tiptap [alignment="right"],
+#email-paper .tiptap [alignment="right"]:not(table),
 #email-paper .tiptap .align-right {
   text-align: right;
+}
+#email-paper .tiptap table[alignment="center"] {
+  margin-inline: auto;
+}
+#email-paper .tiptap table[alignment="right"] {
+  margin-left: auto;
 }
 /* Laid out as the table the email is sent as, so a column's own width and
    vertical alignment mean the same thing here as they do in an inbox. */

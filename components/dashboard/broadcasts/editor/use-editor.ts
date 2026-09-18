@@ -54,7 +54,12 @@ const EXPORT_MS = 2000
 
 /** Editing state for one broadcast: the engine (or the raw markup, for a
     hand-written one) and a debounced write-through to the store. */
-export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
+export function useBroadcastEditor(
+  item: Broadcast,
+  /** Set when the screen was remounted on another theme preset: the saved
+      markup was exported under the old one. */
+  exportOnMount = false
+): BroadcastEditorState {
   const { updateBroadcast } = useDashboard()
   const { id, preview } = item
   const [mode, setMode] = React.useState(() => broadcastEditorMode(item))
@@ -122,10 +127,13 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
   /* Owes the store a fresh export, soon; and the document, sooner. */
   const requestExport = React.useCallback(
     (saveDocument: boolean) => {
-      const current = editorRef.current
-      if (!current || modeRef.current !== "visual") return
+      if (!editorRef.current || modeRef.current !== "visual") return
       setSave("saving")
+      /* The engine is looked up when the work runs, not when it is owed: a
+         change of theme preset replaces it in between. */
       pending.current = async () => {
+        const current = editorRef.current
+        if (!current || current.isDestroyed) return
         const turn = ++exports.current
         const email = await composeReactEmail({
           editor: current,
@@ -139,6 +147,8 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
       if (saveDocument) {
         window.clearTimeout(timers.current.save)
         timers.current.save = window.setTimeout(() => {
+          const current = editorRef.current
+          if (!current || current.isDestroyed) return
           updateBroadcast(id, { content: current.getJSON() })
           setSave("saved")
         }, SAVE_MS)
@@ -170,9 +180,10 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     editorRef.current = editor
     const frame = window.requestAnimationFrame(() => {
       settled.current = true
+      if (exportOnMount) requestExport(false)
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [editor])
+  }, [editor, exportOnMount, requestExport])
 
   /* The inbox preview is part of the export, so editing it owes a new one. */
   React.useEffect(() => {

@@ -6,6 +6,7 @@ import {
   EmailTheming,
   extendTheme,
   useEditorImage,
+  type EditorTheme,
 } from "@react-email/editor/plugins"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import {
@@ -29,7 +30,7 @@ import {
    on a white, padded sheet. Basic rather than minimal because minimal sets
    no font, base size or spacing at all, and an email sent without them falls
    back to the mail client's serif with every block touching the next. */
-const THEME = extendTheme("basic", {
+const THEME_OVERRIDES: Parameters<typeof extendTheme>[1] = {
   body: {
     backgroundColor: "#f5f5f5",
     paddingTop: 24,
@@ -74,7 +75,12 @@ const THEME = extendTheme("basic", {
     borderRadius: 4,
   },
   image: { borderRadius: 8 },
-})
+}
+
+/* Minimal is the same page with none of basic's type or spacing. It is the
+   one to pick for an email pasted in whole, which brings its own and is only
+   thrown off by ours on top. */
+const DEFAULT_PRESET: EditorTheme = "basic"
 
 const BASE_EXTENSIONS = [
   StarterKit.configure({ Link: false }),
@@ -86,9 +92,22 @@ const BASE_EXTENSIONS = [
         ? `Heading ${node.attrs.level}`
         : "Press '/' for commands",
   }),
-  EmailTheming.configure({ theme: THEME }),
   ...CUSTOM_NODES,
 ]
+
+function isPreset(value: unknown): value is EditorTheme {
+  return value === "basic" || value === "minimal"
+}
+
+/** The preset a saved document asks for, which it keeps beside its styles. */
+export function storedPreset(content: Content | undefined): EditorTheme {
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    return DEFAULT_PRESET
+  }
+  const global = content.content?.find((node) => node.type === "globalContent")
+  const theme = global?.attrs?.data?.theme
+  return isPreset(theme) ? theme : DEFAULT_PRESET
+}
 
 /* There is no file storage behind the dashboard yet, so an uploaded picture
    travels inside the document as a data URL, and the document lives in the
@@ -121,9 +140,19 @@ export function useEmailEngine({
   onUpdate: (editor: Editor) => void
 }): Editor {
   const image = useEditorImage({ uploadImage })
+  /* The engine reads its preset from how it was configured and from nowhere
+     else, so the document's choice is read once, here. Choosing another
+     remounts the whole screen (see `BroadcastEditor`): the package's hooks
+     stay subscribed to an engine as it is torn down, so one cannot be swapped
+     for another underneath them. */
+  const [preset] = React.useState(() => storedPreset(content))
   const extensions = React.useMemo(
-    () => [...BASE_EXTENSIONS, alignedImage(image)],
-    [image]
+    () => [
+      ...BASE_EXTENSIONS,
+      EmailTheming.configure({ theme: extendTheme(preset, THEME_OVERRIDES) }),
+      alignedImage(image),
+    ],
+    [image, preset]
   )
 
   return useEditor({

@@ -902,7 +902,13 @@ function ThemePresetToggle() {
         items={THEME_PRESETS}
         aria-label="Theme preset"
         testIdPrefix="theme-preset"
-        onValueChange={(next) => setCurrentTheme(editor, next)}
+        /* A preset is taken whole: its own values replace the ones kept in
+           the document, which would otherwise sit on top and change nothing.
+           The screen then remounts on the new preset. */
+        onValueChange={(next) => {
+          editor.commands.setGlobalContent("styles", null)
+          setCurrentTheme(editor, next)
+        }}
       />
     </InspectorSection>
   )

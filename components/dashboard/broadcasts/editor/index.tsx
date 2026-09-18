@@ -21,7 +21,10 @@ import {
   useDraft,
 } from "@/components/dashboard/primitives"
 import { EmailCanvas } from "@/components/dashboard/broadcasts/editor/canvas"
-import { EmailEngineProvider } from "@/components/dashboard/broadcasts/editor/engine"
+import {
+  EmailEngineProvider,
+  storedPreset,
+} from "@/components/dashboard/broadcasts/editor/engine"
 import { SegmentedToggle } from "@/components/dashboard/broadcasts/editor/controls"
 import { HtmlMode } from "@/components/dashboard/broadcasts/editor/html-mode"
 import { Inspector } from "@/components/dashboard/broadcasts/editor/inspector"
@@ -62,9 +65,16 @@ function SaveIndicator({ save }: { save: SaveState }) {
   )
 }
 
-function EditorScreen({ item }: { item: Broadcast }) {
+function EditorScreen({
+  item,
+  presetChanged,
+}: {
+  item: Broadcast
+  /** This mount replaces one on another theme preset. */
+  presetChanged: boolean
+}) {
   const { updateBroadcast } = useDashboard()
-  const editor = useBroadcastEditor(item)
+  const editor = useBroadcastEditor(item, presetChanged)
   const [view, setView] = React.useState<BroadcastEditorMode>(editor.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
   const collapseInspector = React.useCallback(() => setInspectorOpen(false), [])
@@ -282,5 +292,16 @@ export function BroadcastEditor() {
   }
   if (report) return null
 
-  return <EditorScreen key={item.id} item={item} />
+  return <PresetKeyedScreen key={item.id} item={item} />
+}
+
+/* The engine is built on a theme preset and cannot change it afterwards, so
+   the screen is keyed by the preset the document asks for and mounts again
+   when that changes. */
+function PresetKeyedScreen({ item }: { item: Broadcast }) {
+  const preset = storedPreset(item.content)
+  const [first] = React.useState(preset)
+  const [changed, setChanged] = React.useState(false)
+  if (!changed && preset !== first) setChanged(true)
+  return <EditorScreen key={preset} item={item} presetChanged={changed} />
 }
