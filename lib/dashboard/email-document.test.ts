@@ -48,7 +48,7 @@ import {
   type HeadingBlock,
   type TextBlock,
 } from "./email-document"
-import { renderEmailHtml } from "./email-render"
+import { renderEmailHtml, themeCss } from "./email-render"
 import { SEED_STATE } from "./data"
 
 function docWith(...types: EmailBlockType[]): EmailDocument {
@@ -455,6 +455,33 @@ describe("normalizeEmailDocument", () => {
   })
 })
 
+describe("themeCss", () => {
+  it("writes a rule for every tag the renderer emits", () => {
+    const css = themeCss(themePreset("minimal"))
+    for (const selector of [
+      "p {",
+      "ul, ol {",
+      "li {",
+      "h1 {",
+      "h2 {",
+      "h3 {",
+      "a {",
+      "pre, code {",
+    ]) {
+      assert.ok(css.includes(selector), `missing rule for ${selector}`)
+    }
+    assert.match(css, /h1 \{[^}]*font-size: 31px/)
+    assert.match(css, /a \{[^}]*text-decoration: underline/)
+  })
+
+  it("scopes every selector when asked, so the canvas stays contained", () => {
+    const css = themeCss(themePreset("minimal"), "#email-paper")
+    assert.ok(css.includes("#email-paper p {"))
+    assert.ok(css.includes("#email-paper ul, #email-paper ol {"))
+    assert.ok(!/^p \{/m.test(css))
+  })
+})
+
 describe("renderEmailHtml", () => {
   it("renders every block type to email markup", async () => {
     let doc = docWith(
@@ -503,10 +530,51 @@ describe("renderEmailHtml", () => {
     assert.match(html, /<style[^>]*>[\s\S]*\.example \{ color: blue; \}/)
   })
 
-  it("applies theme typography to headings", async () => {
+  it("puts the theme rules before the author's global CSS", async () => {
+    const doc = { ...docWith("text"), globalCss: "p { color: red; }" }
+    const html = await renderEmailHtml(doc)
+    const theme = html.indexOf("p { color: #000000;")
+    const global = html.indexOf("p { color: red; }")
+    assert.ok(theme !== -1, "theme rule is missing")
+    assert.ok(global !== -1, "global CSS is missing")
+    assert.ok(theme < global, "global CSS must come last so it wins")
+  })
+
+  it("leaves theme typography off the block, so global CSS can win", async () => {
+    const html = await renderEmailHtml(docWith("text"))
+    const style = html.match(/<p[^>]*style="([^"]*)"/)?.[1] ?? ""
+    assert.ok(style.length > 0, "the paragraph should still be styled")
+    assert.doesNotMatch(style, /(^|;)color:/)
+    assert.doesNotMatch(style, /(^|;)font-size:/)
+    assert.doesNotMatch(style, /(^|;)line-height:/)
+  })
+
+  it("keeps a block's own override inline, where it outranks global CSS", async () => {
+    let doc = docWith("text")
+    doc = updateBlock<TextBlock>(doc, doc.blocks[0]!.id, {
+      color: "#ff0000",
+      fontSize: 22,
+    })
+    const style =
+      (await renderEmailHtml(doc)).match(/<p[^>]*style="([^"]*)"/)?.[1] ?? ""
+    assert.match(style, /color:#ff0000/)
+    assert.match(style, /font-size:22px/)
+  })
+
+  it("puts a block's CSS class on its element", async () => {
+    let doc = docWith("text")
+    doc = updateBlock<TextBlock>(doc, doc.blocks[0]!.id, {
+      className: "example",
+    })
+    assert.match(await renderEmailHtml(doc), /<p[^>]*class="example"/)
+  })
+
+  it("applies theme typography to headings through the stylesheet", async () => {
     const doc = setThemeStyle(docWith("heading"), "heading", { fontSize: 42 })
     const html = await renderEmailHtml(doc)
-    assert.match(html, /font-size:42px/)
+    assert.match(html, /h3 \{[^}]*font-size: 42px/)
+    const style = html.match(/<h3[^>]*style="([^"]*)"/)?.[1] ?? ""
+    assert.doesNotMatch(style, /font-size/)
   })
 
   it("passes hand-written html through untouched", async () => {

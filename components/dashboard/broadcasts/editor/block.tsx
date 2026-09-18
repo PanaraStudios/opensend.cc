@@ -253,6 +253,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
     case "heading":
       return (
         <InlineEditable
+          as={`h${block.level}` as "h1" | "h2" | "h3"}
           plain
           multiline={false}
           html={block.text}
@@ -271,6 +272,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
       return (
         <>
           <InlineEditable
+            as="p"
             html={block.html}
             style={style}
             placeholder="Press '/' for commands…"
@@ -300,6 +302,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
           {block.items.map((item, index) => (
             <li key={index}>
               <InlineEditable
+                as="span"
                 html={item}
                 placeholder="List item"
                 data-editable-for={index === 0 ? block.id : undefined}
@@ -417,7 +420,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
       return <pre style={style}>{block.code}</pre>
     case "social":
       return (
-        <div style={style}>
+        <p style={style}>
           {block.links.map((link, index) => (
             <span key={link.id}>
               {index > 0 ? (
@@ -427,33 +430,34 @@ function BlockBody({ block }: { block: EmailBlock }) {
               ) : null}
               <a
                 href={link.href}
-                style={{ color: style.color, textDecoration: "underline" }}
+                style={{ color: block.color }}
                 onClick={(event) => event.preventDefault()}
               >
                 {link.label}
               </a>
             </span>
           ))}
-        </div>
+        </p>
       )
     case "footer":
       return (
-        <div style={style}>
+        <p style={style}>
           <InlineEditable
+            as="span"
             html={block.text}
             placeholder="Small print"
             data-editable-for={block.id}
             data-testid="block-footer-text"
             onCommit={(text) => actions.update<FooterBlock>(block.id, { text })}
-          />
+          />{" "}
           <a
             href={UNSUBSCRIBE_VARIABLE}
-            style={{ color: style.color, textDecoration: "underline" }}
+            style={{ color: block.color }}
             onClick={(event) => event.preventDefault()}
           >
             {block.unsubscribeLabel}
           </a>
-        </div>
+        </p>
       )
     case "html":
       return block.code.trim() ? (

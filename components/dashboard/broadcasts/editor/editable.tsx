@@ -57,7 +57,11 @@ export function insertIntoEditable(text: string): boolean {
   return runEditableCommand("insertText", text)
 }
 
+/* The canvas mirrors the tags `renderEmailDocument` emits — `p`, `h1`-`h3`,
+   `pre` — so the same theme and Global CSS rules match on the paper as in the
+   email. `contentEditable` behaves the same on any of them. */
 export function InlineEditable({
+  as: Tag = "div",
   html,
   onCommit,
   onEnter,
@@ -71,6 +75,8 @@ export function InlineEditable({
   "data-testid": testId,
   "data-editable-for": editableFor,
 }: {
+  /** The tag to render, matching the one the email renderer uses. */
+  as?: "div" | "p" | "span" | "h1" | "h2" | "h3" | "pre"
   html: string
   onCommit: (html: string) => void
   onEnter?: () => void
@@ -87,7 +93,7 @@ export function InlineEditable({
   /** Lets `focusBlockEditor` put the caret into this block from anywhere. */
   "data-editable-for"?: string
 }) {
-  const ref = React.useRef<HTMLDivElement>(null)
+  const ref = React.useRef<HTMLElement>(null)
   /* `commit` runs from event handlers and from the module-level registry, so
      it reads the newest props out of a ref instead of closing over them. */
   const latest = React.useRef({ html, plain, onCommit })
@@ -115,8 +121,8 @@ export function InlineEditable({
   }, [])
 
   return (
-    <div
-      ref={ref}
+    <Tag
+      ref={ref as React.RefObject<never>}
       contentEditable
       suppressContentEditableWarning
       role="textbox"
