@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 export function CodeEditor({
   value,
   onValueChange,
+  onBlur,
   placeholder,
   readOnly = false,
   className,
@@ -18,6 +19,7 @@ export function CodeEditor({
 }: {
   value: string
   onValueChange: (value: string) => void
+  onBlur?: () => void
   placeholder?: string
   readOnly?: boolean
   className?: string
@@ -52,8 +54,9 @@ export function CodeEditor({
         placeholder={placeholder}
         aria-label={ariaLabel}
         data-testid={testId}
-        className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-3 py-2 font-mono text-mono leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-3 py-2 font-mono text-mono leading-6 shadow-none focus-visible:ring-0"
         onChange={(event) => onValueChange(event.target.value)}
+        onBlur={onBlur}
         onScroll={(event) => {
           if (gutter.current) {
             gutter.current.scrollTop = event.currentTarget.scrollTop

@@ -13,43 +13,16 @@ import {
 import { ConfirmDialog } from "@/components/dashboard/primitives"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
-import {
-  useEmailHtml,
-  type BroadcastEditorState,
-} from "@/components/dashboard/broadcasts/editor/use-editor"
-import {
-  documentRawHtml,
-  htmlEmailDocument,
-} from "@/lib/dashboard/email-document"
-import type { Broadcast } from "@/lib/dashboard/types"
+import type { EmailEditorState } from "@/components/dashboard/broadcasts/editor/use-editor"
 
-/* Two ways to reach this pane. A block document shows the markup React Email
-   produced, read-only, because editing it by hand is a one-way door: taking
-   that door replaces the blocks with a single HTML block, which is exactly
-   what a pasted or uploaded document is. */
-export function HtmlMode({
-  item,
-  editor,
-}: {
-  item: Broadcast
-  editor: BroadcastEditorState
-}) {
-  const { doc, apply } = editor
+/* Two ways to reach this pane. A visual document shows the markup React Email
+   exported, read-only, because editing it by hand is a one-way door: taking
+   that door drops the editor document and makes this markup the email. */
+export function HtmlMode({ editor }: { editor: EmailEditorState }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false)
-  const rendered = useEmailHtml(doc, item.preview)
-  const handWritten = doc.mode === "html"
-  const code = handWritten ? documentRawHtml(doc) : rendered
-
-  function setCode(next: string) {
-    apply((current) => {
-      const block = current.blocks[0]
-      if (!block || block.type !== "html") return current
-      return {
-        ...current,
-        blocks: [{ ...block, code: next }],
-      }
-    })
-  }
+  const handWritten = editor.mode === "html"
+  const code = editor.html
+  const setCode = editor.setHtml
 
   return (
     <>
@@ -89,7 +62,7 @@ export function HtmlMode({
             </div>
             {handWritten ? null : (
               <p className="text-caption text-muted-foreground">
-                This markup is generated from your blocks.
+                This markup is generated from the visual editor.
               </p>
             )}
             <CodeEditor
@@ -97,7 +70,7 @@ export function HtmlMode({
               readOnly={!handWritten}
               aria-label="HTML code editor"
               data-testid="html-code"
-              placeholder="Start writing your broadcast..."
+              placeholder="Start writing your email..."
               className="min-h-0 flex-1"
               onValueChange={setCode}
             />
@@ -115,12 +88,10 @@ export function HtmlMode({
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Edit this broadcast as HTML?"
-        description="Your blocks are replaced by a single HTML block holding the markup below. You can start again from blocks at any time."
+        title="Edit this email as HTML?"
+        description="The markup below becomes the email, and the visual document is dropped. You can go back to the visual editor, which keeps what it understands."
         confirmLabel="Edit HTML"
-        onConfirm={() =>
-          apply((current) => htmlEmailDocument(rendered, current))
-        }
+        onConfirm={editor.editAsHtml}
       />
     </>
   )

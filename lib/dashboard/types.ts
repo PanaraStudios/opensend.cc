@@ -1,4 +1,4 @@
-import type { EmailDocument } from "./email-document"
+import type { JSONContent } from "@tiptap/core"
 
 export const REGIONS = [
   { value: "us-east-1", label: "North Virginia", code: "us-east-1" },
@@ -63,17 +63,21 @@ export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 export const WEBHOOK_EVENTS = [
   "email.sent",
   "email.delivered",
+  "email.delivery_delayed",
   "email.opened",
   "email.clicked",
   "email.bounced",
   "email.complained",
   "email.received",
   "email.failed",
+  "email.scheduled",
   "email.suppressed",
   "contact.created",
   "contact.updated",
   "contact.deleted",
+  "domain.created",
   "domain.updated",
+  "domain.deleted",
 ] as const
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]
@@ -216,17 +220,24 @@ export type BroadcastStats = {
   complained: number
 }
 
-export type Broadcast = {
+/** What the email editor works on. A broadcast and a template are both one
+    of these, which is how they share the editor. */
+export type EmailDraft = {
   id: string
   name: string
   subject: string
   preview: string
   html: string
-  /** Block tree behind `html`. Absent on records saved before the editor, and
-      on those the editor falls back to `html`. */
-  content?: EmailDocument
+  /** The editor document `html` was exported from. Absent when the HTML was
+      written by hand, and then `html` is the source of truth. */
+  content?: JSONContent
+  /** The chosen sender. Absent means the workspace's default address. */
+  from?: string
   /** Overrides the sending domain's reply address for this send. */
   replyTo?: string
+}
+
+export type Broadcast = EmailDraft & {
   status: BroadcastStatus
   segmentId: string | null
   topicId: string | null
@@ -237,15 +248,17 @@ export type Broadcast = {
   stats: BroadcastStats
 }
 
-export type EmailTemplate = {
-  id: string
-  name: string
-  subject: string
-  html: string
+export type EmailTemplate = EmailDraft & {
+  /** The handle the API sends this template by. Unique in the workspace. */
+  alias: string
   status: TemplateStatus
   variables: string[]
   createdAt: number
   updatedAt: number
+  /** When it was last published, kept through a revert to draft: an alias
+      that has been live may still have callers. An edit after this is not
+      live yet. */
+  publishedAt: number | null
 }
 
 export type Automation = {
@@ -262,8 +275,24 @@ export type Webhook = {
   endpoint: string
   events: WebhookEvent[]
   enabled: boolean
-  signingSecretLast4: string
+  /** Signs every payload. Readable on the webhook's page at any time. */
+  signingSecret: string
   createdAt: number
+}
+
+/** One attempt to hand an event to an endpoint, and what came back. */
+export type WebhookDelivery = {
+  id: string
+  webhookId: string
+  event: WebhookEvent
+  /** The endpoint's HTTP status. Anything outside 2xx is a failed delivery. */
+  status: number
+  /** How many times it has been tried, the first included. */
+  attempts: number
+  durationMs: number
+  createdAt: number
+  payload: Record<string, unknown>
+  response: string
 }
 
 export type LogSource = "api" | "smtp" | "dashboard"
@@ -338,6 +367,7 @@ export type DashboardState = {
   templates: EmailTemplate[]
   automations: Automation[]
   webhooks: Webhook[]
+  webhookDeliveries: WebhookDelivery[]
   logs: ApiLog[]
   exports: ExportJob[]
   settings: Settings
@@ -346,9 +376,4 @@ export type DashboardState = {
 export type CreateApiKeyResult = {
   key: ApiKey
   token: string
-}
-
-export type CreateWebhookResult = {
-  webhook: Webhook
-  secret: string
 }

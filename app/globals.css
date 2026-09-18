@@ -35,6 +35,11 @@
   --bg-subtle: #f5f5f5;
   --surface: #ffffff;
   --surface-tint: #fafafa;
+  /* The fill of a form field: the page colour in light, a raised surface in
+     dark. One theme-aware token, so a wrapper's single `bg-transparent`
+     clears it in both themes. A `dark:` fill beside the light one would
+     survive that override and paint a square box inside rounded frames. */
+  --field: var(--bg);
   --border: #e5e5e5;
   --border-strong: #d4d4d4;
   --table-divider: var(--border);
@@ -259,6 +264,7 @@
   --bg-subtle: #19191a;
   --surface: #141415;
   --surface-tint: #161616;
+  --field: var(--surface);
   --border: rgb(255 255 255 / 0.1);
   --border-strong: rgb(255 255 255 / 0.15);
   --table-divider: rgb(255 255 255 / 0.06);
@@ -395,6 +401,7 @@
   --color-background-subtle: var(--background-subtle);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-field: var(--field);
   --color-surface-tint: var(--surface-tint);
   --color-glass: var(--glass-fill);
   --color-glass-soft: var(--glass-fill-soft);
@@ -885,4 +892,108 @@
 .surface-shell > .panel {
   flex: 1 1 0%;
   min-height: 0;
+}
+/* The email editor's document. These are the few layout rules the engine
+   expects from a stylesheet; its look comes from the email theme, and its
+   menus are ours. Scoped to the paper so nothing else is touched. */
+/* The engine paints its editing surface as the page and its container node
+   as the paper. The canvas and the sheet already are those, so inside the
+   sheet both are flattened. The id outranks the engine's injected selectors,
+   so none of this needs `!important`. */
+#email-paper .tiptap.ProseMirror {
+  padding: 0;
+  background-color: transparent;
+  outline: none;
+}
+#email-paper .tiptap .node-container {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+/* Not on a table: `align` on a table places the table, as it does in an
+   inbox, and says nothing about the text in its cells. Pasted email markup
+   wraps everything in `<table align="center">`, and read as a text alignment
+   that centred every line of it. */
+#email-paper .tiptap [alignment="left"]:not(table),
+#email-paper .tiptap .align-left {
+  text-align: left;
+}
+#email-paper .tiptap [alignment="center"]:not(table),
+#email-paper .tiptap .align-center {
+  text-align: center;
+}
+#email-paper .tiptap [alignment="right"]:not(table),
+#email-paper .tiptap .align-right {
+  text-align: right;
+}
+#email-paper .tiptap table[alignment="center"] {
+  margin-inline: auto;
+}
+#email-paper .tiptap table[alignment="right"] {
+  margin-left: auto;
+}
+/* Laid out as the table the email is sent as, so a column's own width and
+   vertical alignment mean the same thing here as they do in an inbox. */
+#email-paper .tiptap .node-columns {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+#email-paper .tiptap .node-column {
+  display: table-cell;
+  /* A cell in the sent table is as wide as its width plus its padding. */
+  box-sizing: content-box;
+  vertical-align: middle;
+}
+#email-paper .tiptap .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #9ca3af;
+  pointer-events: none;
+}
+/* A picture is a block, so its alignment is a margin, not a text-align. */
+#email-paper .tiptap img[alignment] {
+  display: block;
+}
+#email-paper .tiptap img[alignment="center"] {
+  margin-inline: auto;
+}
+#email-paper .tiptap img[alignment="right"] {
+  margin-left: auto;
+}
+/* Our own nodes, while editing. */
+#email-paper .tiptap .node-variable {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background-color: #eef2ff;
+  color: #3730a3;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+}
+#email-paper .tiptap .node-youtube {
+  padding: 4px 0;
+}
+#email-paper .tiptap .node-placeholder-box {
+  padding: 24px;
+  border: 1px dashed #d4d4d4;
+  border-radius: 6px;
+  color: #737373;
+  font-size: 14px;
+  text-align: center;
+}
+#email-paper .tiptap .node-html iframe {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  border: 0;
+  /* The block is selected and dragged as one; clicks go to it, not inside. */
+  pointer-events: none;
+}
+#email-paper .tiptap .ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
 }

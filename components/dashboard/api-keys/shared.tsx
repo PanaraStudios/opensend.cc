@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import {
   ConfirmDialog,
+  DocsCode,
   DocsSheet,
   InfoTip,
   MonoValue,
@@ -83,11 +84,11 @@ const API_KEY_DOCS = [
   {
     title: "Authorization",
     body: (
-      <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+      <DocsCode>
         {`curl https://api.opensend.cc/emails \\
   -H "Authorization: Bearer os_..." \\
   -H "Content-Type: application/json"`}
-      </pre>
+      </DocsCode>
     ),
   },
   {

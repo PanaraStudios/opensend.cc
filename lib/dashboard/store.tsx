@@ -8,9 +8,13 @@ import {
   type ReactNode,
 } from "react"
 
-import { emptyBroadcastStats, transitionBroadcast } from "./broadcast"
+import {
+  emailFrom,
+  broadcastRecipients,
+  emptyBroadcastStats,
+  transitionBroadcast,
+} from "./broadcast"
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
-import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
 import {
   DEFAULT_RETURN_PATH,
@@ -18,7 +22,6 @@ import {
   reconcileDomain,
   verifyDomainRecords,
 } from "./domains"
-import { workspaceFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import {
@@ -31,6 +34,15 @@ import {
   switchTeamInRoot,
   type DashboardRoot,
 } from "./teams"
+import {
+  publishedAtAfterEdit,
+  renamedTemplateAlias,
+  templateVariables,
+  UNTITLED_TEMPLATE,
+  uniqueTemplateAlias,
+  type TemplateInput,
+} from "./template"
+import { replayedDelivery } from "./webhooks"
 import type {
   ApiKey,
   ApiKeyPermission,
@@ -39,10 +51,10 @@ import type {
   BroadcastStatus,
   Contact,
   CreateApiKeyResult,
-  CreateWebhookResult,
   DashboardState,
   Domain,
   EmailStatus,
+  EmailDraft,
   EmailTemplate,
   MemberRole,
   PropertyType,
@@ -57,7 +69,6 @@ import type {
   TopicSubscription,
   TopicVisibility,
   Webhook,
-  WebhookEvent,
 } from "./types"
 
 const STORAGE_KEY = "opensend.dashboard.v3"
@@ -720,8 +731,7 @@ function addBroadcast(input: {
         name: input.name.trim(),
         subject: input.subject.trim(),
         preview: input.preview.trim(),
-        html: `<p>${input.preview.trim()}</p>`,
-        content: emptyEmailDocument(),
+        html: "",
         status: "draft",
         segmentId: input.segmentId,
         topicId: input.topicId,
@@ -747,6 +757,7 @@ function updateBroadcast(
       | "preview"
       | "html"
       | "content"
+      | "from"
       | "replyTo"
       | "segmentId"
       | "topicId"
@@ -761,17 +772,6 @@ function updateBroadcast(
   }))
 }
 
-function broadcastRecipients(
-  current: DashboardState,
-  item: Broadcast
-): Contact[] {
-  return current.contacts.filter(
-    (contact) =>
-      !contact.unsubscribed &&
-      (item.segmentId === null || contact.segmentIds.includes(item.segmentId))
-  )
-}
-
 function setBroadcastStatus(
   id: string,
   status: BroadcastStatus,
@@ -782,14 +782,14 @@ function setBroadcastStatus(
     if (!item) return current
     const now = Date.now()
     const recipients =
-      status === "sent" ? broadcastRecipients(current, item) : []
+      status === "sent" ? broadcastRecipients(current.contacts, item) : []
     const next = transitionBroadcast(item, status, {
       now,
       recipients: recipients.length,
       scheduledAt,
     })
     if (next === item) return current
-    const from = workspaceFromAddress(current.domains)
+    const from = emailFrom(item, current.domains)
     const sent: SentEmail[] = recipients.map((contact) => ({
       id: createId("em"),
       from,
@@ -849,67 +849,110 @@ function deleteBroadcast(id: string) {
   }))
 }
 
-function addTemplate(input: { name: string; subject: string; html?: string }) {
+function addTemplate(input: TemplateInput) {
   const id = createId("tpl")
-  mutate((current) => ({
-    ...current,
-    templates: [
-      {
-        id,
-        name: input.name.trim(),
-        subject: input.subject.trim(),
-        html: input.html?.trim() ? input.html : "<p></p>",
-        status: "draft",
-        variables: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-      ...current.templates,
-    ],
-  }))
-  return { id }
-}
-
-function updateTemplate(
-  id: string,
-  patch: Partial<Pick<EmailTemplate, "name" | "subject" | "html" | "variables">>
-) {
-  mutate((current) => ({
-    ...current,
-    templates: current.templates.map((item) =>
-      item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item
-    ),
-  }))
-}
-
-function setTemplateStatus(id: string, status: TemplateStatus) {
-  mutate((current) => ({
-    ...current,
-    templates: current.templates.map((item) =>
-      item.id === id ? { ...item, status, updatedAt: Date.now() } : item
-    ),
-  }))
-}
-
-function duplicateTemplate(id: string) {
   mutate((current) => {
-    const source = current.templates.find((item) => item.id === id)
-    if (!source) return current
+    const name = input.name.trim() || UNTITLED_TEMPLATE
     return {
       ...current,
       templates: [
         {
-          ...source,
-          id: createId("tpl"),
-          name: `${source.name} copy`,
+          id,
+          name,
+          alias: uniqueTemplateAlias(name, current.templates),
+          subject: input.subject.trim(),
+          preview: input.preview ?? "",
+          html: input.html ?? "",
+          content: input.content,
+          from: input.from,
+          replyTo: input.replyTo,
           status: "draft",
+          variables: templateVariables({
+            subject: input.subject,
+            preview: input.preview ?? "",
+            html: input.html ?? "",
+          }),
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          publishedAt: null,
         },
         ...current.templates,
       ],
     }
   })
+  return { id }
+}
+
+function updateTemplate(
+  id: string,
+  patch: Partial<Omit<EmailDraft, "id"> & Pick<EmailTemplate, "alias">>
+) {
+  const now = Date.now()
+  mutate((current) => ({
+    ...current,
+    templates: current.templates.map((item) => {
+      if (item.id !== id) return item
+      /* A template is listed and deleted by its name, so it always has one. */
+      const name =
+        patch.name === undefined
+          ? undefined
+          : patch.name.trim() || UNTITLED_TEMPLATE
+      const next = { ...item, ...patch, name: name ?? item.name }
+      return {
+        ...next,
+        alias:
+          patch.alias ?? renamedTemplateAlias(item, name, current.templates),
+        variables: templateVariables(next),
+        updatedAt: now,
+        publishedAt: publishedAtAfterEdit(item, patch, now),
+      }
+    }),
+  }))
+}
+
+function setTemplateStatus(id: string, status: TemplateStatus) {
+  const now = Date.now()
+  mutate((current) => ({
+    ...current,
+    templates: current.templates.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            status,
+            updatedAt: now,
+            publishedAt: status === "published" ? now : item.publishedAt,
+          }
+        : item
+    ),
+  }))
+}
+
+function duplicateTemplate(id: string): { id: string } | null {
+  const source = activeWorkspace(rootFromRaw(readRaw())).templates.find(
+    (item) => item.id === id
+  )
+  if (!source) return null
+  const nextId = createId("tpl")
+  mutate((current) => {
+    const name = `${source.name} copy`
+    return {
+      ...current,
+      templates: [
+        {
+          ...source,
+          id: nextId,
+          name,
+          alias: uniqueTemplateAlias(name, current.templates),
+          status: "draft",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          publishedAt: null,
+        },
+        ...current.templates,
+      ],
+    }
+  })
+  return { id: nextId }
 }
 
 function deleteTemplate(id: string) {
@@ -954,24 +997,23 @@ function deleteAutomation(id: string) {
   }))
 }
 
-function createWebhook(input: {
-  endpoint: string
-  events: WebhookEvent[]
-}): CreateWebhookResult {
-  const secret = createWebhookSecret()
-  const webhook = {
-    id: createId("wh"),
-    endpoint: input.endpoint.trim(),
-    events: input.events,
-    enabled: true,
-    signingSecretLast4: secret.slice(-4),
-    createdAt: Date.now(),
-  }
+function createWebhook(input: Pick<Webhook, "endpoint" | "events">) {
+  const id = createId("wh")
   mutate((current) => ({
     ...current,
-    webhooks: [webhook, ...current.webhooks],
+    webhooks: [
+      {
+        id,
+        endpoint: input.endpoint.trim(),
+        events: input.events,
+        enabled: true,
+        signingSecret: createWebhookSecret(),
+        createdAt: Date.now(),
+      },
+      ...current.webhooks,
+    ],
   }))
-  return { webhook, secret }
+  return { id }
 }
 
 function updateWebhook(
@@ -990,18 +1032,33 @@ function deleteWebhook(id: string) {
   mutate((current) => ({
     ...current,
     webhooks: current.webhooks.filter((item) => item.id !== id),
+    webhookDeliveries: current.webhookDeliveries.filter(
+      (item) => item.webhookId !== id
+    ),
   }))
 }
 
+function replayWebhookDelivery(id: string): { id: string } | null {
+  const source = activeWorkspace(rootFromRaw(readRaw())).webhookDeliveries.find(
+    (item) => item.id === id
+  )
+  if (!source) return null
+  const next = replayedDelivery(source, createId("whd"), Date.now())
+  mutate((current) => ({
+    ...current,
+    webhookDeliveries: [next, ...current.webhookDeliveries],
+  }))
+  return { id: next.id }
+}
+
 function rotateWebhookSecret(id: string) {
-  const secret = createWebhookSecret()
+  const signingSecret = createWebhookSecret()
   mutate((current) => ({
     ...current,
     webhooks: current.webhooks.map((item) =>
-      item.id === id ? { ...item, signingSecretLast4: secret.slice(-4) } : item
+      item.id === id ? { ...item, signingSecret } : item
     ),
   }))
-  return secret
 }
 
 function addExport(resource: string, rows: number) {
@@ -1137,6 +1194,7 @@ const actions = {
   updateWebhook,
   deleteWebhook,
   rotateWebhookSecret,
+  replayWebhookDelivery,
   addExport,
   updateSettings,
   inviteMember,
@@ -1152,6 +1210,19 @@ export type DashboardStore = {
 } & typeof actions
 
 const DashboardContext = createContext<DashboardStore | null>(null)
+
+const subscribeNever = () => () => {}
+
+/** False on the server and on the first client render, which both show the
+    seed data; true once the saved state is what is being rendered. Anything
+    that copies state into its own on mount should wait for this. */
+export function useStoreHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false
+  )
+}
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const raw = useSyncExternalStore(subscribe, readRaw, () => SERVER_SNAPSHOT)

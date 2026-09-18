@@ -1,5 +1,23 @@
 import type * as React from "react"
 import {
+  BULLET_LIST,
+  BUTTON,
+  CODE,
+  DIVIDER,
+  FOUR_COLUMNS,
+  H1,
+  H2,
+  H3,
+  NUMBERED_LIST,
+  QUOTE,
+  SECTION,
+  TEXT,
+  THREE_COLUMNS,
+  TWO_COLUMNS,
+  type SlashCommandItem,
+} from "@react-email/editor/ui"
+import type { ChainedCommands, Editor, Range } from "@tiptap/core"
+import {
   BracesIcon,
   CodeXmlIcon,
   Columns2Icon,
@@ -9,247 +27,196 @@ import {
   Heading2Icon,
   Heading3Icon,
   ImageIcon,
+  LayoutTemplateIcon,
   ListIcon,
   ListOrderedIcon,
   MailMinusIcon,
   MinusIcon,
   MousePointerClickIcon,
   MoveVerticalIcon,
+  PanelBottomIcon,
+  PanelTopIcon,
   Share2Icon,
   SquareIcon,
-  TableIcon,
+  TextQuoteIcon,
   TypeIcon,
-  VariableIcon,
 } from "lucide-react"
 
 import { YouTubeIcon } from "@/components/brand-icons"
 import {
-  createColumnsBlock,
-  createEmailBlock,
-  type EmailBlock,
-  type EmailBlockType,
-  type HeadingBlock,
-  type ListBlock,
-} from "@/lib/dashboard/email-document"
+  FOOTER,
+  PATTERNS,
+  PLACEHOLDER_IMAGE,
+  SOCIAL_LINKS,
+} from "@/components/dashboard/broadcasts/editor/patterns"
+
+/* One catalogue of everything that can be inserted. The insert rail and the
+   "/" menu both read it, and each entry runs the engine's own command, so the
+   two can never drift apart. */
 
 export type PaletteIcon = React.ComponentType<{ className?: string }>
 
 export type PaletteItem = {
-  /** Stable id, also the `palette-<id>` test id and the drag id. */
+  /** Stable id, also the `palette-<id>` and `slash-<id>` test ids. */
   id: string
   label: string
   description: string
   icon: PaletteIcon
-  type: EmailBlockType
-  keywords: string
-  create: () => EmailBlock
+  keywords: string[]
+  run: (editor: Editor, range: Range) => void
 }
 
 export type PaletteMenu = {
-  id: "text" | "media" | "components" | "variables"
+  id: "text" | "media" | "components" | "sections"
   label: string
   icon: PaletteIcon
   items: readonly PaletteItem[]
 }
 
-function heading(level: 1 | 2 | 3): EmailBlock {
-  return { ...(createEmailBlock("heading") as HeadingBlock), level }
+function fromEngine(
+  id: string,
+  icon: PaletteIcon,
+  command: SlashCommandItem
+): PaletteItem {
+  return {
+    id,
+    icon,
+    label: command.title,
+    description: command.description,
+    keywords: command.searchTerms ?? [],
+    run: (editor, range) => command.command({ editor, range }),
+  }
 }
 
-function list(ordered: boolean): EmailBlock {
-  return { ...(createEmailBlock("list") as ListBlock), ordered }
+/* An entry of our own: replaces the "/" text, then runs one more command. */
+function ours(
+  entry: Omit<PaletteItem, "run">,
+  insert: (chain: ChainedCommands) => ChainedCommands
+): PaletteItem {
+  return {
+    ...entry,
+    run: (editor, range) =>
+      insert(editor.chain().focus().deleteRange(range)).run(),
+  }
 }
 
-/* One catalogue behind the insert rail, the flyout menus and the slash menu,
-   so a new block type is described in exactly one place. */
-
-const TEXT_ITEMS: readonly PaletteItem[] = [
-  {
-    id: "text",
-    label: "Text",
-    description: "A paragraph of copy",
-    icon: TypeIcon,
-    type: "text",
-    keywords: "paragraph copy body",
-    create: () => createEmailBlock("text"),
-  },
-  {
-    id: "title",
-    label: "Title",
-    description: "The largest heading",
-    icon: Heading1Icon,
-    type: "heading",
-    keywords: "h1 headline",
-    create: () => heading(1),
-  },
-  {
-    id: "subtitle",
-    label: "Subtitle",
-    description: "A secondary heading",
-    icon: Heading2Icon,
-    type: "heading",
-    keywords: "h2",
-    create: () => heading(2),
-  },
-  {
-    id: "heading",
-    label: "Heading",
-    description: "A small section title",
-    icon: Heading3Icon,
-    type: "heading",
-    keywords: "h3",
-    create: () => heading(3),
-  },
-  {
-    id: "bullet-list",
-    label: "Bullet list",
-    description: "An unordered list",
-    icon: ListIcon,
-    type: "list",
-    keywords: "ul bullets points",
-    create: () => list(false),
-  },
-  {
-    id: "numbered-list",
-    label: "Numbered list",
-    description: "An ordered list",
-    icon: ListOrderedIcon,
-    type: "list",
-    keywords: "ol steps numbers",
-    create: () => list(true),
-  },
+const TEXT_ITEMS: PaletteItem[] = [
+  fromEngine("text", TypeIcon, TEXT),
+  fromEngine("title", Heading1Icon, H1),
+  fromEngine("subtitle", Heading2Icon, H2),
+  fromEngine("heading", Heading3Icon, H3),
+  fromEngine("bullet-list", ListIcon, BULLET_LIST),
+  fromEngine("numbered-list", ListOrderedIcon, NUMBERED_LIST),
+  fromEngine("quote", TextQuoteIcon, QUOTE),
+  fromEngine("code", CodeXmlIcon, CODE),
 ]
 
-const MEDIA_ITEMS: readonly PaletteItem[] = [
-  {
-    id: "image",
-    label: "Image",
-    description: "A picture, optionally linked",
-    icon: ImageIcon,
-    type: "image",
-    keywords: "picture photo img",
-    create: () => createEmailBlock("image"),
-  },
-  {
-    id: "youtube",
-    label: "YouTube",
-    description: "A linked video thumbnail",
-    icon: YouTubeIcon,
-    type: "youtube",
-    keywords: "video embed",
-    create: () => createEmailBlock("youtube"),
-  },
+const MEDIA_ITEMS: PaletteItem[] = [
+  ours(
+    {
+      id: "image",
+      label: "Image",
+      description: "Picture from a URL or an upload",
+      icon: ImageIcon,
+      keywords: ["image", "picture", "photo", "img"],
+    },
+    (chain) => chain.setImage({ src: PLACEHOLDER_IMAGE, alt: "" })
+  ),
+  ours(
+    {
+      id: "youtube",
+      label: "YouTube",
+      description: "Video thumbnail that links out",
+      icon: YouTubeIcon,
+      keywords: ["youtube", "video"],
+    },
+    (chain) => chain.insertContent({ type: "youtube" })
+  ),
 ]
 
-const COMPONENT_ITEMS: readonly PaletteItem[] = [
-  {
-    id: "button",
-    label: "Button",
-    description: "A call to action",
-    icon: MousePointerClickIcon,
-    type: "button",
-    keywords: "cta link action",
-    create: () => createEmailBlock("button"),
-  },
-  {
-    id: "divider",
-    label: "Divider",
-    description: "A horizontal rule",
-    icon: MinusIcon,
-    type: "divider",
-    keywords: "rule hr line separator",
-    create: () => createEmailBlock("divider"),
-  },
-  {
-    id: "spacer",
-    label: "Spacer",
-    description: "Empty vertical space",
-    icon: MoveVerticalIcon,
-    type: "spacer",
-    keywords: "gap space margin",
-    create: () => createEmailBlock("spacer"),
-  },
-  {
-    id: "section",
-    label: "Section",
-    description: "One container that holds blocks",
-    icon: SquareIcon,
-    type: "columns",
-    keywords: "container group panel",
-    create: () => createColumnsBlock(1),
-  },
-  {
-    id: "columns-2",
-    label: "2 columns",
-    description: "Two side-by-side columns",
-    icon: Columns2Icon,
-    type: "columns",
-    keywords: "grid row split",
-    create: () => createColumnsBlock(2),
-  },
-  {
-    id: "columns-3",
-    label: "3 columns",
-    description: "Three side-by-side columns",
-    icon: Columns3Icon,
-    type: "columns",
-    keywords: "grid row split",
-    create: () => createColumnsBlock(3),
-  },
-  {
-    id: "columns-4",
-    label: "4 columns",
-    description: "Four side-by-side columns",
-    icon: Columns4Icon,
-    type: "columns",
-    keywords: "grid row split",
-    create: () => createColumnsBlock(4),
-  },
-  {
-    id: "table",
-    label: "Table",
-    description: "Rows and columns of text",
-    icon: TableIcon,
-    type: "table",
-    keywords: "grid rows cells",
-    create: () => createEmailBlock("table"),
-  },
-  {
-    id: "social",
-    label: "Social links",
-    description: "A row of profile links",
-    icon: Share2Icon,
-    type: "social",
-    keywords: "share profiles follow",
-    create: () => createEmailBlock("social"),
-  },
-  {
-    id: "footer",
-    label: "Unsubscribe footer",
-    description: "Small print and opt-out link",
-    icon: MailMinusIcon,
-    type: "footer",
-    keywords: "unsubscribe legal small print",
-    create: () => createEmailBlock("footer"),
-  },
-  {
-    id: "html",
-    label: "HTML",
-    description: "Hand-written markup",
-    icon: CodeXmlIcon,
-    type: "html",
-    keywords: "code markup embed raw",
-    create: () => createEmailBlock("html"),
-  },
-  {
-    id: "code",
-    label: "Code",
-    description: "A preformatted code block",
-    icon: BracesIcon,
-    type: "code",
-    keywords: "pre snippet monospace",
-    create: () => createEmailBlock("code"),
-  },
+const COMPONENT_ITEMS: PaletteItem[] = [
+  fromEngine("button", MousePointerClickIcon, BUTTON),
+  fromEngine("divider", MinusIcon, DIVIDER),
+  fromEngine("section", SquareIcon, SECTION),
+  fromEngine("columns-2", Columns2Icon, TWO_COLUMNS),
+  fromEngine("columns-3", Columns3Icon, THREE_COLUMNS),
+  fromEngine("columns-4", Columns4Icon, FOUR_COLUMNS),
+  ours(
+    {
+      id: "spacer",
+      label: "Spacer",
+      description: "Empty vertical space",
+      icon: MoveVerticalIcon,
+      keywords: ["spacer", "space", "gap"],
+    },
+    (chain) => chain.insertContent({ type: "spacer" })
+  ),
+  ours(
+    {
+      id: "social",
+      label: "Social links",
+      description: "A centred row of links",
+      icon: Share2Icon,
+      keywords: ["social", "links", "twitter", "linkedin", "github"],
+    },
+    (chain) => chain.insertContent(SOCIAL_LINKS)
+  ),
+  ours(
+    {
+      id: "footer",
+      label: "Unsubscribe footer",
+      description: "Closing note with the opt-out link",
+      icon: MailMinusIcon,
+      keywords: ["footer", "unsubscribe", "opt out"],
+    },
+    (chain) => chain.insertContent(FOOTER)
+  ),
+  ours(
+    {
+      id: "html",
+      label: "HTML",
+      description: "Hand-written markup, sent as written",
+      icon: BracesIcon,
+      keywords: ["html", "code", "raw", "embed"],
+    },
+    (chain) => chain.insertContent({ type: "html" })
+  ),
+]
+
+function pattern(
+  id: keyof typeof PATTERNS,
+  label: string,
+  description: string,
+  icon: PaletteIcon
+): PaletteItem {
+  return ours(
+    {
+      id: `section-${id}`,
+      label,
+      description,
+      icon,
+      keywords: [id, "section"],
+    },
+    (chain) => chain.insertContent(PATTERNS[id])
+  )
+}
+
+const SECTION_ITEMS: PaletteItem[] = [
+  pattern("header", "Header", "Brand line with a row of links", PanelTopIcon),
+  pattern("hero", "Hero", "Image, headline, text and a button", ImageIcon),
+  pattern("features", "Features", "Two benefits side by side", Columns2Icon),
+  pattern(
+    "call-to-action",
+    "Call to action",
+    "A tinted panel with one button",
+    MousePointerClickIcon
+  ),
+  pattern(
+    "sign-off",
+    "Sign-off",
+    "Divider, social links and the unsubscribe footer",
+    PanelBottomIcon
+  ),
 ]
 
 export const PALETTE_MENUS: readonly PaletteMenu[] = [
@@ -261,43 +228,55 @@ export const PALETTE_MENUS: readonly PaletteMenu[] = [
     icon: Columns2Icon,
     items: COMPONENT_ITEMS,
   },
-  { id: "variables", label: "Variables", icon: VariableIcon, items: [] },
+  {
+    id: "sections",
+    label: "Sections",
+    icon: LayoutTemplateIcon,
+    items: SECTION_ITEMS,
+  },
 ]
 
-export const PALETTE_ITEMS: readonly PaletteItem[] = [
-  ...TEXT_ITEMS,
-  ...MEDIA_ITEMS,
-  ...COMPONENT_ITEMS,
-]
+export const PALETTE_ITEMS: readonly PaletteItem[] = PALETTE_MENUS.flatMap(
+  (menu) => menu.items
+)
 
-export function paletteItem(id: string): PaletteItem | undefined {
-  return PALETTE_ITEMS.find((item) => item.id === id)
-}
+/** Carries a catalogue id while a rail row is dragged onto the canvas. */
+export const PALETTE_DRAG_TYPE = "application/x-opensend-block"
 
-/** The palette entry that best describes an existing block, for toolbars and
-    the inspector title. */
-export function blockEntry(block: {
-  type: EmailBlockType
-  level?: number
-  ordered?: boolean
-  columns?: unknown[]
-}): PaletteItem {
-  if (block.type === "heading") {
-    const id =
-      block.level === 1 ? "title" : block.level === 2 ? "subtitle" : "heading"
-    return paletteItem(id)!
+/** Inserts as a new block: at `position` for a row dropped on the canvas,
+    else after the selection, for a row clicked in the rail.
+
+    The engine's text commands convert the block the caret is in, which is
+    right on the empty "/" line and wrong here, so unless the caret already
+    sits on an empty line a fresh one is opened first. It opens after the
+    outermost block inside the nearest isolating node (the container, a
+    section, a column, a table cell), which is where the schema wants blocks;
+    lists and quotes are not isolating, so the line lands after them rather
+    than inside. */
+export function insertAtCaret(
+  editor: Editor,
+  item: PaletteItem,
+  position?: number
+): void {
+  if (position !== undefined) editor.commands.setTextSelection(position)
+  const { selection } = editor.state
+  const { $to } = selection
+  const onEmptyLine =
+    selection.empty &&
+    $to.parent.type.name === "paragraph" &&
+    $to.parent.content.size === 0
+  if (!onEmptyLine) {
+    let host = $to.depth
+    while (host > 0 && !$to.node(host).type.spec.isolating) host--
+    /* At the host's own depth the selection is a whole block (an image, a
+       spacer) and already ends where the new line goes. */
+    const after = $to.depth === host ? $to.pos : $to.after(host + 1)
+    editor
+      .chain()
+      .insertContentAt(after, { type: "paragraph" })
+      .setTextSelection(after + 1)
+      .run()
   }
-  if (block.type === "list") {
-    return paletteItem(block.ordered ? "numbered-list" : "bullet-list")!
-  }
-  if (block.type === "columns") {
-    const count = block.columns?.length ?? 2
-    return (
-      paletteItem(count === 1 ? "section" : `columns-${count}`) ??
-      paletteItem("columns-2")!
-    )
-  }
-  return (
-    PALETTE_ITEMS.find((item) => item.type === block.type) ?? PALETTE_ITEMS[0]!
-  )
+  const at = editor.state.selection.to
+  item.run(editor, { from: at, to: at })
 }

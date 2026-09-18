@@ -1,9 +1,12 @@
-import { normalizeEmailDocument, type EmailDocument } from "./email-document"
+import { defaultFromAddress } from "./format"
+import type { TemplateInput } from "./template"
 import type {
   Broadcast,
   BroadcastStats,
   BroadcastStatus,
+  Contact,
   DashboardState,
+  Domain,
   Segment,
 } from "./types"
 
@@ -50,10 +53,15 @@ export function broadcastEditorHref(item: Pick<Broadcast, "id" | "status">) {
     : `/broadcasts/${item.id}`
 }
 
-/** The block tree behind a broadcast. Records saved before the editor only
-    have `html`, so they open as a single hand-written HTML block. */
-export function broadcastDocument(item: Broadcast): EmailDocument {
-  return normalizeEmailDocument(item.content, item.html)
+export type EmailEditorMode = "visual" | "html"
+
+/** An email is hand-written when it has markup but no editor document
+    behind it. Anything else, including a blank one, opens in the editor. */
+export function emailEditorMode(
+  item: Pick<Broadcast, "content" | "html">
+): EmailEditorMode {
+  if (item.content?.type === "doc") return "visual"
+  return item.html.trim() ? "html" : "visual"
 }
 
 /** Which header actions a broadcast offers in its current status. A canceled
@@ -123,16 +131,53 @@ export function audienceLabel(
   )
 }
 
+/** Every address a broadcast can send from: one per verified domain, or the
+    shared Opensend one while there is none. */
+export function fromAddresses(
+  domains: readonly Pick<Domain, "name" | "status">[]
+): string[] {
+  const verified = domains.filter((domain) => domain.status === "verified")
+  if (verified.length === 0) return [defaultFromAddress(undefined)]
+  return verified.map((domain) => defaultFromAddress(domain.name))
+}
+
+/** The email's own sender while its domain is still verified, else the
+    workspace default. */
+export function emailFrom(
+  item: Pick<Broadcast, "from">,
+  domains: readonly Pick<Domain, "name" | "status">[]
+): string {
+  const options = fromAddresses(domains)
+  return item.from && options.includes(item.from) ? item.from : options[0]!
+}
+
+/** Who a send reaches: the segment (or everyone), minus the unsubscribed. */
+export function broadcastRecipients(
+  contacts: Contact[],
+  item: Pick<Broadcast, "segmentId">
+): Contact[] {
+  return contacts.filter(
+    (contact) =>
+      !contact.unsubscribed &&
+      (item.segmentId === null || contact.segmentIds.includes(item.segmentId))
+  )
+}
+
 /** Backfill for records persisted before `updatedAt` existed. */
 export function broadcastUpdatedAt(item: Broadcast): number {
   return item.updatedAt || item.sentAt || item.createdAt
 }
 
-export function broadcastAsTemplateInput(item: Broadcast) {
+/** A broadcast's email as a new template, editor document and all. */
+export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
   return {
-    name: item.name || "Untitled",
-    subject: item.subject || item.name || "Untitled",
+    name: item.name,
+    subject: item.subject,
+    preview: item.preview,
     html: item.html,
+    content: item.content,
+    from: item.from,
+    replyTo: item.replyTo,
   }
 }
 

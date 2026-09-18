@@ -53,7 +53,12 @@ function BoxField({
   label?: string
   "data-testid"?: string
 }) {
-  const [linked, setLinked] = React.useState(() => uniformBox(value))
+  /* Sides that differ are never shown as one number: the single field would
+     show only the top, and its next commit would flatten the other three. The
+     same field is reused as the selection moves, so this is read from the
+     value each time rather than remembered from the first one. */
+  const [unlinked, setUnlinked] = React.useState(false)
+  const linked = !unlinked && uniformBox(value)
 
   return (
     <div
@@ -101,10 +106,10 @@ function BoxField({
         aria-label={linked ? "Unlink sides" : "Link sides"}
         onClick={() => {
           if (linked) {
-            setLinked(false)
+            setUnlinked(true)
             return
           }
-          setLinked(true)
+          setUnlinked(false)
           onValueChange({
             top: value.top,
             right: value.top,

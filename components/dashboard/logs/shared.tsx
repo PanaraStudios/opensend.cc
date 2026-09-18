@@ -1,23 +1,19 @@
 "use client"
 
-import Link from "next/link"
 import { ScrollTextIcon } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { DocsSheet, RelativeTime, Th } from "@/components/dashboard/primitives"
-import { logStatusTone } from "@/lib/dashboard/logs"
+import {
+  DocsSheet,
+  HttpStatusBadge,
+  IconCell,
+  MonoLink,
+  RelativeTime,
+  Th,
+} from "@/components/dashboard/primitives"
 import type { ApiLog } from "@/lib/dashboard/types"
 
 export const LogIcon = ScrollTextIcon
-
-export function LogStatusBadge({ status }: { status: number }) {
-  return (
-    <Badge variant={logStatusTone(status)} dot>
-      {status}
-    </Badge>
-  )
-}
 
 /** Header cells for a log table. Paired with `LogRow`, so the logs list and
     every page that embeds recent requests keep the same columns. */
@@ -34,20 +30,12 @@ export function LogRow({ log }: { log: ApiLog }) {
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-center gap-3">
-          <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
-            <LogIcon />
-          </span>
-          <Link
-            href={`/logs/${log.id}`}
-            className="font-mono text-[13px] underline decoration-muted-foreground/50 decoration-dashed underline-offset-4 hover:decoration-foreground"
-          >
-            {log.path}
-          </Link>
-        </div>
+        <IconCell icon={LogIcon}>
+          <MonoLink href={`/logs/${log.id}`}>{log.path}</MonoLink>
+        </IconCell>
       </TableCell>
       <TableCell>
-        <LogStatusBadge status={log.status} />
+        <HttpStatusBadge status={log.status} />
       </TableCell>
       <TableCell>{log.method}</TableCell>
       <TableCell className="text-right text-muted-foreground">
