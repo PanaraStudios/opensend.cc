@@ -22,7 +22,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import {
   ConfirmDialog,
   DocsSheet,
@@ -187,17 +186,9 @@ function ApiKeyForm({
     onOpenChange(false)
   }
 
-  /* ⌘↵ submits from anywhere in the form, as the footer hint promises. */
-  function onKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault()
-      event.currentTarget.requestSubmit()
-    }
-  }
-
   return (
     <DialogContent className="sm:max-w-md">
-      <form onSubmit={submit} onKeyDown={onKeyDown}>
+      <form onSubmit={submit}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -262,15 +253,8 @@ function ApiKeyForm({
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>
             Cancel
-            <Kbd>Esc</Kbd>
           </DialogClose>
-          <Button type="submit">
-            {submitLabel}
-            <KbdGroup>
-              <Kbd>⌘</Kbd>
-              <Kbd>↵</Kbd>
-            </KbdGroup>
-          </Button>
+          <Button type="submit">{submitLabel}</Button>
         </DialogFooter>
       </form>
     </DialogContent>
