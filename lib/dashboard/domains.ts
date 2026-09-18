@@ -206,14 +206,7 @@ export function deriveDomainStatus(
 
 /* ---------------------------------------------------------------- events */
 
-/** The milestone the current status stands at, if it is one of them. A
-    domain sits at exactly one of these at a time. */
-function statusMilestone(status: DomainStatus): DomainEventType | null {
-  if (status === "verified") return "verified"
-  if (status === "partially_verified") return "partially_verified"
-  return null
-}
-
+/** The status milestones. A domain sits at no more than one at a time. */
 const STATUS_MILESTONES: DomainEventType[] = ["partially_verified", "verified"]
 
 /** Milestones this domain has reached, newest last. "Domain added" and "DNS
@@ -227,7 +220,7 @@ export function domainEvents(
   records: DnsRecord[],
   now: number
 ): DomainEvent[] {
-  const milestone = statusMilestone(status)
+  const milestone = STATUS_MILESTONES.find((type) => type === status) ?? null
   const events = (domain.events ?? []).filter(
     (event) =>
       !STATUS_MILESTONES.includes(event.type) || event.type === milestone

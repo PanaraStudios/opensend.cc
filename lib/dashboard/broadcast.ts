@@ -38,12 +38,6 @@ export function normalizeBroadcastStats(
   return { ...emptyBroadcastStats(), ...stats }
 }
 
-/** Drafts, scheduled sends, and canceled sends can still be edited. Everything
-    else is a report. */
-export function isBroadcastEditable(status: BroadcastStatus): boolean {
-  return status === "draft" || status === "scheduled" || status === "canceled"
-}
-
 /** Drafts (and canceled sends, which behave like drafts) open the block
     editor. Everything else opens the report. */
 export function isBroadcastDraftLike(status: BroadcastStatus): boolean {

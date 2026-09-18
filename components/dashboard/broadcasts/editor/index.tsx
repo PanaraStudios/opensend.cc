@@ -28,9 +28,15 @@ import {
   ReviewSheet,
   TestEmailDialog,
 } from "@/components/dashboard/broadcasts/editor/review"
-import { useBroadcastEditor } from "@/components/dashboard/broadcasts/editor/use-editor"
+import {
+  useBroadcastEditor,
+  type SaveState,
+} from "@/components/dashboard/broadcasts/editor/use-editor"
 import { isBroadcastDraftLike } from "@/lib/dashboard/broadcast"
-import { emptyEmailDocument } from "@/lib/dashboard/email-document"
+import {
+  emptyEmailDocument,
+  type EmailEditorMode,
+} from "@/lib/dashboard/email-document"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 
@@ -43,7 +49,7 @@ const VIEW_ITEMS = [
   { value: "html" as const, label: "HTML code editor", icon: CodeXmlIcon },
 ]
 
-function SaveIndicator({ save }: { save: "idle" | "saving" | "saved" }) {
+function SaveIndicator({ save }: { save: SaveState }) {
   if (save === "idle") return null
   return (
     <span
@@ -59,9 +65,7 @@ function SaveIndicator({ save }: { save: "idle" | "saving" | "saved" }) {
 function EditorScreen({ item }: { item: Broadcast }) {
   const { updateBroadcast } = useDashboard()
   const editor = useBroadcastEditor(item)
-  const [view, setView] = React.useState<"visual" | "html">(() =>
-    editor.doc.mode === "html" ? "html" : "visual"
-  )
+  const [view, setView] = React.useState<EmailEditorMode>(editor.doc.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [testOpen, setTestOpen] = React.useState(false)

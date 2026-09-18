@@ -9,10 +9,7 @@ import {
 } from "react"
 
 import { emptyBroadcastStats, transitionBroadcast } from "./broadcast"
-import {
-  defaultTopicSubscription,
-  normalizePropertyKey,
-} from "./contacts"
+import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
 import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
 import {
@@ -21,7 +18,7 @@ import {
   reconcileDomain,
   verifyDomainRecords,
 } from "./domains"
-import { defaultFromAddress } from "./format"
+import { workspaceFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import {
@@ -780,16 +777,15 @@ function setBroadcastStatus(
     const item = current.broadcasts.find((row) => row.id === id)
     if (!item) return current
     const now = Date.now()
-    const recipients = status === "sent" ? broadcastRecipients(current, item) : []
+    const recipients =
+      status === "sent" ? broadcastRecipients(current, item) : []
     const next = transitionBroadcast(item, status, {
       now,
       recipients: recipients.length,
       scheduledAt,
     })
     if (next === item) return current
-    const from = defaultFromAddress(
-      current.domains.find((domain) => domain.status === "verified")?.name
-    )
+    const from = workspaceFromAddress(current.domains)
     const sent: SentEmail[] = recipients.map((contact) => ({
       id: createId("em"),
       from,

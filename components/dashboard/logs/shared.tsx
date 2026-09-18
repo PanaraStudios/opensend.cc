@@ -19,12 +19,6 @@ export function LogStatusBadge({ status }: { status: number }) {
   )
 }
 
-/** Age against the demo clock, the same one the date range picker uses, so
-    "Last 15 days" and "15d ago" agree. */
-export function LogAge({ at }: { at: number }) {
-  return <RelativeTime at={at} />
-}
-
 /** Header cells for a log table. Paired with `LogRow`, so the logs list and
     every page that embeds recent requests keep the same columns. */
 export const LOG_TABLE_HEADERS = (
@@ -57,7 +51,7 @@ export function LogRow({ log }: { log: ApiLog }) {
       </TableCell>
       <TableCell>{log.method}</TableCell>
       <TableCell className="text-right text-muted-foreground">
-        <LogAge at={log.createdAt} />
+        <RelativeTime at={log.createdAt} />
       </TableCell>
     </TableRow>
   )

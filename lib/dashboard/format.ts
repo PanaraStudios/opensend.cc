@@ -82,6 +82,16 @@ export function emailStatusLabel(status: EmailStatus): string {
   }
 }
 
+/** The address a workspace sends from: its first verified domain, else the
+    shared Opensend one. */
+export function workspaceFromAddress(
+  domains: readonly { name: string; status: DomainStatus }[]
+): string {
+  return defaultFromAddress(
+    domains.find((domain) => domain.status === "verified")?.name
+  )
+}
+
 export function defaultFromAddress(domainName: string | undefined): string {
   return domainName
     ? `Opensend <hello@${domainName}>`

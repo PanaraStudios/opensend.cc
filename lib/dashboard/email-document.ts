@@ -374,27 +374,6 @@ export function defaultDocumentStyle(): EmailDocumentStyle {
   }
 }
 
-const BLOCK_LABELS: Record<EmailBlockType, string> = {
-  heading: "Heading",
-  text: "Text",
-  list: "List",
-  button: "Button",
-  image: "Image",
-  youtube: "YouTube",
-  divider: "Divider",
-  spacer: "Spacer",
-  table: "Table",
-  code: "Code",
-  social: "Social links",
-  footer: "Unsubscribe footer",
-  html: "HTML",
-  columns: "Columns",
-}
-
-export function blockLabel(type: EmailBlockType): string {
-  return BLOCK_LABELS[type]
-}
-
 function newId(): string {
   return createId("blk")
 }

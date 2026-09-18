@@ -18,7 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { useDraft } from "@/components/dashboard/primitives"
-import { defaultFromAddress, formatDateTime } from "@/lib/dashboard/format"
+import { formatDateTime, workspaceFromAddress } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
@@ -162,8 +162,7 @@ export function EmailHeaderForm({
   const [showPreview, setShowPreview] = React.useState(
     Boolean(item.preview.trim())
   )
-  const verified = state.domains.find((domain) => domain.status === "verified")
-  const from = defaultFromAddress(verified?.name)
+  const from = workspaceFromAddress(state.domains)
   const subject = useDraft(item.subject, (value) =>
     updateBroadcast(item.id, { subject: value })
   )

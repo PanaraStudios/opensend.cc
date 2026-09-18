@@ -47,6 +47,10 @@ import {
 import {
   blockStyle,
   blockWrapperStyle,
+  columnGutterStyle,
+  linkStyle,
+  socialGapStyle,
+  tableCellStyle,
   youtubeThumbnail,
 } from "@/lib/dashboard/email-render"
 
@@ -228,11 +232,7 @@ function ColumnsBody({ block }: { block: ColumnsBlock }) {
         <div
           key={column.id}
           className="min-w-0 flex-1"
-          style={{
-            paddingLeft: index === 0 ? 0 : block.gap / 2,
-            paddingRight:
-              index === block.columns.length - 1 ? 0 : block.gap / 2,
-          }}
+          style={columnGutterStyle(block, index)}
         >
           {actions.renderContainer(
             columnContainerKey(block.id, index),
@@ -418,15 +418,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
                   const header = block.headerRow && rowIndex === 0
                   const Cell = header ? "th" : "td"
                   return (
-                    <Cell
-                      key={cellIndex}
-                      style={{
-                        border: `1px solid ${block.borderColor}`,
-                        padding: "8px 10px",
-                        textAlign: "left",
-                        fontWeight: header ? 600 : 400,
-                      }}
-                    >
+                    <Cell key={cellIndex} style={tableCellStyle(block, header)}>
                       {cell}
                     </Cell>
                   )
@@ -447,14 +439,10 @@ function BlockBody({ block }: { block: EmailBlock }) {
         <p className={block.className} style={style}>
           {block.links.map((link, index) => (
             <span key={link.id}>
-              {index > 0 ? (
-                <span
-                  style={{ display: "inline-block", width: `${block.gap}px` }}
-                />
-              ) : null}
+              {index > 0 ? <span style={socialGapStyle(block)} /> : null}
               <a
                 href={link.href}
-                style={{ color: block.color }}
+                style={linkStyle(block.color)}
                 onClick={(event) => event.preventDefault()}
               >
                 {link.label}
@@ -476,7 +464,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
           />{" "}
           <a
             href={UNSUBSCRIBE_VARIABLE}
-            style={{ color: block.color }}
+            style={linkStyle(block.color)}
             onClick={(event) => event.preventDefault()}
           >
             {block.unsubscribeLabel}

@@ -38,9 +38,9 @@ import {
   type EmailDocument,
 } from "@/lib/dashboard/email-document"
 import {
-  defaultFromAddress,
   formatDateTime,
   isEmail,
+  workspaceFromAddress,
 } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
@@ -70,6 +70,8 @@ export function reviewChecks(
   audience: string,
   verified: boolean
 ): Check[] {
+  const empty = isDocumentEmpty(doc)
+  const unsubscribe = hasUnsubscribeLink(doc)
   return [
     {
       level: verified ? "ok" : "warn",
@@ -87,16 +89,14 @@ export function reviewChecks(
       detail: item.subject.trim() || "Add a subject before sending",
     },
     {
-      level: isDocumentEmpty(doc) ? "error" : "ok",
+      level: empty ? "error" : "ok",
       label: "Content",
-      detail: isDocumentEmpty(doc)
-        ? "The email is still empty"
-        : "The email has content",
+      detail: empty ? "The email is still empty" : "The email has content",
     },
     {
-      level: hasUnsubscribeLink(doc) ? "ok" : "warn",
+      level: unsubscribe ? "ok" : "warn",
       label: "Unsubscribe link",
-      detail: hasUnsubscribeLink(doc)
+      detail: unsubscribe
         ? "An opt-out link is present"
         : "Add an unsubscribe footer so recipients can opt out",
     },
@@ -116,8 +116,6 @@ export function TestEmailDialog({
   const [value, setValue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   const you = state.members.find((member) => member.you)
-  const verified = state.domains.find((domain) => domain.status === "verified")
-
   return (
     <Dialog
       open={open}
@@ -136,7 +134,7 @@ export function TestEmailDialog({
               return
             }
             sendEmail({
-              from: defaultFromAddress(verified?.name),
+              from: workspaceFromAddress(state.domains),
               to,
               subject: `[Test] ${item.subject || item.name || "Untitled"}`,
               text: item.preview || "Test send from the broadcast editor.",
@@ -198,21 +196,6 @@ export function ReviewSheet({
   doc: EmailDocument
   sendAt: number | null
 }) {
-  const router = useRouter()
-  const { state, setBroadcastStatus } = useDashboard()
-  const html = useEmailHtml(doc, item.preview)
-  const verified = state.domains.find((domain) => domain.status === "verified")
-  const from = defaultFromAddress(verified?.name)
-  const audience = audienceLabel(item.segmentId, state.segments)
-  const checks = reviewChecks(item, doc, from, audience, Boolean(verified))
-  const blocked = checks.some((check) => check.level === "error")
-
-  function finish(title: string) {
-    toast.add({ type: "success", title })
-    onOpenChange(false)
-    router.push(`/broadcasts/${item.id}`)
-  }
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -220,77 +203,117 @@ export function ReviewSheet({
         className="sm:max-w-md"
         data-testid="review-sheet"
       >
-        <SheetHeader>
-          <SheetTitle>Review</SheetTitle>
-          <SheetDescription>
-            Check the send, then schedule it or send it now.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
-          <ul className="flex flex-col gap-2.5">
-            {checks.map((check) => {
-              const Icon = CHECK_ICON[check.level]
-              return (
-                <li
-                  key={check.label}
-                  className="flex items-start gap-2.5"
-                  data-testid={`review-check-${check.level}`}
-                >
-                  <Icon
-                    className={`mt-0.5 size-4 shrink-0 ${CHECK_CLASS[check.level]}`}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">
-                      {check.label}
-                    </span>
-                    <span className="block text-sm text-muted-foreground">
-                      {check.detail}
-                    </span>
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-          <div className="h-64 overflow-hidden rounded-xl border border-border">
-            <EmailPreviewFrame
-              title="Broadcast preview"
-              data-testid="review-preview"
-              html={html}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2 border-t border-border p-4">
-          <p className="text-caption text-muted-foreground">
-            {sendAt ? `Scheduled for ${formatDateTime(sendAt)}` : "Sends now"}
-          </p>
-          <div className="flex items-center gap-2">
-            {sendAt ? (
-              <Button
-                variant="outline"
-                disabled={blocked}
-                data-testid="review-schedule"
-                onClick={() => {
-                  setBroadcastStatus(item.id, "scheduled", sendAt)
-                  finish("Broadcast scheduled")
-                }}
-              >
-                Schedule
-              </Button>
-            ) : null}
-            <Button
-              disabled={blocked}
-              data-testid="review-send"
-              onClick={() => {
-                setBroadcastStatus(item.id, "sent")
-                finish("Broadcast sent")
-              }}
-            >
-              <SendIcon data-icon="inline-start" />
-              Send now
-            </Button>
-          </div>
-        </div>
+        <ReviewSheetBody
+          onClose={() => onOpenChange(false)}
+          item={item}
+          doc={doc}
+          sendAt={sendAt}
+        />
       </SheetContent>
     </Sheet>
+  )
+}
+
+/* Mounted only while the sheet is open, so a closed sheet does not render the
+   email on every edit. */
+function ReviewSheetBody({
+  onClose,
+  item,
+  doc,
+  sendAt,
+}: {
+  onClose: () => void
+  item: Broadcast
+  doc: EmailDocument
+  sendAt: number | null
+}) {
+  const router = useRouter()
+  const { state, setBroadcastStatus } = useDashboard()
+  const html = useEmailHtml(doc, item.preview)
+  const verified = state.domains.some((domain) => domain.status === "verified")
+  const from = workspaceFromAddress(state.domains)
+  const audience = audienceLabel(item.segmentId, state.segments)
+  const checks = reviewChecks(item, doc, from, audience, verified)
+  const blocked = checks.some((check) => check.level === "error")
+
+  function finish(title: string) {
+    toast.add({ type: "success", title })
+    onClose()
+    router.push(`/broadcasts/${item.id}`)
+  }
+
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle>Review</SheetTitle>
+        <SheetDescription>
+          Check the send, then schedule it or send it now.
+        </SheetDescription>
+      </SheetHeader>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
+        <ul className="flex flex-col gap-2.5">
+          {checks.map((check) => {
+            const Icon = CHECK_ICON[check.level]
+            return (
+              <li
+                key={check.label}
+                className="flex items-start gap-2.5"
+                data-testid={`review-check-${check.level}`}
+              >
+                <Icon
+                  className={`mt-0.5 size-4 shrink-0 ${CHECK_CLASS[check.level]}`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">
+                    {check.label}
+                  </span>
+                  <span className="block text-sm text-muted-foreground">
+                    {check.detail}
+                  </span>
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+        <div className="h-64 overflow-hidden rounded-xl border border-border">
+          <EmailPreviewFrame
+            title="Broadcast preview"
+            data-testid="review-preview"
+            html={html}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-border p-4">
+        <p className="text-caption text-muted-foreground">
+          {sendAt ? `Scheduled for ${formatDateTime(sendAt)}` : "Sends now"}
+        </p>
+        <div className="flex items-center gap-2">
+          {sendAt ? (
+            <Button
+              variant="outline"
+              disabled={blocked}
+              data-testid="review-schedule"
+              onClick={() => {
+                setBroadcastStatus(item.id, "scheduled", sendAt)
+                finish("Broadcast scheduled")
+              }}
+            >
+              Schedule
+            </Button>
+          ) : null}
+          <Button
+            disabled={blocked}
+            data-testid="review-send"
+            onClick={() => {
+              setBroadcastStatus(item.id, "sent")
+              finish("Broadcast sent")
+            }}
+          >
+            <SendIcon data-icon="inline-start" />
+            Send now
+          </Button>
+        </div>
+      </div>
+    </>
   )
 }

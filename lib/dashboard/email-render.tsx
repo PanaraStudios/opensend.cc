@@ -23,10 +23,13 @@ import {
   UNSUBSCRIBE_VARIABLE,
   youtubeVideoId,
   type BoxSpacing,
+  type ColumnsBlock,
   type EmailBlock,
   type EmailDocument,
   type EmailLeafBlock,
   type EmailTheme,
+  type SocialBlock,
+  type TableBlock,
   type ThemeStyleKey,
   type ThemeTextStyle,
 } from "./email-document"
@@ -67,7 +70,7 @@ const THEME_OWNED: CSSProperties = {
 
 /** Inline style for a link whose colour the theme owns, unless the block
     overrides it. */
-function linkStyle(color?: string): CSSProperties {
+export function linkStyle(color?: string): CSSProperties {
   return { ...THEME_OWNED, color }
 }
 
@@ -254,13 +257,6 @@ export function blockStyle(
         fontSize: px(block.fontSize),
       }
     case "social":
-      return {
-        ...THEME_OWNED,
-        padding: spacing(block.padding),
-        textAlign: block.align,
-        color: block.color,
-        fontSize: px(block.fontSize),
-      }
     case "footer":
       return {
         ...THEME_OWNED,
@@ -291,6 +287,37 @@ export function blockWrapperStyle(block: EmailBlock): CSSProperties {
     return { padding: spacing(block.padding), textAlign: block.align }
   }
   return {}
+}
+
+/* The pieces of a block that sit below its own element. The canvas draws the
+   same markup with editing chrome around it, so both take them from here. */
+
+export function tableCellStyle(
+  block: TableBlock,
+  header: boolean
+): CSSProperties {
+  return {
+    border: `1px solid ${block.borderColor}`,
+    padding: "8px 10px",
+    textAlign: "left",
+    fontWeight: header ? 600 : 400,
+  }
+}
+
+export function socialGapStyle(block: SocialBlock): CSSProperties {
+  return { display: "inline-block", width: `${block.gap}px` }
+}
+
+/** Half the gap on each inner side of a column, none on the outer edges. */
+export function columnGutterStyle(
+  block: ColumnsBlock,
+  index: number
+): CSSProperties {
+  const half = Math.round(block.gap / 2)
+  return {
+    paddingLeft: index === 0 ? 0 : half,
+    paddingRight: index === block.columns.length - 1 ? 0 : half,
+  }
 }
 
 export function youtubeThumbnail(video: string): string {
@@ -396,15 +423,7 @@ function renderLeaf(
                   const header = block.headerRow && rowIndex === 0
                   const Cell = header ? "th" : "td"
                   return (
-                    <Cell
-                      key={cellIndex}
-                      style={{
-                        border: `1px solid ${block.borderColor}`,
-                        padding: "8px 10px",
-                        textAlign: "left",
-                        fontWeight: header ? 600 : 400,
-                      }}
-                    >
+                    <Cell key={cellIndex} style={tableCellStyle(block, header)}>
                       {cell}
                     </Cell>
                   )
@@ -425,11 +444,7 @@ function renderLeaf(
         <Text className={block.className} style={style}>
           {block.links.map((link, index) => (
             <span key={link.id}>
-              {index > 0 ? (
-                <span
-                  style={{ display: "inline-block", width: `${block.gap}px` }}
-                />
-              ) : null}
+              {index > 0 ? <span style={socialGapStyle(block)} /> : null}
               <Link href={link.href} style={linkStyle(block.color)}>
                 {link.label}
               </Link>
@@ -462,7 +477,6 @@ function renderBlock(
 ): ReactElement | null {
   if (block.type !== "columns") return renderLeaf(block, theme)
   const width = `${Math.floor(100 / block.columns.length)}%`
-  const half = Math.round(block.gap / 2)
   return (
     <Section className={block.className} style={blockStyle(block, theme)}>
       <Row>
@@ -472,8 +486,7 @@ function renderBlock(
             style={{
               width,
               verticalAlign: "top",
-              paddingLeft: index === 0 ? 0 : half,
-              paddingRight: index === block.columns.length - 1 ? 0 : half,
+              ...columnGutterStyle(block, index),
             }}
           >
             {column.blocks.map((child) => (

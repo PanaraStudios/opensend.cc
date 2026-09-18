@@ -8,7 +8,6 @@ import {
   broadcastEventRows,
   broadcastUpdatedAt,
   emptyBroadcastStats,
-  isBroadcastEditable,
   normalizeBroadcastStats,
   canTransitionBroadcast,
   transitionBroadcast,
@@ -124,7 +123,7 @@ describe("broadcastEventRows", () => {
   })
 })
 
-describe("broadcastActions / isBroadcastEditable", () => {
+describe("broadcastActions", () => {
   it("offers schedule and send on drafts, cancel on in-flight sends", () => {
     assert.deepEqual(broadcastActions("draft"), {
       canSchedule: true,
@@ -147,13 +146,6 @@ describe("broadcastActions / isBroadcastEditable", () => {
       canCancel: false,
     })
     assert.deepEqual(broadcastActions("canceled"), broadcastActions("draft"))
-  })
-
-  it("treats sent, queued, and failed broadcasts as reports", () => {
-    assert.equal(isBroadcastEditable("draft"), true)
-    assert.equal(isBroadcastEditable("canceled"), true)
-    assert.equal(isBroadcastEditable("sent"), false)
-    assert.equal(isBroadcastEditable("failed"), false)
   })
 })
 

@@ -87,10 +87,12 @@ const DECORATIONS: SegmentedItem<TextDecoration>[] = [
 
 const CSS_SNIPPETS = [
   {
+    id: "dark",
     label: "@media (prefers-color-scheme: dark)",
     code: "@media (prefers-color-scheme: dark) {\n  \n}\n",
   },
   {
+    id: "width",
     label: "@media screen and (max-width: …)",
     code: "@media screen and (max-width: 600px) {\n  \n}\n",
   },
@@ -496,10 +498,10 @@ function GlobalCssPanel({ doc, apply }: { doc: EmailDocument; apply: Apply }) {
       <div className="flex flex-wrap gap-1.5">
         {CSS_SNIPPETS.map((snippet) => (
           <Button
-            key={snippet.label}
+            key={snippet.id}
             variant="outline"
             size="xs"
-            data-testid={`global-css-snippet-${snippet.label.includes("dark") ? "dark" : "width"}`}
+            data-testid={`global-css-snippet-${snippet.id}`}
             onClick={() =>
               apply((current) => ({
                 ...current,

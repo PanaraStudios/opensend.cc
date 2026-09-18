@@ -18,6 +18,7 @@ import { REGIONS } from "@/lib/dashboard/types"
 import type { DnsProvider, DnsRecord, Domain } from "@/lib/dashboard/types"
 import {
   dnsHost,
+  domainZoneFile,
   providerLabel,
   providerUrl,
   regionFlag,
@@ -267,4 +268,8 @@ export function downloadTextFile(name: string, contents: string) {
   link.download = name
   link.click()
   URL.revokeObjectURL(url)
+}
+
+export function downloadZoneFile(domain: Domain) {
+  downloadTextFile(`${domain.name}.zone`, `${domainZoneFile(domain)}\n`)
 }

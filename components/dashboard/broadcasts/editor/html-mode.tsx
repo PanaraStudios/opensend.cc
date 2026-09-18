@@ -20,7 +20,6 @@ import {
 import {
   documentRawHtml,
   htmlEmailDocument,
-  type HtmlBlock,
 } from "@/lib/dashboard/email-document"
 import type { Broadcast } from "@/lib/dashboard/types"
 
@@ -47,7 +46,7 @@ export function HtmlMode({
       if (!block || block.type !== "html") return current
       return {
         ...current,
-        blocks: [{ ...(block as HtmlBlock), code: next }],
+        blocks: [{ ...block, code: next }],
       }
     })
   }
@@ -109,7 +108,7 @@ export function HtmlMode({
           <EmailPreviewFrame
             title="Email preview"
             data-testid="html-preview"
-            html={handWritten ? code : rendered}
+            html={code}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

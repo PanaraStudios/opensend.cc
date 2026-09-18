@@ -74,7 +74,7 @@ import {
   ProviderValue,
   RegionValue,
   TLS_ITEMS,
-  downloadTextFile,
+  downloadZoneFile,
 } from "@/components/dashboard/domains/shared"
 import {
   DEFAULT_TRACKING_SUBDOMAIN,
@@ -373,11 +373,7 @@ function DomainRecords({ domain }: { domain: Domain }) {
                 <CopyIcon />
                 Copy all records
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  downloadTextFile(`${domain.name}.zone`, `${zone}\n`)
-                }
-              >
+              <DropdownMenuItem onClick={() => downloadZoneFile(domain)}>
                 <DownloadIcon />
                 Download zone file
               </DropdownMenuItem>
@@ -554,14 +550,7 @@ export function DomainDetail() {
                   <CopyIcon />
                   Copy domain
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() =>
-                    downloadTextFile(
-                      `${domain.name}.zone`,
-                      `${domainZoneFile(domain)}\n`
-                    )
-                  }
-                >
+                <DropdownMenuItem onClick={() => downloadZoneFile(domain)}>
                   <DownloadIcon />
                   Download zone file
                 </DropdownMenuItem>

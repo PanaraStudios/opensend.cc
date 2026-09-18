@@ -250,17 +250,7 @@ function CanvasEmptyState({
   onPickTemplate: (html: string, subject: string) => void
 }) {
   return (
-    <div
-      data-testid="canvas-empty"
-      className="flex flex-col gap-1 pt-3"
-      onPaste={(event) => {
-        const text = event.clipboardData.getData("text/plain")
-        if (/<[a-z][\s\S]*>/i.test(text)) {
-          event.preventDefault()
-          onHtml(text)
-        }
-      }}
-    >
+    <div data-testid="canvas-empty" className="flex flex-col gap-1 pt-3">
       <button
         type="button"
         data-testid="canvas-start-writing"
@@ -290,6 +280,14 @@ function CanvasEmptyState({
       </label>
     </div>
   )
+}
+
+/** A text block holding just a variable token. */
+function variableBlock(name: string, fallback?: string): TextBlock {
+  return {
+    ...(createEmailBlock("text") as TextBlock),
+    html: formatVariable(name, fallback),
+  }
 }
 
 export function EmailCanvas({
@@ -389,6 +387,12 @@ export function EmailCanvas({
     [apply, doc, dropTarget, editor.selectedId, insertAt, select]
   )
 
+  const paperCss = React.useMemo(
+    () => ({ __html: documentCss(doc, "#email-paper") }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only these two feed the stylesheet
+    [doc.theme, doc.globalCss]
+  )
+
   function resolveTarget(
     current: EmailDocument,
     overId: string,
@@ -459,12 +463,12 @@ export function EmailCanvas({
       return
     }
     if (typeof data.variable === "string") {
-      const block = createEmailBlock("text") as TextBlock
-      block.html = formatVariable(
-        data.variable,
-        typeof data.fallback === "string" ? data.fallback : ""
+      const fallback = typeof data.fallback === "string" ? data.fallback : ""
+      insertAt(
+        variableBlock(data.variable, fallback),
+        target.container,
+        target.index
       )
-      insertAt(block, target.container, target.index)
       return
     }
     /* `target.index` is where the indicator sits in the list as it stands.
@@ -501,9 +505,7 @@ export function EmailCanvas({
   function insertVariable(variable: EmailVariable) {
     const token = formatVariable(variable.name, variable.fallback)
     if (hasActiveEditable() && insertIntoEditable(token)) return
-    const block = createEmailBlock("text") as TextBlock
-    block.html = token
-    insertBlockAtCursor(block)
+    insertBlockAtCursor(variableBlock(variable.name, variable.fallback))
   }
 
   function insertPalette(entry: PaletteItem) {
@@ -543,11 +545,7 @@ export function EmailCanvas({
           {/* The same theme stylesheet the email gets, then the author's
               Global CSS, both scoped to the paper so neither reaches the
               dashboard around it. */}
-          <style
-            dangerouslySetInnerHTML={{
-              __html: documentCss(doc, "#email-paper"),
-            }}
-          />
+          <style dangerouslySetInnerHTML={paperCss} />
           <EmailHeaderForm
             item={item}
             sendAt={sendAt}
