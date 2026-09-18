@@ -77,9 +77,9 @@ const THEME_OVERRIDES: Parameters<typeof extendTheme>[1] = {
   image: { borderRadius: 8 },
 }
 
-/* Minimal is the same page with none of basic's type or spacing. It is the
-   one to pick for an email pasted in whole, which brings its own and is only
-   thrown off by ours on top. */
+/* Basic unless the document says otherwise. Minimal is the same page with
+   none of basic's type or spacing: the one to pick for an email pasted in
+   whole, which brings its own and is only thrown off by ours on top. */
 const DEFAULT_PRESET: EditorTheme = "basic"
 
 const BASE_EXTENSIONS = [
@@ -125,10 +125,17 @@ async function uploadImage(file: File): Promise<{ url: string }> {
   const canvas = document.createElement("canvas")
   canvas.width = Math.round(bitmap.width * scale)
   canvas.height = Math.round(bitmap.height * scale)
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
   /* PNG keeps transparency (logos); photos are far smaller as JPEG. */
   const type = file.type === "image/png" ? "image/png" : "image/jpeg"
+  const context = canvas.getContext("2d")
+  if (context && type === "image/jpeg") {
+    /* JPEG has no transparency and encodes clear pixels as black, so a
+       see-through GIF or WebP is laid on white, like the paper. */
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  context?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
   return { url: canvas.toDataURL(type, 0.85) }
 }
 
@@ -137,12 +144,12 @@ export function useEmailEngine({
   onUpdate,
 }: {
   content: Content
-  onUpdate: (editor: Editor) => void
+  onUpdate: () => void
 }): Editor {
   const image = useEditorImage({ uploadImage })
   /* The engine reads its preset from how it was configured and from nowhere
      else, so the document's choice is read once, here. Choosing another
-     remounts the whole screen (see `BroadcastEditor`): the package's hooks
+     remounts the whole screen (see `EmailEditorScreen`): the package's hooks
      stay subscribed to an engine as it is torn down, so one cannot be swapped
      for another underneath them. */
   const [preset] = React.useState(() => storedPreset(content))
@@ -161,7 +168,7 @@ export function useEmailEngine({
     /* The editor screen only ever renders in the browser, after the saved
        state has loaded, so there is no server pass to stay in step with. */
     immediatelyRender: true,
-    onUpdate: ({ editor }) => onUpdate(editor),
+    onUpdate,
   })
 }
 

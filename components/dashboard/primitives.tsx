@@ -34,6 +34,15 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
@@ -48,6 +57,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import {
   Item,
   ItemContent,
@@ -96,22 +112,25 @@ import { cn } from "@/lib/utils"
 import { DEMO_NOW } from "@/lib/dashboard/data"
 import {
   AUTOMATION_STATUS_TONE,
+  automationStatusLabel,
   BROADCAST_STATUS_TONE,
+  broadcastStatusLabel,
   DOMAIN_STATUS_TONE,
   EMAIL_STATUS_TONE,
-  EXPORT_STATUS_TONE,
-  TEMPLATE_STATUS_TONE,
-  automationStatusLabel,
-  broadcastStatusLabel,
   emailStatusLabel,
+  EXPORT_STATUS_TONE,
   exportStatusLabel,
   formatDateTime,
   formatRelative,
+  httpStatusTone,
   pluralize,
+  sentenceCase,
   statusLabel,
+  TEMPLATE_STATUS_TONE,
   templateStatusLabel,
   type BadgeTone,
 } from "@/lib/dashboard/format"
+import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
 import type {
   AutomationStatus,
@@ -492,12 +511,15 @@ export function ListPagination({
   pageSize,
   total,
   noun,
+  plural,
   onPageChange,
   onPageSizeChange,
   previousLabel = "Previous",
   nextLabel = "Next",
 }: ReturnType<typeof usePagination>["pagination"] & {
   noun: string
+  /** For a noun that does not just take an "s". */
+  plural?: string
   previousLabel?: string
   nextLabel?: string
 }) {
@@ -505,7 +527,7 @@ export function ListPagination({
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
         <span>
-          Page {page + 1} of {pageCount} · {pluralize(total, noun)}
+          Page {page + 1} of {pageCount} · {pluralize(total, noun, plural)}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -606,11 +628,10 @@ export function NotFoundState({
   backLabel?: string
   description?: string
 }) {
-  const capitalized = noun.charAt(0).toUpperCase() + noun.slice(1)
   return (
     <EmptyState
       icon={icon}
-      title={`${capitalized} not found`}
+      title={`${sentenceCase(noun)} not found`}
       description={description}
     >
       <Button nativeButton={false} render={<Link href={backHref} />}>
@@ -706,6 +727,15 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   )
 }
 
+/** An HTTP response code, toned by its class: a request log, a delivery. */
+export function HttpStatusBadge({ status }: { status: number }) {
+  return (
+    <Badge variant={httpStatusTone(status)} dot>
+      {status}
+    </Badge>
+  )
+}
+
 export function AutomationStatusBadge({
   status,
 }: {
@@ -786,6 +816,42 @@ export function MonoValue({
   )
 }
 
+/** A record's machine name (a path, a URL, an event) as the link to it. */
+export function MonoLink({
+  href,
+  children,
+}: {
+  href: string
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      className="font-mono text-[13px] underline decoration-muted-foreground/50 decoration-dashed underline-offset-4 hover:decoration-foreground"
+    >
+      {children}
+    </Link>
+  )
+}
+
+/** A table's leading cell: the resource's icon tile, then its name. */
+export function IconCell({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
+        <Icon />
+      </span>
+      {children}
+    </div>
+  )
+}
+
 /** Monospace well for source and payloads, with an optional copy button
     pinned to the corner. */
 export function CodeWell({
@@ -814,6 +880,60 @@ export function CodeWell({
         </div>
       ) : null}
     </div>
+  )
+}
+
+/** One titled block on a detail page, with room for controls by the title. */
+export function DetailSection({
+  title,
+  actions,
+  className,
+  children,
+}: {
+  title: string
+  actions?: React.ReactNode
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className={cn("flex flex-col gap-3", className)}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="min-w-0 flex-1 text-sm font-medium">{title}</h2>
+        {actions}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+const JSON_TOKEN_CLASS: Record<JsonTokenKind, string> = {
+  key: "text-foreground",
+  string: "text-success",
+  literal: "text-info",
+  punct: "text-muted-foreground",
+}
+
+/** A titled, highlighted JSON payload with a copy button. */
+export function JsonSection({
+  title,
+  value,
+}: {
+  title: string
+  value: object
+}) {
+  const source = React.useMemo(() => JSON.stringify(value, null, 2), [value])
+  const tokens = React.useMemo(() => tokenizeJson(source), [source])
+
+  return (
+    <DetailSection title={title}>
+      <CodeWell copyValue={source}>
+        {tokens.map((token, index) => (
+          <span key={index} className={JSON_TOKEN_CLASS[token.kind]}>
+            {token.value}
+          </span>
+        ))}
+      </CodeWell>
+    </DetailSection>
   )
 }
 
@@ -914,6 +1034,87 @@ export function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+/** One text value, asked for in a dialog: a rename, an alias. The value is
+    trimmed, and `validate` returns what is wrong with it, or null. */
+export function TextFieldDialog(props: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: string
+  label: string
+  value: string
+  validate: (value: string) => string | null
+  onSubmit: (value: string) => void
+  mono?: boolean
+}) {
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      {/* Mounted per opening, so the field starts from the current value. */}
+      {props.open ? <TextFieldDialogForm {...props} /> : null}
+    </Dialog>
+  )
+}
+
+function TextFieldDialogForm({
+  onOpenChange,
+  title,
+  description,
+  label,
+  value: initial,
+  validate,
+  onSubmit,
+  mono,
+}: React.ComponentProps<typeof TextFieldDialog>) {
+  const id = React.useId()
+  const [value, setValue] = React.useState(initial)
+  const [error, setError] = React.useState<string | null>(null)
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          const next = value.trim()
+          const problem = validate(next)
+          if (problem) {
+            setError(problem)
+            return
+          }
+          onSubmit(next)
+          onOpenChange(false)
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <FieldGroup className="py-4">
+          <Field>
+            <FieldLabel htmlFor={id}>{label}</FieldLabel>
+            <Input
+              id={id}
+              value={value}
+              className={mono ? "font-mono" : undefined}
+              onChange={(event) => {
+                setValue(event.target.value)
+                setError(null)
+              }}
+              autoFocus
+            />
+            {error ? <FieldError>{error}</FieldError> : null}
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit">Save</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
   )
 }
 
@@ -1114,6 +1315,15 @@ export function DocsButton({ onClick }: { onClick: () => void }) {
 }
 
 export type DocsSection = { title: string; body: React.ReactNode }
+
+/** A request or payload sample inside a docs section. */
+export function DocsCode({ children }: { children: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+      {children}
+    </pre>
+  )
+}
 
 export function DocsSheet({
   open,

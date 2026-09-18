@@ -33,7 +33,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
 import { toast } from "@/components/ui/toast"
-import { SEED_TEAM_ID, slugifyTeamName } from "@/lib/dashboard/teams"
+import { slugify } from "@/lib/dashboard/slug"
+import { SEED_TEAM_ID } from "@/lib/dashboard/teams"
 import { teamSafePath } from "@/lib/dashboard/nav"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Team } from "@/lib/dashboard/types"
@@ -78,7 +79,7 @@ function CreateTeamDialog({
   const [name, setName] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
 
-  const slugPreview = slugifyTeamName(name) || "team"
+  const slugPreview = slugify(name) || "team"
 
   function reset() {
     setName("")

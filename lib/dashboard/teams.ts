@@ -3,7 +3,10 @@ import { SEED_STATE } from "./data"
 import { normalizeDomain } from "./domains"
 import { createId } from "./ids"
 import { normalizeLog } from "./logs"
+import { uniqueSlug } from "./slug"
+import { normalizeTemplates } from "./template"
 import type { DashboardState, Team } from "./types"
+import { normalizeWebhook } from "./webhooks"
 
 export const SEED_TEAM_ID = "team_opensend"
 export const ROOT_VERSION = 3 as const
@@ -53,6 +56,15 @@ function migrateWorkspace(workspace: DashboardState): DashboardState {
       stats: normalizeBroadcastStats(item.stats),
     })),
     logs: (workspace.logs ?? []).map(normalizeLog),
+    templates: normalizeTemplates(workspace.templates),
+    webhooks: workspace.webhooks.map(normalizeWebhook),
+    /* A workspace saved before deliveries were kept gets the seeded history
+       of whichever seeded webhooks it still has. */
+    webhookDeliveries:
+      workspace.webhookDeliveries ??
+      SEED_STATE.webhookDeliveries.filter((delivery) =>
+        workspace.webhooks.some((item) => item.id === delivery.webhookId)
+      ),
   }
 }
 
@@ -112,28 +124,6 @@ export function activeWorkspace(root: DashboardRoot): DashboardState {
   return root.workspaces[root.activeTeamId] ?? SEED_STATE
 }
 
-export function slugifyTeamName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/['’]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
-}
-
-export function uniqueTeamSlug(
-  name: string,
-  existing: readonly string[]
-): string {
-  const taken = new Set(existing)
-  const base = slugifyTeamName(name) || "team"
-  if (!taken.has(base)) return base
-  let n = 2
-  while (taken.has(`${base}-${n}`)) n += 1
-  return `${base}-${n}`
-}
-
 export function emptyWorkspace(name: string, slug: string): DashboardState {
   return {
     domains: [],
@@ -152,6 +142,7 @@ export function emptyWorkspace(name: string, slug: string): DashboardState {
     templates: [],
     automations: [],
     webhooks: [],
+    webhookDeliveries: [],
     logs: [],
     exports: [],
     settings: {
@@ -192,11 +183,12 @@ export function createTeamInRoot(
   if (!trimmed) {
     throw new Error("Enter a team name")
   }
-  const slug = uniqueTeamSlug(
+  const slug = uniqueSlug(
     trimmed,
     Object.values(root.workspaces).map(
       (workspace) => workspace.settings.teamSlug
-    )
+    ),
+    "team"
   )
   const teamId = createId("team")
   return {

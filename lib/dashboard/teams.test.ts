@@ -11,38 +11,8 @@ import {
   SEED_TEAM_ID,
   seedRoot,
   serializeRoot,
-  slugifyTeamName,
   switchTeamInRoot,
-  uniqueTeamSlug,
 } from "./teams"
-
-describe("slugifyTeamName", () => {
-  it("lowercases and hyphenates", () => {
-    assert.equal(slugifyTeamName("Acme Inc"), "acme-inc")
-  })
-
-  it("strips punctuation and apostrophes", () => {
-    assert.equal(slugifyTeamName("Kamal's Lab"), "kamals-lab")
-  })
-
-  it("returns empty for blank input", () => {
-    assert.equal(slugifyTeamName("   "), "")
-  })
-})
-
-describe("uniqueTeamSlug", () => {
-  it("keeps the base slug when it is free", () => {
-    assert.equal(uniqueTeamSlug("Acme", ["opensend"]), "acme")
-  })
-
-  it("suffixes when the slug is taken", () => {
-    assert.equal(uniqueTeamSlug("Acme", ["acme", "acme-2"]), "acme-3")
-  })
-
-  it("falls back to team when the name has no slug chars", () => {
-    assert.equal(uniqueTeamSlug("!!!", []), "team")
-  })
-})
 
 describe("parseRoot", () => {
   it("wraps a legacy single-workspace snapshot", () => {

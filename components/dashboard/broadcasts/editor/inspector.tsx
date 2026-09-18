@@ -49,18 +49,20 @@ import { NumberField } from "@/components/ui/number-field"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Toggle } from "@/components/ui/toggle"
 import { useDraftValue } from "@/components/dashboard/primitives"
 import { normalizeHref } from "@/lib/dashboard/format"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import {
+  SegmentedToggle,
+  type SegmentedItem,
+} from "@/components/ui/segmented-toggle"
+import {
   AlignField,
   InspectorRow,
   InspectorSection,
-  SegmentedToggle,
+  MarkToggles,
   TEXT_MARKS,
   type EmailAlign,
-  type SegmentedItem,
 } from "@/components/dashboard/broadcasts/editor/controls"
 
 /* The engine decides what is selected and hands each panel its values and
@@ -211,16 +213,6 @@ function StyleField({
         ))}
       </NativeSelect>
     )
-  } else if (input.type === "textarea") {
-    control = (
-      <Textarea
-        rows={3}
-        value={String(value ?? "")}
-        aria-label={label}
-        data-testid={testId}
-        onChange={(event) => onValueChange(event.target.value)}
-      />
-    )
   } else {
     control = (
       <Input
@@ -233,14 +225,7 @@ function StyleField({
       />
     )
   }
-  return (
-    <InspectorRow
-      label={label}
-      align={input.type === "textarea" ? "start" : undefined}
-    >
-      {control}
-    </InspectorRow>
-  )
+  return <InspectorRow label={label}>{control}</InspectorRow>
 }
 
 /* ------------------------------------------------------------- node panel */
@@ -309,14 +294,13 @@ function nodeSections(nodeType: string): NodeSection[] {
     case "twoColumns":
     case "threeColumns":
     case "fourColumns":
-      return ["attributes"]
-    case "columnsColumn":
-      return ["size", "typography", "padding", "background", "border"]
     case "youtube":
     case "spacer":
     case "html":
     case "variable":
       return ["attributes"]
+    case "columnsColumn":
+      return ["size", "typography", "padding", "background", "border"]
     case "footer":
       return ["typography", "padding", "background"]
     default:
@@ -324,33 +308,63 @@ function nodeSections(nodeType: string): NodeSection[] {
   }
 }
 
-function PaddingRow({ context }: { context: InspectorNodeContext }) {
-  const all = toNumber(context.getStyle("padding")) ?? 0
-  const side = (prop: KnownCssProperties) =>
-    toNumber(context.getStyle(prop)) ?? all
-  const value: BoxValue = {
-    top: side("paddingTop"),
-    right: side("paddingRight"),
-    bottom: side("paddingBottom"),
-    left: side("paddingLeft"),
-  }
+const PADDING_SIDES = {
+  paddingTop: "top",
+  paddingRight: "right",
+  paddingBottom: "bottom",
+  paddingLeft: "left",
+} as const
+
+type PaddingSide = keyof typeof PADDING_SIDES
+
+function isPaddingSide(prop: string): prop is PaddingSide {
+  return prop in PADDING_SIDES
+}
+
+const PADDING_PROPS = Object.keys(PADDING_SIDES) as PaddingSide[]
+
+/** The four padding sides as one box; node panels and theme groups share it. */
+function PaddingBoxRow({
+  value,
+  testId,
+  onValueChange,
+}: {
+  value: BoxValue
+  testId: string
+  onValueChange: (value: BoxValue) => void
+}) {
   return (
     <InspectorRow label="Padding" align="start">
       <BoxField
         value={value}
         min={0}
         label="Padding"
-        data-testid="inspector-padding"
-        onValueChange={(next) =>
-          context.batchSetStyle([
-            { prop: "paddingTop", value: next.top },
-            { prop: "paddingRight", value: next.right },
-            { prop: "paddingBottom", value: next.bottom },
-            { prop: "paddingLeft", value: next.left },
-          ])
-        }
+        data-testid={testId}
+        onValueChange={onValueChange}
       />
     </InspectorRow>
+  )
+}
+
+function PaddingRow({ context }: { context: InspectorNodeContext }) {
+  const all = toNumber(context.getStyle("padding")) ?? 0
+  const value: BoxValue = { top: all, right: all, bottom: all, left: all }
+  for (const prop of PADDING_PROPS) {
+    value[PADDING_SIDES[prop]] = toNumber(context.getStyle(prop)) ?? all
+  }
+  return (
+    <PaddingBoxRow
+      value={value}
+      testId="inspector-padding"
+      onValueChange={(next) =>
+        context.batchSetStyle(
+          PADDING_PROPS.map((prop) => ({
+            prop,
+            value: next[PADDING_SIDES[prop]],
+          }))
+        )
+      }
+    />
   )
 }
 
@@ -408,45 +422,84 @@ function AttrField({
       />
     )
   }
+  if (name === "href") {
+    /* Checked once the address is whole. Checked per keystroke, "e" became
+       "https://e" under the caret, and a half-typed `mailto:` or merge tag was
+       refused outright, so neither could be typed at all. */
+    return (
+      <DraftedAttrField
+        label={label}
+        testId={`inspector-${name}`}
+        value={String(stored)}
+        multiline={false}
+        isInvalid={(draft) => normalizeHref(draft) === null}
+        onCommit={(value) => {
+          /* A destination that is not safe to send is not stored. */
+          const next = normalizeHref(value)
+          if (next !== null) context.setAttr(name, next)
+        }}
+      />
+    )
+  }
   return (
     <StyleField
       input={{ label, type }}
       value={stored}
       clearable={false}
       testId={`inspector-${name}`}
-      onValueChange={(value) => {
-        /* A destination that is not safe to send is not stored. */
-        const next = name === "href" ? normalizeHref(String(value)) : value
-        if (next !== null) context.setAttr(name, next)
-      }}
+      onValueChange={(value) => context.setAttr(name, value)}
     />
   )
 }
 
 /* Long text (an HTML block's markup, alt text) stays in a draft until the
    field is left: each commit is a document change that repaints the block
-   and restarts the save, which is too much to do per keystroke. */
+   and restarts the save, which is too much to do per keystroke. A link's
+   address does too, because it only makes sense once it is whole. */
 function DraftedAttrField({
   label,
   testId,
   value,
   onCommit,
+  multiline = true,
+  isInvalid,
 }: {
   label: string
   testId: string
   value: string
   onCommit: (value: string) => void
+  multiline?: boolean
+  /** Marks a draft that `onCommit` is going to refuse. */
+  isInvalid?: (draft: string) => boolean
 }) {
   const { draft, setDraft, commitDraft } = useDraftValue(value, onCommit)
+  if (multiline) {
+    return (
+      <InspectorRow label={label} align="start">
+        <Textarea
+          rows={3}
+          value={draft}
+          aria-label={label}
+          data-testid={testId}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commitDraft}
+        />
+      </InspectorRow>
+    )
+  }
   return (
-    <InspectorRow label={label} align="start">
-      <Textarea
-        rows={3}
+    <InspectorRow label={label}>
+      <Input
         value={draft}
+        className="h-control-sm"
         aria-label={label}
+        aria-invalid={isInvalid?.(draft) || undefined}
         data-testid={testId}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commitDraft}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commitDraft()
+        }}
       />
     </InspectorRow>
   )
@@ -655,18 +708,12 @@ function TextPanel({ context }: { context: InspectorTextContext }) {
       <InspectorSection>
         <InspectorRow label="Format">
           <div className="flex gap-0.5">
-            {PANEL_MARKS.map(({ name, label, icon: Icon }) => (
-              <Toggle
-                key={name}
-                size="sm"
-                aria-label={label}
-                pressed={Boolean(context.marks[name])}
-                data-testid={`inspector-mark-${name}`}
-                onPressedChange={() => context.toggleMark(name)}
-              >
-                <Icon />
-              </Toggle>
-            ))}
+            <MarkToggles
+              marks={PANEL_MARKS}
+              isActive={(name) => Boolean(context.marks[name])}
+              onToggle={(name) => context.toggleMark(name)}
+              testIdPrefix="inspector-mark-"
+            />
           </div>
         </InspectorRow>
         <InspectorRow label="Alignment">
@@ -757,19 +804,6 @@ type InspectorDocumentContext = Parameters<
   NonNullable<InspectorDocumentProps["children"]>
 >[0]
 
-const PADDING_SIDES = {
-  paddingTop: "top",
-  paddingRight: "right",
-  paddingBottom: "bottom",
-  paddingLeft: "left",
-} as const
-
-type PaddingSide = keyof typeof PADDING_SIDES
-
-function isPaddingSide(prop: string): prop is PaddingSide {
-  return prop in PADDING_SIDES
-}
-
 /* A theme group's inputs as rows. The four padding sides arrive as separate
    inputs and are shown as one box, where the first of them sits. */
 function ThemeGroupRows({
@@ -784,12 +818,13 @@ function ThemeGroupRows({
   setGlobalStyle: InspectorDocumentContext["setGlobalStyle"]
   batchSetGlobalStyle: InspectorDocumentContext["batchSetGlobalStyle"]
 }) {
-  const sides = inputs.filter((input) => isPaddingSide(input.prop))
+  const sides = inputs.filter(
+    (input): input is typeof input & { prop: PaddingSide } =>
+      isPaddingSide(input.prop)
+  )
   const box: BoxValue = { top: 0, right: 0, bottom: 0, left: 0 }
   for (const input of sides) {
-    if (isPaddingSide(input.prop)) {
-      box[PADDING_SIDES[input.prop]] = toNumber(input.value) ?? 0
-    }
+    box[PADDING_SIDES[input.prop]] = toNumber(input.value) ?? 0
   }
 
   return inputs.map((input) => {
@@ -798,25 +833,20 @@ function ThemeGroupRows({
     if (isPaddingSide(input.prop)) {
       if (input !== sides[0] || sides.length < 4) return null
       return (
-        <InspectorRow key="padding" label="Padding" align="start">
-          <BoxField
-            value={box}
-            min={0}
-            label="Padding"
-            data-testid={`theme-${target}-padding`}
-            onValueChange={(next) =>
-              batchSetGlobalStyle(
-                sides.map((side) => ({
-                  classReference: target,
-                  property: side.prop,
-                  value: isPaddingSide(side.prop)
-                    ? next[PADDING_SIDES[side.prop]]
-                    : 0,
-                }))
-              )
-            }
-          />
-        </InspectorRow>
+        <PaddingBoxRow
+          key="padding"
+          value={box}
+          testId={`theme-${target}-padding`}
+          onValueChange={(next) =>
+            batchSetGlobalStyle(
+              sides.map((side) => ({
+                classReference: target,
+                property: side.prop,
+                value: next[PADDING_SIDES[side.prop]],
+              }))
+            )
+          }
+        />
       )
     }
     return (
@@ -835,8 +865,6 @@ const TEXT_PROPS: readonly KnownCssProperties[] = [
   ...TYPOGRAPHY,
   "textDecoration",
 ]
-
-const PADDING_PROPS = Object.keys(PADDING_SIDES) as PaddingSide[]
 
 /* The theme sets one border for an element; its style is a per-block choice. */
 const FRAME_PROPS = BORDER.filter((prop) => prop !== "borderStyle")

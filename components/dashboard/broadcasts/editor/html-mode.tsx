@@ -13,12 +13,12 @@ import {
 import { ConfirmDialog } from "@/components/dashboard/primitives"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
-import type { BroadcastEditorState } from "@/components/dashboard/broadcasts/editor/use-editor"
+import type { EmailEditorState } from "@/components/dashboard/broadcasts/editor/use-editor"
 
 /* Two ways to reach this pane. A visual document shows the markup React Email
    exported, read-only, because editing it by hand is a one-way door: taking
    that door drops the editor document and makes this markup the email. */
-export function HtmlMode({ editor }: { editor: BroadcastEditorState }) {
+export function HtmlMode({ editor }: { editor: EmailEditorState }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const handWritten = editor.mode === "html"
   const code = editor.html
@@ -70,7 +70,7 @@ export function HtmlMode({ editor }: { editor: BroadcastEditorState }) {
               readOnly={!handWritten}
               aria-label="HTML code editor"
               data-testid="html-code"
-              placeholder="Start writing your broadcast..."
+              placeholder="Start writing your email..."
               className="min-h-0 flex-1"
               onValueChange={setCode}
             />
@@ -88,7 +88,7 @@ export function HtmlMode({ editor }: { editor: BroadcastEditorState }) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Edit this broadcast as HTML?"
+        title="Edit this email as HTML?"
         description="The markup below becomes the email, and the visual document is dropped. You can go back to the visual editor, which keeps what it understands."
         confirmLabel="Edit HTML"
         onConfirm={editor.editAsHtml}

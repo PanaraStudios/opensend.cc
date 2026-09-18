@@ -15,7 +15,11 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Toggle } from "@/components/ui/toggle"
+import {
+  SegmentedToggle,
+  type SegmentedItem,
+} from "@/components/ui/segmented-toggle"
 import { cn } from "@/lib/utils"
 
 /* The inspector is a long list of `label → control` rows in titled groups, and
@@ -72,80 +76,6 @@ export function InspectorRow({
   )
 }
 
-export type SegmentedItem<T extends string> = {
-  value: T
-  label: string
-  icon?: LucideIcon
-}
-
-/** Single-choice toggle group. Base UI models the value as an array, so this
-    keeps the array plumbing in one place. */
-export function SegmentedToggle<T extends string>({
-  value,
-  onValueChange,
-  items,
-  size = "sm",
-  orientation = "horizontal",
-  className,
-  itemClassName,
-  "aria-label": ariaLabel,
-  testIdPrefix,
-}: {
-  value: T
-  onValueChange: (value: T) => void
-  items: readonly SegmentedItem<T>[]
-  size?: "sm" | "default"
-  orientation?: "horizontal" | "vertical"
-  className?: string
-  itemClassName?: string
-  "aria-label": string
-  testIdPrefix?: string
-}) {
-  return (
-    <ToggleGroup
-      variant={orientation === "vertical" ? "default" : "outline"}
-      size={size}
-      spacing={orientation === "vertical" ? 2 : 0}
-      orientation={orientation}
-      aria-label={ariaLabel}
-      value={[value]}
-      onValueChange={(next) => {
-        const selected = next[0] as T | undefined
-        if (selected) onValueChange(selected)
-      }}
-      /* Base UI only writes `data-orientation`, so the stacking is set here
-         rather than relying on the group's own vertical variants. */
-      className={cn(
-        orientation === "vertical"
-          ? "flex-col items-stretch"
-          : "w-full flex-row",
-        className
-      )}
-    >
-      {items.map((item) => {
-        const Icon = item.icon
-        return (
-          <ToggleGroupItem
-            key={item.value}
-            value={item.value}
-            aria-label={item.label}
-            title={item.label}
-            data-testid={
-              testIdPrefix ? `${testIdPrefix}-${item.value}` : undefined
-            }
-            className={cn(
-              orientation === "horizontal" && "flex-1",
-              itemClassName
-            )}
-          >
-            {Icon ? <Icon /> : item.label}
-          </ToggleGroupItem>
-        )
-      })}
-    </ToggleGroup>
-  )
-}
-
 export type EmailAlign = "left" | "center" | "right"
 
 export const ALIGN_ITEMS: (SegmentedItem<EmailAlign> & {
@@ -166,6 +96,32 @@ export const TEXT_MARKS: { name: string; label: string; icon: LucideIcon }[] = [
   { name: "uppercase", label: "Uppercase", icon: CaseUpperIcon },
   { name: "code", label: "Inline code", icon: CodeIcon },
 ]
+
+/** One toggle per mark; the inspector and the bubble toolbar both show it. */
+export function MarkToggles({
+  marks = TEXT_MARKS,
+  isActive,
+  onToggle,
+  testIdPrefix,
+}: {
+  marks?: typeof TEXT_MARKS
+  isActive: (name: string) => boolean
+  onToggle: (name: string) => void
+  testIdPrefix: string
+}) {
+  return marks.map(({ name, label, icon: Icon }) => (
+    <Toggle
+      key={name}
+      size="sm"
+      aria-label={label}
+      pressed={isActive(name)}
+      data-testid={`${testIdPrefix}${name}`}
+      onPressedChange={() => onToggle(name)}
+    >
+      <Icon />
+    </Toggle>
+  ))
+}
 
 /* The editor's floating pieces (rail, "/" menu, bubble toolbars) sit outside
    a Popover, so they take the popover's look from here. */

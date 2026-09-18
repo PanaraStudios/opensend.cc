@@ -14,56 +14,26 @@ import {
 } from "@/components/ui/collapsible"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
-  CodeWell,
-  CopyButton,
   DetailHeader,
   DocsButton,
+  HttpStatusBadge,
+  JsonSection,
   MetaStrip,
+  MonoValue,
   NotFoundState,
   RelativeTime,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
-import {
-  LogIcon,
-  LogStatusBadge,
-  LogsDocsSheet,
-} from "@/components/dashboard/logs/shared"
+import { LogIcon, LogsDocsSheet } from "@/components/dashboard/logs/shared"
 import { permissionLabel } from "@/lib/dashboard/format"
 import {
   logRequestBody,
   logRequestHeaders,
   logResponseBody,
   logSourceLabel,
-  tokenizeJson,
-  type JsonTokenKind,
 } from "@/lib/dashboard/logs"
 import { useDashboard } from "@/lib/dashboard/store"
-
-const JSON_TOKEN_CLASS: Record<JsonTokenKind, string> = {
-  key: "text-foreground",
-  string: "text-success",
-  literal: "text-info",
-  punct: "text-muted-foreground",
-}
-
-function JsonSection({ title, value }: { title: string; value: object }) {
-  const source = React.useMemo(() => JSON.stringify(value, null, 2), [value])
-  const tokens = React.useMemo(() => tokenizeJson(source), [source])
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">{title}</h2>
-      <CodeWell copyValue={source}>
-        {tokens.map((token, index) => (
-          <span key={index} className={JSON_TOKEN_CLASS[token.kind]}>
-            {token.value}
-          </span>
-        ))}
-      </CodeWell>
-    </section>
-  )
-}
 
 function RequestHeaders({
   headers,
@@ -139,7 +109,7 @@ export function LogDetail() {
         backLabel="Logs"
         title={`${log.method} ${log.path}`}
         icon={LogIcon}
-        badge={<LogStatusBadge status={log.status} />}
+        badge={<HttpStatusBadge status={log.status} />}
         actions={<DocsButton onClick={() => setDocsOpen(true)} />}
       />
       <MetaStrip
@@ -173,12 +143,7 @@ export function LogDetail() {
           },
           {
             label: "Id",
-            value: (
-              <>
-                <span className="truncate font-mono">{log.id}</span>
-                <CopyButton value={log.id} label="Id" />
-              </>
-            ),
+            value: <MonoValue copyValue={log.id}>{log.id}</MonoValue>,
           },
           ...(email
             ? [

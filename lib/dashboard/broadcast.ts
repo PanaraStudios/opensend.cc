@@ -1,4 +1,5 @@
 import { defaultFromAddress } from "./format"
+import type { TemplateInput } from "./template"
 import type {
   Broadcast,
   BroadcastStats,
@@ -52,13 +53,13 @@ export function broadcastEditorHref(item: Pick<Broadcast, "id" | "status">) {
     : `/broadcasts/${item.id}`
 }
 
-export type BroadcastEditorMode = "visual" | "html"
+export type EmailEditorMode = "visual" | "html"
 
-/** A broadcast is hand-written when it has markup but no editor document
+/** An email is hand-written when it has markup but no editor document
     behind it. Anything else, including a blank one, opens in the editor. */
-export function broadcastEditorMode(
+export function emailEditorMode(
   item: Pick<Broadcast, "content" | "html">
-): BroadcastEditorMode {
+): EmailEditorMode {
   if (item.content?.type === "doc") return "visual"
   return item.html.trim() ? "html" : "visual"
 }
@@ -140,9 +141,9 @@ export function fromAddresses(
   return verified.map((domain) => defaultFromAddress(domain.name))
 }
 
-/** The broadcast's own sender while its domain is still verified, else the
+/** The email's own sender while its domain is still verified, else the
     workspace default. */
-export function broadcastFrom(
+export function emailFrom(
   item: Pick<Broadcast, "from">,
   domains: readonly Pick<Domain, "name" | "status">[]
 ): string {
@@ -167,11 +168,16 @@ export function broadcastUpdatedAt(item: Broadcast): number {
   return item.updatedAt || item.sentAt || item.createdAt
 }
 
-export function broadcastAsTemplateInput(item: Broadcast) {
+/** A broadcast's email as a new template, editor document and all. */
+export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
   return {
-    name: item.name || "Untitled",
-    subject: item.subject || item.name || "Untitled",
+    name: item.name,
+    subject: item.subject,
+    preview: item.preview,
     html: item.html,
+    content: item.content,
+    from: item.from,
+    replyTo: item.replyTo,
   }
 }
 

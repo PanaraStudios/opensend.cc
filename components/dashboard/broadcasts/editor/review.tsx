@@ -29,14 +29,14 @@ import {
 import { toast } from "@/components/ui/toast"
 import {
   audienceLabel,
-  broadcastFrom,
+  emailFrom,
   broadcastRecipients,
 } from "@/lib/dashboard/broadcast"
 import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
 import { isEmail, pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useDashboard } from "@/lib/dashboard/store"
-import type { Broadcast } from "@/lib/dashboard/types"
+import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
 type CheckLevel = "ok" | "warn" | "error"
@@ -57,7 +57,7 @@ const CHECK_CLASS = {
 
 /** Everything that has to be true before a broadcast can go out, plus the
     softer warnings that only need a nudge. One line each. */
-export function reviewChecks({
+function reviewChecks({
   item,
   html,
   empty,
@@ -131,9 +131,9 @@ export function TestEmailDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  item: Broadcast
+  item: EmailDraft
   /** The email as it stands right now, exported if it has to be. */
-  exportHtml: () => Promise<string>
+  exportHtml: () => Promise<string | null>
 }) {
   const { state, sendEmail } = useDashboard()
   const [value, setValue] = React.useState("")
@@ -157,11 +157,13 @@ export function TestEmailDialog({
               return
             }
             void exportHtml().then((html) => {
+              /* The export failed and said so; there is nothing to send. */
+              if (html === null) return
               sendEmail({
-                from: broadcastFrom(item, state.domains),
+                from: emailFrom(item, state.domains),
                 to,
                 subject: `[Test] ${item.subject || item.name || "Untitled"}`,
-                text: item.preview || "Test send from the broadcast editor.",
+                text: item.preview || "Test send from the email editor.",
                 html,
               })
               toast.add({ type: "success", title: `Test email sent to ${to}` })
@@ -292,7 +294,7 @@ export function ReviewPopover({
   empty: boolean
   sendAt: number | null
   /** Saves the newest edit, so the send copies the email on screen. */
-  flush: () => Promise<void>
+  flush: () => Promise<boolean>
 }) {
   const [open, setOpen] = React.useState(false)
 
@@ -342,7 +344,7 @@ function ReviewBody({
   html: string
   empty: boolean
   sendAt: number | null
-  flush: () => Promise<void>
+  flush: () => Promise<boolean>
 }) {
   const router = useRouter()
   const { state, setBroadcastStatus } = useDashboard()
@@ -351,7 +353,7 @@ function ReviewBody({
     html,
     empty,
     sendAt,
-    from: broadcastFrom(item, state.domains),
+    from: emailFrom(item, state.domains),
     verified: state.domains.some((domain) => domain.status === "verified"),
     audience: audienceLabel(item.segmentId, state.segments),
     recipients: broadcastRecipients(state.contacts, item).length,
@@ -385,12 +387,17 @@ function ReviewBody({
           disabled={blocked}
           testId="review-send"
           onConfirm={() => {
-            void flush().then(() => {
-              if (sendAt) setBroadcastStatus(item.id, "scheduled", sendAt)
+            void flush().then((saved) => {
+              /* Never send the email from before the edit that did not save. */
+              if (!saved) return
+              /* A time picked a while ago may have passed since: that is
+                 "now", not a schedule in the past. */
+              const later = sendAt !== null && sendAt > Date.now()
+              if (later) setBroadcastStatus(item.id, "scheduled", sendAt)
               else setBroadcastStatus(item.id, "sent")
               toast.add({
                 type: "success",
-                title: sendAt ? "Broadcast scheduled" : "Broadcast sent",
+                title: later ? "Broadcast scheduled" : "Broadcast sent",
               })
               onClose()
               router.push(`/broadcasts/${item.id}`)

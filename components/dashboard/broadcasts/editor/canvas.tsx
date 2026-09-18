@@ -10,29 +10,23 @@ import {
   insertAtCaret,
   PALETTE_DRAG_TYPE,
   PALETTE_ITEMS,
-  type PaletteItem,
 } from "@/components/dashboard/broadcasts/editor/blocks"
 import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-menus"
-import { EmailHeaderForm } from "@/components/dashboard/broadcasts/editor/header-form"
 import { InsertRail } from "@/components/dashboard/broadcasts/editor/palette"
 import { SlashMenu } from "@/components/dashboard/broadcasts/editor/slash-menu"
 import type { EmailVariable } from "@/lib/dashboard/email-variables"
-import type { Broadcast } from "@/lib/dashboard/types"
 
 /* The page, the paper on it, and the engine's document inside the paper. The
    theme's `body` and `container` groups style the first two, so the canvas
    reads like the sent email. */
 
 export function EmailCanvas({
-  item,
   editor,
-  sendAt,
-  onSendAtChange,
+  header,
 }: {
-  item: Broadcast
   editor: Editor
-  sendAt: number | null
-  onSendAtChange: (value: number | null) => void
+  /** The envelope form, which sits on the paper above the document. */
+  header: React.ReactNode
 }) {
   const theming = useEmailTheming(editor)
   const css = React.useMemo(() => {
@@ -42,10 +36,6 @@ export function EmailCanvas({
          React's style handling does not accept. */
     return { body: { ...styles.body }, container: { ...styles.container } }
   }, [theming])
-
-  function insertBlock(entry: PaletteItem) {
-    insertAtCaret(editor, entry)
-  }
 
   function insertVariable(variable: EmailVariable) {
     editor
@@ -69,7 +59,7 @@ export function EmailCanvas({
       <div className="pointer-events-none absolute inset-y-0 left-4 z-30 pt-24 md:left-8">
         <InsertRail
           className="pointer-events-auto sticky top-24"
-          onInsertBlock={insertBlock}
+          onInsertBlock={(entry) => insertAtCaret(editor, entry)}
           onInsertVariable={insertVariable}
         />
       </div>
@@ -79,14 +69,7 @@ export function EmailCanvas({
         className="relative max-w-full bg-white text-black"
         style={css.container}
       >
-        <EmailHeaderForm
-          item={item}
-          sendAt={sendAt}
-          onSendAtChange={onSendAtChange}
-        />
-        {/* The engine paints its editing surface as the page and its container
-            node as the paper. Here the canvas and the sheet above already are
-            those, so inside the sheet both are flattened. */}
+        {header}
         <DragHandle
           editor={editor}
           className="flex size-6 cursor-grab items-center justify-center rounded-md text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111827] active:cursor-grabbing"

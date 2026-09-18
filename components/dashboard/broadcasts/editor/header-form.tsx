@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useDraft } from "@/components/dashboard/primitives"
-import { broadcastFrom, fromAddresses } from "@/lib/dashboard/broadcast"
+import { emailFrom, fromAddresses } from "@/lib/dashboard/broadcast"
 import {
   formatScheduleHint,
   scheduleOptions,
@@ -26,7 +26,7 @@ import {
   type ScheduleOption,
 } from "@/lib/dashboard/schedule"
 import { useDashboard } from "@/lib/dashboard/store"
-import type { Broadcast } from "@/lib/dashboard/types"
+import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
 /* This form sits on the email paper, so it keeps the paper's own palette in
@@ -180,7 +180,8 @@ function WhenField({
   )
 }
 
-export function EmailHeaderForm({
+/** The broadcast-only rows: who gets it, which topic, and when. */
+export function BroadcastSendFields({
   item,
   sendAt,
   onSendAtChange,
@@ -190,65 +191,8 @@ export function EmailHeaderForm({
   onSendAtChange: (value: number | null) => void
 }) {
   const { state, updateBroadcast } = useDashboard()
-  const [showReplyTo, setShowReplyTo] = React.useState(
-    Boolean(item.replyTo?.trim())
-  )
-  const [showPreview, setShowPreview] = React.useState(
-    Boolean(item.preview.trim())
-  )
-  const from = broadcastFrom(item, state.domains)
-  const subject = useDraft(item.subject, (value) =>
-    updateBroadcast(item.id, { subject: value })
-  )
-  const preview = useDraft(item.preview, (value) =>
-    updateBroadcast(item.id, { preview: value })
-  )
-  const replyTo = useDraft(item.replyTo ?? "", (value) =>
-    updateBroadcast(item.id, { replyTo: value })
-  )
-
   return (
-    <div
-      data-testid="email-header-form"
-      className="border-b border-[#ebebeb] pb-3"
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <div className={ROW}>
-        <span className={LABEL}>From</span>
-        <PaperSelect
-          label="From"
-          testId="header-from"
-          placeholder="Select a sender"
-          value={from}
-          onValueChange={(next) => updateBroadcast(item.id, { from: next })}
-          items={fromAddresses(state.domains).map((address) => ({
-            value: address,
-            label: address,
-          }))}
-        />
-        {showReplyTo ? null : (
-          <button
-            type="button"
-            className={ACTION}
-            data-testid="header-reply-to-toggle"
-            onClick={() => setShowReplyTo(true)}
-          >
-            Reply-To
-          </button>
-        )}
-      </div>
-      {showReplyTo ? (
-        <div className={ROW}>
-          <span className={LABEL}>Reply-To</span>
-          <input
-            {...replyTo}
-            className={VALUE}
-            aria-label="Reply-To"
-            data-testid="header-reply-to"
-            placeholder="replies@example.com"
-          />
-        </div>
-      ) : null}
+    <>
       <div className={ROW}>
         <span className={LABEL}>To</span>
         <PaperSelect
@@ -295,6 +239,86 @@ export function EmailHeaderForm({
         <span className={LABEL}>When</span>
         <WhenField sendAt={sendAt} onSendAtChange={onSendAtChange} />
       </div>
+    </>
+  )
+}
+
+export type EmailHeaderPatch = Partial<
+  Pick<EmailDraft, "from" | "replyTo" | "subject" | "preview">
+>
+
+/** The envelope every email has. `children` are the rows only one kind of
+    email needs, and sit between the sender and the subject. */
+export function EmailHeaderForm({
+  item,
+  onChange,
+  children,
+}: {
+  item: EmailDraft
+  onChange: (patch: EmailHeaderPatch) => void
+  children?: React.ReactNode
+}) {
+  const { state } = useDashboard()
+  const [showReplyTo, setShowReplyTo] = React.useState(
+    Boolean(item.replyTo?.trim())
+  )
+  const [showPreview, setShowPreview] = React.useState(
+    Boolean(item.preview.trim())
+  )
+  const from = emailFrom(item, state.domains)
+  const subject = useDraft(item.subject, (value) =>
+    onChange({ subject: value })
+  )
+  const preview = useDraft(item.preview, (value) =>
+    onChange({ preview: value })
+  )
+  const replyTo = useDraft(item.replyTo ?? "", (value) =>
+    onChange({ replyTo: value })
+  )
+
+  return (
+    <div
+      data-testid="email-header-form"
+      className="border-b border-[#ebebeb] pb-3"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className={ROW}>
+        <span className={LABEL}>From</span>
+        <PaperSelect
+          label="From"
+          testId="header-from"
+          placeholder="Select a sender"
+          value={from}
+          onValueChange={(next) => onChange({ from: next })}
+          items={fromAddresses(state.domains).map((address) => ({
+            value: address,
+            label: address,
+          }))}
+        />
+        {showReplyTo ? null : (
+          <button
+            type="button"
+            className={ACTION}
+            data-testid="header-reply-to-toggle"
+            onClick={() => setShowReplyTo(true)}
+          >
+            Reply-To
+          </button>
+        )}
+      </div>
+      {showReplyTo ? (
+        <div className={ROW}>
+          <span className={LABEL}>Reply-To</span>
+          <input
+            {...replyTo}
+            className={VALUE}
+            aria-label="Reply-To"
+            data-testid="header-reply-to"
+            placeholder="replies@example.com"
+          />
+        </div>
+      ) : null}
+      {children}
       <div className="mt-1 border-t border-[#ebebeb]" />
       <div className={ROW}>
         <input

@@ -82,16 +82,6 @@ export function emailStatusLabel(status: EmailStatus): string {
   }
 }
 
-/** The address a workspace sends from: its first verified domain, else the
-    shared Opensend one. */
-export function workspaceFromAddress(
-  domains: readonly { name: string; status: DomainStatus }[]
-): string {
-  return defaultFromAddress(
-    domains.find((domain) => domain.status === "verified")?.name
-  )
-}
-
 export function defaultFromAddress(domainName: string | undefined): string {
   return domainName
     ? `Opensend <hello@${domainName}>`
@@ -176,13 +166,21 @@ export function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
-export function isUrl(value: string): boolean {
+const WEB_PROTOCOLS = ["https:", "http:"]
+
+export function isUrl(
+  value: string,
+  protocols: readonly string[] = WEB_PROTOCOLS
+): boolean {
   try {
-    const url = new URL(value.trim())
-    return url.protocol === "https:" || url.protocol === "http:"
+    return protocols.includes(new URL(value.trim()).protocol)
   } catch {
     return false
   }
+}
+
+export function isHttpsUrl(value: string): boolean {
+  return isUrl(value, ["https:"])
 }
 
 /** A destination typed into a link field, made safe to store and send. Merge
@@ -200,6 +198,10 @@ export function normalizeHref(value: string): string | null {
     return `https://${href}`
   }
   return null
+}
+
+export function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 export function pluralize(
@@ -273,4 +275,11 @@ export function rate(part: number, total: number, digits = 0): number {
 
 export function percent(part: number, total: number, digits = 0): string {
   return `${rate(part, total, digits)}%`
+}
+
+/** 2xx reads as fine, 3xx as a nudge, anything else as a failure. */
+export function httpStatusTone(status: number): BadgeTone {
+  if (status >= 400) return "destructive"
+  if (status >= 300) return "warning"
+  return "success"
 }

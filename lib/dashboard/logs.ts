@@ -1,4 +1,3 @@
-import type { BadgeTone } from "./format"
 import type { ApiLog, LogSource, SentEmail } from "./types"
 
 export const DASHBOARD_USER_AGENT = "Opensend Dashboard"
@@ -31,12 +30,6 @@ export function logStatusClass(status: number): LogStatusClass {
   if (status >= 400) return "4xx"
   if (status >= 300) return "3xx"
   return "2xx"
-}
-
-export function logStatusTone(status: number): BadgeTone {
-  if (status >= 400) return "destructive"
-  if (status >= 300) return "warning"
-  return "success"
 }
 
 /** Backfill fields added after a log was persisted. */

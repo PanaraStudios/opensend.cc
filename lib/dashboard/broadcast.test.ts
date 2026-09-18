@@ -5,9 +5,9 @@ import {
   audienceLabel,
   BROADCAST_STATUS_ORDER,
   broadcastActions,
-  broadcastEditorMode,
+  emailEditorMode,
   broadcastEventRows,
-  broadcastFrom,
+  emailFrom,
   broadcastRecipients,
   broadcastUpdatedAt,
   emptyBroadcastStats,
@@ -208,20 +208,20 @@ describe("normalizeBroadcastStats", () => {
   })
 })
 
-describe("broadcastEditorMode", () => {
+describe("emailEditorMode", () => {
   it("opens an editor document visually", () => {
     assert.equal(
-      broadcastEditorMode({ content: { type: "doc" }, html: "<p>x</p>" }),
+      emailEditorMode({ content: { type: "doc" }, html: "<p>x</p>" }),
       "visual"
     )
   })
 
   it("treats markup with no document behind it as hand-written", () => {
-    assert.equal(broadcastEditorMode({ html: "<p>Hello</p>" }), "html")
+    assert.equal(emailEditorMode({ html: "<p>Hello</p>" }), "html")
   })
 
   it("opens a blank broadcast visually", () => {
-    assert.equal(broadcastEditorMode({ html: "  " }), "visual")
+    assert.equal(emailEditorMode({ html: "  " }), "visual")
   })
 })
 
@@ -245,14 +245,14 @@ describe("fromAddresses", () => {
 
   it("keeps a chosen sender only while its domain is verified", () => {
     assert.equal(
-      broadcastFrom({ from: "Opensend <hello@c.dev>" }, domains),
+      emailFrom({ from: "Opensend <hello@c.dev>" }, domains),
       "Opensend <hello@c.dev>"
     )
     assert.equal(
-      broadcastFrom({ from: "Opensend <hello@b.dev>" }, domains),
+      emailFrom({ from: "Opensend <hello@b.dev>" }, domains),
       "Opensend <hello@a.dev>"
     )
-    assert.equal(broadcastFrom({}, domains), "Opensend <hello@a.dev>")
+    assert.equal(emailFrom({}, domains), "Opensend <hello@a.dev>")
   })
 })
 

@@ -1,6 +1,8 @@
 import * as chrono from "chrono-node"
 import { format } from "date-fns"
 
+import { sentenceCase } from "./format"
+
 /** One row of the "When" menu. `at` is null for "send now". */
 export type ScheduleOption = {
   label: string
@@ -17,10 +19,6 @@ export function parseSchedule(text: string, now: number): number | null {
   if (!date) return null
   const at = date.getTime()
   return at > now ? at : null
-}
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 /** "Now" and the presets matching the query, or the query itself once it
@@ -48,9 +46,7 @@ export function scheduleOptions(query: string, now: number): ScheduleOption[] {
 /** "Sep 21st, 4:22PM", with the minutes dropped on the hour. */
 export function formatScheduleHint(at: number): string {
   const minutes = new Date(at).getMinutes()
-  return format(at, minutes === 0 ? "MMM do, haaa" : "MMM do, h:mmaaa")
-    .replace("am", "AM")
-    .replace("pm", "PM")
+  return format(at, minutes === 0 ? "MMM do, ha" : "MMM do, h:mma")
 }
 
 /** "Asia/Kolkata (GMT+5:30)" for the viewer's own clock. */
