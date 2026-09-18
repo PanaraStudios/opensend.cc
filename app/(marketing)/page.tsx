@@ -5,6 +5,7 @@ import { Hero } from "./_sections/hero"
 import { HowItWorks } from "./_sections/how-it-works"
 import { Pricing } from "./_sections/pricing"
 import { SelfHosting } from "./_sections/self-hosting"
+import { Sponsors } from "./_sections/sponsors"
 import { StackStrip } from "./_sections/stack-strip"
 import { Testimonials } from "./_sections/testimonials"
 import { WhatYouGet } from "./_sections/what-you-get"
@@ -25,6 +26,7 @@ export default function Page() {
       <SelfHosting />
       <HowItWorks />
       <About />
+      <Sponsors />
       {TESTIMONIALS.live && <Testimonials />}
       <Pricing />
       <Faq />

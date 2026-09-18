@@ -2,7 +2,9 @@ import type { MetadataRoute } from "next"
 
 import { PAGES, SITE } from "@/content/site"
 
-const INDEXABLE = Object.values(PAGES).filter((page) => !("index" in page && !page.index))
+const INDEXABLE = Object.values(PAGES).filter(
+  (page) => !("index" in page && !page.index)
+)
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
@@ -14,7 +16,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...INDEXABLE.map((page) => ({
       url: `${SITE.url}${page.path}`,
       changeFrequency: "monthly" as const,
-      priority: page.path === "/waitlist" ? 0.8 : 0.3,
+      priority:
+        page.path === "/waitlist" || page.path === "/sponsors" ? 0.8 : 0.3,
     })),
   ]
 }

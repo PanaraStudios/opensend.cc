@@ -1,7 +1,7 @@
 /* All landing-page copy lives here so it can be edited without touching JSX.
 
    Order on the page: HERO, STACK, WHAT_YOU_GET, SELF_HOST, HOW_IT_WORKS,
-   ABOUT, TESTIMONIALS, PRICING, FAQ, FINAL_CTA. One idea per section, one or two lines of
+   ABOUT, SPONSORS, TESTIMONIALS, PRICING, FAQ, FINAL_CTA. One idea per section, one or two lines of
    copy per element. If a line can be cut without losing a fact, cut it.
 
    Every feature carries `platforms` so the UI can show where it ships
@@ -21,6 +21,15 @@ export const DOCS_URL = "/docs"
 export type Platform = "api" | "smtp" | "dashboard"
 
 export const WAITLIST_URL = "/waitlist"
+export const SPONSORS_URL = "/sponsors"
+
+export const SPONSOR_MAILTO =
+  "mailto:hello@opensend.cc?subject=" +
+  encodeURIComponent("Buy a sponsor spot on opensend.cc") +
+  "&body=" +
+  encodeURIComponent(
+    "Hi Kamal,\n\nI want to sponsor opensend.cc.\n\nCompany:\nWebsite:\n"
+  )
 
 export const CTA = {
   primary: "Self-host",
@@ -34,6 +43,7 @@ export const NAV = {
     { href: "/#inside", label: "Features" },
     { href: "/#self-host", label: "Self-host" },
     { href: "/#pricing", label: "Pricing" },
+    { href: SPONSORS_URL, label: "Sponsors" },
     { href: "/#faq", label: "FAQ" },
   ],
   github: { href: GITHUB_URL, label: "GitHub" },
@@ -188,10 +198,19 @@ export const SELF_HOST = {
   guide: {
     title: "How you get there",
     steps: [
-      { icon: "container" as const, label: "Clone the repo and run Docker Compose" },
-      { icon: "users" as const, label: "Sign in on your instance with Better Auth" },
+      {
+        icon: "container" as const,
+        label: "Clone the repo and run Docker Compose",
+      },
+      {
+        icon: "users" as const,
+        label: "Sign in on your instance with Better Auth",
+      },
       { icon: "globe" as const, label: "Add your domain and connect AWS SES" },
-      { icon: "send" as const, label: "Create an API key and send your first email" },
+      {
+        icon: "send" as const,
+        label: "Create an API key and send your first email",
+      },
     ],
   },
   /* Closes the section as one link line. */
@@ -383,6 +402,10 @@ export const FAQ = {
       q: "Is there a managed version?",
       a: "Not yet. opensend.cc Cloud is on the roadmap for teams that want the same API without running Docker, Convex or Better Auth. Join the waitlist in the pricing section. Self-hosting is ready from the repo.",
     },
+    {
+      q: "How do I sponsor opensend.cc?",
+      a: "Buy a spot on the sponsors page. Your logo goes on this site. The money pays for the time to keep the project free. Email hello@opensend.cc to claim one.",
+    },
   ],
 }
 
@@ -414,6 +437,98 @@ export const WAITLIST = {
   note: "A product of Panara Studios. We'll only write when Cloud is ready.",
 }
 
+/* ── Sponsors
+   Copy for the homepage wall and the /sponsors page. Add a company to
+   `items` and drop its mark in public/logos/sponsors. Until then the wall
+   is empty slots you can buy. No invented logos, no invented quotes. */
+
+export type SponsorCategory =
+  "Email" | "Auth" | "Databases" | "Hosting" | "Developer Tools" | "Other"
+
+export type Sponsor = {
+  name: string
+  href: string
+  category: SponsorCategory
+  logo: {
+    src: string
+    srcDark?: string
+    alt: string
+    width?: number
+    height?: number
+  }
+}
+
+export const SPONSOR_CATEGORIES: SponsorCategory[] = [
+  "Email",
+  "Auth",
+  "Databases",
+  "Hosting",
+  "Developer Tools",
+  "Other",
+]
+
+export const SPONSORS = {
+  titleA: "This site stays free",
+  titleEm: "because of sponsors.",
+  sub: "opensend.cc is Apache-2.0. A logo on this page pays for the hours to keep it that way.",
+  cta: { label: "Buy a spot", href: SPONSORS_URL },
+  /* How many cells the homepage wall aims for. Open slots fill the rest,
+     and at least one stays for sale. */
+  wallSlots: 8,
+  openLabel: "This spot is open",
+  openAction: "Buy this spot",
+  /* Real companies only. Empty until the first one pays. */
+  items: [] as Sponsor[],
+}
+
+export const SPONSORS_PAGE = {
+  label: "Sponsors",
+  titleA: "Your logo on this site.",
+  titleEm: "The money keeps the project free.",
+  sub: "opensend.cc is Apache-2.0. You can self-host it for $0. A sponsor spot pays for the time to maintain it.",
+  cta: { label: "Buy a spot", href: SPONSOR_MAILTO },
+  directory: {
+    kicker: "01 / Sponsor directory",
+    title:
+      "opensend.cc sponsors. Browse the companies that keep this project free.",
+    allFilter: "All",
+    openName: "This spot is open",
+    openStatus: "Open",
+    partnerStatus: "Sponsor",
+    openAction: "Buy this spot",
+    visitAction: "Visit site",
+    emptyFilter:
+      "No sponsors in this category yet. Buy a spot and be the first.",
+  },
+  partner: {
+    kicker: "02 / Work with us",
+    title: "Tell us what you're building. We'll find a spot that fits.",
+    cta: { label: "Get in touch", href: SPONSOR_MAILTO },
+    benefits: [
+      {
+        icon: "megaphone" as const,
+        title: "Your brand in front of developers who self-host email",
+        body: "Your logo sits on the opensend.cc homepage and this page. The people who see it are choosing an email API they will run themselves.",
+      },
+      {
+        icon: "messages" as const,
+        title: "A line to the maintainer",
+        body: "You can reach Kamal directly. A question, a call, or a bug that is blocking your team.",
+      },
+      {
+        icon: "handshake" as const,
+        title: "A spot that fits what you sell",
+        body: "Homepage logo, directory listing, or both. Say what you need. We will pick something that makes sense.",
+      },
+      {
+        icon: "heart-handshake" as const,
+        title: "Keep opensend.cc free",
+        body: "This is not owned by a big tech company. Your money pays for the hours that keep the code public.",
+      },
+    ],
+  },
+}
+
 /* ── 11. Footer ── */
 
 export const FOOTER = {
@@ -427,6 +542,7 @@ export const FOOTER = {
         { href: "/#inside", label: "Features" },
         { href: "/#self-host", label: "Self-host" },
         { href: "/#pricing", label: "Pricing" },
+        { href: SPONSORS_URL, label: "Sponsors" },
         { href: "/#faq", label: "FAQ" },
         { href: WAITLIST_URL, label: "Waitlist" },
       ],

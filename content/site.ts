@@ -50,6 +50,12 @@ export const PAGES = {
     description:
       "Get notified when managed opensend.cc Cloud is ready. Self-host today with Docker Compose.",
   },
+  sponsors: {
+    path: "/sponsors",
+    title: "Sponsor opensend.cc",
+    description:
+      "Buy a sponsor spot on opensend.cc. Your brand on the site. The money keeps the self-hosted Resend alternative free.",
+  },
   docs: {
     path: "/docs",
     title: "Docs",
