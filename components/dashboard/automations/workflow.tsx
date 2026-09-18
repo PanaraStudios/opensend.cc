@@ -143,7 +143,14 @@ export function WorkflowCanvas({
         )}
         onPointerDown={(event) => {
           if (event.button !== 0) return
-          if ((event.target as HTMLElement).closest("[data-workflow-card]")) {
+          const target = event.target as HTMLElement
+          /* React bubbles events out of portals, so a press inside a menu or
+             a select list that a card opened arrives here too. Only a press
+             on the canvas itself, outside every card, starts a pan. */
+          if (
+            !event.currentTarget.contains(target) ||
+            target.closest("[data-workflow-card]")
+          ) {
             return
           }
           drag.current = { x: event.clientX, y: event.clientY }
@@ -166,7 +173,9 @@ export function WorkflowCanvas({
         }}
       >
         <div
-          className="mx-auto flex min-h-full w-max min-w-full flex-col items-center p-10"
+          /* Larger than the frame even when the graph is small, so there is
+             always canvas to drag around. */
+          className="mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10"
           style={{ zoom: ZOOM_STEPS[zoom] }}
         >
           {trigger}
