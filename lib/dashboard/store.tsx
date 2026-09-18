@@ -9,6 +9,16 @@ import {
 } from "react"
 
 import {
+  cancelledRun,
+  cleanSchema,
+  duplicatedAutomation,
+  eventNameError,
+  flattenSteps,
+  keptRuns,
+  startRun,
+  UNTITLED_AUTOMATION,
+} from "./automation"
+import {
   emailFrom,
   broadcastRecipients,
   emptyBroadcastStats,
@@ -46,6 +56,8 @@ import { replayedDelivery } from "./webhooks"
 import type {
   ApiKey,
   ApiKeyPermission,
+  Automation,
+  AutomationEvent,
   AutomationStatus,
   Broadcast,
   BroadcastStatus,
@@ -962,23 +974,90 @@ function deleteTemplate(id: string) {
   }))
 }
 
-function addAutomation(input: { name: string; trigger: string }) {
+/** A new automation is blank and disabled; it is set up in the editor. */
+function addAutomation() {
   const id = createId("atm")
   mutate((current) => ({
     ...current,
     automations: [
       {
         id,
-        name: input.name.trim(),
-        trigger: input.trigger.trim(),
+        name: UNTITLED_AUTOMATION,
+        trigger: "",
         status: "disabled",
+        steps: [],
         createdAt: Date.now(),
-        runs: 0,
       },
       ...current.automations,
     ],
   }))
   return { id }
+}
+
+/* Naming an event nobody has sent yet is how one gets defined. */
+function withAutomationEvents(
+  events: readonly AutomationEvent[],
+  names: readonly string[]
+): AutomationEvent[] {
+  return names.reduce<AutomationEvent[]>(
+    (all, name) =>
+      eventNameError(
+        name,
+        all.map((item) => item.name)
+      )
+        ? all
+        : [
+            ...all,
+            {
+              id: createId("evt"),
+              name: name.trim(),
+              schema: [],
+              createdAt: Date.now(),
+            },
+          ],
+    /* Never written to: with nothing to add, the same list comes back. */
+    events as AutomationEvent[]
+  )
+}
+
+/** The workflow of an enabled automation is fixed: runs in flight finish on
+    the version they started with. Its name can change at any time. */
+function updateAutomation(
+  id: string,
+  patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
+) {
+  mutate((current) => {
+    const item = current.automations.find((entry) => entry.id === id)
+    if (!item) return current
+    const locked = item.status === "enabled"
+    const next: Automation = {
+      ...item,
+      name:
+        patch.name === undefined
+          ? item.name
+          : patch.name.trim() || UNTITLED_AUTOMATION,
+      trigger: locked ? item.trigger : (patch.trigger?.trim() ?? item.trigger),
+      steps: locked ? item.steps : (patch.steps ?? item.steps),
+    }
+    const automations = current.automations.map((entry) =>
+      entry.id === id ? next : entry
+    )
+    /* A rename names no events. */
+    if (patch.trigger === undefined && patch.steps === undefined) {
+      return { ...current, automations }
+    }
+    const waitedFor = flattenSteps(next.steps).flatMap((step) =>
+      step.type === "wait_for_event" ? [step.eventName] : []
+    )
+    return {
+      ...current,
+      automations,
+      automationEvents: withAutomationEvents(current.automationEvents, [
+        next.trigger,
+        ...waitedFor,
+      ]),
+    }
+  })
 }
 
 function setAutomationStatus(id: string, status: AutomationStatus) {
@@ -990,10 +1069,100 @@ function setAutomationStatus(id: string, status: AutomationStatus) {
   }))
 }
 
+function duplicateAutomation(id: string): { id: string } | null {
+  const nextId = createId("atm")
+  let made = false
+  mutate((current) => {
+    const source = current.automations.find((item) => item.id === id)
+    if (!source) return current
+    made = true
+    return {
+      ...current,
+      automations: [
+        duplicatedAutomation(source, nextId, Date.now()),
+        ...current.automations,
+      ],
+    }
+  })
+  return made ? { id: nextId } : null
+}
+
 function deleteAutomation(id: string) {
   mutate((current) => ({
     ...current,
     automations: current.automations.filter((item) => item.id !== id),
+    automationRuns: current.automationRuns.filter(
+      (run) => run.automationId !== id
+    ),
+  }))
+}
+
+/** Sends the trigger event for one contact and starts a run. */
+function runAutomation(
+  id: string,
+  input: { contactId: string; payload: Record<string, unknown> }
+): boolean {
+  let made = false
+  mutate((current) => {
+    const automation = current.automations.find((item) => item.id === id)
+    const contact = current.contacts.find((item) => item.id === input.contactId)
+    if (!automation || !contact) return current
+    made = true
+    return {
+      ...current,
+      automationRuns: keptRuns([
+        startRun({
+          id: createId("run"),
+          automation,
+          contact,
+          payload: input.payload,
+          context: current,
+          now: Date.now(),
+        }),
+        ...current.automationRuns,
+      ]),
+    }
+  })
+  return made
+}
+
+function cancelAutomationRun(id: string) {
+  mutate((current) => ({
+    ...current,
+    automationRuns: current.automationRuns.map((run) =>
+      run.id === id ? cancelledRun(run, Date.now()) : run
+    ),
+  }))
+}
+
+function saveAutomationEvent(
+  input: Pick<AutomationEvent, "name" | "schema"> & { id?: string }
+) {
+  mutate((current) => {
+    const name = input.name.trim()
+    const schema = cleanSchema(input.schema)
+    if (input.id) {
+      return {
+        ...current,
+        automationEvents: current.automationEvents.map((item) =>
+          item.id === input.id ? { ...item, name, schema } : item
+        ),
+      }
+    }
+    return {
+      ...current,
+      automationEvents: [
+        ...current.automationEvents,
+        { id: createId("evt"), name, schema, createdAt: Date.now() },
+      ],
+    }
+  })
+}
+
+function deleteAutomationEvent(id: string) {
+  mutate((current) => ({
+    ...current,
+    automationEvents: current.automationEvents.filter((item) => item.id !== id),
   }))
 }
 
@@ -1188,8 +1357,14 @@ const actions = {
   duplicateTemplate,
   deleteTemplate,
   addAutomation,
+  updateAutomation,
   setAutomationStatus,
+  duplicateAutomation,
   deleteAutomation,
+  runAutomation,
+  cancelAutomationRun,
+  saveAutomationEvent,
+  deleteAutomationEvent,
   createWebhook,
   updateWebhook,
   deleteWebhook,

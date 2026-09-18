@@ -1,3 +1,4 @@
+import { normalizeAutomation } from "./automation"
 import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
 import { SEED_STATE } from "./data"
 import { normalizeDomain } from "./domains"
@@ -57,6 +58,22 @@ function migrateWorkspace(workspace: DashboardState): DashboardState {
     })),
     logs: (workspace.logs ?? []).map(normalizeLog),
     templates: normalizeTemplates(workspace.templates),
+    /* A workspace saved before automations had workflows gets the seeded
+       workflow, events and runs of whichever seeded automations it still has. */
+    automations: workspace.automations.map((item) => {
+      const seed = item.steps
+        ? undefined
+        : SEED_STATE.automations.find((entry) => entry.id === item.id)
+      return normalizeAutomation(
+        seed ? { ...item, trigger: seed.trigger, steps: seed.steps } : item
+      )
+    }),
+    automationEvents: workspace.automationEvents ?? SEED_STATE.automationEvents,
+    automationRuns:
+      workspace.automationRuns ??
+      SEED_STATE.automationRuns.filter((run) =>
+        workspace.automations.some((item) => item.id === run.automationId)
+      ),
     webhooks: workspace.webhooks.map(normalizeWebhook),
     /* A workspace saved before deliveries were kept gets the seeded history
        of whichever seeded webhooks it still has. */
@@ -141,6 +158,8 @@ export function emptyWorkspace(name: string, slug: string): DashboardState {
     broadcasts: [],
     templates: [],
     automations: [],
+    automationEvents: [],
+    automationRuns: [],
     webhooks: [],
     webhookDeliveries: [],
     logs: [],

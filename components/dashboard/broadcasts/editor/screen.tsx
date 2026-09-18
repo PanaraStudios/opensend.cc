@@ -1,10 +1,8 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import {
   CodeXmlIcon,
-  HouseIcon,
   PanelRightOpenIcon,
   PencilIcon,
   Redo2Icon,
@@ -12,12 +10,8 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { SegmentedToggle } from "@/components/ui/segmented-toggle"
-import {
-  ConfirmDialog,
-  NotFoundState,
-  useDraft,
-} from "@/components/dashboard/primitives"
+import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
+import { ConfirmDialog, NotFoundState } from "@/components/dashboard/primitives"
 import { EmailCanvas } from "@/components/dashboard/broadcasts/editor/canvas"
 import {
   EmailEngineProvider,
@@ -33,7 +27,6 @@ import {
   type SaveState,
 } from "@/components/dashboard/broadcasts/editor/use-editor"
 import type { EmailEditorMode } from "@/lib/dashboard/broadcast"
-import { sentenceCase } from "@/lib/dashboard/format"
 import type { EmailDraft } from "@/lib/dashboard/types"
 
 /* Full-screen editor: a top bar, the mode rail, the paper, and the inspector.
@@ -117,7 +110,6 @@ function EditorScreen({
   const collapseInspector = React.useCallback(() => setInspectorOpen(false), [])
   const [testOpen, setTestOpen] = React.useState(false)
   const [blocksOpen, setBlocksOpen] = React.useState(false)
-  const name = useDraft(item.name, (value) => onChange({ name: value }))
   const { undo, redo } = editor
 
   const handWritten = editor.mode === "html"
@@ -125,92 +117,58 @@ function EditorScreen({
   return (
     <EmailEngineProvider editor={editor.editor}>
       <div className="flex h-svh flex-col overflow-hidden bg-background">
-        <header
-          data-testid="editor-topbar"
-          className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
+        <EditorTopBar
+          noun={noun}
+          listHref={listHref}
+          listLabel={listLabel}
+          name={item.name}
+          onRename={(value) => onChange({ name: value })}
+          badge={badge}
         >
+          <SaveIndicator save={editor.save} />
           <Button
             variant="ghost"
             size="icon-sm"
-            nativeButton={false}
-            aria-label={`Back to ${listLabel.toLowerCase()}`}
-            data-testid="editor-home"
-            render={<Link href={listHref} />}
+            aria-label="Undo"
+            data-testid="editor-undo"
+            disabled={!editor.undoable}
+            onClick={undo}
           >
-            <HouseIcon />
+            <Undo2Icon />
           </Button>
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-            <Link
-              href={listHref}
-              className="hidden shrink-0 text-sm text-muted-foreground hover:text-foreground sm:block"
-            >
-              {listLabel}
-            </Link>
-            <span className="hidden text-sm text-faint-foreground sm:block">
-              /
-            </span>
-            <input
-              {...name}
-              aria-label={`${sentenceCase(noun)} name`}
-              data-testid="editor-name"
-              placeholder="Untitled"
-              className="max-w-64 min-w-0 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
-            />
-            {badge}
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <SaveIndicator save={editor.save} />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Undo"
-              data-testid="editor-undo"
-              disabled={!editor.undoable}
-              onClick={undo}
-            >
-              <Undo2Icon />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Redo"
-              data-testid="editor-redo"
-              disabled={!editor.redoable}
-              onClick={redo}
-            >
-              <Redo2Icon />
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="editor-test-email"
-              onClick={() => setTestOpen(true)}
-            >
-              Test email
-            </Button>
-            {actions(editor)}
-          </div>
-        </header>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Redo"
+            data-testid="editor-redo"
+            disabled={!editor.redoable}
+            onClick={redo}
+          >
+            <Redo2Icon />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="editor-test-email"
+            onClick={() => setTestOpen(true)}
+          >
+            Test email
+          </Button>
+          {actions(editor)}
+        </EditorTopBar>
 
         <div className="flex min-h-0 flex-1">
-          <nav
-            aria-label="Editor mode"
-            className="flex w-12 shrink-0 flex-col items-center border-r border-border py-3"
-          >
-            <SegmentedToggle
-              orientation="vertical"
-              value={view}
-              items={VIEW_ITEMS}
-              aria-label="Editor mode"
-              testIdPrefix="mode-toggle"
-              onValueChange={(next) => {
-                /* The HTML view shows the export, so it is brought up to date. */
-                if (next === "html") void editor.flush()
-                setView(next)
-              }}
-              className="w-auto"
-            />
-          </nav>
+          <EditorRail
+            label="Editor mode"
+            value={view}
+            items={VIEW_ITEMS}
+            testIdPrefix="mode-toggle"
+            onValueChange={(next) => {
+              /* The HTML view shows the export, so it is brought up to date. */
+              if (next === "html") void editor.flush()
+              setView(next)
+            }}
+          />
 
           <main
             className={

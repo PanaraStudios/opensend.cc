@@ -67,7 +67,7 @@ const EVENT_ITEMS: readonly SelectOption[] = [
   ...STATUS_ITEMS.slice(1),
 ]
 
-function Stat({
+export function Stat({
   label,
   value,
   className,

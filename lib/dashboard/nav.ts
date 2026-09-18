@@ -48,6 +48,11 @@ export const EMAIL_TABS: SectionTabs = [
   { href: "/emails/suppressions", title: "Suppressions" },
 ]
 
+export const AUTOMATION_TABS: SectionTabs = [
+  { href: "/automations", title: "Automations" },
+  { href: "/automations/events", title: "Events" },
+]
+
 export const AUDIENCE_TABS: SectionTabs = [
   { href: "/contacts", title: "Contacts" },
   { href: "/properties", title: "Properties" },
@@ -85,6 +90,7 @@ const TEAM_SAFE_PATHS = new Set<string>([
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
   ...EMAIL_TABS.map((item) => item.href),
   ...AUDIENCE_TABS.map((item) => item.href),
+  ...AUTOMATION_TABS.map((item) => item.href),
   ...SETTINGS_NAV.map((item) => item.href),
 ])
 

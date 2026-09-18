@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
-import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import {
   DocsButton,
   EmptyState,
@@ -25,6 +24,7 @@ import {
   TEMPLATE_STATUS_ITEMS,
   TemplateMenu,
   TemplatesDocsSheet,
+  TemplateThumbnail,
 } from "@/components/dashboard/templates/shared"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -37,23 +37,6 @@ const LAYOUT_ITEMS = [
   { value: "grid" as const, label: "Grid view", icon: LayoutGridIcon },
   { value: "table" as const, label: "Table view", icon: Rows3Icon },
 ]
-
-/* The email itself, drawn small: a 600px sheet at half size, cut off by the
-   card. It is a picture of the template, so it takes no clicks or focus. */
-function TemplateThumbnail({ item }: { item: EmailTemplate }) {
-  return (
-    <div
-      inert
-      className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted"
-    >
-      <div className="absolute top-[18%] left-1/2 h-[200%] w-[600px] origin-top -translate-x-1/2 scale-50 overflow-hidden rounded-t-2xl bg-white shadow-panel">
-        {item.html.trim() ? (
-          <EmailPreviewFrame html={item.html} title={item.name} />
-        ) : null}
-      </div>
-    </div>
-  )
-}
 
 function TemplateCard({ item }: { item: EmailTemplate }) {
   return (
