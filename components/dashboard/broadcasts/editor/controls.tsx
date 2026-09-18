@@ -10,7 +10,6 @@ import {
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
-import type { EmailAlign } from "@/lib/dashboard/email-document"
 
 /* The inspector is a long list of `label → control` rows in titled groups, and
    a handful of single-choice icon toggles. Both live here so every block's
@@ -139,6 +138,8 @@ export function SegmentedToggle<T extends string>({
     </ToggleGroup>
   )
 }
+
+export type EmailAlign = "left" | "center" | "right"
 
 const ALIGN_ITEMS: SegmentedItem<EmailAlign>[] = [
   { value: "left", label: "Align left", icon: AlignLeftIcon },

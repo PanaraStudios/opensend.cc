@@ -15,7 +15,6 @@ import {
   transitionBroadcast,
 } from "./broadcast"
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
-import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
 import {
   DEFAULT_RETURN_PATH,
@@ -724,8 +723,7 @@ function addBroadcast(input: {
         name: input.name.trim(),
         subject: input.subject.trim(),
         preview: input.preview.trim(),
-        html: `<p>${input.preview.trim()}</p>`,
-        content: emptyEmailDocument(),
+        html: "",
         status: "draft",
         segmentId: input.segmentId,
         topicId: input.topicId,

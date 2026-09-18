@@ -32,11 +32,7 @@ import {
   broadcastFrom,
   broadcastRecipients,
 } from "@/lib/dashboard/broadcast"
-import {
-  hasUnsubscribeLink,
-  isDocumentEmpty,
-  type EmailDocument,
-} from "@/lib/dashboard/email-document"
+import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
 import { isEmail, pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -63,7 +59,8 @@ const CHECK_CLASS = {
     softer warnings that only need a nudge. One line each. */
 export function reviewChecks({
   item,
-  doc,
+  html,
+  empty,
   from,
   verified,
   audience,
@@ -71,7 +68,9 @@ export function reviewChecks({
   sendAt,
 }: {
   item: Broadcast
-  doc: EmailDocument
+  /** The email as it would be sent. */
+  html: string
+  empty: boolean
   from: string
   verified: boolean
   audience: string
@@ -79,8 +78,7 @@ export function reviewChecks({
   sendAt: number | null
 }): Check[] {
   const subject = item.subject.trim()
-  const empty = isDocumentEmpty(doc)
-  const unsubscribe = hasUnsubscribeLink(doc)
+  const unsubscribe = hasUnsubscribeLink(html)
   return [
     {
       id: "when",
@@ -279,12 +277,14 @@ function SlideToConfirm({
 
 export function ReviewPopover({
   item,
-  doc,
+  html,
+  empty,
   sendAt,
   flush,
 }: {
   item: Broadcast
-  doc: EmailDocument
+  html: string
+  empty: boolean
   sendAt: number | null
   /** Saves the newest edit, so the send copies the email on screen. */
   flush: () => Promise<void>
@@ -305,7 +305,8 @@ export function ReviewPopover({
         <ReviewBody
           onClose={() => setOpen(false)}
           item={item}
-          doc={doc}
+          html={html}
+          empty={empty}
           sendAt={sendAt}
           flush={flush}
         />
@@ -319,13 +320,15 @@ export function ReviewPopover({
 function ReviewBody({
   onClose,
   item,
-  doc,
+  html,
+  empty,
   sendAt,
   flush,
 }: {
   onClose: () => void
   item: Broadcast
-  doc: EmailDocument
+  html: string
+  empty: boolean
   sendAt: number | null
   flush: () => Promise<void>
 }) {
@@ -333,7 +336,8 @@ function ReviewBody({
   const { state, setBroadcastStatus } = useDashboard()
   const checks = reviewChecks({
     item,
-    doc,
+    html,
+    empty,
     sendAt,
     from: broadcastFrom(item, state.domains),
     verified: state.domains.some((domain) => domain.status === "verified"),

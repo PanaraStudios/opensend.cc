@@ -1,4 +1,4 @@
-import type { EmailDocument } from "./email-document"
+import type { JSONContent } from "@tiptap/core"
 
 export const REGIONS = [
   { value: "us-east-1", label: "North Virginia", code: "us-east-1" },
@@ -222,9 +222,9 @@ export type Broadcast = {
   subject: string
   preview: string
   html: string
-  /** Block tree behind `html`. Absent on records saved before the editor, and
-      on those the editor falls back to `html`. */
-  content?: EmailDocument
+  /** The editor document `html` was exported from. Absent when the HTML was
+      written by hand, and then `html` is the source of truth. */
+  content?: JSONContent
   /** The chosen sender. Absent means the workspace's default address. */
   from?: string
   /** Overrides the sending domain's reply address for this send. */

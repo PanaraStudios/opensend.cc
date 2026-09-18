@@ -21,6 +21,7 @@ import {
   useDraft,
 } from "@/components/dashboard/primitives"
 import { EmailCanvas } from "@/components/dashboard/broadcasts/editor/canvas"
+import { EmailEngineProvider } from "@/components/dashboard/broadcasts/editor/engine"
 import { SegmentedToggle } from "@/components/dashboard/broadcasts/editor/controls"
 import { HtmlMode } from "@/components/dashboard/broadcasts/editor/html-mode"
 import { Inspector } from "@/components/dashboard/broadcasts/editor/inspector"
@@ -32,11 +33,10 @@ import {
   useBroadcastEditor,
   type SaveState,
 } from "@/components/dashboard/broadcasts/editor/use-editor"
-import { isBroadcastDraftLike } from "@/lib/dashboard/broadcast"
 import {
-  emptyEmailDocument,
-  type EmailEditorMode,
-} from "@/lib/dashboard/email-document"
+  isBroadcastDraftLike,
+  type BroadcastEditorMode,
+} from "@/lib/dashboard/broadcast"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 
@@ -65,7 +65,7 @@ function SaveIndicator({ save }: { save: SaveState }) {
 function EditorScreen({ item }: { item: Broadcast }) {
   const { updateBroadcast } = useDashboard()
   const editor = useBroadcastEditor(item)
-  const [view, setView] = React.useState<EmailEditorMode>(editor.doc.mode)
+  const [view, setView] = React.useState<BroadcastEditorMode>(editor.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
   const [testOpen, setTestOpen] = React.useState(false)
   const [blocksOpen, setBlocksOpen] = React.useState(false)
@@ -75,196 +75,172 @@ function EditorScreen({ item }: { item: Broadcast }) {
   )
   const { undo, redo } = editor
 
-  React.useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey)) return
-      if (event.key.toLowerCase() !== "z") return
-      const target = event.target as HTMLElement | null
-      const tag = target?.tagName
-      /* Text being typed is not in the document until it commits, so inside a
-         field or a block the browser's own undo is the right one. */
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
-        return
-      }
-      event.preventDefault()
-      if (event.shiftKey) redo()
-      else undo()
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [redo, undo])
-
-  const handWritten = editor.doc.mode === "html"
+  const handWritten = editor.mode === "html"
 
   return (
-    <div className="flex h-svh flex-col overflow-hidden bg-background">
-      <header
-        data-testid="editor-topbar"
-        className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          nativeButton={false}
-          aria-label="Back to broadcasts"
-          data-testid="editor-home"
-          render={<Link href="/broadcasts" />}
+    <EmailEngineProvider editor={editor.editor}>
+      <div className="flex h-svh flex-col overflow-hidden bg-background">
+        <header
+          data-testid="editor-topbar"
+          className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
         >
-          <HouseIcon />
-        </Button>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-          <Link
-            href="/broadcasts"
-            className="hidden shrink-0 text-sm text-muted-foreground hover:text-foreground sm:block"
-          >
-            Broadcasts
-          </Link>
-          <span className="hidden text-sm text-faint-foreground sm:block">
-            /
-          </span>
-          <input
-            {...name}
-            aria-label="Broadcast name"
-            data-testid="editor-name"
-            placeholder="Untitled"
-            className="max-w-64 min-w-0 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
-          />
-          <BroadcastStatusBadge status={item.status} />
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <SaveIndicator save={editor.save} />
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Undo"
-            data-testid="editor-undo"
-            disabled={!editor.undoable}
-            onClick={undo}
+            nativeButton={false}
+            aria-label="Back to broadcasts"
+            data-testid="editor-home"
+            render={<Link href="/broadcasts" />}
           >
-            <Undo2Icon />
+            <HouseIcon />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Redo"
-            data-testid="editor-redo"
-            disabled={!editor.redoable}
-            onClick={redo}
-          >
-            <Redo2Icon />
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="editor-test-email"
-            onClick={() => setTestOpen(true)}
-          >
-            Test email
-          </Button>
-          <ReviewPopover
-            item={item}
-            doc={editor.doc}
-            sendAt={sendAt}
-            flush={editor.flush}
-          />
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <nav
-          aria-label="Editor mode"
-          className="flex w-12 shrink-0 flex-col items-center border-r border-border py-3"
-        >
-          <SegmentedToggle
-            orientation="vertical"
-            value={view}
-            items={VIEW_ITEMS}
-            aria-label="Editor mode"
-            testIdPrefix="mode-toggle"
-            onValueChange={setView}
-            className="w-auto"
-          />
-        </nav>
-
-        <main
-          className={
-            view === "visual"
-              ? "min-w-0 flex-1 overflow-auto"
-              : "flex min-w-0 flex-1 flex-col overflow-hidden"
-          }
-        >
-          {view === "visual" ? (
-            <>
-              {handWritten ? (
-                <div
-                  data-testid="html-document-banner"
-                  className="flex items-center gap-3 border-b border-border bg-muted/40 px-4 py-2"
-                >
-                  <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-                    This broadcast is hand-written HTML.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="editor-start-from-blocks"
-                    onClick={() => setBlocksOpen(true)}
-                  >
-                    Start from blocks
-                  </Button>
-                </div>
-              ) : null}
-              <EmailCanvas
-                item={item}
-                editor={editor}
-                sendAt={sendAt}
-                onSendAtChange={setSendAt}
-              />
-            </>
-          ) : (
-            <HtmlMode item={item} editor={editor} />
-          )}
-        </main>
-
-        {inspectorOpen ? (
-          <Inspector
-            doc={editor.doc}
-            apply={editor.apply}
-            selectedId={editor.selectedId}
-            select={editor.select}
-            onCollapse={() => setInspectorOpen(false)}
-          />
-        ) : (
-          <div className="flex shrink-0 flex-col border-l border-border p-1.5">
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            <Link
+              href="/broadcasts"
+              className="hidden shrink-0 text-sm text-muted-foreground hover:text-foreground sm:block"
+            >
+              Broadcasts
+            </Link>
+            <span className="hidden text-sm text-faint-foreground sm:block">
+              /
+            </span>
+            <input
+              {...name}
+              aria-label="Broadcast name"
+              data-testid="editor-name"
+              placeholder="Untitled"
+              className="max-w-64 min-w-0 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
+            />
+            <BroadcastStatusBadge status={item.status} />
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <SaveIndicator save={editor.save} />
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Expand panel"
-              data-testid="inspector-expand"
-              onClick={() => setInspectorOpen(true)}
+              aria-label="Undo"
+              data-testid="editor-undo"
+              disabled={!editor.undoable}
+              onClick={undo}
             >
-              <PanelRightOpenIcon />
+              <Undo2Icon />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Redo"
+              data-testid="editor-redo"
+              disabled={!editor.redoable}
+              onClick={redo}
+            >
+              <Redo2Icon />
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="editor-test-email"
+              onClick={() => setTestOpen(true)}
+            >
+              Test email
+            </Button>
+            <ReviewPopover
+              item={item}
+              html={editor.html}
+              empty={editor.empty}
+              sendAt={sendAt}
+              flush={editor.flush}
+            />
           </div>
-        )}
-      </div>
+        </header>
 
-      <TestEmailDialog open={testOpen} onOpenChange={setTestOpen} item={item} />
-      <ConfirmDialog
-        open={blocksOpen}
-        onOpenChange={setBlocksOpen}
-        title="Start again from blocks?"
-        description="The hand-written HTML is replaced by an empty block document. Your page style, theme and global CSS are kept."
-        confirmLabel="Start from blocks"
-        onConfirm={() =>
-          editor.apply((current) => ({
-            ...emptyEmailDocument(),
-            style: current.style,
-            theme: current.theme,
-            globalCss: current.globalCss,
-          }))
-        }
-      />
-    </div>
+        <div className="flex min-h-0 flex-1">
+          <nav
+            aria-label="Editor mode"
+            className="flex w-12 shrink-0 flex-col items-center border-r border-border py-3"
+          >
+            <SegmentedToggle
+              orientation="vertical"
+              value={view}
+              items={VIEW_ITEMS}
+              aria-label="Editor mode"
+              testIdPrefix="mode-toggle"
+              onValueChange={setView}
+              className="w-auto"
+            />
+          </nav>
+
+          <main
+            className={
+              view === "visual"
+                ? "min-w-0 flex-1 overflow-auto"
+                : "flex min-w-0 flex-1 flex-col overflow-hidden"
+            }
+          >
+            {view === "visual" ? (
+              <>
+                {handWritten ? (
+                  <div
+                    data-testid="html-document-banner"
+                    className="flex items-center gap-3 border-b border-border bg-muted/40 px-4 py-2"
+                  >
+                    <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                      This broadcast is hand-written HTML.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="editor-start-from-blocks"
+                      onClick={() => setBlocksOpen(true)}
+                    >
+                      Edit visually
+                    </Button>
+                  </div>
+                ) : (
+                  <EmailCanvas
+                    item={item}
+                    editor={editor.editor}
+                    sendAt={sendAt}
+                    onSendAtChange={setSendAt}
+                  />
+                )}
+              </>
+            ) : (
+              <HtmlMode editor={editor} />
+            )}
+          </main>
+
+          {inspectorOpen ? (
+            <Inspector onCollapse={() => setInspectorOpen(false)} />
+          ) : (
+            <div className="flex shrink-0 flex-col border-l border-border p-1.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Expand panel"
+                data-testid="inspector-expand"
+                onClick={() => setInspectorOpen(true)}
+              >
+                <PanelRightOpenIcon />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <TestEmailDialog
+          open={testOpen}
+          onOpenChange={setTestOpen}
+          item={item}
+        />
+        <ConfirmDialog
+          open={blocksOpen}
+          onOpenChange={setBlocksOpen}
+          title="Edit this broadcast visually?"
+          description="The hand-written HTML is read into the visual editor. Markup it does not understand is dropped."
+          confirmLabel="Edit visually"
+          onConfirm={editor.editVisually}
+        />
+      </div>
+    </EmailEngineProvider>
   )
 }
 

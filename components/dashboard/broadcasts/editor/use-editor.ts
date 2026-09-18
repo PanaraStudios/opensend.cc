@@ -1,33 +1,38 @@
 "use client"
 
 import * as React from "react"
+import { composeReactEmail } from "@react-email/editor/core"
+import { useEditorState, type Editor } from "@tiptap/react"
 
-import { broadcastDocument } from "@/lib/dashboard/broadcast"
+import { useEmailEngine } from "@/components/dashboard/broadcasts/editor/engine"
 import {
-  canRedo,
-  canUndo,
-  createHistory,
-  pushHistory,
-  redoHistory,
-  undoHistory,
-  type EmailDocument,
-} from "@/lib/dashboard/email-document"
-import { renderEmailHtml } from "@/lib/dashboard/email-render"
+  broadcastEditorMode,
+  type BroadcastEditorMode,
+} from "@/lib/dashboard/broadcast"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 
 export type SaveState = "idle" | "saving" | "saved"
 
 export type BroadcastEditorState = {
-  doc: EmailDocument
-  /** Applies an edit and pushes it onto the undo stack. */
-  apply: (next: EmailDocument | ((doc: EmailDocument) => EmailDocument)) => void
+  /** The engine. Null until it mounts, and idle while the broadcast is
+      hand-written HTML. */
+  editor: Editor | null
+  mode: BroadcastEditorMode
+  /** The email as it would be sent right now. */
+  html: string
+  /** True while there is nothing to send. */
+  empty: boolean
+  /** Replaces a hand-written broadcast's markup. */
+  setHtml: (html: string) => void
+  /** Hands the current markup over to be edited by hand. One way. */
+  editAsHtml: () => void
+  /** Reads hand-written markup into the editor, keeping what it understands. */
+  editVisually: () => void
   undo: () => void
   redo: () => void
   undoable: boolean
   redoable: boolean
-  selectedId: string | null
-  select: (id: string | null) => void
   save: SaveState
   /** Writes any edit still inside the autosave window through right now. */
   flush: () => Promise<void>
@@ -35,108 +40,92 @@ export type BroadcastEditorState = {
 
 const AUTOSAVE_MS = 600
 
-/** Document state for one broadcast: an undo stack over the block tree, the
-    current selection, and a debounced write-through to the store that also
-    refreshes the broadcast's rendered HTML. */
+/** Editing state for one broadcast: the engine (or the raw markup, for a
+    hand-written one) and a debounced write-through to the store that keeps
+    the broadcast's exported HTML current. */
 export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
   const { updateBroadcast } = useDashboard()
-  const [history, setHistory] = React.useState(() =>
-    createHistory(broadcastDocument(item))
-  )
-  const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const [save, setSave] = React.useState<SaveState>("idle")
-  const dirty = React.useRef(false)
-  const doc = history.present
   const { id, preview } = item
-
-  const apply = React.useCallback(
-    (next: EmailDocument | ((doc: EmailDocument) => EmailDocument)) => {
-      setHistory((current) => {
-        const value = typeof next === "function" ? next(current.present) : next
-        if (value === current.present) return current
-        dirty.current = true
-        return pushHistory(current, value)
-      })
-    },
-    []
-  )
-
-  const undo = React.useCallback(() => {
-    setHistory((current) => {
-      if (!canUndo(current)) return current
-      dirty.current = true
-      return undoHistory(current)
-    })
-  }, [])
-
-  const redo = React.useCallback(() => {
-    setHistory((current) => {
-      if (!canRedo(current)) return current
-      dirty.current = true
-      return redoHistory(current)
-    })
-  }, [])
-
-  /* The newest unsaved document. Leaving the editor inside the debounce
-     window must not drop it, so unmount flushes whatever is still here. */
-  const pending = React.useRef<{ doc: EmailDocument; preview: string } | null>(
-    null
-  )
+  const [mode, setMode] = React.useState(() => broadcastEditorMode(item))
+  const [html, setHtmlState] = React.useState(item.html)
+  const [save, setSave] = React.useState<SaveState>("idle")
+  /* The newest unsaved edit. Leaving the editor inside the debounce window
+     must not drop it, so unmount flushes whatever is still here. */
+  const pending = React.useRef<(() => Promise<void>) | null>(null)
+  const timer = React.useRef<number | null>(null)
 
   const flush = React.useCallback(() => {
+    if (timer.current !== null) window.clearTimeout(timer.current)
+    timer.current = null
     const job = pending.current
-    if (!job) return Promise.resolve()
     pending.current = null
-    return renderEmailHtml(job.doc, { preview: job.preview }).then((html) => {
-      updateBroadcast(id, { content: job.doc, html })
-    })
-  }, [id, updateBroadcast])
+    return job ? job() : Promise.resolve()
+  }, [])
 
-  React.useEffect(() => {
-    if (!dirty.current) return
-    let cancelled = false
-    pending.current = { doc, preview }
-    setSave("saving")
-    const timer = window.setTimeout(() => {
-      void flush().then(() => {
-        if (!cancelled) setSave("saved")
-      })
-    }, AUTOSAVE_MS)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [doc, flush, preview])
+  const schedule = React.useCallback(
+    (job: () => Promise<void>) => {
+      pending.current = job
+      setSave("saving")
+      if (timer.current !== null) window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => {
+        void flush().then(() => setSave("saved"))
+      }, AUTOSAVE_MS)
+    },
+    [flush]
+  )
+
+  const exportEngine = React.useCallback(
+    (editor: Editor) =>
+      composeReactEmail({ editor, preview: preview || undefined }).then(
+        (email) => {
+          setHtmlState(email.html)
+          updateBroadcast(id, { content: editor.getJSON(), html: email.html })
+        }
+      ),
+    [id, preview, updateBroadcast]
+  )
+
+  const editor = useEmailEngine({
+    content: item.content ?? "",
+    onUpdate: (current) => schedule(() => exportEngine(current)),
+  })
 
   React.useEffect(() => () => void flush(), [flush])
 
+  const engine = useEditorState({
+    editor,
+    selector: ({ editor: current }) => ({
+      undoable: current?.can().undo() ?? false,
+      redoable: current?.can().redo() ?? false,
+      empty: current?.isEmpty ?? true,
+    }),
+  })
+  const visual = mode === "visual"
+
   return {
-    doc,
-    apply,
-    undo,
-    redo,
-    undoable: canUndo(history),
-    redoable: canRedo(history),
-    selectedId,
-    select: setSelectedId,
+    editor,
+    mode,
+    html,
+    empty: visual ? (engine?.empty ?? true) : !html.trim(),
+    setHtml: (next) => {
+      setHtmlState(next)
+      schedule(async () => updateBroadcast(id, { html: next }))
+    },
+    editAsHtml: () => {
+      setMode("html")
+      schedule(async () => updateBroadcast(id, { content: undefined, html }))
+    },
+    editVisually: () => {
+      if (!editor) return
+      setMode("visual")
+      /* Emits an update, which exports and saves the parsed document. */
+      editor.commands.setContent(html, { emitUpdate: true })
+    },
+    undo: () => editor?.chain().focus().undo().run(),
+    redo: () => editor?.chain().focus().redo().run(),
+    undoable: visual && (engine?.undoable ?? false),
+    redoable: visual && (engine?.redoable ?? false),
     save,
     flush,
   }
-}
-
-/** Live email HTML for the current document, for previews and test sends. */
-export function useEmailHtml(doc: EmailDocument, preview: string): string {
-  const [html, setHtml] = React.useState("")
-
-  React.useEffect(() => {
-    let cancelled = false
-    void renderEmailHtml(doc, { preview }).then((next) => {
-      if (!cancelled) setHtml(next)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [doc, preview])
-
-  return html
 }

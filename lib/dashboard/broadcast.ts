@@ -1,4 +1,3 @@
-import { normalizeEmailDocument, type EmailDocument } from "./email-document"
 import { defaultFromAddress } from "./format"
 import type {
   Broadcast,
@@ -53,10 +52,15 @@ export function broadcastEditorHref(item: Pick<Broadcast, "id" | "status">) {
     : `/broadcasts/${item.id}`
 }
 
-/** The block tree behind a broadcast. Records saved before the editor only
-    have `html`, so they open as a single hand-written HTML block. */
-export function broadcastDocument(item: Broadcast): EmailDocument {
-  return normalizeEmailDocument(item.content, item.html)
+export type BroadcastEditorMode = "visual" | "html"
+
+/** A broadcast is hand-written when it has markup but no editor document
+    behind it. Anything else, including a blank one, opens in the editor. */
+export function broadcastEditorMode(
+  item: Pick<Broadcast, "content" | "html">
+): BroadcastEditorMode {
+  if (item.content?.type === "doc") return "visual"
+  return item.html.trim() ? "html" : "visual"
 }
 
 /** Which header actions a broadcast offers in its current status. A canceled
