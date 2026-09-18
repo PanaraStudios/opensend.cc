@@ -1,6 +1,7 @@
 import { emptyBroadcastStats } from "./broadcast"
 import { createId } from "./ids"
 import { defaultFromAddress } from "./format"
+import { DASHBOARD_USER_AGENT, LOG_USER_AGENTS } from "./logs"
 import type {
   ApiKey,
   ApiLog,
@@ -762,7 +763,21 @@ const webhooks: Webhook[] = [
   },
 ]
 
-const logs: ApiLog[] = [
+const NODE_SDK = LOG_USER_AGENTS[0]
+
+const recentLogs: ApiLog[] = [
+  {
+    id: "log_6",
+    method: "GET",
+    path: "/domains",
+    status: 200,
+    createdAt: minutesAgo(40),
+    durationMs: 15,
+    emailId: null,
+    userAgent: "curl/8.7.1",
+    source: "api",
+    apiKeyId: "key_staging",
+  },
   {
     id: "log_1",
     method: "POST",
@@ -771,6 +786,9 @@ const logs: ApiLog[] = [
     createdAt: hoursAgo(5),
     durationMs: 84,
     emailId: "em_welcome_ada",
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_prod",
   },
   {
     id: "log_2",
@@ -780,6 +798,9 @@ const logs: ApiLog[] = [
     createdAt: hoursAgo(18),
     durationMs: 91,
     emailId: "em_receipt_grace",
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_prod",
   },
   {
     id: "log_3",
@@ -789,6 +810,9 @@ const logs: ApiLog[] = [
     createdAt: hoursAgo(28),
     durationMs: 22,
     emailId: "em_reset_alan",
+    userAgent: DASHBOARD_USER_AGENT,
+    source: "dashboard",
+    apiKeyId: null,
   },
   {
     id: "log_4",
@@ -798,6 +822,9 @@ const logs: ApiLog[] = [
     createdAt: daysAgo(4),
     durationMs: 41,
     emailId: null,
+    userAgent: "opensend-python:0.9.2",
+    source: "api",
+    apiKeyId: "key_prod",
   },
   {
     id: "log_5",
@@ -807,17 +834,84 @@ const logs: ApiLog[] = [
     createdAt: daysAgo(6),
     durationMs: 18,
     emailId: "em_bounce_old",
-  },
-  {
-    id: "log_6",
-    method: "GET",
-    path: "/domains",
-    status: 200,
-    createdAt: minutesAgo(40),
-    durationMs: 15,
-    emailId: null,
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_ci",
   },
 ]
+
+/* Older traffic, generated so the list has enough rows to page through. */
+const TRAFFIC_SHAPES: Pick<
+  ApiLog,
+  "method" | "path" | "status" | "userAgent" | "source" | "apiKeyId"
+>[] = [
+  {
+    method: "POST",
+    path: "/emails",
+    status: 200,
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_prod",
+  },
+  {
+    method: "POST",
+    path: "/emails",
+    status: 200,
+    userAgent: "Opensend SMTP",
+    source: "smtp",
+    apiKeyId: "key_prod",
+  },
+  {
+    method: "GET",
+    path: "/contacts",
+    status: 200,
+    userAgent: "opensend-python:0.9.2",
+    source: "api",
+    apiKeyId: "key_staging",
+  },
+  {
+    method: "POST",
+    path: "/emails",
+    status: 422,
+    userAgent: "curl/8.7.1",
+    source: "api",
+    apiKeyId: "key_ci",
+  },
+  {
+    method: "PATCH",
+    path: "/contacts/con_ada",
+    status: 200,
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_prod",
+  },
+  {
+    method: "POST",
+    path: "/emails",
+    status: 429,
+    userAgent: NODE_SDK,
+    source: "api",
+    apiKeyId: "key_ci",
+  },
+  {
+    method: "DELETE",
+    path: "/webhooks/wh_old",
+    status: 200,
+    userAgent: DASHBOARD_USER_AGENT,
+    source: "dashboard",
+    apiKeyId: null,
+  },
+]
+
+const olderLogs: ApiLog[] = Array.from({ length: 53 }, (_, index) => ({
+  ...TRAFFIC_SHAPES[index % TRAFFIC_SHAPES.length],
+  id: `log_seed_${index + 1}`,
+  createdAt: daysAgo(7) - index * 11 * 3_600_000,
+  durationMs: 14 + ((index * 37) % 90),
+  emailId: null,
+}))
+
+const logs: ApiLog[] = [...recentLogs, ...olderLogs]
 
 const exportsSeed: ExportJob[] = [
   {

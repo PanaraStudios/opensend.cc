@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   CheckIcon,
+  ChevronsUpDownIcon,
   CopyIcon,
   DownloadIcon,
   MoreHorizontalIcon,
@@ -32,6 +33,8 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -42,6 +45,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemTitle,
+} from "@/components/ui/item"
 import {
   InputGroup,
   InputGroupAddon,
@@ -84,6 +94,7 @@ import {
   broadcastStatusLabel,
   emailStatusLabel,
   exportStatusLabel,
+  pluralize,
   statusLabel,
   templateStatusLabel,
   type BadgeTone,
@@ -265,6 +276,29 @@ export function DetailHeader({
   )
 }
 
+/** Labelled facts under a detail header. Values are phrasing content, so
+    badges and copy buttons can sit beside the text. */
+export function MetaStrip({
+  items,
+}: {
+  items: readonly { label: string; value: React.ReactNode }[]
+}) {
+  return (
+    <ItemGroup className="flex-row flex-wrap gap-2">
+      {items.map((item) => (
+        <Item key={item.label} size="sm" className="w-fit min-w-40 flex-1">
+          <ItemContent>
+            <ItemTitle>{item.label}</ItemTitle>
+            <ItemDescription className="flex min-w-0 items-center gap-1.5">
+              {item.value}
+            </ItemDescription>
+          </ItemContent>
+        </Item>
+      ))}
+    </ItemGroup>
+  )
+}
+
 export function Surface({
   children,
   className,
@@ -350,6 +384,105 @@ export function Th({
   className?: string
 }) {
   return <TableHead className={className}>{children}</TableHead>
+}
+
+/* ------------------------------------------------------------- pagination */
+
+export const PAGE_SIZES = [40, 80, 120] as const
+
+/** Client-side paging over an already filtered list. The page clamps, so a
+    filter that shrinks the list never strands the view past the last page. */
+export function usePagination<T>(rows: readonly T[]) {
+  const [pageSize, setPageSize] = React.useState<number>(PAGE_SIZES[0])
+  const [requested, setPage] = React.useState(0)
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
+  const page = Math.min(requested, pageCount - 1)
+  return {
+    pageRows: rows.slice(page * pageSize, (page + 1) * pageSize),
+    pagination: {
+      page,
+      pageCount,
+      pageSize,
+      total: rows.length,
+      onPageChange: setPage,
+      onPageSizeChange(next: number) {
+        setPageSize(next)
+        setPage(0)
+      },
+    },
+  }
+}
+
+/** Footer for a paged list: position, page size, and the two step buttons. */
+export function ListPagination({
+  page,
+  pageCount,
+  pageSize,
+  total,
+  noun,
+  onPageChange,
+  onPageSizeChange,
+  previousLabel = "Previous",
+  nextLabel = "Next",
+}: ReturnType<typeof usePagination>["pagination"] & {
+  noun: string
+  previousLabel?: string
+  nextLabel?: string
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
+        <span>
+          Page {page + 1} of {pageCount} · {pluralize(total, noun)}
+        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Items per page"
+                className="text-muted-foreground"
+              />
+            }
+          >
+            {pageSize} items
+            <ChevronsUpDownIcon data-icon="inline-end" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuRadioGroup
+              value={String(pageSize)}
+              onValueChange={(next) => onPageSizeChange(Number(next))}
+            >
+              {PAGE_SIZES.map((size) => (
+                <DropdownMenuRadioItem key={size} value={String(size)}>
+                  {size} items
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page === 0}
+          onClick={() => onPageChange(page - 1)}
+        >
+          {previousLabel}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= pageCount - 1}
+          onClick={() => onPageChange(page + 1)}
+        >
+          {nextLabel}
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 /* ----------------------------------------------------------- empty states */
@@ -558,6 +691,37 @@ export function MonoValue({
       <code className="truncate font-mono text-[13px]">{children}</code>
       {copyValue ? <CopyButton value={copyValue} /> : null}
     </span>
+  )
+}
+
+/** Monospace well for source and payloads, with an optional copy button
+    pinned to the corner. */
+export function CodeWell({
+  children,
+  copyValue,
+  className,
+}: {
+  children: React.ReactNode
+  copyValue?: string
+  className?: string
+}) {
+  return (
+    <div className="relative">
+      <pre
+        className={cn(
+          "overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap",
+          copyValue && "pr-12",
+          className
+        )}
+      >
+        {children}
+      </pre>
+      {copyValue ? (
+        <div className="absolute top-3 right-3">
+          <CopyButton value={copyValue} />
+        </div>
+      ) : null}
+    </div>
   )
 }
 

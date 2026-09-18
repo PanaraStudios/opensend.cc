@@ -24,6 +24,16 @@ export function formatDateTime(timestamp: number): string {
   return format(timestamp, "MMM d, yyyy · HH:mm")
 }
 
+/** Compact age, e.g. "18d ago". Falls back to the date past a year. */
+export function formatRelative(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
+  if (seconds < 60) return "just now"
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 365 * 86_400) return `${Math.floor(seconds / 86_400)}d ago`
+  return formatDate(timestamp)
+}
+
 export function dnsHost(name: string, domain: string): string {
   if (name === domain || name === "@") return "@"
   const suffix = `.${domain}`

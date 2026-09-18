@@ -1,6 +1,7 @@
 import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
 import { SEED_STATE } from "./data"
 import { createId } from "./ids"
+import { normalizeLog } from "./logs"
 import type { DashboardState, Team } from "./types"
 
 export const SEED_TEAM_ID = "team_opensend"
@@ -49,6 +50,7 @@ function migrateWorkspace(workspace: DashboardState): DashboardState {
       updatedAt: broadcastUpdatedAt(item),
       stats: normalizeBroadcastStats(item.stats),
     })),
+    logs: (workspace.logs ?? []).map(normalizeLog),
   }
 }
 

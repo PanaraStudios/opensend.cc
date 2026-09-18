@@ -16,6 +16,7 @@ import {
 import { recordsForDomain } from "./data"
 import { defaultFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
+import { DASHBOARD_USER_AGENT } from "./logs"
 import {
   activeWorkspace,
   createTeamInRoot,
@@ -607,6 +608,9 @@ function sendEmail(input: {
         createdAt: Date.now(),
         durationMs: 64,
         emailId: email.id,
+        userAgent: DASHBOARD_USER_AGENT,
+        source: "dashboard",
+        apiKeyId: null,
       },
       ...current.logs,
     ],

@@ -36,10 +36,12 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import {
+  CodeWell,
   CopyButton,
   DetailHeader,
   EmailStatusBadge,
   EmptyState,
+  MetaStrip,
   MoreMenu,
   NotFoundState,
   PanelTabs,
@@ -88,48 +90,26 @@ function eventIcon(event: TimelineEvent): LucideIcon {
   }
 }
 
-function EmailMetaStrip({
-  from,
-  subject,
-  to,
-  id,
-}: {
+function emailMeta(email: {
   from: string
   subject: string
   to: string
   id: string
 }) {
-  return (
-    <ItemGroup className="flex-row flex-wrap gap-2">
-      <Item size="sm" className="w-fit min-w-40 flex-1">
-        <ItemContent>
-          <ItemTitle>From</ItemTitle>
-          <ItemDescription>{from}</ItemDescription>
-        </ItemContent>
-      </Item>
-      <Item size="sm" className="w-fit min-w-40 flex-1">
-        <ItemContent>
-          <ItemTitle>Subject</ItemTitle>
-          <ItemDescription>{subject}</ItemDescription>
-        </ItemContent>
-      </Item>
-      <Item size="sm" className="w-fit min-w-40 flex-1">
-        <ItemContent>
-          <ItemTitle>To</ItemTitle>
-          <ItemDescription>{to}</ItemDescription>
-        </ItemContent>
-      </Item>
-      <Item size="sm" className="w-fit min-w-40 flex-1">
-        <ItemContent>
-          <ItemTitle>Id</ItemTitle>
-          <ItemDescription className="flex items-center gap-1 font-mono">
-            <span className="truncate">{id}</span>
-            <CopyButton value={id} label="Id" />
-          </ItemDescription>
-        </ItemContent>
-      </Item>
-    </ItemGroup>
-  )
+  return [
+    { label: "From", value: email.from },
+    { label: "Subject", value: email.subject },
+    { label: "To", value: email.to },
+    {
+      label: "Id",
+      value: (
+        <>
+          <span className="truncate font-mono">{email.id}</span>
+          <CopyButton value={email.id} label="Id" />
+        </>
+      ),
+    },
+  ]
 }
 
 function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
@@ -176,9 +156,6 @@ function EmailPreview({ subject, html }: { subject: string; html: string }) {
   )
 }
 
-const SOURCE_WELL =
-  "overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap"
-
 const HTML_TOKEN_CLASS: Record<HtmlTokenKind, string> = {
   text: "text-foreground",
   tag: "text-info",
@@ -189,20 +166,20 @@ const HTML_TOKEN_CLASS: Record<HtmlTokenKind, string> = {
 }
 
 function EmailSource({ value }: { value: string }) {
-  return <pre className={`${SOURCE_WELL} text-foreground`}>{value}</pre>
+  return <CodeWell className="text-foreground">{value}</CodeWell>
 }
 
 function EmailHtmlSource({ value }: { value: string }) {
   const tokens = React.useMemo(() => tokenizeHtml(value), [value])
 
   return (
-    <pre className={SOURCE_WELL}>
+    <CodeWell>
       {tokens.map((token, index) => (
         <span key={index} className={HTML_TOKEN_CLASS[token.kind]}>
           {token.value}
         </span>
       ))}
-    </pre>
+    </CodeWell>
   )
 }
 
@@ -361,17 +338,12 @@ export function EmailDetail() {
           </>
         }
       />
-      <EmailMetaStrip
-        from={email.from}
-        subject={email.subject}
-        to={email.to}
-        id={email.id}
-      />
+      <MetaStrip items={emailMeta(email)} />
       {log ? (
         <Item
           variant="outline"
           size="sm"
-          render={<Link href={`/logs?email=${email.id}`} />}
+          render={<Link href={`/logs/${log.id}`} />}
         >
           <ItemMedia variant="icon">
             <SendIcon />
@@ -420,12 +392,7 @@ export function ReceivedDetail() {
         title={email.from}
         icon={InboxIcon}
       />
-      <EmailMetaStrip
-        from={email.from}
-        subject={email.subject}
-        to={email.to}
-        id={email.id}
-      />
+      <MetaStrip items={emailMeta(email)} />
       <EmailEventsRow
         events={[
           {

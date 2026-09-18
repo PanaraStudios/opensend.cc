@@ -236,6 +236,8 @@ export type Webhook = {
   createdAt: number
 }
 
+export type LogSource = "api" | "smtp" | "dashboard"
+
 export type ApiLog = {
   id: string
   method: HttpMethod
@@ -244,6 +246,9 @@ export type ApiLog = {
   createdAt: number
   durationMs: number
   emailId: string | null
+  userAgent: string
+  source: LogSource
+  apiKeyId: string | null
 }
 
 export type ExportJob = {
