@@ -1,5 +1,6 @@
 import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
 import { SEED_STATE } from "./data"
+import { normalizeDomain } from "./domains"
 import { createId } from "./ids"
 import { normalizeLog } from "./logs"
 import type { DashboardState, Team } from "./types"
@@ -45,6 +46,7 @@ export function serializeRoot(root: DashboardRoot): string {
 function migrateWorkspace(workspace: DashboardState): DashboardState {
   return {
     ...workspace,
+    domains: workspace.domains.map(normalizeDomain),
     broadcasts: workspace.broadcasts.map((item) => ({
       ...item,
       updatedAt: broadcastUpdatedAt(item),

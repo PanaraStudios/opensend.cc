@@ -1,12 +1,10 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import type { DateRange } from "react-day-picker"
 
 import { Badge } from "@/components/ui/badge"
-import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
   DocsButton,
@@ -15,14 +13,13 @@ import {
   ListToolbar,
   PageHeader,
   ResourceTable,
-  Th,
   usePagination,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
-  LogAge,
+  LOG_TABLE_HEADERS,
   LogIcon,
-  LogStatusBadge,
+  LogRow,
   LogsDocsSheet,
 } from "@/components/dashboard/logs/shared"
 import { defaultEmailRange, inDateRange } from "@/lib/dashboard/email-range"
@@ -130,39 +127,9 @@ export function LogsView() {
         />
       ) : (
         <>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Endpoint</Th>
-                <Th>Status</Th>
-                <Th>Method</Th>
-                <Th className="text-right">Created</Th>
-              </>
-            }
-          >
+          <ResourceTable headers={LOG_TABLE_HEADERS}>
             {pageRows.map((log) => (
-              <TableRow key={log.id}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
-                      <LogIcon />
-                    </span>
-                    <Link
-                      href={`/logs/${log.id}`}
-                      className="font-mono text-[13px] underline decoration-muted-foreground/50 decoration-dashed underline-offset-4 hover:decoration-foreground"
-                    >
-                      {log.path}
-                    </Link>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <LogStatusBadge status={log.status} />
-                </TableCell>
-                <TableCell>{log.method}</TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  <LogAge at={log.createdAt} />
-                </TableCell>
-              </TableRow>
+              <LogRow key={log.id} log={log} />
             ))}
           </ResourceTable>
           <ListPagination

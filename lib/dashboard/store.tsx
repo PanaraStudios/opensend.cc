@@ -9,12 +9,16 @@ import {
 } from "react"
 
 import { emptyBroadcastStats, transitionBroadcast } from "./broadcast"
-import {
-  defaultTopicSubscription,
-  normalizePropertyKey,
-} from "./contacts"
+import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
+import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
-import { defaultFromAddress } from "./format"
+import {
+  DEFAULT_RETURN_PATH,
+  normalizeDomainName,
+  reconcileDomain,
+  verifyDomainRecords,
+} from "./domains"
+import { workspaceFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import {
@@ -134,21 +138,35 @@ function mutate(mutator: (current: DashboardState) => DashboardState) {
   })
 }
 
-function addDomain(input: { name: string; region: Region }) {
-  const name = input.name.trim().toLowerCase()
-  const domain: Domain = {
-    id: createId("dom"),
-    name,
-    region: input.region,
-    status: "not_started",
-    createdAt: Date.now(),
-    openTracking: false,
-    clickTracking: false,
-    tls: "opportunistic",
-    customReturnPath: "send",
-    receiving: false,
-    records: recordsForDomain(name, input.region, "not_started"),
-  }
+function addDomain(input: {
+  name: string
+  region: Region
+  customReturnPath?: string
+}) {
+  const name = normalizeDomainName(input.name)
+  const returnPath = (input.customReturnPath || DEFAULT_RETURN_PATH)
+    .trim()
+    .toLowerCase()
+  const now = Date.now()
+  const domain: Domain = reconcileDomain(
+    {
+      id: createId("dom"),
+      name,
+      region: input.region,
+      status: "not_started",
+      createdAt: now,
+      sending: true,
+      openTracking: false,
+      clickTracking: false,
+      trackingSubdomain: "",
+      tls: "opportunistic",
+      customReturnPath: returnPath,
+      receiving: false,
+      events: [],
+      records: recordsForDomain(name, input.region, "not_started", returnPath),
+    },
+    now
+  )
   mutate((current) => ({
     ...current,
     domains: [domain, ...current.domains],
@@ -166,41 +184,40 @@ function deleteDomain(id: string) {
   }))
 }
 
+/* Every field here can change the records a domain needs, so the patch runs
+   through `reconcileDomain`: it syncs the record list, re-derives the status,
+   and stamps any milestone the change just reached. */
 function updateDomain(
   id: string,
   patch: Partial<
     Pick<
       Domain,
+      | "sending"
       | "openTracking"
       | "clickTracking"
+      | "trackingSubdomain"
       | "tls"
       | "customReturnPath"
       | "receiving"
+      | "provider"
     >
   >
 ) {
+  const now = Date.now()
   mutate((current) => ({
     ...current,
     domains: current.domains.map((domain) =>
-      domain.id === id ? { ...domain, ...patch } : domain
+      domain.id === id ? reconcileDomain({ ...domain, ...patch }, now) : domain
     ),
   }))
 }
 
 function verifyDomain(id: string) {
+  const now = Date.now()
   mutate((current) => ({
     ...current,
     domains: current.domains.map((domain) =>
-      domain.id === id
-        ? {
-            ...domain,
-            status: "verified",
-            records: domain.records.map((record) => ({
-              ...record,
-              status: "verified" as const,
-            })),
-          }
-        : domain
+      domain.id === id ? verifyDomainRecords(domain, now) : domain
     ),
   }))
 }
@@ -523,6 +540,9 @@ function createApiKey(input: {
 }): CreateApiKeyResult {
   const token = createToken()
   const { prefix, last4 } = tokenParts(token)
+  const you = activeWorkspace(rootFromRaw(readRaw())).members.find(
+    (member) => member.you
+  )
   const key = {
     id: createId("key"),
     name: input.name.trim(),
@@ -532,6 +552,7 @@ function createApiKey(input: {
     domainId: input.permission === "sending_access" ? input.domainId : null,
     createdAt: Date.now(),
     lastUsedAt: null,
+    createdBy: you?.id ?? null,
   }
   mutate((current) => ({
     ...current,
@@ -573,6 +594,8 @@ function sendEmail(input: {
   to: string
   subject: string
   text: string
+  /** Rendered body. Defaults to the text wrapped in a paragraph. */
+  html?: string
   scheduledAt?: number | null
 }) {
   const scheduled = input.scheduledAt ?? null
@@ -585,7 +608,7 @@ function sendEmail(input: {
     status,
     createdAt: Date.now(),
     scheduledAt: scheduled,
-    html: `<p>${input.text.trim()}</p>`,
+    html: input.html?.trim() || `<p>${input.text.trim()}</p>`,
     text: input.text.trim(),
     broadcastId: null,
     events: [
@@ -698,6 +721,7 @@ function addBroadcast(input: {
         subject: input.subject.trim(),
         preview: input.preview.trim(),
         html: `<p>${input.preview.trim()}</p>`,
+        content: emptyEmailDocument(),
         status: "draft",
         segmentId: input.segmentId,
         topicId: input.topicId,
@@ -718,7 +742,14 @@ function updateBroadcast(
   patch: Partial<
     Pick<
       Broadcast,
-      "name" | "subject" | "preview" | "html" | "segmentId" | "topicId"
+      | "name"
+      | "subject"
+      | "preview"
+      | "html"
+      | "content"
+      | "replyTo"
+      | "segmentId"
+      | "topicId"
     >
   >
 ) {
@@ -750,16 +781,15 @@ function setBroadcastStatus(
     const item = current.broadcasts.find((row) => row.id === id)
     if (!item) return current
     const now = Date.now()
-    const recipients = status === "sent" ? broadcastRecipients(current, item) : []
+    const recipients =
+      status === "sent" ? broadcastRecipients(current, item) : []
     const next = transitionBroadcast(item, status, {
       now,
       recipients: recipients.length,
       scheduledAt,
     })
     if (next === item) return current
-    const from = defaultFromAddress(
-      current.domains.find((domain) => domain.status === "verified")?.name
-    )
+    const from = workspaceFromAddress(current.domains)
     const sent: SentEmail[] = recipients.map((contact) => ({
       id: createId("em"),
       from,

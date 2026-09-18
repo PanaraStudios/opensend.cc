@@ -1,3 +1,5 @@
+import type { EmailDocument } from "./email-document"
+
 export const REGIONS = [
   { value: "us-east-1", label: "North Virginia", code: "us-east-1" },
   { value: "eu-west-1", label: "Ireland", code: "eu-west-1" },
@@ -8,7 +10,21 @@ export const REGIONS = [
 export type Region = (typeof REGIONS)[number]["value"]
 
 export type DomainStatus =
-  "not_started" | "pending" | "verified" | "failed" | "temporary_failure"
+  | "not_started"
+  | "pending"
+  | "partially_verified"
+  | "verified"
+  | "failed"
+  | "temporary_failure"
+
+/** DNS host we detected for a domain. Only some can be configured for you. */
+export type DnsProvider =
+  "cloudflare" | "route53" | "godaddy" | "namecheap" | "other"
+
+export type DomainEventType =
+  "added" | "dns_verified" | "partially_verified" | "verified"
+
+export type DomainEvent = { type: DomainEventType; at: number }
 
 export type RecordKind =
   "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
@@ -85,6 +101,12 @@ export type Domain = {
   customReturnPath: string
   receiving: boolean
   records: DnsRecord[]
+  /* Added after the first release, so persisted workspaces may lack them.
+     `normalizeDomain` in ./domains backfills every one on parse. */
+  provider?: DnsProvider
+  sending?: boolean
+  trackingSubdomain?: string
+  events?: DomainEvent[]
 }
 
 export type Contact = {
@@ -132,6 +154,9 @@ export type ApiKey = {
   domainId: string | null
   createdAt: number
   lastUsedAt: number | null
+  /** Member who created the key. Optional: keys stored before this field
+      existed simply show no creator. */
+  createdBy?: string | null
 }
 
 export type TeamMember = {
@@ -197,6 +222,11 @@ export type Broadcast = {
   subject: string
   preview: string
   html: string
+  /** Block tree behind `html`. Absent on records saved before the editor, and
+      on those the editor falls back to `html`. */
+  content?: EmailDocument
+  /** Overrides the sending domain's reply address for this send. */
+  replyTo?: string
   status: BroadcastStatus
   segmentId: string | null
   topicId: string | null

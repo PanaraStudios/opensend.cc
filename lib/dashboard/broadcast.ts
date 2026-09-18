@@ -1,3 +1,4 @@
+import { normalizeEmailDocument, type EmailDocument } from "./email-document"
 import type {
   Broadcast,
   BroadcastStats,
@@ -37,10 +38,22 @@ export function normalizeBroadcastStats(
   return { ...emptyBroadcastStats(), ...stats }
 }
 
-/** Drafts, scheduled sends, and canceled sends can still be edited. Everything
-    else is a report. */
-export function isBroadcastEditable(status: BroadcastStatus): boolean {
-  return status === "draft" || status === "scheduled" || status === "canceled"
+/** Drafts (and canceled sends, which behave like drafts) open the block
+    editor. Everything else opens the report. */
+export function isBroadcastDraftLike(status: BroadcastStatus): boolean {
+  return status === "draft" || status === "canceled"
+}
+
+export function broadcastEditorHref(item: Pick<Broadcast, "id" | "status">) {
+  return isBroadcastDraftLike(item.status)
+    ? `/broadcasts/${item.id}/edit`
+    : `/broadcasts/${item.id}`
+}
+
+/** The block tree behind a broadcast. Records saved before the editor only
+    have `html`, so they open as a single hand-written HTML block. */
+export function broadcastDocument(item: Broadcast): EmailDocument {
+  return normalizeEmailDocument(item.content, item.html)
 }
 
 /** Which header actions a broadcast offers in its current status. A canceled

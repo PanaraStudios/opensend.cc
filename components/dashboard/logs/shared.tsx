@@ -1,12 +1,13 @@
 "use client"
 
+import Link from "next/link"
 import { ScrollTextIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { DocsSheet } from "@/components/dashboard/primitives"
-import { DEMO_NOW } from "@/lib/dashboard/data"
-import { formatDateTime, formatRelative } from "@/lib/dashboard/format"
+import { TableCell, TableRow } from "@/components/ui/table"
+import { DocsSheet, RelativeTime, Th } from "@/components/dashboard/primitives"
 import { logStatusTone } from "@/lib/dashboard/logs"
+import type { ApiLog } from "@/lib/dashboard/types"
 
 export const LogIcon = ScrollTextIcon
 
@@ -18,13 +19,41 @@ export function LogStatusBadge({ status }: { status: number }) {
   )
 }
 
-/** Age against the demo clock, the same one the date range picker uses, so
-    "Last 15 days" and "15d ago" agree. The exact time sits in the tooltip. */
-export function LogAge({ at }: { at: number }) {
+/** Header cells for a log table. Paired with `LogRow`, so the logs list and
+    every page that embeds recent requests keep the same columns. */
+export const LOG_TABLE_HEADERS = (
+  <>
+    <Th>Endpoint</Th>
+    <Th>Status</Th>
+    <Th>Method</Th>
+    <Th className="text-right">Created</Th>
+  </>
+)
+
+export function LogRow({ log }: { log: ApiLog }) {
   return (
-    <time dateTime={new Date(at).toISOString()} title={formatDateTime(at)}>
-      {formatRelative(at, DEMO_NOW)}
-    </time>
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
+            <LogIcon />
+          </span>
+          <Link
+            href={`/logs/${log.id}`}
+            className="font-mono text-[13px] underline decoration-muted-foreground/50 decoration-dashed underline-offset-4 hover:decoration-foreground"
+          >
+            {log.path}
+          </Link>
+        </div>
+      </TableCell>
+      <TableCell>
+        <LogStatusBadge status={log.status} />
+      </TableCell>
+      <TableCell>{log.method}</TableCell>
+      <TableCell className="text-right text-muted-foreground">
+        <RelativeTime at={log.createdAt} />
+      </TableCell>
+    </TableRow>
   )
 }
 

@@ -1,4 +1,5 @@
 import { emptyBroadcastStats } from "./broadcast"
+import { DEFAULT_RETURN_PATH } from "./domains"
 import { createId } from "./ids"
 import { defaultFromAddress } from "./format"
 import { DASHBOARD_USER_AGENT, LOG_USER_AGENTS } from "./logs"
@@ -45,7 +46,8 @@ export function minutesAgo(minutes: number): number {
 export function recordsForDomain(
   name: string,
   region: Region,
-  status: DomainStatus
+  status: DomainStatus,
+  returnPath: string = DEFAULT_RETURN_PATH
 ): DnsRecord[] {
   return [
     {
@@ -61,7 +63,7 @@ export function recordsForDomain(
       id: createId("rec"),
       kind: "SPF",
       type: "MX",
-      name: `send.${name}`,
+      name: `${returnPath}.${name}`,
       value: `feedback-smtp.${region}.amazonses.com`,
       ttl: "Auto",
       priority: 10,
@@ -71,7 +73,7 @@ export function recordsForDomain(
       id: createId("rec"),
       kind: "SPF",
       type: "TXT",
-      name: `send.${name}`,
+      name: `${returnPath}.${name}`,
       value: "v=spf1 include:amazonses.com ~all",
       ttl: "Auto",
       status,
@@ -95,11 +97,19 @@ const domains: Domain[] = [
     region: "us-east-1",
     status: "verified",
     createdAt: daysAgo(48),
+    provider: "cloudflare",
+    sending: true,
     openTracking: false,
     clickTracking: false,
+    trackingSubdomain: "",
     tls: "opportunistic",
     customReturnPath: "send",
     receiving: true,
+    events: [
+      { type: "added", at: daysAgo(48) },
+      { type: "dns_verified", at: daysAgo(47) },
+      { type: "verified", at: daysAgo(47) },
+    ],
     records: [
       {
         id: "rec_opensend_dkim",
@@ -138,6 +148,16 @@ const domains: Domain[] = [
         ttl: "Auto",
         status: "verified",
       },
+      {
+        id: "rec_opensend_inbound",
+        kind: "Receiving",
+        type: "MX",
+        name: "opensend.cc",
+        value: "inbound-smtp.us-east-1.amazonaws.com",
+        ttl: "Auto",
+        priority: 10,
+        status: "verified",
+      },
     ],
   },
   {
@@ -146,11 +166,14 @@ const domains: Domain[] = [
     region: "us-east-1",
     status: "pending",
     createdAt: daysAgo(2),
+    sending: true,
     openTracking: true,
     clickTracking: true,
+    trackingSubdomain: "links",
     tls: "opportunistic",
     customReturnPath: "send",
     receiving: false,
+    events: [{ type: "added", at: daysAgo(2) }],
     records: [
       {
         id: "rec_updates_dkim",
@@ -189,6 +212,15 @@ const domains: Domain[] = [
         ttl: "Auto",
         status: "not_started",
       },
+      {
+        id: "rec_updates_tracking",
+        kind: "Tracking",
+        type: "CNAME",
+        name: "links.updates.opensend.cc",
+        value: "r.us-east-1.awstrack.me",
+        ttl: "Auto",
+        status: "pending",
+      },
     ],
   },
   {
@@ -197,11 +229,19 @@ const domains: Domain[] = [
     region: "eu-west-1",
     status: "verified",
     createdAt: daysAgo(21),
+    provider: "route53",
+    sending: true,
     openTracking: true,
     clickTracking: false,
+    trackingSubdomain: "links",
     tls: "enforced",
     customReturnPath: "bounce",
     receiving: false,
+    events: [
+      { type: "added", at: daysAgo(21) },
+      { type: "dns_verified", at: daysAgo(20) },
+      { type: "verified", at: daysAgo(20) },
+    ],
     records: [
       {
         id: "rec_acme_dkim",
@@ -216,7 +256,7 @@ const domains: Domain[] = [
         id: "rec_acme_mx",
         kind: "SPF",
         type: "MX",
-        name: "send.mail.acme.dev",
+        name: "bounce.mail.acme.dev",
         value: "feedback-smtp.eu-west-1.amazonses.com",
         ttl: "Auto",
         priority: 10,
@@ -226,7 +266,7 @@ const domains: Domain[] = [
         id: "rec_acme_spf",
         kind: "SPF",
         type: "TXT",
-        name: "send.mail.acme.dev",
+        name: "bounce.mail.acme.dev",
         value: "v=spf1 include:amazonses.com ~all",
         ttl: "Auto",
         status: "verified",
@@ -237,6 +277,15 @@ const domains: Domain[] = [
         type: "TXT",
         name: "_dmarc.mail.acme.dev",
         value: "v=DMARC1; p=quarantine;",
+        ttl: "Auto",
+        status: "verified",
+      },
+      {
+        id: "rec_acme_tracking",
+        kind: "Tracking",
+        type: "CNAME",
+        name: "links.mail.acme.dev",
+        value: "r.eu-west-1.awstrack.me",
         ttl: "Auto",
         status: "verified",
       },
@@ -390,6 +439,7 @@ const apiKeys: ApiKey[] = [
     domainId: null,
     createdAt: daysAgo(40),
     lastUsedAt: hoursAgo(3),
+    createdBy: "mem_you",
   },
   {
     id: "key_staging",
@@ -400,6 +450,7 @@ const apiKeys: ApiKey[] = [
     domainId: "dom_opensend",
     createdAt: daysAgo(19),
     lastUsedAt: hoursAgo(26),
+    createdBy: "mem_ada",
   },
   {
     id: "key_ci",
@@ -410,6 +461,7 @@ const apiKeys: ApiKey[] = [
     domainId: null,
     createdAt: daysAgo(11),
     lastUsedAt: null,
+    createdBy: "mem_you",
   },
 ]
 

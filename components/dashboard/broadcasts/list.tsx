@@ -37,7 +37,11 @@ import {
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
-import { broadcastAsTemplateInput } from "@/lib/dashboard/broadcast"
+import {
+  broadcastAsTemplateInput,
+  broadcastEditorHref,
+  isBroadcastDraftLike,
+} from "@/lib/dashboard/broadcast"
 import { formatDateTime } from "@/lib/dashboard/format"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -78,7 +82,7 @@ export function BroadcastsView() {
       topicId: null,
     })
     toast.add({ type: "success", title: "Draft created" })
-    router.push(`/broadcasts/${created.id}`)
+    router.push(`/broadcasts/${created.id}/edit`)
   }
 
   function cloneAsTemplate(item: Broadcast) {
@@ -145,7 +149,7 @@ export function BroadcastsView() {
               <TableCell>
                 <div className="flex flex-col gap-0.5">
                   <Link
-                    href={`/broadcasts/${item.id}`}
+                    href={broadcastEditorHref(item)}
                     className="font-medium hover:underline"
                   >
                     {item.name || "Untitled"}
@@ -167,10 +171,19 @@ export function BroadcastsView() {
                 <MoreMenu>
                   <DropdownMenuGroup>
                     <DropdownMenuItem
-                      render={<Link href={`/broadcasts/${item.id}`} />}
+                      render={<Link href={broadcastEditorHref(item)} />}
                     >
-                      <EyeIcon />
-                      View broadcast
+                      {isBroadcastDraftLike(item.status) ? (
+                        <>
+                          <PencilIcon />
+                          Edit broadcast
+                        </>
+                      ) : (
+                        <>
+                          <EyeIcon />
+                          View broadcast
+                        </>
+                      )}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setRenaming(item)}>
                       <PencilIcon />

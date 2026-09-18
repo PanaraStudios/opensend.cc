@@ -20,11 +20,11 @@ import {
   DocsButton,
   MetaStrip,
   NotFoundState,
+  RelativeTime,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
 import {
-  LogAge,
   LogIcon,
   LogStatusBadge,
   LogsDocsSheet,
@@ -83,7 +83,7 @@ function RequestHeaders({
       >
         <ChevronDownIcon
           data-icon="inline-start"
-          className="transition-transform group-data-[panel-open]:rotate-0 -rotate-90"
+          className="-rotate-90 transition-transform group-data-[panel-open]:rotate-0"
         />
         Request headers
       </CollapsibleTrigger>
@@ -150,7 +150,7 @@ export function LogDetail() {
           },
           {
             label: "Date",
-            value: <LogAge at={log.createdAt} />,
+            value: <RelativeTime at={log.createdAt} />,
           },
           { label: "Method", value: log.method },
           { label: "Duration", value: `${log.durationMs} ms` },
@@ -160,7 +160,7 @@ export function LogDetail() {
             label: "API key",
             value: apiKey ? (
               <>
-                <Link href="/api-keys" className="truncate">
+                <Link href={`/api-keys/${apiKey.id}`} className="truncate">
                   {apiKey.name}
                 </Link>
                 <Badge variant="secondary">

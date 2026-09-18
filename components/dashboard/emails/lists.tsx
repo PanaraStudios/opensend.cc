@@ -2,14 +2,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -29,7 +27,6 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
@@ -48,7 +45,6 @@ import {
   EyeIcon,
   InboxIcon,
   MailIcon,
-  PlusIcon,
   ScrollTextIcon,
 } from "lucide-react"
 import {
@@ -63,7 +59,6 @@ import {
   isSuppressionReason,
 } from "@/components/dashboard/emails/shared"
 import {
-  defaultFromAddress,
   formatDateTime,
   isEmail,
   suppressionReasonLabel,
@@ -72,117 +67,6 @@ import { searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { SuppressionReason } from "@/lib/dashboard/types"
 
-function SendEmailDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const router = useRouter()
-  const { sendEmail, state } = useDashboard()
-  const verified = state.domains.find((domain) => domain.status === "verified")
-  const [from, setFrom] = React.useState(defaultFromAddress(verified?.name))
-  const [to, setTo] = React.useState("")
-  const [subject, setSubject] = React.useState("")
-  const [text, setText] = React.useState("")
-  const [error, setError] = React.useState<string | null>(null)
-
-  function reset() {
-    setTo("")
-    setSubject("")
-    setText("")
-    setError(null)
-  }
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!isEmail(to)) {
-      setError("Enter a valid recipient")
-      return
-    }
-    if (!subject.trim()) {
-      setError("Enter a subject")
-      return
-    }
-    const email = sendEmail({ from, to, subject, text: text || subject })
-    toast.add({ type: "success", title: "Email sent" })
-    reset()
-    onOpenChange(false)
-    router.push(`/emails/${email.id}`)
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset()
-        onOpenChange(next)
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Send email</DialogTitle>
-            <DialogDescription>
-              Transactional send from this workspace. Delivery goes through the
-              SES connection on this server.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="py-4">
-            <Field>
-              <FieldLabel htmlFor="send-from">From</FieldLabel>
-              <Input
-                id="send-from"
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="send-to">To</FieldLabel>
-              <Input
-                id="send-to"
-                type="email"
-                value={to}
-                onChange={(event) => {
-                  setTo(event.target.value)
-                  setError(null)
-                }}
-                placeholder="ada@example.com"
-                autoFocus
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="send-subject">Subject</FieldLabel>
-              <Input
-                id="send-subject"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="send-body">Text</FieldLabel>
-              <Textarea
-                id="send-body"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                rows={5}
-              />
-              {error ? <FieldError>{error}</FieldError> : null}
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              Cancel
-            </DialogClose>
-            <Button type="submit">Send</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 export function EmailsView() {
   const { state, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
@@ -190,7 +74,6 @@ export function EmailsView() {
   const [range, setRange] = React.useState<DateRange | undefined>(
     defaultEmailRange
   )
-  const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
 
   const needle = searchNeedle(query)
@@ -201,17 +84,7 @@ export function EmailsView() {
   })
 
   return (
-    <EmailsChrome
-      actions={
-        <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
-          <Button onClick={() => setOpen(true)}>
-            <PlusIcon data-icon="inline-start" />
-            Send email
-          </Button>
-        </>
-      }
-    >
+    <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -235,13 +108,8 @@ export function EmailsView() {
         <EmptyState
           icon={MailIcon}
           title="No emails"
-          description="Send a test message or wait for the API to land events here."
-        >
-          <Button onClick={() => setOpen(true)}>
-            <PlusIcon data-icon="inline-start" />
-            Send email
-          </Button>
-        </EmptyState>
+          description="Send a message with POST /emails from the API and it appears here with its delivery events."
+        />
       ) : (
         <ResourceTable
           headers={
@@ -296,7 +164,6 @@ export function EmailsView() {
           ))}
         </ResourceTable>
       )}
-      <SendEmailDialog open={open} onOpenChange={setOpen} />
       <EmailsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </EmailsChrome>
   )

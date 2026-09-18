@@ -22,31 +22,13 @@ import {
 } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Progress, ProgressValue } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { TabsContent } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { RenameBroadcastDialog } from "@/components/dashboard/broadcasts/shared"
 import {
@@ -56,100 +38,22 @@ import {
   EmptyState,
   MoreMenu,
   NotFoundState,
-  OptionSelect,
   PanelTabs,
   ResourceTable,
-  Surface,
   Th,
   useDeleteRecord,
-  useDraft,
 } from "@/components/dashboard/primitives"
 import {
   audienceLabel,
   broadcastActions,
   broadcastAsTemplateInput,
   broadcastEventRows,
-  isBroadcastEditable,
+  isBroadcastDraftLike,
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
-import { defaultFromAddress, percent } from "@/lib/dashboard/format"
+import { percent } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
-
-function ScheduleDialog({
-  open,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onConfirm: (when: number) => void
-}) {
-  const [value, setValue] = React.useState("")
-  const [error, setError] = React.useState<string | null>(null)
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    const when = new Date(value).getTime()
-    if (!value || Number.isNaN(when)) {
-      setError("Pick a date and time")
-      return
-    }
-    if (when <= Date.now()) {
-      setError("Schedule a time in the future")
-      return
-    }
-    onConfirm(when)
-    onOpenChange(false)
-    setValue("")
-    setError(null)
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          setValue("")
-          setError(null)
-        }
-        onOpenChange(next)
-      }}
-    >
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Schedule broadcast</DialogTitle>
-            <DialogDescription>
-              We queue the send at this time. You can cancel until it goes out.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="py-4">
-            <Field>
-              <FieldLabel htmlFor="brd-schedule">Send at</FieldLabel>
-              <Input
-                id="brd-schedule"
-                type="datetime-local"
-                value={value}
-                onChange={(event) => {
-                  setValue(event.target.value)
-                  setError(null)
-                }}
-              />
-              {error ? <FieldError>{error}</FieldError> : null}
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              Cancel
-            </DialogClose>
-            <Button type="submit">Schedule</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 const EVENT_TABS: {
   value: BroadcastEventTab
@@ -336,121 +240,6 @@ function BroadcastReport({ item }: { item: Broadcast }) {
   )
 }
 
-function BroadcastComposer({
-  item,
-  sendError,
-  onSubjectChange,
-}: {
-  item: Broadcast
-  sendError: string | null
-  onSubjectChange: () => void
-}) {
-  const { state, updateBroadcast } = useDashboard()
-  const canEdit = isBroadcastEditable(item.status)
-  const verified = state.domains.find((domain) => domain.status === "verified")
-  const from = defaultFromAddress(verified?.name)
-  const name = useDraft(item.name, (value) =>
-    updateBroadcast(item.id, { name: value })
-  )
-  const subject = useDraft(
-    item.subject,
-    (value) => updateBroadcast(item.id, { subject: value }),
-    onSubjectChange
-  )
-  const preview = useDraft(item.preview, (value) =>
-    updateBroadcast(item.id, { preview: value })
-  )
-  const html = useDraft(item.html, (value) =>
-    updateBroadcast(item.id, { html: value })
-  )
-
-  return (
-    <div className="grid items-start gap-6 lg:grid-cols-2">
-      <Surface>
-        <h2 className="text-sm font-medium">Details</h2>
-        <Field>
-          <FieldLabel htmlFor="brd-edit-name">Name</FieldLabel>
-          <Input id="brd-edit-name" {...name} disabled={!canEdit} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="brd-edit-from">From</FieldLabel>
-          <Input id="brd-edit-from" value={from} disabled />
-          <FieldDescription>
-            Uses the first verified domain on this workspace.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel>Audience</FieldLabel>
-          <OptionSelect
-            id="brd-edit-audience"
-            className="w-full"
-            value={item.segmentId ?? "everyone"}
-            onChange={(next) =>
-              updateBroadcast(item.id, {
-                segmentId: next === "everyone" ? null : next,
-              })
-            }
-            disabled={!canEdit}
-            items={[
-              { value: "everyone", label: "All contacts" },
-              ...state.segments.map((segment) => ({
-                value: segment.id,
-                label: segment.name,
-              })),
-            ]}
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Topic</FieldLabel>
-          <OptionSelect
-            id="brd-edit-topic"
-            className="w-full"
-            value={item.topicId ?? "none"}
-            onChange={(next) =>
-              updateBroadcast(item.id, {
-                topicId: next === "none" ? null : next,
-              })
-            }
-            disabled={!canEdit}
-            items={[
-              { value: "none", label: "No topic" },
-              ...state.topics.map((row) => ({
-                value: row.id,
-                label: row.name,
-              })),
-            ]}
-          />
-          <FieldDescription>
-            Contacts unsubscribed from this topic are skipped.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="brd-edit-subject">Subject</FieldLabel>
-          <Input id="brd-edit-subject" {...subject} disabled={!canEdit} />
-          {sendError ? <FieldError>{sendError}</FieldError> : null}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="brd-edit-preview">Preview text</FieldLabel>
-          <Input id="brd-edit-preview" {...preview} disabled={!canEdit} />
-        </Field>
-      </Surface>
-      <Surface>
-        <h2 className="text-sm font-medium">Content</h2>
-        <Field>
-          <FieldLabel htmlFor="brd-edit-html">HTML</FieldLabel>
-          <Textarea
-            id="brd-edit-html"
-            rows={14}
-            {...html}
-            disabled={!canEdit}
-            className="min-h-64 font-mono text-mono"
-          />
-        </Field>
-      </Surface>
-    </div>
-  )
-}
-
 export function BroadcastDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -465,9 +254,14 @@ export function BroadcastDetail() {
   const item = state.broadcasts.find((row) => row.id === id)
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
-  const [scheduleOpen, setScheduleOpen] = React.useState(false)
   const [renameOpen, setRenameOpen] = React.useState(false)
-  const [sendError, setSendError] = React.useState<string | null>(null)
+  /* Drafts are authored in the full-screen editor, which lives outside the
+     dashboard chrome, so this page only ever shows the report. */
+  const editable = Boolean(item) && isBroadcastDraftLike(item!.status)
+
+  React.useEffect(() => {
+    if (editable) router.replace(`/broadcasts/${id}/edit`)
+  }, [editable, id, router])
 
   if (!item) {
     if (leaving) return null
@@ -479,21 +273,12 @@ export function BroadcastDetail() {
       />
     )
   }
+  if (editable) return null
 
   const broadcast = item
-  const report = !isBroadcastEditable(broadcast.status)
-  const { canSchedule, canSend, canCancel } = broadcastActions(broadcast.status)
+  const { canSend, canCancel } = broadcastActions(broadcast.status)
   const topic = state.topics.find((row) => row.id === broadcast.topicId)
   const audience = audienceLabel(broadcast.segmentId, state.segments)
-
-  function requireSubject() {
-    if (!broadcast.subject.trim()) {
-      setSendError("Add a subject before sending")
-      return false
-    }
-    setSendError(null)
-    return true
-  }
 
   function cloneAsTemplate() {
     addTemplate(broadcastAsTemplateInput(broadcast))
@@ -501,7 +286,6 @@ export function BroadcastDetail() {
   }
 
   function sendNow() {
-    if (!requireSubject()) return
     setBroadcastStatus(broadcast.id, "sent")
     toast.add({ type: "success", title: "Broadcast sent" })
   }
@@ -522,16 +306,6 @@ export function BroadcastDetail() {
         description={`${audience}${topic ? `. Topic: ${topic.name}` : ""}`}
         actions={
           <>
-            {canSchedule ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (requireSubject()) setScheduleOpen(true)
-                }}
-              >
-                Schedule
-              </Button>
-            ) : null}
             {canCancel ? (
               <Button variant="outline" onClick={cancelSend}>
                 Cancel
@@ -551,7 +325,7 @@ export function BroadcastDetail() {
                       type: "success",
                       title: "Broadcast duplicated",
                     })
-                    if (copy) router.push(`/broadcasts/${copy.id}`)
+                    if (copy) router.push(`/broadcasts/${copy.id}/edit`)
                   }}
                 >
                   <CopyIcon />
@@ -574,24 +348,8 @@ export function BroadcastDetail() {
         }
       />
 
-      {report ? (
-        <BroadcastReport item={broadcast} />
-      ) : (
-        <BroadcastComposer
-          item={broadcast}
-          sendError={sendError}
-          onSubjectChange={() => setSendError(null)}
-        />
-      )}
+      <BroadcastReport item={broadcast} />
 
-      <ScheduleDialog
-        open={scheduleOpen}
-        onOpenChange={setScheduleOpen}
-        onConfirm={(when) => {
-          setBroadcastStatus(broadcast.id, "scheduled", when)
-          toast.add({ type: "success", title: "Broadcast scheduled" })
-        }}
-      />
       <RenameBroadcastDialog
         open={renameOpen}
         onOpenChange={setRenameOpen}
