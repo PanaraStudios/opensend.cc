@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
 
-import { ApiKeysView } from "@/components/dashboard/api-keys"
+import { ApiKeysView } from "@/components/dashboard/api-keys/list"
 
 export const metadata: Metadata = {
-  title: "API Keys",
+  title: "API keys",
 }
 
 export default function ApiKeysPage() {

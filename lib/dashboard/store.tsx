@@ -521,6 +521,9 @@ function createApiKey(input: {
 }): CreateApiKeyResult {
   const token = createToken()
   const { prefix, last4 } = tokenParts(token)
+  const you = activeWorkspace(rootFromRaw(readRaw())).members.find(
+    (member) => member.you
+  )
   const key = {
     id: createId("key"),
     name: input.name.trim(),
@@ -530,6 +533,7 @@ function createApiKey(input: {
     domainId: input.permission === "sending_access" ? input.domainId : null,
     createdAt: Date.now(),
     lastUsedAt: null,
+    createdBy: you?.id ?? null,
   }
   mutate((current) => ({
     ...current,

@@ -160,7 +160,7 @@ export function LogDetail() {
             label: "API key",
             value: apiKey ? (
               <>
-                <Link href="/api-keys" className="truncate">
+                <Link href={`/api-keys/${apiKey.id}`} className="truncate">
                   {apiKey.name}
                 </Link>
                 <Badge variant="secondary">

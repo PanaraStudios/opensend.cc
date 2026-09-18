@@ -11,6 +11,9 @@ import {
   ChevronsUpDownIcon,
   CopyIcon,
   DownloadIcon,
+  EyeIcon,
+  EyeOffIcon,
+  InfoIcon,
   MoreHorizontalIcon,
   SearchIcon,
   XIcon,
@@ -55,6 +58,7 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
 import {
@@ -81,8 +85,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
 import { cn } from "@/lib/utils"
+import { DEMO_NOW } from "@/lib/dashboard/data"
 import {
   AUTOMATION_STATUS_TONE,
   BROADCAST_STATUS_TONE,
@@ -94,6 +104,8 @@ import {
   broadcastStatusLabel,
   emailStatusLabel,
   exportStatusLabel,
+  formatDateTime,
+  formatRelative,
   pluralize,
   statusLabel,
   templateStatusLabel,
@@ -1077,5 +1089,93 @@ export function DocsSheet({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/* ------------------------------------------------------------------- time */
+
+/** Age against the demo clock, the one the date range picker uses, so
+    "Last 15 days" and "15d ago" agree. The exact time sits in the tooltip.
+    `at` may be null for records that never happened, e.g. an unused key. */
+export function RelativeTime({
+  at,
+  fallback = "—",
+}: {
+  at: number | null
+  fallback?: string
+}) {
+  if (at === null) return <>{fallback}</>
+  return (
+    <time dateTime={new Date(at).toISOString()} title={formatDateTime(at)}>
+      {formatRelative(at, DEMO_NOW)}
+    </time>
+  )
+}
+
+/* ----------------------------------------------------------------- hints */
+
+/** Info icon that explains the label beside it on hover or focus. */
+export function InfoTip({
+  children,
+  label = "More information",
+}: {
+  children: React.ReactNode
+  label?: string
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+          />
+        }
+      >
+        <InfoIcon />
+      </TooltipTrigger>
+      <TooltipContent className="flex flex-col items-start gap-1.5 text-left">
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/* --------------------------------------------------------------- secrets */
+
+/** Read-only secret behind dots, with a reveal toggle and a copy button.
+    One field for every token or signing secret the dashboard shows once. */
+export function SecretField({
+  value,
+  label = "Secret",
+  id,
+}: {
+  value: string
+  label?: string
+  id?: string
+}) {
+  const [revealed, setRevealed] = React.useState(false)
+  return (
+    <InputGroup>
+      <InputGroupInput
+        id={id}
+        readOnly
+        aria-label={label}
+        value={revealed ? value : "•".repeat(value.length)}
+        className="font-mono text-[13px]"
+      />
+      <InputGroupAddon align="inline-end">
+        <InputGroupButton
+          size="icon-xs"
+          aria-label={revealed ? `Hide ${label}` : `Show ${label}`}
+          onClick={() => setRevealed((current) => !current)}
+        >
+          {revealed ? <EyeOffIcon /> : <EyeIcon />}
+        </InputGroupButton>
+        <CopyButton value={value} label={label} />
+      </InputGroupAddon>
+    </InputGroup>
   )
 }
