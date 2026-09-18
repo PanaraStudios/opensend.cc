@@ -565,6 +565,26 @@ function badgeDotClassName(tone: BadgeTone): string {
   }
 }
 
+/** The same tone as a CSS color, for chart strokes and fills. */
+function badgeToneColor(tone: BadgeTone): string {
+  switch (tone) {
+    case "success":
+      return "var(--success)"
+    case "destructive":
+      return "var(--destructive)"
+    case "warning":
+      return "var(--warning)"
+    case "secondary":
+      return "var(--muted-foreground)"
+    case "outline":
+      return "var(--foreground)"
+  }
+}
+
+export function emailStatusColor(status: EmailStatus): string {
+  return badgeToneColor(EMAIL_STATUS_TONE[status])
+}
+
 export function emailStatusDotClassName(status: EmailStatus): string {
   return badgeDotClassName(EMAIL_STATUS_TONE[status])
 }
@@ -914,6 +934,43 @@ export type ToolbarFilter = {
   "aria-label": string
 }
 
+/** Optional date range plus any number of filter selects. ListToolbar renders
+    these after its search box; pages without search use them on their own. */
+export function ToolbarFilters({
+  range,
+  onRangeChange,
+  allowAllTime = true,
+  filters = [],
+}: {
+  range?: DateRange | undefined
+  onRangeChange?: (range: DateRange | undefined) => void
+  allowAllTime?: boolean
+  filters?: readonly ToolbarFilter[]
+}) {
+  return (
+    <>
+      {onRangeChange ? (
+        <DateRangePicker
+          range={range}
+          onRangeChange={onRangeChange}
+          allowAllTime={allowAllTime}
+        />
+      ) : null}
+      {filters.map((filter) => (
+        <OptionSelect
+          key={filter["aria-label"]}
+          size="sm"
+          align="end"
+          value={filter.value}
+          onChange={filter.onChange}
+          items={filter.items}
+          aria-label={filter["aria-label"]}
+        />
+      ))}
+    </>
+  )
+}
+
 /** Search, optional date range, any number of filter selects, optional
     export. One toolbar for every list view. */
 export function ListToolbar({
@@ -950,24 +1007,12 @@ export function ListToolbar({
           placeholder={placeholder}
         />
       </InputGroup>
-      {onRangeChange ? (
-        <DateRangePicker
-          range={range}
-          onRangeChange={onRangeChange}
-          allowAllTime={allowAllTime}
-        />
-      ) : null}
-      {filters.map((filter) => (
-        <OptionSelect
-          key={filter["aria-label"]}
-          size="sm"
-          align="end"
-          value={filter.value}
-          onChange={filter.onChange}
-          items={filter.items}
-          aria-label={filter["aria-label"]}
-        />
-      ))}
+      <ToolbarFilters
+        range={range}
+        onRangeChange={onRangeChange}
+        allowAllTime={allowAllTime}
+        filters={filters}
+      />
       {children}
       {onExport ? (
         <Button

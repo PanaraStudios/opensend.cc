@@ -36,6 +36,10 @@ const FILTERABLE_STATUSES: EmailStatus[] = [
   "suppressed",
 ]
 
+export function isFilterableStatus(value: string): value is EmailStatus {
+  return (FILTERABLE_STATUSES as string[]).includes(value)
+}
+
 export const STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses", dotClassName: "bg-muted-foreground" },
   ...FILTERABLE_STATUSES.map((value) => ({

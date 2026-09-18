@@ -276,7 +276,13 @@ export const EXPORT_STATUS_TONE: Record<ExportStatus, BadgeTone> = {
   expired: "secondary",
 }
 
-export function percent(part: number, total: number): string {
-  if (total <= 0) return "0%"
-  return `${Math.round((part / total) * 100)}%`
+/** `part` of `total` as a percentage number, rounded to `digits` places. */
+export function rate(part: number, total: number, digits = 0): number {
+  if (total <= 0) return 0
+  const scale = 10 ** digits
+  return Math.round((part / total) * 100 * scale) / scale
+}
+
+export function percent(part: number, total: number, digits = 0): string {
+  return `${rate(part, total, digits)}%`
 }
