@@ -76,7 +76,11 @@ function PaperSelect({
           onValueChange={(next) => onValueChange(String(next))}
         >
           {items.map((item) => (
-            <DropdownMenuRadioItem key={item.value} value={item.value}>
+            <DropdownMenuRadioItem
+              key={item.value}
+              value={item.value}
+              closeOnClick
+            >
               {item.label}
             </DropdownMenuRadioItem>
           ))}

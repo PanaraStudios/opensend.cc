@@ -20,7 +20,7 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
+  type SortingStrategy,
 } from "@dnd-kit/sortable"
 import { LayoutTemplateIcon, UploadIcon } from "lucide-react"
 
@@ -75,7 +75,7 @@ import {
   type EmailVariable,
   type TextBlock,
 } from "@/lib/dashboard/email-document"
-import { bodyStyle, pageStyle } from "@/lib/dashboard/email-render"
+import { bodyStyle, documentCss, pageStyle } from "@/lib/dashboard/email-render"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
@@ -99,16 +99,34 @@ function containerFromDroppableId(id: string): ContainerKey | null {
     : null
 }
 
-/* A container droppable wraps every block inside it, so it would win most
-   `closestCenter` collisions. Blocks under the pointer take priority; the
-   container only wins when the pointer is over empty space in it. */
+/* Blocks stay where they are while one is dragged. The drop indicator is the
+   only preview, so what the user sees is exactly where the block lands — the
+   default strategy shuffles siblings, which moved the rects being measured. */
+const keepInPlace: SortingStrategy = () => null
+
+/* Droppables nest: the root list holds blocks, a columns block holds column
+   lists, and those hold blocks again. The innermost list under the pointer
+   decides. Inside it a block under the pointer wins (drop beside it); over
+   the list's empty space the list itself wins (drop at its end). Without the
+   "innermost" step a columns block swallowed every drop aimed at its columns. */
 const collisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args)
   const candidates = pointer.length > 0 ? pointer : rectIntersection(args)
+  const isList = (id: unknown) => String(id).startsWith(CONTAINER_PREFIX)
+  const lists = candidates.filter((collision) => isList(collision.id))
+  const area = (collision: (typeof candidates)[number]) => {
+    const rect = collision.data?.droppableContainer?.rect.current
+    return rect ? rect.width * rect.height : Number.POSITIVE_INFINITY
+  }
+  const innermost = [...lists].sort((a, b) => area(a) - area(b))[0]
+  if (!innermost) return candidates
+  const key = containerFromDroppableId(String(innermost.id))
   const blocks = candidates.filter(
-    (collision) => !String(collision.id).startsWith(CONTAINER_PREFIX)
+    (collision) =>
+      !isList(collision.id) &&
+      collision.data?.droppableContainer?.data.current?.container === key
   )
-  return blocks.length > 0 ? blocks : candidates
+  return blocks.length > 0 ? blocks : [innermost]
 }
 
 function DropIndicator() {
@@ -144,7 +162,7 @@ function BlockList({
     <SortableContext
       id={container}
       items={blocks.map((block) => block.id)}
-      strategy={verticalListSortingStrategy}
+      strategy={keepInPlace}
     >
       <div
         ref={setNodeRef}
@@ -407,13 +425,18 @@ export function EmailCanvas({
       setDropTarget(null)
       return
     }
+    /* The side follows the pointer, not the dragged block's centre: a block
+       is held by the handle on its corner, so its centre sits well below the
+       cursor. Keyboard drags have no pointer and fall back to the rect. */
+    const start = event.activatorEvent
     const activeRect = active.rect.current.translated
-    const after = Boolean(
-      activeRect &&
-      over.rect &&
-      activeRect.top + activeRect.height / 2 >
-        over.rect.top + over.rect.height / 2
-    )
+    const y =
+      "clientY" in start && typeof start.clientY === "number"
+        ? start.clientY + event.delta.y
+        : activeRect
+          ? activeRect.top + activeRect.height / 2
+          : null
+    const after = y !== null && y > over.rect.top + over.rect.height / 2
     const next = resolveTarget(doc, String(over.id), after)
     setDropTarget((current) =>
       current?.container === next?.container && current?.index === next?.index
@@ -517,13 +540,14 @@ export function EmailCanvas({
           style={bodyStyle(doc)}
           className="relative"
         >
-          {doc.globalCss.trim() ? (
-            <style
-              dangerouslySetInnerHTML={{
-                __html: `#email-paper { ${doc.globalCss} }`,
-              }}
-            />
-          ) : null}
+          {/* The same theme stylesheet the email gets, then the author's
+              Global CSS, both scoped to the paper so neither reaches the
+              dashboard around it. */}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: documentCss(doc, "#email-paper"),
+            }}
+          />
           <EmailHeaderForm
             item={item}
             sendAt={sendAt}
