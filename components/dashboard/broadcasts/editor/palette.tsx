@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import {
+  PALETTE_DRAG_TYPE,
   PALETTE_MENUS,
   type PaletteItem,
   type PaletteMenu,
@@ -31,12 +32,15 @@ const ROW_CLASS =
   "flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-none select-none hover:bg-muted focus-visible:bg-muted [&_svg:not([class*='size-'])]:size-4"
 
 function InsertRow({
+  dragId,
   label,
   hint,
   testId,
   onClick,
   children,
 }: {
+  /** Set on rows that can also be dragged to a spot on the canvas. */
+  dragId?: string
   label: string
   hint?: string
   testId: string
@@ -49,6 +53,12 @@ function InsertRow({
       title={hint}
       data-testid={testId}
       className={ROW_CLASS}
+      draggable={Boolean(dragId)}
+      onDragStart={(event) => {
+        if (!dragId) return
+        event.dataTransfer.setData(PALETTE_DRAG_TYPE, dragId)
+        event.dataTransfer.effectAllowed = "copy"
+      }}
       onClick={onClick}
     >
       {children}
@@ -97,6 +107,7 @@ function BlockMenu({
           return (
             <InsertRow
               key={item.id}
+              dragId={item.id}
               label={item.label}
               hint={item.description}
               testId={`palette-${item.id}`}

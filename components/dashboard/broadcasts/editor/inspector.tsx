@@ -261,6 +261,10 @@ function nodeSections(nodeType: string): NodeSection[] {
       return ["background", "padding", "border"]
     case "codeBlock":
       return ["padding", "border"]
+    case "twoColumns":
+    case "threeColumns":
+    case "fourColumns":
+      return ["attributes", "typography", "padding", "background", "border"]
     case "youtube":
     case "spacer":
     case "html":
@@ -324,6 +328,10 @@ function AttrField({
   )
 }
 
+const COLUMN_SPACING = [
+  { name: "cellspacing", label: "Column gap", type: "number" as const },
+]
+
 /* The values a node keeps as attributes rather than styles. */
 const NODE_ATTRIBUTES: Record<
   string,
@@ -339,6 +347,9 @@ const NODE_ATTRIBUTES: Record<
     { name: "width", label: "Width", type: "number" },
   ],
   spacer: [{ name: "height", label: "Height", type: "number" }],
+  twoColumns: COLUMN_SPACING,
+  threeColumns: COLUMN_SPACING,
+  fourColumns: COLUMN_SPACING,
   html: [{ name: "code", label: "HTML", type: "textarea" }],
   variable: [
     { name: "name", label: "Variable" },

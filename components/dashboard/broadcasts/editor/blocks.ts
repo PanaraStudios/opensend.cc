@@ -192,6 +192,19 @@ export const PALETTE_ITEMS: readonly PaletteItem[] = PALETTE_MENUS.flatMap(
   (menu) => menu.items
 )
 
+/** Carries a catalogue id while a rail row is dragged onto the canvas. */
+export const PALETTE_DRAG_TYPE = "application/x-opensend-block"
+
+/** Inserts at a document position, for a row dropped on the canvas. */
+export function insertAtPosition(
+  editor: Editor,
+  item: PaletteItem,
+  position: number
+): void {
+  editor.commands.setTextSelection(position)
+  insertAtCaret(editor, item)
+}
+
 /** Inserts after the selection, for the rail, which has no "/" text to
     replace. Collapsing first matters: a block that was just inserted is still
     selected, and the next insert would otherwise overwrite it. */

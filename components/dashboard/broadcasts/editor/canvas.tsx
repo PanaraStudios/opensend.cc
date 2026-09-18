@@ -2,10 +2,15 @@
 
 import * as React from "react"
 import { stylesToCss, useEmailTheming } from "@react-email/editor/plugins"
+import { DragHandle } from "@tiptap/extension-drag-handle-react"
 import { EditorContent, type Editor } from "@tiptap/react"
+import { GripVerticalIcon } from "lucide-react"
 
 import {
   insertAtCaret,
+  insertAtPosition,
+  PALETTE_DRAG_TYPE,
+  PALETTE_ITEMS,
   type PaletteItem,
 } from "@/components/dashboard/broadcasts/editor/blocks"
 import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-menus"
@@ -86,8 +91,33 @@ export function EmailCanvas({
         {/* The engine paints its editing surface as the page and its container
             node as the paper. Here the canvas and the sheet above already are
             those, so inside the sheet both are flattened. */}
+        {editor ? (
+          <DragHandle
+            editor={editor}
+            className="flex size-6 cursor-grab items-center justify-center rounded-md text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111827] active:cursor-grabbing"
+          >
+            <GripVerticalIcon className="size-4" />
+          </DragHandle>
+        ) : null}
         <EditorContent
           editor={editor}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes(PALETTE_DRAG_TYPE)) {
+              event.preventDefault()
+            }
+          }}
+          onDrop={(event) => {
+            const id = event.dataTransfer.getData(PALETTE_DRAG_TYPE)
+            const entry = PALETTE_ITEMS.find((one) => one.id === id)
+            if (!editor || !entry) return
+            event.preventDefault()
+            const spot = editor.view.posAtCoords({
+              left: event.clientX,
+              top: event.clientY,
+            })
+            if (spot) insertAtPosition(editor, entry, spot.pos)
+            else insertAtCaret(editor, entry)
+          }}
           className="pt-3 [&_.ProseMirror]:!bg-transparent [&_.ProseMirror]:!p-0 [&_.ProseMirror]:outline-none [&_.node-container]:!w-auto [&_.node-container]:!rounded-none [&_.node-container]:!border-0 [&_.node-container]:!bg-transparent [&_.node-container]:!p-0"
           data-testid="email-content"
         />
