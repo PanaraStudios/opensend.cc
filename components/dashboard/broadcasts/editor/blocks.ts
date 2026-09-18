@@ -17,7 +17,6 @@ import {
   type SlashCommandItem,
 } from "@react-email/editor/ui"
 import type { ChainedCommands, Editor, Range } from "@tiptap/core"
-import { NodeSelection } from "@tiptap/pm/state"
 import {
   BracesIcon,
   CodeXmlIcon,
@@ -45,7 +44,11 @@ import {
 } from "lucide-react"
 
 import { YouTubeIcon } from "@/components/brand-icons"
-import { PATTERNS } from "@/components/dashboard/broadcasts/editor/patterns"
+import {
+  FOOTER,
+  PATTERNS,
+  SOCIAL_LINKS,
+} from "@/components/dashboard/broadcasts/editor/patterns"
 
 /* One catalogue of everything that can be inserted. The insert rail and the
    "/" menu both read it, and each entry runs the engine's own command, so the
@@ -128,7 +131,7 @@ const MEDIA_ITEMS: PaletteItem[] = [
       icon: YouTubeIcon,
       keywords: ["youtube", "video"],
     },
-    (chain) => chain.insertYoutube()
+    (chain) => chain.insertContent({ type: "youtube" })
   ),
 ]
 
@@ -147,7 +150,7 @@ const COMPONENT_ITEMS: PaletteItem[] = [
       icon: MoveVerticalIcon,
       keywords: ["spacer", "space", "gap"],
     },
-    (chain) => chain.insertSpacer()
+    (chain) => chain.insertContent({ type: "spacer" })
   ),
   ours(
     {
@@ -157,7 +160,7 @@ const COMPONENT_ITEMS: PaletteItem[] = [
       icon: Share2Icon,
       keywords: ["social", "links", "twitter", "linkedin", "github"],
     },
-    (chain) => chain.insertSocialLinks()
+    (chain) => chain.insertContent(SOCIAL_LINKS)
   ),
   ours(
     {
@@ -167,7 +170,7 @@ const COMPONENT_ITEMS: PaletteItem[] = [
       icon: MailMinusIcon,
       keywords: ["footer", "unsubscribe", "opt out"],
     },
-    (chain) => chain.insertFooter()
+    (chain) => chain.insertContent(FOOTER)
   ),
   ours(
     {
@@ -177,7 +180,7 @@ const COMPONENT_ITEMS: PaletteItem[] = [
       icon: BracesIcon,
       keywords: ["html", "code", "raw", "embed"],
     },
-    (chain) => chain.insertHtml()
+    (chain) => chain.insertContent({ type: "html" })
   ),
 ]
 
@@ -242,44 +245,34 @@ export const PALETTE_ITEMS: readonly PaletteItem[] = PALETTE_MENUS.flatMap(
 /** Carries a catalogue id while a rail row is dragged onto the canvas. */
 export const PALETTE_DRAG_TYPE = "application/x-opensend-block"
 
-/** Inserts at a document position, for a row dropped on the canvas. */
-export function insertAtPosition(
+/** Inserts as a new block: at `position` for a row dropped on the canvas,
+    else after the selection, for a row clicked in the rail.
+
+    The engine's text commands convert the block the caret is in, which is
+    right on the empty "/" line and wrong here, so unless the caret already
+    sits on an empty line a fresh one is opened first. It opens after the
+    outermost block inside the nearest isolating node (the container, a
+    section, a column, a table cell), which is where the schema wants blocks;
+    lists and quotes are not isolating, so the line lands after them rather
+    than inside. */
+export function insertAtCaret(
   editor: Editor,
   item: PaletteItem,
-  position: number
+  position?: number
 ): void {
-  editor.commands.setTextSelection(position)
-  insertAtCaret(editor, item)
-}
-
-/* Blocks that wrap other blocks: a new line goes after the whole wrapper,
-   not inside it. */
-const WRAPPERS = new Set([
-  "listItem",
-  "bulletList",
-  "orderedList",
-  "blockquote",
-])
-
-/** Inserts as a new block, for the rail, which has no "/" line to replace.
-    The engine's text commands convert the block the caret is in, which is
-    right on the empty "/" line and wrong from the rail, so unless the caret
-    already sits on an empty line a fresh one is opened below first. That also
-    keeps a just-inserted, still-selected block from being overwritten. */
-export function insertAtCaret(editor: Editor, item: PaletteItem): void {
-  const { $to } = editor.state.selection
+  if (position !== undefined) editor.commands.setTextSelection(position)
+  const { selection } = editor.state
+  const { $to } = selection
   const onEmptyLine =
-    editor.state.selection.empty &&
+    selection.empty &&
     $to.parent.type.name === "paragraph" &&
     $to.parent.content.size === 0
   if (!onEmptyLine) {
-    let after = $to.pos
-    /* A selected block (an image, a spacer) ends where the selection does. */
-    if (!(editor.state.selection instanceof NodeSelection) && $to.depth > 0) {
-      let depth = $to.depth
-      while (depth > 1 && WRAPPERS.has($to.node(depth - 1).type.name)) depth--
-      after = $to.after(depth)
-    }
+    let host = $to.depth
+    while (host > 0 && !$to.node(host).type.spec.isolating) host--
+    /* At the host's own depth the selection is a whole block (an image, a
+       spacer) and already ends where the new line goes. */
+    const after = $to.depth === host ? $to.pos : $to.after(host + 1)
     editor
       .chain()
       .insertContentAt(after, { type: "paragraph" })

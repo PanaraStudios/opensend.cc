@@ -67,6 +67,7 @@ function EditorScreen({ item }: { item: Broadcast }) {
   const editor = useBroadcastEditor(item)
   const [view, setView] = React.useState<BroadcastEditorMode>(editor.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
+  const collapseInspector = React.useCallback(() => setInspectorOpen(false), [])
   const [testOpen, setTestOpen] = React.useState(false)
   const [blocksOpen, setBlocksOpen] = React.useState(false)
   const [sendAt, setSendAt] = React.useState<number | null>(item.scheduledAt)
@@ -164,7 +165,11 @@ function EditorScreen({ item }: { item: Broadcast }) {
               items={VIEW_ITEMS}
               aria-label="Editor mode"
               testIdPrefix="mode-toggle"
-              onValueChange={setView}
+              onValueChange={(next) => {
+                /* The HTML view shows the export, so it is brought up to date. */
+                if (next === "html") void editor.flush()
+                setView(next)
+              }}
               className="w-auto"
             />
           </nav>
@@ -210,7 +215,7 @@ function EditorScreen({ item }: { item: Broadcast }) {
           </main>
 
           {inspectorOpen ? (
-            <Inspector onCollapse={() => setInspectorOpen(false)} />
+            <Inspector onCollapse={collapseInspector} />
           ) : (
             <div className="flex shrink-0 flex-col border-l border-border p-1.5">
               <Button
@@ -256,6 +261,10 @@ export function BroadcastEditor() {
     if (report) router.replace(`/broadcasts/${id}`)
   }, [id, report, router])
 
+  /* The editor copies the document into the engine when it mounts, so it
+     waits for the saved one rather than starting from the seed. */
+  if (!hydrated) return null
+
   if (!item) {
     return (
       <div className="mx-auto w-full max-w-2xl p-10">
@@ -267,9 +276,7 @@ export function BroadcastEditor() {
       </div>
     )
   }
-  /* The editor copies the document into the engine when it mounts, so it
-     waits for the saved one rather than starting from the seed. */
-  if (report || !hydrated) return null
+  if (report) return null
 
   return <EditorScreen key={item.id} item={item} />
 }

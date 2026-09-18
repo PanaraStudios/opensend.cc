@@ -191,6 +191,25 @@ export function SectionChrome({
   )
 }
 
+/** Local draft of a stored string: edits stay here until `commitDraft`, and
+    a change to the stored value from elsewhere replaces the draft. For
+    controls that report a value; `useDraft` wraps it for plain inputs. */
+export function useDraftValue(value: string, commit: (next: string) => void) {
+  const [draft, setDraft] = React.useState(value)
+  const [synced, setSynced] = React.useState(value)
+  if (synced !== value) {
+    setSynced(value)
+    setDraft(value)
+  }
+  return {
+    draft,
+    setDraft,
+    commitDraft: () => {
+      if (draft !== value) commit(draft)
+    },
+  }
+}
+
 /** Local draft for a store-backed text field. Commits on blur so typing does
     not write localStorage and re-render every consumer per keystroke. */
 export function useDraft(
@@ -198,12 +217,7 @@ export function useDraft(
   commit: (next: string) => void,
   onChange?: () => void
 ) {
-  const [draft, setDraft] = React.useState(value)
-  const [synced, setSynced] = React.useState(value)
-  if (synced !== value) {
-    setSynced(value)
-    setDraft(value)
-  }
+  const { draft, setDraft, commitDraft } = useDraftValue(value, commit)
   return {
     value: draft,
     onChange: (
@@ -212,9 +226,7 @@ export function useDraft(
       setDraft(event.target.value)
       onChange?.()
     },
-    onBlur: () => {
-      if (draft !== value) commit(draft)
-    },
+    onBlur: commitDraft,
   }
 }
 

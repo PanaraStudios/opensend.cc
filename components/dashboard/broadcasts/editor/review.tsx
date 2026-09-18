@@ -292,7 +292,14 @@ export function ReviewPopover({
   const [open, setOpen] = React.useState(false)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        /* The checks read the exported email, so it is brought up to date. */
+        if (next) void flush()
+        setOpen(next)
+      }}
+    >
       <PopoverTrigger render={<Button size="sm" data-testid="editor-review" />}>
         Review
       </PopoverTrigger>

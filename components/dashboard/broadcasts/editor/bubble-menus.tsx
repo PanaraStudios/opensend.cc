@@ -5,6 +5,7 @@ import {
   BubbleMenuRoot,
   bubbleMenuTriggers,
   useBubbleMenuContext,
+  type TriggerFn,
 } from "@react-email/editor/ui"
 import {
   getSelectionAlignment,
@@ -13,18 +14,10 @@ import {
 import { PluginKey } from "@tiptap/pm/state"
 import { useEditorState, type Editor } from "@tiptap/react"
 import {
-  AlignCenterIcon,
-  AlignLeftIcon,
-  AlignRightIcon,
-  BoldIcon,
   CheckIcon,
-  CodeIcon,
   ExternalLinkIcon,
-  ItalicIcon,
   LinkIcon,
   PencilIcon,
-  StrikethroughIcon,
-  UnderlineIcon,
   UnlinkIcon,
 } from "lucide-react"
 
@@ -32,12 +25,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Toggle } from "@/components/ui/toggle"
+import {
+  ALIGN_ITEMS,
+  FLOATING_SURFACE,
+  TEXT_MARKS,
+} from "@/components/dashboard/broadcasts/editor/controls"
+import { cn } from "@/lib/utils"
 
 /* Floating toolbars. The engine decides when each one shows and where it
    sits; the buttons inside are ours and call the editor directly. */
 
-const SURFACE =
-  "z-40 flex items-center gap-0.5 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-float"
+const SURFACE = cn("z-40 flex items-center gap-0.5", FLOATING_SURFACE)
 
 const KEYS = {
   text: new PluginKey("opensendTextBubble"),
@@ -45,22 +43,6 @@ const KEYS = {
   button: new PluginKey("opensendButtonBubble"),
   image: new PluginKey("opensendImageBubble"),
 }
-
-type IconType = React.ComponentType<{ className?: string }>
-
-const MARKS: { name: string; label: string; icon: IconType }[] = [
-  { name: "bold", label: "Bold", icon: BoldIcon },
-  { name: "italic", label: "Italic", icon: ItalicIcon },
-  { name: "underline", label: "Underline", icon: UnderlineIcon },
-  { name: "strike", label: "Strikethrough", icon: StrikethroughIcon },
-  { name: "code", label: "Inline code", icon: CodeIcon },
-]
-
-const ALIGNMENTS: { value: string; label: string; icon: IconType }[] = [
-  { value: "left", label: "Align left", icon: AlignLeftIcon },
-  { value: "center", label: "Align center", icon: AlignCenterIcon },
-  { value: "right", label: "Align right", icon: AlignRightIcon },
-]
 
 /* "#" is how the engine stores "no destination yet". */
 function shownHref(href: unknown): string {
@@ -167,12 +149,50 @@ function UrlToolbar({
   )
 }
 
-function useAttr(editor: Editor, node: string, name: string): string {
-  return useEditorState({
+/* The three things that carry a destination. They differ only in where the
+   href lives and how it is written back. */
+const URL_MENUS: {
+  node: "link" | "button" | "image"
+  trigger: TriggerFn
+  apply: (editor: Editor, href: string) => void
+}[] = [
+  {
+    node: "link",
+    trigger: bubbleMenuTriggers.nodeWithoutSelection("link"),
+    apply: (editor, href) => {
+      const chain = editor.chain().focus().extendMarkRange("link")
+      if (href) chain.setLink({ href }).run()
+      else chain.unsetLink().run()
+    },
+  },
+  {
+    node: "button",
+    trigger: bubbleMenuTriggers.node("button"),
+    apply: (editor, href) =>
+      editor.commands.updateButton({ href: href || "#" }),
+  },
+  {
+    node: "image",
+    trigger: bubbleMenuTriggers.node("image"),
+    apply: (editor, href) =>
+      editor.commands.updateAttributes("image", { href }),
+  },
+]
+
+function NodeUrlToolbar({ menu }: { menu: (typeof URL_MENUS)[number] }) {
+  const { editor } = useBubbleMenuContext()
+  const href = useEditorState({
     editor,
     selector: ({ editor: current }) =>
-      shownHref(current.getAttributes(node)[name]),
+      shownHref(current.getAttributes(menu.node).href),
   })
+  return (
+    <UrlToolbar
+      href={href}
+      testId={`bubble-${menu.node}`}
+      onApply={(next) => menu.apply(editor, next)}
+    />
+  )
 }
 
 function TextToolbar() {
@@ -180,7 +200,7 @@ function TextToolbar() {
   const active = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
-      marks: MARKS.filter((mark) => current.isActive(mark.name)).map(
+      marks: TEXT_MARKS.filter((mark) => current.isActive(mark.name)).map(
         (mark) => mark.name
       ),
       alignment: getSelectionAlignment(current),
@@ -201,7 +221,7 @@ function TextToolbar() {
   }
   return (
     <>
-      {MARKS.map(({ name, label, icon: Icon }) => (
+      {TEXT_MARKS.map(({ name, label, icon: Icon }) => (
         <Toggle
           key={name}
           size="sm"
@@ -214,7 +234,7 @@ function TextToolbar() {
         </Toggle>
       ))}
       <Separator orientation="vertical" className="mx-0.5 h-5" />
-      {ALIGNMENTS.map(({ value, label, icon: Icon }) => (
+      {ALIGN_ITEMS.map(({ value, label, icon: Icon }) => (
         <Toggle
           key={value}
           size="sm"
@@ -240,48 +260,6 @@ function TextToolbar() {
   )
 }
 
-function LinkToolbar() {
-  const { editor } = useBubbleMenuContext()
-  const href = useAttr(editor, "link", "href")
-  return (
-    <UrlToolbar
-      href={href}
-      testId="bubble-link"
-      onApply={(next) => {
-        const chain = editor.chain().focus().extendMarkRange("link")
-        if (next) chain.setLink({ href: next }).run()
-        else chain.unsetLink().run()
-      }}
-    />
-  )
-}
-
-function ButtonToolbar() {
-  const { editor } = useBubbleMenuContext()
-  const href = useAttr(editor, "button", "href")
-  return (
-    <UrlToolbar
-      href={href}
-      testId="bubble-button"
-      onApply={(next) => editor.commands.updateButton({ href: next || "#" })}
-    />
-  )
-}
-
-function ImageToolbar() {
-  const { editor } = useBubbleMenuContext()
-  const href = useAttr(editor, "image", "href")
-  return (
-    <UrlToolbar
-      href={href}
-      testId="bubble-image"
-      onApply={(next) =>
-        editor.commands.updateAttributes("image", { href: next })
-      }
-    />
-  )
-}
-
 export function BubbleMenus() {
   return (
     <>
@@ -297,30 +275,17 @@ export function BubbleMenus() {
       >
         <TextToolbar />
       </BubbleMenuRoot>
-      <BubbleMenuRoot
-        pluginKey={KEYS.link}
-        trigger={bubbleMenuTriggers.nodeWithoutSelection("link")}
-        placement="top"
-        className={SURFACE}
-      >
-        <LinkToolbar />
-      </BubbleMenuRoot>
-      <BubbleMenuRoot
-        pluginKey={KEYS.button}
-        trigger={bubbleMenuTriggers.node("button")}
-        placement="top"
-        className={SURFACE}
-      >
-        <ButtonToolbar />
-      </BubbleMenuRoot>
-      <BubbleMenuRoot
-        pluginKey={KEYS.image}
-        trigger={bubbleMenuTriggers.node("image")}
-        placement="top"
-        className={SURFACE}
-      >
-        <ImageToolbar />
-      </BubbleMenuRoot>
+      {URL_MENUS.map((menu) => (
+        <BubbleMenuRoot
+          key={menu.node}
+          pluginKey={KEYS[menu.node]}
+          trigger={menu.trigger}
+          placement="top"
+          className={SURFACE}
+        >
+          <NodeUrlToolbar menu={menu} />
+        </BubbleMenuRoot>
+      ))}
     </>
   )
 }

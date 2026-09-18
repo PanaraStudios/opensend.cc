@@ -114,18 +114,15 @@ function WhenField({
     sendAt === null ? null : { label: "", at: sendAt }
   )
   const [query, setQuery] = React.useState(selected ? whenText(selected) : "")
-  /* Built in handlers, not in render, so the render never reads the clock. */
-  const [menu, setMenu] = React.useState<{
-    options: ScheduleOption[]
-    zone: string
-  }>({ options: [], zone: "" })
-
-  const latestQuery = React.useRef(query)
-
-  function refresh(text: string) {
-    const now = Date.now()
-    setMenu({ options: scheduleOptions(text, now), zone: timeZoneLabel(now) })
-  }
+  /* The clock is read in handlers only, never in render; the options are
+     then derived from it and the query, so the two handlers cannot disagree
+     about which text is current whatever order the combobox calls them in. */
+  const [now, setNow] = React.useState(0)
+  const menu = React.useMemo(() => {
+    /* A chosen time in the field lists every option again, not just itself. */
+    const text = selected && query === whenText(selected) ? "" : query
+    return { options: scheduleOptions(text, now), zone: timeZoneLabel(now) }
+  }, [now, query, selected])
 
   return (
     <Combobox
@@ -140,15 +137,10 @@ function WhenField({
       }
       onInputValueChange={(text) => {
         setQuery(text)
-        latestQuery.current = text
-        refresh(text)
+        setNow(Date.now())
       }}
       onOpenChange={(open) => {
-        /* Opening on a chosen time lists every option again, not just it. */
-        /* Read from the ref: pasted text opens the menu in the same tick it
-           changes the query, before the state has caught up. */
-        const text = latestQuery.current
-        if (open) refresh(selected && text === whenText(selected) ? "" : text)
+        if (open) setNow(Date.now())
       }}
       onValueChange={(option: ScheduleOption | null) => {
         setSelected(option)

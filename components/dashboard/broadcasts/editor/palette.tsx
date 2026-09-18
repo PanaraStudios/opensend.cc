@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { EditorFocusScope } from "@react-email/editor/ui"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
+import {
+  FLOATING_SURFACE,
+  MENU_ROW,
+} from "@/components/dashboard/broadcasts/editor/controls"
 import {
   PALETTE_DRAG_TYPE,
   PALETTE_MENUS,
@@ -25,11 +30,14 @@ import {
 import { useDashboard } from "@/lib/dashboard/store"
 import { cn } from "@/lib/utils"
 
-/* The floating insert rail. Each button opens a flyout of rows, and a row
-   inserts at the caret. */
+/* The engine drops the selection when focus leaves the editor for anything it
+   does not know, which is how it tells "clicked away" from "using a menu".
+   The rail and its flyouts are menus, so each registers as a focus scope;
+   without that, opening one would move the caret to the top of the email
+   before the insert ran.
 
-const ROW_CLASS =
-  "flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-none select-none hover:bg-muted focus-visible:bg-muted [&_svg:not([class*='size-'])]:size-4"
+   The floating insert rail. Each button opens a flyout of rows, and a row
+   inserts at the caret. */
 
 function InsertRow({
   dragId,
@@ -54,7 +62,7 @@ function InsertRow({
       type="button"
       title={hint}
       data-testid={testId}
-      className={ROW_CLASS}
+      className={cn(MENU_ROW, "hover:bg-muted focus-visible:bg-muted")}
       draggable={Boolean(dragId)}
       onDragStart={(event) => {
         if (!dragId) return
@@ -98,30 +106,32 @@ function BlockMenu({
       >
         <Icon className="size-4" />
       </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={8}
-        className="w-56 gap-0.5 p-1"
-        data-testid={`palette-menu-${menu.id}`}
-      >
-        {menu.items.map((item) => {
-          const ItemIcon = item.icon
-          return (
-            <InsertRow
-              key={item.id}
-              dragId={item.id}
-              onDragEnd={() => onOpenChange(false)}
-              label={item.label}
-              hint={item.description}
-              testId={`palette-${item.id}`}
-              onClick={() => onInsert(item)}
-            >
-              <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
-            </InsertRow>
-          )
-        })}
-      </PopoverContent>
+      <EditorFocusScope>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="w-56 gap-0.5 p-1"
+          data-testid={`palette-menu-${menu.id}`}
+        >
+          {menu.items.map((item) => {
+            const ItemIcon = item.icon
+            return (
+              <InsertRow
+                key={item.id}
+                dragId={item.id}
+                onDragEnd={() => onOpenChange(false)}
+                label={item.label}
+                hint={item.description}
+                testId={`palette-${item.id}`}
+                onClick={() => onInsert(item)}
+              >
+                <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
+              </InsertRow>
+            )
+          })}
+        </PopoverContent>
+      </EditorFocusScope>
     </Popover>
   )
 }
@@ -171,48 +181,52 @@ function VariableMenu({
       >
         <Icon className="size-4" />
       </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={8}
-        className="w-64 gap-0.5 p-1"
-        data-testid="palette-menu-variables"
-      >
-        {groups.map((group) =>
-          group.items.length === 0 ? null : (
-            <React.Fragment key={group.key}>
-              <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                {group.label}
-              </p>
-              {group.items.map((variable) => (
-                <InsertRow
-                  key={variable.name}
-                  label={variable.label}
-                  hint={formatVariable(variable.name, variable.fallback)}
-                  testId={`palette-variable-${variable.name}`}
-                  onClick={() => onInsert(variable)}
-                >
-                  <code className="shrink-0 font-mono text-[11px] text-faint-foreground">
-                    {"{x}"}
-                  </code>
-                </InsertRow>
-              ))}
-            </React.Fragment>
-          )
-        )}
-        <Separator className="my-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          className="w-full justify-start"
-          data-testid="palette-create-property"
-          render={<Link href="/properties" target="_blank" rel="noreferrer" />}
+      <EditorFocusScope>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="w-64 gap-0.5 p-1"
+          data-testid="palette-menu-variables"
         >
-          <PlusIcon data-icon="inline-start" />
-          Create property
-        </Button>
-      </PopoverContent>
+          {groups.map((group) =>
+            group.items.length === 0 ? null : (
+              <React.Fragment key={group.key}>
+                <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                  {group.label}
+                </p>
+                {group.items.map((variable) => (
+                  <InsertRow
+                    key={variable.name}
+                    label={variable.label}
+                    hint={formatVariable(variable.name, variable.fallback)}
+                    testId={`palette-variable-${variable.name}`}
+                    onClick={() => onInsert(variable)}
+                  >
+                    <code className="shrink-0 font-mono text-[11px] text-faint-foreground">
+                      {"{x}"}
+                    </code>
+                  </InsertRow>
+                ))}
+              </React.Fragment>
+            )
+          )}
+          <Separator className="my-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            className="w-full justify-start"
+            data-testid="palette-create-property"
+            render={
+              <Link href="/properties" target="_blank" rel="noreferrer" />
+            }
+          >
+            <PlusIcon data-icon="inline-start" />
+            Create property
+          </Button>
+        </PopoverContent>
+      </EditorFocusScope>
     </Popover>
   )
 }
@@ -229,41 +243,40 @@ export function InsertRail({
   const [openMenu, setOpenMenu] = React.useState<string | null>(null)
 
   return (
-    <div
-      role="toolbar"
-      aria-label="Insert"
-      data-testid="insert-rail"
-      className={cn(
-        "flex flex-col gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-float",
-        className
-      )}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {PALETTE_MENUS.map((menu) =>
-        menu.id === "variables" ? (
-          <VariableMenu
-            key={menu.id}
-            menu={menu}
-            open={openMenu === menu.id}
-            onOpenChange={(next) => setOpenMenu(next ? menu.id : null)}
-            onInsert={(variable) => {
-              setOpenMenu(null)
-              onInsertVariable(variable)
-            }}
-          />
-        ) : (
-          <BlockMenu
-            key={menu.id}
-            menu={menu}
-            open={openMenu === menu.id}
-            onOpenChange={(next) => setOpenMenu(next ? menu.id : null)}
-            onInsert={(item) => {
-              setOpenMenu(null)
-              onInsertBlock(item)
-            }}
-          />
-        )
-      )}
-    </div>
+    <EditorFocusScope>
+      <div
+        role="toolbar"
+        aria-label="Insert"
+        data-testid="insert-rail"
+        className={cn("flex flex-col gap-0.5", FLOATING_SURFACE, className)}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {PALETTE_MENUS.map((menu) =>
+          menu.id === "variables" ? (
+            <VariableMenu
+              key={menu.id}
+              menu={menu}
+              open={openMenu === menu.id}
+              onOpenChange={(next) => setOpenMenu(next ? menu.id : null)}
+              onInsert={(variable) => {
+                setOpenMenu(null)
+                onInsertVariable(variable)
+              }}
+            />
+          ) : (
+            <BlockMenu
+              key={menu.id}
+              menu={menu}
+              open={openMenu === menu.id}
+              onOpenChange={(next) => setOpenMenu(next ? menu.id : null)}
+              onInsert={(item) => {
+                setOpenMenu(null)
+                onInsertBlock(item)
+              }}
+            />
+          )
+        )}
+      </div>
+    </EditorFocusScope>
   )
 }

@@ -8,6 +8,7 @@ import {
   useEmailTheming,
   type KnownCssProperties,
   type PanelGroup,
+  type PanelSectionId,
 } from "@react-email/editor/plugins"
 import {
   getNodeMeta,
@@ -18,17 +19,13 @@ import {
 } from "@react-email/editor/ui"
 import { useCurrentEditor } from "@tiptap/react"
 import {
-  BoldIcon,
   BracesIcon,
   FileIcon,
-  ItalicIcon,
   PaletteIcon,
   PanelRightCloseIcon,
   PlusIcon,
   SquareIcon,
-  StrikethroughIcon,
   TypeIcon,
-  UnderlineIcon,
   XIcon,
 } from "lucide-react"
 
@@ -41,12 +38,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
-import { OptionSelect } from "@/components/dashboard/primitives"
+import { OptionSelect, useDraftValue } from "@/components/dashboard/primitives"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import {
   AlignField,
   InspectorRow,
   InspectorSection,
+  TEXT_MARKS,
   type EmailAlign,
 } from "@/components/dashboard/broadcasts/editor/controls"
 
@@ -78,12 +76,14 @@ function PanelHeader({
   title,
   icon: Icon,
   onClose,
-  closeLabel,
+  back = false,
 }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   onClose: () => void
-  closeLabel: string
+  /** The panel sits on top of Page style and closes back to it, rather than
+      collapsing the whole inspector. */
+  back?: boolean
 }) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
@@ -93,11 +93,11 @@ function PanelHeader({
         type="button"
         variant="ghost"
         size="icon-xs"
-        aria-label={closeLabel}
+        aria-label={back ? "Back to page style" : "Collapse panel"}
         data-testid="inspector-close"
         onClick={onClose}
       >
-        {closeLabel === "Collapse panel" ? <PanelRightCloseIcon /> : <XIcon />}
+        {back ? <XIcon /> : <PanelRightCloseIcon />}
       </Button>
     </div>
   )
@@ -363,7 +363,6 @@ const NODE_LABELS: Record<string, string> = {
   spacer: "Spacer",
   html: "HTML",
   variable: "Variable",
-  footer: "Footer",
 }
 
 function NodePanel({ context }: { context: InspectorNodeContext }) {
@@ -430,12 +429,9 @@ function NodePanel({ context }: { context: InspectorNodeContext }) {
 
 /* ------------------------------------------------------------- text panel */
 
-const MARKS = [
-  { name: "bold", label: "Bold", icon: BoldIcon },
-  { name: "italic", label: "Italic", icon: ItalicIcon },
-  { name: "underline", label: "Underline", icon: UnderlineIcon },
-  { name: "strike", label: "Strikethrough", icon: StrikethroughIcon },
-]
+/* Inline code is set from the bubble toolbar; the panel keeps the four
+   character styles. */
+const PANEL_MARKS = TEXT_MARKS.filter((mark) => mark.name !== "code")
 
 function TextPanel({ context }: { context: InspectorTextContext }) {
   return (
@@ -443,7 +439,7 @@ function TextPanel({ context }: { context: InspectorTextContext }) {
       <InspectorSection>
         <InspectorRow label="Format">
           <div className="flex gap-0.5">
-            {MARKS.map(({ name, label, icon: Icon }) => (
+            {PANEL_MARKS.map(({ name, label, icon: Icon }) => (
               <Toggle
                 key={name}
                 size="sm"
@@ -470,12 +466,16 @@ function TextPanel({ context }: { context: InspectorTextContext }) {
         <>
           <Separator />
           <InspectorSection title="Link">
-            <StyleField
-              input={{ label: "URL", type: "text" }}
-              value={context.linkHref}
-              testId="inspector-link-href"
-              onValueChange={() => {}}
-            />
+            {/* Shown only: the engine gives this panel the link's colour to
+                set, and its address is edited from the link's own toolbar. */}
+            <InspectorRow label="URL">
+              <p
+                className="truncate text-sm text-muted-foreground"
+                data-testid="inspector-link-href"
+              >
+                {context.linkHref}
+              </p>
+            </InspectorRow>
             <StyleField
               input={{ label: "Color", type: "color" }}
               value={context.linkColor}
@@ -494,6 +494,9 @@ function TextPanel({ context }: { context: InspectorTextContext }) {
 function GlobalCssPanel() {
   const { editor } = useCurrentEditor()
   const css = useEmailTheming(editor)?.css ?? ""
+  /* Every commit is a document change that every open panel reacts to, so
+     typing stays in a draft until the field is left. */
+  const { draft, setDraft, commitDraft } = useDraftValue(css, setCss)
 
   function setCss(next: string) {
     if (editor) setGlobalCssInjected(editor, next)
@@ -502,12 +505,13 @@ function GlobalCssPanel() {
   return (
     <InspectorSection className="gap-3">
       <CodeEditor
-        value={css}
+        value={draft}
         placeholder={CSS_PLACEHOLDER}
         aria-label="Global CSS"
         data-testid="global-css"
         className="h-72"
-        onValueChange={setCss}
+        onValueChange={setDraft}
+        onBlur={commitDraft}
       />
       <div className="flex flex-wrap gap-1.5">
         {CSS_SNIPPETS.map((snippet) => (
@@ -518,7 +522,7 @@ function GlobalCssPanel() {
             data-testid={`global-css-snippet-${snippet.id}`}
             onClick={() =>
               setCss(
-                `${css}${css.endsWith("\n") || !css ? "" : "\n"}${snippet.code}`
+                `${draft}${draft.endsWith("\n") || !draft ? "" : "\n"}${snippet.code}`
               )
             }
           >
@@ -544,7 +548,9 @@ const PADDING_SIDES = {
   paddingLeft: "left",
 } as const
 
-function isPaddingSide(prop: string): prop is keyof typeof PADDING_SIDES {
+type PaddingSide = keyof typeof PADDING_SIDES
+
+function isPaddingSide(prop: string): prop is PaddingSide {
   return prop in PADDING_SIDES
 }
 
@@ -610,31 +616,21 @@ function ThemeGroupRows({
 }
 
 const TEXT_PROPS: readonly KnownCssProperties[] = [
-  "color",
-  "fontSize",
-  "fontWeight",
-  "lineHeight",
-  "letterSpacing",
+  ...TYPOGRAPHY,
   "textDecoration",
 ]
 
-const PADDING_PROPS: readonly KnownCssProperties[] = [
-  "paddingTop",
-  "paddingRight",
-  "paddingBottom",
-  "paddingLeft",
-]
+const PADDING_PROPS = Object.keys(PADDING_SIDES) as PaddingSide[]
 
-const FRAME_PROPS: readonly KnownCssProperties[] = [
-  "borderRadius",
-  "borderWidth",
-  "borderColor",
-]
+/* The theme sets one border for an element; its style is a per-block choice. */
+const FRAME_PROPS = BORDER.filter((prop) => prop !== "borderStyle")
 
 /* What each element group offers in the theme panel. The engine only lists
    the values a theme sets, and its minimal theme sets none, so the panel
    would otherwise be a column of empty headings. */
-const THEME_GROUP_PROPS: Record<string, readonly KnownCssProperties[]> = {
+const THEME_GROUP_PROPS: Partial<
+  Record<PanelSectionId, readonly KnownCssProperties[]>
+> = {
   typography: TEXT_PROPS,
   h1: [...TEXT_PROPS, ...PADDING_PROPS],
   h2: [...TEXT_PROPS, ...PADDING_PROPS],
@@ -661,7 +657,7 @@ function themeInputs(
   group: PanelGroup,
   findStyleValue: InspectorDocumentContext["findStyleValue"]
 ): ThemeInputs {
-  const props = THEME_GROUP_PROPS[group.id ?? ""]
+  const props = group.id ? THEME_GROUP_PROPS[group.id] : undefined
   const target = group.classReference
   if (!props || !target) return group.inputs
   return props.map((prop) => ({
@@ -674,9 +670,18 @@ function themeInputs(
 
 /* The page and the paper are the theme's first two groups; the rest are the
    per-element groups the theme panel lists. */
-const PAGE_GROUPS = new Set(["body", "container"])
+const PAGE_GROUPS: ReadonlySet<PanelSectionId | undefined> = new Set([
+  "body",
+  "container",
+])
 
-export function Inspector({ onCollapse }: { onCollapse: () => void }) {
+/* Memoised: the theme panel is a long list, and nothing the editor screen
+   re-renders for (a save, the view toggle) concerns it. */
+export const Inspector = React.memo(function Inspector({
+  onCollapse,
+}: {
+  onCollapse: () => void
+}) {
   const [panel, setPanel] = React.useState<"page" | "theme" | "css">("page")
   return (
     <EngineInspector.Root asChild>
@@ -689,7 +694,7 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
             <PanelHeader
               title="Global CSS"
               icon={BracesIcon}
-              closeLabel="Back to page style"
+              back
               onClose={() => setPanel("page")}
             />
             <ScrollArea className="min-h-0 flex-1">
@@ -704,11 +709,7 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
                   <PanelHeader
                     title={panel === "theme" ? "Theme" : "Page style"}
                     icon={panel === "theme" ? PaletteIcon : FileIcon}
-                    closeLabel={
-                      panel === "theme"
-                        ? "Back to page style"
-                        : "Collapse panel"
-                    }
+                    back={panel === "theme"}
                     onClose={
                       panel === "theme" ? () => setPanel("page") : onCollapse
                     }
@@ -717,7 +718,7 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
                     {context.styles
                       .filter(
                         (group) =>
-                          PAGE_GROUPS.has(group.id ?? "") === (panel === "page")
+                          PAGE_GROUPS.has(group.id) === (panel === "page")
                       )
                       .map((group, index) => (
                         <React.Fragment key={group.id ?? group.title}>
@@ -773,7 +774,6 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
                       getNodeMeta(context.nodeType).label
                     }
                     icon={SquareIcon}
-                    closeLabel="Collapse panel"
                     onClose={onCollapse}
                   />
                   <ScrollArea className="min-h-0 flex-1">
@@ -788,7 +788,6 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
                   <PanelHeader
                     title="Text"
                     icon={TypeIcon}
-                    closeLabel="Collapse panel"
                     onClose={onCollapse}
                   />
                   <ScrollArea className="min-h-0 flex-1">
@@ -802,4 +801,4 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
       </aside>
     </EngineInspector.Root>
   )
-}
+})

@@ -4,8 +4,6 @@ import type { ContactProperty } from "./types"
    plain text through the editor and the exported HTML, and are filled in per
    recipient at send time. */
 
-export const UNSUBSCRIBE_VARIABLE = "{{{OPENSEND_UNSUBSCRIBE_URL}}}"
-
 export type EmailVariable = {
   name: string
   label: string
@@ -33,6 +31,9 @@ export function parseVariables(
 }
 
 export const UNSUBSCRIBE_VARIABLE_NAME = "OPENSEND_UNSUBSCRIBE_URL"
+
+/** The opt-out link's destination, filled in per recipient. */
+export const UNSUBSCRIBE_VARIABLE = formatVariable(UNSUBSCRIBE_VARIABLE_NAME)
 
 export const BUILT_IN_VARIABLES: EmailVariable[] = [
   {
@@ -82,5 +83,5 @@ export function usedVariables(source: string): string[] {
 }
 
 export function hasUnsubscribeLink(source: string): boolean {
-  return usedVariables(source).includes(UNSUBSCRIBE_VARIABLE_NAME)
+  return source.includes(UNSUBSCRIBE_VARIABLE_NAME)
 }

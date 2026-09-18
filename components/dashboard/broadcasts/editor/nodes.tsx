@@ -1,11 +1,9 @@
+import type { CSSProperties } from "react"
 import { Img, Link, Section, Text } from "@react-email/components"
 import { EmailNode } from "@react-email/editor/core"
 import { mergeAttributes } from "@tiptap/core"
 
-import {
-  formatVariable,
-  UNSUBSCRIBE_VARIABLE,
-} from "@/lib/dashboard/email-variables"
+import { formatVariable } from "@/lib/dashboard/email-variables"
 import {
   youtubeThumbnailUrl,
   youtubeVideoId,
@@ -14,31 +12,36 @@ import {
 
 /* The blocks the engine does not ship. Each one says how it looks while
    editing (`renderHTML`) and what it becomes in the sent email
-   (`renderToReactEmail`), built from React Email's own components. */
-
-declare module "@tiptap/core" {
-  interface Commands<ReturnType> {
-    opensend: {
-      insertVariable: (attrs: { name: string; fallback: string }) => ReturnType
-      insertYoutube: () => ReturnType
-      insertSpacer: () => ReturnType
-      insertHtml: () => ReturnType
-      insertFooter: () => ReturnType
-      insertSocialLinks: () => ReturnType
-    }
-  }
-}
+   (`renderToReactEmail`), built from React Email's own components. Like the
+   engine's nodes they carry a `node-*` class, and the editing look of those
+   classes lives with the other document rules in `globals.css`. They are
+   inserted as plain content, so none of them needs a command of its own. */
 
 function alignMargin(alignment: unknown): string {
   if (alignment === "center") return "0 auto"
   return alignment === "right" ? "0 0 0 auto" : "0"
 }
 
+/* What an empty media block shows until it is given something to show. */
+function placeholder(text: string) {
+  return ["div", { class: "node-placeholder-box" }, text] as const
+}
+
+/** A style object as the inline `style` string the editor's DOM takes. */
+function inlineStyle(style: CSSProperties): string {
+  return Object.entries(style)
+    .map(([key, value]) => {
+      const name = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+      return `${name}:${typeof value === "number" ? `${value}px` : value}`
+    })
+    .join(";")
+}
+
 /* --------------------------------------------------------------- variable */
 
 /** A merge tag as one unit, so it cannot be half-deleted into broken syntax.
     It is sent as the same `{{{name|fallback}}}` text a hand-typed one is. */
-export const Variable = EmailNode.create({
+const Variable = EmailNode.create({
   name: "variable",
   group: "inline",
   inline: true,
@@ -64,22 +67,13 @@ export const Variable = EmailNode.create({
       {
         "data-variable": node.attrs.name,
         "data-fallback": node.attrs.fallback,
-        class:
-          "rounded bg-[#eef2ff] px-1 py-0.5 font-mono text-[0.85em] text-[#3730a3]",
+        class: "node-variable",
       },
       formatVariable(node.attrs.name, node.attrs.fallback),
     ]
   },
   renderText({ node }) {
     return formatVariable(node.attrs.name, node.attrs.fallback)
-  },
-  addCommands() {
-    return {
-      insertVariable:
-        (attrs) =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name, attrs }),
-    }
   },
   renderToReactEmail({ node }) {
     return formatVariable(node.attrs?.name ?? "", node.attrs?.fallback ?? "")
@@ -89,7 +83,7 @@ export const Variable = EmailNode.create({
 /* ---------------------------------------------------------------- youtube */
 
 /** Email cannot play video, so this is the video's thumbnail linking out. */
-export const Youtube = EmailNode.create({
+const Youtube = EmailNode.create({
   name: "youtube",
   group: "block",
   atom: true,
@@ -114,44 +108,25 @@ export const Youtube = EmailNode.create({
   },
   renderHTML({ node }) {
     const id = youtubeVideoId(node.attrs.video)
-    const frame = {
-      "data-youtube": node.attrs.video,
-      class: "node-youtube py-1",
-    }
-    if (!id) {
-      return [
-        "div",
-        frame,
-        [
-          "div",
-          {
-            class:
-              "rounded-md border border-dashed border-[#d4d4d4] p-6 text-center text-sm text-[#737373]",
-          },
-          "Add a YouTube link in the side panel",
-        ],
-      ]
-    }
     return [
       "div",
-      frame,
-      [
-        "img",
-        {
-          src: youtubeThumbnailUrl(id),
-          alt: node.attrs.alt,
-          style: `display:block;max-width:100%;width:${node.attrs.width}px;margin:${alignMargin(node.attrs.alignment)}`,
-        },
-      ],
+      { "data-youtube": node.attrs.video, class: "node-youtube" },
+      id
+        ? [
+            "img",
+            {
+              src: youtubeThumbnailUrl(id),
+              alt: node.attrs.alt,
+              style: inlineStyle({
+                display: "block",
+                maxWidth: "100%",
+                width: node.attrs.width,
+                margin: alignMargin(node.attrs.alignment),
+              }),
+            },
+          ]
+        : placeholder("Add a YouTube link in the side panel"),
     ]
-  },
-  addCommands() {
-    return {
-      insertYoutube:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name }),
-    }
   },
   renderToReactEmail({ node }) {
     const id = youtubeVideoId(String(node.attrs?.video ?? ""))
@@ -176,7 +151,7 @@ export const Youtube = EmailNode.create({
 
 /* ----------------------------------------------------------------- spacer */
 
-export const Spacer = EmailNode.create({
+const Spacer = EmailNode.create({
   name: "spacer",
   group: "block",
   atom: true,
@@ -200,17 +175,9 @@ export const Spacer = EmailNode.create({
       {
         "data-spacer": node.attrs.height,
         class: "node-spacer",
-        style: `height:${node.attrs.height}px`,
+        style: inlineStyle({ height: node.attrs.height }),
       },
     ]
-  },
-  addCommands() {
-    return {
-      insertSpacer:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name }),
-    }
   },
   renderToReactEmail({ node }) {
     const height = Number(node.attrs?.height) || 24
@@ -224,24 +191,10 @@ export const Spacer = EmailNode.create({
 
 /* ------------------------------------------------------------------- html */
 
-/* Markup from the author, shown in their own editor: scripts and inline
-   handlers are dropped so a pasted snippet cannot run here. */
-function inertHtml(code: string): string {
-  const doc = new DOMParser().parseFromString(code, "text/html")
-  for (const element of Array.from(doc.body.querySelectorAll("*"))) {
-    if (["SCRIPT", "IFRAME", "OBJECT", "EMBED"].includes(element.tagName)) {
-      element.remove()
-      continue
-    }
-    for (const attr of Array.from(element.attributes)) {
-      if (attr.name.startsWith("on")) element.removeAttribute(attr.name)
-    }
-  }
-  return doc.body.innerHTML
-}
-
-/** Hand-written markup, sent exactly as written. */
-export const RawHtml = EmailNode.create({
+/** Hand-written markup, sent exactly as written. While editing it is shown
+    in a fully closed sandbox, the same way the email preview is: its styles
+    cannot reach the dashboard and nothing in it can run. */
+const RawHtml = EmailNode.create({
   name: "html",
   group: "block",
   atom: true,
@@ -264,10 +217,19 @@ export const RawHtml = EmailNode.create({
     return ({ node }) => {
       const dom = document.createElement("div")
       dom.className = "node-html"
+      const frame = document.createElement("iframe")
+      frame.setAttribute("sandbox", "")
+      frame.title = "HTML block"
+      const hint = document.createElement("div")
+      hint.className = "node-placeholder-box"
+      hint.textContent = "Write HTML in the side panel"
+
+      let painted: string | null = null
       const paint = (code: string) => {
-        dom.innerHTML = code.trim()
-          ? inertHtml(code)
-          : '<div class="rounded-md border border-dashed border-[#d4d4d4] p-6 text-center text-sm text-[#737373]">Write HTML in the side panel</div>'
+        if (code === painted) return
+        painted = code
+        frame.srcdoc = code
+        dom.replaceChildren(code.trim() ? frame : hint)
       }
       paint(node.attrs.code)
       return {
@@ -278,14 +240,6 @@ export const RawHtml = EmailNode.create({
           return true
         },
       }
-    }
-  },
-  addCommands() {
-    return {
-      insertHtml:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name }),
     }
   },
   renderToReactEmail({ node }) {
@@ -299,20 +253,17 @@ export const RawHtml = EmailNode.create({
 
 /* ----------------------------------------------------------------- footer */
 
-/* A footer reads as small print unless the theme or the block says otherwise. */
-const FOOTER_STYLE = {
+/* A footer reads as small print unless the block says otherwise. The theme
+   has no footer group to put this in, so the default lives with the node. */
+const FOOTER_STYLE: CSSProperties = {
   fontSize: 12,
   lineHeight: "18px",
   color: "#6b7280",
   textAlign: "center",
-} as const
+}
 
-const FOOTER_EDITOR_STYLE =
-  "font-size:12px;line-height:18px;color:#6b7280;text-align:center"
-
-/** The closing note with the opt-out link. Its name matches the theme's
-    `footer` group, which is where its look comes from. */
-export const Footer = EmailNode.create({
+/** The closing note with the opt-out link. */
+const Footer = EmailNode.create({
   name: "footer",
   group: "block",
   content: "inline*",
@@ -328,51 +279,12 @@ export const Footer = EmailNode.create({
         {
           "data-footer": "",
           class: "node-footer",
-          style: FOOTER_EDITOR_STYLE,
+          style: inlineStyle(FOOTER_STYLE),
         },
         HTMLAttributes
       ),
       0,
     ]
-  },
-  addCommands() {
-    return {
-      insertFooter:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({
-            type: this.name,
-            content: [
-              {
-                type: "text",
-                text: "You are receiving this email because you subscribed. ",
-              },
-              {
-                type: "text",
-                text: "Unsubscribe",
-                marks: [
-                  { type: "link", attrs: { href: UNSUBSCRIBE_VARIABLE } },
-                ],
-              },
-            ],
-          }),
-      /* Not a node of its own: a centred line of links, edited like any text. */
-      insertSocialLinks:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({
-            type: "paragraph",
-            attrs: { alignment: "center" },
-            content: ["X", "LinkedIn", "GitHub"].flatMap((label, index) => [
-              ...(index ? [{ type: "text", text: "  ·  " }] : []),
-              {
-                type: "text",
-                text: label,
-                marks: [{ type: "link", attrs: { href: "#" } }],
-              },
-            ]),
-          }),
-    }
   },
   renderToReactEmail({ children, style }) {
     return (

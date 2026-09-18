@@ -5,6 +5,11 @@ import {
   AlignCenterIcon,
   AlignLeftIcon,
   AlignRightIcon,
+  BoldIcon,
+  CodeIcon,
+  ItalicIcon,
+  StrikethroughIcon,
+  UnderlineIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -141,11 +146,31 @@ export function SegmentedToggle<T extends string>({
 
 export type EmailAlign = "left" | "center" | "right"
 
-const ALIGN_ITEMS: SegmentedItem<EmailAlign>[] = [
+export const ALIGN_ITEMS: (SegmentedItem<EmailAlign> & {
+  icon: LucideIcon
+})[] = [
   { value: "left", label: "Align left", icon: AlignLeftIcon },
   { value: "center", label: "Align center", icon: AlignCenterIcon },
   { value: "right", label: "Align right", icon: AlignRightIcon },
 ]
+
+/** The inline marks a run of text can carry, by their engine names. */
+export const TEXT_MARKS: { name: string; label: string; icon: LucideIcon }[] = [
+  { name: "bold", label: "Bold", icon: BoldIcon },
+  { name: "italic", label: "Italic", icon: ItalicIcon },
+  { name: "underline", label: "Underline", icon: UnderlineIcon },
+  { name: "strike", label: "Strikethrough", icon: StrikethroughIcon },
+  { name: "code", label: "Inline code", icon: CodeIcon },
+]
+
+/* The editor's floating pieces (rail, "/" menu, bubble toolbars) sit outside
+   a Popover, so they take the popover's look from here. */
+export const FLOATING_SURFACE =
+  "rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-float"
+
+/** One row of an insert menu. */
+export const MENU_ROW =
+  "flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-none select-none [&_svg:not([class*='size-'])]:size-4"
 
 export function AlignField({
   value,

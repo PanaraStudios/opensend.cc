@@ -8,7 +8,6 @@ import { GripVerticalIcon } from "lucide-react"
 
 import {
   insertAtCaret,
-  insertAtPosition,
   PALETTE_DRAG_TYPE,
   PALETTE_ITEMS,
   type PaletteItem,
@@ -24,15 +23,6 @@ import type { Broadcast } from "@/lib/dashboard/types"
    theme's `body` and `container` groups style the first two, so the canvas
    reads like the sent email. */
 
-function themeBox(
-  css: Record<string, React.CSSProperties> | null,
-  key: "body" | "container"
-): React.CSSProperties {
-  /* Copied because the engine's style maps have no prototype, which React's
-     style handling does not accept. */
-  return { ...css?.[key] }
-}
-
 export function EmailCanvas({
   item,
   editor,
@@ -45,10 +35,13 @@ export function EmailCanvas({
   onSendAtChange: (value: number | null) => void
 }) {
   const theming = useEmailTheming(editor)
-  const css = React.useMemo(
-    () => (theming ? stylesToCss(theming.styles, theming.theme) : null),
-    [theming]
-  )
+  const css = React.useMemo(() => {
+    if (!theming) return { body: {}, container: {} }
+    const styles = stylesToCss(theming.styles, theming.theme)
+    /* Copied because the engine's style maps have no prototype, which
+         React's style handling does not accept. */
+    return { body: { ...styles.body }, container: { ...styles.container } }
+  }, [theming])
 
   function insertBlock(entry: PaletteItem) {
     insertAtCaret(editor, entry)
@@ -58,14 +51,17 @@ export function EmailCanvas({
     editor
       .chain()
       .focus()
-      .insertVariable({ name: variable.name, fallback: variable.fallback })
+      .insertContent({
+        type: "variable",
+        attrs: { name: variable.name, fallback: variable.fallback },
+      })
       .run()
   }
 
   return (
     <div
-      className="relative flex min-h-full justify-center px-3 py-6"
-      style={themeBox(css, "body")}
+      className="relative flex min-h-full justify-center"
+      style={css.body}
       data-testid="editor-canvas"
     >
       {/* The track spans the whole canvas so the sticky rail inside it holds
@@ -81,7 +77,7 @@ export function EmailCanvas({
         id="email-paper"
         data-testid="email-paper"
         className="relative max-w-full bg-white text-black"
-        style={themeBox(css, "container")}
+        style={css.container}
       >
         <EmailHeaderForm
           item={item}
@@ -113,10 +109,9 @@ export function EmailCanvas({
               left: event.clientX,
               top: event.clientY,
             })
-            if (spot) insertAtPosition(editor, entry, spot.pos)
-            else insertAtCaret(editor, entry)
+            insertAtCaret(editor, entry, spot?.pos)
           }}
-          className="pt-3 [&_.ProseMirror]:!bg-transparent [&_.ProseMirror]:!p-0 [&_.ProseMirror]:outline-none [&_.node-container]:!w-auto [&_.node-container]:!rounded-none [&_.node-container]:!border-0 [&_.node-container]:!bg-transparent [&_.node-container]:!p-0"
+          className="pt-3"
           data-testid="email-content"
         />
         <SlashMenu />

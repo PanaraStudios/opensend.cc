@@ -14,6 +14,13 @@ function text(value: string, href?: string): JSONContent {
     : { type: "text", text: value }
 }
 
+/** Links in a row, joined by a separator: a nav line, a social line. */
+function linkRow(labels: string[], href: string, separator: string) {
+  return labels.flatMap((label, index) =>
+    index ? [text(separator), text(label, href)] : [text(label, href)]
+  )
+}
+
 function paragraph(content: JSONContent[], alignment: Align = "left") {
   return { type: "paragraph", attrs: { alignment }, content }
 }
@@ -50,13 +57,7 @@ const HEADER: JSONContent[] = [
   section([
     paragraph([text("Your brand")], "center"),
     paragraph(
-      [
-        text("Product", "https://example.com"),
-        text("   ·   "),
-        text("Pricing", "https://example.com"),
-        text("   ·   "),
-        text("Blog", "https://example.com"),
-      ],
+      linkRow(["Product", "Pricing", "Blog"], "https://example.com", "   ·   "),
       "center"
     ),
   ]),
@@ -102,25 +103,25 @@ const CALL_TO_ACTION: JSONContent[] = [
   ),
 ]
 
+/** A centred line of links, edited like any other text. */
+export const SOCIAL_LINKS: JSONContent = paragraph(
+  linkRow(["X", "LinkedIn", "GitHub"], "#", "  ·  "),
+  "center"
+)
+
+/** The closing note with the opt-out link. */
+export const FOOTER: JSONContent = {
+  type: "footer",
+  content: [
+    text("You are receiving this email because you subscribed. "),
+    text("Unsubscribe", UNSUBSCRIBE_VARIABLE),
+  ],
+}
+
 const SIGN_OFF: JSONContent[] = [
   { type: "horizontalRule" },
-  paragraph(
-    [
-      text("X", "#"),
-      text("  ·  "),
-      text("LinkedIn", "#"),
-      text("  ·  "),
-      text("GitHub", "#"),
-    ],
-    "center"
-  ),
-  {
-    type: "footer",
-    content: [
-      text("You are receiving this email because you subscribed. "),
-      text("Unsubscribe", UNSUBSCRIBE_VARIABLE),
-    ],
-  },
+  SOCIAL_LINKS,
+  FOOTER,
 ]
 
 export const PATTERNS = {
