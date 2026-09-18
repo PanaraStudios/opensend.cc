@@ -35,6 +35,11 @@
   --bg-subtle: #f5f5f5;
   --surface: #ffffff;
   --surface-tint: #fafafa;
+  /* The fill of a form field: the page colour in light, a raised surface in
+     dark. One theme-aware token, so a wrapper's single `bg-transparent`
+     clears it in both themes. A `dark:` fill beside the light one would
+     survive that override and paint a square box inside rounded frames. */
+  --field: var(--bg);
   --border: #e5e5e5;
   --border-strong: #d4d4d4;
   --table-divider: var(--border);
@@ -259,6 +264,7 @@
   --bg-subtle: #19191a;
   --surface: #141415;
   --surface-tint: #161616;
+  --field: var(--surface);
   --border: rgb(255 255 255 / 0.1);
   --border-strong: rgb(255 255 255 / 0.15);
   --table-divider: rgb(255 255 255 / 0.06);
@@ -395,6 +401,7 @@
   --color-background-subtle: var(--background-subtle);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-field: var(--field);
   --color-surface-tint: var(--surface-tint);
   --color-glass: var(--glass-fill);
   --color-glass-soft: var(--glass-fill-soft);
