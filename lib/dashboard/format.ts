@@ -3,6 +3,7 @@ import { format } from "date-fns"
 import { REGIONS } from "./types"
 import type {
   ApiKeyPermission,
+  AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
   DomainStatus,
@@ -258,6 +259,17 @@ export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
 export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {
   enabled: "success",
   disabled: "secondary",
+}
+
+export const AUTOMATION_RUN_STATUS_TONE: Record<
+  AutomationRunStatus | "skipped",
+  BadgeTone
+> = {
+  running: "warning",
+  completed: "success",
+  failed: "destructive",
+  cancelled: "secondary",
+  skipped: "outline",
 }
 
 export const EXPORT_STATUS_TONE: Record<ExportStatus, BadgeTone> = {

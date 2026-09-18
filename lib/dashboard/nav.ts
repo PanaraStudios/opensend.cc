@@ -48,6 +48,11 @@ export const EMAIL_TABS: SectionTabs = [
   { href: "/emails/suppressions", title: "Suppressions" },
 ]
 
+export const AUTOMATION_TABS: SectionTabs = [
+  { href: "/automations", title: "Automations" },
+  { href: "/automations/events", title: "Events" },
+]
+
 export const AUDIENCE_TABS: SectionTabs = [
   { href: "/contacts", title: "Contacts" },
   { href: "/properties", title: "Properties" },

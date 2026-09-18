@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "@/components/ui/toast"
+import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import {
   ConfirmDialog,
   DocsCode,
@@ -31,6 +32,27 @@ import {
   templatePublishLabel,
 } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
+
+/* The email itself, drawn small: a 600px sheet at half size, cut off by the
+   card. It is a picture of the template, so it takes no clicks or focus. */
+export function TemplateThumbnail({
+  item,
+}: {
+  item: Pick<EmailTemplate, "name" | "html">
+}) {
+  return (
+    <div
+      inert
+      className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted"
+    >
+      <div className="absolute top-[18%] left-1/2 h-[200%] w-[600px] origin-top -translate-x-1/2 scale-50 overflow-hidden rounded-t-2xl bg-white shadow-panel">
+        {item.html.trim() ? (
+          <EmailPreviewFrame html={item.html} title={item.name} />
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
 export const TEMPLATE_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },

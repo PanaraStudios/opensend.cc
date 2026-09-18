@@ -7,6 +7,9 @@ import type {
   ApiKey,
   ApiLog,
   Automation,
+  AutomationEvent,
+  AutomationRun,
+  AutomationRunStep,
   Broadcast,
   Contact,
   ContactProperty,
@@ -783,22 +786,217 @@ const templates: EmailTemplate[] = [
   },
 ]
 
+const automationEvents: AutomationEvent[] = [
+  {
+    id: "evt_user_created",
+    name: "user.created",
+    schema: [
+      { key: "plan", type: "string" },
+      { key: "seats", type: "number" },
+    ],
+    createdAt: daysAgo(16),
+  },
+  {
+    id: "evt_onboarding_completed",
+    name: "onboarding.completed",
+    schema: [],
+    createdAt: daysAgo(16),
+  },
+  {
+    id: "evt_subscription_cancelled",
+    name: "subscription.cancelled",
+    schema: [{ key: "reason", type: "string" }],
+    createdAt: daysAgo(9),
+  },
+]
+
 const automations: Automation[] = [
   {
     id: "atm_onboard",
     name: "New customer onboarding",
     status: "enabled",
-    trigger: "contact.created",
+    trigger: "user.created",
     createdAt: daysAgo(15),
-    runs: 42,
+    updatedAt: daysAgo(12),
+    steps: [
+      {
+        key: "send_welcome",
+        type: "send_email",
+        templateId: "tpl_welcome",
+        subject: "",
+        from: "",
+        replyTo: "",
+        variables: {},
+      },
+      {
+        key: "wait_for_onboarding",
+        type: "wait_for_event",
+        eventName: "onboarding.completed",
+        timeout: "3 days",
+        received: [
+          {
+            key: "add_to_customers",
+            type: "add_to_segment",
+            segmentId: "seg_customers",
+          },
+        ],
+        timedOut: [
+          {
+            key: "is_team_plan",
+            type: "condition",
+            match: "and",
+            rules: [{ field: "event.plan", operator: "eq", value: "team" }],
+            met: [
+              {
+                key: "send_nudge",
+                type: "send_email",
+                templateId: "tpl_reset",
+                subject: "Need a hand getting set up?",
+                from: "",
+                replyTo: "",
+                variables: {},
+              },
+            ],
+            notMet: [],
+          },
+        ],
+      },
+    ],
   },
   {
     id: "atm_winback",
-    name: "Win-back after unsubscribe",
+    name: "Win-back after cancelling",
     status: "disabled",
-    trigger: "contact.unsubscribed",
+    trigger: "subscription.cancelled",
     createdAt: daysAgo(9),
-    runs: 3,
+    updatedAt: daysAgo(9),
+    steps: [
+      { key: "cool_off", type: "delay", duration: "1 week" },
+      {
+        key: "send_offer",
+        type: "send_email",
+        templateId: "tpl_invoice",
+        subject: "",
+        from: "",
+        replyTo: "",
+        variables: {},
+      },
+    ],
+  },
+]
+
+function seedRunStep(
+  key: string,
+  type: AutomationRunStep["type"],
+  status: AutomationRunStep["status"],
+  at: number,
+  extra: Partial<Pick<AutomationRunStep, "output" | "error">> = {}
+): AutomationRunStep {
+  return {
+    key,
+    type,
+    status,
+    startedAt: at,
+    completedAt: status === "running" ? null : at,
+    output: null,
+    error: null,
+    ...extra,
+  }
+}
+
+const automationRuns: AutomationRun[] = [
+  {
+    id: "run_1",
+    automationId: "atm_onboard",
+    status: "running",
+    contactEmail: "grace@hopper.dev",
+    payload: { plan: "team", seats: 12 },
+    startedAt: hoursAgo(5),
+    completedAt: null,
+    steps: [
+      seedRunStep("start", "trigger", "completed", hoursAgo(5), {
+        output: { event_name: "user.created" },
+      }),
+      seedRunStep("send_welcome", "send_email", "completed", hoursAgo(5), {
+        output: { to: "grace@hopper.dev" },
+      }),
+      seedRunStep(
+        "wait_for_onboarding",
+        "wait_for_event",
+        "running",
+        hoursAgo(5)
+      ),
+    ],
+  },
+  {
+    id: "run_2",
+    automationId: "atm_onboard",
+    status: "completed",
+    contactEmail: "ada@example.com",
+    payload: { plan: "pro", seats: 3 },
+    startedAt: daysAgo(3),
+    completedAt: daysAgo(2),
+    steps: [
+      seedRunStep("start", "trigger", "completed", daysAgo(3), {
+        output: { event_name: "user.created" },
+      }),
+      seedRunStep("send_welcome", "send_email", "completed", daysAgo(3), {
+        output: { to: "ada@example.com" },
+      }),
+      seedRunStep(
+        "wait_for_onboarding",
+        "wait_for_event",
+        "completed",
+        daysAgo(2),
+        { output: { event_received: true } }
+      ),
+      seedRunStep(
+        "add_to_customers",
+        "add_to_segment",
+        "completed",
+        daysAgo(2)
+      ),
+    ],
+  },
+  {
+    id: "run_3",
+    automationId: "atm_onboard",
+    status: "failed",
+    contactEmail: "alan@bletchley.uk",
+    payload: { plan: "team", seats: 40 },
+    startedAt: daysAgo(6),
+    completedAt: daysAgo(6),
+    steps: [
+      seedRunStep("start", "trigger", "completed", daysAgo(6), {
+        output: { event_name: "user.created" },
+      }),
+      seedRunStep("send_welcome", "send_email", "failed", daysAgo(6), {
+        error: "The sender's domain is not verified",
+      }),
+    ],
+  },
+  {
+    id: "run_4",
+    automationId: "atm_onboard",
+    status: "cancelled",
+    contactEmail: "margaret@hamilton.space",
+    payload: { plan: "free", seats: 1 },
+    startedAt: daysAgo(8),
+    completedAt: daysAgo(7),
+    steps: [
+      seedRunStep("start", "trigger", "completed", daysAgo(8), {
+        output: { event_name: "user.created" },
+      }),
+      seedRunStep("send_welcome", "send_email", "completed", daysAgo(8), {
+        output: { to: "margaret@hamilton.space" },
+      }),
+      seedRunStep(
+        "wait_for_onboarding",
+        "wait_for_event",
+        "cancelled",
+        daysAgo(7)
+      ),
+    ],
   },
 ]
 
@@ -1049,6 +1247,8 @@ export const SEED_STATE: DashboardState = {
   broadcasts,
   templates,
   automations,
+  automationEvents,
+  automationRuns,
   webhooks,
   webhookDeliveries,
   logs,

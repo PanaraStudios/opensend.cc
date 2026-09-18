@@ -261,13 +261,133 @@ export type EmailTemplate = EmailDraft & {
   publishedAt: number | null
 }
 
+export const AUTOMATION_RULE_OPERATORS = [
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "contains",
+  "starts_with",
+  "ends_with",
+  "exists",
+  "is_empty",
+] as const
+export type AutomationRuleOperator = (typeof AUTOMATION_RULE_OPERATORS)[number]
+
+/** One comparison. `field` is scoped: `event.plan`, `contact.email`. */
+export type AutomationRule = {
+  field: string
+  operator: AutomationRuleOperator
+  value: string
+}
+
+/** One change an "update contact" step makes. `property` is `first_name`,
+    `last_name`, `unsubscribed` or a custom property's key; the value is a
+    literal, or a reference such as `event.plan`. */
+export type AutomationContactField = {
+  property: string
+  action: "clear" | "change"
+  value: string
+}
+
+export const AUTOMATION_STEP_TYPES = [
+  "condition",
+  "delay",
+  "wait_for_event",
+  "send_email",
+  "contact_update",
+  "contact_delete",
+  "add_to_segment",
+] as const
+export type AutomationStepType = (typeof AUTOMATION_STEP_TYPES)[number]
+
+/** A step of a workflow. The two that branch hold the steps of each path,
+    so a workflow is a tree and a path through it is a run. */
+export type AutomationStep = { key: string } & (
+  | {
+      type: "condition"
+      match: "and" | "or"
+      rules: AutomationRule[]
+      met: AutomationStep[]
+      notMet: AutomationStep[]
+    }
+  | { type: "delay"; duration: string }
+  | {
+      type: "wait_for_event"
+      eventName: string
+      timeout: string
+      received: AutomationStep[]
+      timedOut: AutomationStep[]
+    }
+  | {
+      type: "send_email"
+      templateId: string
+      /** Empty keeps what the template says. */
+      subject: string
+      from: string
+      replyTo: string
+      /** What fills each of the template's variables: a literal, or a
+          reference such as `event.first_name`. */
+      variables: Record<string, string>
+    }
+  | { type: "contact_update"; fields: AutomationContactField[] }
+  | { type: "contact_delete" }
+  | { type: "add_to_segment"; segmentId: string }
+)
+
 export type Automation = {
   id: string
   name: string
   status: AutomationStatus
+  /** The name of the event that starts a run. */
   trigger: string
+  steps: AutomationStep[]
   createdAt: number
-  runs: number
+  updatedAt: number
+}
+
+export const AUTOMATION_EVENT_FIELD_TYPES = [
+  "string",
+  "number",
+  "boolean",
+  "date",
+] as const
+export type AutomationEventFieldType =
+  (typeof AUTOMATION_EVENT_FIELD_TYPES)[number]
+
+/** A custom event an app sends, and the payload it promises. */
+export type AutomationEvent = {
+  id: string
+  name: string
+  schema: { key: string; type: AutomationEventFieldType }[]
+  createdAt: number
+}
+
+export type AutomationRunStatus =
+  "running" | "completed" | "failed" | "cancelled"
+
+export type AutomationRunStep = {
+  key: string
+  type: AutomationStepType | "trigger"
+  status: AutomationRunStatus | "skipped"
+  startedAt: number
+  completedAt: number | null
+  output: Record<string, unknown> | null
+  error: string | null
+}
+
+/** One contact going through a workflow, started by one event. */
+export type AutomationRun = {
+  id: string
+  automationId: string
+  status: AutomationRunStatus
+  contactEmail: string
+  payload: Record<string, unknown>
+  startedAt: number
+  completedAt: number | null
+  steps: AutomationRunStep[]
 }
 
 export type Webhook = {
@@ -366,6 +486,8 @@ export type DashboardState = {
   broadcasts: Broadcast[]
   templates: EmailTemplate[]
   automations: Automation[]
+  automationEvents: AutomationEvent[]
+  automationRuns: AutomationRun[]
   webhooks: Webhook[]
   webhookDeliveries: WebhookDelivery[]
   logs: ApiLog[]

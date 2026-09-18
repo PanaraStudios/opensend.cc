@@ -15,6 +15,7 @@ import {
   EyeOffIcon,
   InfoIcon,
   MoreHorizontalIcon,
+  PlusIcon,
   SearchIcon,
   XIcon,
   type LucideIcon,
@@ -63,6 +64,13 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import {
   Item,
@@ -111,6 +119,7 @@ import { DateRangePicker } from "@/components/dashboard/date-range-picker"
 import { cn } from "@/lib/utils"
 import { DEMO_NOW } from "@/lib/dashboard/data"
 import {
+  AUTOMATION_RUN_STATUS_TONE,
   AUTOMATION_STATUS_TONE,
   automationStatusLabel,
   BROADCAST_STATUS_TONE,
@@ -133,6 +142,7 @@ import {
 import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
 import type {
+  AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
   DomainStatus,
@@ -749,6 +759,20 @@ export function AutomationStatusBadge({
   )
 }
 
+/** A run, or one step of it: only a step can be skipped. */
+export function AutomationRunStatusBadge({
+  status,
+}: {
+  status: AutomationRunStatus | "skipped"
+}) {
+  return (
+    <ToneBadge
+      tone={AUTOMATION_RUN_STATUS_TONE[status]}
+      label={sentenceCase(status)}
+    />
+  )
+}
+
 export function ExportStatusBadge({ status }: { status: ExportStatus }) {
   return (
     <ToneBadge
@@ -1139,12 +1163,15 @@ export function OptionSelect({
   align = "start",
   className,
   disabled,
+  placeholder,
   "aria-label": ariaLabel,
 }: {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
   items: readonly SelectOption[]
+  /** Shown while no item is chosen. */
+  placeholder?: string
   id?: string
   name?: string
   size?: "sm" | "default"
@@ -1170,31 +1197,128 @@ export function OptionSelect({
         aria-label={ariaLabel}
         className={className}
       >
-        <SelectValue />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent align={align} alignItemWithTrigger={false}>
         <SelectGroup>
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.dotClassName ? (
-                <span className="inline-flex items-center gap-2 leading-none">
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      item.dotClassName
-                    )}
-                  />
-                  <span>{item.label}</span>
-                </span>
-              ) : (
-                item.label
-              )}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    item.dotClassName
+                  )}
+                />
+              ) : null}
+              {/* The list grows to its longest label; one longer than the
+                  screen is the only thing left to cut. */}
+              <span className="truncate">{item.label}</span>
             </SelectItem>
           ))}
         </SelectGroup>
       </SelectContent>
     </Select>
+  )
+}
+
+type Suggestion = { value: string; create: boolean }
+
+/** A text value that is typed or picked: the known values are offered as it
+    is typed, and one that is not among them can be added under `createLabel`.
+    Nothing changes until a row is picked. */
+export function SuggestInput({
+  id,
+  value,
+  onChange,
+  options,
+  placeholder,
+  createLabel = "Create",
+  disabled,
+  className,
+  "aria-label": ariaLabel,
+}: {
+  id?: string
+  value: string
+  onChange: (value: string) => void
+  options: readonly string[]
+  placeholder?: string
+  createLabel?: string
+  disabled?: boolean
+  className?: string
+  "aria-label"?: string
+}) {
+  const [query, setQuery] = React.useState(value)
+  /* What the field falls back to when it closes without a pick. The pick
+     lands here first: the stored value arrives a render later. */
+  const settled = React.useRef(value)
+  const [seen, setSeen] = React.useState(value)
+  if (seen !== value) {
+    setSeen(value)
+    setQuery(value)
+  }
+  React.useEffect(() => {
+    settled.current = value
+  }, [value])
+
+  const items = React.useMemo<Suggestion[]>(() => {
+    const text = query.trim()
+    /* The settled value in the field lists every option, not just itself. */
+    const needle = text === value ? "" : text.toLowerCase()
+    const matches = options
+      .filter((option) => option.toLowerCase().includes(needle))
+      .map((option) => ({ value: option, create: false }))
+    return text && !options.includes(text)
+      ? [...matches, { value: text, create: true }]
+      : matches
+  }, [options, query, value])
+
+  return (
+    <Combobox
+      items={items}
+      filter={null}
+      autoHighlight
+      disabled={disabled}
+      value={null}
+      inputValue={query}
+      itemToStringLabel={(item: Suggestion) => item.value}
+      onInputValueChange={setQuery}
+      onOpenChange={(open) => {
+        if (!open) setQuery(settled.current)
+      }}
+      onValueChange={(item: Suggestion | null) => {
+        if (!item) return
+        settled.current = item.value
+        setQuery(item.value)
+        onChange(item.value)
+      }}
+    >
+      <ComboboxInput
+        id={id}
+        className={cn("w-full", className)}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        disabled={disabled}
+        showTrigger={false}
+      />
+      <ComboboxContent>
+        <ComboboxList>
+          {(item: Suggestion) => (
+            <ComboboxItem
+              key={`${item.create}:${item.value}`}
+              value={item}
+              className="pr-1.5"
+            >
+              {item.create ? <PlusIcon /> : null}
+              <span className="min-w-0 flex-1 truncate">
+                {item.create ? `${createLabel} ${item.value}` : item.value}
+              </span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 
