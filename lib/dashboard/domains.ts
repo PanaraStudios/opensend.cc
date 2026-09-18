@@ -206,26 +206,56 @@ export function deriveDomainStatus(
 
 /* ---------------------------------------------------------------- events */
 
-/** Milestones reached so far. Each one is recorded once and keeps the time
-    it happened, so turning receiving on later cannot rewrite history. */
+/** The milestone the current status stands at, if it is one of them. A
+    domain sits at exactly one of these at a time. */
+function statusMilestone(status: DomainStatus): DomainEventType | null {
+  if (status === "verified") return "verified"
+  if (status === "partially_verified") return "partially_verified"
+  return null
+}
+
+const STATUS_MILESTONES: DomainEventType[] = ["partially_verified", "verified"]
+
+/** Milestones this domain has reached, newest last. "Domain added" and "DNS
+    verified" are one-time facts, but the two status milestones are exclusive:
+    turning receiving on drops a verified domain back to partially verified, so
+    its verified event is no longer true and goes away. Re-verifying stamps a
+    fresh time, which keeps the trail in order. */
 export function domainEvents(
   domain: Domain,
   status: DomainStatus,
   records: DnsRecord[],
   now: number
 ): DomainEvent[] {
-  const events = [...(domain.events ?? [])]
-  const record = (type: DomainEventType, at: number) => {
-    if (!events.some((event) => event.type === type)) events.push({ type, at })
+  const milestone = statusMilestone(status)
+  const events = (domain.events ?? []).filter(
+    (event) =>
+      !STATUS_MILESTONES.includes(event.type) || event.type === milestone
+  )
+  if (!events.some((event) => event.type === "added")) {
+    events.unshift({ type: "added", at: domain.createdAt })
   }
-  record("added", domain.createdAt)
   const dkimVerified = records.some(
     (item) => item.kind === "DKIM" && item.status === "verified"
   )
-  if (dkimVerified) record("dns_verified", now)
-  if (status === "partially_verified") record("partially_verified", now)
-  if (status === "verified") record("verified", now)
-  return events
+  if (dkimVerified && !events.some((event) => event.type === "dns_verified")) {
+    events.push({ type: "dns_verified", at: now })
+  }
+  if (!milestone) return events
+
+  const reached = events.find((event) => event.type === milestone)
+  const latestOther = events.reduce(
+    (latest, event) =>
+      event.type === milestone ? latest : Math.max(latest, event.at),
+    0
+  )
+  /* Kept if it is still the latest thing that happened, re-stamped when an
+     earlier milestone has since been overtaken by a later one. */
+  if (reached && reached.at >= latestOther) return events
+  return [
+    ...events.filter((event) => event.type !== milestone),
+    { type: milestone, at: now },
+  ]
 }
 
 export type DomainEventStep = {

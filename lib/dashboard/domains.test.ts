@@ -19,10 +19,35 @@ import {
   validateDomainName,
   verifyDomainRecords,
 } from "./domains"
+import type { DomainEventStep } from "./domains"
 import type { DnsRecord, Domain, DomainStatus } from "./types"
 
 const NOW = Date.parse("2026-09-18T12:00:00.000Z")
 const CREATED = NOW - 86_400_000
+const LATER = 3_600_000
+
+function stepAt(
+  steps: readonly DomainEventStep[],
+  type: DomainEventStep["type"]
+): number | undefined {
+  return steps.find((step) => step.type === type)?.at
+}
+
+/** Every reached step happened no earlier than the one before it. */
+function assertChronological(
+  steps: readonly DomainEventStep[],
+  label = "trail"
+) {
+  const times = steps
+    .map((step) => step.at)
+    .filter((at): at is number => at !== undefined)
+  for (let index = 1; index < times.length; index += 1) {
+    assert.ok(
+      times[index] >= times[index - 1],
+      `${label}: ${steps.map((step) => `${step.label} ${step.at ?? "—"}`).join(" → ")}`
+    )
+  }
+}
 
 function record(
   kind: DnsRecord["kind"],
@@ -273,6 +298,81 @@ describe("domainEventSteps", () => {
       domainEventSteps(partial).map((step) => step.label),
       ["Domain added", "DNS verified", "Partially verified", "Domain verified"]
     )
+  })
+
+  it("un-reaches the verified step while the domain is partially verified", () => {
+    const verified = verifyDomainRecords(domain(), NOW)
+    const partial = reconcileDomain(
+      { ...verified, receiving: true },
+      NOW + LATER
+    )
+    assert.equal(partial.status, "partially_verified")
+    const steps = domainEventSteps(partial)
+    assert.equal(stepAt(steps, "verified"), undefined)
+    assert.equal(stepAt(steps, "partially_verified"), NOW + LATER)
+    assertChronological(steps)
+  })
+
+  it("re-stamps the verified step when a domain verifies again", () => {
+    const partial = reconcileDomain(
+      { ...verifyDomainRecords(domain(), NOW), receiving: true },
+      NOW + LATER
+    )
+    const again = verifyDomainRecords(partial, NOW + 2 * LATER)
+    assert.equal(again.status, "verified")
+    const steps = domainEventSteps(again)
+    assert.equal(stepAt(steps, "verified"), NOW + 2 * LATER)
+    /* The partial milestone no longer holds, so it leaves the trail. */
+    assert.equal(
+      steps.some((step) => step.type === "partially_verified"),
+      false
+    )
+    assertChronological(steps)
+  })
+
+  it("keeps every reachable state in chronological order", () => {
+    const fresh = reconcileDomain(domain(), NOW)
+    const pending = reconcileDomain(
+      domain({
+        records: [record("DKIM", "pending"), record("SPF", "pending")],
+      }),
+      NOW
+    )
+    const failed = reconcileDomain(
+      domain({
+        records: [record("DKIM", "verified"), record("SPF", "failed")],
+      }),
+      NOW + LATER
+    )
+    const verified = verifyDomainRecords(domain(), NOW)
+    const partial = reconcileDomain(
+      { ...verified, receiving: true },
+      NOW + LATER
+    )
+    const reverified = verifyDomainRecords(partial, NOW + 2 * LATER)
+    const partialAgain = reconcileDomain(
+      {
+        ...reverified,
+        receiving: false,
+        clickTracking: true,
+        trackingSubdomain: "links",
+      },
+      NOW + 3 * LATER
+    )
+    const states = [
+      fresh,
+      pending,
+      failed,
+      verified,
+      partial,
+      reverified,
+      partialAgain,
+    ]
+    for (const state of states) {
+      assertChronological(domainEventSteps(state), state.status)
+    }
+    assert.equal(partialAgain.status, "partially_verified")
+    assert.equal(stepAt(domainEventSteps(partialAgain), "verified"), undefined)
   })
 })
 
