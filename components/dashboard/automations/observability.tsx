@@ -58,6 +58,12 @@ const RUN_STATUS_ITEMS: readonly SelectOption[] = [
   ),
 ]
 
+/** The clock a run is measured against. The seeded runs live on the demo's
+    fixed clock; a test run is stamped with the real one. */
+function runClock(run: AutomationRun): number {
+  return run.startedAt > DEMO_NOW ? Date.now() : DEMO_NOW
+}
+
 /** A label over a value, inside a card of the graph. */
 function CardFact({
   label,
@@ -143,7 +149,8 @@ export function Observability({ automation }: { automation: Automation }) {
   const rows = runs.filter((run) => status === "all" || run.status === status)
   const { pageRows, pagination } = usePagination(rows)
   const selected =
-    tab === "runs" ? (runs.find((run) => run.id === selectedId) ?? null) : null
+    /* From the rows in view: a run the filters hide is not selected. */
+    tab === "runs" ? (rows.find((run) => run.id === selectedId) ?? null) : null
   /* One pass over the runs for everything the cards and the stats show,
      rather than one per card. */
   const { metrics, rates, sent } = React.useMemo(
@@ -236,7 +243,7 @@ export function Observability({ automation }: { automation: Automation }) {
                       <RelativeTime at={run.startedAt} />
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
-                      {formatRunDuration(run, DEMO_NOW)}
+                      {formatRunDuration(run, runClock(run))}
                     </TableCell>
                   </TableRow>
                 ))}

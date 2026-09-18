@@ -166,7 +166,7 @@ function BuilderScreen({
   automation: Automation
   deleteAndLeave: (remove: () => void) => void
 }) {
-  const { updateAutomation, deleteAutomation } = useDashboard()
+  const { state, updateAutomation, deleteAutomation } = useDashboard()
   const toggle = useToggleAutomation()
   const [view, setView] = React.useState<BuilderView>("editor")
   /* The card showing its settings: the trigger, or a step by key. A blank
@@ -296,7 +296,18 @@ function BuilderScreen({
                   : (slot) => (
                       <AddStep
                         onAdd={(type) => {
-                          const step = newStep(type, automation.steps)
+                          const step = newStep(
+                            type,
+                            automation.steps,
+                            /* Steps its runs still name keep their keys. */
+                            state.automationRuns
+                              .filter(
+                                (run) => run.automationId === automation.id
+                              )
+                              .flatMap((run) =>
+                                run.steps.map((done) => done.key)
+                              )
+                          )
                           setSteps(insertStep(automation.steps, slot, step))
                           setSelected(step.key)
                         }}

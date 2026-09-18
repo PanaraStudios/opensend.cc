@@ -90,6 +90,7 @@ const TEAM_SAFE_PATHS = new Set<string>([
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
   ...EMAIL_TABS.map((item) => item.href),
   ...AUDIENCE_TABS.map((item) => item.href),
+  ...AUTOMATION_TABS.map((item) => item.href),
   ...SETTINGS_NAV.map((item) => item.href),
 ])
 

@@ -190,11 +190,14 @@ function placeStep(
 /** A blank step of a type, keyed so no two steps of a workflow collide. */
 export function newStep(
   type: AutomationStepType,
-  steps: readonly AutomationStep[]
+  steps: readonly AutomationStep[],
+  /** Keys of steps that are gone but still named by the run history. A new
+      step taking one would inherit that step's runs and numbers. */
+  retired: readonly string[] = []
 ): AutomationStep {
   const key = uniqueName(
     type,
-    flattenSteps(steps).map((step) => step.key),
+    [...flattenSteps(steps).map((step) => step.key), ...retired],
     "_"
   )
   switch (type) {
@@ -332,6 +335,28 @@ export function eventNameError(
   return null
 }
 
+/** A property name a rule or a reference can point at. */
+const PROPERTY_KEY = /^[A-Za-z0-9_]+$/
+
+/** An event's properties as they are saved: names trimmed, blank rows gone. */
+export function cleanSchema(
+  schema: AutomationEvent["schema"]
+): AutomationEvent["schema"] {
+  return schema
+    .map((field) => ({ ...field, key: field.key.trim() }))
+    .filter((field) => field.key)
+}
+
+export function schemaError(schema: AutomationEvent["schema"]): string | null {
+  const keys = cleanSchema(schema).map((field) => field.key)
+  const invalid = keys.find((key) => !PROPERTY_KEY.test(key))
+  if (invalid) {
+    return `"${invalid}" can only have letters, numbers and underscores`
+  }
+  const repeated = keys.find((key, index) => keys.indexOf(key) !== index)
+  return repeated ? `"${repeated}" is listed twice` : null
+}
+
 /** The automations an event starts or continues. */
 export function eventListeners(
   automations: readonly Pick<Automation, "id" | "trigger" | "steps">[],
@@ -376,7 +401,7 @@ export function ruleText(rule: AutomationRule): string {
 
 export function ruleError(rule: AutomationRule): string | null {
   if (!/^(event|contact)\.[A-Za-z0-9_.]+$/.test(rule.field.trim())) {
-    return "Choose a property"
+    return "Choose a property: letters, numbers, underscores and dots"
   }
   if (operatorTakesValue(rule.operator) && !rule.value.trim()) {
     return "Enter a value to compare with"
@@ -559,6 +584,20 @@ function resolveField(scope: RuleScope, field: string): unknown {
     )
 }
 
+/** A step's value: what a reference such as `event.plan` points at, or the
+    text itself when it is not one, or points at nothing. */
+function resolveValue(scope: RuleScope, value: string): unknown {
+  if (!/^(event|contact)\./.test(value.trim())) return value
+  return resolveField(scope, value) ?? value
+}
+
+/** The subscription is a flag, however the value was spelt. */
+function fieldValue(property: string, value: unknown): unknown {
+  return property === "unsubscribed"
+    ? value === true || value === "true"
+    : value
+}
+
 export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
   const actual = resolveField(scope, rule.field)
   const missing = actual === undefined || actual === null
@@ -675,7 +714,7 @@ export function startRun(input: {
   ]
   /* Assigned inside `walk`, which narrowing cannot see into. */
   let status = "completed" as AutomationRunStatus
-  let unsubscribed = contact.unsubscribed
+  let deleted = false
 
   const walk = (steps: readonly AutomationStep[]): boolean => {
     for (const step of steps) {
@@ -703,31 +742,44 @@ export function startRun(input: {
           break
         }
         case "send_email":
-          /* An unsubscribed contact is sent nothing; the rest still runs. */
-          if (unsubscribed) {
+          /* A contact who is gone or unsubscribed is sent nothing; the rest
+             still runs. */
+          if (deleted) {
+            record("skipped", { output: { reason: "contact deleted" } })
+          } else if (scope.contact.unsubscribed === true) {
             record("skipped", { output: { reason: "unsubscribed" } })
           } else {
             record("completed", { output: { to: contact.email } })
           }
           break
         case "contact_update": {
-          const flag = step.fields.find(
-            (field) => field.property === "unsubscribed"
+          /* Later steps see the contact as this one leaves it. */
+          const changes = Object.fromEntries(
+            step.fields.map((field) => [
+              field.property,
+              field.action === "clear"
+                ? null
+                : fieldValue(field.property, resolveValue(scope, field.value)),
+            ])
           )
-          if (flag) {
-            unsubscribed = flag.action === "change" && flag.value === "true"
+          const { first_name, last_name, unsubscribed, ...properties } = changes
+          scope.contact = {
+            ...scope.contact,
+            ...(first_name === undefined ? {} : { first_name }),
+            ...(last_name === undefined ? {} : { last_name }),
+            ...(unsubscribed === undefined ? {} : { unsubscribed }),
+            properties: {
+              ...(scope.contact.properties as Record<string, unknown>),
+              ...properties,
+            },
           }
-          record("completed", {
-            output: Object.fromEntries(
-              step.fields.map((field) => [
-                field.property,
-                field.action === "clear" ? null : field.value,
-              ])
-            ),
-          })
+          record("completed", { output: changes })
           break
         }
         case "contact_delete":
+          deleted = true
+          record("completed")
+          break
         case "add_to_segment":
           record("completed")
           break
@@ -858,9 +910,13 @@ export function stepMetrics(
 
 /* -------------------------------------------------------------- migration */
 
-/** Automations saved before they had steps were a name and a trigger. */
+/** Automations saved before they had steps were a name and a trigger. One
+    comes back stopped: it has nothing to run, and a running workflow cannot
+    be edited to give it something. */
 export function normalizeAutomation(
   item: Omit<Automation, "steps"> & Partial<Pick<Automation, "steps">>
 ): Automation {
-  return { ...item, steps: item.steps ?? [] }
+  return item.steps
+    ? { ...item, steps: item.steps }
+    : { ...item, steps: [], status: "disabled" }
 }

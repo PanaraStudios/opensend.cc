@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import {
   automationTasks,
+  cleanSchema,
   cancelledRun,
   durationError,
   formatDuration,
@@ -21,6 +22,7 @@ import {
   runStatusRates,
   replaceStep,
   samplePayload,
+  schemaError,
   startRun,
   stepProblem,
   stepMetrics,
@@ -131,6 +133,10 @@ describe("the workflow tree", () => {
     const first = newStep("send_email", [])
     assert.equal(first.key, "send_email")
     assert.equal(newStep("send_email", [first]).key, "send_email_2")
+  })
+
+  it("does not reuse the key of a step the run history still names", () => {
+    assert.equal(newStep("delay", [], ["delay", "delay_2"]).key, "delay_3")
   })
 })
 
@@ -324,6 +330,51 @@ describe("runs", () => {
     )
   })
 
+  it("resolves references and carries the contact forward", () => {
+    const result = run(
+      [
+        {
+          key: "opt_out",
+          type: "contact_update",
+          fields: [
+            { property: "unsubscribed", action: "change", value: "event.out" },
+            { property: "first_name", action: "change", value: "event.name" },
+          ],
+        },
+        {
+          key: "renamed",
+          type: "condition",
+          match: "and",
+          rules: [
+            { field: "contact.first_name", operator: "eq", value: "Eve" },
+          ],
+          met: [send("a")],
+          notMet: [],
+        },
+      ],
+      contact,
+      { out: true, name: "Eve" }
+    )
+    assert.deepEqual(result.steps[1]?.output, {
+      unsubscribed: true,
+      first_name: "Eve",
+    })
+    assert.deepEqual(
+      result.steps.map((step) => [step.key, step.status]),
+      [
+        ["start", "completed"],
+        ["opt_out", "completed"],
+        ["renamed", "completed"],
+        ["a", "skipped"],
+      ]
+    )
+  })
+
+  it("sends nothing to a contact the run has deleted", () => {
+    const result = run([{ key: "gone", type: "contact_delete" }, send("a")])
+    assert.deepEqual(result.steps.at(-1)?.output, { reason: "contact deleted" })
+  })
+
   it("cancels only a run that is waiting", () => {
     const waiting = run([{ key: "wait", type: "delay", duration: "1 day" }])
     const stopped = cancelledRun(waiting, 2000)
@@ -377,6 +428,28 @@ describe("event payloads", () => {
     assert.deepEqual(payloadErrors(event, samplePayload(event)), [])
   })
 
+  it("saves property names trimmed, and refuses odd or repeated ones", () => {
+    assert.deepEqual(
+      cleanSchema([
+        { key: " plan ", type: "string" },
+        { key: "  ", type: "number" },
+      ]),
+      [{ key: "plan", type: "string" }]
+    )
+    assert.equal(schemaError([{ key: "plan ", type: "string" }]), null)
+    assert.match(
+      schemaError([{ key: "signup-source", type: "string" }]) ?? "",
+      /letters, numbers and underscores/
+    )
+    assert.match(
+      schemaError([
+        { key: "plan", type: "string" },
+        { key: "plan", type: "number" },
+      ]) ?? "",
+      /twice/
+    )
+  })
+
   it("reports missing and mistyped fields", () => {
     assert.deepEqual(payloadErrors(event, { plan: 1, at: "nope" }), [
       "plan must be a string",
@@ -397,5 +470,20 @@ describe("migration", () => {
       createdAt: 5,
     })
     assert.deepEqual(next.steps, [])
+  })
+
+  it("stops a legacy automation that was enabled with nothing to run", () => {
+    const legacy = {
+      id: "atm_1",
+      name: "Old",
+      status: "enabled" as const,
+      trigger: "contact.created",
+      createdAt: 5,
+    }
+    assert.equal(normalizeAutomation(legacy).status, "disabled")
+    assert.equal(
+      normalizeAutomation({ ...legacy, steps: [] }).status,
+      "enabled"
+    )
   })
 })

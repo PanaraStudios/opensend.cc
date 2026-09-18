@@ -45,7 +45,11 @@ import {
   AutomationsDocsSheet,
   EventIcon,
 } from "@/components/dashboard/automations/shared"
-import { eventListeners, eventNameError } from "@/lib/dashboard/automation"
+import {
+  eventListeners,
+  eventNameError,
+  schemaError,
+} from "@/lib/dashboard/automation"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import {
@@ -211,14 +215,17 @@ function EventForm({
   const [name, setName] = React.useState(event?.name ?? "")
   const [schema, setSchema] = React.useState(event?.schema ?? [])
   const [error, setError] = React.useState<string | null>(null)
+  const [schemaProblem, setSchemaProblem] = React.useState<string | null>(null)
 
   const setField = (
     index: number,
     patch: Partial<AutomationEvent["schema"][number]>
-  ) =>
+  ) => {
+    setSchemaProblem(null)
     setSchema((fields) =>
       fields.map((field, at) => (at === index ? { ...field, ...patch } : field))
     )
+  }
 
   return (
     <DialogContent className="sm:max-w-md">
@@ -233,6 +240,11 @@ function EventForm({
           )
           if (problem) {
             setError(problem)
+            return
+          }
+          const schemaProblem = schemaError(schema)
+          if (schemaProblem) {
+            setSchemaProblem(schemaProblem)
             return
           }
           saveAutomationEvent({ id: event?.id, name, schema })
@@ -320,6 +332,7 @@ function EventForm({
               <PlusIcon data-icon="inline-start" />
               Add event property
             </Button>
+            {schemaProblem ? <FieldError>{schemaProblem}</FieldError> : null}
           </Field>
         </FieldGroup>
         <DialogFooter>

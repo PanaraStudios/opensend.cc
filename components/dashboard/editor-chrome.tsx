@@ -6,7 +6,7 @@ import { HouseIcon, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
-import { useDraft } from "@/components/dashboard/primitives"
+import { useDraftValue } from "@/components/dashboard/primitives"
 import { sentenceCase } from "@/lib/dashboard/format"
 
 /* The frame of a full-screen editor: a top bar that leads back to the list
@@ -32,7 +32,7 @@ export function EditorTopBar({
   /** The closing actions: undo, a send, a start. */
   children?: React.ReactNode
 }) {
-  const draft = useDraft(name, onRename)
+  const { draft, setDraft, commitDraft } = useDraftValue(name, onRename)
   return (
     <header
       data-testid="editor-topbar"
@@ -57,7 +57,15 @@ export function EditorTopBar({
         </Link>
         <span className="hidden text-sm text-faint-foreground sm:block">/</span>
         <input
-          {...draft}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          /* A name cannot be blank. The record would fall back to its own
+             default, which the field would not hear about when that is what
+             it already holds; so a blanked field goes back to the name. */
+          onBlur={() => {
+            if (draft.trim()) commitDraft()
+            else setDraft(name)
+          }}
           aria-label={`${sentenceCase(noun)} name`}
           data-testid="editor-name"
           placeholder="Untitled"

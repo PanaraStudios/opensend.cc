@@ -407,9 +407,12 @@ function ConditionBody({
               variant="ghost"
               size="icon-sm"
               aria-label={`Remove condition ${index + 1}`}
-              onClick={() =>
+              onClick={() => {
                 onChange({ ...step, rules: step.rules.toSpliced(index, 1) })
-              }
+                /* The form holds its rule by position, which moves up when
+                   a rule before it goes. */
+                if (editing !== null && index < editing) setEditing(editing - 1)
+              }}
             >
               <XIcon />
             </Button>
@@ -551,6 +554,11 @@ function RuleForm({
           />
         ) : null}
       </div>
+      {/* Said once a property is in, so the Add button is never dead without
+          a reason. */}
+      {property.trim() && ruleError(next) ? (
+        <p className="text-caption text-muted-foreground">{ruleError(next)}</p>
+      ) : null}
       <div className="flex justify-end gap-1.5">
         {onCancel ? (
           <Button variant="ghost" size="sm" onClick={onCancel}>

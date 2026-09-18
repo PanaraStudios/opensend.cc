@@ -10,6 +10,7 @@ import {
 
 import {
   cancelledRun,
+  cleanSchema,
   duplicatedAutomation,
   eventNameError,
   flattenSteps,
@@ -1139,7 +1140,7 @@ function saveAutomationEvent(
 ) {
   mutate((current) => {
     const name = input.name.trim()
-    const schema = input.schema.filter((field) => field.key.trim())
+    const schema = cleanSchema(input.schema)
     if (input.id) {
       return {
         ...current,
