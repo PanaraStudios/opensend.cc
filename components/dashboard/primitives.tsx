@@ -50,6 +50,7 @@ import {
   ItemContent,
   ItemDescription,
   ItemGroup,
+  ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
 import {
@@ -83,6 +84,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
 import { cn } from "@/lib/utils"
+import { DEMO_NOW } from "@/lib/dashboard/data"
 import {
   AUTOMATION_STATUS_TONE,
   BROADCAST_STATUS_TONE,
@@ -94,6 +96,8 @@ import {
   broadcastStatusLabel,
   emailStatusLabel,
   exportStatusLabel,
+  formatDateTime,
+  formatRelative,
   pluralize,
   statusLabel,
   templateStatusLabel,
@@ -347,6 +351,62 @@ export function PanelTabs({
           {children}
         </Tabs>
       </div>
+    </div>
+  )
+}
+
+/** Age against the demo clock, with the exact time in the tooltip. */
+export function RelativeTime({ at }: { at: number }) {
+  return (
+    <time dateTime={new Date(at).toISOString()} title={formatDateTime(at)}>
+      {formatRelative(at, DEMO_NOW)}
+    </time>
+  )
+}
+
+export type EventTrailStep = {
+  id: string
+  icon: LucideIcon
+  label: string
+  /** When it happened. A step without one is still ahead, and reads dimmed. */
+  caption?: string
+}
+
+/** Horizontal run of milestones: icon, label, and when each was reached.
+    Shared by the email event row and the domain event trail. */
+export function EventTrail({
+  steps,
+  className,
+}: {
+  steps: readonly EventTrailStep[]
+  className?: string
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      {steps.map((step, index) => {
+        const Icon = step.icon
+        return (
+          <React.Fragment key={step.id}>
+            {index > 0 ? (
+              <Separator orientation="vertical" className="h-8 self-center" />
+            ) : null}
+            <Item
+              size="xs"
+              className={cn("w-fit", step.caption ? undefined : "opacity-50")}
+            >
+              <ItemMedia variant="icon">
+                <Icon />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{step.label}</ItemTitle>
+                {step.caption ? (
+                  <ItemDescription>{step.caption}</ItemDescription>
+                ) : null}
+              </ItemContent>
+            </Item>
+          </React.Fragment>
+        )
+      })}
     </div>
   )
 }

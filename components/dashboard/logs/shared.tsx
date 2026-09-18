@@ -3,9 +3,7 @@
 import { ScrollTextIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { DocsSheet } from "@/components/dashboard/primitives"
-import { DEMO_NOW } from "@/lib/dashboard/data"
-import { formatDateTime, formatRelative } from "@/lib/dashboard/format"
+import { DocsSheet, RelativeTime } from "@/components/dashboard/primitives"
 import { logStatusTone } from "@/lib/dashboard/logs"
 
 export const LogIcon = ScrollTextIcon
@@ -19,13 +17,9 @@ export function LogStatusBadge({ status }: { status: number }) {
 }
 
 /** Age against the demo clock, the same one the date range picker uses, so
-    "Last 15 days" and "15d ago" agree. The exact time sits in the tooltip. */
+    "Last 15 days" and "15d ago" agree. */
 export function LogAge({ at }: { at: number }) {
-  return (
-    <time dateTime={new Date(at).toISOString()} title={formatDateTime(at)}>
-      {formatRelative(at, DEMO_NOW)}
-    </time>
-  )
+  return <RelativeTime at={at} />
 }
 
 const LOG_DOCS = [

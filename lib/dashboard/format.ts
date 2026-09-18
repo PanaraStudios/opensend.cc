@@ -5,8 +5,6 @@ import type {
   ApiKeyPermission,
   AutomationStatus,
   BroadcastStatus,
-  DnsRecord,
-  Domain,
   DomainStatus,
   EmailStatus,
   ExportStatus,
@@ -34,46 +32,6 @@ export function formatRelative(timestamp: number, now = Date.now()): string {
   return formatDate(timestamp)
 }
 
-export function dnsHost(name: string, domain: string): string {
-  if (name === domain || name === "@") return "@"
-  const suffix = `.${domain}`
-  return name.endsWith(suffix) ? name.slice(0, -suffix.length) : name
-}
-
-export function domainDnsRecords(domain: Domain): DnsRecord[] {
-  const records = [...domain.records]
-  if (
-    domain.clickTracking &&
-    !records.some((record) => record.kind === "Tracking")
-  ) {
-    records.push({
-      id: `${domain.id}_tracking`,
-      kind: "Tracking",
-      type: "CNAME",
-      name: `links.${domain.name}`,
-      value: "links.opensend.cc",
-      ttl: "Auto",
-      status: domain.status,
-    })
-  }
-  if (
-    domain.receiving &&
-    !records.some((record) => record.kind === "Receiving")
-  ) {
-    records.push({
-      id: `${domain.id}_receiving`,
-      kind: "Receiving",
-      type: "MX",
-      name: `inbound.${domain.name}`,
-      value: `inbound-smtp.${domain.region}.amazonaws.com`,
-      ttl: "Auto",
-      priority: 10,
-      status: domain.status,
-    })
-  }
-  return records
-}
-
 export function regionLabel(region: Region): string {
   return REGIONS.find((item) => item.value === region)?.label ?? region
 }
@@ -84,6 +42,8 @@ export function statusLabel(status: DomainStatus): string {
       return "Not started"
     case "pending":
       return "Pending"
+    case "partially_verified":
+      return "Partially verified"
     case "verified":
       return "Verified"
     case "failed":
@@ -231,6 +191,7 @@ export type BadgeTone =
 export const DOMAIN_STATUS_TONE: Record<DomainStatus, BadgeTone> = {
   not_started: "secondary",
   pending: "warning",
+  partially_verified: "warning",
   verified: "success",
   failed: "destructive",
   temporary_failure: "warning",
