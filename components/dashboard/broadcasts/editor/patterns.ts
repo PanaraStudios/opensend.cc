@@ -1,12 +1,14 @@
 import type { JSONContent } from "@tiptap/core"
 
+import type { EmailAlign } from "@/components/dashboard/broadcasts/editor/controls"
 import { UNSUBSCRIBE_VARIABLE } from "@/lib/dashboard/email-variables"
 
 /* Ready-made sections, in the spirit of react.email/components. Each one is
    an ordinary piece of the document, made of the same nodes a person would
    insert one at a time, so every part of it stays editable. */
 
-type Align = "left" | "center" | "right"
+/** What a new image shows until the author picks their own. */
+export const PLACEHOLDER_IMAGE = "https://placehold.co/1072x536/png"
 
 function text(value: string, href?: string): JSONContent {
   return href
@@ -21,11 +23,15 @@ function linkRow(labels: string[], href: string, separator: string) {
   )
 }
 
-function paragraph(content: JSONContent[], alignment: Align = "left") {
+function paragraph(content: JSONContent[], alignment: EmailAlign = "left") {
   return { type: "paragraph", attrs: { alignment }, content }
 }
 
-function heading(level: 1 | 2 | 3, value: string, alignment: Align = "left") {
+function heading(
+  level: 1 | 2 | 3,
+  value: string,
+  alignment: EmailAlign = "left"
+) {
   return {
     type: "heading",
     attrs: { level, alignment },
@@ -33,7 +39,7 @@ function heading(level: 1 | 2 | 3, value: string, alignment: Align = "left") {
   }
 }
 
-function button(label: string, alignment: Align = "left"): JSONContent {
+function button(label: string, alignment: EmailAlign = "left"): JSONContent {
   return {
     type: "button",
     attrs: { href: "https://example.com", alignment },
@@ -65,7 +71,7 @@ const HEADER: JSONContent[] = [
 
 const HERO: JSONContent[] = [
   section([
-    image("https://placehold.co/1072x536/png", "Hero image"),
+    image(PLACEHOLDER_IMAGE, "Hero image"),
     heading(1, "Say the one thing that matters", "center"),
     paragraph(
       [text("A sentence or two that tells people why they should care.")],

@@ -40,13 +40,13 @@ import {
   SquareIcon,
   TextQuoteIcon,
   TypeIcon,
-  VariableIcon,
 } from "lucide-react"
 
 import { YouTubeIcon } from "@/components/brand-icons"
 import {
   FOOTER,
   PATTERNS,
+  PLACEHOLDER_IMAGE,
   SOCIAL_LINKS,
 } from "@/components/dashboard/broadcasts/editor/patterns"
 
@@ -67,7 +67,7 @@ export type PaletteItem = {
 }
 
 export type PaletteMenu = {
-  id: "text" | "media" | "components" | "sections" | "variables"
+  id: "text" | "media" | "components" | "sections"
   label: string
   icon: PaletteIcon
   items: readonly PaletteItem[]
@@ -120,8 +120,7 @@ const MEDIA_ITEMS: PaletteItem[] = [
       icon: ImageIcon,
       keywords: ["image", "picture", "photo", "img"],
     },
-    (chain) =>
-      chain.setImage({ src: "https://placehold.co/1072x536/png", alt: "" })
+    (chain) => chain.setImage({ src: PLACEHOLDER_IMAGE, alt: "" })
   ),
   ours(
     {
@@ -235,7 +234,6 @@ export const PALETTE_MENUS: readonly PaletteMenu[] = [
     icon: LayoutTemplateIcon,
     items: SECTION_ITEMS,
   },
-  { id: "variables", label: "Variables", icon: VariableIcon, items: [] },
 ]
 
 export const PALETTE_ITEMS: readonly PaletteItem[] = PALETTE_MENUS.flatMap(

@@ -28,6 +28,7 @@ import { Toggle } from "@/components/ui/toggle"
 import {
   ALIGN_ITEMS,
   FLOATING_SURFACE,
+  MarkToggles,
   TEXT_MARKS,
 } from "@/components/dashboard/broadcasts/editor/controls"
 import { normalizeHref } from "@/lib/dashboard/format"
@@ -238,18 +239,11 @@ function TextToolbar() {
   }
   return (
     <>
-      {TEXT_MARKS.map(({ name, label, icon: Icon }) => (
-        <Toggle
-          key={name}
-          size="sm"
-          aria-label={label}
-          pressed={active.marks.includes(name)}
-          data-testid={`bubble-${name}`}
-          onPressedChange={() => editor.chain().focus().toggleMark(name).run()}
-        >
-          <Icon />
-        </Toggle>
-      ))}
+      <MarkToggles
+        isActive={(name) => active.marks.includes(name)}
+        onToggle={(name) => editor.chain().focus().toggleMark(name).run()}
+        testIdPrefix="bubble-"
+      />
       <Separator orientation="vertical" className="mx-0.5 h-5" />
       {ALIGN_ITEMS.map(({ value, label, icon: Icon }) => (
         <Toggle

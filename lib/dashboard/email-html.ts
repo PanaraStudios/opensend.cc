@@ -4,8 +4,7 @@
 const WRAPPERS = new Set(["TABLE", "TBODY", "TR", "TD", "DIV", "CENTER"])
 
 function isHidden(element: Element): boolean {
-  const style = element.getAttribute("style") ?? ""
-  return /display\s*:\s*none/i.test(style)
+  return (element as HTMLElement).style?.display === "none"
 }
 
 /** The part of an email a person wrote: the markup inside the layout tables

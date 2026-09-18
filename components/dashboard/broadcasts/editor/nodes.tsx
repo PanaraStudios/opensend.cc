@@ -99,6 +99,13 @@ const Variable = EmailNode.create({
 
 /* ---------------------------------------------------------------- youtube */
 
+const YOUTUBE_DEFAULTS = {
+  video: "",
+  alt: "Watch on YouTube",
+  width: 536,
+  alignment: "center",
+}
+
 /** Email cannot play video, so this is the video's thumbnail linking out. */
 const Youtube = EmailNode.create({
   name: "youtube",
@@ -106,22 +113,26 @@ const Youtube = EmailNode.create({
   atom: true,
   draggable: true,
   addAttributes() {
-    return {
-      video: { default: "" },
-      alt: { default: "Watch on YouTube" },
-      width: { default: 536 },
-      alignment: { default: "center" },
-    }
+    return Object.fromEntries(
+      Object.entries(YOUTUBE_DEFAULTS).map(([name, value]) => [
+        name,
+        { default: value },
+      ])
+    )
   },
   parseHTML() {
     return [
       {
         tag: "div[data-youtube]",
         getAttrs: (element) => ({
-          video: element.getAttribute("data-youtube") ?? "",
-          alt: element.getAttribute("data-alt") ?? "Watch on YouTube",
-          width: Number(element.getAttribute("data-width")) || 536,
-          alignment: element.getAttribute("data-alignment") ?? "center",
+          video: element.getAttribute("data-youtube") ?? YOUTUBE_DEFAULTS.video,
+          alt: element.getAttribute("data-alt") ?? YOUTUBE_DEFAULTS.alt,
+          width:
+            Number(element.getAttribute("data-width")) ||
+            YOUTUBE_DEFAULTS.width,
+          alignment:
+            element.getAttribute("data-alignment") ??
+            YOUTUBE_DEFAULTS.alignment,
         }),
       },
     ]
@@ -178,20 +189,22 @@ const Youtube = EmailNode.create({
 
 /* ----------------------------------------------------------------- spacer */
 
+const SPACER_HEIGHT = 24
+
 const Spacer = EmailNode.create({
   name: "spacer",
   group: "block",
   atom: true,
   draggable: true,
   addAttributes() {
-    return { height: { default: 24 } }
+    return { height: { default: SPACER_HEIGHT } }
   },
   parseHTML() {
     return [
       {
         tag: "div[data-spacer]",
         getAttrs: (element) => ({
-          height: Number(element.getAttribute("data-spacer")) || 24,
+          height: Number(element.getAttribute("data-spacer")) || SPACER_HEIGHT,
         }),
       },
     ]
@@ -207,7 +220,11 @@ const Spacer = EmailNode.create({
     ]
   },
   renderToReactEmail({ node }) {
-    const height = Number(node.attrs?.height) || 24
+    /* Zero is a height too: the canvas draws it, so the email must not swap
+       it for the default. */
+    const stored = Number(node.attrs?.height ?? SPACER_HEIGHT)
+    const height =
+      Number.isFinite(stored) && stored >= 0 ? stored : SPACER_HEIGHT
     return (
       <div style={{ height, lineHeight: `${height}px`, fontSize: 1 }}>
         &nbsp;
@@ -328,11 +345,11 @@ const Footer = EmailNode.create({
 
 /* ------------------------------------------------------------------ image */
 
+type Bare = Record<string, never>
+
 /** The engine's image, with its alignment honoured. The engine stores an
     alignment on every image but exports none of it, so a picture centred on
     the canvas was sent hard against the left edge. */
-type Bare = Record<string, never>
-
 export function alignedImage(image: ReturnType<typeof useEditorImage>) {
   /* Spelled out because the default the library declares for this type
      argument is not the one TypeScript settles on. */
