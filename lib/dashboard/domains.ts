@@ -375,7 +375,7 @@ export function domainRecordSections(domain: Domain): DomainRecordSection[] {
       title: "Enable Receiving",
       docLabel: "MX",
       description:
-        "Delivers inbound mail for this domain to SES. Messages land under Emails → Receiving.",
+        "Delivers inbound mail for this domain to SES. Messages appear under Emails → Receiving.",
       toggle: "receiving",
       enabled: domain.receiving,
       showPriority: true,
@@ -386,7 +386,7 @@ export function domainRecordSections(domain: Domain): DomainRecordSection[] {
       title: "Recommended",
       docLabel: "DMARC",
       description:
-        "Tells inboxes what to do with mail that fails SPF or DKIM. Optional, but it lifts deliverability.",
+        "Tells inboxes what to do with mail that fails SPF or DKIM. Optional, but it improves deliverability.",
       enabled: true,
       showPriority: false,
       records: of("DMARC"),

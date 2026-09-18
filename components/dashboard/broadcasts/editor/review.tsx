@@ -76,7 +76,7 @@ export function reviewChecks(
     {
       level: verified ? "ok" : "warn",
       label: "From address",
-      detail: verified ? from : `${from} — no verified domain yet`,
+      detail: verified ? from : `${from}. No verified domain yet.`,
     },
     {
       level: "ok",
@@ -97,7 +97,7 @@ export function reviewChecks(
       level: unsubscribe ? "ok" : "warn",
       label: "Unsubscribe link",
       detail: unsubscribe
-        ? "An opt-out link is present"
+        ? "The email has an opt-out link"
         : "Add an unsubscribe footer so recipients can opt out",
     },
   ]

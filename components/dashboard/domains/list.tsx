@@ -248,7 +248,7 @@ export function DomainsView() {
     <>
       <PageHeader
         title="Domains"
-        description="Verify a domain you own to send email. DNS records are published here; SES stays on your AWS account."
+        description="Verify a domain you own to send email. DNS records are published here. SES stays on your AWS account."
       >
         <Button onClick={() => setAddOpen(true)}>
           <PlusIcon />
@@ -390,7 +390,7 @@ export function DomainsView() {
           if (!next) setPendingDelete(null)
         }}
         title="Delete domain?"
-        description="You will not be able to send from this domain until you add it again and verify DNS."
+        description="You cannot send from this domain until you add it again and verify DNS."
         onConfirm={() => {
           if (pendingDelete) deleteDomain(pendingDelete)
           toast.add({ type: "success", title: "Domain deleted" })

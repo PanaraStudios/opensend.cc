@@ -98,7 +98,7 @@ export function EmailsChrome({
 const EMAIL_DOCS = [
   {
     title: "Sending",
-    body: "POST /emails from the API. Events land on the message as they arrive from SES.",
+    body: "POST /emails from the API. Events appear on the message as they arrive from SES.",
   },
   {
     title: "Receiving",

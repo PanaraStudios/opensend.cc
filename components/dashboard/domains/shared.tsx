@@ -229,7 +229,7 @@ export function DnsRecordsTable({
 const DOMAIN_DOCS = [
   {
     title: "Add a domain",
-    body: "A subdomain such as updates.example.com keeps transactional reputation separate from marketing, and leaves your root domain alone.",
+    body: "A subdomain such as updates.example.com keeps transactional reputation separate from marketing, and does not affect your root domain.",
   },
   {
     title: "Verification",
@@ -237,7 +237,7 @@ const DOMAIN_DOCS = [
   },
   {
     title: "Receiving",
-    body: "Turning receiving on adds an inbound MX record at the apex. The domain reads as partially verified until that record resolves.",
+    body: "Turning receiving on adds an inbound MX record at the apex. The domain shows as partially verified until that record resolves.",
   },
   {
     title: "Where SES lives",

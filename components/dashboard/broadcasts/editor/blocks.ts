@@ -163,7 +163,7 @@ const COMPONENT_ITEMS: readonly PaletteItem[] = [
   {
     id: "spacer",
     label: "Spacer",
-    description: "Vertical breathing room",
+    description: "Empty vertical space",
     icon: MoveVerticalIcon,
     type: "spacer",
     keywords: "gap space margin",

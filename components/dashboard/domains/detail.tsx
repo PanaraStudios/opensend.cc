@@ -442,7 +442,7 @@ function DomainConfiguration({ domain }: { domain: Domain }) {
       <h2 className="text-base font-medium">Configuration</h2>
       <DomainSection
         title="Enable tracking metrics"
-        description="To track clicks and email opens, configure a custom tracking subdomain to let those links match your sending domain and improve deliverability."
+        description="To track clicks and email opens, set up a custom tracking subdomain. Tracked links then match your sending domain, which improves deliverability."
       >
         {tracking ? (
           <>
@@ -486,7 +486,7 @@ function DomainConfiguration({ domain }: { domain: Domain }) {
       <DomainSection
         divider
         title="TLS (Transport Layer Security)"
-        description={`"Opportunistic TLS" means that it always attempts to make a secure connection to the receiving mail server. If it can't establish a secure connection, it sends the message unencrypted. "Enforced TLS" on the other hand, requires that the email communication must use TLS no matter what.`}
+        description={`"Opportunistic TLS" always tries a secure connection to the receiving mail server. If it can't make one, it sends the message unencrypted. "Enforced TLS" requires TLS for every message.`}
       >
         <OptionSelect
           id="domain-tls"

@@ -108,7 +108,7 @@ export function EmailsView() {
         <EmptyState
           icon={MailIcon}
           title="No emails"
-          description="Send a message with POST /emails from the API and it will land here with its delivery events."
+          description="Send a message with POST /emails from the API and it appears here with its delivery events."
         />
       ) : (
         <ResourceTable
