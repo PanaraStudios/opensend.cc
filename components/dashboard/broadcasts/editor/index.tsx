@@ -37,7 +37,7 @@ import {
   isBroadcastDraftLike,
   type BroadcastEditorMode,
 } from "@/lib/dashboard/broadcast"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useDashboard, useStoreHydrated } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 
 /* Full-screen editor: a top bar, the mode rail, the paper, and the inspector.
@@ -248,6 +248,7 @@ export function BroadcastEditor() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { state } = useDashboard()
+  const hydrated = useStoreHydrated()
   const item = state.broadcasts.find((row) => row.id === id)
   const report = Boolean(item) && !isBroadcastDraftLike(item!.status)
 
@@ -266,7 +267,9 @@ export function BroadcastEditor() {
       </div>
     )
   }
-  if (report) return null
+  /* The editor copies the document into the engine when it mounts, so it
+     waits for the saved one rather than starting from the seed. */
+  if (report || !hydrated) return null
 
   return <EditorScreen key={item.id} item={item} />
 }

@@ -1145,6 +1145,19 @@ export type DashboardStore = {
 
 const DashboardContext = createContext<DashboardStore | null>(null)
 
+const subscribeNever = () => () => {}
+
+/** False on the server and on the first client render, which both show the
+    seed data; true once the saved state is what is being rendered. Anything
+    that copies state into its own on mount should wait for this. */
+export function useStoreHydrated(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false
+  )
+}
+
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const raw = useSyncExternalStore(subscribe, readRaw, () => SERVER_SNAPSHOT)
   const value = useMemo<DashboardStore>(() => {

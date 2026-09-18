@@ -8,6 +8,7 @@ import {
   insertAtCaret,
   type PaletteItem,
 } from "@/components/dashboard/broadcasts/editor/blocks"
+import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-menus"
 import { EmailHeaderForm } from "@/components/dashboard/broadcasts/editor/header-form"
 import { InsertRail } from "@/components/dashboard/broadcasts/editor/palette"
 import { SlashMenu } from "@/components/dashboard/broadcasts/editor/slash-menu"
@@ -94,6 +95,7 @@ export function EmailCanvas({
           data-testid="email-content"
         />
         <SlashMenu />
+        {editor ? <BubbleMenus /> : null}
       </div>
     </div>
   )

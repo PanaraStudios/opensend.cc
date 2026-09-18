@@ -9,6 +9,7 @@ import {
   broadcastEditorMode,
   type BroadcastEditorMode,
 } from "@/lib/dashboard/broadcast"
+import { emailContentHtml } from "@/lib/dashboard/email-html"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
 
@@ -85,9 +86,18 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     [id, preview, updateBroadcast]
   )
 
+  /* The engine also updates on its own, as it mounts, and while a broadcast
+     is hand-written that must not replace the markup with an empty export. */
+  const modeRef = React.useRef(mode)
+  React.useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+
   const editor = useEmailEngine({
     content: item.content ?? "",
-    onUpdate: (current) => schedule(() => exportEngine(current)),
+    onUpdate: (current) => {
+      if (modeRef.current === "visual") schedule(() => exportEngine(current))
+    },
   })
 
   React.useEffect(() => () => void flush(), [flush])
@@ -118,8 +128,9 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     editVisually: () => {
       if (!editor) return
       setMode("visual")
+      modeRef.current = "visual"
       /* Emits an update, which exports and saves the parsed document. */
-      editor.commands.setContent(html, { emitUpdate: true })
+      editor.commands.setContent(emailContentHtml(html), { emitUpdate: true })
     },
     undo: () => editor?.chain().focus().undo().run(),
     redo: () => editor?.chain().focus().redo().run(),
