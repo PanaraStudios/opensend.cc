@@ -12,8 +12,8 @@ export default function TermsPage() {
       <LegalSection title="The software">
         <p>
           opensend.cc is open source software under the Apache License 2.0. The
-          license, not this page, governs what you can do with the code. See
-          the LICENSE file in the repository.
+          license, not this page, governs what you can do with the code. See the
+          LICENSE file in the repository.
         </p>
       </LegalSection>
       <LegalSection title="Self-hosting">
@@ -44,8 +44,8 @@ export default function TermsPage() {
       </LegalSection>
       <LegalSection title="Changes">
         <p>
-          We may update these terms as the project changes. Material changes
-          are noted in the repository. Send questions to hello@opensend.cc.
+          We may update these terms as the project changes. Material changes are
+          noted in the repository. Send questions to hello@opensend.cc.
         </p>
       </LegalSection>
       <LegalSection title="Operator">

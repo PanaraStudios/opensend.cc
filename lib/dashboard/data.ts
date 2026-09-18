@@ -1,3 +1,6 @@
+import { emptyBroadcastStats } from "./broadcast"
+import { createId } from "./ids"
+import { defaultFromAddress } from "./format"
 import type {
   ApiKey,
   ApiLog,
@@ -21,7 +24,8 @@ import type {
   Webhook,
 } from "./types"
 
-const DAY = 86_400_000
+export const DAY = 86_400_000
+const SEED_FROM = defaultFromAddress(undefined)
 /** Fixed clock so seeded demo rows hydrate the same on server and client. */
 export const DEMO_NOW = Date.parse("2026-09-13T12:00:00.000Z")
 
@@ -35,35 +39,6 @@ export function hoursAgo(hours: number): number {
 
 export function minutesAgo(minutes: number): number {
   return DEMO_NOW - minutes * 60_000
-}
-
-export function createId(prefix: string): string {
-  const entropy = crypto.randomUUID().replace(/-/g, "").slice(0, 16)
-  return `${prefix}_${entropy}`
-}
-
-export function createToken(): string {
-  const bytes = new Uint8Array(24)
-  crypto.getRandomValues(bytes)
-  const body = Array.from(bytes, (byte) =>
-    byte.toString(36).padStart(2, "0")
-  )
-    .join("")
-    .slice(0, 32)
-  return `os_${body}`
-}
-
-export function createWebhookSecret(): string {
-  const bytes = new Uint8Array(18)
-  crypto.getRandomValues(bytes)
-  return `whsec_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-}
-
-export function tokenParts(token: string): { prefix: string; last4: string } {
-  return {
-    prefix: token.slice(0, 10),
-    last4: token.slice(-4),
-  }
 }
 
 export function recordsForDomain(
@@ -294,7 +269,8 @@ const topics: Topic[] = [
   {
     id: "top_internal",
     name: "Internal",
-    description: "Staff-only operational mail. Hidden from the preference page.",
+    description:
+      "Staff-only operational mail. Hidden from the preference page.",
     defaultSubscription: "opt_out",
     visibility: "private",
     createdAt: daysAgo(20),
@@ -458,7 +434,7 @@ const members: TeamMember[] = [
 const emails: SentEmail[] = [
   {
     id: "em_welcome_ada",
-    from: "Opensend <hello@opensend.cc>",
+    from: SEED_FROM,
     to: "ada@example.com",
     subject: "Welcome to Opensend",
     status: "delivered",
@@ -497,7 +473,7 @@ const emails: SentEmail[] = [
     status: "clicked",
     createdAt: hoursAgo(30),
     scheduledAt: null,
-    html: "<p>Reset your password: <a href=\"https://opensend.cc/reset\">this link</a></p>",
+    html: '<p>Reset your password: <a href="https://opensend.cc/reset">this link</a></p>',
     text: "Reset your password: https://opensend.cc/reset",
     broadcastId: null,
     events: [
@@ -509,7 +485,7 @@ const emails: SentEmail[] = [
   },
   {
     id: "em_launch_margaret",
-    from: "Opensend <hello@opensend.cc>",
+    from: SEED_FROM,
     to: "margaret@hamilton.space",
     subject: "Launch week is live",
     status: "delivered",
@@ -525,7 +501,7 @@ const emails: SentEmail[] = [
   },
   {
     id: "em_bounce_old",
-    from: "Opensend <hello@opensend.cc>",
+    from: SEED_FROM,
     to: "gone@example.invalid",
     subject: "Product updates",
     status: "bounced",
@@ -540,8 +516,37 @@ const emails: SentEmail[] = [
     ],
   },
   {
+    id: "em_launch_complaint",
+    from: SEED_FROM,
+    to: "noreply@spam.test",
+    subject: "Launch week is live",
+    status: "complained",
+    createdAt: daysAgo(3),
+    scheduledAt: null,
+    html: "<p>Launch week notes for the newsletter segment.</p>",
+    text: "Launch week notes for the newsletter segment.",
+    broadcastId: "brd_launch",
+    events: [
+      { id: "evt_complain_sent", type: "sent", at: daysAgo(3) },
+      { id: "evt_complain", type: "complained", at: daysAgo(3) + 20_000 },
+    ],
+  },
+  {
+    id: "em_launch_suppressed",
+    from: SEED_FROM,
+    to: "gone@example.invalid",
+    subject: "Launch week is live",
+    status: "suppressed",
+    createdAt: daysAgo(3),
+    scheduledAt: null,
+    html: "<p>Launch week notes for the newsletter segment.</p>",
+    text: "Launch week notes for the newsletter segment.",
+    broadcastId: "brd_launch",
+    events: [{ id: "evt_launch_sup", type: "suppressed", at: daysAgo(3) }],
+  },
+  {
     id: "em_scheduled",
-    from: "Opensend <hello@opensend.cc>",
+    from: SEED_FROM,
     to: "ada@example.com",
     subject: "Scheduled reminder",
     status: "scheduled",
@@ -601,14 +606,19 @@ const broadcasts: Broadcast[] = [
     segmentId: "seg_newsletter",
     topicId: "top_product",
     createdAt: daysAgo(4),
+    updatedAt: daysAgo(3),
     scheduledAt: null,
     sentAt: daysAgo(3),
     stats: {
+      ...emptyBroadcastStats(),
       recipients: 1280,
       delivered: 1244,
       opened: 612,
       clicked: 188,
-      bounced: 14,
+      // the per-address tabs derive from the seeded emails below: one each
+      bounced: 1,
+      suppressed: 1,
+      complained: 1,
     },
   },
   {
@@ -621,15 +631,10 @@ const broadcasts: Broadcast[] = [
     segmentId: "seg_beta",
     topicId: "top_product",
     createdAt: daysAgo(1),
+    updatedAt: daysAgo(1),
     scheduledAt: null,
     sentAt: null,
-    stats: {
-      recipients: 0,
-      delivered: 0,
-      opened: 0,
-      clicked: 0,
-      bounced: 0,
-    },
+    stats: emptyBroadcastStats(),
   },
   {
     id: "brd_promo",
@@ -641,15 +646,43 @@ const broadcasts: Broadcast[] = [
     segmentId: "seg_customers",
     topicId: "top_promo",
     createdAt: hoursAgo(8),
+    updatedAt: hoursAgo(8),
     scheduledAt: DEMO_NOW + 2 * DAY,
     sentAt: null,
+    stats: emptyBroadcastStats(),
+  },
+  {
+    id: "brd_digest",
+    name: "Weekly digest",
+    subject: "What we shipped this week",
+    preview: "A short recap for the newsletter list.",
+    html: "<p>What we shipped this week.</p>",
+    status: "queued",
+    segmentId: "seg_newsletter",
+    topicId: "top_product",
+    createdAt: hoursAgo(2),
+    updatedAt: hoursAgo(2),
+    scheduledAt: null,
+    sentAt: null,
     stats: {
-      recipients: 0,
-      delivered: 0,
-      opened: 0,
-      clicked: 0,
-      bounced: 0,
+      ...emptyBroadcastStats(),
+      recipients: 1280,
     },
+  },
+  {
+    id: "brd_retry",
+    name: "Win-back",
+    subject: "Still want a seat?",
+    preview: "A follow-up that did not send.",
+    html: "<p>Still want a seat?</p>",
+    status: "failed",
+    segmentId: "seg_customers",
+    topicId: "top_promo",
+    createdAt: daysAgo(2),
+    updatedAt: daysAgo(2),
+    scheduledAt: null,
+    sentAt: null,
+    stats: emptyBroadcastStats(),
   },
 ]
 
@@ -848,38 +881,4 @@ export const SEED_STATE: DashboardState = {
       port: 465,
     },
   },
-}
-
-export function defaultTopicSubscription(
-  topic: Topic
-): Contact["topics"][number]["subscription"] {
-  return topic.defaultSubscription === "opt_out" ? "subscribed" : "unsubscribed"
-}
-
-export function contactTopicStatus(
-  contact: Contact,
-  topic: Topic
-): Contact["topics"][number]["subscription"] {
-  const explicit = contact.topics.find((item) => item.topicId === topic.id)
-  if (explicit) return explicit.subscription
-  return defaultTopicSubscription(topic)
-}
-
-export function segmentContactCount(
-  contactsList: Contact[],
-  segmentId: string
-): number {
-  return contactsList.filter((contact) =>
-    contact.segmentIds.includes(segmentId)
-  ).length
-}
-
-export function emptyBroadcastStats() {
-  return {
-    recipients: 0,
-    delivered: 0,
-    opened: 0,
-    clicked: 0,
-    bounced: 0,
-  }
 }

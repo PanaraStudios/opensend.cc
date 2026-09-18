@@ -1,4 +1,6 @@
-import { createId, SEED_STATE } from "./data"
+import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
+import { SEED_STATE } from "./data"
+import { createId } from "./ids"
 import type { DashboardState, Team } from "./types"
 
 export const SEED_TEAM_ID = "team_opensend"
@@ -37,6 +39,19 @@ export function serializeRoot(root: DashboardRoot): string {
   return JSON.stringify(root)
 }
 
+/** Backfill fields added after a workspace was persisted. Runs on every
+    parse; the result is memoised on the raw string by the store. */
+function migrateWorkspace(workspace: DashboardState): DashboardState {
+  return {
+    ...workspace,
+    broadcasts: workspace.broadcasts.map((item) => ({
+      ...item,
+      updatedAt: broadcastUpdatedAt(item),
+      stats: normalizeBroadcastStats(item.stats),
+    })),
+  }
+}
+
 function parseWorkspaces(
   value: unknown
 ): Record<string, DashboardState> | null {
@@ -44,7 +59,7 @@ function parseWorkspaces(
   const workspaces: Record<string, DashboardState> = {}
   for (const [id, workspace] of Object.entries(value)) {
     if (isDashboardState(workspace)) {
-      workspaces[id] = workspace
+      workspaces[id] = migrateWorkspace(workspace)
     }
   }
   return Object.keys(workspaces).length > 0 ? workspaces : null
@@ -72,7 +87,7 @@ export function parseRoot(raw: string): DashboardRoot {
       return {
         version: ROOT_VERSION,
         activeTeamId: SEED_TEAM_ID,
-        workspaces: { [SEED_TEAM_ID]: parsed },
+        workspaces: { [SEED_TEAM_ID]: migrateWorkspace(parsed) },
       }
     }
   } catch {

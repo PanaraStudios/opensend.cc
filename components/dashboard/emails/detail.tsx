@@ -5,14 +5,10 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
 import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import {
   Item,
   ItemContent,
@@ -22,11 +18,9 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
-  ArrowLeftIcon,
-  CheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleSlashIcon,
@@ -37,14 +31,19 @@ import {
   MailIcon,
   MousePointerClickIcon,
   PlayIcon,
+  ScrollTextIcon,
   SendIcon,
   type LucideIcon,
 } from "lucide-react"
 import {
+  CopyButton,
+  DetailHeader,
   EmailStatusBadge,
   EmptyState,
   MoreMenu,
-  MoreMenuItem,
+  NotFoundState,
+  PanelTabs,
+  copyToClipboard,
 } from "@/components/dashboard/primitives"
 import { emailStatusLabel, formatDateTime } from "@/lib/dashboard/format"
 import {
@@ -59,35 +58,6 @@ type TimelineEvent = {
   at: number
   type?: EmailStatus
   label?: string
-}
-
-function EmailCopyButton({
-  value,
-  label = "Copy",
-}: {
-  value: string
-  label?: string
-}) {
-  const [copied, setCopied] = React.useState(false)
-
-  async function copy() {
-    await navigator.clipboard.writeText(value)
-    setCopied(true)
-    toast.add({ type: "success", title: `${label} copied` })
-    window.setTimeout(() => setCopied(false), 1500)
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-xs"
-      aria-label={label}
-      onClick={() => void copy()}
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </Button>
-  )
 }
 
 function eventIcon(event: TimelineEvent): LucideIcon {
@@ -118,52 +88,7 @@ function eventIcon(event: TimelineEvent): LucideIcon {
   }
 }
 
-export function EmailDetailHeader({
-  backHref,
-  backLabel,
-  title,
-  icon: Icon = MailIcon,
-  status,
-  actions,
-}: {
-  backHref: string
-  backLabel: string
-  title: string
-  icon?: LucideIcon
-  status?: EmailStatus
-  actions?: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <Button
-        variant="ghost"
-        size="sm"
-        nativeButton={false}
-        className="-ml-2 w-fit text-muted-foreground"
-        render={<Link href={backHref} />}
-      >
-        <ArrowLeftIcon data-icon="inline-start" />
-        {backLabel}
-      </Button>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="icon-tile">
-            <Icon />
-          </span>
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="title-gradient text-h3 break-all">{title}</h1>
-            {status ? <EmailStatusBadge status={status} /> : null}
-          </div>
-        </div>
-        {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-export function EmailMetaStrip({
+function EmailMetaStrip({
   from,
   subject,
   to,
@@ -199,7 +124,7 @@ export function EmailMetaStrip({
           <ItemTitle>Id</ItemTitle>
           <ItemDescription className="flex items-center gap-1 font-mono">
             <span className="truncate">{id}</span>
-            <EmailCopyButton value={id} label="Id" />
+            <CopyButton value={id} label="Id" />
           </ItemDescription>
         </ItemContent>
       </Item>
@@ -207,7 +132,7 @@ export function EmailMetaStrip({
   )
 }
 
-export function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
+function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {events.map((event, index) => {
@@ -223,7 +148,8 @@ export function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
               </ItemMedia>
               <ItemContent>
                 <ItemTitle>
-                  {event.label ?? (event.type ? emailStatusLabel(event.type) : "Event")}
+                  {event.label ??
+                    (event.type ? emailStatusLabel(event.type) : "Event")}
                 </ItemTitle>
                 <ItemDescription>{formatDateTime(event.at)}</ItemDescription>
               </ItemContent>
@@ -280,7 +206,7 @@ function EmailHtmlSource({ value }: { value: string }) {
   )
 }
 
-export function EmailBodyTabs({
+function EmailBodyTabs({
   from,
   to,
   subject,
@@ -302,78 +228,68 @@ export function EmailBodyTabs({
     (event) => event.type === "opened" || event.type === "clicked"
   )
   const raw = `From: ${from}\nTo: ${to}\nSubject: ${subject}\n\n${text}`
+  const tabs = [
+    { value: "preview", label: "Preview" },
+    { value: "text", label: "Plain text" },
+    { value: "html", label: "HTML" },
+    { value: "raw", label: "Raw" },
+    ...(showInsights ? [{ value: "insights", label: "Insights" }] : []),
+  ]
 
   return (
-    <div className="frame">
-      <div className="panel overflow-hidden p-0">
-        <Tabs value={tab} onValueChange={setTab} className="gap-0">
-          <div className="overflow-x-auto border-b border-border px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <TabsList>
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="text">Plain text</TabsTrigger>
-              <TabsTrigger value="html">HTML</TabsTrigger>
-              <TabsTrigger value="raw">Raw</TabsTrigger>
-              {showInsights ? (
-                <TabsTrigger value="insights">Insights</TabsTrigger>
-              ) : null}
-            </TabsList>
-          </div>
-          <TabsContent value="preview" className="p-5">
-            <EmailPreview subject={subject} html={html} />
-          </TabsContent>
-          <TabsContent value="text" className="p-5">
-            <EmailSource value={text} />
-          </TabsContent>
-          <TabsContent value="html" className="p-5">
-            <EmailHtmlSource value={html} />
-          </TabsContent>
-          <TabsContent value="raw" className="p-5">
-            <EmailSource value={raw} />
-          </TabsContent>
-          {showInsights ? (
-            <TabsContent value="insights" className="p-5">
-              {insights.length === 0 ? (
-                <Empty className="min-h-40 py-8">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
+    <PanelTabs value={tab} onValueChange={setTab} tabs={tabs}>
+      <TabsContent value="preview" className="p-5">
+        <EmailPreview subject={subject} html={html} />
+      </TabsContent>
+      <TabsContent value="text" className="p-5">
+        <EmailSource value={text} />
+      </TabsContent>
+      <TabsContent value="html" className="p-5">
+        <EmailHtmlSource value={html} />
+      </TabsContent>
+      <TabsContent value="raw" className="p-5">
+        <EmailSource value={raw} />
+      </TabsContent>
+      {showInsights ? (
+        <TabsContent value="insights" className="p-5">
+          {insights.length === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={EyeIcon}
+              title="No opens or clicks"
+              description="Tracking events will show here when the recipient opens or clicks."
+            />
+          ) : (
+            <ItemGroup>
+              {insights.map((event) => (
+                <Item key={event.id} size="sm" variant="muted">
+                  <ItemMedia variant="icon">
+                    {event.type === "clicked" ? (
+                      <MousePointerClickIcon />
+                    ) : (
                       <EyeIcon />
-                    </EmptyMedia>
-                    <EmptyTitle>No opens or clicks</EmptyTitle>
-                    <EmptyDescription>
-                      Tracking events will show here when the recipient opens or
-                      clicks.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <ItemGroup>
-                  {insights.map((event) => (
-                    <Item key={event.id} size="sm" variant="muted">
-                      <ItemMedia variant="icon">
-                        {event.type === "clicked" ? <MousePointerClickIcon /> : <EyeIcon />}
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle>{emailStatusLabel(event.type)}</ItemTitle>
-                        <ItemDescription>
-                          {formatDateTime(event.at)}
-                        </ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  ))}
-                </ItemGroup>
-              )}
-            </TabsContent>
-          ) : null}
-        </Tabs>
-      </div>
-    </div>
+                    )}
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{emailStatusLabel(event.type)}</ItemTitle>
+                    <ItemDescription>
+                      {formatDateTime(event.at)}
+                    </ItemDescription>
+                  </ItemContent>
+                </Item>
+              ))}
+            </ItemGroup>
+          )}
+        </TabsContent>
+      ) : null}
+    </PanelTabs>
   )
 }
 
 export function EmailDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, cancelEmail, addTemplate, updateTemplate } = useDashboard()
+  const { state, cancelEmail, addTemplate } = useDashboard()
   const email = state.emails.find((item) => item.id === id)
   const log = state.logs.find(
     (item) =>
@@ -382,32 +298,23 @@ export function EmailDetail() {
 
   if (!email) {
     return (
-      <div className="flex flex-col gap-6">
-        <EmailDetailHeader
-          backHref="/emails"
-          backLabel="Emails"
-          title="Email not found"
-        />
-        <EmptyState
-          icon={MailIcon}
-          title="Email not found"
-          description="It may have been pruned from this workspace."
-        >
-          <Button nativeButton={false} render={<Link href="/emails" />}>
-            Back to emails
-          </Button>
-        </EmptyState>
-      </div>
+      <NotFoundState
+        icon={MailIcon}
+        noun="email"
+        backHref="/emails"
+        description="It may have been pruned from this workspace."
+      />
     )
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <EmailDetailHeader
+      <DetailHeader
         backHref="/emails"
         backLabel="Emails"
         title={email.to}
-        status={email.status}
+        icon={MailIcon}
+        badge={<EmailStatusBadge status={email.status} />}
         actions={
           <>
             <Button
@@ -416,8 +323,8 @@ export function EmailDetail() {
                 const created = addTemplate({
                   name: email.subject,
                   subject: email.subject,
+                  html: email.html,
                 })
-                updateTemplate(created.id, { html: email.html })
                 toast.add({ type: "success", title: "Template created" })
                 router.push(`/templates/${created.id}`)
               }}
@@ -437,17 +344,18 @@ export function EmailDetail() {
             ) : null}
             <MoreMenu>
               <DropdownMenuGroup>
-                <MoreMenuItem render={<Link href={`/logs?email=${email.id}`} />}>
-                  View log
-                </MoreMenuItem>
-                <MoreMenuItem
-                  onClick={() => {
-                    void navigator.clipboard.writeText(email.id)
-                    toast.add({ type: "success", title: "Id copied" })
-                  }}
+                <DropdownMenuItem
+                  render={<Link href={`/logs?email=${email.id}`} />}
                 >
+                  <ScrollTextIcon />
+                  View log
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void copyToClipboard(email.id, "Id")}
+                >
+                  <CopyIcon />
                   Copy id
-                </MoreMenuItem>
+                </DropdownMenuItem>
               </DropdownMenuGroup>
             </MoreMenu>
           </>
@@ -495,29 +403,18 @@ export function ReceivedDetail() {
 
   if (!email) {
     return (
-      <div className="flex flex-col gap-6">
-        <EmailDetailHeader
-          backHref="/emails/receiving"
-          backLabel="Emails"
-          title="Email not found"
-          icon={InboxIcon}
-        />
-        <EmptyState
-          icon={InboxIcon}
-          title="Email not found"
-          description="Inbound mail may have been removed from this workspace."
-        >
-          <Button nativeButton={false} render={<Link href="/emails/receiving" />}>
-            Back to emails
-          </Button>
-        </EmptyState>
-      </div>
+      <NotFoundState
+        icon={InboxIcon}
+        noun="email"
+        backHref="/emails/receiving"
+        description="Inbound mail may have been removed from this workspace."
+      />
     )
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <EmailDetailHeader
+      <DetailHeader
         backHref="/emails/receiving"
         backLabel="Emails"
         title={email.from}

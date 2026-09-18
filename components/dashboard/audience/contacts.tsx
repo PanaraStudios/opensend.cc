@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -30,51 +31,66 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DocsButton,
   EmptyState,
+  ListToolbar,
+  MonoValue,
   MoreMenu,
-  MoreMenuItem,
+  OptionSelect,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsButton,
   AudienceDocsSheet,
-  AudienceToolbar,
   SUBSCRIBED_ITEMS,
 } from "@/components/dashboard/audience/shared"
-import { ChevronDownIcon, PlusIcon, UploadIcon, UsersIcon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  LayersIcon,
+  PencilIcon,
+  PlusIcon,
+  TagIcon,
+  Trash2Icon,
+  UploadIcon,
+  UsersIcon,
+} from "lucide-react"
 import {
   parseCsv,
   parseUnsubscribed,
   splitEmails,
   suggestCsvMapping,
 } from "@/lib/dashboard/csv"
-import { segmentContactCount } from "@/lib/dashboard/data"
+import {
+  RESERVED_PROPERTY_KEYS,
+  contactMatches,
+  segmentContactCounts,
+} from "@/lib/dashboard/contacts"
+import { searchNeedle } from "@/lib/dashboard/search"
 import { inDateRange } from "@/lib/dashboard/email-range"
-import { formatDate } from "@/lib/dashboard/format"
+import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 
 function segmentItems(state: ReturnType<typeof useDashboard>["state"]) {
+  const counts = segmentContactCounts(state.contacts)
   return [
     { value: "all", label: "All segments" },
     ...state.segments.map((segment) => ({
       value: segment.id,
-      label: `${segment.name} (${segmentContactCount(state.contacts, segment.id)})`,
+      label: `${segment.name} (${counts.get(segment.id) ?? 0})`,
     })),
+  ]
+}
+
+function segmentOptions(segments: { id: string; name: string }[]) {
+  return [
+    { value: "none", label: "No segment" },
+    ...segments.map((segment) => ({ value: segment.id, label: segment.name })),
   ]
 }
 
@@ -120,7 +136,9 @@ function AddManuallyDialog({
           ? "Contact created"
           : `${created.length} contacts created`,
       description:
-        skipped > 0 ? `${skipped} already in this workspace were skipped.` : undefined,
+        skipped > 0
+          ? `${skipped} already in this workspace were skipped.`
+          : undefined,
     })
     reset()
     onOpenChange(false)
@@ -163,33 +181,13 @@ function AddManuallyDialog({
             {state.segments.length > 0 ? (
               <Field>
                 <FieldLabel htmlFor="manual-segment">Segment</FieldLabel>
-                <Select
+                <OptionSelect
+                  id="manual-segment"
+                  className="w-full"
                   value={segmentId}
-                  onValueChange={(next) => {
-                    if (next) setSegmentId(next)
-                  }}
-                  items={[
-                    { value: "none", label: "No segment" },
-                    ...state.segments.map((segment) => ({
-                      value: segment.id,
-                      label: segment.name,
-                    })),
-                  ]}
-                >
-                  <SelectTrigger id="manual-segment" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="none">No segment</SelectItem>
-                      {state.segments.map((segment) => (
-                        <SelectItem key={segment.id} value={segment.id}>
-                          {segment.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  onChange={setSegmentId}
+                  items={segmentOptions(state.segments)}
+                />
                 <FieldDescription>
                   Optional. You can assign more segments from the contact page.
                 </FieldDescription>
@@ -197,9 +195,9 @@ function AddManuallyDialog({
             ) : null}
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Add</Button>
           </DialogFooter>
         </form>
@@ -224,20 +222,14 @@ function ImportCsvDialog({
   const [error, setError] = React.useState<string | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  const mapItems = React.useMemo(
-    () => [
-      { value: "ignore", label: "Ignore" },
-      { value: "email", label: "email" },
-      { value: "first_name", label: "first_name" },
-      { value: "last_name", label: "last_name" },
-      { value: "unsubscribed", label: "unsubscribed" },
-      ...state.properties.map((property) => ({
-        value: property.key,
-        label: property.key,
-      })),
-    ],
-    [state.properties]
-  )
+  const mapItems = [
+    { value: "ignore", label: "Ignore" },
+    ...RESERVED_PROPERTY_KEYS.map((key) => ({ value: key, label: key })),
+    ...state.properties.map((property) => ({
+      value: property.key,
+      label: property.key,
+    })),
+  ]
 
   function reset() {
     setFileName(null)
@@ -271,7 +263,9 @@ function ImportCsvDialog({
         )
         setError(null)
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not parse CSV")
+        setError(
+          caught instanceof Error ? caught.message : "Could not parse CSV"
+        )
       }
     }
     reader.readAsText(file)
@@ -297,10 +291,13 @@ function ImportCsvDialog({
         if (target === "ignore" || target === "email") return
         if (target === "first_name") firstName = value
         else if (target === "last_name") lastName = value
-        else if (target === "unsubscribed") unsubscribed = parseUnsubscribed(value)
+        else if (target === "unsubscribed")
+          unsubscribed = parseUnsubscribed(value)
         else if (value) properties[target] = value
       })
-      return [{ email, firstName, lastName, unsubscribed, properties, segmentIds }]
+      return [
+        { email, firstName, lastName, unsubscribed, properties, segmentIds },
+      ]
     })
     if (inputs.length === 0) {
       setError("No rows with an email address")
@@ -349,7 +346,7 @@ function ImportCsvDialog({
               />
               {fileName ? (
                 <FieldDescription>
-                  {fileName} · {rows.length} row{rows.length === 1 ? "" : "s"}
+                  {fileName} · {pluralize(rows.length, "row")}
                 </FieldDescription>
               ) : null}
             </Field>
@@ -362,32 +359,22 @@ function ImportCsvDialog({
                       key={`${header}-${index}`}
                       className="grid grid-cols-[1fr_auto] items-center gap-3"
                     >
-                      <span className="truncate font-mono text-[13px]">{header}</span>
-                      <Select
+                      <MonoValue>{header}</MonoValue>
+                      <OptionSelect
+                        size="sm"
+                        align="end"
+                        className="w-40"
+                        aria-label={`Map column ${header}`}
                         value={mapping[index] ?? "ignore"}
-                        onValueChange={(next) => {
-                          if (!next) return
+                        onChange={(next) =>
                           setMapping((current) =>
                             current.map((item, itemIndex) =>
                               itemIndex === index ? next : item
                             )
                           )
-                        }}
+                        }
                         items={mapItems}
-                      >
-                        <SelectTrigger size="sm" className="h-8 w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="end">
-                          <SelectGroup>
-                            {mapItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                   ))}
                 </div>
@@ -396,41 +383,21 @@ function ImportCsvDialog({
             {state.segments.length > 0 ? (
               <Field>
                 <FieldLabel htmlFor="import-segment">Add to segment</FieldLabel>
-                <Select
+                <OptionSelect
+                  id="import-segment"
+                  className="w-full"
                   value={segmentId}
-                  onValueChange={(next) => {
-                    if (next) setSegmentId(next)
-                  }}
-                  items={[
-                    { value: "none", label: "No segment" },
-                    ...state.segments.map((segment) => ({
-                      value: segment.id,
-                      label: segment.name,
-                    })),
-                  ]}
-                >
-                  <SelectTrigger id="import-segment" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="none">No segment</SelectItem>
-                      {state.segments.map((segment) => (
-                        <SelectItem key={segment.id} value={segment.id}>
-                          {segment.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  onChange={setSegmentId}
+                  items={segmentOptions(state.segments)}
+                />
               </Field>
             ) : null}
             {error ? <FieldError>{error}</FieldError> : null}
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit" disabled={rows.length === 0}>
               Import
             </Button>
@@ -452,7 +419,8 @@ function BulkEditDialog({
   selectedIds: string[]
   mode: "segments" | "topics"
 }) {
-  const { state, addContactsToSegments, subscribeContactsToTopics } = useDashboard()
+  const { state, addContactsToSegments, subscribeContactsToTopics } =
+    useDashboard()
   const [picked, setPicked] = React.useState<string[]>([])
 
   function toggle(id: string, checked: boolean) {
@@ -495,8 +463,7 @@ function BulkEditDialog({
               {mode === "segments" ? "Add to segments" : "Subscribe to topics"}
             </DialogTitle>
             <DialogDescription>
-              Applies to {selectedIds.length} selected contact
-              {selectedIds.length === 1 ? "" : "s"}.
+              Applies to {pluralize(selectedIds.length, "selected contact")}.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
@@ -509,7 +476,10 @@ function BulkEditDialog({
             ) : (
               <div className="space-y-2 rounded-lg border border-border p-3">
                 {options.map((item) => (
-                  <label key={item.id} className="flex items-center gap-2 text-sm">
+                  <label
+                    key={item.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
                     <Checkbox
                       checked={picked.includes(item.id)}
                       onCheckedChange={(checked) =>
@@ -523,9 +493,9 @@ function BulkEditDialog({
             )}
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit" disabled={picked.length === 0}>
               Apply
             </Button>
@@ -552,10 +522,9 @@ export function ContactsView() {
     null
   )
 
+  const needle = searchNeedle(query)
   const rows = state.contacts.filter((contact) => {
-    const haystack =
-      `${contact.email} ${contact.firstName} ${contact.lastName}`.toLowerCase()
-    if (query && !haystack.includes(query.trim().toLowerCase())) return false
+    if (!contactMatches(contact, needle)) return false
     if (subscribed === "subscribed" && contact.unsubscribed) return false
     if (subscribed === "unsubscribed" && !contact.unsubscribed) return false
     if (segment !== "all" && !contact.segmentIds.includes(segment)) return false
@@ -563,8 +532,9 @@ export function ContactsView() {
   })
 
   const visibleIds = rows.map((contact) => contact.id)
+  const selectedSet = new Set(selected)
   const allVisibleSelected =
-    visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
+    visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
 
   function toggleAll(checked: boolean) {
     setSelected(checked ? visibleIds : [])
@@ -580,7 +550,7 @@ export function ContactsView() {
     <AudienceChrome
       actions={
         <>
-          <AudienceDocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton onClick={() => setDocsOpen(true)} />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button />}>
               <PlusIcon data-icon="inline-start" />
@@ -607,16 +577,20 @@ export function ContactsView() {
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-medium">{selected.length} selected</p>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" className="h-8" />}>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" className="h-8" />}
+            >
               Edit
               <ChevronDownIcon data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setBulkMode("segments")}>
+                  <LayersIcon />
                   Add to segments
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setBulkMode("topics")}>
+                  <TagIcon />
                   Subscribe to topics
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -638,24 +612,26 @@ export function ContactsView() {
           </Button>
         </div>
       ) : (
-        <AudienceToolbar
+        <ListToolbar
           query={query}
           onQueryChange={setQuery}
           placeholder="Search contacts…"
           range={range}
           onRangeChange={setRange}
-          select={{
-            value: subscribed,
-            onChange: setSubscribed,
-            items: SUBSCRIBED_ITEMS,
-            "aria-label": "Filter by subscription",
-          }}
-          extraSelect={{
-            value: segment,
-            onChange: setSegment,
-            items: segmentItems(state),
-            "aria-label": "Filter by segment",
-          }}
+          filters={[
+            {
+              value: subscribed,
+              onChange: setSubscribed,
+              items: SUBSCRIBED_ITEMS,
+              "aria-label": "Filter by subscription",
+            },
+            {
+              value: segment,
+              onChange: setSegment,
+              items: segmentItems(state),
+              "aria-label": "Filter by segment",
+            },
+          ]}
           onExport={() => {
             addExport("Contacts", rows.length)
             toast.add({ type: "success", title: "Export started" })
@@ -696,7 +672,7 @@ export function ContactsView() {
             <TableRow key={contact.id}>
               <TableCell>
                 <Checkbox
-                  checked={selected.includes(contact.id)}
+                  checked={selectedSet.has(contact.id)}
                   onCheckedChange={(checked) =>
                     toggleOne(contact.id, checked === true)
                   }
@@ -728,15 +704,19 @@ export function ContactsView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem render={<Link href={`/contacts/${contact.id}`} />}>
+                    <DropdownMenuItem
+                      render={<Link href={`/contacts/${contact.id}`} />}
+                    >
+                      <PencilIcon />
                       Edit Contact
-                    </MoreMenuItem>
-                    <MoreMenuItem
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPendingDelete(contact.id)}
                     >
+                      <Trash2Icon />
                       Delete Contact
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -755,7 +735,7 @@ export function ContactsView() {
         selectedIds={selected}
         mode={bulkMode ?? "segments"}
       />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)
@@ -772,10 +752,10 @@ export function ContactsView() {
           toast.add({ type: "success", title: "Contact deleted" })
         }}
       />
-      <ConfirmDelete
+      <ConfirmDialog
         open={bulkDelete}
         onOpenChange={setBulkDelete}
-        title={`Delete ${selected.length} contact${selected.length === 1 ? "" : "s"}?`}
+        title={`Delete ${pluralize(selected.length, "contact")}?`}
         description="Selected addresses are removed from every segment."
         onConfirm={() => {
           deleteContacts(selected)

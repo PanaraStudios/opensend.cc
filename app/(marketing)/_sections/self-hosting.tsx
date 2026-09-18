@@ -35,7 +35,7 @@ export function SelfHosting() {
         }
         description={SELF_HOST.sub}
       />
-      <Stagger className="mx-auto mt-14 grid min-w-0 max-w-4xl gap-6 lg:grid-cols-2">
+      <Stagger className="mx-auto mt-14 grid max-w-4xl min-w-0 gap-6 lg:grid-cols-2">
         <Panel title={SELF_HOST.stack.title}>
           <ol className="relative">
             <span

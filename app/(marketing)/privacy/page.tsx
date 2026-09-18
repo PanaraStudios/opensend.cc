@@ -18,10 +18,10 @@ export default function PrivacyPage() {
       </LegalSection>
       <LegalSection title="What this site collects">
         <p>
-          This website uses a self-hosted Umami instance. It collects
-          anonymous usage statistics without cookies: pages viewed, referrer,
-          and approximate country. It stores no personal identifiers and does
-          not track you across sites.
+          This website uses a self-hosted Umami instance. It collects anonymous
+          usage statistics without cookies: pages viewed, referrer, and
+          approximate country. It stores no personal identifiers and does not
+          track you across sites.
         </p>
         <p>
           If you email us or join the cloud waitlist, we keep your address to
@@ -37,8 +37,8 @@ export default function PrivacyPage() {
       </LegalSection>
       <LegalSection title="Data retention and deletion">
         <p>
-          Email hello@opensend.cc and we will remove your contact details
-          within 30 days.
+          Email hello@opensend.cc and we will remove your contact details within
+          30 days.
         </p>
       </LegalSection>
       <LegalSection title="Contact">

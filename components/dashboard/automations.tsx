@@ -12,46 +12,66 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
   AutomationStatusBadge,
-  ConfirmDelete,
+  ConfirmDialog,
   EmptyState,
-  FilterSelect,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  OptionSelect,
   PageHeader,
   ResourceTable,
-  SearchField,
   Th,
-  Toolbar,
 } from "@/components/dashboard/primitives"
-import { formatDate } from "@/lib/dashboard/format"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { automationStatusLabel, formatDate } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { AutomationStatus } from "@/lib/dashboard/types"
+
+const AUTOMATION_STATUS_ITEMS = [
+  { value: "all", label: "All statuses" },
+  ...(["enabled", "disabled"] as AutomationStatus[]).map((value) => ({
+    value,
+    label: automationStatusLabel(value),
+  })),
+]
+
+const TRIGGER_ITEMS = [
+  "contact.created",
+  "contact.updated",
+  "contact.unsubscribed",
+  "email.delivered",
+  "custom.event",
+].map((value) => ({ value, label: value }))
 
 export function AutomationsView() {
   const { state, addAutomation, setAutomationStatus, deleteAutomation } =
     useDashboard()
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState("")
+  const [status, setStatus] = React.useState("all")
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState("")
   const [trigger, setTrigger] = React.useState("contact.created")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const rows = state.automations.filter((item) => {
-    if (query && !item.name.toLowerCase().includes(query.trim().toLowerCase())) {
-      return false
-    }
-    if (status && item.status !== status) return false
-    return true
-  })
+  const needle = searchNeedle(query)
+  const rows = state.automations.filter(
+    (item) =>
+      matchesNeedle(needle, item.name) &&
+      (status === "all" || item.status === status)
+  )
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -78,22 +98,19 @@ export function AutomationsView() {
           Create automation
         </Button>
       </PageHeader>
-      <Toolbar>
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search automations…"
-        />
-        <FilterSelect
-          value={status}
-          onChange={setStatus}
-          placeholder="All statuses"
-          options={(["enabled", "disabled"] as AutomationStatus[]).map((value) => ({
-            value,
-            label: value,
-          }))}
-        />
-      </Toolbar>
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search automations…"
+        filters={[
+          {
+            value: status,
+            onChange: setStatus,
+            items: AUTOMATION_STATUS_ITEMS,
+            "aria-label": "Filter by status",
+          },
+        ]}
+      />
       {rows.length === 0 ? (
         <EmptyState
           icon={WorkflowIcon}
@@ -127,7 +144,9 @@ export function AutomationsView() {
               <TableCell>
                 <AutomationStatusBadge status={item.status} />
               </TableCell>
-              <TableCell className="text-muted-foreground">{item.runs}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {item.runs}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(item.createdAt)}
               </TableCell>
@@ -136,17 +155,20 @@ export function AutomationsView() {
                   <Switch
                     checked={item.status === "enabled"}
                     onCheckedChange={(checked) =>
-                      setAutomationStatus(item.id, checked ? "enabled" : "disabled")
+                      setAutomationStatus(
+                        item.id,
+                        checked ? "enabled" : "disabled"
+                      )
                     }
                     aria-label={`Toggle ${item.name}`}
                   />
                   <MoreMenu>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPending(item.id)}
                     >
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </MoreMenu>
                 </div>
               </TableCell>
@@ -182,26 +204,27 @@ export function AutomationsView() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="atm-trigger">Trigger</FieldLabel>
-                <select
+                <OptionSelect
                   id="atm-trigger"
+                  className="w-full"
                   value={trigger}
-                  onChange={(event) => setTrigger(event.target.value)}
-                  className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-                >
-                  <option value="contact.created">contact.created</option>
-                  <option value="contact.updated">contact.updated</option>
-                  <option value="contact.unsubscribed">contact.unsubscribed</option>
-                  <option value="email.delivered">email.delivered</option>
-                  <option value="custom.event">custom.event</option>
-                </select>
+                  onChange={setTrigger}
+                  items={TRIGGER_ITEMS}
+                />
                 <FieldDescription>
                   Custom events can be sent through the Events API.
                 </FieldDescription>
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? (
+                  <p className="text-sm text-destructive">{error}</p>
+                ) : null}
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Create</Button>
@@ -210,7 +233,7 @@ export function AutomationsView() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
           if (!next) setPending(null)

@@ -11,7 +11,7 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
       data-slot="select-group"
-      className={cn("scroll-my-1 p-1", className)}
+      className={cn("flex scroll-my-1 flex-col gap-1 p-1.5", className)}
       {...props}
     />
   )
@@ -104,7 +104,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.GroupLabel
       data-slot="select-label"
-      className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
+      className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)}
       {...props}
     />
   )
@@ -119,7 +119,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "relative flex w-full cursor-default items-center gap-2 rounded-lg py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
       {...props}
@@ -145,7 +145,10 @@ function SelectSeparator({
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn("pointer-events-none -mx-1 my-1 h-px bg-border", className)}
+      className={cn(
+        "pointer-events-none -mx-1.5 my-1.5 h-px bg-border",
+        className
+      )}
       {...props}
     />
   )

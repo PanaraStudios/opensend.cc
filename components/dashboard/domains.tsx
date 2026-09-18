@@ -3,45 +3,57 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeftIcon, GlobeIcon, PlusIcon } from "lucide-react"
+import { GlobeIcon, PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DetailHeader,
   EmptyState,
-  FilterSelect,
+  ListToolbar,
   MonoValue,
   MoreMenu,
-  MoreMenuItem,
+  NotFoundState,
+  OptionSelect,
   PageHeader,
   ResourceTable,
-  SearchField,
   StatusBadge,
   Surface,
   Th,
+  useDeleteRecord,
 } from "@/components/dashboard/primitives"
-import { REGIONS } from "@/lib/dashboard/types"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { REGIONS, type TlsMode } from "@/lib/dashboard/types"
 import {
   dnsHost,
   domainDnsRecords,
   formatDate,
   isDomainName,
+  pluralize,
   regionLabel,
+  statusLabel,
 } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 
 export function AddDomainDialog({
@@ -54,9 +66,8 @@ export function AddDomainDialog({
   const router = useRouter()
   const { addDomain, state } = useDashboard()
   const [name, setName] = React.useState("")
-  const [region, setRegion] = React.useState<(typeof REGIONS)[number]["value"]>(
-    "us-east-1"
-  )
+  const [region, setRegion] =
+    React.useState<(typeof REGIONS)[number]["value"]>("us-east-1")
   const [error, setError] = React.useState<string | null>(null)
 
   function reset() {
@@ -124,26 +135,19 @@ export function AddDomainDialog({
             </Field>
             <Field>
               <FieldLabel htmlFor="domain-region">Region</FieldLabel>
-              <select
+              <OptionSelect
                 id="domain-region"
+                className="w-full"
                 value={region}
-                onChange={(event) =>
-                  setRegion(event.target.value as typeof region)
-                }
-                className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-              >
-                {REGIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label} ({item.code})
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setRegion(next as typeof region)}
+                items={REGION_ITEMS}
+              />
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Add domain</Button>
           </DialogFooter>
         </form>
@@ -152,20 +156,38 @@ export function AddDomainDialog({
   )
 }
 
+const TLS_ITEMS = [
+  { value: "opportunistic", label: "Opportunistic" },
+  { value: "enforced", label: "Enforced" },
+]
+
+const DOMAIN_STATUS_ITEMS = [
+  { value: "all", label: "All statuses" },
+  ...(["verified", "pending", "not_started", "failed"] as const).map(
+    (value) => ({ value, label: statusLabel(value) })
+  ),
+]
+
+const REGION_ITEMS = REGIONS.map((item) => ({
+  value: item.value,
+  label: `${item.label} (${item.code})`,
+}))
+
 export function DomainsView() {
   const { state, deleteDomain } = useDashboard()
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState("")
-  const [region, setRegion] = React.useState("")
+  const [status, setStatus] = React.useState("all")
+  const [region, setRegion] = React.useState("all")
   const [open, setOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
-  const rows = state.domains.filter((domain) => {
-    if (query && !domain.name.includes(query.trim().toLowerCase())) return false
-    if (status && domain.status !== status) return false
-    if (region && domain.region !== region) return false
-    return true
-  })
+  const needle = searchNeedle(query)
+  const rows = state.domains.filter(
+    (domain) =>
+      matchesNeedle(needle, domain.name) &&
+      (status === "all" || domain.status === status) &&
+      (region === "all" || domain.region === region)
+  )
 
   return (
     <>
@@ -178,33 +200,25 @@ export function DomainsView() {
           Add domain
         </Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search domains…"
-        />
-        <FilterSelect
-          value={status}
-          onChange={setStatus}
-          placeholder="All statuses"
-          options={[
-            { value: "verified", label: "Verified" },
-            { value: "pending", label: "Pending" },
-            { value: "not_started", label: "Not started" },
-            { value: "failed", label: "Failed" },
-          ]}
-        />
-        <FilterSelect
-          value={region}
-          onChange={setRegion}
-          placeholder="All regions"
-          options={REGIONS.map((item) => ({
-            value: item.value,
-            label: item.label,
-          }))}
-        />
-      </div>
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search domains…"
+        filters={[
+          {
+            value: status,
+            onChange: setStatus,
+            items: DOMAIN_STATUS_ITEMS,
+            "aria-label": "Filter by status",
+          },
+          {
+            value: region,
+            onChange: setRegion,
+            items: [{ value: "all", label: "All regions" }, ...REGION_ITEMS],
+            "aria-label": "Filter by region",
+          },
+        ]}
+      />
       {rows.length === 0 ? (
         <EmptyState
           icon={GlobeIcon}
@@ -252,15 +266,17 @@ export function DomainsView() {
               </TableCell>
               <TableCell>
                 <MoreMenu>
-                  <MoreMenuItem render={<Link href={`/domains/${domain.id}`} />}>
+                  <DropdownMenuItem
+                    render={<Link href={`/domains/${domain.id}`} />}
+                  >
                     View DNS records
-                  </MoreMenuItem>
-                  <MoreMenuItem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
                     variant="destructive"
                     onClick={() => setPendingDelete(domain.id)}
                   >
                     Delete
-                  </MoreMenuItem>
+                  </DropdownMenuItem>
                 </MoreMenu>
               </TableCell>
             </TableRow>
@@ -268,7 +284,7 @@ export function DomainsView() {
         </ResourceTable>
       )}
       <AddDomainDialog open={open} onOpenChange={setOpen} />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)
@@ -286,28 +302,21 @@ export function DomainsView() {
 
 export function DomainDetail() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const { state, deleteDomain, updateDomain, verifyDomain } = useDashboard()
   const domain = state.domains.find((item) => item.id === id)
+  const { leaving, deleteAndLeave } = useDeleteRecord("/domains")
   const [tab, setTab] = React.useState("records")
   const [pendingDelete, setPendingDelete] = React.useState(false)
 
   if (!domain) {
-    return (
-      <EmptyState
-        icon={GlobeIcon}
-        title="Domain not found"
-        description="It may have been deleted from this workspace."
-      >
-        <Button nativeButton={false} render={<Link href="/domains" />}>
-          Back to domains
-        </Button>
-      </EmptyState>
-    )
+    if (leaving) return null
+    return <NotFoundState icon={GlobeIcon} noun="domain" backHref="/domains" />
   }
 
   const records = domainDnsRecords(domain)
-  const pendingRecords = records.filter((record) => record.status !== "verified")
+  const pendingRecords = records.filter(
+    (record) => record.status !== "verified"
+  )
   const domainId = domain.id
 
   function runVerification() {
@@ -321,33 +330,23 @@ export function DomainDetail() {
 
   return (
     <>
-      <div className="space-y-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          className="-ml-2 text-muted-foreground"
-          render={<Link href="/domains" />}
-        >
-          <ArrowLeftIcon />
-          Domains
-        </Button>
-        <PageHeader title={domain.name}>
-          {domain.status !== "verified" ? (
-            <Button onClick={runVerification}>Verify DNS Records</Button>
-          ) : null}
-          <Button variant="outline" onClick={() => setPendingDelete(true)}>
-            Delete
-          </Button>
-        </PageHeader>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <StatusBadge status={domain.status} />
-          <span>
-            {regionLabel(domain.region)} · {domain.region}
-          </span>
-          <span>Added {formatDate(domain.createdAt)}</span>
-        </div>
-      </div>
+      <DetailHeader
+        backHref="/domains"
+        backLabel="Domains"
+        title={domain.name}
+        badge={<StatusBadge status={domain.status} />}
+        description={`${regionLabel(domain.region)} · ${domain.region} · Added ${formatDate(domain.createdAt)}`}
+        actions={
+          <>
+            {domain.status !== "verified" ? (
+              <Button onClick={runVerification}>Verify DNS Records</Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setPendingDelete(true)}>
+              Delete
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList variant="line">
@@ -368,8 +367,7 @@ export function DomainDetail() {
             <Surface>
               <p className="text-small">
                 <span className="text-foreground">
-                  Waiting on {pendingRecords.length}{" "}
-                  {pendingRecords.length === 1 ? "record" : "records"}
+                  Waiting on {pluralize(pendingRecords.length, "record")}
                 </span>
                 {": "}
                 <span className="text-muted-foreground">
@@ -478,19 +476,15 @@ export function DomainDetail() {
           </Field>
           <Field>
             <FieldLabel htmlFor="tls">TLS</FieldLabel>
-            <select
+            <OptionSelect
               id="tls"
+              className="w-full"
               value={domain.tls}
-              onChange={(event) =>
-                updateDomain(domain.id, {
-                  tls: event.target.value as "opportunistic" | "enforced",
-                })
+              onChange={(next) =>
+                updateDomain(domain.id, { tls: next as TlsMode })
               }
-              className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-            >
-              <option value="opportunistic">Opportunistic</option>
-              <option value="enforced">Enforced</option>
-            </select>
+              items={TLS_ITEMS}
+            />
             <FieldDescription>
               Enforced TLS only delivers when the receiving server supports TLS.
             </FieldDescription>
@@ -532,15 +526,14 @@ export function DomainDetail() {
         </Surface>
       )}
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
         title={`Delete ${domain.name}?`}
         description="Sending from this domain will stop. DNS records can stay at your registrar."
         onConfirm={() => {
-          deleteDomain(domain.id)
+          deleteAndLeave(() => deleteDomain(domain.id))
           toast.add({ type: "success", title: "Domain deleted" })
-          router.push("/domains")
         }}
       />
     </>

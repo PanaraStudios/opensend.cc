@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { SegmentsView } from "@/components/dashboard/segments"
+import { SegmentsView } from "@/components/dashboard/audience/segments"
 
 export const metadata: Metadata = {
   title: "Segments",

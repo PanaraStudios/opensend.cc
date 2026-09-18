@@ -24,10 +24,6 @@ export function formatDateTime(timestamp: number): string {
   return format(timestamp, "MMM d, yyyy · HH:mm")
 }
 
-export function formatTime(timestamp: number): string {
-  return format(timestamp, "HH:mm:ss")
-}
-
 export function dnsHost(name: string, domain: string): string {
   if (name === domain || name === "@") return "@"
   const suffix = `.${domain}`
@@ -116,6 +112,12 @@ export function emailStatusLabel(status: EmailStatus): string {
   }
 }
 
+export function defaultFromAddress(domainName: string | undefined): string {
+  return domainName
+    ? `Opensend <hello@${domainName}>`
+    : "Opensend <hello@opensend.cc>"
+}
+
 export function broadcastStatusLabel(status: BroadcastStatus): string {
   switch (status) {
     case "draft":
@@ -126,6 +128,8 @@ export function broadcastStatusLabel(status: BroadcastStatus): string {
       return "Sending"
     case "sent":
       return "Sent"
+    case "failed":
+      return "Failed"
     case "canceled":
       return "Canceled"
   }
@@ -199,6 +203,67 @@ export function isUrl(value: string): boolean {
   } catch {
     return false
   }
+}
+
+export function pluralize(
+  count: number,
+  noun: string,
+  plural = `${noun}s`
+): string {
+  return `${count} ${count === 1 ? noun : plural}`
+}
+
+/* Badge tone per status. Kept beside the labels so adding a status touches one
+   module; `primitives.tsx` only renders the tone. */
+export type BadgeTone =
+  "success" | "destructive" | "warning" | "secondary" | "outline"
+
+export const DOMAIN_STATUS_TONE: Record<DomainStatus, BadgeTone> = {
+  not_started: "secondary",
+  pending: "warning",
+  verified: "success",
+  failed: "destructive",
+  temporary_failure: "warning",
+}
+
+export const EMAIL_STATUS_TONE: Record<EmailStatus, BadgeTone> = {
+  queued: "warning",
+  scheduled: "warning",
+  sent: "outline",
+  delivered: "success",
+  delivery_delayed: "warning",
+  opened: "success",
+  clicked: "success",
+  bounced: "destructive",
+  complained: "destructive",
+  failed: "destructive",
+  canceled: "secondary",
+  suppressed: "secondary",
+}
+
+export const BROADCAST_STATUS_TONE: Record<BroadcastStatus, BadgeTone> = {
+  draft: "outline",
+  scheduled: "warning",
+  queued: "warning",
+  sent: "success",
+  failed: "destructive",
+  canceled: "secondary",
+}
+
+export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
+  draft: "secondary",
+  published: "success",
+}
+
+export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {
+  enabled: "success",
+  disabled: "secondary",
+}
+
+export const EXPORT_STATUS_TONE: Record<ExportStatus, BadgeTone> = {
+  processing: "warning",
+  ready: "success",
+  expired: "secondary",
 }
 
 export function percent(part: number, total: number): string {

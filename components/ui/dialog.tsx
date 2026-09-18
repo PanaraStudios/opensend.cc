@@ -70,8 +70,7 @@ function DialogContent({
               />
             }
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
@@ -121,10 +120,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn(
-        "font-heading text-h4",
-        className
-      )}
+      className={cn("font-heading text-h4", className)}
       {...props}
     />
   )

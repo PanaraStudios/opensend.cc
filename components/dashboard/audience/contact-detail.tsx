@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -28,15 +28,17 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DetailHeader,
   EmailStatusBadge,
   EmptyState,
+  NotFoundState,
   ResourceTable,
   Surface,
   Th,
+  useDeleteRecord,
 } from "@/components/dashboard/primitives"
-import { AudienceDetailHeader } from "@/components/dashboard/audience/shared"
-import { contactTopicStatus } from "@/lib/dashboard/data"
+import { contactTopicStatus } from "@/lib/dashboard/contacts"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 
@@ -166,32 +168,15 @@ function SegmentMembership({
 
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const { state, updateContact, deleteContact, setContactTopic } =
     useDashboard()
   const contact = state.contacts.find((item) => item.id === id)
+  const { leaving, deleteAndLeave } = useDeleteRecord("/contacts")
   const [pendingDelete, setPendingDelete] = React.useState(false)
 
   if (!contact) {
-    return (
-      <div className="flex flex-col gap-6">
-        <AudienceDetailHeader
-          backHref="/contacts"
-          backLabel="Contacts"
-          title="Contact not found"
-          icon={UserIcon}
-        />
-        <EmptyState
-          icon={UserIcon}
-          title="Contact not found"
-          description="It may have been deleted from this workspace."
-        >
-          <Button nativeButton={false} render={<Link href="/contacts" />}>
-            Back to contacts
-          </Button>
-        </EmptyState>
-      </div>
-    )
+    if (leaving) return null
+    return <NotFoundState icon={UserIcon} noun="contact" backHref="/contacts" />
   }
 
   const emails = state.emails
@@ -215,7 +200,7 @@ export function ContactDetail() {
 
   return (
     <>
-      <AudienceDetailHeader
+      <DetailHeader
         backHref="/contacts"
         backLabel="Contacts"
         title={contact.email}
@@ -453,15 +438,14 @@ export function ContactDetail() {
         </TabsContent>
       </Tabs>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
         title={`Delete ${contact.email}?`}
         description="The contact is removed from every segment. This cannot be undone."
         onConfirm={() => {
-          deleteContact(contact.id)
+          deleteAndLeave(() => deleteContact(contact.id))
           toast.add({ type: "success", title: "Contact deleted" })
-          router.push("/contacts")
         }}
       />
     </>

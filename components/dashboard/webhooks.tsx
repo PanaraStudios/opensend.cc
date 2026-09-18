@@ -14,24 +14,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
   CopyButton,
   EmptyState,
   MoreMenu,
-  MoreMenuItem,
   PageHeader,
   ResourceTable,
-  SearchField,
+  ListToolbar,
   Surface,
   Th,
 } from "@/components/dashboard/primitives"
-import { formatDate, isUrl } from "@/lib/dashboard/format"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { formatDate, isUrl, pluralize } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import { WEBHOOK_EVENTS, type WebhookEvent } from "@/lib/dashboard/types"
 
@@ -54,8 +60,9 @@ export function WebhooksView() {
   const [pending, setPending] = React.useState<string | null>(null)
   const [secret, setSecret] = React.useState<string | null>(null)
 
+  const needle = searchNeedle(query)
   const rows = state.webhooks.filter((item) =>
-    item.endpoint.toLowerCase().includes(query.trim().toLowerCase())
+    matchesNeedle(needle, item.endpoint)
   )
 
   function toggleEvent(event: WebhookEvent, checked: boolean) {
@@ -94,9 +101,9 @@ export function WebhooksView() {
           Add webhook
         </Button>
       </PageHeader>
-      <SearchField
-        value={query}
-        onChange={setQuery}
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
         placeholder="Search endpoints…"
       />
       {secret ? (
@@ -143,7 +150,7 @@ export function WebhooksView() {
                 <code className="font-mono text-[13px]">{item.endpoint}</code>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {item.events.length} event{item.events.length === 1 ? "" : "s"}
+                {pluralize(item.events.length, "event")}
               </TableCell>
               <TableCell>
                 <Badge variant={item.enabled ? "success" : "secondary"} dot>
@@ -163,7 +170,7 @@ export function WebhooksView() {
                     aria-label={`Toggle ${item.endpoint}`}
                   />
                   <MoreMenu>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       onClick={() => {
                         const next = rotateWebhookSecret(item.id)
                         setSecret(next)
@@ -171,13 +178,13 @@ export function WebhooksView() {
                       }}
                     >
                       Rotate secret
-                    </MoreMenuItem>
-                    <MoreMenuItem
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPending(item.id)}
                     >
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </MoreMenu>
                 </div>
               </TableCell>
@@ -198,7 +205,8 @@ export function WebhooksView() {
             <DialogHeader>
               <DialogTitle>Add webhook</DialogTitle>
               <DialogDescription>
-                We sign every payload. Verify with the secret shown after create.
+                We sign every payload. Verify with the secret shown after
+                create.
               </DialogDescription>
             </DialogHeader>
             <FieldGroup className="py-4">
@@ -219,7 +227,10 @@ export function WebhooksView() {
                 <FieldLabel>Events</FieldLabel>
                 <div className="grid max-h-56 gap-2 overflow-auto rounded-lg border border-border p-3 sm:grid-cols-2">
                   {WEBHOOK_EVENTS.map((event) => (
-                    <label key={event} className="flex items-center gap-2 text-sm">
+                    <label
+                      key={event}
+                      className="flex items-center gap-2 text-sm"
+                    >
                       <Checkbox
                         checked={events.includes(event)}
                         onCheckedChange={(checked) =>
@@ -233,11 +244,17 @@ export function WebhooksView() {
                 <FieldDescription>
                   Receiving uses email.received. Sending uses the rest.
                 </FieldDescription>
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? (
+                  <p className="text-sm text-destructive">{error}</p>
+                ) : null}
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Add endpoint</Button>
@@ -246,7 +263,7 @@ export function WebhooksView() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
           if (!next) setPending(null)

@@ -8,36 +8,47 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DetailHeader,
+  DocsButton,
   EmptyState,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  NotFoundState,
   ResourceTable,
   Surface,
   Th,
+  useDeleteRecord,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDetailHeader,
-  AudienceDocsButton,
   AudienceDocsSheet,
-  AudienceToolbar,
 } from "@/components/dashboard/audience/shared"
-import { LayersIcon, PlusIcon } from "lucide-react"
-import { segmentContactCount } from "@/lib/dashboard/data"
-import { formatDate } from "@/lib/dashboard/format"
+import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { contactMatches, segmentContactCounts } from "@/lib/dashboard/contacts"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
+import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 
 function AddSegmentDialog({
@@ -92,9 +103,9 @@ function AddSegmentDialog({
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit" disabled={!name.trim()}>
               Create segment
             </Button>
@@ -112,15 +123,17 @@ export function SegmentsView() {
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
+  const needle = searchNeedle(query)
   const rows = state.segments.filter((segment) =>
-    segment.name.toLowerCase().includes(query.trim().toLowerCase())
+    matchesNeedle(needle, segment.name)
   )
+  const memberCounts = segmentContactCounts(state.contacts)
 
   return (
     <AudienceChrome
       actions={
         <>
-          <AudienceDocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Create segment
@@ -128,7 +141,7 @@ export function SegmentsView() {
         </>
       }
     >
-      <AudienceToolbar
+      <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search segments…"
@@ -170,7 +183,7 @@ export function SegmentsView() {
                 </Link>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {segmentContactCount(state.contacts, segment.id)}
+                {memberCounts.get(segment.id) ?? 0}
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(segment.createdAt)}
@@ -178,15 +191,19 @@ export function SegmentsView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem render={<Link href={`/segments/${segment.id}`} />}>
+                    <DropdownMenuItem
+                      render={<Link href={`/segments/${segment.id}`} />}
+                    >
+                      <EyeIcon />
                       View segment
-                    </MoreMenuItem>
-                    <MoreMenuItem
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPendingDelete(segment.id)}
                     >
+                      <Trash2Icon />
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -196,7 +213,7 @@ export function SegmentsView() {
       )}
       <AddSegmentDialog open={open} onOpenChange={setOpen} />
       <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)
@@ -214,52 +231,36 @@ export function SegmentsView() {
 
 export function SegmentDetail() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const { state, updateSegment, deleteSegment, setContactSegments } =
     useDashboard()
   const segment = state.segments.find((item) => item.id === id)
+  const { leaving, deleteAndLeave } = useDeleteRecord("/segments")
   const [pendingDelete, setPendingDelete] = React.useState(false)
   const [query, setQuery] = React.useState("")
 
   if (!segment) {
+    if (leaving) return null
     return (
-      <div className="flex flex-col gap-6">
-        <AudienceDetailHeader
-          backHref="/segments"
-          backLabel="Segments"
-          title="Segment not found"
-          icon={LayersIcon}
-        />
-        <EmptyState
-          icon={LayersIcon}
-          title="Segment not found"
-          description="It may have been deleted from this workspace."
-        >
-          <Button nativeButton={false} render={<Link href="/segments" />}>
-            Back to segments
-          </Button>
-        </EmptyState>
-      </div>
+      <NotFoundState icon={LayersIcon} noun="segment" backHref="/segments" />
     )
   }
 
   const members = state.contacts.filter((contact) =>
     contact.segmentIds.includes(segment.id)
   )
-  const candidates = state.contacts.filter((contact) => {
-    const haystack =
-      `${contact.email} ${contact.firstName} ${contact.lastName}`.toLowerCase()
-    return haystack.includes(query.trim().toLowerCase())
-  })
+  const needle = searchNeedle(query)
+  const candidates = state.contacts.filter((contact) =>
+    contactMatches(contact, needle)
+  )
 
   return (
     <>
-      <AudienceDetailHeader
+      <DetailHeader
         backHref="/segments"
         backLabel="Segments"
         title={segment.name}
         icon={LayersIcon}
-        description={`${members.length} contact${members.length === 1 ? "" : "s"} · Created ${formatDate(segment.createdAt)}`}
+        description={`${pluralize(members.length, "contact")} · Created ${formatDate(segment.createdAt)}`}
         actions={
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
             Delete
@@ -284,7 +285,7 @@ export function SegmentDetail() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium">Contacts</h2>
-          <AudienceToolbar
+          <ListToolbar
             query={query}
             onQueryChange={setQuery}
             placeholder="Filter contacts…"
@@ -343,15 +344,14 @@ export function SegmentDetail() {
         )}
       </section>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
         title={`Delete ${segment.name}?`}
         description="Contacts remain in the workspace. They are only removed from this segment."
         onConfirm={() => {
-          deleteSegment(segment.id)
+          deleteAndLeave(() => deleteSegment(segment.id))
           toast.add({ type: "success", title: "Segment deleted" })
-          router.push("/segments")
         }}
       />
     </>

@@ -1,3 +1,4 @@
+import { normalizePropertyKey } from "./contacts"
 import { isEmail } from "./format"
 
 export type CsvTable = {
@@ -20,7 +21,10 @@ const RESERVED_MAP: Record<string, string> = {
 }
 
 export function parseCsv(text: string): CsvTable {
-  const source = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const source = text
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
   const lines = splitCsvLines(source)
   if (lines.length === 0) return { headers: [], rows: [] }
   const headers = lines[0].map((header) => header.trim())
@@ -35,7 +39,7 @@ export function suggestCsvMapping(
   header: string,
   propertyKeys: readonly string[]
 ): string {
-  const normalized = header.trim().toLowerCase().replace(/\s+/g, "_")
+  const normalized = normalizePropertyKey(header)
   if (RESERVED_MAP[header.trim().toLowerCase()] || RESERVED_MAP[normalized]) {
     return RESERVED_MAP[header.trim().toLowerCase()] ?? RESERVED_MAP[normalized]
   }

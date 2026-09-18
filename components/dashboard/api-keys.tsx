@@ -7,30 +7,37 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
   CopyButton,
   EmptyState,
-  FilterSelect,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  OptionSelect,
   PageHeader,
   ResourceTable,
-  SearchField,
   Th,
 } from "@/components/dashboard/primitives"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { formatDate, maskToken, permissionLabel } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 
@@ -46,7 +53,9 @@ function PermissionFields({
   setDomainId: (value: string | null) => void
 }) {
   const { state } = useDashboard()
-  const verified = state.domains.filter((domain) => domain.status === "verified")
+  const verified = state.domains.filter(
+    (domain) => domain.status === "verified"
+  )
 
   return (
     <>
@@ -80,19 +89,19 @@ function PermissionFields({
       {permission === "sending_access" ? (
         <Field>
           <FieldLabel htmlFor="key-domain">Restrict to domain</FieldLabel>
-          <select
+          <OptionSelect
             id="key-domain"
-            value={domainId ?? ""}
-            onChange={(event) => setDomainId(event.target.value || null)}
-            className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-          >
-            <option value="">All domains</option>
-            {verified.map((domain) => (
-              <option key={domain.id} value={domain.id}>
-                {domain.name}
-              </option>
-            ))}
-          </select>
+            className="w-full"
+            value={domainId ?? "all"}
+            onChange={(next) => setDomainId(next === "all" ? null : next)}
+            items={[
+              { value: "all", label: "All domains" },
+              ...verified.map((domain) => ({
+                value: domain.id,
+                label: domain.name,
+              })),
+            ]}
+          />
           <FieldDescription>
             Optional. Only used with sending access.
           </FieldDescription>
@@ -199,13 +208,9 @@ export function CreateApiKeyDialog({
               />
             </FieldGroup>
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <DialogClose render={<Button variant="outline" />}>
                 Cancel
-              </Button>
+              </DialogClose>
               <Button type="submit" disabled={!name.trim()}>
                 Create API key
               </Button>
@@ -246,40 +251,40 @@ function EditApiKeyForm({
   return (
     <DialogContent className="sm:max-w-md">
       <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Edit API key</DialogTitle>
-            <DialogDescription>
-              You can change the name, permission, and domain restriction. The
-              token itself cannot be viewed again.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="py-4">
-            <Field>
-              <FieldLabel htmlFor="edit-key-name">Name</FieldLabel>
-              <Input
-                id="edit-key-name"
-                value={name}
-                maxLength={50}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </Field>
-            <PermissionFields
-              permission={permission}
-              setPermission={setPermission}
-              domainId={domainId}
-              setDomainId={setDomainId}
+        <DialogHeader>
+          <DialogTitle>Edit API key</DialogTitle>
+          <DialogDescription>
+            You can change the name, permission, and domain restriction. The
+            token itself cannot be viewed again.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup className="py-4">
+          <Field>
+            <FieldLabel htmlFor="edit-key-name">Name</FieldLabel>
+            <Input
+              id="edit-key-name"
+              value={name}
+              maxLength={50}
+              onChange={(event) => setName(event.target.value)}
             />
-          </FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!name.trim()}>
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+          </Field>
+          <PermissionFields
+            permission={permission}
+            setPermission={setPermission}
+            domainId={domainId}
+            setDomainId={setDomainId}
+          />
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={!name.trim()}>
+            Save
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
   )
 }
 
@@ -305,28 +310,37 @@ function EditApiKeyDialog({
   )
 }
 
-function lastUsedTone(lastUsedAt: number | null): "success" | "secondary" | "warning" {
+function lastUsedTone(
+  lastUsedAt: number | null
+): "success" | "secondary" | "warning" {
   if (lastUsedAt === null) return "secondary"
   const hours = (Date.now() - lastUsedAt) / 3_600_000
   if (hours < 24) return "success"
   return "warning"
 }
 
+const PERMISSION_ITEMS = [
+  { value: "all", label: "All permissions" },
+  ...(["full_access", "sending_access"] as ApiKeyPermission[]).map((value) => ({
+    value,
+    label: permissionLabel(value),
+  })),
+]
+
 export function ApiKeysView() {
   const { state, deleteApiKey } = useDashboard()
   const [query, setQuery] = React.useState("")
-  const [permission, setPermission] = React.useState("")
+  const [permission, setPermission] = React.useState("all")
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<ApiKey | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
-  const rows = state.apiKeys.filter((key) => {
-    if (query && !key.name.toLowerCase().includes(query.trim().toLowerCase())) {
-      return false
-    }
-    if (permission && key.permission !== permission) return false
-    return true
-  })
+  const needle = searchNeedle(query)
+  const rows = state.apiKeys.filter(
+    (key) =>
+      matchesNeedle(needle, key.name) &&
+      (permission === "all" || key.permission === permission)
+  )
 
   return (
     <>
@@ -339,22 +353,19 @@ export function ApiKeysView() {
           Create API key
         </Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search keys…"
-        />
-        <FilterSelect
-          value={permission}
-          onChange={setPermission}
-          placeholder="All permissions"
-          options={[
-            { value: "full_access", label: "Full access" },
-            { value: "sending_access", label: "Sending access" },
-          ]}
-        />
-      </div>
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search keys…"
+        filters={[
+          {
+            value: permission,
+            onChange: setPermission,
+            items: PERMISSION_ITEMS,
+            "aria-label": "Filter by permission",
+          },
+        ]}
+      />
       {rows.length === 0 ? (
         <EmptyState
           icon={KeyRoundIcon}
@@ -381,7 +392,9 @@ export function ApiKeysView() {
           }
         >
           {rows.map((key) => {
-            const domain = state.domains.find((item) => item.id === key.domainId)
+            const domain = state.domains.find(
+              (item) => item.id === key.domainId
+            )
             return (
               <TableRow key={key.id}>
                 <TableCell className="font-medium">{key.name}</TableCell>
@@ -412,15 +425,15 @@ export function ApiKeysView() {
                 </TableCell>
                 <TableCell>
                   <MoreMenu>
-                    <MoreMenuItem onClick={() => setEditing(key)}>
+                    <DropdownMenuItem onClick={() => setEditing(key)}>
                       Edit API key
-                    </MoreMenuItem>
-                    <MoreMenuItem
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPendingDelete(key.id)}
                     >
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </MoreMenu>
                 </TableCell>
               </TableRow>
@@ -436,7 +449,7 @@ export function ApiKeysView() {
           if (!next) setEditing(null)
         }}
       />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)

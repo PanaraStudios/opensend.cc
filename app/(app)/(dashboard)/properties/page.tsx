@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { PropertiesView } from "@/components/dashboard/properties"
+import { PropertiesView } from "@/components/dashboard/audience/properties"
 
 export const metadata: Metadata = {
   title: "Properties",

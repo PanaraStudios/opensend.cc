@@ -10,12 +10,11 @@ import { cn } from "@/lib/utils"
 
 /* API, SMTP, dashboard, always in that order so tags read the same in every
    cell. */
-export const PLATFORMS: { id: Platform; label: string; icon: LucideIcon }[] =
-  [
-    { id: "api", label: "API", icon: CodeIcon },
-    { id: "smtp", label: "SMTP", icon: MailIcon },
-    { id: "dashboard", label: "Dashboard", icon: AppWindowIcon },
-  ]
+export const PLATFORMS: { id: Platform; label: string; icon: LucideIcon }[] = [
+  { id: "api", label: "API", icon: CodeIcon },
+  { id: "smtp", label: "SMTP", icon: MailIcon },
+  { id: "dashboard", label: "Dashboard", icon: AppWindowIcon },
+]
 
 export function formatPlatforms(platforms: Platform[]) {
   const names = PLATFORMS.filter((p) => platforms.includes(p.id)).map(

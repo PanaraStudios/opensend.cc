@@ -1,7 +1,5 @@
 import { JsonLd } from "@/components/json-ld"
-import { MotionProvider } from "@/components/marketing/motion"
-import { SiteFooter } from "@/components/marketing/site-footer"
-import { SiteHeader } from "@/components/marketing/site-header"
+import { MarketingChrome } from "@/components/marketing/marketing-chrome"
 import { siteJsonLd } from "@/lib/schema"
 
 /* Marketing chrome: the bounded rails column with sticky header on top and
@@ -14,15 +12,9 @@ export default function MarketingLayout({
   children: React.ReactNode
 }>) {
   return (
-    <MotionProvider>
+    <MarketingChrome>
       <JsonLd data={siteJsonLd()} />
-      <div className="hatch">
-        <div className="rails flex min-h-svh flex-col">
-          <SiteHeader />
-          <main className="flex-1">{children}</main>
-          <SiteFooter />
-        </div>
-      </div>
-    </MotionProvider>
+      {children}
+    </MarketingChrome>
   )
 }

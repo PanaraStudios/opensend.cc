@@ -35,7 +35,7 @@ export function Pricing() {
         }
         description={PRICING.sub}
       />
-      <Stagger className="mx-auto mt-14 grid w-full min-w-0 max-w-3xl gap-6 md:grid-cols-2">
+      <Stagger className="mx-auto mt-14 grid w-full max-w-3xl min-w-0 gap-6 md:grid-cols-2">
         {PRICING.tiers.map((tier) => {
           const external = tier.cta.href.startsWith("http")
           const Icon = TIER_ICONS[tier.icon]
@@ -57,7 +57,9 @@ export function Pricing() {
                   </h3>
                   {tier.featured && (
                     <Badge variant="primary">
-                      {"badge" in tier && tier.badge ? tier.badge : "Open source"}
+                      {"badge" in tier && tier.badge
+                        ? tier.badge
+                        : "Open source"}
                     </Badge>
                   )}
                 </div>

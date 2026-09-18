@@ -23,17 +23,17 @@ import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
   EmptyState,
   MoreMenu,
-  MoreMenuItem,
   ExportStatusBadge,
-  PageHeader,
   ResourceTable,
-  SectionTabs,
+  OptionSelect,
+  SectionChrome,
   Surface,
   Th,
 } from "@/components/dashboard/primitives"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import {
   formatDate,
@@ -48,17 +48,26 @@ import { useDashboard } from "@/lib/dashboard/store"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UsersIcon } from "lucide-react"
 
+const ROLE_ITEMS = (["admin", "member"] as MemberRole[]).map((value) => ({
+  value,
+  label: roleLabel(value),
+}))
+
+const REGION_ITEMS = REGIONS.map((item) => ({
+  value: item.value,
+  label: `${item.label} (${item.code})`,
+}))
+
+const SMTP_PORT_ITEMS = [
+  { value: "465", label: "465 · implicit TLS" },
+  { value: "587", label: "587 · STARTTLS" },
+]
+
 export function SettingsShell({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <PageHeader title="Settings" />
-      <SectionTabs
-        items={SETTINGS_NAV}
-        label="Settings"
-        className="max-w-full flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      />
+    <SectionChrome title="Settings" tabs={SETTINGS_NAV}>
       {children}
-    </>
+    </SectionChrome>
   )
 }
 
@@ -73,7 +82,9 @@ function SettingsLead({
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <p className="max-w-2xl text-small text-muted-foreground">{children}</p>
       {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {actions}
+        </div>
       ) : null}
     </div>
   )
@@ -107,8 +118,8 @@ export function SettingsGeneral() {
   return (
     <>
       <SettingsLead>
-        Team identity. Self-hosted Opensend keeps this on your Convex
-        deployment — nothing is sent to us.
+        Team identity. Self-hosted Opensend keeps this on your Convex deployment
+        — nothing is sent to us.
       </SettingsLead>
       <form onSubmit={save} className="max-w-lg">
         <Surface>
@@ -229,19 +240,15 @@ export function SettingsTeam() {
                     {roleLabel(member.role)}
                   </span>
                 ) : (
-                  <select
+                  <OptionSelect
+                    size="sm"
+                    aria-label={`Role for ${member.name}`}
                     value={member.role}
-                    onChange={(event) =>
-                      updateMemberRole(
-                        member.id,
-                        event.target.value as MemberRole
-                      )
+                    onChange={(next) =>
+                      updateMemberRole(member.id, next as MemberRole)
                     }
-                    className="h-8 rounded-lg border border-input bg-background px-2 text-[13px] dark:bg-surface"
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                  </select>
+                    items={ROLE_ITEMS}
+                  />
                 )}
               </TableCell>
               <TableCell className="text-muted-foreground">
@@ -250,12 +257,12 @@ export function SettingsTeam() {
               <TableCell>
                 {member.you ? null : (
                   <MoreMenu>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPendingDelete(member.id)}
                     >
                       Remove
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </MoreMenu>
                 )}
               </TableCell>
@@ -307,17 +314,13 @@ export function SettingsTeam() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="invite-role">Role</FieldLabel>
-                <select
+                <OptionSelect
                   id="invite-role"
+                  className="w-full"
                   value={role}
-                  onChange={(event) =>
-                    setRole(event.target.value as MemberRole)
-                  }
-                  className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="member">Member</option>
-                </select>
+                  onChange={(next) => setRole(next as MemberRole)}
+                  items={ROLE_ITEMS}
+                />
               </Field>
             </FieldGroup>
             <DialogFooter>
@@ -334,7 +337,7 @@ export function SettingsTeam() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)
@@ -352,7 +355,7 @@ export function SettingsTeam() {
 }
 
 export function SettingsSes() {
-  const { state, updateSes } = useDashboard()
+  const { state, updateSettings } = useDashboard()
   const ses = state.settings.ses
 
   function save(event: React.FormEvent<HTMLFormElement>) {
@@ -361,14 +364,18 @@ export function SettingsSes() {
     const region = String(form.get("region") ?? ses.region) as Region
     const configurationSet = String(form.get("configurationSet") ?? "").trim()
     const accessKey = String(form.get("accessKey") ?? "").trim()
-    updateSes({
-      connected: true,
-      region,
-      configurationSet,
-      accessKeyLast4: accessKey
-        ? accessKey.slice(-4).toUpperCase()
-        : ses.accessKeyLast4,
-    })
+    updateSettings((current) => ({
+      ...current,
+      ses: {
+        ...current.ses,
+        connected: true,
+        region,
+        configurationSet,
+        accessKeyLast4: accessKey
+          ? accessKey.slice(-4).toUpperCase()
+          : ses.accessKeyLast4,
+      },
+    }))
     toast.add({ type: "success", title: "SES connection saved" })
   }
 
@@ -388,19 +395,14 @@ export function SettingsSes() {
           </div>
           <Field>
             <FieldLabel htmlFor="ses-region">Region</FieldLabel>
-            <select
+            <OptionSelect
               id="ses-region"
               name="region"
               key={ses.region}
+              className="w-full"
               defaultValue={ses.region}
-              className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-            >
-              {REGIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label} ({item.code})
-                </option>
-              ))}
-            </select>
+              items={REGION_ITEMS}
+            />
             <FieldDescription>
               Current: {regionLabel(ses.region)}
             </FieldDescription>
@@ -444,8 +446,13 @@ export function SettingsSes() {
 }
 
 export function SettingsSmtp() {
-  const { state, updateSmtp } = useDashboard()
+  const { state, updateSettings } = useDashboard()
   const smtp = state.settings.smtp
+  const updateSmtp = (patch: Partial<typeof smtp>) =>
+    updateSettings((current) => ({
+      ...current,
+      smtp: { ...current.smtp, ...patch },
+    }))
 
   return (
     <>
@@ -475,19 +482,13 @@ export function SettingsSmtp() {
         </Field>
         <Field>
           <FieldLabel htmlFor="smtp-port">Port</FieldLabel>
-          <select
+          <OptionSelect
             id="smtp-port"
+            className="w-full"
             value={String(smtp.port)}
-            onChange={(event) =>
-              updateSmtp({
-                port: Number(event.target.value) as 465 | 587,
-              })
-            }
-            className="h-control w-full rounded-lg border border-input bg-background px-2.5 text-sm dark:bg-surface"
-          >
-            <option value="465">465 · implicit TLS</option>
-            <option value="587">587 · STARTTLS</option>
-          </select>
+            onChange={(next) => updateSmtp({ port: Number(next) as 465 | 587 })}
+            items={SMTP_PORT_ITEMS}
+          />
         </Field>
         <Field>
           <FieldLabel>Username</FieldLabel>

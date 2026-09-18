@@ -1,39 +1,12 @@
 import type { Metadata, Viewport } from "next"
 import Script from "next/script"
-import {
-  Bricolage_Grotesque,
-  Geist_Mono,
-  Instrument_Serif,
-} from "next/font/google"
 
 import "./globals.css"
 import { ProgressProvider } from "@/components/progress-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SITE } from "@/content/site"
-import { cn } from "@/lib/utils"
-
-// Body and heading face. Variable weight; the opsz axis tightens display
-// sizes and opens up small text on its own.
-const fontSans = Bricolage_Grotesque({
-  subsets: ["latin"],
-  axes: ["opsz"],
-  variable: "--font-geist-sans",
-})
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-geist-mono",
-})
-
-// Only the italic face is used: the one accent phrase per heading.
-const fontSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: "italic",
-  variable: "--font-instrument-serif",
-})
+import { fontClassName } from "@/lib/fonts"
 
 /* The OG and X images come from app/opengraph-image.tsx; Next adds the
    og:image and twitter:image tags from that file, so none are listed here.
@@ -96,12 +69,7 @@ export default function RootLayout({
       lang="en"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
-      className={cn(
-        "scroll-smooth font-sans antialiased",
-        fontSans.variable,
-        fontMono.variable,
-        fontSerif.variable
-      )}
+      className={fontClassName}
     >
       <head>
         <Script

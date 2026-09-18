@@ -1,10 +1,5 @@
 export type HtmlTokenKind =
-  | "text"
-  | "tag"
-  | "attr"
-  | "string"
-  | "comment"
-  | "punct"
+  "text" | "tag" | "attr" | "string" | "comment" | "punct"
 
 export type HtmlToken = {
   kind: HtmlTokenKind

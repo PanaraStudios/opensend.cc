@@ -1,54 +1,61 @@
-export type NavIcon =
-  | "mails"
-  | "megaphone"
-  | "file"
-  | "workflow"
-  | "users"
-  | "chart"
-  | "globe"
-  | "scroll"
-  | "key"
-  | "webhook"
+import {
+  ChartColumnIcon,
+  FileCodeIcon,
+  GlobeIcon,
+  KeyRoundIcon,
+  MailsIcon,
+  MegaphoneIcon,
+  ScrollTextIcon,
+  SettingsIcon,
+  UsersIcon,
+  WebhookIcon,
+  WorkflowIcon,
+  type LucideIcon,
+} from "lucide-react"
 
 export type NavItem = {
   href: string
   title: string
-  icon: NavIcon
+  icon: LucideIcon
   match?: readonly string[]
 }
 
 export const DASHBOARD_NAV: NavItem[] = [
-  { href: "/emails", title: "Emails", icon: "mails" },
-  { href: "/broadcasts", title: "Broadcasts", icon: "megaphone" },
-  { href: "/automations", title: "Automations", icon: "workflow" },
-  { href: "/templates", title: "Templates", icon: "file" },
+  { href: "/emails", title: "Emails", icon: MailsIcon },
+  { href: "/broadcasts", title: "Broadcasts", icon: MegaphoneIcon },
+  { href: "/automations", title: "Automations", icon: WorkflowIcon },
+  { href: "/templates", title: "Templates", icon: FileCodeIcon },
   {
     href: "/contacts",
     title: "Audience",
-    icon: "users",
+    icon: UsersIcon,
     match: ["/contacts", "/properties", "/segments", "/topics"],
   },
-  { href: "/metrics", title: "Metrics", icon: "chart" },
-  { href: "/domains", title: "Domains", icon: "globe" },
-  { href: "/logs", title: "Logs", icon: "scroll" },
-  { href: "/api-keys", title: "API Keys", icon: "key" },
-  { href: "/webhooks", title: "Webhooks", icon: "webhook" },
+  { href: "/metrics", title: "Metrics", icon: ChartColumnIcon },
+  { href: "/domains", title: "Domains", icon: GlobeIcon },
+  { href: "/logs", title: "Logs", icon: ScrollTextIcon },
+  { href: "/api-keys", title: "API Keys", icon: KeyRoundIcon },
+  { href: "/webhooks", title: "Webhooks", icon: WebhookIcon },
+  { href: "/settings", title: "Settings", icon: SettingsIcon },
 ]
 
-export const EMAIL_TABS = [
+export type SectionTab = { href: string; title: string }
+export type SectionTabs = readonly [SectionTab, ...SectionTab[]]
+
+export const EMAIL_TABS: SectionTabs = [
   { href: "/emails", title: "Sending" },
   { href: "/emails/receiving", title: "Receiving" },
   { href: "/emails/suppressions", title: "Suppressions" },
-] as const
+]
 
-export const AUDIENCE_TABS = [
+export const AUDIENCE_TABS: SectionTabs = [
   { href: "/contacts", title: "Contacts" },
   { href: "/properties", title: "Properties" },
   { href: "/segments", title: "Segments" },
   { href: "/topics", title: "Topics" },
-] as const
+]
 
-export const SETTINGS_NAV = [
+export const SETTINGS_NAV: SectionTabs = [
   { href: "/settings", title: "General" },
   { href: "/settings/team", title: "Team" },
   { href: "/settings/exports", title: "Exports" },
@@ -57,28 +64,19 @@ export const SETTINGS_NAV = [
   { href: "/settings/unsubscribe", title: "Unsubscribe" },
   { href: "/settings/ses", title: "Amazon SES" },
   { href: "/settings/smtp", title: "SMTP" },
-] as const
+]
 
+/** A section is active on its index route and on every route beneath it. */
 export function pathMatches(pathname: string, href: string): boolean {
-  if (href === "/settings") {
-    return pathname === "/settings"
-  }
-  if (href === "/emails") {
-    return pathname === "/emails" || pathname.startsWith("/emails/")
-  }
-  if (href === "/contacts") {
-    return pathname === "/contacts" || pathname.startsWith("/contacts/")
-  }
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
 export function navItemActive(pathname: string, item: NavItem): boolean {
-  if (item.match) {
-    return item.match.some((href) => pathMatches(pathname, href))
-  }
-  return pathMatches(pathname, item.href)
+  const hrefs = item.match ?? [item.href]
+  return hrefs.some((href) => pathMatches(pathname, href))
 }
 
+/** Tabs are exact: the settings index tab must not light up on /settings/team. */
 export function tabActive(pathname: string, href: string): boolean {
   return pathname === href
 }

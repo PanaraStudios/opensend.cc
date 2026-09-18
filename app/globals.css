@@ -37,6 +37,7 @@
   --surface-tint: #fafafa;
   --border: #e5e5e5;
   --border-strong: #d4d4d4;
+  --table-divider: var(--border);
   --fg: #0a0a0a;
   --fg-muted: #737373;
   --fg-faint: #a3a3a3;
@@ -58,6 +59,7 @@
   --danger: #dc2626;
   --danger-fg: #ffffff;
   --danger-soft: #fef2f2;
+  --danger-border: #991b1b;
   --warning: #d97706;
   --warning-fg: #ffffff;
   --warning-soft: #fffbeb;
@@ -76,6 +78,8 @@
   /* gradients (controls and pills are never flat fills) */
   --gradient-primary: linear-gradient(180deg, #33363b 0%, #171717 100%);
   --gradient-primary-hover: linear-gradient(180deg, #26262a 0%, #0a0a0a 100%);
+  /* same 180deg sheen as primary, in a filled red that stays readable on white */
+  --gradient-destructive: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
   --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f1f1f1 100%);
   --gradient-surface-hover: linear-gradient(180deg, #ffffff 0%, #e9e9e9 100%);
   /* grey/white twin of --gradient-primary; tracks --gradient-surface in both modes */
@@ -225,6 +229,7 @@
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-fg);
   --destructive-soft: var(--danger-soft);
+  --destructive-border: var(--danger-border);
   --warning-foreground: var(--warning-fg);
   --success-foreground: var(--success-fg);
   --info-foreground: var(--info-fg);
@@ -241,8 +246,10 @@
   --sidebar-foreground: var(--fg);
   --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: var(--brand-fg);
-  --sidebar-accent: var(--surface-tint);
-  --sidebar-accent-foreground: var(--brand);
+  /* hover/open tint and the raised active item; both track the glass system */
+  --sidebar-accent: var(--glass-fill);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-active: var(--surface);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--brand);
 }
@@ -254,6 +261,7 @@
   --surface-tint: #161616;
   --border: rgb(255 255 255 / 0.1);
   --border-strong: rgb(255 255 255 / 0.15);
+  --table-divider: rgb(255 255 255 / 0.06);
   --fg: #fafafa;
   --fg-muted: #a1a1a1;
   --fg-faint: #737373;
@@ -273,8 +281,9 @@
   --brand-accent: #737373;
 
   --danger: #f87171;
-  --danger-fg: #0a0a0a;
+  --danger-fg: #ffffff;
   --danger-soft: #2a1414;
+  --danger-border: #7f1d1d;
   --warning: #fbbf24;
   --warning-fg: #0a0a0a;
   --warning-soft: #2a2011;
@@ -289,6 +298,8 @@
      --brand-fg keeps the label dark on it */
   --gradient-primary: linear-gradient(180deg, #ffffff 0%, #e5e5e5 100%);
   --gradient-primary-hover: linear-gradient(180deg, #ffffff 0%, #d4d4d4 100%);
+  /* filled red stays a real red in dark mode; --danger stays light for text */
+  --gradient-destructive: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
   --gradient-surface: linear-gradient(180deg, #1c1c1c 0%, #141414 100%);
   --gradient-surface-hover: linear-gradient(180deg, #232323 0%, #191919 100%);
   --gradient-title-em: linear-gradient(180deg, #8a8a8a 0%, #5c5c5c 100%);
@@ -409,6 +420,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-border: var(--destructive-border);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-soft: var(--warning-soft);
@@ -420,6 +432,7 @@
   --color-info-soft: var(--info-soft);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-table-divider: var(--table-divider);
   --color-border-double: var(--border-double);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -437,6 +450,7 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 

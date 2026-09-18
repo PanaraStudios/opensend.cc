@@ -9,13 +9,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import {
   Field,
   FieldDescription,
@@ -24,52 +28,47 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DocsButton,
   EmailStatusBadge,
   EmptyState,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  OptionSelect,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
 import {
-  BookOpenIcon,
+  CircleMinusIcon,
   CircleSlashIcon,
+  EyeIcon,
   InboxIcon,
   MailIcon,
   PlusIcon,
+  ScrollTextIcon,
 } from "lucide-react"
 import {
   EmailsChrome,
-  EmailsToolbar,
+  EmailsDocsSheet,
   ORIGIN_ITEMS,
   REASON_ITEMS,
   STATUS_ITEMS,
   defaultEmailRange,
-  filterEmailHaystack,
+  emailMatches,
   inDateRange,
   isSuppressionReason,
 } from "@/components/dashboard/emails/shared"
-import { formatDateTime, isEmail, suppressionReasonLabel } from "@/lib/dashboard/format"
+import {
+  defaultFromAddress,
+  formatDateTime,
+  isEmail,
+  suppressionReasonLabel,
+} from "@/lib/dashboard/format"
+import { searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { SuppressionReason } from "@/lib/dashboard/types"
 
@@ -83,9 +82,7 @@ function SendEmailDialog({
   const router = useRouter()
   const { sendEmail, state } = useDashboard()
   const verified = state.domains.find((domain) => domain.status === "verified")
-  const [from, setFrom] = React.useState(
-    verified ? `Opensend <hello@${verified.name}>` : "Opensend <hello@opensend.cc>"
-  )
+  const [from, setFrom] = React.useState(defaultFromAddress(verified?.name))
   const [to, setTo] = React.useState("")
   const [subject, setSubject] = React.useState("")
   const [text, setText] = React.useState("")
@@ -175,9 +172,9 @@ function SendEmailDialog({
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Send</Button>
           </DialogFooter>
         </form>
@@ -186,60 +183,19 @@ function SendEmailDialog({
   )
 }
 
-function EmailsDocsSheet({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Emails</SheetTitle>
-          <SheetDescription>
-            Sending, inbound mail, and the suppression list share this section.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="flex flex-col gap-4 px-4 pb-4 text-sm">
-          <div className="flex flex-col gap-1">
-            <p className="font-medium">Sending</p>
-            <p className="text-muted-foreground">
-              POST /emails from the API or the Send email dialog. Events land on
-              the message as they arrive from SES.
-            </p>
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="font-medium">Receiving</p>
-            <p className="text-muted-foreground">
-              Enable receiving on a verified domain, then send to that inbound
-              address. Replay missed deliveries from Webhooks.
-            </p>
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="font-medium">Suppressions</p>
-            <p className="text-muted-foreground">
-              Hard bounces and complaints are added automatically. Manual
-              entries skip future sends to that address.
-            </p>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
 export function EmailsView() {
   const { state, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(defaultEmailRange)
+  const [range, setRange] = React.useState<DateRange | undefined>(
+    defaultEmailRange
+  )
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
 
+  const needle = searchNeedle(query)
   const rows = state.emails.filter((email) => {
-    if (!filterEmailHaystack(query, email)) return false
+    if (!emailMatches(needle, email)) return false
     if (status !== "all" && email.status !== status) return false
     return inDateRange(email.createdAt, range)
   })
@@ -248,10 +204,7 @@ export function EmailsView() {
     <EmailsChrome
       actions={
         <>
-          <Button variant="outline" onClick={() => setDocsOpen(true)}>
-            <BookOpenIcon data-icon="inline-start" />
-            Docs
-          </Button>
+          <DocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Send email
@@ -259,18 +212,20 @@ export function EmailsView() {
         </>
       }
     >
-      <EmailsToolbar
+      <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search emails…"
         range={range}
         onRangeChange={setRange}
-        select={{
-          value: status,
-          onChange: setStatus,
-          items: STATUS_ITEMS,
-          "aria-label": "Filter by status",
-        }}
+        filters={[
+          {
+            value: status,
+            onChange: setStatus,
+            items: STATUS_ITEMS,
+            "aria-label": "Filter by status",
+          },
+        ]}
         onExport={() => {
           addExport("Emails", rows.length)
           toast.add({ type: "success", title: "Export started" })
@@ -322,12 +277,18 @@ export function EmailsView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem render={<Link href={`/emails/${email.id}`} />}>
+                    <DropdownMenuItem
+                      render={<Link href={`/emails/${email.id}`} />}
+                    >
+                      <EyeIcon />
                       View email
-                    </MoreMenuItem>
-                    <MoreMenuItem render={<Link href={`/logs?email=${email.id}`} />}>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      render={<Link href={`/logs?email=${email.id}`} />}
+                    >
+                      <ScrollTextIcon />
                       View log
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -344,11 +305,14 @@ export function EmailsView() {
 export function ReceivingView() {
   const { state, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
-  const [range, setRange] = React.useState<DateRange | undefined>(defaultEmailRange)
+  const [range, setRange] = React.useState<DateRange | undefined>(
+    defaultEmailRange
+  )
   const receivingDomain = state.domains.find((domain) => domain.receiving)
 
+  const needle = searchNeedle(query)
   const rows = state.received.filter((email) => {
-    if (!filterEmailHaystack(query, email)) return false
+    if (!emailMatches(needle, email)) return false
     return inDateRange(email.createdAt, range)
   })
 
@@ -361,7 +325,7 @@ export function ReceivingView() {
             <span className="font-mono">inbound@{receivingDomain.name}</span>
           </p>
         ) : null}
-        <EmailsToolbar
+        <ListToolbar
           query={query}
           onQueryChange={setQuery}
           placeholder="Search received…"
@@ -405,18 +369,21 @@ export function ReceivingView() {
                   </span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{email.to}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {email.to}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDateTime(email.createdAt)}
               </TableCell>
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       render={<Link href={`/emails/receiving/${email.id}`} />}
                     >
+                      <EyeIcon />
                       View email
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -432,15 +399,18 @@ export function SuppressionsView() {
   const { state, addSuppression, removeSuppression, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
   const [origin, setOrigin] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(defaultEmailRange)
+  const [range, setRange] = React.useState<DateRange | undefined>(
+    defaultEmailRange
+  )
   const [open, setOpen] = React.useState(false)
   const [email, setEmail] = React.useState("")
   const [reason, setReason] = React.useState<SuppressionReason>("manual")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<string | null>(null)
 
+  const needle = searchNeedle(query)
   const rows = state.suppressions.filter((item) => {
-    if (!filterEmailHaystack(query, { to: item.email })) return false
+    if (!emailMatches(needle, { to: item.email })) return false
     if (origin !== "all" && item.reason !== origin) return false
     return inDateRange(item.createdAt, range)
   })
@@ -472,19 +442,20 @@ export function SuppressionsView() {
         </Button>
       }
     >
-      <EmailsToolbar
+      <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search suppressions…"
         range={range}
         onRangeChange={setRange}
-        allowAllTime
-        select={{
-          value: origin,
-          onChange: setOrigin,
-          items: ORIGIN_ITEMS,
-          "aria-label": "Filter by origin",
-        }}
+        filters={[
+          {
+            value: origin,
+            onChange: setOrigin,
+            items: ORIGIN_ITEMS,
+            "aria-label": "Filter by origin",
+          },
+        ]}
         onExport={() => {
           addExport("Suppressions", rows.length)
           toast.add({ type: "success", title: "Export started" })
@@ -511,7 +482,9 @@ export function SuppressionsView() {
             <TableRow key={item.id}>
               <TableCell className="font-medium">{item.email}</TableCell>
               <TableCell>
-                <Badge variant="secondary">{suppressionReasonLabel(item.reason)}</Badge>
+                <Badge variant="secondary">
+                  {suppressionReasonLabel(item.reason)}
+                </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDateTime(item.createdAt)}
@@ -519,12 +492,13 @@ export function SuppressionsView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPending(item.id)}
                     >
+                      <CircleMinusIcon />
                       Remove
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -566,26 +540,15 @@ export function SuppressionsView() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="sup-reason">Reason</FieldLabel>
-                <Select
+                <OptionSelect
+                  id="sup-reason"
+                  className="w-full"
                   value={reason}
-                  onValueChange={(next) => {
-                    if (next && isSuppressionReason(next)) setReason(next)
+                  onChange={(next) => {
+                    if (isSuppressionReason(next)) setReason(next)
                   }}
-                  items={[...REASON_ITEMS]}
-                >
-                  <SelectTrigger id="sup-reason" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {REASON_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  items={REASON_ITEMS}
+                />
                 <FieldDescription>
                   Manual entries are yours. Bounce and complaint reasons match
                   SES events.
@@ -593,7 +556,11 @@ export function SuppressionsView() {
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Add</Button>
@@ -602,7 +569,7 @@ export function SuppressionsView() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
           if (!next) setPending(null)

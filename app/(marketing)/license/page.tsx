@@ -25,9 +25,9 @@ export default function LicensePage() {
           file in the repository.
         </p>
         <p>
-          No subscription, no per-email pricing, no feature gates. Self-host
-          the Resend-compatible API on Next.js, Convex, Better Auth and AWS
-          SES. The code you run stays yours.
+          No subscription, no per-email pricing, no feature gates. Self-host the
+          Resend-compatible API on Next.js, Convex, Better Auth and AWS SES. The
+          code you run stays yours.
         </p>
       </LegalSection>
       <LegalSection title="What you can do">
@@ -39,8 +39,8 @@ export default function LicensePage() {
       </LegalSection>
       <LegalSection title="What the license asks">
         <p>
-          Keep the copyright and license notices with the code. Mark changes
-          you make. That is the whole obligation.
+          Keep the copyright and license notices with the code. Mark changes you
+          make. That is the whole obligation.
         </p>
       </LegalSection>
       <LegalSection title="No warranty">

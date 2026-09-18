@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { SuppressionsView } from "@/components/dashboard/emails"
+import { SuppressionsView } from "@/components/dashboard/emails/lists"
 
 export const metadata: Metadata = {
   title: "Suppressions",

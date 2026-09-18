@@ -1,20 +1,14 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import {
-  CheckIcon,
-  ChevronsUpDownIcon,
-  PlusIcon,
-  RotateCcwIcon,
-  SettingsIcon,
-} from "lucide-react"
+import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react"
 
 import { LogoMark } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -143,13 +137,9 @@ function CreateTeamDialog({
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Create team</Button>
           </DialogFooter>
         </form>
@@ -162,7 +152,7 @@ export function TeamSwitcher() {
   const router = useRouter()
   const pathname = usePathname()
   const { isMobile } = useSidebar()
-  const { teams, activeTeamId, switchTeam, resetDemo } = useDashboard()
+  const { teams, activeTeamId, switchTeam } = useDashboard()
   const [createOpen, setCreateOpen] = React.useState(false)
   const active = teams.find((team) => team.id === activeTeamId) ??
     teams[0] ?? {
@@ -183,10 +173,7 @@ export function TeamSwitcher() {
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <SidebarMenuButton
-              size="lg"
-              className="h-10 data-open:bg-sidebar-accent"
-            />
+            <SidebarMenuButton size="lg" className="h-10 text-foreground" />
           }
         >
           <TeamGlyph team={active} />
@@ -235,17 +222,6 @@ export function TeamSwitcher() {
             <DropdownMenuItem onClick={() => setCreateOpen(true)}>
               <PlusIcon />
               Create team
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link href="/settings" />}>
-              <SettingsIcon />
-              Team settings
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={resetDemo}>
-              <RotateCcwIcon />
-              Reset demo data
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

@@ -9,6 +9,7 @@ import { cn } from "cn"
    Sizes: xs 24 / sm 28 / default 32 / lg 36 / xl 40.
    `default` is the brand gradient with an etched text shadow. It keeps the bright light-mode
    bevel in dark mode too (shadow-glass-accent never switches, exactly as on the site);
+   `destructive` uses the same bevel over a filled red gradient so it does not go pastel in dark mode;
    `secondary` is the same bevel and press, in the grey/white surface gradient;
    `outline` and `ghost` are flat. */
 const buttonVariants = cva(
@@ -25,7 +26,7 @@ const buttonVariants = cva(
         ghost:
           "text-muted-foreground hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         destructive:
-          "border-destructive bg-destructive text-white shadow-glass-accent [text-shadow:0_1px_1px_rgb(32_34_36/0.25)] hover:opacity-90 focus-visible:outline-destructive",
+          "border-destructive-border bg-destructive bg-(image:--gradient-destructive) text-white shadow-glass-accent [text-shadow:0_1px_1px_rgb(32_34_36/0.25)] hover:opacity-90 focus-visible:outline-destructive aria-expanded:opacity-90",
         link: "h-auto rounded-none border-0 px-0 text-primary underline-offset-4 hover:text-primary-hover hover:underline",
       },
       size: {

@@ -8,30 +8,40 @@ import { ScrollTextIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   EmptyState,
-  FilterSelect,
+  ListToolbar,
   PageHeader,
   ResourceTable,
-  SearchField,
   Th,
-  Toolbar,
 } from "@/components/dashboard/primitives"
 import { formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
+
+const HTTP_STATUS_ITEMS = [
+  { value: "all", label: "All statuses" },
+  { value: "2xx", label: "2xx" },
+  { value: "4xx", label: "4xx" },
+  { value: "5xx", label: "5xx" },
+]
 
 export function LogsView() {
   const { state } = useDashboard()
   const searchParams = useSearchParams()
   const emailFilter = searchParams.get("email")
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState("")
+  const [status, setStatus] = React.useState("all")
 
+  const needle = searchNeedle(query)
   const rows = state.logs.filter((log) => {
     if (emailFilter && log.emailId !== emailFilter) return false
-    const haystack = `${log.method} ${log.path} ${log.status}`.toLowerCase()
-    if (query && !haystack.includes(query.trim().toLowerCase())) return false
-    if (status === "2xx" && (log.status < 200 || log.status >= 300)) return false
-    if (status === "4xx" && (log.status < 400 || log.status >= 500)) return false
+    if (!matchesNeedle(needle, `${log.method} ${log.path} ${log.status}`)) {
+      return false
+    }
+    if (status === "2xx" && (log.status < 200 || log.status >= 300))
+      return false
+    if (status === "4xx" && (log.status < 400 || log.status >= 500))
+      return false
     if (status === "5xx" && log.status < 500) return false
     return true
   })
@@ -42,26 +52,23 @@ export function LogsView() {
         title="Logs"
         description="Request-level API and SMTP logs. Filter by path, status, or jump here from an email."
       />
-      <Toolbar>
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search logs…"
-        />
-        <FilterSelect
-          value={status}
-          onChange={setStatus}
-          placeholder="All statuses"
-          options={[
-            { value: "2xx", label: "2xx" },
-            { value: "4xx", label: "4xx" },
-            { value: "5xx", label: "5xx" },
-          ]}
-        />
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search logs…"
+        filters={[
+          {
+            value: status,
+            onChange: setStatus,
+            items: HTTP_STATUS_ITEMS,
+            "aria-label": "Filter by status",
+          },
+        ]}
+      >
         {emailFilter ? (
           <Badge variant="secondary">email {emailFilter}</Badge>
         ) : null}
-      </Toolbar>
+      </ListToolbar>
       {rows.length === 0 ? (
         <EmptyState
           icon={ScrollTextIcon}

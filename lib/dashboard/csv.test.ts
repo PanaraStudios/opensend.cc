@@ -16,7 +16,9 @@ describe("parseCsv", () => {
   })
 
   it("handles quoted commas and a BOM", () => {
-    const table = parseCsv('\uFEFFemail,company\n"ada@example.com","Analytical, Engines"\n')
+    const table = parseCsv(
+      '\uFEFFemail,company\n"ada@example.com","Analytical, Engines"\n'
+    )
     assert.deepEqual(table.rows[0], ["ada@example.com", "Analytical, Engines"])
   })
 })

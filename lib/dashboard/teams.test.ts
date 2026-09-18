@@ -64,6 +64,41 @@ describe("parseRoot", () => {
     const root = parseRoot("not-json")
     assert.deepEqual(root, seedRoot())
   })
+
+  it("backfills missing broadcast stats and updatedAt", () => {
+    const workspace = seedRoot().workspaces[SEED_TEAM_ID]!
+    const broadcast = workspace.broadcasts[0]!
+    const raw = JSON.stringify({
+      version: 3,
+      activeTeamId: SEED_TEAM_ID,
+      workspaces: {
+        [SEED_TEAM_ID]: {
+          ...workspace,
+          broadcasts: [
+            {
+              ...broadcast,
+              updatedAt: 0,
+              stats: {
+                recipients: 10,
+                delivered: 8,
+                opened: 1,
+                clicked: 0,
+                bounced: 0,
+              },
+            },
+          ],
+        },
+      },
+    })
+    const parsed = parseRoot(raw)
+    const migrated = parsed.workspaces[SEED_TEAM_ID]!.broadcasts[0]!
+    assert.equal(migrated.stats.recipients, 10)
+    assert.equal(migrated.stats.delivered, 8)
+    assert.equal(migrated.stats.suppressed, 0)
+    assert.equal(migrated.stats.unsubscribed, 0)
+    assert.equal(migrated.stats.complained, 0)
+    assert.equal(migrated.updatedAt, broadcast.sentAt || broadcast.createdAt)
+  })
 })
 
 describe("createTeamInRoot / switchTeamInRoot", () => {

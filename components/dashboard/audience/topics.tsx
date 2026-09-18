@@ -6,37 +6,50 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DocsButton,
   EmptyState,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsButton,
   AudienceDocsSheet,
-  AudienceToolbar,
 } from "@/components/dashboard/audience/shared"
-import { PlusIcon, TagIcon } from "lucide-react"
+import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
-import type { Topic, TopicDefault, TopicVisibility } from "@/lib/dashboard/types"
+import type {
+  Topic,
+  TopicDefault,
+  TopicVisibility,
+} from "@/lib/dashboard/types"
 
 function TopicFormFields({
   name,
@@ -210,9 +223,9 @@ function AddTopicDialog({
             setVisibility={setVisibility}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit" disabled={!name.trim()}>
               Create topic
             </Button>
@@ -267,9 +280,9 @@ function EditTopicForm({
           lockDefault
         />
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogClose render={<Button variant="outline" />}>
             Cancel
-          </Button>
+          </DialogClose>
           <Button type="submit" disabled={!name.trim()}>
             Save
           </Button>
@@ -309,16 +322,16 @@ export function TopicsView() {
   const [editing, setEditing] = React.useState<Topic | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
-  const rows = state.topics.filter((topic) => {
-    const haystack = `${topic.name} ${topic.description}`.toLowerCase()
-    return haystack.includes(query.trim().toLowerCase())
-  })
+  const needle = searchNeedle(query)
+  const rows = state.topics.filter((topic) =>
+    matchesNeedle(needle, topic.name, topic.description)
+  )
 
   return (
     <AudienceChrome
       actions={
         <>
-          <AudienceDocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Create topic
@@ -326,7 +339,7 @@ export function TopicsView() {
         </>
       }
     >
-      <AudienceToolbar
+      <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search topics…"
@@ -363,10 +376,12 @@ export function TopicsView() {
               </TableCell>
               <TableCell>
                 <Badge variant="secondary">
-                  {topic.defaultSubscription === "opt_out" ? "Opt-out" : "Opt-in"}
+                  {topic.defaultSubscription === "opt_out"
+                    ? "Opt-out"
+                    : "Opt-in"}
                 </Badge>
               </TableCell>
-              <TableCell className="capitalize text-muted-foreground">
+              <TableCell className="text-muted-foreground capitalize">
                 {topic.visibility}
               </TableCell>
               <TableCell className="text-muted-foreground">
@@ -375,15 +390,17 @@ export function TopicsView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem onClick={() => setEditing(topic)}>
+                    <DropdownMenuItem onClick={() => setEditing(topic)}>
+                      <PencilIcon />
                       Edit Topic
-                    </MoreMenuItem>
-                    <MoreMenuItem
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPendingDelete(topic.id)}
                     >
+                      <Trash2Icon />
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -400,7 +417,7 @@ export function TopicsView() {
         }}
       />
       <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
           if (!next) setPendingDelete(null)

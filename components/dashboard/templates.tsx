@@ -3,37 +3,46 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeftIcon, FileCodeIcon, PlusIcon } from "lucide-react"
+import { FileCodeIcon, PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DetailHeader,
   EmptyState,
-  FilterSelect,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  NotFoundState,
   PageHeader,
   ResourceTable,
-  SearchField,
   Surface,
   TemplateStatusBadge,
   Th,
-  Toolbar,
+  useDeleteRecord,
+  useDraft,
 } from "@/components/dashboard/primitives"
-import { formatDate } from "@/lib/dashboard/format"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { formatDate, templateStatusLabel } from "@/lib/dashboard/format"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { TemplateStatus } from "@/lib/dashboard/types"
 
@@ -102,13 +111,15 @@ function CreateTemplateDialog({
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
               />
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {error ? (
+                <p className="text-sm text-destructive">{error}</p>
+              ) : null}
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Create</Button>
           </DialogFooter>
         </form>
@@ -117,21 +128,28 @@ function CreateTemplateDialog({
   )
 }
 
+const TEMPLATE_STATUS_ITEMS = [
+  { value: "all", label: "All statuses" },
+  ...(["draft", "published"] as TemplateStatus[]).map((value) => ({
+    value,
+    label: templateStatusLabel(value),
+  })),
+]
+
 export function TemplatesView() {
   const { state, deleteTemplate, duplicateTemplate, setTemplateStatus } =
     useDashboard()
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState("")
+  const [status, setStatus] = React.useState("all")
   const [open, setOpen] = React.useState(false)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const rows = state.templates.filter((item) => {
-    if (query && !item.name.toLowerCase().includes(query.trim().toLowerCase())) {
-      return false
-    }
-    if (status && item.status !== status) return false
-    return true
-  })
+  const needle = searchNeedle(query)
+  const rows = state.templates.filter(
+    (item) =>
+      matchesNeedle(needle, item.name) &&
+      (status === "all" || item.status === status)
+  )
 
   return (
     <>
@@ -144,22 +162,19 @@ export function TemplatesView() {
           Create template
         </Button>
       </PageHeader>
-      <Toolbar>
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search templates…"
-        />
-        <FilterSelect
-          value={status}
-          onChange={setStatus}
-          placeholder="All statuses"
-          options={(["draft", "published"] as TemplateStatus[]).map((value) => ({
-            value,
-            label: value,
-          }))}
-        />
-      </Toolbar>
+      <ListToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search templates…"
+        filters={[
+          {
+            value: status,
+            onChange: setStatus,
+            items: TEMPLATE_STATUS_ITEMS,
+            "aria-label": "Filter by status",
+          },
+        ]}
+      />
       {rows.length === 0 ? (
         <EmptyState
           icon={FileCodeIcon}
@@ -191,7 +206,9 @@ export function TemplatesView() {
                 >
                   {item.name}
                 </Link>
-                <div className="text-xs text-muted-foreground">{item.subject}</div>
+                <div className="text-xs text-muted-foreground">
+                  {item.subject}
+                </div>
               </TableCell>
               <TableCell>
                 <TemplateStatusBadge status={item.status} />
@@ -201,28 +218,33 @@ export function TemplatesView() {
               </TableCell>
               <TableCell>
                 <MoreMenu>
-                  <MoreMenuItem render={<Link href={`/templates/${item.id}`} />}>
+                  <DropdownMenuItem
+                    render={<Link href={`/templates/${item.id}`} />}
+                  >
                     Edit
-                  </MoreMenuItem>
-                  <MoreMenuItem onClick={() => duplicateTemplate(item.id)}>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => duplicateTemplate(item.id)}>
                     Duplicate
-                  </MoreMenuItem>
+                  </DropdownMenuItem>
                   {item.status === "draft" ? (
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       onClick={() => {
                         setTemplateStatus(item.id, "published")
-                        toast.add({ type: "success", title: "Template published" })
+                        toast.add({
+                          type: "success",
+                          title: "Template published",
+                        })
                       }}
                     >
                       Publish
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   ) : null}
-                  <MoreMenuItem
+                  <DropdownMenuItem
                     variant="destructive"
                     onClick={() => setPending(item.id)}
                   >
                     Delete
-                  </MoreMenuItem>
+                  </DropdownMenuItem>
                 </MoreMenu>
               </TableCell>
             </TableRow>
@@ -230,7 +252,7 @@ export function TemplatesView() {
         </ResourceTable>
       )}
       <CreateTemplateDialog open={open} onOpenChange={setOpen} />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
           if (!next) setPending(null)
@@ -248,84 +270,81 @@ export function TemplatesView() {
 
 export function TemplateDetail() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const { state, updateTemplate, setTemplateStatus, deleteTemplate } =
     useDashboard()
   const item = state.templates.find((row) => row.id === id)
+  const { leaving, deleteAndLeave } = useDeleteRecord("/templates")
   const [pending, setPending] = React.useState(false)
+  const name = useDraft(item?.name ?? "", (value) =>
+    updateTemplate(id, { name: value })
+  )
+  const subject = useDraft(item?.subject ?? "", (value) =>
+    updateTemplate(id, { subject: value })
+  )
+  const html = useDraft(item?.html ?? "", (value) =>
+    updateTemplate(id, { html: value })
+  )
+  const variables = useDraft(item?.variables.join(", ") ?? "", (value) =>
+    updateTemplate(id, {
+      variables: value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    })
+  )
 
   if (!item) {
+    if (leaving) return null
     return (
-      <EmptyState
+      <NotFoundState
         icon={FileCodeIcon}
-        title="Template not found"
-        description="It may have been deleted from this workspace."
-      >
-        <Button nativeButton={false} render={<Link href="/templates" />}>
-          Back to templates
-        </Button>
-      </EmptyState>
+        noun="template"
+        backHref="/templates"
+      />
     )
   }
 
   return (
     <>
-      <div className="space-y-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          className="-ml-2 text-muted-foreground"
-          render={<Link href="/templates" />}
-        >
-          <ArrowLeftIcon />
-          Templates
-        </Button>
-        <PageHeader title={item.name}>
-          {item.status === "draft" ? (
-            <Button
-              onClick={() => {
-                setTemplateStatus(item.id, "published")
-                toast.add({ type: "success", title: "Template published" })
-              }}
-            >
-              Publish
+      <DetailHeader
+        backHref="/templates"
+        backLabel="Templates"
+        title={item.name}
+        badge={<TemplateStatusBadge status={item.status} />}
+        actions={
+          <>
+            {item.status === "draft" ? (
+              <Button
+                onClick={() => {
+                  setTemplateStatus(item.id, "published")
+                  toast.add({ type: "success", title: "Template published" })
+                }}
+              >
+                Publish
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setTemplateStatus(item.id, "draft")}
+              >
+                Revert to draft
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setPending(true)}>
+              Delete
             </Button>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setTemplateStatus(item.id, "draft")}
-            >
-              Revert to draft
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => setPending(true)}>
-            Delete
-          </Button>
-        </PageHeader>
-        <TemplateStatusBadge status={item.status} />
-      </div>
+          </>
+        }
+      />
 
       <Surface className="max-w-2xl">
         <Field>
           <FieldLabel htmlFor="tpl-edit-name">Name</FieldLabel>
-          <Input
-            id="tpl-edit-name"
-            value={item.name}
-            onChange={(event) =>
-              updateTemplate(item.id, { name: event.target.value })
-            }
-          />
+          <Input id="tpl-edit-name" {...name} />
         </Field>
         <Field>
           <FieldLabel htmlFor="tpl-edit-subject">Subject</FieldLabel>
-          <Input
-            id="tpl-edit-subject"
-            value={item.subject}
-            onChange={(event) =>
-              updateTemplate(item.id, { subject: event.target.value })
-            }
-          />
+          <Input id="tpl-edit-subject" {...subject} />
           <FieldDescription>
             Use {"{{{VARIABLE}}}"} for substitutions.
           </FieldDescription>
@@ -334,41 +353,28 @@ export function TemplateDetail() {
           <FieldLabel htmlFor="tpl-edit-html">HTML</FieldLabel>
           <Textarea
             id="tpl-edit-html"
-            value={item.html}
             rows={10}
-            onChange={(event) =>
-              updateTemplate(item.id, { html: event.target.value })
-            }
+            {...html}
             className="font-mono text-mono"
           />
         </Field>
         <Field>
           <FieldLabel htmlFor="tpl-edit-vars">Variables</FieldLabel>
-          <Input
-            id="tpl-edit-vars"
-            value={item.variables.join(", ")}
-            onChange={(event) =>
-              updateTemplate(item.id, {
-                variables: event.target.value
-                  .split(",")
-                  .map((part) => part.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-          <FieldDescription>Comma-separated names, like FIRST_NAME.</FieldDescription>
+          <Input id="tpl-edit-vars" {...variables} />
+          <FieldDescription>
+            Comma-separated names, like FIRST_NAME.
+          </FieldDescription>
         </Field>
       </Surface>
 
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending}
         onOpenChange={setPending}
         title={`Delete ${item.name}?`}
         description="This template can no longer be sent."
         onConfirm={() => {
-          deleteTemplate(item.id)
+          deleteAndLeave(() => deleteTemplate(item.id))
           toast.add({ type: "success", title: "Template deleted" })
-          router.push("/templates")
         }}
       />
     </>

@@ -35,7 +35,7 @@ export type EmailStatus =
   | "suppressed"
 
 export type BroadcastStatus =
-  "draft" | "scheduled" | "queued" | "sent" | "canceled"
+  "draft" | "scheduled" | "queued" | "sent" | "failed" | "canceled"
 
 export type TemplateStatus = "draft" | "published"
 export type AutomationStatus = "enabled" | "disabled"
@@ -186,6 +186,9 @@ export type BroadcastStats = {
   opened: number
   clicked: number
   bounced: number
+  suppressed: number
+  unsubscribed: number
+  complained: number
 }
 
 export type Broadcast = {
@@ -198,6 +201,7 @@ export type Broadcast = {
   segmentId: string | null
   topicId: string | null
   createdAt: number
+  updatedAt: number
   scheduledAt: number | null
   sentAt: number | null
   stats: BroadcastStats

@@ -6,13 +6,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import {
   Field,
   FieldDescription,
@@ -21,33 +25,31 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
-  ConfirmDelete,
+  ConfirmDialog,
+  DocsButton,
   EmptyState,
+  ListToolbar,
   MoreMenu,
-  MoreMenuItem,
+  OptionSelect,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsButton,
   AudienceDocsSheet,
-  AudienceToolbar,
   propertyDisplayName,
 } from "@/components/dashboard/audience/shared"
-import { DatabaseIcon, PlusIcon } from "lucide-react"
+import { DatabaseIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import {
+  isReservedPropertyKey,
+  isValidPropertyKey,
+  normalizePropertyKey,
+} from "@/lib/dashboard/contacts"
 import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/data"
+import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { PropertyType } from "@/lib/dashboard/types"
@@ -56,10 +58,6 @@ const PROPERTY_TYPES = [
   { value: "string", label: "String" },
   { value: "number", label: "Number" },
 ] as const
-
-const RESERVED_KEYS = new Set<string>(
-  DEFAULT_CONTACT_PROPERTIES.map((item) => item.key)
-)
 
 function AddPropertyDialog({
   open,
@@ -83,12 +81,15 @@ function AddPropertyDialog({
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
-    const nextKey = key.trim().toLowerCase().replace(/\s+/g, "_")
-    if (!/^[a-z][a-z0-9_]{0,49}$/.test(nextKey)) {
+    const nextKey = normalizePropertyKey(key)
+    if (!isValidPropertyKey(nextKey)) {
       setError("Use a lowercase key with letters, numbers, and underscores")
       return
     }
-    if (RESERVED_KEYS.has(nextKey) || state.properties.some((item) => item.key === nextKey)) {
+    if (
+      isReservedPropertyKey(nextKey) ||
+      state.properties.some((item) => item.key === nextKey)
+    ) {
       setError("That key already exists")
       return
     }
@@ -135,26 +136,15 @@ function AddPropertyDialog({
             </Field>
             <Field>
               <FieldLabel htmlFor="prop-type">Type</FieldLabel>
-              <Select
+              <OptionSelect
+                id="prop-type"
+                className="w-full"
                 value={type}
-                onValueChange={(next) => {
+                onChange={(next) => {
                   if (next === "string" || next === "number") setType(next)
                 }}
-                items={[...PROPERTY_TYPES]}
-              >
-                <SelectTrigger id="prop-type" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {PROPERTY_TYPES.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                items={PROPERTY_TYPES}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="prop-fallback">Fallback value</FieldLabel>
@@ -172,9 +162,9 @@ function AddPropertyDialog({
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogClose render={<Button variant="outline" />}>
               Cancel
-            </Button>
+            </DialogClose>
             <Button type="submit">Add property</Button>
           </DialogFooter>
         </form>
@@ -190,21 +180,17 @@ export function PropertiesView() {
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const needle = query.trim().toLowerCase()
-  const defaults = DEFAULT_CONTACT_PROPERTIES.filter((item) => {
-    if (!needle) return true
-    return `${item.name} ${item.key}`.toLowerCase().includes(needle)
-  })
-  const custom = state.properties.filter((item) => {
-    if (!needle) return true
-    return `${item.name} ${item.key}`.toLowerCase().includes(needle)
-  })
+  const needle = searchNeedle(query)
+  const propertyMatches = (item: { name: string; key: string }) =>
+    matchesNeedle(needle, item.name, item.key)
+  const defaults = DEFAULT_CONTACT_PROPERTIES.filter(propertyMatches)
+  const custom = state.properties.filter(propertyMatches)
 
   return (
     <AudienceChrome
       actions={
         <>
-          <AudienceDocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton onClick={() => setDocsOpen(true)} />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Add property
@@ -212,7 +198,7 @@ export function PropertiesView() {
         </>
       }
     >
-      <AudienceToolbar
+      <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search properties…"
@@ -248,7 +234,7 @@ export function PropertiesView() {
                   Default
                 </Badge>
               </TableCell>
-              <TableCell className="capitalize text-muted-foreground">
+              <TableCell className="text-muted-foreground capitalize">
                 {item.type}
               </TableCell>
               <TableCell className="text-muted-foreground">—</TableCell>
@@ -261,7 +247,7 @@ export function PropertiesView() {
               <TableCell>
                 <code className="font-mono text-[13px]">{item.key}</code>
               </TableCell>
-              <TableCell className="capitalize text-muted-foreground">
+              <TableCell className="text-muted-foreground capitalize">
                 {item.type}
               </TableCell>
               <TableCell className="text-muted-foreground">
@@ -273,12 +259,13 @@ export function PropertiesView() {
               <TableCell>
                 <MoreMenu>
                   <DropdownMenuGroup>
-                    <MoreMenuItem
+                    <DropdownMenuItem
                       variant="destructive"
                       onClick={() => setPending(item.id)}
                     >
+                      <Trash2Icon />
                       Delete
-                    </MoreMenuItem>
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </MoreMenu>
               </TableCell>
@@ -288,7 +275,7 @@ export function PropertiesView() {
       )}
       <AddPropertyDialog open={open} onOpenChange={setOpen} />
       <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
-      <ConfirmDelete
+      <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
           if (!next) setPending(null)

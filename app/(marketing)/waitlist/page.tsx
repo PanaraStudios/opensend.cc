@@ -40,9 +40,7 @@ export default function WaitlistPage() {
         <Button
           variant="ghost"
           nativeButton={false}
-          render={
-            <Link href={GITHUB_URL} target="_blank" rel="noreferrer" />
-          }
+          render={<Link href={GITHUB_URL} target="_blank" rel="noreferrer" />}
         >
           {WAITLIST.githubCta}
           <GitHubIcon />

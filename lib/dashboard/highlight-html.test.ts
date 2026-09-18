@@ -22,7 +22,7 @@ describe("tokenizeHtml", () => {
         "tag:p",
         "tag:a",
         "attr:href",
-        "string:\"https://opensend.cc/reset\"",
+        'string:"https://opensend.cc/reset"',
         "tag:a",
         "tag:p",
       ]
@@ -39,6 +39,9 @@ describe("tokenizeHtml", () => {
     const source = "score < 10"
     const tokens = tokenizeHtml(source)
     assert.equal(joinHtmlTokens(tokens), source)
-    assert.equal(tokens.every((token) => token.kind === "text"), true)
+    assert.equal(
+      tokens.every((token) => token.kind === "text"),
+      true
+    )
   })
 })
