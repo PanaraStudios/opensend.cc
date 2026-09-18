@@ -34,7 +34,7 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/metrics", title: "Metrics", icon: ChartColumnIcon },
   { href: "/domains", title: "Domains", icon: GlobeIcon },
   { href: "/logs", title: "Logs", icon: ScrollTextIcon },
-  { href: "/api-keys", title: "API Keys", icon: KeyRoundIcon },
+  { href: "/api-keys", title: "API keys", icon: KeyRoundIcon },
   { href: "/webhooks", title: "Webhooks", icon: WebhookIcon },
   { href: "/settings", title: "Settings", icon: SettingsIcon },
 ]

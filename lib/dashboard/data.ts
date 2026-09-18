@@ -390,6 +390,7 @@ const apiKeys: ApiKey[] = [
     domainId: null,
     createdAt: daysAgo(40),
     lastUsedAt: hoursAgo(3),
+    createdBy: "mem_you",
   },
   {
     id: "key_staging",
@@ -400,6 +401,7 @@ const apiKeys: ApiKey[] = [
     domainId: "dom_opensend",
     createdAt: daysAgo(19),
     lastUsedAt: hoursAgo(26),
+    createdBy: "mem_ada",
   },
   {
     id: "key_ci",
@@ -410,6 +412,7 @@ const apiKeys: ApiKey[] = [
     domainId: null,
     createdAt: daysAgo(11),
     lastUsedAt: null,
+    createdBy: "mem_you",
   },
 ]
 

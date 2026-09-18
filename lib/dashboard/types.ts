@@ -132,6 +132,9 @@ export type ApiKey = {
   domainId: string | null
   createdAt: number
   lastUsedAt: number | null
+  /** Member who created the key. Optional: keys stored before this field
+      existed simply show no creator. */
+  createdBy?: string | null
 }
 
 export type TeamMember = {
