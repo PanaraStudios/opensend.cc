@@ -3,9 +3,11 @@
 import * as React from "react"
 import {
   getPanelTitle,
+  setCurrentTheme,
   setGlobalCssInjected,
   SUPPORTED_CSS_PROPERTIES,
   useEmailTheming,
+  type EditorTheme,
   type KnownCssProperties,
   type PanelGroup,
   type PanelSectionId,
@@ -30,22 +32,33 @@ import {
 } from "lucide-react"
 
 import { BoxField, type BoxValue } from "@/components/ui/box-field"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { ColorField } from "@/components/ui/color-field"
 import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { NumberField } from "@/components/ui/number-field"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
-import { OptionSelect, useDraftValue } from "@/components/dashboard/primitives"
+import { useDraftValue } from "@/components/dashboard/primitives"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import {
   AlignField,
   InspectorRow,
   InspectorSection,
+  SegmentedToggle,
   TEXT_MARKS,
   type EmailAlign,
+  type SegmentedItem,
 } from "@/components/dashboard/broadcasts/editor/controls"
 
 /* The engine decides what is selected and hands each panel its values and
@@ -155,18 +168,32 @@ function StyleField({
       />
     )
   } else if (input.type === "select") {
+    /* A native select, on purpose. A popup select renders in a portal, and
+       the engine reads focus leaving for a portal as "clicked away": it drops
+       the selection and this panel is swapped out from under the open menu. */
     control = (
-      <OptionSelect
+      <NativeSelect
         size="sm"
         className="w-full"
         aria-label={label}
+        data-testid={testId}
         value={String(value ?? "")}
-        items={Object.entries(input.options ?? {}).map(([key, text]) => ({
-          value: key,
-          label: text,
-        }))}
-        onChange={onValueChange}
-      />
+        onChange={(event) => onValueChange(event.target.value)}
+      >
+        {/* A value the list does not hold (unset, say) still has to show. */}
+        {value === undefined ||
+        String(value) in (input.options ?? {}) ? null : (
+          <NativeSelectOption value={String(value)}>
+            {String(value)}
+          </NativeSelectOption>
+        )}
+        {value === undefined ? <NativeSelectOption value="" /> : null}
+        {Object.entries(input.options ?? {}).map(([key, text]) => (
+          <NativeSelectOption key={key} value={key}>
+            {text}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
     )
   } else if (input.type === "textarea") {
     control = (
@@ -316,8 +343,19 @@ function AttrField({
   context: InspectorNodeContext
   name: string
   label: string
-  type?: StyleInput["type"]
+  type?: StyleInput["type"] | "align"
 }) {
+  if (type === "align") {
+    return (
+      <InspectorRow label={label}>
+        <AlignField
+          value={(context.getAttr(name) ?? "left") as EmailAlign}
+          testIdPrefix={`inspector-${name}`}
+          onValueChange={(next) => context.setAttr(name, next)}
+        />
+      </InspectorRow>
+    )
+  }
   return (
     <StyleField
       input={{ label, type }}
@@ -335,13 +373,15 @@ const COLUMN_SPACING = [
 /* The values a node keeps as attributes rather than styles. */
 const NODE_ATTRIBUTES: Record<
   string,
-  { name: string; label: string; type?: StyleInput["type"] }[]
+  { name: string; label: string; type?: StyleInput["type"] | "align" }[]
 > = {
   image: [
+    { name: "alignment", label: "Alignment", type: "align" },
     { name: "src", label: "Image URL" },
     { name: "alt", label: "Alt text", type: "textarea" },
   ],
   youtube: [
+    { name: "alignment", label: "Alignment", type: "align" },
     { name: "video", label: "Video URL" },
     { name: "alt", label: "Alt text" },
     { name: "width", label: "Width", type: "number" },
@@ -357,12 +397,69 @@ const NODE_ATTRIBUTES: Record<
   ],
 }
 
-/* Names for our own nodes; the engine names its own. */
+/* Names for our own nodes, and for the layout nodes the engine leaves
+   unnamed; it names the rest. */
 const NODE_LABELS: Record<string, string> = {
+  twoColumns: "Columns",
+  threeColumns: "Columns",
+  fourColumns: "Columns",
+  columnsColumn: "Column",
   youtube: "YouTube",
   spacer: "Spacer",
   html: "HTML",
   variable: "Variable",
+}
+
+function nodeLabel(nodeType: string): string {
+  return nodeType === "body"
+    ? "Page"
+    : (NODE_LABELS[nodeType] ?? getNodeMeta(nodeType).label)
+}
+
+/* The way out to what encloses the selection. A click inside a section or a
+   column always lands on the text in it, so this is the only path to the
+   section, the column or the page themselves. */
+function SelectionPath() {
+  return (
+    <EngineInspector.Breadcrumb>
+      {(all) => {
+        /* The container is the paper, which "Page" already stands for. */
+        const segments = all.filter(
+          (segment) => segment.node.nodeType !== "container"
+        )
+        return segments.length < 2 ? null : (
+          <Breadcrumb
+            className="border-b border-border px-3 py-1.5"
+            data-testid="inspector-path"
+          >
+            <BreadcrumbList className="gap-1 text-xs sm:gap-1">
+              {segments.map((segment, index) => {
+                const last = index === segments.length - 1
+                const label = nodeLabel(segment.node.nodeType)
+                return (
+                  <React.Fragment key={`${segment.node.nodeType}-${index}`}>
+                    {index > 0 ? <BreadcrumbSeparator /> : null}
+                    <BreadcrumbItem>
+                      {last ? (
+                        <BreadcrumbPage>{label}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink
+                          render={<button type="button" />}
+                          onClick={segment.focus}
+                        >
+                          {label}
+                        </BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
+                  </React.Fragment>
+                )
+              })}
+            </BreadcrumbList>
+          </Breadcrumb>
+        )
+      }}
+    </EngineInspector.Breadcrumb>
+  )
 }
 
 function NodePanel({ context }: { context: InspectorNodeContext }) {
@@ -668,6 +765,30 @@ function themeInputs(
   }))
 }
 
+const THEME_PRESETS: SegmentedItem<EditorTheme>[] = [
+  { value: "basic", label: "Basic" },
+  { value: "minimal", label: "Minimal" },
+]
+
+/* The starting point the element groups below adjust. Basic brings a font,
+   a base size and spacing; minimal leaves all of that to the author. */
+function ThemePresetToggle() {
+  const { editor } = useCurrentEditor()
+  const theme = useEmailTheming(editor)?.theme
+  if (!editor || !theme) return null
+  return (
+    <InspectorSection>
+      <SegmentedToggle
+        value={theme}
+        items={THEME_PRESETS}
+        aria-label="Theme preset"
+        testIdPrefix="theme-preset"
+        onValueChange={(next) => setCurrentTheme(editor, next)}
+      />
+    </InspectorSection>
+  )
+}
+
 /* The page and the paper are the theme's first two groups; the rest are the
    per-element groups the theme panel lists. */
 const PAGE_GROUPS: ReadonlySet<PanelSectionId | undefined> = new Set([
@@ -715,6 +836,12 @@ export const Inspector = React.memo(function Inspector({
                     }
                   />
                   <ScrollArea className="min-h-0 flex-1">
+                    {panel === "theme" ? (
+                      <>
+                        <ThemePresetToggle />
+                        <Separator />
+                      </>
+                    ) : null}
                     {context.styles
                       .filter(
                         (group) =>
@@ -769,13 +896,11 @@ export const Inspector = React.memo(function Inspector({
               {(context) => (
                 <>
                   <PanelHeader
-                    title={
-                      NODE_LABELS[context.nodeType] ??
-                      getNodeMeta(context.nodeType).label
-                    }
+                    title={nodeLabel(context.nodeType)}
                     icon={SquareIcon}
                     onClose={onCollapse}
                   />
+                  <SelectionPath />
                   <ScrollArea className="min-h-0 flex-1">
                     <NodePanel context={context} />
                   </ScrollArea>
@@ -790,6 +915,7 @@ export const Inspector = React.memo(function Inspector({
                     icon={TypeIcon}
                     onClose={onCollapse}
                   />
+                  <SelectionPath />
                   <ScrollArea className="min-h-0 flex-1">
                     <TextPanel context={context} />
                   </ScrollArea>

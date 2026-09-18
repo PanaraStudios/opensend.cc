@@ -939,6 +939,16 @@
   color: #9ca3af;
   pointer-events: none;
 }
+/* A picture is a block, so its alignment is a margin, not a text-align. */
+#email-paper .tiptap img[alignment] {
+  display: block;
+}
+#email-paper .tiptap img[alignment="center"] {
+  margin-inline: auto;
+}
+#email-paper .tiptap img[alignment="right"] {
+  margin-left: auto;
+}
 /* Our own nodes, while editing. */
 #email-paper .tiptap .node-variable {
   padding: 2px 4px;

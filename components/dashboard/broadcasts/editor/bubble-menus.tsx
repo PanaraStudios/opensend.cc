@@ -265,10 +265,15 @@ export function BubbleMenus() {
     <>
       <BubbleMenuRoot
         pluginKey={KEYS.text}
-        trigger={bubbleMenuTriggers.textSelection(
-          ["button", "image", "horizontalRule", "codeBlock"],
-          ["link"]
-        )}
+        /* Shown over linked text too: the link toolbar is for a caret resting
+           in a link, this one for a selection, so they never meet, and text
+           that happens to be linked still has to be formatted and aligned. */
+        trigger={bubbleMenuTriggers.textSelection([
+          "button",
+          "image",
+          "horizontalRule",
+          "codeBlock",
+        ])}
         placement="top"
         className={SURFACE}
         data-testid="bubble-text"

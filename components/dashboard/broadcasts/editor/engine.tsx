@@ -15,15 +15,20 @@ import {
   type Editor,
 } from "@tiptap/react"
 
-import { CUSTOM_NODES } from "@/components/dashboard/broadcasts/editor/nodes"
+import {
+  alignedImage,
+  CUSTOM_NODES,
+} from "@/components/dashboard/broadcasts/editor/nodes"
 
 /* The document engine is React Email's editor: its nodes, its theming and its
    export. Everything drawn around it — rail, inspector, menus — is ours, so
    none of its stylesheets or prebuilt menus are imported. */
 
-/* The engine's minimal theme, on our page: a soft grey backdrop with the
-   email on a white, padded sheet. */
-const THEME = extendTheme("minimal", {
+/* The engine's basic theme, on our page: a soft grey backdrop with the email
+   on a white, padded sheet. Basic rather than minimal because minimal sets
+   no font, base size or spacing at all, and an email sent without them falls
+   back to the mail client's serif with every block touching the next. */
+const THEME = extendTheme("basic", {
   body: {
     backgroundColor: "#f5f5f5",
     paddingTop: 24,
@@ -102,7 +107,10 @@ export function useEmailEngine({
   onUpdate: (editor: Editor) => void
 }): Editor {
   const image = useEditorImage({ uploadImage })
-  const extensions = React.useMemo(() => [...BASE_EXTENSIONS, image], [image])
+  const extensions = React.useMemo(
+    () => [...BASE_EXTENSIONS, alignedImage(image)],
+    [image]
+  )
 
   return useEditor({
     extensions,

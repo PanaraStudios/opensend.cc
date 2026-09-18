@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react"
 import { Img, Link, Section, Text } from "@react-email/components"
-import { EmailNode } from "@react-email/editor/core"
+import { EmailNode, type EmailNodeConfig } from "@react-email/editor/core"
+import type { useEditorImage } from "@react-email/editor/plugins"
 import { mergeAttributes } from "@tiptap/core"
 
 import { formatVariable } from "@/lib/dashboard/email-variables"
@@ -294,5 +295,37 @@ const Footer = EmailNode.create({
     )
   },
 })
+
+/* ------------------------------------------------------------------ image */
+
+/** The engine's image, with its alignment honoured. The engine stores an
+    alignment on every image but exports none of it, so a picture centred on
+    the canvas was sent hard against the left edge. */
+type Bare = Record<string, never>
+
+export function alignedImage(image: ReturnType<typeof useEditorImage>) {
+  /* Spelled out because the default the library declares for this type
+     argument is not the one TypeScript settles on. */
+  return image.extend<Bare, Bare, EmailNodeConfig<Bare, Bare>>({
+    renderToReactEmail({ node, style }) {
+      const width = node.attrs?.width
+      const height = node.attrs?.height
+      const img = (
+        <Img
+          src={node.attrs?.src ?? ""}
+          alt={node.attrs?.alt ?? ""}
+          width={width === "auto" ? undefined : width}
+          height={height === "auto" ? undefined : height}
+          style={{
+            ...style,
+            display: "block",
+            margin: alignMargin(node.attrs?.alignment),
+          }}
+        />
+      )
+      return node.attrs?.href ? <Link href={node.attrs.href}>{img}</Link> : img
+    },
+  })
+}
 
 export const CUSTOM_NODES = [Variable, Youtube, Spacer, RawHtml, Footer]
