@@ -390,3 +390,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     </DashboardProvider>
   )
 }
+
+/** The same workspace store and toasts without the sidebar, for full-screen
+    editors that own the whole viewport. */
+export function FullScreenShell({ children }: { children: React.ReactNode }) {
+  return (
+    <DashboardProvider>
+      <Toaster>{children}</Toaster>
+    </DashboardProvider>
+  )
+}
