@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/input-group"
 
 /* Numeric input with a unit suffix. Typing commits as soon as the draft parses
-   so a slider-like drag of the value stays live; blur clamps and restores the
-   last good value, which keeps a half-typed "-" from writing state. */
+   to a value inside the range, so a slider-like drag stays live; an
+   out-of-range draft is left alone until blur clamps it, because "6" on the
+   way to "600" must not snap to the minimum. Blur also restores the last good
+   value, which keeps a half-typed "-" from writing state. */
 function NumberField({
   value,
   onValueChange,
@@ -60,8 +62,12 @@ function NumberField({
   function commit(next: string) {
     setDraft(next)
     const parsed = Number(next)
-    if (next.trim() !== "" && Number.isFinite(parsed)) {
-      onValueChange(clamp(parsed))
+    if (
+      next.trim() !== "" &&
+      Number.isFinite(parsed) &&
+      clamp(parsed) === parsed
+    ) {
+      onValueChange(parsed)
     }
   }
 

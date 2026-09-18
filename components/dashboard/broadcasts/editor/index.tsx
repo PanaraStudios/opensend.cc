@@ -82,7 +82,11 @@ function EditorScreen({ item }: { item: Broadcast }) {
       if (event.key.toLowerCase() !== "z") return
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
-      if (tag === "INPUT" || tag === "TEXTAREA") return
+      /* Text being typed is not in the document until it commits, so inside a
+         field or a block the browser's own undo is the right one. */
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
+        return
+      }
       event.preventDefault()
       if (event.shiftKey) redo()
       else undo()
@@ -253,6 +257,7 @@ function EditorScreen({ item }: { item: Broadcast }) {
         item={item}
         doc={editor.doc}
         sendAt={sendAt}
+        flush={editor.flush}
       />
       <ConfirmDialog
         open={blocksOpen}

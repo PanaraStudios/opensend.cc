@@ -79,7 +79,9 @@ export function InlineEditable({
   as?: "div" | "p" | "span" | "h1" | "h2" | "h3" | "pre"
   html: string
   onCommit: (html: string) => void
-  onEnter?: () => void
+  /** Handed the block's current content, which the commit above it has only
+      queued, so a caller that rewrites the block can carry it along. */
+  onEnter?: (value: string) => void
   onEmptyBackspace?: () => void
   onSlash?: () => void
   placeholder?: string
@@ -171,7 +173,11 @@ export function InlineEditable({
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault()
           commit()
-          onEnter?.()
+          onEnter?.(
+            latest.current.plain
+              ? (element.textContent ?? "")
+              : element.innerHTML
+          )
           return
         }
         if (

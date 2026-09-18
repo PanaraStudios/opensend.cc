@@ -99,6 +99,9 @@ function WhenPopover({
 }) {
   const [open, setOpen] = React.useState(false)
   const [draft, setDraft] = React.useState("")
+  const when = draft ? new Date(draft).getTime() : Number.NaN
+  /* Compared on click, not in render, so the render stays pure. */
+  const [past, setPast] = React.useState(false)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -116,8 +119,16 @@ function WhenPopover({
           value={draft}
           aria-label="Send at"
           data-testid="header-send-at"
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setPast(false)
+          }}
         />
+        {past ? (
+          <p className="text-caption text-destructive">
+            Schedule a time in the future
+          </p>
+        ) : null}
         <div className="flex items-center justify-between gap-2">
           <Button
             variant="ghost"
@@ -132,9 +143,13 @@ function WhenPopover({
           </Button>
           <Button
             size="sm"
-            disabled={!draft || Number.isNaN(new Date(draft).getTime())}
+            disabled={Number.isNaN(when)}
             onClick={() => {
-              onSendAtChange(new Date(draft).getTime())
+              if (when <= Date.now()) {
+                setPast(true)
+                return
+              }
+              onSendAtChange(when)
               setOpen(false)
             }}
           >

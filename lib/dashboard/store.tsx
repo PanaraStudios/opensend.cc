@@ -144,7 +144,9 @@ function addDomain(input: {
   customReturnPath?: string
 }) {
   const name = normalizeDomainName(input.name)
-  const returnPath = (input.customReturnPath || DEFAULT_RETURN_PATH).trim()
+  const returnPath = (input.customReturnPath || DEFAULT_RETURN_PATH)
+    .trim()
+    .toLowerCase()
   const now = Date.now()
   const domain: Domain = reconcileDomain(
     {
@@ -592,6 +594,8 @@ function sendEmail(input: {
   to: string
   subject: string
   text: string
+  /** Rendered body. Defaults to the text wrapped in a paragraph. */
+  html?: string
   scheduledAt?: number | null
 }) {
   const scheduled = input.scheduledAt ?? null
@@ -604,7 +608,7 @@ function sendEmail(input: {
     status,
     createdAt: Date.now(),
     scheduledAt: scheduled,
-    html: `<p>${input.text.trim()}</p>`,
+    html: input.html?.trim() || `<p>${input.text.trim()}</p>`,
     text: input.text.trim(),
     broadcastId: null,
     events: [

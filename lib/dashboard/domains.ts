@@ -158,8 +158,13 @@ function receivingRecord(domain: Domain): DnsRecord {
     which is what pulls a verified domain back to partially verified. */
 export function domainRecords(domain: Domain): DnsRecord[] {
   const tracking = trackingEnabled(domain)
+  /* A stored tracking record only survives under the same name: a new
+     subdomain is a different CNAME, and it has not been verified yet. */
+  const trackingName = trackingRecord(domain).name
   const records = domain.records.filter((record) => {
-    if (record.kind === "Tracking") return tracking
+    if (record.kind === "Tracking") {
+      return tracking && record.name === trackingName
+    }
     if (record.kind === "Receiving") return domain.receiving
     return true
   })

@@ -138,6 +138,7 @@ export function TestEmailDialog({
               to,
               subject: `[Test] ${item.subject || item.name || "Untitled"}`,
               text: item.preview || "Test send from the broadcast editor.",
+              html: item.html,
             })
             toast.add({ type: "success", title: `Test email sent to ${to}` })
             onOpenChange(false)
@@ -189,12 +190,15 @@ export function ReviewSheet({
   item,
   doc,
   sendAt,
+  flush,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: Broadcast
   doc: EmailDocument
   sendAt: number | null
+  /** Saves the newest edit, so the send copies the email on screen. */
+  flush: () => Promise<void>
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -208,6 +212,7 @@ export function ReviewSheet({
           item={item}
           doc={doc}
           sendAt={sendAt}
+          flush={flush}
         />
       </SheetContent>
     </Sheet>
@@ -221,11 +226,13 @@ function ReviewSheetBody({
   item,
   doc,
   sendAt,
+  flush,
 }: {
   onClose: () => void
   item: Broadcast
   doc: EmailDocument
   sendAt: number | null
+  flush: () => Promise<void>
 }) {
   const router = useRouter()
   const { state, setBroadcastStatus } = useDashboard()
@@ -294,8 +301,10 @@ function ReviewSheetBody({
               disabled={blocked}
               data-testid="review-schedule"
               onClick={() => {
-                setBroadcastStatus(item.id, "scheduled", sendAt)
-                finish("Broadcast scheduled")
+                void flush().then(() => {
+                  setBroadcastStatus(item.id, "scheduled", sendAt)
+                  finish("Broadcast scheduled")
+                })
               }}
             >
               Schedule
@@ -305,8 +314,10 @@ function ReviewSheetBody({
             disabled={blocked}
             data-testid="review-send"
             onClick={() => {
-              setBroadcastStatus(item.id, "sent")
-              finish("Broadcast sent")
+              void flush().then(() => {
+                setBroadcastStatus(item.id, "sent")
+                finish("Broadcast sent")
+              })
             }}
           >
             <SendIcon data-icon="inline-start" />

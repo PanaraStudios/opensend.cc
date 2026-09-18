@@ -29,6 +29,8 @@ export type BroadcastEditorState = {
   selectedId: string | null
   select: (id: string | null) => void
   save: SaveState
+  /** Writes any edit still inside the autosave window through right now. */
+  flush: () => Promise<void>
 }
 
 const AUTOSAVE_MS = 600
@@ -75,22 +77,38 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     })
   }, [])
 
+  /* The newest unsaved document. Leaving the editor inside the debounce
+     window must not drop it, so unmount flushes whatever is still here. */
+  const pending = React.useRef<{ doc: EmailDocument; preview: string } | null>(
+    null
+  )
+
+  const flush = React.useCallback(() => {
+    const job = pending.current
+    if (!job) return Promise.resolve()
+    pending.current = null
+    return renderEmailHtml(job.doc, { preview: job.preview }).then((html) => {
+      updateBroadcast(id, { content: job.doc, html })
+    })
+  }, [id, updateBroadcast])
+
   React.useEffect(() => {
     if (!dirty.current) return
     let cancelled = false
+    pending.current = { doc, preview }
     setSave("saving")
     const timer = window.setTimeout(() => {
-      void renderEmailHtml(doc, { preview }).then((html) => {
-        if (cancelled) return
-        updateBroadcast(id, { content: doc, html })
-        setSave("saved")
+      void flush().then(() => {
+        if (!cancelled) setSave("saved")
       })
     }, AUTOSAVE_MS)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [doc, id, preview, updateBroadcast])
+  }, [doc, flush, preview])
+
+  React.useEffect(() => () => void flush(), [flush])
 
   return {
     doc,
@@ -102,6 +120,7 @@ export function useBroadcastEditor(item: Broadcast): BroadcastEditorState {
     selectedId,
     select: setSelectedId,
     save,
+    flush,
   }
 }
 

@@ -531,11 +531,15 @@ export function EmailCanvas({
         data-testid="editor-canvas"
         onPointerDown={() => select(null)}
       >
-        <InsertRail
-          className="absolute top-24 left-4 z-30 md:left-8"
-          onInsertBlock={insertPalette}
-          onInsertVariable={insertVariable}
-        />
+        {/* A hand-written document is sent as its raw markup, so a block
+            added beside it would show here and never reach the email. */}
+        {doc.mode === "html" ? null : (
+          <InsertRail
+            className="absolute top-24 left-4 z-30 md:left-8"
+            onInsertBlock={insertPalette}
+            onInsertVariable={insertVariable}
+          />
+        )}
         <div
           id="email-paper"
           data-testid="email-paper"

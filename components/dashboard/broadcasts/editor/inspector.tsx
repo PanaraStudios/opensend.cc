@@ -520,6 +520,36 @@ function GlobalCssPanel({ doc, apply }: { doc: EmailDocument; apply: Apply }) {
 
 /* ------------------------------------------------------------ block props */
 
+/* A textarea whose text is parsed into structured data. While it has focus
+   the raw draft is kept, because the parsed form drops what typing depends
+   on: the space before the next word, the newline that starts the next row.
+   Out of focus it shows the stored value again, normalised. */
+function ParsedTextarea({
+  text,
+  onTextChange,
+  ...props
+}: Omit<React.ComponentProps<typeof Textarea>, "value" | "onChange"> & {
+  text: string
+  onTextChange: (text: string) => void
+}) {
+  const [draft, setDraft] = React.useState(text)
+  const [focused, setFocused] = React.useState(false)
+  if (!focused && draft !== text) setDraft(text)
+
+  return (
+    <Textarea
+      {...props}
+      value={draft}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(event) => {
+        setDraft(event.target.value)
+        onTextChange(event.target.value)
+      }}
+    />
+  )
+}
+
 function BlockInspector({
   doc,
   apply,
@@ -835,15 +865,15 @@ function BlockInspector({
     case "table":
       rows.push(
         <InspectorRow key="rows" label="Rows" align="start">
-          <Textarea
-            value={block.rows.map((row) => row.join(" | ")).join("\n")}
+          <ParsedTextarea
+            text={block.rows.map((row) => row.join(" | ")).join("\n")}
             rows={5}
             className="font-mono text-mono"
             aria-label="Table rows"
             data-testid="inspector-table-rows"
-            onChange={(event) =>
+            onTextChange={(text) =>
               patch<TableBlock>({
-                rows: event.target.value
+                rows: text
                   .split("\n")
                   .map((line) => line.split("|").map((cell) => cell.trim())),
               })
@@ -893,17 +923,17 @@ function BlockInspector({
     case "social":
       rows.push(
         <InspectorRow key="links" label="Links" align="start">
-          <Textarea
-            value={block.links
+          <ParsedTextarea
+            text={block.links
               .map((link) => `${link.label} | ${link.href}`)
               .join("\n")}
             rows={4}
             className="font-mono text-mono"
             aria-label="Social links"
             data-testid="inspector-social-links"
-            onChange={(event) =>
+            onTextChange={(text) =>
               patch<SocialBlock>({
-                links: event.target.value
+                links: text
                   .split("\n")
                   .filter(Boolean)
                   .map((line, index) => {

@@ -317,8 +317,9 @@ function BlockBody({ block }: { block: EmailBlock }) {
                   items[index] = next
                   actions.update<ListBlock>(block.id, { items })
                 }}
-                onEnter={() => {
+                onEnter={(value) => {
                   const items = [...block.items]
+                  items[index] = value
                   items.splice(index + 1, 0, "")
                   actions.update<ListBlock>(block.id, { items })
                 }}
