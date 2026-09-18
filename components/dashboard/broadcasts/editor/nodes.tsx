@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react"
 import { Img, Link, Section, Text } from "@react-email/components"
 import { EmailNode, type EmailNodeConfig } from "@react-email/editor/core"
+import { Link as EngineLink } from "@react-email/editor/extensions"
 import type { useEditorImage } from "@react-email/editor/plugins"
 import { mergeAttributes } from "@tiptap/core"
 
@@ -36,6 +37,21 @@ function inlineStyle(style: CSSProperties): string {
       return `${name}:${typeof value === "number" ? `${value}px` : value}`
     })
     .join(";")
+}
+
+/** The reverse: a node's stored `style` string as a style object. */
+function parseInlineStyle(style: unknown): CSSProperties {
+  if (typeof style !== "string") return {}
+  const entries = style
+    .split(";")
+    .map((rule) => {
+      const at = rule.indexOf(":")
+      const name = rule.slice(0, at).trim()
+      const key = name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+      return [key, rule.slice(at + 1).trim()] as const
+    })
+    .filter(([key, value]) => key && value)
+  return Object.fromEntries(entries)
 }
 
 /* --------------------------------------------------------------- variable */
@@ -332,6 +348,9 @@ export function alignedImage(image: ReturnType<typeof useEditorImage>) {
           height={height === "auto" ? undefined : height}
           style={{
             ...style,
+            /* The picture's own radius, border and padding, over the
+               theme's. The engine's export passes on the theme's alone. */
+            ...parseInlineStyle(node.attrs?.style),
             display: "block",
             margin: alignMargin(node.attrs?.alignment),
           }}
@@ -341,5 +360,24 @@ export function alignedImage(image: ReturnType<typeof useEditorImage>) {
     },
   })
 }
+
+/* The engine writes the theme's link colour onto each link as it draws it, and
+   a link already on the canvas is not drawn again when the theme changes, so
+   it kept the old colour until a reload. The theme's stylesheet carries the
+   same rule and is live, so a link is drawn with only the styles of its own. */
+export const ThemedLink = EngineLink.extend({
+  /* Text typed straight after a link is not part of the link. */
+  inclusive: false,
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "a",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ]
+  },
+}).configure({
+  openOnClick: false,
+  HTMLAttributes: { class: "node-link" },
+})
 
 export const CUSTOM_NODES = [Variable, Youtube, Spacer, RawHtml, Footer]

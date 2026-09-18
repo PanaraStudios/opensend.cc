@@ -18,6 +18,7 @@ import {
 import {
   alignedImage,
   CUSTOM_NODES,
+  ThemedLink,
 } from "@/components/dashboard/broadcasts/editor/nodes"
 
 /* The document engine is React Email's editor: its nodes, its theming and its
@@ -76,7 +77,8 @@ const THEME = extendTheme("basic", {
 })
 
 const BASE_EXTENSIONS = [
-  StarterKit.configure(),
+  StarterKit.configure({ Link: false }),
+  ThemedLink,
   Placeholder.configure({
     includeChildren: true,
     placeholder: ({ node }) =>

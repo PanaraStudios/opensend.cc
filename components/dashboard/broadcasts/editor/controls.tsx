@@ -6,9 +6,11 @@ import {
   AlignLeftIcon,
   AlignRightIcon,
   BoldIcon,
+  CaseUpperIcon,
   CodeIcon,
   ItalicIcon,
   StrikethroughIcon,
+  SuperscriptIcon,
   UnderlineIcon,
   type LucideIcon,
 } from "lucide-react"
@@ -160,6 +162,8 @@ export const TEXT_MARKS: { name: string; label: string; icon: LucideIcon }[] = [
   { name: "italic", label: "Italic", icon: ItalicIcon },
   { name: "underline", label: "Underline", icon: UnderlineIcon },
   { name: "strike", label: "Strikethrough", icon: StrikethroughIcon },
+  { name: "sup", label: "Superscript", icon: SuperscriptIcon },
+  { name: "uppercase", label: "Uppercase", icon: CaseUpperIcon },
   { name: "code", label: "Inline code", icon: CodeIcon },
 ]
 

@@ -924,13 +924,18 @@
 #email-paper .tiptap .align-right {
   text-align: right;
 }
+/* Laid out as the table the email is sent as, so a column's own width and
+   vertical alignment mean the same thing here as they do in an inbox. */
 #email-paper .tiptap .node-columns {
-  display: flex;
+  display: table;
   width: 100%;
+  table-layout: fixed;
 }
 #email-paper .tiptap .node-column {
-  flex: 1;
-  min-width: 0;
+  display: table-cell;
+  /* A cell in the sent table is as wide as its width plus its padding. */
+  box-sizing: content-box;
+  vertical-align: middle;
 }
 #email-paper .tiptap .is-empty::before {
   content: attr(data-placeholder);

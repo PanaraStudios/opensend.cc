@@ -302,7 +302,10 @@ export function BubbleMenus() {
           key={menu.node}
           pluginKey={KEYS[menu.node]}
           trigger={menu.trigger}
-          placement="top"
+          /* These show for a caret merely resting in a link, so they sit
+             below it: above, they cover the line the author is reading and
+             take the click meant for it. */
+          placement="bottom"
           className={SURFACE}
         >
           <NodeUrlToolbar menu={menu} />

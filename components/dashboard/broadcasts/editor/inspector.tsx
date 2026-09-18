@@ -27,6 +27,7 @@ import {
   PanelRightCloseIcon,
   PlusIcon,
   SquareIcon,
+  Trash2Icon,
   TypeIcon,
   XIcon,
 } from "lucide-react"
@@ -91,10 +92,13 @@ function PanelHeader({
   icon: Icon,
   onClose,
   back = false,
+  actions,
 }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   onClose: () => void
+  /** Buttons that act on what the panel is showing. */
+  actions?: React.ReactNode
   /** The panel sits on top of Page style and closes back to it, rather than
       collapsing the whole inspector. */
   back?: boolean
@@ -103,6 +107,7 @@ function PanelHeader({
     <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
       <Icon className="size-4 text-muted-foreground" />
       <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h2>
+      {actions}
       <Button
         type="button"
         variant="ghost"
@@ -140,11 +145,15 @@ function StyleField({
   value,
   testId,
   onValueChange,
+  clearable = true,
 }: {
   input: StyleInput
   value: string | number | undefined
   testId: string
   onValueChange: (value: string | number) => void
+  /** A style is optional, so emptying its number unsets it. A node's own
+      size is not, and springs back. */
+  clearable?: boolean
 }) {
   const label = input.label
   let control: React.ReactNode
@@ -166,6 +175,7 @@ function StyleField({
         aria-label={label}
         data-testid={testId}
         onValueChange={onValueChange}
+        onClear={clearable ? () => onValueChange("") : undefined}
       />
     )
   } else if (input.type === "select") {
@@ -188,7 +198,12 @@ function StyleField({
             {String(value)}
           </NativeSelectOption>
         )}
-        {value === undefined ? <NativeSelectOption value="" /> : null}
+        {/* The way back to unset, where the value is optional. */}
+        {value === undefined || clearable ? (
+          <NativeSelectOption value="">
+            {value === undefined ? "" : "Default"}
+          </NativeSelectOption>
+        ) : null}
         {Object.entries(input.options ?? {}).map(([key, text]) => (
           <NativeSelectOption key={key} value={key}>
             {text}
@@ -289,10 +304,14 @@ function nodeSections(nodeType: string): NodeSection[] {
       return ["background", "padding", "border"]
     case "codeBlock":
       return ["padding", "border"]
+    /* The row itself keeps no styles in the engine, only the gap between its
+       columns; each column, or a section around the row, takes the rest. */
     case "twoColumns":
     case "threeColumns":
     case "fourColumns":
-      return ["attributes", "typography", "padding", "background", "border"]
+      return ["attributes"]
+    case "columnsColumn":
+      return ["size", "typography", "padding", "background", "border"]
     case "youtube":
     case "spacer":
     case "html":
@@ -335,6 +354,27 @@ function PaddingRow({ context }: { context: InspectorNodeContext }) {
   )
 }
 
+/* How a column's content sits against taller neighbours. The engine keeps no
+   list entry for it, but writes and exports any style it is handed. */
+const VERTICAL_ALIGN = "verticalAlign" as KnownCssProperties
+
+const VERTICAL_ALIGN_INPUT: StyleInput = {
+  label: "Vertical",
+  type: "select",
+  options: { top: "Top", middle: "Middle", bottom: "Bottom" },
+}
+
+function VerticalAlignRow({ context }: { context: InspectorNodeContext }) {
+  return (
+    <StyleField
+      input={VERTICAL_ALIGN_INPUT}
+      value={context.getStyle(VERTICAL_ALIGN) ?? "middle"}
+      testId="inspector-verticalAlign"
+      onValueChange={(value) => context.setStyle(VERTICAL_ALIGN, value)}
+    />
+  )
+}
+
 function AttrField({
   context,
   name,
@@ -372,6 +412,7 @@ function AttrField({
     <StyleField
       input={{ label, type }}
       value={stored}
+      clearable={false}
       testId={`inspector-${name}`}
       onValueChange={(value) => {
         /* A destination that is not safe to send is not stored. */
@@ -507,6 +548,34 @@ function SelectionPath() {
   )
 }
 
+/* A block whose inside takes the caret (a button, a section, a column) has
+   no key that removes it without eating into its neighbours first. */
+function DeleteNodeButton({ context }: { context: InspectorNodeContext }) {
+  const { editor } = useCurrentEditor()
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-xs"
+      aria-label={`Delete ${nodeLabel(context.nodeType).toLowerCase()}`}
+      title="Delete"
+      data-testid="inspector-delete"
+      onClick={() => {
+        const { pos } = context.nodePos
+        const node = editor?.state.doc.nodeAt(pos)
+        if (!editor || !node) return
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: pos, to: pos + node.nodeSize })
+          .run()
+      }}
+    >
+      <Trash2Icon />
+    </Button>
+  )
+}
+
 function NodePanel({ context }: { context: InspectorNodeContext }) {
   const alignment = context.getAttr("alignment")
   return nodeSections(context.nodeType).map((section, index) => (
@@ -536,6 +605,11 @@ function NodePanel({ context }: { context: InspectorNodeContext }) {
                 label="Height"
                 type="number"
               />
+            </>
+          ) : context.nodeType === "columnsColumn" ? (
+            <>
+              <StyleRows context={context} props={["width"]} />
+              <VerticalAlignRow context={context} />
             </>
           ) : (
             <StyleRows context={context} props={["width", "height"]} />
@@ -944,6 +1018,7 @@ export const Inspector = React.memo(function Inspector({
                     title={nodeLabel(context.nodeType)}
                     icon={SquareIcon}
                     onClose={onCollapse}
+                    actions={<DeleteNodeButton context={context} />}
                   />
                   <SelectionPath />
                   <ScrollArea className="min-h-0 flex-1">
