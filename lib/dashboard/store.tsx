@@ -23,6 +23,7 @@ import {
 } from "./domains"
 import { defaultFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
+import { DASHBOARD_USER_AGENT } from "./logs"
 import {
   activeWorkspace,
   createTeamInRoot,
@@ -44,6 +45,7 @@ import type {
   CreateWebhookResult,
   DashboardState,
   Domain,
+  EmailStatus,
   EmailTemplate,
   MemberRole,
   PropertyType,
@@ -588,6 +590,56 @@ function deleteApiKey(id: string) {
   }))
 }
 
+function sendEmail(input: {
+  from: string
+  to: string
+  subject: string
+  text: string
+  scheduledAt?: number | null
+}) {
+  const scheduled = input.scheduledAt ?? null
+  const status: EmailStatus = scheduled ? "scheduled" : "sent"
+  const email: SentEmail = {
+    id: createId("em"),
+    from: input.from.trim(),
+    to: input.to.trim().toLowerCase(),
+    subject: input.subject.trim(),
+    status,
+    createdAt: Date.now(),
+    scheduledAt: scheduled,
+    html: `<p>${input.text.trim()}</p>`,
+    text: input.text.trim(),
+    broadcastId: null,
+    events: [
+      {
+        id: createId("evt"),
+        type: status,
+        at: Date.now(),
+      },
+    ],
+  }
+  mutate((current) => ({
+    ...current,
+    emails: [email, ...current.emails],
+    logs: [
+      {
+        id: createId("log"),
+        method: "POST",
+        path: "/emails",
+        status: 200,
+        createdAt: Date.now(),
+        durationMs: 64,
+        emailId: email.id,
+        userAgent: DASHBOARD_USER_AGENT,
+        source: "dashboard",
+        apiKeyId: null,
+      },
+      ...current.logs,
+    ],
+  }))
+  return email
+}
+
 function cancelEmail(id: string) {
   mutate((current) => ({
     ...current,
@@ -1063,6 +1115,7 @@ const actions = {
   createApiKey,
   updateApiKey,
   deleteApiKey,
+  sendEmail,
   cancelEmail,
   addReceived,
   addSuppression,
