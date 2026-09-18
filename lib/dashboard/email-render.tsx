@@ -20,6 +20,7 @@ import { render } from "@react-email/render"
 import {
   documentRawHtml,
   MONO_FONT_FAMILY,
+  THEME_STYLE_FIELDS,
   UNSUBSCRIBE_VARIABLE,
   youtubeVideoId,
   type BoxSpacing,
@@ -31,7 +32,7 @@ import {
   type SocialBlock,
   type TableBlock,
   type ThemeStyleKey,
-  type ThemeTextStyle,
+  type ThemeStyle,
 } from "./email-document"
 
 /* The editor canvas and the email itself must agree pixel for pixel, so every
@@ -78,15 +79,38 @@ function px(value: number | undefined): string | undefined {
   return value === undefined ? undefined : `${value}px`
 }
 
-function declarations(style: ThemeTextStyle): string[] {
-  return [
-    `color: ${style.color}`,
-    `font-size: ${style.fontSize}px`,
-    `font-weight: ${style.fontWeight}`,
-    `line-height: ${style.lineHeight / 100}`,
-    `letter-spacing: ${style.letterSpacing}px`,
-    `text-decoration: ${style.decoration}`,
-  ]
+function border(style: ThemeStyle): string {
+  return style.borderWidth > 0
+    ? `${style.borderWidth}px solid ${style.borderColor}`
+    : "0"
+}
+
+/** One theme group as CSS, limited to the values that group exposes. */
+function declarations(key: ThemeStyleKey, theme: EmailTheme): string[] {
+  const style = theme[key]
+  const fields = THEME_STYLE_FIELDS[key]
+  const decls: string[] = []
+  if (fields.includes("background")) {
+    decls.push(`background-color: ${style.background}`)
+  }
+  if (fields.includes("text")) {
+    decls.push(
+      `color: ${style.color}`,
+      `font-size: ${style.fontSize}px`,
+      `font-weight: ${style.fontWeight}`,
+      `line-height: ${style.lineHeight / 100}`,
+      `letter-spacing: ${style.letterSpacing}px`,
+      `text-decoration: ${style.decoration}`
+    )
+  }
+  if (fields.includes("padding")) {
+    decls.push(`padding: ${spacing(style.padding)}`)
+  }
+  if (fields.includes("radius")) {
+    decls.push(`border-radius: ${style.radius}px`)
+  }
+  if (fields.includes("border")) decls.push(`border: ${border(style)}`)
+  return decls
 }
 
 /** The theme as a stylesheet. `scope` prefixes every selector, which is how
@@ -100,31 +124,30 @@ export function themeCss(theme: EmailTheme, scope = ""): string {
     return `${selectors} { ${decls.join("; ")}; }`
   }
 
-  function headingRule(key: ThemeStyleKey, selector: string): string {
-    const style = theme[key]
-    return rule(selector, [
-      ...declarations(style),
-      `padding: ${spacing(style.padding)}`,
-      "margin: 0",
-    ])
-  }
-
   return [
-    rule("p", [...declarations(theme.text), "margin: 0"]),
-    rule("ul, ol", [...declarations(theme.text), "margin: 0"]),
+    rule("p", [...declarations("text", theme), "margin: 0"]),
+    rule("ul, ol", [...declarations("list", theme), "margin: 0"]),
     /* Restated because the dashboard's CSS reset strips list markers, and the
        canvas has to look like the email, which has no reset. */
     rule("ul", ["list-style-type: disc"]),
     rule("ol", ["list-style-type: decimal"]),
-    rule("li", declarations(theme.text)),
-    headingRule("title", "h1"),
-    headingRule("subtitle", "h2"),
-    headingRule("heading", "h3"),
-    rule("a", declarations(theme.link)),
-    rule("pre, code", [
-      ...declarations(theme.code),
+    rule("li", declarations("listItem", theme)),
+    /* After `li`, so a nested list's own items follow the nested group. */
+    rule("li ul, li ol, li li", declarations("nestedList", theme)),
+    rule("h1", [...declarations("title", theme), "margin: 0"]),
+    rule("h2", [...declarations("subtitle", theme), "margin: 0"]),
+    rule("h3", [...declarations("heading", theme), "margin: 0"]),
+    rule("a", declarations("link", theme)),
+    rule("img", declarations("image", theme)),
+    rule("pre", [
+      ...declarations("code", theme),
       `font-family: ${MONO_FONT_FAMILY}`,
       "margin: 0",
+    ]),
+    rule("code", [
+      ...declarations("inlineCode", theme),
+      `font-family: ${MONO_FONT_FAMILY}`,
+      "padding: 0 4px",
     ]),
   ].join("\n")
 }
@@ -162,7 +185,17 @@ export function bodyStyle(doc: EmailDocument): CSSProperties {
         : undefined,
     padding: spacing(body.padding),
     margin: spacing(body.margin),
-    textAlign: body.align,
+  }
+}
+
+/** Where the body sits across the page. The editor keeps its paper centered,
+    so only the sent email applies this. Auto margins do the work because the
+    inline `margin` above outranks the table's own `align` attribute. */
+function bodyAlignStyle(doc: EmailDocument): CSSProperties {
+  const { align } = doc.style.body
+  return {
+    marginLeft: align === "left" ? undefined : "auto",
+    marginRight: align === "right" ? undefined : "auto",
   }
 }
 
@@ -197,19 +230,25 @@ export function blockStyle(
         color: block.color,
         fontSize: px(block.fontSize),
       }
-    case "button":
+    case "button": {
+      /* The email's button is an `a`, which the Link group styles, so this
+         one resolves the Button group inline. */
+      const button = theme.button
       return {
         display: block.fullWidth ? "block" : "inline-block",
-        backgroundColor: block.background,
-        color: block.color,
-        borderRadius: `${block.radius}px`,
-        fontSize: `${block.fontSize}px`,
-        fontWeight: 500,
-        lineHeight: 1.2,
-        padding: spacing(block.padding),
+        backgroundColor: block.background ?? button.background,
+        color: block.color ?? button.color,
+        borderRadius: `${block.radius ?? button.radius}px`,
+        border: border(button),
+        fontSize: `${block.fontSize ?? button.fontSize}px`,
+        fontWeight: button.fontWeight,
+        lineHeight: button.lineHeight / 100,
+        letterSpacing: `${button.letterSpacing}px`,
+        padding: spacing(block.padding ?? button.padding),
         textAlign: "center",
-        textDecoration: "none",
+        textDecoration: button.decoration,
       }
+    }
     case "image":
     case "youtube":
       return {
@@ -217,7 +256,6 @@ export function blockStyle(
         width: `${block.width}px`,
         maxWidth: "100%",
         height: "auto",
-        border: "0",
         margin:
           block.align === "center"
             ? "0 auto"
@@ -249,8 +287,8 @@ export function blockStyle(
       return {
         ...THEME_OWNED,
         backgroundColor: block.background,
-        borderRadius: `${block.radius}px`,
-        padding: spacing(block.padding),
+        borderRadius: px(block.radius),
+        padding: block.padding ? spacing(block.padding) : undefined,
         whiteSpace: "pre-wrap",
         overflowX: "auto",
         color: block.color,
@@ -511,7 +549,10 @@ export function renderEmailDocument(
       </Head>
       {options.preview ? <Preview>{options.preview}</Preview> : null}
       <Body style={pageStyle(doc)}>
-        <Container style={bodyStyle(doc)}>
+        <Container
+          align={doc.style.body.align}
+          style={{ ...bodyStyle(doc), ...bodyAlignStyle(doc) }}
+        >
           {doc.blocks.map((block) => (
             <div key={block.id}>{renderBlock(block, doc.theme)}</div>
           ))}

@@ -1,9 +1,12 @@
 import { normalizeEmailDocument, type EmailDocument } from "./email-document"
+import { defaultFromAddress } from "./format"
 import type {
   Broadcast,
   BroadcastStats,
   BroadcastStatus,
+  Contact,
   DashboardState,
+  Domain,
   Segment,
 } from "./types"
 
@@ -120,6 +123,38 @@ export function audienceLabel(
   if (!segmentId) return "All contacts"
   return (
     segments.find((segment) => segment.id === segmentId)?.name ?? "All contacts"
+  )
+}
+
+/** Every address a broadcast can send from: one per verified domain, or the
+    shared Opensend one while there is none. */
+export function fromAddresses(
+  domains: readonly Pick<Domain, "name" | "status">[]
+): string[] {
+  const verified = domains.filter((domain) => domain.status === "verified")
+  if (verified.length === 0) return [defaultFromAddress(undefined)]
+  return verified.map((domain) => defaultFromAddress(domain.name))
+}
+
+/** The broadcast's own sender while its domain is still verified, else the
+    workspace default. */
+export function broadcastFrom(
+  item: Pick<Broadcast, "from">,
+  domains: readonly Pick<Domain, "name" | "status">[]
+): string {
+  const options = fromAddresses(domains)
+  return item.from && options.includes(item.from) ? item.from : options[0]!
+}
+
+/** Who a send reaches: the segment (or everyone), minus the unsubscribed. */
+export function broadcastRecipients(
+  contacts: Contact[],
+  item: Pick<Broadcast, "segmentId">
+): Contact[] {
+  return contacts.filter(
+    (contact) =>
+      !contact.unsubscribed &&
+      (item.segmentId === null || contact.segmentIds.includes(item.segmentId))
   )
 }
 

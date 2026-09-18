@@ -225,6 +225,8 @@ export type Broadcast = {
   /** Block tree behind `html`. Absent on records saved before the editor, and
       on those the editor falls back to `html`. */
   content?: EmailDocument
+  /** The chosen sender. Absent means the workspace's default address. */
+  from?: string
   /** Overrides the sending domain's reply address for this send. */
   replyTo?: string
   status: BroadcastStatus

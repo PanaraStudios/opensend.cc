@@ -67,6 +67,7 @@ import {
   type ThemeStyleKey,
   type YoutubeBlock,
   THEME_STYLE_KEYS,
+  THEME_STYLE_FIELDS,
   THEME_STYLE_LABELS,
 } from "@/lib/dashboard/email-document"
 
@@ -338,118 +339,182 @@ function ThemeGroup({
   styleKey: ThemeStyleKey
 }) {
   const style = doc.theme[styleKey]
-  const showsPadding =
-    styleKey === "title" || styleKey === "subtitle" || styleKey === "heading"
+  const fields = THEME_STYLE_FIELDS[styleKey]
+  const label = THEME_STYLE_LABELS[styleKey]
 
   return (
     <InspectorSection>
       <div className="flex items-center justify-between gap-2 px-0.5">
-        <h3 className="text-caption font-medium">
-          {THEME_STYLE_LABELS[styleKey]}
-        </h3>
+        <h3 className="text-caption font-medium">{label}</h3>
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label={`Reset ${THEME_STYLE_LABELS[styleKey]}`}
+          aria-label={`Reset ${label}`}
           data-testid={`theme-${styleKey}-reset`}
           onClick={() => apply((current) => resetThemeStyle(current, styleKey))}
         >
           <RotateCcwIcon />
         </Button>
       </div>
-      <InspectorRow label="Color">
-        <ColorField
-          value={style.color}
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} colour`}
-          data-testid={`theme-${styleKey}-color`}
-          onValueChange={(color) =>
-            apply((current) => setThemeStyle(current, styleKey, { color }))
-          }
-        />
-      </InspectorRow>
-      <InspectorRow label="Size">
-        <NumberField
-          value={style.fontSize}
-          min={8}
-          max={96}
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} size`}
-          data-testid={`theme-${styleKey}-size`}
-          onValueChange={(fontSize) =>
-            apply((current) => setThemeStyle(current, styleKey, { fontSize }))
-          }
-        />
-      </InspectorRow>
-      <InspectorRow label="Weight">
-        <OptionSelect
-          size="sm"
-          className="w-full"
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} weight`}
-          value={String(style.fontWeight)}
-          items={FONT_WEIGHTS.map((weight) => ({
-            value: String(weight.value),
-            label: weight.label,
-          }))}
-          onChange={(next) =>
-            apply((current) =>
-              setThemeStyle(current, styleKey, {
-                fontWeight: Number(next) as FontWeight,
-              })
-            )
-          }
-        />
-      </InspectorRow>
-      <InspectorRow label="Height">
-        <NumberField
-          value={style.lineHeight}
-          unit="%"
-          min={80}
-          max={300}
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} line height`}
-          data-testid={`theme-${styleKey}-height`}
-          onValueChange={(lineHeight) =>
-            apply((current) => setThemeStyle(current, styleKey, { lineHeight }))
-          }
-        />
-      </InspectorRow>
-      <InspectorRow label="Spacing">
-        <NumberField
-          value={style.letterSpacing}
-          min={-4}
-          max={12}
-          step={0.1}
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} letter spacing`}
-          data-testid={`theme-${styleKey}-spacing`}
-          onValueChange={(letterSpacing) =>
-            apply((current) =>
-              setThemeStyle(current, styleKey, { letterSpacing })
-            )
-          }
-        />
-      </InspectorRow>
-      <InspectorRow label="Decoration">
-        <SegmentedToggle
-          value={style.decoration}
-          items={DECORATIONS}
-          aria-label={`${THEME_STYLE_LABELS[styleKey]} decoration`}
-          testIdPrefix={`theme-${styleKey}-decoration`}
-          onValueChange={(decoration) =>
-            apply((current) => setThemeStyle(current, styleKey, { decoration }))
-          }
-        />
-      </InspectorRow>
-      {showsPadding ? (
+      {fields.includes("background") ? (
+        <InspectorRow label="Background">
+          <ColorField
+            value={style.background}
+            aria-label={`${label} background`}
+            data-testid={`theme-${styleKey}-background`}
+            onValueChange={(background) =>
+              apply((current) =>
+                setThemeStyle(current, styleKey, { background })
+              )
+            }
+          />
+        </InspectorRow>
+      ) : null}
+      {fields.includes("text") ? (
+        <>
+          <InspectorRow label="Color">
+            <ColorField
+              value={style.color}
+              aria-label={`${label} colour`}
+              data-testid={`theme-${styleKey}-color`}
+              onValueChange={(color) =>
+                apply((current) => setThemeStyle(current, styleKey, { color }))
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Size">
+            <NumberField
+              value={style.fontSize}
+              min={8}
+              max={96}
+              aria-label={`${label} size`}
+              data-testid={`theme-${styleKey}-size`}
+              onValueChange={(fontSize) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { fontSize })
+                )
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Weight">
+            <OptionSelect
+              size="sm"
+              className="w-full"
+              aria-label={`${label} weight`}
+              value={String(style.fontWeight)}
+              items={FONT_WEIGHTS.map((weight) => ({
+                value: String(weight.value),
+                label: weight.label,
+              }))}
+              onChange={(next) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, {
+                    fontWeight: Number(next) as FontWeight,
+                  })
+                )
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Height">
+            <NumberField
+              value={style.lineHeight}
+              unit="%"
+              min={80}
+              max={300}
+              aria-label={`${label} line height`}
+              data-testid={`theme-${styleKey}-height`}
+              onValueChange={(lineHeight) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { lineHeight })
+                )
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Spacing">
+            <NumberField
+              value={style.letterSpacing}
+              min={-4}
+              max={12}
+              step={0.1}
+              aria-label={`${label} letter spacing`}
+              data-testid={`theme-${styleKey}-spacing`}
+              onValueChange={(letterSpacing) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { letterSpacing })
+                )
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Decoration">
+            <SegmentedToggle
+              value={style.decoration}
+              items={DECORATIONS}
+              aria-label={`${label} decoration`}
+              testIdPrefix={`theme-${styleKey}-decoration`}
+              onValueChange={(decoration) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { decoration })
+                )
+              }
+            />
+          </InspectorRow>
+        </>
+      ) : null}
+      {fields.includes("padding") ? (
         <InspectorRow label="Padding" align="start">
           <BoxField
             value={style.padding}
             min={0}
-            label={`${THEME_STYLE_LABELS[styleKey]} padding`}
+            label={`${label} padding`}
             data-testid={`theme-${styleKey}-padding`}
             onValueChange={(padding) =>
               apply((current) => setThemeStyle(current, styleKey, { padding }))
             }
           />
         </InspectorRow>
+      ) : null}
+      {fields.includes("radius") ? (
+        <InspectorRow label="Corner radius">
+          <NumberField
+            value={style.radius}
+            min={0}
+            aria-label={`${label} corner radius`}
+            data-testid={`theme-${styleKey}-radius`}
+            onValueChange={(radius) =>
+              apply((current) => setThemeStyle(current, styleKey, { radius }))
+            }
+          />
+        </InspectorRow>
+      ) : null}
+      {fields.includes("border") ? (
+        <>
+          <InspectorRow label="Border">
+            <NumberField
+              value={style.borderWidth}
+              min={0}
+              aria-label={`${label} border width`}
+              data-testid={`theme-${styleKey}-border`}
+              onValueChange={(borderWidth) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { borderWidth })
+                )
+              }
+            />
+          </InspectorRow>
+          <InspectorRow label="Border color">
+            <ColorField
+              value={style.borderColor}
+              aria-label={`${label} border colour`}
+              data-testid={`theme-${styleKey}-border-color`}
+              onValueChange={(borderColor) =>
+                apply((current) =>
+                  setThemeStyle(current, styleKey, { borderColor })
+                )
+              }
+            />
+          </InspectorRow>
+        </>
       ) : null}
     </InspectorSection>
   )
@@ -702,7 +767,7 @@ function BlockInspector({
       rows.push(
         <InspectorRow key="bg" label="Background">
           <ColorField
-            value={block.background}
+            value={block.background ?? doc.theme.button.background}
             aria-label="Button background"
             data-testid="inspector-button-background"
             onValueChange={(background) => patch<ButtonBlock>({ background })}
@@ -710,7 +775,7 @@ function BlockInspector({
         </InspectorRow>,
         <InspectorRow key="color" label="Text">
           <ColorField
-            value={block.color}
+            value={block.color ?? doc.theme.button.color}
             aria-label="Button text colour"
             data-testid="inspector-button-color"
             onValueChange={(color) => patch<ButtonBlock>({ color })}
@@ -718,7 +783,7 @@ function BlockInspector({
         </InspectorRow>,
         <InspectorRow key="radius" label="Corner radius">
           <NumberField
-            value={block.radius}
+            value={block.radius ?? doc.theme.button.radius}
             min={0}
             aria-label="Button radius"
             data-testid="inspector-button-radius"
@@ -727,7 +792,7 @@ function BlockInspector({
         </InspectorRow>,
         <InspectorRow key="padding" label="Padding" align="start">
           <BoxField
-            value={block.padding}
+            value={block.padding ?? doc.theme.button.padding}
             min={0}
             label="Button padding"
             data-testid="inspector-button-padding"
@@ -912,7 +977,7 @@ function BlockInspector({
         </InspectorRow>,
         <InspectorRow key="bg" label="Background">
           <ColorField
-            value={block.background}
+            value={block.background ?? doc.theme.code.background}
             aria-label="Code background"
             data-testid="inspector-code-background"
             onValueChange={(background) => patch<CodeBlock>({ background })}

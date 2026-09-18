@@ -43,12 +43,13 @@ import {
   updateBlock,
   youtubeVideoId,
   type ColumnsBlock,
+  type EmailBlock,
   type EmailBlockType,
   type EmailDocument,
   type HeadingBlock,
   type TextBlock,
 } from "./email-document"
-import { renderEmailHtml, themeCss } from "./email-render"
+import { blockStyle, renderEmailHtml, themeCss } from "./email-render"
 import { SEED_STATE } from "./data"
 
 function docWith(...types: EmailBlockType[]): EmailDocument {
@@ -466,12 +467,40 @@ describe("themeCss", () => {
       "h2 {",
       "h3 {",
       "a {",
-      "pre, code {",
+      "li ul, li ol, li li {",
+      "img {",
+      "pre {",
+      "code {",
     ]) {
       assert.ok(css.includes(selector), `missing rule for ${selector}`)
     }
     assert.match(css, /h1 \{[^}]*font-size: 31px/)
     assert.match(css, /a \{[^}]*text-decoration: underline/)
+  })
+
+  it("writes only the values a group exposes", () => {
+    const theme = themePreset("minimal")
+    theme.image = { ...theme.image, radius: 12, borderWidth: 2 }
+    const css = themeCss(theme)
+    assert.match(
+      css,
+      /img \{ border-radius: 12px; border: 2px solid #000000; \}/
+    )
+    assert.match(css, /pre \{[^}]*background-color: #f5f5f5/)
+    assert.doesNotMatch(css, /p \{[^}]*background-color/)
+  })
+
+  it("lets a button follow the theme until the block overrides it", () => {
+    const theme = themePreset("minimal")
+    const button = createEmailBlock("button")
+    assert.equal(blockStyle(button, theme).backgroundColor, "#000000")
+    theme.button = { ...theme.button, background: "#ff0000" }
+    assert.equal(blockStyle(button, theme).backgroundColor, "#ff0000")
+    assert.equal(
+      blockStyle({ ...button, background: "#00ff00" } as EmailBlock, theme)
+        .backgroundColor,
+      "#00ff00"
+    )
   })
 
   it("scopes every selector when asked, so the canvas stays contained", () => {

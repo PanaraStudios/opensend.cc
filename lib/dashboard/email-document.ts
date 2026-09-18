@@ -78,12 +78,13 @@ export type ButtonBlock = BlockBase & {
   label: string
   href: string
   align: EmailAlign
-  background: string
-  color: string
-  radius: number
-  fontSize: number
   fullWidth: boolean
-  padding: BoxSpacing
+  /* Unset means "as the theme's Button says". */
+  background?: string
+  color?: string
+  radius?: number
+  fontSize?: number
+  padding?: BoxSpacing
 }
 
 export type ImageBlock = BlockBase & {
@@ -131,11 +132,12 @@ export type TableBlock = BlockBase & {
 export type CodeBlock = BlockBase & {
   type: "code"
   code: string
-  background: string
-  radius: number
+  /* Unset means "as the theme's Code Block says". */
+  background?: string
+  radius?: number
   color?: string
   fontSize?: number
-  padding: BoxSpacing
+  padding?: BoxSpacing
 }
 
 export type SocialLink = { id: string; label: string; href: string }
@@ -198,13 +200,26 @@ export type EmailBlock = EmailLeafBlock | ColumnsBlock
 /* ------------------------------------------------------------------ theme */
 
 export type ThemeStyleKey =
-  "text" | "title" | "subtitle" | "heading" | "link" | "code"
+  | "text"
+  | "title"
+  | "subtitle"
+  | "heading"
+  | "list"
+  | "nestedList"
+  | "listItem"
+  | "link"
+  | "image"
+  | "button"
+  | "code"
+  | "inlineCode"
 
 export type FontWeight = 400 | 500 | 600 | 700
 
 export type TextDecoration = "none" | "underline" | "line-through"
 
-export type ThemeTextStyle = {
+/* Every group carries every value so one shape serves them all;
+   `THEME_STYLE_FIELDS` says which of them a group actually uses. */
+export type ThemeStyle = {
   color: string
   fontSize: number
   fontWeight: FontWeight
@@ -213,13 +228,19 @@ export type ThemeTextStyle = {
   letterSpacing: number
   decoration: TextDecoration
   padding: BoxSpacing
+  background: string
+  radius: number
+  borderWidth: number
+  borderColor: string
 }
+
+export type ThemeField = "background" | "text" | "padding" | "radius" | "border"
 
 export type ThemePreset = "minimal" | "basic"
 
 export type EmailTheme = { preset: ThemePreset } & Record<
   ThemeStyleKey,
-  ThemeTextStyle
+  ThemeStyle
 >
 
 export type EmailPageStyle = {
@@ -281,7 +302,7 @@ function textStyle(
   fontWeight: FontWeight,
   lineHeight: number,
   padding: BoxSpacing = box(0, 0, 12, 0)
-): ThemeTextStyle {
+): ThemeStyle {
   return {
     color,
     fontSize,
@@ -290,6 +311,10 @@ function textStyle(
     letterSpacing: 0,
     decoration: "none",
     padding,
+    background: "transparent",
+    radius: 0,
+    borderWidth: 0,
+    borderColor: "#000000",
   }
 }
 
@@ -303,11 +328,29 @@ export function themePreset(preset: ThemePreset): EmailTheme {
       title: textStyle("#0b0d0e", 34, 700, 128, box(0, 0, 16, 0)),
       subtitle: textStyle("#0b0d0e", 26, 600, 136, box(0, 0, 14, 0)),
       heading: textStyle("#0b0d0e", 20, 600, 130, box(0, 0, 12, 0)),
+      list: textStyle("#1b2023", 16, 400, 165),
+      nestedList: textStyle("#1b2023", 16, 400, 165),
+      listItem: textStyle("#1b2023", 16, 400, 165),
       link: {
         ...textStyle("#2563eb", 16, 500, 165, box(0)),
         decoration: "underline",
       },
-      code: textStyle("#1b2023", 14, 400, 150),
+      image: { ...textStyle("#1b2023", 16, 400, 165), radius: 8 },
+      button: {
+        ...textStyle("#ffffff", 16, 500, 120, box(14, 24)),
+        background: "#0b0d0e",
+        radius: 8,
+      },
+      code: {
+        ...textStyle("#1b2023", 14, 400, 150, box(12, 16)),
+        background: "#f3f4f6",
+        radius: 6,
+      },
+      inlineCode: {
+        ...textStyle("#1e293b", 14, 400, 165, box(0)),
+        background: "#e5e7eb",
+        radius: 4,
+      },
     }
   }
   return {
@@ -316,11 +359,29 @@ export function themePreset(preset: ThemePreset): EmailTheme {
     title: textStyle("#000000", 31, 600, 144, box(0, 0, 16, 0)),
     subtitle: textStyle("#000000", 25, 600, 144, box(0, 0, 12, 0)),
     heading: textStyle("#000000", 19, 600, 108, box(0, 0, 10, 0)),
+    list: textStyle("#000000", 14, 400, 155),
+    nestedList: textStyle("#000000", 14, 400, 155),
+    listItem: textStyle("#000000", 14, 400, 155),
     link: {
       ...textStyle("#000000", 14, 400, 155, box(0)),
       decoration: "underline",
     },
-    code: textStyle("#000000", 13, 400, 150),
+    image: { ...textStyle("#000000", 14, 400, 155), radius: 8 },
+    button: {
+      ...textStyle("#ffffff", 15, 500, 120, box(12, 20)),
+      background: "#000000",
+      radius: 8,
+    },
+    code: {
+      ...textStyle("#000000", 13, 400, 150, box(12, 14)),
+      background: "#f5f5f5",
+      radius: 6,
+    },
+    inlineCode: {
+      ...textStyle("#1e293b", 13, 400, 155, box(0)),
+      background: "#e5e7eb",
+      radius: 4,
+    },
   }
 }
 
@@ -329,8 +390,14 @@ export const THEME_STYLE_KEYS: readonly ThemeStyleKey[] = [
   "title",
   "subtitle",
   "heading",
+  "list",
+  "nestedList",
+  "listItem",
   "link",
+  "image",
+  "button",
   "code",
+  "inlineCode",
 ]
 
 export const THEME_STYLE_LABELS: Record<ThemeStyleKey, string> = {
@@ -338,9 +405,40 @@ export const THEME_STYLE_LABELS: Record<ThemeStyleKey, string> = {
   title: "Text / Title",
   subtitle: "Text / Subtitle",
   heading: "Text / Heading",
+  list: "Text / List",
+  nestedList: "Text / Nested List",
+  listItem: "Text / List Item",
   link: "Link",
-  code: "Code",
+  image: "Image",
+  button: "Button",
+  code: "Code Block",
+  inlineCode: "Inline Code",
 }
+
+const BOXED: readonly ThemeField[] = [
+  "background",
+  "text",
+  "padding",
+  "radius",
+  "border",
+]
+
+/** The values each group exposes in the theme panel and writes to the email. */
+export const THEME_STYLE_FIELDS: Record<ThemeStyleKey, readonly ThemeField[]> =
+  {
+    text: ["text"],
+    title: ["text", "padding"],
+    subtitle: ["text", "padding"],
+    heading: ["text", "padding"],
+    list: ["text"],
+    nestedList: ["text"],
+    listItem: ["text"],
+    link: ["text"],
+    image: ["radius", "border"],
+    button: BOXED,
+    code: BOXED,
+    inlineCode: ["background", "text", "radius", "border"],
+  }
 
 export const FONT_WEIGHTS: { value: FontWeight; label: string }[] = [
   { value: 400, label: "Regular" },
@@ -360,7 +458,7 @@ export function defaultDocumentStyle(): EmailDocumentStyle {
   return {
     page: { background: "#f5f5f5", padding: box(24, 12) },
     body: {
-      align: "left",
+      align: "center",
       color: "#000000",
       background: "#ffffff",
       width: 600,
@@ -416,12 +514,7 @@ export function createEmailBlock(
         label: "Read more",
         href: "https://example.com",
         align: "left",
-        background: "#000000",
-        color: "#ffffff",
-        radius: 8,
-        fontSize: 15,
         fullWidth: false,
-        padding: box(12, 20),
       }
     case "image":
       return {
@@ -465,9 +558,6 @@ export function createEmailBlock(
         id,
         type,
         code: "npm install opensend",
-        background: "#f5f5f5",
-        radius: 6,
-        padding: box(12, 14),
       }
     case "social":
       return {
@@ -825,7 +915,7 @@ export function setDocumentStyle(
 export function setThemeStyle(
   doc: EmailDocument,
   key: ThemeStyleKey,
-  patch: Partial<ThemeTextStyle>
+  patch: Partial<ThemeStyle>
 ): EmailDocument {
   return {
     ...doc,
@@ -1025,7 +1115,7 @@ function normalizeTheme(value: unknown): EmailTheme {
   for (const key of THEME_STYLE_KEYS) {
     const entry = value[key]
     if (isRecord(entry)) {
-      theme[key] = { ...defaults[key], ...(entry as Partial<ThemeTextStyle>) }
+      theme[key] = { ...defaults[key], ...(entry as Partial<ThemeStyle>) }
     }
   }
   return theme

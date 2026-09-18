@@ -25,7 +25,7 @@ import { SegmentedToggle } from "@/components/dashboard/broadcasts/editor/contro
 import { HtmlMode } from "@/components/dashboard/broadcasts/editor/html-mode"
 import { Inspector } from "@/components/dashboard/broadcasts/editor/inspector"
 import {
-  ReviewSheet,
+  ReviewPopover,
   TestEmailDialog,
 } from "@/components/dashboard/broadcasts/editor/review"
 import {
@@ -67,7 +67,6 @@ function EditorScreen({ item }: { item: Broadcast }) {
   const editor = useBroadcastEditor(item)
   const [view, setView] = React.useState<EmailEditorMode>(editor.doc.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
-  const [reviewOpen, setReviewOpen] = React.useState(false)
   const [testOpen, setTestOpen] = React.useState(false)
   const [blocksOpen, setBlocksOpen] = React.useState(false)
   const [sendAt, setSendAt] = React.useState<number | null>(item.scheduledAt)
@@ -162,13 +161,12 @@ function EditorScreen({ item }: { item: Broadcast }) {
           >
             Test email
           </Button>
-          <Button
-            size="sm"
-            data-testid="editor-review"
-            onClick={() => setReviewOpen(true)}
-          >
-            Review
-          </Button>
+          <ReviewPopover
+            item={item}
+            doc={editor.doc}
+            sendAt={sendAt}
+            flush={editor.flush}
+          />
         </div>
       </header>
 
@@ -251,14 +249,6 @@ function EditorScreen({ item }: { item: Broadcast }) {
       </div>
 
       <TestEmailDialog open={testOpen} onOpenChange={setTestOpen} item={item} />
-      <ReviewSheet
-        open={reviewOpen}
-        onOpenChange={setReviewOpen}
-        item={item}
-        doc={editor.doc}
-        sendAt={sendAt}
-        flush={editor.flush}
-      />
       <ConfirmDialog
         open={blocksOpen}
         onOpenChange={setBlocksOpen}

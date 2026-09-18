@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from "react"
 
-import { emptyBroadcastStats, transitionBroadcast } from "./broadcast"
+import {
+  broadcastFrom,
+  broadcastRecipients,
+  emptyBroadcastStats,
+  transitionBroadcast,
+} from "./broadcast"
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
 import { emptyEmailDocument } from "./email-document"
 import { recordsForDomain } from "./data"
@@ -18,7 +23,6 @@ import {
   reconcileDomain,
   verifyDomainRecords,
 } from "./domains"
-import { workspaceFromAddress } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import {
@@ -747,6 +751,7 @@ function updateBroadcast(
       | "preview"
       | "html"
       | "content"
+      | "from"
       | "replyTo"
       | "segmentId"
       | "topicId"
@@ -761,17 +766,6 @@ function updateBroadcast(
   }))
 }
 
-function broadcastRecipients(
-  current: DashboardState,
-  item: Broadcast
-): Contact[] {
-  return current.contacts.filter(
-    (contact) =>
-      !contact.unsubscribed &&
-      (item.segmentId === null || contact.segmentIds.includes(item.segmentId))
-  )
-}
-
 function setBroadcastStatus(
   id: string,
   status: BroadcastStatus,
@@ -782,14 +776,14 @@ function setBroadcastStatus(
     if (!item) return current
     const now = Date.now()
     const recipients =
-      status === "sent" ? broadcastRecipients(current, item) : []
+      status === "sent" ? broadcastRecipients(current.contacts, item) : []
     const next = transitionBroadcast(item, status, {
       now,
       recipients: recipients.length,
       scheduledAt,
     })
     if (next === item) return current
-    const from = workspaceFromAddress(current.domains)
+    const from = broadcastFrom(item, current.domains)
     const sent: SentEmail[] = recipients.map((contact) => ({
       id: createId("em"),
       from,

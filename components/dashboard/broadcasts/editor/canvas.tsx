@@ -534,11 +534,15 @@ export function EmailCanvas({
         {/* A hand-written document is sent as its raw markup, so a block
             added beside it would show here and never reach the email. */}
         {doc.mode === "html" ? null : (
-          <InsertRail
-            className="absolute top-24 left-4 z-30 md:left-8"
-            onInsertBlock={insertPalette}
-            onInsertVariable={insertVariable}
-          />
+          /* The track spans the whole canvas so the sticky rail inside it
+             holds its place while the email scrolls underneath. */
+          <div className="pointer-events-none absolute inset-y-0 left-4 z-30 pt-24 md:left-8">
+            <InsertRail
+              className="pointer-events-auto sticky top-24"
+              onInsertBlock={insertPalette}
+              onInsertVariable={insertVariable}
+            />
+          </div>
         )}
         <div
           id="email-paper"
