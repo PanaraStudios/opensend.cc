@@ -257,6 +257,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
           plain
           multiline={false}
           html={block.text}
+          className={block.className}
           style={style}
           placeholder="Heading"
           data-editable-for={block.id}
@@ -274,6 +275,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
           <InlineEditable
             as="p"
             html={block.html}
+            className={block.className}
             style={style}
             placeholder="Press '/' for commands…"
             data-editable-for={block.id}
@@ -298,7 +300,11 @@ function BlockBody({ block }: { block: EmailBlock }) {
     case "list": {
       const List = block.ordered ? "ol" : "ul"
       return (
-        <List style={style} data-testid="block-list">
+        <List
+          className={block.className}
+          style={style}
+          data-testid="block-list"
+        >
           {block.items.map((item, index) => (
             <li key={index}>
               <InlineEditable
@@ -334,7 +340,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
     case "button":
       return (
         <div style={blockWrapperStyle(block)}>
-          <span style={style}>
+          <span className={block.className} style={style}>
             <InlineEditable
               plain
               multiline={false}
@@ -354,7 +360,12 @@ function BlockBody({ block }: { block: EmailBlock }) {
         <div style={blockWrapperStyle(block)}>
           {block.src ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={block.src} alt={block.alt} style={style} />
+            <img
+              src={block.src}
+              alt={block.alt}
+              className={block.className}
+              style={style}
+            />
           ) : (
             <span className={PAPER_HINT}>
               <ImageIcon className="size-4" />
@@ -369,7 +380,12 @@ function BlockBody({ block }: { block: EmailBlock }) {
         <div style={blockWrapperStyle(block)}>
           {thumbnail ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumbnail} alt={block.alt} style={style} />
+            <img
+              src={thumbnail}
+              alt={block.alt}
+              className={block.className}
+              style={style}
+            />
           ) : (
             <span className={PAPER_HINT}>
               <YouTubeIcon />
@@ -380,7 +396,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
       )
     }
     case "divider":
-      return <hr style={style} />
+      return <hr className={block.className} style={style} />
     case "spacer":
       return (
         <div
@@ -390,7 +406,11 @@ function BlockBody({ block }: { block: EmailBlock }) {
       )
     case "table":
       return (
-        <table style={style} data-testid="block-table">
+        <table
+          className={block.className}
+          style={style}
+          data-testid="block-table"
+        >
           <tbody>
             {block.rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
@@ -417,10 +437,14 @@ function BlockBody({ block }: { block: EmailBlock }) {
         </table>
       )
     case "code":
-      return <pre style={style}>{block.code}</pre>
+      return (
+        <pre className={block.className} style={style}>
+          {block.code}
+        </pre>
+      )
     case "social":
       return (
-        <p style={style}>
+        <p className={block.className} style={style}>
           {block.links.map((link, index) => (
             <span key={link.id}>
               {index > 0 ? (
@@ -441,7 +465,7 @@ function BlockBody({ block }: { block: EmailBlock }) {
       )
     case "footer":
       return (
-        <p style={style}>
+        <p className={block.className} style={style}>
           <InlineEditable
             as="span"
             html={block.text}
