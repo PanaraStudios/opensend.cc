@@ -17,7 +17,6 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
-import { Separator } from "@/components/ui/separator"
 import { TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
@@ -41,6 +40,7 @@ import {
   DetailHeader,
   EmailStatusBadge,
   EmptyState,
+  EventTrail,
   MetaStrip,
   MoreMenu,
   NotFoundState,
@@ -114,30 +114,15 @@ function emailMeta(email: {
 
 function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {events.map((event, index) => {
-        const Icon = eventIcon(event)
-        return (
-          <React.Fragment key={event.id}>
-            {index > 0 ? (
-              <Separator orientation="vertical" className="h-8 self-center" />
-            ) : null}
-            <Item size="xs" className="w-fit">
-              <ItemMedia variant="icon">
-                <Icon />
-              </ItemMedia>
-              <ItemContent>
-                <ItemTitle>
-                  {event.label ??
-                    (event.type ? emailStatusLabel(event.type) : "Event")}
-                </ItemTitle>
-                <ItemDescription>{formatDateTime(event.at)}</ItemDescription>
-              </ItemContent>
-            </Item>
-          </React.Fragment>
-        )
-      })}
-    </div>
+    <EventTrail
+      steps={events.map((event) => ({
+        id: event.id,
+        icon: eventIcon(event),
+        label:
+          event.label ?? (event.type ? emailStatusLabel(event.type) : "Event"),
+        caption: formatDateTime(event.at),
+      }))}
+    />
   )
 }
 

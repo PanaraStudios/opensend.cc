@@ -8,7 +8,21 @@ export const REGIONS = [
 export type Region = (typeof REGIONS)[number]["value"]
 
 export type DomainStatus =
-  "not_started" | "pending" | "verified" | "failed" | "temporary_failure"
+  | "not_started"
+  | "pending"
+  | "partially_verified"
+  | "verified"
+  | "failed"
+  | "temporary_failure"
+
+/** DNS host we detected for a domain. Only some can be configured for you. */
+export type DnsProvider =
+  "cloudflare" | "route53" | "godaddy" | "namecheap" | "other"
+
+export type DomainEventType =
+  "added" | "dns_verified" | "partially_verified" | "verified"
+
+export type DomainEvent = { type: DomainEventType; at: number }
 
 export type RecordKind =
   "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
@@ -85,6 +99,12 @@ export type Domain = {
   customReturnPath: string
   receiving: boolean
   records: DnsRecord[]
+  /* Added after the first release, so persisted workspaces may lack them.
+     `normalizeDomain` in ./domains backfills every one on parse. */
+  provider?: DnsProvider
+  sending?: boolean
+  trackingSubdomain?: string
+  events?: DomainEvent[]
 }
 
 export type Contact = {
