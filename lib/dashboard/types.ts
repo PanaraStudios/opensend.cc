@@ -469,7 +469,6 @@ export type Settings = {
   teamName: string
   teamSlug: string
   teamAvatar?: string
-  billingEmail: string
   sso: {
     enabled: boolean
     issuer: string

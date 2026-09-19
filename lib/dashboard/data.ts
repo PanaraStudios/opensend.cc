@@ -1224,7 +1224,6 @@ export const SEED_STATE: DashboardState = {
   settings: {
     teamName: "Opensend",
     teamSlug: "opensend",
-    billingEmail: "kamal@opensend.cc",
     sso: {
       enabled: false,
       issuer: "",

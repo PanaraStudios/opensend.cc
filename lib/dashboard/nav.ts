@@ -67,7 +67,6 @@ export const AUDIENCE_TABS: SectionTabs = [
 
 export const SETTINGS_NAV: SectionTabs = [
   { href: "/settings/team", title: "Team" },
-  { href: "/settings/billing", title: "Billing" },
   { href: "/settings/sso", title: "SSO" },
   { href: "/settings/unsubscribe", title: "Unsubscribe" },
   { href: "/settings/ses", title: "Amazon SES" },

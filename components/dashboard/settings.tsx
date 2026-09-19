@@ -48,12 +48,7 @@ import {
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
 import { readAvatar } from "@/lib/dashboard/avatar"
-import {
-  formatDate,
-  isEmail,
-  regionLabel,
-  roleLabel,
-} from "@/lib/dashboard/format"
+import { formatDate, regionLabel, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
@@ -571,64 +566,6 @@ export function SettingsSmtp() {
           <FieldLabel>Password</FieldLabel>
           <Input readOnly value="Your Opensend API key" />
         </Field>
-      </Surface>
-    </>
-  )
-}
-
-export function SettingsBilling() {
-  const { state, updateSettings } = useDashboard()
-
-  function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const billingEmail = String(form.get("billingEmail") ?? "").trim()
-    if (billingEmail && !isEmail(billingEmail)) {
-      toast.add({ type: "warning", title: "Enter a valid billing email" })
-      return
-    }
-    updateSettings({
-      billingEmail: billingEmail || state.settings.billingEmail,
-    })
-    toast.add({ type: "success", title: "Billing email saved" })
-  }
-
-  return (
-    <>
-      <SettingsLead>
-        Self-hosted Opensend has no subscription. This page matches the Resend
-        billing layout so Cloud can land later.
-      </SettingsLead>
-      <Surface className="max-w-lg">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Plan</span>
-          <Badge variant="secondary">Self-hosted</Badge>
-        </div>
-        <p className="text-small text-muted-foreground">
-          You pay Amazon for delivery. Nothing is billed to Opensend.
-        </p>
-        <form onSubmit={save} className="space-y-4">
-          <Field>
-            <FieldLabel htmlFor="billing-email">Billing email</FieldLabel>
-            <Input
-              id="billing-email"
-              name="billingEmail"
-              type="email"
-              key={state.settings.billingEmail}
-              defaultValue={state.settings.billingEmail}
-            />
-            <FieldDescription>
-              Invoices and usage notices for a future Cloud plan.
-            </FieldDescription>
-          </Field>
-          <Button type="submit">Save</Button>
-        </form>
-      </Surface>
-      <Surface className="max-w-lg">
-        <h2 className="text-sm font-medium">Invoices</h2>
-        <p className="text-small text-muted-foreground">
-          No invoices on this deployment.
-        </p>
       </Surface>
     </>
   )

@@ -37,7 +37,7 @@ const ROLE_OPTIONS = [
   {
     value: "admin",
     label: "Admin",
-    description: "Invite users, update payment, and delete the team.",
+    description: "Invite users, change roles, and delete the team.",
   },
   {
     value: "member",
