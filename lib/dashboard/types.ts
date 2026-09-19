@@ -169,6 +169,9 @@ export type TeamMember = {
   email: string
   role: MemberRole
   you: boolean
+  /** Whether they sign in with a second factor. Your own comes from the
+      account, which every team shares. */
+  mfa?: boolean
   createdAt: number
 }
 
@@ -441,12 +444,31 @@ export type Team = {
   id: string
   name: string
   slug: string
+  /** An uploaded image, as a data URL. */
+  avatar?: string
+  /** Your role in the team, and when you joined it. */
+  role: MemberRole
+  joinedAt: number
+  members: number
+  /** False for the last team left, which stays. */
+  removable: boolean
+}
+
+export const AUTH_PROVIDERS = ["password", "github", "google"] as const
+export type AuthProvider = (typeof AUTH_PROVIDERS)[number]
+
+/** What belongs to the person rather than to a team. Their name and email
+    are on their member record in each team. */
+export type Account = {
+  providers: { provider: AuthProvider; connectedAt: number }[]
+  /** The second factor: its secret, and when it was verified. */
+  mfa: { secret: string; enabledAt: number } | null
 }
 
 export type Settings = {
   teamName: string
   teamSlug: string
-  billingEmail: string
+  teamAvatar?: string
   sso: {
     enabled: boolean
     issuer: string

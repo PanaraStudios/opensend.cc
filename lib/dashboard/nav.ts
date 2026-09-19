@@ -13,6 +13,9 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+/** Where Settings opens. */
+export const SETTINGS_NAV_INDEX = "/settings/team"
+
 export type NavItem = {
   href: string
   title: string
@@ -36,7 +39,12 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/logs", title: "Logs", icon: ScrollTextIcon },
   { href: "/api-keys", title: "API keys", icon: KeyRoundIcon },
   { href: "/webhooks", title: "Webhooks", icon: WebhookIcon },
-  { href: "/settings", title: "Settings", icon: SettingsIcon },
+  {
+    href: SETTINGS_NAV_INDEX,
+    title: "Settings",
+    icon: SettingsIcon,
+    match: ["/settings"],
+  },
 ]
 
 export type SectionTab = { href: string; title: string }
@@ -61,10 +69,7 @@ export const AUDIENCE_TABS: SectionTabs = [
 ]
 
 export const SETTINGS_NAV: SectionTabs = [
-  { href: "/settings", title: "General" },
-  { href: "/settings/team", title: "Team" },
-  { href: "/settings/exports", title: "Exports" },
-  { href: "/settings/billing", title: "Billing" },
+  { href: SETTINGS_NAV_INDEX, title: "Team" },
   { href: "/settings/sso", title: "SSO" },
   { href: "/settings/unsubscribe", title: "Unsubscribe" },
   { href: "/settings/ses", title: "Amazon SES" },
@@ -81,10 +86,16 @@ export function navItemActive(pathname: string, item: NavItem): boolean {
   return hrefs.some((href) => pathMatches(pathname, href))
 }
 
-/** Tabs are exact: the settings index tab must not light up on /settings/team. */
+/** Tabs are exact: an index tab must not light up on the routes beneath it. */
 export function tabActive(pathname: string, href: string): boolean {
   return pathname === href
 }
+
+/** Pages of the dashboard that are no section's tab. */
+export const STANDALONE_PAGES: readonly SectionTab[] = [
+  { href: "/settings/exports", title: "Exports" },
+  { href: "/profile", title: "Profile" },
+]
 
 const TEAM_SAFE_PATHS = new Set<string>([
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
@@ -92,6 +103,7 @@ const TEAM_SAFE_PATHS = new Set<string>([
   ...AUDIENCE_TABS.map((item) => item.href),
   ...AUTOMATION_TABS.map((item) => item.href),
   ...SETTINGS_NAV.map((item) => item.href),
+  ...STANDALONE_PAGES.map((item) => item.href),
 ])
 
 /** Keep list/settings routes when switching teams; drop record detail ids. */

@@ -5,6 +5,7 @@ import { defaultFromAddress } from "./format"
 import { DASHBOARD_USER_AGENT, LOG_USER_AGENTS } from "./logs"
 import { runStep } from "./automation"
 import type {
+  Account,
   ApiKey,
   ApiLog,
   Automation,
@@ -485,9 +486,15 @@ const members: TeamMember[] = [
     email: "ada@opensend.cc",
     role: "member",
     you: false,
+    mfa: true,
     createdAt: daysAgo(28),
   },
 ]
+
+export const SEED_ACCOUNT: Account = {
+  providers: [{ provider: "password", connectedAt: daysAgo(60) }],
+  mfa: null,
+}
 
 const emails: SentEmail[] = [
   {
@@ -1217,7 +1224,6 @@ export const SEED_STATE: DashboardState = {
   settings: {
     teamName: "Opensend",
     teamSlug: "opensend",
-    billingEmail: "kamal@opensend.cc",
     sso: {
       enabled: false,
       issuer: "",

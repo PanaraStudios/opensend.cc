@@ -24,7 +24,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
@@ -34,6 +33,7 @@ import {
   EmptyState,
   ListToolbar,
   MoreMenu,
+  RadioCards,
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
@@ -50,6 +50,32 @@ import type {
   TopicDefault,
   TopicVisibility,
 } from "@/lib/dashboard/types"
+
+const DEFAULT_OPTIONS = [
+  {
+    value: "opt_out",
+    label: "Opt-out",
+    description: "New contacts are subscribed until they unsubscribe.",
+  },
+  {
+    value: "opt_in",
+    label: "Opt-in",
+    description: "New contacts stay unsubscribed until they opt in.",
+  },
+] as const
+
+const VISIBILITY_OPTIONS = [
+  {
+    value: "public",
+    label: "Public",
+    description: "Shown on the unsubscribe preference page.",
+  },
+  {
+    value: "private",
+    label: "Private",
+    description: "Hidden from contacts. Useful for operational mail.",
+  },
+] as const
 
 function TopicFormFields({
   name,
@@ -95,33 +121,12 @@ function TopicFormFields({
       </Field>
       <Field>
         <FieldLabel>Default subscription</FieldLabel>
-        <RadioGroup
+        <RadioCards
           value={defaultSubscription}
-          onValueChange={(value) =>
-            setDefaultSubscription(value as TopicDefault)
-          }
+          onChange={setDefaultSubscription}
           disabled={lockDefault}
-          className="gap-3"
-        >
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-            <RadioGroupItem value="opt_out" className="mt-0.5" />
-            <span>
-              <span className="block text-sm font-medium">Opt-out</span>
-              <span className="text-sm text-muted-foreground">
-                New contacts are subscribed until they unsubscribe.
-              </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-            <RadioGroupItem value="opt_in" className="mt-0.5" />
-            <span>
-              <span className="block text-sm font-medium">Opt-in</span>
-              <span className="text-sm text-muted-foreground">
-                New contacts stay unsubscribed until they opt in.
-              </span>
-            </span>
-          </label>
-        </RadioGroup>
+          options={DEFAULT_OPTIONS}
+        />
         {lockDefault ? (
           <FieldDescription>
             The default subscription cannot be changed after the topic is
@@ -131,30 +136,11 @@ function TopicFormFields({
       </Field>
       <Field>
         <FieldLabel>Visibility</FieldLabel>
-        <RadioGroup
+        <RadioCards
           value={visibility}
-          onValueChange={(value) => setVisibility(value as TopicVisibility)}
-          className="gap-3"
-        >
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-            <RadioGroupItem value="public" className="mt-0.5" />
-            <span>
-              <span className="block text-sm font-medium">Public</span>
-              <span className="text-sm text-muted-foreground">
-                Shown on the unsubscribe preference page.
-              </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-            <RadioGroupItem value="private" className="mt-0.5" />
-            <span>
-              <span className="block text-sm font-medium">Private</span>
-              <span className="text-sm text-muted-foreground">
-                Hidden from contacts. Useful for operational mail.
-              </span>
-            </span>
-          </label>
-        </RadioGroup>
+          onChange={setVisibility}
+          options={VISIBILITY_OPTIONS}
+        />
       </Field>
     </FieldGroup>
   )

@@ -1,12 +1,20 @@
 import { normalizeAutomation } from "./automation"
 import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
-import { SEED_STATE } from "./data"
+import { SEED_ACCOUNT, SEED_STATE } from "./data"
 import { normalizeDomain } from "./domains"
+import { normalizeEmail } from "./format"
 import { createId } from "./ids"
 import { normalizeLog } from "./logs"
 import { uniqueSlug } from "./slug"
 import { normalizeTemplates } from "./template"
-import type { DashboardState, Team } from "./types"
+import {
+  AUTH_PROVIDERS,
+  type Account,
+  type AuthProvider,
+  type DashboardState,
+  type Team,
+  type TeamMember,
+} from "./types"
 import { normalizeWebhook } from "./webhooks"
 
 export const SEED_TEAM_ID = "team_opensend"
@@ -15,6 +23,7 @@ export const ROOT_VERSION = 3 as const
 export type DashboardRoot = {
   version: typeof ROOT_VERSION
   activeTeamId: string
+  account: Account
   workspaces: Record<string, DashboardState>
 }
 
@@ -37,6 +46,7 @@ export function seedRoot(): DashboardRoot {
   return {
     version: ROOT_VERSION,
     activeTeamId: SEED_TEAM_ID,
+    account: SEED_ACCOUNT,
     workspaces: { [SEED_TEAM_ID]: SEED_STATE },
   }
 }
@@ -98,6 +108,28 @@ function parseWorkspaces(
   return Object.keys(workspaces).length > 0 ? workspaces : null
 }
 
+/** A root saved before accounts existed gets the seeded one. */
+function parseAccount(value: unknown): Account {
+  if (!isRecord(value) || !Array.isArray(value.providers)) return SEED_ACCOUNT
+  const known = value.providers.filter(
+    (item): item is Account["providers"][number] =>
+      isRecord(item) &&
+      AUTH_PROVIDERS.includes(item.provider as AuthProvider) &&
+      typeof item.connectedAt === "number"
+  )
+  const mfa =
+    isRecord(value.mfa) &&
+    typeof value.mfa.secret === "string" &&
+    typeof value.mfa.enabledAt === "number"
+      ? { secret: value.mfa.secret, enabledAt: value.mfa.enabledAt }
+      : null
+  /* There is always a way in. */
+  return {
+    providers: known.length > 0 ? known : SEED_ACCOUNT.providers,
+    mfa,
+  }
+}
+
 export function parseRoot(raw: string): DashboardRoot {
   try {
     const parsed: unknown = JSON.parse(raw)
@@ -112,6 +144,7 @@ export function parseRoot(raw: string): DashboardRoot {
         return {
           version: ROOT_VERSION,
           activeTeamId,
+          account: parseAccount(parsed.account),
           workspaces,
         }
       }
@@ -120,6 +153,7 @@ export function parseRoot(raw: string): DashboardRoot {
       return {
         version: ROOT_VERSION,
         activeTeamId: SEED_TEAM_ID,
+        account: SEED_ACCOUNT,
         workspaces: { [SEED_TEAM_ID]: migrateWorkspace(parsed) },
       }
     }
@@ -129,19 +163,38 @@ export function parseRoot(raw: string): DashboardRoot {
   return seedRoot()
 }
 
+/** The member record of whoever is signed in. */
+export function youOf(workspace: DashboardState): TeamMember | undefined {
+  return workspace.members.find((member) => member.you)
+}
+
 export function listTeams(root: DashboardRoot): Team[] {
-  return Object.entries(root.workspaces).map(([id, workspace]) => ({
-    id,
-    name: workspace.settings.teamName,
-    slug: workspace.settings.teamSlug,
-  }))
+  const removable = Object.keys(root.workspaces).length > 1
+  return Object.entries(root.workspaces).map(([id, workspace]) => {
+    const you = youOf(workspace)
+    return {
+      id,
+      name: workspace.settings.teamName,
+      slug: workspace.settings.teamSlug,
+      avatar: workspace.settings.teamAvatar,
+      role: you?.role ?? "member",
+      joinedAt: you?.createdAt ?? 0,
+      members: workspace.members.length,
+      removable,
+    }
+  })
 }
 
 export function activeWorkspace(root: DashboardRoot): DashboardState {
   return root.workspaces[root.activeTeamId] ?? SEED_STATE
 }
 
-export function emptyWorkspace(name: string, slug: string): DashboardState {
+/** A team with nothing in it but its owner, who is its admin from now. */
+export function emptyWorkspace(
+  name: string,
+  slug: string,
+  owner: Pick<TeamMember, "name" | "email">
+): DashboardState {
   return {
     domains: [],
     contacts: [],
@@ -149,9 +202,16 @@ export function emptyWorkspace(name: string, slug: string): DashboardState {
     topics: [],
     properties: [],
     apiKeys: [],
-    members: SEED_STATE.members
-      .filter((member) => member.you)
-      .map((member) => ({ ...member })),
+    members: [
+      {
+        id: createId("mem"),
+        name: owner.name,
+        email: owner.email,
+        role: "admin",
+        you: true,
+        createdAt: Date.now(),
+      },
+    ],
     emails: [],
     received: [],
     suppressions: [],
@@ -210,6 +270,8 @@ export function createTeamInRoot(
     "team"
   )
   const teamId = createId("team")
+  /* As they are known now, which may not be how the seed knows them. */
+  const you = youOf(activeWorkspace(root)) ?? youOf(SEED_STATE)!
   return {
     teamId,
     root: {
@@ -217,8 +279,80 @@ export function createTeamInRoot(
       activeTeamId: teamId,
       workspaces: {
         ...root.workspaces,
-        [teamId]: emptyWorkspace(trimmed, slug),
+        [teamId]: emptyWorkspace(trimmed, slug, you),
       },
     },
+  }
+}
+
+export function renameTeamInRoot(
+  root: DashboardRoot,
+  teamId: string,
+  name: string
+): DashboardRoot {
+  const workspace = root.workspaces[teamId]
+  const trimmed = name.trim()
+  if (!workspace || !trimmed) return root
+  return {
+    ...root,
+    workspaces: {
+      ...root.workspaces,
+      [teamId]: {
+        ...workspace,
+        settings: { ...workspace.settings, teamName: trimmed },
+      },
+    },
+  }
+}
+
+/** Deleting a team and leaving one are the same thing here: the workspace
+    goes. The last team stays, since there is nothing to show without one. */
+export function deleteTeamInRoot(
+  root: DashboardRoot,
+  teamId: string
+): DashboardRoot {
+  if (!root.workspaces[teamId]) return root
+  const workspaces = Object.fromEntries(
+    Object.entries(root.workspaces).filter(([id]) => id !== teamId)
+  )
+  const remaining = Object.keys(workspaces)
+  if (remaining.length === 0) return root
+  return {
+    ...root,
+    activeTeamId:
+      root.activeTeamId === teamId ? remaining[0]! : root.activeTeamId,
+    workspaces,
+  }
+}
+
+/** Whether somebody else, on any of your teams, has the address. */
+export function emailTaken(root: DashboardRoot, email: string): boolean {
+  const address = normalizeEmail(email)
+  return Object.values(root.workspaces).some((workspace) =>
+    workspace.members.some((member) => !member.you && member.email === address)
+  )
+}
+
+/** Your email is on your member record in every team. An address a
+    teammate has is refused: members are told apart by it. */
+export function updateEmailInRoot(
+  root: DashboardRoot,
+  email: string
+): DashboardRoot {
+  const next = normalizeEmail(email)
+  if (emailTaken(root, next)) return root
+  return {
+    ...root,
+    workspaces: Object.fromEntries(
+      Object.entries(root.workspaces).map(([id, workspace]) => [
+        id,
+        {
+          ...workspace,
+          members: workspace.members.map((member) =>
+            member.you ? { ...member, email: next } : member
+          ),
+        },
+      ])
+    ),
   }
 }

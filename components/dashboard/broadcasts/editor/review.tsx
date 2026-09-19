@@ -135,10 +135,9 @@ export function TestEmailDialog({
   /** The email as it stands right now, exported if it has to be. */
   exportHtml: () => Promise<string | null>
 }) {
-  const { state, sendEmail } = useDashboard()
+  const { state, you, sendEmail } = useDashboard()
   const [value, setValue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
-  const you = state.members.find((member) => member.you)
   return (
     <Dialog
       open={open}

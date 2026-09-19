@@ -1,11 +1,8 @@
-import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 
-import { SettingsGeneral } from "@/components/dashboard/settings"
+import { SETTINGS_NAV_INDEX } from "@/lib/dashboard/nav"
 
-export const metadata: Metadata = {
-  title: "Settings",
-}
-
+/* Settings opens on the team: there is no overview page of its own. */
 export default function SettingsPage() {
-  return <SettingsGeneral />
+  redirect(SETTINGS_NAV_INDEX)
 }

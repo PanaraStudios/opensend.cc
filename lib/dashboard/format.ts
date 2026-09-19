@@ -205,6 +205,11 @@ export function sentenceCase(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+/** How an address is kept and compared. */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 export function pluralize(
   count: number,
   noun: string,
