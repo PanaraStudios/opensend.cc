@@ -109,7 +109,10 @@ describe("createTeamInRoot / switchTeamInRoot", () => {
 
 describe("emptyWorkspace", () => {
   it("copies the signed-in member and disconnects delivery", () => {
-    const workspace = emptyWorkspace("Studio", "studio")
+    const workspace = emptyWorkspace("Studio", "studio", {
+      name: "Ada",
+      email: "ada@example.com",
+    })
     assert.equal(workspace.settings.teamSlug, "studio")
     assert.equal(workspace.settings.ses.connected, false)
     assert.equal(workspace.settings.smtp.enabled, false)

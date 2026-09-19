@@ -62,12 +62,19 @@ import {
   SettingsCard,
   TextFieldDialog,
   TypeToConfirmDialog,
+  useDraftValue,
 } from "@/components/dashboard/primitives"
 import {
   DeleteTeamDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
-import { formatDate, isEmail, roleLabel } from "@/lib/dashboard/format"
+import {
+  formatDate,
+  isEmail,
+  normalizeEmail,
+  roleLabel,
+} from "@/lib/dashboard/format"
+import { SETTINGS_NAV_INDEX } from "@/lib/dashboard/nav"
 import { useDashboard } from "@/lib/dashboard/store"
 import { createTotpSecret, totpUri, verifyTotp } from "@/lib/dashboard/totp"
 import type { AuthProvider, Team } from "@/lib/dashboard/types"
@@ -83,23 +90,15 @@ const PROVIDERS: Record<
 
 const LINKABLE = ["github", "google"] as const
 
-function useYou() {
-  const { state } = useDashboard()
-  return state.members.find((member) => member.you)
-}
-
 function EmailCard() {
-  const { updateEmail } = useDashboard()
-  const stored = useYou()?.email ?? ""
-  const [email, setEmail] = React.useState(stored)
+  const { you, updateEmail } = useDashboard()
+  const stored = you?.email ?? ""
+  const { draft: email, setDraft: setEmail } = useDraftValue(
+    stored,
+    updateEmail
+  )
   const [error, setError] = React.useState<string | null>(null)
-  /* The stored address changing from elsewhere replaces what is typed. */
-  const [seen, setSeen] = React.useState(stored)
-  if (seen !== stored) {
-    setSeen(stored)
-    setEmail(stored)
-  }
-  const next = email.trim().toLowerCase()
+  const next = normalizeEmail(email)
 
   return (
     <form
@@ -183,7 +182,7 @@ function TeamsCard() {
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem
-                      onClick={() => open(team, "/settings/team")}
+                      onClick={() => open(team, SETTINGS_NAV_INDEX)}
                     >
                       <SettingsIcon />
                       Settings
@@ -218,23 +217,18 @@ function TeamsCard() {
           toast.add({ type: "success", title: "Team renamed" })
         }}
       />
-      {leaving ? (
-        <DeleteTeamDialog
-          team={leaving}
-          leaving
-          open
-          onOpenChange={(next) => {
-            if (!next) setLeaving(null)
-          }}
-        />
-      ) : null}
+      <DeleteTeamDialog
+        team={leaving}
+        leaving
+        onClose={() => setLeaving(null)}
+      />
     </>
   )
 }
 
 function AuthenticationCard() {
-  const { account, linkProvider, unlinkProvider } = useDashboard()
-  const email = useYou()?.email
+  const { account, you, linkProvider, unlinkProvider } = useDashboard()
+  const email = you?.email
   const unlinked = LINKABLE.filter(
     (provider) => !account.providers.some((item) => item.provider === provider)
   )
@@ -315,8 +309,8 @@ function AuthenticationCard() {
 }
 
 function MfaSetupForm({ onClose }: { onClose: () => void }) {
-  const { setMfa } = useDashboard()
-  const email = useYou()?.email ?? "you"
+  const { you, setMfa } = useDashboard()
+  const email = you?.email ?? "you"
   const [secret] = React.useState(() => createTotpSecret())
   const [showKey, setShowKey] = React.useState(false)
   const [code, setCode] = React.useState("")
@@ -463,12 +457,11 @@ function MfaCard() {
 
 function DeleteAccountCard() {
   const router = useRouter()
-  const { teams, activeTeamId, resetDemo } = useDashboard()
+  const { activeTeam, resetDemo } = useDashboard()
   const [open, setOpen] = React.useState(false)
-  const active = teams.find((team) => team.id === activeTeamId)
   /* Teams go first. The last one cannot go by itself, so it goes with the
      account. */
-  const blocking = active?.removable ? active : null
+  const blocking = activeTeam.removable ? activeTeam : null
 
   return (
     <>
@@ -495,7 +488,10 @@ function DeleteAccountCard() {
         }
       />
       {blocking ? (
-        <DeleteTeamDialog team={blocking} open={open} onOpenChange={setOpen} />
+        <DeleteTeamDialog
+          team={open ? blocking : null}
+          onClose={() => setOpen(false)}
+        />
       ) : (
         <TypeToConfirmDialog
           open={open}
@@ -527,7 +523,7 @@ export function Profile() {
       <TeamsCard />
       <AuthenticationCard />
       <MfaCard />
-      <SettingsCard title="OAuth apps" className="px-0">
+      <SettingsCard title="OAuth apps" flush>
         <EmptyState
           size="sm"
           icon={BlocksIcon}

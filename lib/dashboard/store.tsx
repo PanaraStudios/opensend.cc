@@ -32,6 +32,7 @@ import {
   reconcileDomain,
   verifyDomainRecords,
 } from "./domains"
+import { normalizeEmail } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import {
@@ -40,6 +41,7 @@ import {
   deleteTeamInRoot,
   renameTeamInRoot,
   updateEmailInRoot,
+  youOf,
   listTeams,
   parseRoot,
   seedRoot,
@@ -80,6 +82,7 @@ import type {
   Settings,
   SuppressionReason,
   Team,
+  TeamMember,
   TemplateStatus,
   Topic,
   TopicDefault,
@@ -568,9 +571,7 @@ function createApiKey(input: {
 }): CreateApiKeyResult {
   const token = createToken()
   const { prefix, last4 } = tokenParts(token)
-  const you = activeWorkspace(rootFromRaw(readRaw())).members.find(
-    (member) => member.you
-  )
+  const you = youOf(activeWorkspace(rootFromRaw(readRaw())))
   const key = {
     id: createId("key"),
     name: input.name.trim(),
@@ -1265,7 +1266,7 @@ function updateSettings(
 }
 
 function inviteMember(input: { email: string; role: MemberRole }) {
-  const email = input.email.trim().toLowerCase()
+  const email = normalizeEmail(input.email)
   mutate((current) => ({
     ...current,
     members: [
@@ -1443,6 +1444,10 @@ export type DashboardStore = {
   state: DashboardState
   teams: Team[]
   activeTeamId: string
+  /* There is always one: the last team cannot be deleted. */
+  activeTeam: Team
+  /** Your member record in the open team. */
+  you: TeamMember | undefined
   account: Account
 } & typeof actions
 
@@ -1465,10 +1470,15 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const raw = useSyncExternalStore(subscribe, readRaw, () => SERVER_SNAPSHOT)
   const value = useMemo<DashboardStore>(() => {
     const root = rootFromRaw(raw)
+    const state = activeWorkspace(root)
+    const teams = listTeams(root)
     return {
-      state: activeWorkspace(root),
-      teams: listTeams(root),
+      state,
+      teams,
       activeTeamId: root.activeTeamId,
+      activeTeam:
+        teams.find((team) => team.id === root.activeTeamId) ?? teams[0]!,
+      you: youOf(state),
       account: root.account,
       ...actions,
     }

@@ -26,7 +26,7 @@ import {
   RadioCards,
   TypeToConfirmDialog,
 } from "@/components/dashboard/primitives"
-import { isEmail, pluralize } from "@/lib/dashboard/format"
+import { isEmail, normalizeEmail, pluralize } from "@/lib/dashboard/format"
 import { teamSafePath } from "@/lib/dashboard/nav"
 import { useDashboard } from "@/lib/dashboard/store"
 import { SEED_TEAM_ID } from "@/lib/dashboard/teams"
@@ -101,7 +101,7 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          const address = email.trim().toLowerCase()
+          const address = normalizeEmail(email)
           if (!isEmail(address)) {
             setError("Enter a valid email address")
             return
@@ -157,71 +157,72 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
 
 /** Deletes a team, or leaves it. Leaving a team you share only takes you out
     of it; leaving one you are alone in deletes it, as there is nobody left to
-    own it. Either way this browser stops holding the workspace. */
+    own it. Either way this browser stops holding the workspace. Open while
+    there is a team to act on. */
 export function DeleteTeamDialog({
   team,
   leaving = false,
-  open,
-  onOpenChange,
+  onClose,
 }: {
-  team: Team
+  team: Team | null
   /** Asked to leave rather than to delete. */
   leaving?: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  onClose: () => void
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const { state, activeTeamId, deleteTeam } = useDashboard()
-  const active = team.id === activeTeamId
+  const active = team?.id === activeTeamId
+  const shared = leaving && (team?.members ?? 0) > 1
+  const onOpenChange = (open: boolean) => {
+    if (!open) onClose()
+  }
 
-  const remove = (title: string) => {
+  const remove = () => {
+    if (!team) return
     deleteTeam(team.id)
-    toast.add({ type: "success", title })
+    toast.add({
+      type: "success",
+      title: shared ? "You left the team" : "Team deleted",
+    })
     /* The page may be about a record of the team that just went. */
     if (active) router.push(teamSafePath(pathname))
   }
 
-  if (leaving && team.members > 1) {
+  if (shared) {
     return (
       <ConfirmDialog
-        open={open}
+        open
         onOpenChange={onOpenChange}
         title="Leave team?"
-        description={`You lose access to ${team.name}. An admin has to invite you back.`}
+        description={`You lose access to ${team?.name}. An admin has to invite you back.`}
         confirmLabel="Leave team"
-        onConfirm={() => remove("You left the team")}
-      />
-    )
-  }
-
-  if (leaving) {
-    return (
-      <TypeToConfirmDialog
-        open={open}
-        onOpenChange={onOpenChange}
-        title="Delete team"
-        description={`You are the only member of ${team.name}. Leaving will permanently delete this team and all its data. This action is irreversible.`}
-        phrase="DELETE"
-        confirmLabel="Delete team"
-        onConfirm={() => remove("Team deleted")}
+        onConfirm={remove}
       />
     )
   }
 
   return (
     <TypeToConfirmDialog
-      open={open}
+      open={team !== null}
       onOpenChange={onOpenChange}
       title="Delete team"
-      description="This action is irreversible. All team data will be permanently deleted."
-      phrase={team.name}
-      acknowledgement="I understand all team data will be permanently deleted and the team will stop sending and receiving emails."
+      description={
+        leaving
+          ? `You are the only member of ${team?.name}. Leaving will permanently delete this team and all its data. This action is irreversible.`
+          : "This action is irreversible. All team data will be permanently deleted."
+      }
+      phrase={leaving ? "DELETE" : (team?.name ?? "")}
+      acknowledgement={
+        leaving
+          ? undefined
+          : "I understand all team data will be permanently deleted and the team will stop sending and receiving emails."
+      }
       confirmLabel="Delete team"
-      onConfirm={() => remove("Team deleted")}
+      onConfirm={remove}
     >
       {/* Only the open team's contents are at hand. */}
-      {active && state.domains.length + state.apiKeys.length > 0 ? (
+      {!leaving && active && state.domains.length + state.apiKeys.length > 0 ? (
         <ul className="flex flex-col gap-1 rounded-lg border border-border p-3 text-sm">
           {state.domains.length > 0 ? (
             <li>

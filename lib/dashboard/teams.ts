@@ -2,6 +2,7 @@ import { normalizeAutomation } from "./automation"
 import { broadcastUpdatedAt, normalizeBroadcastStats } from "./broadcast"
 import { SEED_ACCOUNT, SEED_STATE } from "./data"
 import { normalizeDomain } from "./domains"
+import { normalizeEmail } from "./format"
 import { createId } from "./ids"
 import { normalizeLog } from "./logs"
 import { uniqueSlug } from "./slug"
@@ -12,6 +13,7 @@ import {
   type AuthProvider,
   type DashboardState,
   type Team,
+  type TeamMember,
 } from "./types"
 import { normalizeWebhook } from "./webhooks"
 
@@ -157,10 +159,15 @@ export function parseRoot(raw: string): DashboardRoot {
   return seedRoot()
 }
 
+/** The member record of whoever is signed in. */
+export function youOf(workspace: DashboardState): TeamMember | undefined {
+  return workspace.members.find((member) => member.you)
+}
+
 export function listTeams(root: DashboardRoot): Team[] {
   const removable = Object.keys(root.workspaces).length > 1
   return Object.entries(root.workspaces).map(([id, workspace]) => {
-    const you = workspace.members.find((member) => member.you)
+    const you = youOf(workspace)
     return {
       id,
       name: workspace.settings.teamName,
@@ -178,7 +185,12 @@ export function activeWorkspace(root: DashboardRoot): DashboardState {
   return root.workspaces[root.activeTeamId] ?? SEED_STATE
 }
 
-export function emptyWorkspace(name: string, slug: string): DashboardState {
+/** A team with nothing in it but its owner, who is its admin from now. */
+export function emptyWorkspace(
+  name: string,
+  slug: string,
+  owner: Pick<TeamMember, "name" | "email">
+): DashboardState {
   return {
     domains: [],
     contacts: [],
@@ -186,9 +198,15 @@ export function emptyWorkspace(name: string, slug: string): DashboardState {
     topics: [],
     properties: [],
     apiKeys: [],
-    members: SEED_STATE.members
-      .filter((member) => member.you)
-      .map((member) => ({ ...member })),
+    members: [
+      {
+        id: createId("mem"),
+        ...owner,
+        role: "admin",
+        you: true,
+        createdAt: Date.now(),
+      },
+    ],
     emails: [],
     received: [],
     suppressions: [],
@@ -247,9 +265,8 @@ export function createTeamInRoot(
     "team"
   )
   const teamId = createId("team")
-  const workspace = emptyWorkspace(trimmed, slug)
-  /* Whoever creates a team is its admin, as they are known now, from now. */
-  const you = activeWorkspace(root).members.find((member) => member.you)
+  /* As they are known now, which may not be how the seed knows them. */
+  const you = youOf(activeWorkspace(root)) ?? youOf(SEED_STATE)!
   return {
     teamId,
     root: {
@@ -257,15 +274,7 @@ export function createTeamInRoot(
       activeTeamId: teamId,
       workspaces: {
         ...root.workspaces,
-        [teamId]: {
-          ...workspace,
-          members: workspace.members.map((member) => ({
-            ...member,
-            ...(you ? { name: you.name, email: you.email } : null),
-            role: "admin" as const,
-            createdAt: Date.now(),
-          })),
-        },
+        [teamId]: emptyWorkspace(trimmed, slug, you),
       },
     },
   }
@@ -316,7 +325,7 @@ export function updateEmailInRoot(
   root: DashboardRoot,
   email: string
 ): DashboardRoot {
-  const next = email.trim().toLowerCase()
+  const next = normalizeEmail(email)
   return {
     ...root,
     workspaces: Object.fromEntries(

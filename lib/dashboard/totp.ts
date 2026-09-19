@@ -3,9 +3,10 @@
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 const STEP_MS = 30_000
+const SECRET_LENGTH = 32
 
-export function createTotpSecret(length = 32): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length))
+export function createTotpSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(SECRET_LENGTH))
   return Array.from(bytes, (byte) => BASE32[byte % BASE32.length]).join("")
 }
 

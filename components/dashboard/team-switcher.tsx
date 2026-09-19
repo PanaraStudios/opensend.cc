@@ -133,11 +133,9 @@ export function TeamSwitcher() {
   const router = useRouter()
   const pathname = usePathname()
   const { isMobile } = useSidebar()
-  const { teams, activeTeamId, switchTeam } = useDashboard()
+  const { teams, activeTeamId, activeTeam: active, switchTeam } = useDashboard()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [inviteOpen, setInviteOpen] = React.useState(false)
-  /* There is always a team: the last one cannot be deleted. */
-  const active = teams.find((team) => team.id === activeTeamId) ?? teams[0]!
 
   function selectTeam(id: string) {
     if (id === activeTeamId) return

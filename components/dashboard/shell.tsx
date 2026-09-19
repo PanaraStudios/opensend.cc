@@ -201,8 +201,7 @@ function CommandMenu({
 function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { state, resetDemo } = useDashboard()
-  const you = state.members.find((member) => member.you)
+  const { you, resetDemo } = useDashboard()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (

@@ -381,14 +381,15 @@ export function Surface({
 
 /** One framed block of a settings page: what it is about, its controls, and
     a footer for the button that saves them. `heading` replaces the title
-    when the block has tabs of its own. */
+    when the block has tabs of its own; `flush` is for a table or an empty
+    state, which bring their own inset. */
 export function SettingsCard({
   title,
   heading,
   description,
   actions,
   footer,
-  className,
+  flush = false,
   children,
 }: {
   title?: string
@@ -396,7 +397,7 @@ export function SettingsCard({
   description?: React.ReactNode
   actions?: React.ReactNode
   footer?: React.ReactNode
-  className?: string
+  flush?: boolean
   children?: React.ReactNode
 }) {
   return (
@@ -414,7 +415,7 @@ export function SettingsCard({
           {actions ? <CardAction>{actions}</CardAction> : null}
         </CardHeader>
         {children ? (
-          <CardContent className={cn("flex flex-col gap-5", className)}>
+          <CardContent className={cn("flex flex-col gap-5", flush && "px-2")}>
             {children}
           </CardContent>
         ) : null}
@@ -1157,7 +1158,7 @@ function TypeToConfirmForm({
   const ready = typed === phrase && (acknowledged || !acknowledgement)
 
   return (
-    <AlertDialogContent className="data-[size=default]:sm:max-w-md">
+    <AlertDialogContent size="md">
       <form
         className="contents"
         onSubmit={(event) => {

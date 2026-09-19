@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import {
   BlocksIcon,
   CircleCheckIcon,
@@ -66,9 +65,6 @@ const SMTP_PORT_ITEMS = [
 ]
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  /* A settings page that is not one of the tabs stands alone. */
-  if (!SETTINGS_NAV.some((tab) => tab.href === pathname)) return <>{children}</>
   return (
     <SectionChrome title="Settings" tabs={SETTINGS_NAV}>
       {children}
@@ -76,29 +72,15 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SettingsLead({
-  children,
-  actions,
-}: {
-  children: React.ReactNode
-  actions?: React.ReactNode
-}) {
+function SettingsLead({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <p className="max-w-2xl text-small text-muted-foreground">{children}</p>
-      {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {actions}
-        </div>
-      ) : null}
-    </div>
+    <p className="max-w-2xl text-small text-muted-foreground">{children}</p>
   )
 }
 
-function TeamOverview() {
-  const { state, teams, activeTeamId, updateSettings } = useDashboard()
-  const team = teams.find((item) => item.id === activeTeamId)
-  const admin = team?.role === "admin"
+function TeamOverview({ team }: { team: Team }) {
+  const { teams, updateSettings } = useDashboard()
+  const admin = team.role === "admin"
   const file = React.useRef<HTMLInputElement>(null)
 
   function save(event: React.FormEvent<HTMLFormElement>) {
@@ -110,9 +92,7 @@ function TeamOverview() {
       toast.add({ type: "error", title: "Enter a team name and a slug" })
       return
     }
-    if (
-      teams.some((item) => item.id !== activeTeamId && item.slug === teamSlug)
-    ) {
+    if (teams.some((item) => item.id !== team.id && item.slug === teamSlug)) {
       toast.add({ type: "error", title: "That slug is already in use" })
       return
     }
@@ -133,9 +113,7 @@ function TeamOverview() {
         <Field>
           <FieldLabel>Avatar</FieldLabel>
           <div className="flex items-center gap-4">
-            {team ? (
-              <TeamGlyph team={team} className="size-20 rounded-2xl text-2xl" />
-            ) : null}
+            <TeamGlyph team={team} className="size-20 rounded-2xl text-2xl" />
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -148,7 +126,7 @@ function TeamOverview() {
                   <UploadIcon data-icon="inline-start" />
                   Update image
                 </Button>
-                {state.settings.teamAvatar ? (
+                {team.avatar ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -191,8 +169,8 @@ function TeamOverview() {
             <Input
               id="team-name"
               name="teamName"
-              key={state.settings.teamName}
-              defaultValue={state.settings.teamName}
+              key={team.name}
+              defaultValue={team.name}
               disabled={!admin}
             />
           </Field>
@@ -202,8 +180,8 @@ function TeamOverview() {
               id="team-slug"
               name="teamSlug"
               className="font-mono"
-              key={state.settings.teamSlug}
-              defaultValue={state.settings.teamSlug}
+              key={team.slug}
+              defaultValue={team.slug}
               disabled={!admin}
             />
           </Field>
@@ -229,7 +207,7 @@ function TeamMembers({ team }: { team: Team }) {
   return (
     <>
       <SettingsCard
-        className="px-2"
+        flush
         heading={
           <Tabs value={tab} onValueChange={(next) => next && setTab(next)}>
             <TabsList>
@@ -346,10 +324,9 @@ function TeamMembers({ team }: { team: Team }) {
       </SettingsCard>
       <InviteMemberDialog open={inviting} onOpenChange={setInviting} />
       <DeleteTeamDialog
-        team={team}
+        team={leaving ? team : null}
         leaving
-        open={leaving}
-        onOpenChange={setLeaving}
+        onClose={() => setLeaving(false)}
       />
       <ConfirmDialog
         open={removing !== null}
@@ -369,14 +346,12 @@ function TeamMembers({ team }: { team: Team }) {
 }
 
 export function SettingsTeam() {
-  const { teams, activeTeamId } = useDashboard()
+  const { activeTeam: team } = useDashboard()
   const [deleting, setDeleting] = React.useState(false)
-  const team = teams.find((item) => item.id === activeTeamId)
-  if (!team) return null
 
   return (
     <>
-      <TeamOverview />
+      <TeamOverview team={team} />
       <TeamMembers team={team} />
       <SettingsCard
         title="Exports"
@@ -411,9 +386,8 @@ export function SettingsTeam() {
         />
       ) : null}
       <DeleteTeamDialog
-        team={team}
-        open={deleting}
-        onOpenChange={setDeleting}
+        team={deleting ? team : null}
+        onClose={() => setDeleting(false)}
       />
     </>
   )
