@@ -3,7 +3,18 @@ import type { VariantProps } from "class-variance-authority"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import type { SponsorTierId } from "@/content/landing"
-import { sponsorCheckoutUrl } from "@/lib/sponsor-checkout"
+import { sponsorCheckoutPath } from "@/lib/sponsor-checkout"
+
+/** What every link to a tier's checkout carries: where it goes, and what
+    analytics hears about the click. */
+export function sponsorCheckoutLink(tier: SponsorTierId, section: string) {
+  return {
+    href: sponsorCheckoutPath(tier),
+    "data-umami-event": "sponsor_cta",
+    "data-umami-event-section": section,
+    "data-umami-event-plan": tier,
+  }
+}
 
 export function SponsorCheckoutButton({
   tier,
@@ -18,29 +29,13 @@ export function SponsorCheckoutButton({
   children: ReactNode
   className?: string
 } & Pick<VariantProps<typeof buttonVariants>, "size" | "variant">) {
-  const href = sponsorCheckoutUrl(tier)
-  if (!href) {
-    return (
-      <Button size={size} variant="secondary" className={className} disabled>
-        Checkout not ready
-      </Button>
-    )
-  }
-
   return (
     <Button
       size={size}
       variant={variant}
       className={className}
       nativeButton={false}
-      render={
-        <a
-          href={href}
-          data-umami-event="sponsor_cta"
-          data-umami-event-section={section}
-          data-umami-event-plan={tier}
-        />
-      }
+      render={<a {...sponsorCheckoutLink(tier, section)} />}
     >
       {children}
     </Button>

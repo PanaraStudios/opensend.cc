@@ -45,7 +45,7 @@ export default function TermsPage() {
       <LegalSection title="Changes">
         <p>
           We may update these terms as the project changes. Material changes are
-          noted in the repository. Send questions to hello@opensend.cc.
+          noted in the repository. Send questions to info@panarastudios.in.
         </p>
       </LegalSection>
       <LegalSection title="Operator">
@@ -59,7 +59,7 @@ export default function TermsPage() {
           >
             Panara Studios
           </a>
-          . Product mail goes to hello@opensend.cc.
+          . Product mail goes to info@panarastudios.in.
         </p>
       </LegalSection>
     </LegalPage>

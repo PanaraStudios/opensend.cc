@@ -1,119 +1,202 @@
-# Stripe sponsor spots
+# Production runbook: Stripe sponsor spots
 
-Gold ($249/month, homepage) and Silver ($99/month, directory) are **Stripe Payment Links**. After a successful payment, Stripe sends the buyer to `/sponsors/thanks?session_id=…`. That page asks Stripe again whether the session is `complete`, `payment_status=paid`, and (for Gold/Silver subscriptions) the subscription is `active` or `trialing`. The upload form does not render until that check passes. The submit action repeats the same check. We do not email the buyer. You get operator mail at `hello@opensend.cc` when someone pays, when they upload a logo, and when a subscription ends.
+This is the live path for [opensend.cc/sponsors](https://opensend.cc/sponsors). Gold is **$249/month** (homepage). Silver is **$99/month** (directory). After Stripe confirms the payment, the buyer uploads a logo. We do not email the buyer. `info@panarastudios.in` gets mail when someone pays, when they upload, and when a subscription ends.
 
-Local env lives in `.env.local`. Production env lives in the Next.js host (Vercel or similar). Never commit secrets.
+Do this in **live mode**. Test mode links will not take real cards.
 
-## 1. Stripe products and prices
+---
 
-In [Stripe Dashboard → Product catalog](https://dashboard.stripe.com/products):
+## 0. Before you start
 
-1. Create product **Gold sponsor**.
-2. Add a **recurring** price: `$249 USD / month`.
-3. Create product **Silver sponsor**.
-4. Add a **recurring** price: `$99 USD / month`.
+You need:
 
-Use test mode first (`sk_test_…`). Repeat in live mode when you are ready.
+- A Stripe account that can charge live cards (business details and bank account completed). [Activate Stripe](https://dashboard.stripe.com/account/onboarding) if the dashboard still says test-only.
+- Access to set environment variables on whatever hosts `opensend.cc` (Vercel, Railway, etc.) . The payment links are read when someone clicks Subscribe, so changing them needs no rebuild.
+- A Resend API key (or another sender already wired in `lib/mail.ts`) so uploaded logos can be mailed to `info@panarastudios.in`.
+- The Cocomail key already used for the Cloud waitlist (`NEXT_COCOMAIL_API_KEY`).
 
-## 2. Payment Links
+Keep a second browser window on this file while you click through Stripe.
 
-In [Stripe Dashboard → Payment links](https://dashboard.stripe.com/payment-links):
+---
 
-For **Gold**:
+## 1. Switch Stripe to live mode
 
-1. New link → the Gold monthly price.
-2. Collect the customer’s **email**.
-3. After payment → **Don’t show confirmation page** → redirect to  
-   `https://opensend.cc/sponsors/thanks?session_id={CHECKOUT_SESSION_ID}`  
-   Local: `http://localhost:3000/sponsors/thanks?session_id={CHECKOUT_SESSION_ID}`  
-   The `{CHECKOUT_SESSION_ID}` placeholder is literal. Stripe replaces it.
-4. Copy the link (`https://buy.stripe.com/…`).
+1. Open [dashboard.stripe.com](https://dashboard.stripe.com).
+2. Toggle **Test mode** **off** (top right). The sidebar should no longer say “Test”.
+3. Confirm **Developers → API keys** shows a **Secret key** starting with `sk_live_`. Copy it. You will paste it later. Never commit it.
 
-Repeat for **Silver**.
+---
 
-The app appends `client_reference_id=gold` or `silver` so the webhook knows the tier. Do not put that on the Dashboard URL yourself.
+## 2. Create the two products
 
-## 3. Webhook
+[Product catalog](https://dashboard.stripe.com/products) → **Add product**.
 
-In [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/webhooks):
+### Gold
 
-1. Add endpoint  
-   Production: `https://opensend.cc/api/stripe/webhook`  
-   Local: use [Stripe CLI](https://stripe.com/docs/stripe-cli) (step 5).
-2. Listen to:
+1. Name: `Gold sponsor`
+2. Description (optional): `Homepage logo on opensend.cc. Cancel any month.`
+3. Pricing: **Recurring** → **$249.00 USD** → **Monthly**
+4. Save
+
+### Silver
+
+1. Name: `Silver sponsor`
+2. Description (optional): `Directory listing on opensend.cc. Cancel any month.`
+3. Pricing: **Recurring** → **$99.00 USD** → **Monthly**
+4. Save
+
+---
+
+## 3. Create the two Payment Links
+
+[Payment links](https://dashboard.stripe.com/payment-links) → **New**.
+
+Do Gold, then Silver. Settings that matter:
+
+1. Product: the Gold or Silver monthly price from step 2.
+2. Quantity: 1 (do not allow customers to change quantity).
+3. **Customers: collect email address.** Required. The thanks page will not show the upload form without an email on the session.
+4. After payment: **Don’t show a confirmation page** → **Redirect to your website**:
+
+   ```
+   https://opensend.cc/sponsors/thanks?session_id={CHECKOUT_SESSION_ID}
+   ```
+
+   Paste that exactly. `{CHECKOUT_SESSION_ID}` is a Stripe placeholder. Do not replace it with a real id.
+
+5. Payments: cards on. No trial.
+6. Create the link. Copy the public URL (`https://buy.stripe.com/…`).
+
+Repeat for Silver. You now have two `buy.stripe.com` URLs.
+
+The app tells Gold from Silver by which Payment Link the checkout came through, so paste each link exactly as Stripe gives it. Nothing in the URL a buyer can edit decides the tier.
+
+---
+
+## 4. Create the live webhook
+
+[Developers → Webhooks](https://dashboard.stripe.com/webhooks) → **Add endpoint**.
+
+1. Endpoint URL:
+
+   ```
+   https://opensend.cc/api/stripe/webhook
+   ```
+
+2. Events to send (select these two only):
    - `checkout.session.completed`
    - `customer.subscription.deleted`
-3. Copy the signing secret (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
+
+3. Add endpoint.
+4. Open the endpoint → **Signing secret** → **Reveal** → copy `whsec_…`. This is `STRIPE_WEBHOOK_SECRET`. It is not the API secret key.
 
 `checkout.session.completed` tags the buyer in Cocomail and mails you that they paid.  
 `customer.subscription.deleted` mails you to take the logo down.
 
-## 4. Next.js environment
+---
 
-Put these in `.env.local` (dev) and in the host’s env (prod):
+## 5. Set Next.js env on the production host
+
+Set these on the service that builds and serves `opensend.cc`. Names must match exactly.
 
 ```
-NEXT_PUBLIC_STRIPE_PAYMENT_LINK_GOLD=https://buy.stripe.com/...
-NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SILVER=https://buy.stripe.com/...
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-NEXT_COCOMAIL_API_KEY=...
-RESEND_API_KEY=...
+STRIPE_PAYMENT_LINK_GOLD=https://buy.stripe.com/....   # Gold link from step 3
+STRIPE_PAYMENT_LINK_SILVER=https://buy.stripe.com/.... # Silver link from step 3
+STRIPE_SECRET_KEY=sk_live_....
+STRIPE_WEBHOOK_SECRET=whsec_....
+NEXT_COCOMAIL_API_KEY=....
+RESEND_API_KEY=re_....
 ```
 
-| Variable                                 | Why                                                                       |
-| ---------------------------------------- | ------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_STRIPE_PAYMENT_LINK_GOLD`   | Subscribe buttons for Gold                                                |
-| `NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SILVER` | Subscribe buttons for Silver                                              |
-| `STRIPE_SECRET_KEY`                      | Confirm the session on the thanks page and read the webhook               |
-| `STRIPE_WEBHOOK_SECRET`                  | Verify Stripe signed the webhook                                          |
-| `NEXT_COCOMAIL_API_KEY`                  | Tag the buyer on the waitlist tool (already used for Cloud waitlist)      |
-| `RESEND_API_KEY`                         | Send _you_ the uploaded logo files. Without it, uploads cannot be mailed. |
+| Variable | Must start with | Used for |
+| --- | --- | --- |
+| `STRIPE_PAYMENT_LINK_GOLD` | `https://buy.stripe.com/` | Gold Subscribe buttons |
+| `STRIPE_PAYMENT_LINK_SILVER` | `https://buy.stripe.com/` | Silver Subscribe buttons |
+| `STRIPE_SECRET_KEY` | `sk_live_` | Confirm payment before the upload form |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_` | Verify Stripe signed the webhook |
+| `NEXT_COCOMAIL_API_KEY` | (your key) | Tag the buyer |
+| `RESEND_API_KEY` | `re_` | Mail you the uploaded files |
 
-Restart `pnpm dev` after changing `.env.local`. `NEXT_PUBLIC_*` values are baked in at boot.
+Rules:
 
-Until the payment-link URLs are set, Subscribe shows **Checkout not ready**.
+- Live keys only. `sk_test_` / test Payment Links will not work on production cards.
+- `NEXT_PUBLIC_*` is baked in at **build** time. Changing it requires a **new deploy**, not just a restart.
+- Until the two Payment Link URLs are set, the site shows **Checkout not ready**.
 
-## 5. Local test
+---
 
-```sh
-# terminal 1
-pnpm dev
+## 6. Redeploy
 
-# terminal 2
-stripe login
-stripe listen --forward-to localhost:3000/api/stripe/webhook
-```
+Trigger a production deploy so the new `NEXT_PUBLIC_*` links are in the client bundle.
 
-Copy the CLI `whsec_…` into `.env.local` as `STRIPE_WEBHOOK_SECRET` (it is not the Dashboard secret).
+After it is live, open [opensend.cc/sponsors](https://opensend.cc/sponsors) and click **Subscribe to Gold**. You should leave opensend.cc and land on `buy.stripe.com`. If the button still says **Checkout not ready**, the env vars are missing or the deploy did not pick them up.
 
-Open `/sponsors`, pay with [test cards](https://docs.stripe.com/testing#cards) (`4242 4242 4242 4242`). You should land on `/sponsors/thanks?session_id=cs_test_…` and see the upload form. Upload an SVG or PNG. `hello@opensend.cc` should get the files.
+---
 
-Cancel the test subscription in Stripe. You should get the “take the logo down” mail.
+## 7. Smoke-test with a real card
 
-## 6. Production
+Do this once, then refund/cancel.
 
-1. Switch Stripe to live mode. Create live products, prices, payment links, and a live webhook to `https://opensend.cc/api/stripe/webhook`.
-2. Set live `sk_live_…`, `whsec_…`, and `https://buy.stripe.com/…` URLs on the host.
-3. Redeploy so `NEXT_PUBLIC_*` links update.
-4. Pay once with a real card, then refund/cancel.
+1. Subscribe Gold (or Silver) with a real card.
+2. After pay, the browser must go to  
+   `https://opensend.cc/sponsors/thanks?session_id=cs_live_…`
+3. You must see **Payment received. Upload your logo.** and the file fields. If you see “We could not confirm that payment”, Stripe did not report `payment_status=paid` (wrong success URL, test/live mix, or webhook/secret mismatch on a later submit).
+4. Upload a small SVG or PNG. `info@panarastudios.in` should receive the files.
+5. In Stripe → **Customers / Subscriptions**, cancel that test subscription. You should get the “take the logo down” mail.
+6. Refund the charge if you want the money back.
 
-## 7. After someone uploads
+Stripe Dashboard → Developers → Webhooks → the endpoint → **Attempts** should show `200` for `checkout.session.completed`. A `400` is a bad signing secret. A `500` is app/env.
 
-The form does not publish the logo by itself. When the operator mail arrives:
+---
 
-1. Save the files under `public/logos/sponsors/` (light + optional dark).
-2. Add the company to `SPONSORS.items` in `content/landing.ts` with `tier: "gold"` or `"silver"`.
+## 8. After a real sponsor uploads
+
+The form does not publish the logo. When the mail arrives:
+
+1. Save the files under `public/logos/sponsors/` (light, and dark if they sent one).
+2. Add them to `SPONSORS.items` in `content/landing.ts`:
+
+   ```ts
+   {
+     name: "Acme",
+     href: "https://acme.com",
+     category: "Email",
+     tier: "gold", // or "silver"
+     logo: {
+       src: "/logos/sponsors/acme.svg",
+       srcDark: "/logos/sponsors/acme-dark.svg", // optional
+       alt: "Acme",
+     },
+   }
+   ```
+
 3. Deploy.
 
-When a subscription ends, remove that entry and deploy again.
+When Stripe mails you that the subscription ended, remove that entry and deploy again.
 
-## 8. Files in this repo
+---
 
-| Path                                       | Role                                         |
-| ------------------------------------------ | -------------------------------------------- |
-| `lib/sponsor-checkout.ts`                  | Builds the Payment Link URL                  |
-| `app/api/stripe/webhook/route.ts`          | Stripe webhook                               |
-| `app/(marketing)/sponsors/thanks/page.tsx` | Upload form after payment                    |
-| `app/actions/sponsor.ts`                   | Verifies the session and mails you the files |
-| `.env.example`                             | Variable names                               |
+## 9. If it fails
+
+| What you see | Likely cause |
+| --- | --- |
+| **Checkout not ready** | `NEXT_PUBLIC_STRIPE_PAYMENT_LINK_*` empty, or deploy did not rebuild |
+| Stripe page loads, then return URL is wrong | Payment Link success URL missing `?session_id={CHECKOUT_SESSION_ID}` |
+| Thanks page: could not confirm payment | `STRIPE_SECRET_KEY` missing/test key, session not `paid`, or not Gold/Silver |
+| Webhook 400 | `STRIPE_WEBHOOK_SECRET` is the test secret or the CLI secret |
+| Webhook 500 | App error; check host logs |
+| Upload fails with "Could not send the logo" | No mail got out. With `RESEND_API_KEY` set the mail goes through Resend, otherwise through Cocomail. Either way the domain of `MAIL_FROM` has to be verified with that provider |
+| Live card declined | Stripe account not fully activated |
+
+---
+
+## Repo map
+
+| Path | Role |
+| --- | --- |
+| `lib/sponsor-checkout.ts` | Builds the Payment Link URL |
+| `lib/stripe-sponsors.ts` | Confirms the session is paid before the form |
+| `app/api/stripe/webhook/route.ts` | Stripe webhook |
+| `app/(marketing)/sponsors/thanks/page.tsx` | Upload form after payment |
+| `app/actions/sponsor.ts` | Re-checks payment, mails you the files |
+| `.env.example` | Variable names |

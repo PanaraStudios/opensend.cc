@@ -10,6 +10,10 @@
    TODO(launch) marks copy that still needs a real value: the docs site,
    the support mailbox, testimonials. */
 
+import { SITE } from "./site"
+
+const SITE_EMAIL = SITE.email
+
 export const GITHUB_URL = "https://github.com/PanaraStudios/opensend.cc"
 export const COMPANY_URL = "https://panarastudios.in"
 export const PERSONAL_URL = "https://kamalpanara.com"
@@ -23,9 +27,58 @@ export type Platform = "api" | "smtp" | "dashboard"
 export const WAITLIST_URL = "/waitlist"
 export const SPONSORS_URL = "/sponsors"
 
-export type SponsorTierId = "gold" | "silver"
 
-export const CONTACT_MAILTO = "mailto:hello@opensend.cc"
+/* ── Sponsor tiers
+   Monthly spots sold on /sponsors. Declared up here because the FAQ and the
+   sponsor copy further down quote the prices. */
+
+export const SPONSOR_TIERS = [
+  {
+    id: "gold",
+    name: "Gold",
+    icon: "award",
+    tagline: "Your logo on the homepage. Cancel any month.",
+    price: "$249",
+    priceNote: "a month",
+    featured: true,
+    badge: "Homepage",
+    slots: 8,
+    ctaLabel: "Subscribe to Gold",
+    includes: [
+      "Logo on the homepage wall",
+      "Listing in the sponsor directory",
+      "Gold badge on your row",
+      "Link to your site",
+      "A line to the maintainer",
+    ],
+  },
+  {
+    id: "silver",
+    name: "Silver",
+    icon: "medal",
+    tagline: "Your logo in the directory. Cancel any month.",
+    price: "$99",
+    priceNote: "a month",
+    featured: false,
+    badge: null,
+    slots: 12,
+    ctaLabel: "Subscribe to Silver",
+    includes: [
+      "Listing in the sponsor directory",
+      "Silver badge on your row",
+      "Link to your site",
+    ],
+  },
+] as const
+
+export type SponsorTierId = (typeof SPONSOR_TIERS)[number]["id"]
+
+export function sponsorTier(id: SponsorTierId) {
+  return SPONSOR_TIERS.find((item) => item.id === id)!
+}
+
+const GOLD = sponsorTier("gold")
+const SILVER = sponsorTier("silver")
 
 export const CTA = {
   primary: "Self-host",
@@ -359,7 +412,7 @@ export const PRICING = {
   /* TODO(launch): make sure this mailbox is live. It is the address
      /privacy already points to. */
   contact: {
-    email: "hello@opensend.cc",
+    email: SITE_EMAIL,
     x: X_URL,
   },
 }
@@ -400,7 +453,7 @@ export const FAQ = {
     },
     {
       q: "How do I sponsor opensend.cc?",
-      a: "Gold is $249 a month and puts your logo on the homepage. Silver is $99 a month and lists you in the directory. Pay with Stripe. After payment, upload your logo on the next page. It stays up while you pay.",
+      a: `${GOLD.name} is ${GOLD.price} a month and puts your logo on the homepage. ${SILVER.name} is ${SILVER.price} a month and lists you in the directory. Pay with Stripe. After payment, upload your logo on the next page. It stays up while you pay.`,
     },
   ],
 }
@@ -464,50 +517,6 @@ export const SPONSOR_CATEGORIES: SponsorCategory[] = [
   "Other",
 ]
 
-export const SPONSOR_TIERS = [
-  {
-    id: "gold" as SponsorTierId,
-    name: "Gold",
-    icon: "award" as const,
-    tagline: "Your logo on the homepage. Cancel any month.",
-    price: "$249",
-    priceNote: "a month",
-    featured: true,
-    badge: "Homepage",
-    slots: 8,
-    cta: { label: "Subscribe to Gold" },
-    includes: [
-      "Logo on the homepage wall",
-      "Listing in the sponsor directory",
-      "Gold badge on your row",
-      "Link to your site",
-      "A line to the maintainer",
-    ],
-  },
-  {
-    id: "silver" as SponsorTierId,
-    name: "Silver",
-    icon: "medal" as const,
-    tagline: "Your logo in the directory. Cancel any month.",
-    price: "$99",
-    priceNote: "a month",
-    featured: false,
-    slots: 12,
-    cta: { label: "Subscribe to Silver" },
-    includes: [
-      "Listing in the sponsor directory",
-      "Silver badge on your row",
-      "Link to your site",
-    ],
-  },
-]
-
-export function sponsorTier(id: SponsorTierId) {
-  const plan = SPONSOR_TIERS.find((item) => item.id === id)
-  if (!plan) throw new Error(`Unknown sponsor tier: ${id}`)
-  return plan
-}
-
 export function sponsorsOnTier(id: SponsorTierId) {
   return SPONSORS.items.filter((item) => item.tier === id)
 }
@@ -519,7 +528,9 @@ export function sponsorOpenCount(id: SponsorTierId) {
 export const SPONSORS = {
   titleA: "This site stays free",
   titleEm: "because of sponsors.",
-  sub: "Gold is $249 a month on the homepage. Silver is $99 a month in the directory. The logo stays up while you pay.",
+  sub: `${GOLD.name} is ${GOLD.price} a month on the homepage. ${SILVER.name} is ${SILVER.price} a month in the directory. The logo stays up while you pay.`,
+  /* After a tier's price where there is no room for "a month". */
+  perMonth: "/mo",
   cta: { label: "See Gold and Silver", href: `${SPONSORS_URL}#spots` },
   openAction: "Subscribe",
   /* Real companies only. Empty until the first one pays. */
@@ -537,6 +548,11 @@ export const SPONSORS_PAGE = {
     titleEm: "Monthly.",
     caption:
       "Pay with card. After payment you upload the logo. It stays up while the subscription is active. A year up front is 10 months.",
+    soldOut: "Sold out",
+    spotsOpen: (open: number) => `${open} ${open === 1 ? "spot" : "spots"} open`,
+    homepageOpen: (open: number, total: number) =>
+      `${open} of ${total} homepage spots open`,
+    checkoutUnavailable: `Checkout is not set up yet. Write ${SITE_EMAIL} and we will sort it out.`,
   },
   directory: {
     kicker: "02 / Sponsor directory",
@@ -552,7 +568,7 @@ export const SPONSORS_PAGE = {
   partner: {
     kicker: "03 / Work with us",
     title: "Tell us what you're building. We'll pick Gold or Silver.",
-    cta: { label: "Get in touch", href: CONTACT_MAILTO },
+    cta: { label: "Get in touch", href: `mailto:${SITE_EMAIL}` },
     benefits: [
       {
         icon: "megaphone" as const,
@@ -579,19 +595,22 @@ export const SPONSORS_PAGE = {
 }
 
 export const SPONSORS_THANKS = {
-  label: "Paid",
-  titleA: "Payment received.",
-  titleEm: "Upload your logo.",
-  sub: "Company name, website, and a logo file. SVG or PNG. Dark-mode logo is optional.",
-  unpaidLabel: "Sponsors",
-  unpaidTitleA: "We could not confirm",
-  unpaidTitleEm: "that payment.",
-  unpaidSub:
-    "The upload form only opens after Stripe confirms the payment. Use the return link from checkout, or write hello@opensend.cc.",
+  paid: {
+    label: "Paid",
+    titleA: "Payment received.",
+    titleEm: "Upload your logo.",
+    sub: "Company name, website, and a logo file. SVG, PNG, WebP, or JPEG. Dark-mode logo is optional.",
+  },
+  unpaid: {
+    label: "Sponsors",
+    titleA: "We could not confirm",
+    titleEm: "that payment.",
+    sub: `The upload form only opens after Stripe confirms the payment. Use the return link from checkout, or write ${SITE_EMAIL}.`,
+  },
   form: {
     company: "Company name",
     website: "https://yourcompany.com",
-    logo: "Logo (SVG, PNG, or WebP)",
+    logo: "Logo (SVG, PNG, WebP, or JPEG)",
     logoDark: "Dark-mode logo (optional)",
     submit: "Upload logo",
     submitting: "Uploading…",
@@ -599,6 +618,17 @@ export const SPONSORS_THANKS = {
     successBody:
       "The logo goes up once it is on the site. It stays up while you pay.",
     error: "Could not upload. Try again in a moment.",
+    errors: {
+      company: "Enter the company name.",
+      website: "Enter a website URL starting with https://",
+      logoMissing: "Choose a logo file.",
+      tooLarge: (label: string) => `${label} must be under 1 MB.`,
+      badType: (label: string) => `${label} must be SVG, PNG, WebP, or JPEG.`,
+      unpaid: "We could not confirm that payment.",
+      sendFailed: "Could not send the logo. Try again in a moment.",
+    },
+    logoLabel: "Logo",
+    logoDarkLabel: "Dark logo",
   },
 }
 

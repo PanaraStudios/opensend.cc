@@ -1,26 +1,35 @@
-import type { SponsorTierId } from "@/content/landing"
+import { SPONSOR_TIERS, type SponsorTierId } from "@/content/landing"
 
-/* Public Stripe Payment Link URLs. Created in the Stripe Dashboard as
-   monthly subscriptions. Safe to expose: they are checkout pages. */
-
-function paymentLink(tier: SponsorTierId) {
-  return tier === "gold"
-    ? process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_GOLD
-    : process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SILVER
+/* Where a Subscribe button points. The route behind it sends the buyer on to
+   the tier's Stripe Payment Link, which is read when they click rather than
+   when the site was built. */
+export function sponsorCheckoutPath(tier: SponsorTierId): string {
+  return `/sponsors/checkout/${tier}`
 }
 
-export function sponsorCheckoutUrl(tier: SponsorTierId): string | null {
-  const raw = paymentLink(tier)?.trim()
-  if (!raw) return null
+export function parseSponsorTier(value: unknown): SponsorTierId | null {
+  return SPONSOR_TIERS.find((tier) => tier.id === value)?.id ?? null
+}
+
+/** The tier's Payment Link, made in the Stripe Dashboard as a monthly
+    subscription. The NEXT_PUBLIC_ names are the older ones: they still work,
+    but are fixed at build time. */
+export function sponsorPaymentLink(tier: SponsorTierId): string | null {
+  const raw =
+    tier === "gold"
+      ? (process.env.STRIPE_PAYMENT_LINK_GOLD ??
+        process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_GOLD)
+      : (process.env.STRIPE_PAYMENT_LINK_SILVER ??
+        process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SILVER)
   try {
-    const url = new URL(raw)
-    url.searchParams.set("client_reference_id", tier)
-    return url.toString()
+    return raw?.trim() ? linkKey(raw.trim()) : null
   } catch {
     return null
   }
 }
 
-export function parseSponsorTier(value: unknown): SponsorTierId | null {
-  return value === "gold" || value === "silver" ? value : null
+/** A Payment Link without its query string, for telling two apart. */
+export function linkKey(url: string): string {
+  const parsed = new URL(url)
+  return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`
 }

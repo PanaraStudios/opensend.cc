@@ -3,6 +3,7 @@ import Stripe from "stripe"
 import { createCocomailContact } from "@/lib/cocomail"
 import { sendMail } from "@/lib/mail"
 import {
+  amountPaid,
   customerEmailFromSession,
   getStripe,
   sponsorTierFromSession,
@@ -12,13 +13,9 @@ import { SITE } from "@/content/site"
 
 export const runtime = "nodejs"
 
-function webhookSecret() {
-  return process.env.STRIPE_WEBHOOK_SECRET?.trim()
-}
-
 export async function POST(request: Request) {
   const stripe = getStripe()
-  const secret = webhookSecret()
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim()
   const signature = request.headers.get("stripe-signature")
   if (!stripe || !secret || !signature) {
     return new Response("Stripe is not configured.", { status: 500 })
@@ -35,7 +32,7 @@ export async function POST(request: Request) {
 
   try {
     if (event.type === "checkout.session.completed") {
-      await onCheckoutCompleted(event.data.object)
+      await onCheckoutCompleted(stripe, event.data.object)
     } else if (event.type === "customer.subscription.deleted") {
       await onSubscriptionDeleted(stripe, event.data.object)
     }
@@ -47,11 +44,15 @@ export async function POST(request: Request) {
   return new Response(null, { status: 200 })
 }
 
-async function onCheckoutCompleted(session: Stripe.Checkout.Session) {
-  if (session.mode !== "subscription" && session.mode !== "payment") return
+async function onCheckoutCompleted(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+) {
+  /* Other products may check out on the same Stripe account. */
+  if (!session.payment_link) return
 
   const email = customerEmailFromSession(session)
-  const tierId = sponsorTierFromSession(session)
+  const tierId = await sponsorTierFromSession(stripe, session)
   if (!email || !tierId) {
     console.error("Sponsor checkout missing email or tier", {
       sessionId: session.id,
@@ -61,27 +62,28 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const plan = sponsorTier(tierId)
 
-  await createCocomailContact({
-    email,
-    tags: ["opensend.cc", `opensend.cc-sponsor-${tierId}`],
-  })
-
-  const operator = await sendMail({
-    to: SITE.email,
-    subject: `New ${plan.name} sponsor: ${email}`,
-    text: [
-      `${email} paid for ${plan.name} (${plan.price}/month).`,
-      "",
-      `Stripe session: ${session.id}`,
-      session.subscription
-        ? `Subscription: ${String(session.subscription)}`
-        : "",
-      "",
-      "They should upload the logo on the thanks page after checkout.",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  })
+  const [, operator] = await Promise.all([
+    createCocomailContact({
+      email,
+      tags: ["opensend.cc", `opensend.cc-sponsor-${tierId}`],
+    }),
+    sendMail({
+      to: SITE.email,
+      subject: `New ${plan.name} sponsor: ${email}`,
+      text: [
+        `${email} paid ${amountPaid(session) ?? "an unknown amount"} for ${plan.name}.`,
+        "",
+        `Stripe session: ${session.id}`,
+        session.subscription
+          ? `Subscription: ${String(session.subscription)}`
+          : "",
+        "",
+        "They should upload the logo on the thanks page after checkout.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }),
+  ])
   if (!operator.ok) {
     console.error("Could not email the operator", operator.message)
   }

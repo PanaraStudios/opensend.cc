@@ -10,9 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { SPONSORS_THANKS } from "@/content/landing"
-
-const ACCEPT =
-  "image/svg+xml,image/png,image/webp,image/jpeg,.svg,.png,.webp,.jpg,.jpeg"
+import { LOGO_ACCEPT } from "@/lib/sponsor-logo"
 
 export function SponsorSetupForm({
   email,
@@ -25,8 +23,6 @@ export function SponsorSetupForm({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
-  const [company, setCompany] = useState("")
-  const [website, setWebsite] = useState("")
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -84,8 +80,6 @@ export function SponsorSetupForm({
           required
           autoComplete="organization"
           placeholder={copy.company}
-          value={company}
-          onChange={(event) => setCompany(event.target.value)}
           disabled={pending}
         />
       </FieldToast>
@@ -96,8 +90,6 @@ export function SponsorSetupForm({
         required
         autoComplete="url"
         placeholder={copy.website}
-        value={website}
-        onChange={(event) => setWebsite(event.target.value)}
         disabled={pending}
       />
       <div className="flex flex-col gap-1.5">
@@ -107,7 +99,7 @@ export function SponsorSetupForm({
           type="file"
           name="logo"
           required
-          accept={ACCEPT}
+          accept={LOGO_ACCEPT}
           disabled={pending}
         />
       </div>
@@ -117,7 +109,7 @@ export function SponsorSetupForm({
           id="sponsor-logo-dark"
           type="file"
           name="logoDark"
-          accept={ACCEPT}
+          accept={LOGO_ACCEPT}
           disabled={pending}
         />
       </div>

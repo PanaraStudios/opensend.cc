@@ -40,7 +40,7 @@ export default function PrivacyPage() {
       </LegalSection>
       <LegalSection title="Data retention and deletion">
         <p>
-          Email hello@opensend.cc and we will remove your contact details within
+          Email info@panarastudios.in and we will remove your contact details within
           30 days.
         </p>
       </LegalSection>
@@ -55,7 +55,7 @@ export default function PrivacyPage() {
           >
             Panara Studios
           </a>
-          . Send questions about this policy to hello@opensend.cc. You run
+          . Send questions about this policy to info@panarastudios.in. You run
           opensend.cc on your own deployment, so the data in it is yours and
           never reaches us.
         </p>

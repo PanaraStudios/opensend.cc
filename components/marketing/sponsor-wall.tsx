@@ -11,7 +11,7 @@ import {
   sponsorsOnTier,
   type Sponsor,
 } from "@/content/landing"
-import { sponsorCheckoutUrl } from "@/lib/sponsor-checkout"
+import { sponsorCheckoutLink } from "@/components/marketing/sponsor-checkout-button"
 import { cn } from "@/lib/utils"
 
 /* Gold logo wall. Silver does not appear here. Open cells are Gold
@@ -90,37 +90,22 @@ export function SponsorWall({ className }: { className?: string }) {
 
 function OpenSlot() {
   const gold = sponsorTier("gold")
-  const href = sponsorCheckoutUrl("gold")
-  const inner = (
-    <>
+  return (
+    <a
+      {...sponsorCheckoutLink("gold", "wall")}
+      className="flex size-full flex-col items-center justify-center gap-3 text-center"
+    >
       <span className="icon-tile">
         <PlusIcon strokeWidth={1.5} />
       </span>
       <span className="text-small text-muted-foreground">
-        {gold.name} · {gold.price}/mo
+        {gold.name} · {gold.price}
+        {SPONSORS.perMonth}
       </span>
       <span className="inline-flex items-center gap-1 text-caption font-medium text-primary">
         {SPONSORS.openAction}
         <ArrowRightIcon className="size-3.5 shrink-0" />
       </span>
-    </>
-  )
-  if (!href) {
-    return (
-      <div className="flex size-full flex-col items-center justify-center gap-3 text-center">
-        {inner}
-      </div>
-    )
-  }
-  return (
-    <a
-      href={href}
-      className="flex size-full flex-col items-center justify-center gap-3 text-center"
-      data-umami-event="sponsor_cta"
-      data-umami-event-section="wall"
-      data-umami-event-plan="gold"
-    >
-      {inner}
     </a>
   )
 }

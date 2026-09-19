@@ -5,7 +5,7 @@
 export const SITE = {
   name: "opensend.cc",
   url: "https://opensend.cc",
-  email: "hello@opensend.cc",
+  email: "info@panarastudios.in",
   /* Under 60 characters so it is not cut in search results. */
   title: "opensend.cc: the self-hosted Resend alternative",
   /* Under 160 characters for the same reason. */

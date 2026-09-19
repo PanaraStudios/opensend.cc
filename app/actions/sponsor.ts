@@ -2,121 +2,92 @@
 
 import { createCocomailContact } from "@/lib/cocomail"
 import { sendMail, type MailAttachment } from "@/lib/mail"
+import { LOGO_MAX_BYTES, logoType } from "@/lib/sponsor-logo"
 import { confirmPaidSponsorCheckout } from "@/lib/stripe-sponsors"
-import { sponsorTier } from "@/content/landing"
+import { SPONSORS_THANKS, sponsorTier } from "@/content/landing"
 import { SITE } from "@/content/site"
 
-export type SubmitSponsorLogoResult =
-  { ok: true } | { ok: false; message: string }
+type Result = { ok: true } | { ok: false; message: string }
 
-const URL_RE = /^https?:\/\/.+/i
-const MAX_LOGO_BYTES = 1_000_000
-const LOGO_TYPES = new Set([
-  "image/svg+xml",
-  "image/png",
-  "image/webp",
-  "image/jpeg",
-])
+const URL_RE = /^https:\/\/.+/i
+const copy = SPONSORS_THANKS.form
 
-export async function submitSponsorLogo(
-  formData: FormData
-): Promise<SubmitSponsorLogoResult> {
+export async function submitSponsorLogo(formData: FormData): Promise<Result> {
   const company = String(formData.get("company") ?? "").trim()
   const website = String(formData.get("website") ?? "").trim()
-  const sessionId = String(formData.get("sessionId") ?? "").trim()
+  const sessionId = String(formData.get("sessionId") ?? "")
   const logo = formData.get("logo")
   const logoDark = formData.get("logoDark")
 
   if (!company) {
-    return { ok: false, message: "Enter the company name." }
+    return { ok: false, message: copy.errors.company }
   }
   if (!URL_RE.test(website)) {
-    return { ok: false, message: "Enter a website URL starting with https://" }
+    return { ok: false, message: copy.errors.website }
   }
+
+  /* What can be told from the files alone is checked before Stripe is asked
+     anything; they are only read once the payment stands. */
+  if (!isUpload(logo)) {
+    return { ok: false, message: copy.errors.logoMissing }
+  }
+  const problem =
+    logoProblem(logo, copy.logoLabel) ??
+    (isUpload(logoDark) ? logoProblem(logoDark, copy.logoDarkLabel) : null)
+  if (problem) return { ok: false, message: problem }
 
   const paid = await confirmPaidSponsorCheckout(sessionId)
   if (!paid) {
-    return { ok: false, message: "We could not confirm that payment." }
+    return { ok: false, message: copy.errors.unpaid }
   }
-  const paidEmail = paid.email
   const tierLabel = sponsorTier(paid.tier).name
 
-  const light = await readLogo(logo, "logo")
-  if (!light.ok) return light
-  if (!light.file) {
-    return { ok: false, message: "Choose a logo file." }
-  }
-  const dark = await readLogo(logoDark, "dark logo", true)
-  if (!dark.ok) return dark
+  const attachments = [await attachment(logo)]
+  if (isUpload(logoDark)) attachments.push(await attachment(logoDark))
 
-  await createCocomailContact({
-    email: paidEmail,
-    tags: ["opensend.cc", "opensend.cc-sponsor-logo"],
-  })
-
-  const attachments: MailAttachment[] = [light.file]
-  if (dark.file) attachments.push(dark.file)
-
-  const operator = await sendMail({
-    to: SITE.email,
-    subject: `${tierLabel} logo from ${company}`,
-    text: [
-      `${company} uploaded a logo for a ${tierLabel} spot.`,
-      "",
-      `Email: ${paidEmail}`,
-      `Website: ${website}`,
-      `Stripe session: ${sessionId}`,
-      "",
-      "Put the files in public/logos/sponsors and add the company to SPONSORS.items.",
-    ].join("\n"),
-    attachments,
-  })
+  /* The tag is a nicety; the mail is what gets the logo onto the site. */
+  const [, operator] = await Promise.all([
+    createCocomailContact({
+      email: paid.email,
+      tags: ["opensend.cc", "opensend.cc-sponsor-logo"],
+    }),
+    sendMail({
+      to: SITE.email,
+      subject: `${tierLabel} logo from ${company}`,
+      text: [
+        `${company} uploaded a logo for a ${tierLabel} spot.`,
+        "",
+        `Email: ${paid.email}`,
+        `Website: ${website}`,
+        `Stripe session: ${paid.sessionId}`,
+        "",
+        "Put the files in public/logos/sponsors and add the company to SPONSORS.items.",
+      ].join("\n"),
+      attachments,
+    }),
+  ])
   if (!operator.ok) {
-    return {
-      ok: false,
-      message: "Could not send the logo. Try again in a moment.",
-    }
+    return { ok: false, message: copy.errors.sendFailed }
   }
 
   return { ok: true }
 }
 
-async function readLogo(
-  value: FormDataEntryValue | null,
-  label: string,
-  optional = false
-): Promise<
-  | { ok: true; file: MailAttachment }
-  | { ok: true; file: null }
-  | { ok: false; message: string }
-> {
-  if (!(value instanceof File) || value.size === 0) {
-    if (optional) return { ok: true, file: null }
-    return { ok: false, message: `Choose a ${label} file.` }
-  }
-  if (value.size > MAX_LOGO_BYTES) {
-    return { ok: false, message: `${label} must be under 1 MB.` }
-  }
-  const type = value.type || guessType(value.name)
-  if (!LOGO_TYPES.has(type)) {
-    return { ok: false, message: `${label} must be SVG, PNG, WebP, or JPEG.` }
-  }
-  const buffer = Buffer.from(await value.arrayBuffer())
-  return {
-    ok: true,
-    file: {
-      filename: value.name || `${label.replace(" ", "-")}.png`,
-      content: buffer.toString("base64"),
-      contentType: type,
-    },
-  }
+/** An empty file input still sends a File, of no size. */
+function isUpload(value: FormDataEntryValue | null): value is File {
+  return value instanceof File && value.size > 0
 }
 
-function guessType(name: string) {
-  const lower = name.toLowerCase()
-  if (lower.endsWith(".svg")) return "image/svg+xml"
-  if (lower.endsWith(".png")) return "image/png"
-  if (lower.endsWith(".webp")) return "image/webp"
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
-  return ""
+function logoProblem(file: File, label: string): string | null {
+  if (file.size > LOGO_MAX_BYTES) return copy.errors.tooLarge(label)
+  if (!logoType(file)) return copy.errors.badType(label)
+  return null
+}
+
+async function attachment(file: File): Promise<MailAttachment> {
+  return {
+    filename: file.name,
+    content: Buffer.from(await file.arrayBuffer()).toString("base64"),
+    contentType: logoType(file) ?? file.type,
+  }
 }

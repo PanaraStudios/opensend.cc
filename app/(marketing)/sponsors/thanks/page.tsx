@@ -8,7 +8,6 @@ import { pageMetadata } from "@/lib/seo"
 import { confirmPaidSponsorCheckout } from "@/lib/stripe-sponsors"
 
 export const metadata: Metadata = pageMetadata(PAGES.sponsorThanks)
-export const dynamic = "force-dynamic"
 
 export default async function SponsorThanksPage({
   searchParams,
@@ -18,27 +17,20 @@ export default async function SponsorThanksPage({
   const { session_id: sessionId } = await searchParams
   const paid = sessionId ? await confirmPaidSponsorCheckout(sessionId) : null
 
+  const copy = SPONSORS_THANKS[paid ? "paid" : "unpaid"]
+
   return (
     <section className="section px-6 py-28 max-md:py-20">
       <div className="relative flex flex-col items-center gap-6 text-center">
         <span className="pill">
           <CheckIcon strokeWidth={1.75} />
-          {paid ? SPONSORS_THANKS.label : SPONSORS_THANKS.unpaidLabel}
+          {copy.label}
         </span>
         <h1 className="display title-gradient max-w-2xl text-balance">
-          {paid ? (
-            <>
-              {SPONSORS_THANKS.titleA} <em>{SPONSORS_THANKS.titleEm}</em>
-            </>
-          ) : (
-            <>
-              {SPONSORS_THANKS.unpaidTitleA}{" "}
-              <em>{SPONSORS_THANKS.unpaidTitleEm}</em>
-            </>
-          )}
+          {copy.titleA} <em>{copy.titleEm}</em>
         </h1>
         <p className="max-w-xl text-body-lg text-balance text-muted-foreground">
-          {paid ? SPONSORS_THANKS.sub : SPONSORS_THANKS.unpaidSub}
+          {copy.sub}
         </p>
         {paid ? (
           <SponsorSetupForm email={paid.email} sessionId={paid.sessionId} />
