@@ -1,57 +1,64 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+  BlocksIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  DownloadIcon,
+  LogOutIcon,
+  ShieldIcon,
+  UploadIcon,
+  UserMinusIcon,
+} from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { TableCell, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
   EmptyState,
-  MoreMenu,
   ExportStatusBadge,
-  ResourceTable,
+  MoreMenu,
   OptionSelect,
+  PageHeader,
+  ResourceTable,
   SectionChrome,
+  SettingsCard,
   Surface,
   Th,
 } from "@/components/dashboard/primitives"
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { SETTINGS_NAV } from "@/lib/dashboard/nav"
+import {
+  DeleteTeamDialog,
+  InviteMemberDialog,
+  TeamGlyph,
+} from "@/components/dashboard/team-dialogs"
+import { readAvatar } from "@/lib/dashboard/avatar"
 import {
   formatDate,
-  initials,
   isEmail,
   regionLabel,
   roleLabel,
 } from "@/lib/dashboard/format"
-import { REGIONS } from "@/lib/dashboard/types"
-import type { MemberRole, Region } from "@/lib/dashboard/types"
+import { SETTINGS_NAV } from "@/lib/dashboard/nav"
+import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { UsersIcon } from "lucide-react"
-
-const ROLE_ITEMS = (["admin", "member"] as MemberRole[]).map((value) => ({
-  value,
-  label: roleLabel(value),
-}))
+import { REGIONS } from "@/lib/dashboard/types"
+import type { Region, Team, TeamMember } from "@/lib/dashboard/types"
 
 const REGION_ITEMS = REGIONS.map((item) => ({
   value: item.value,
@@ -64,6 +71,9 @@ const SMTP_PORT_ITEMS = [
 ]
 
 export function SettingsShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  /* A settings page that is not one of the tabs stands alone. */
+  if (!SETTINGS_NAV.some((tab) => tab.href === pathname)) return <>{children}</>
   return (
     <SectionChrome title="Settings" tabs={SETTINGS_NAV}>
       {children}
@@ -90,39 +100,97 @@ function SettingsLead({
   )
 }
 
-export function SettingsGeneral() {
+function TeamOverview() {
   const { state, teams, activeTeamId, updateSettings } = useDashboard()
+  const team = teams.find((item) => item.id === activeTeamId)
+  const admin = team?.role === "admin"
+  const file = React.useRef<HTMLInputElement>(null)
 
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const teamName = String(form.get("teamName") ?? "").trim()
-    const teamSlug = String(form.get("teamSlug") ?? "")
-      .trim()
-      .toLowerCase()
-    const nextName = teamName || state.settings.teamName
-    const nextSlug = teamSlug || state.settings.teamSlug
+    const teamSlug = slugify(String(form.get("teamSlug") ?? ""))
+    if (!teamName || !teamSlug) {
+      toast.add({ type: "error", title: "Enter a team name and a slug" })
+      return
+    }
     if (
-      teams.some((team) => team.id !== activeTeamId && team.slug === nextSlug)
+      teams.some((item) => item.id !== activeTeamId && item.slug === teamSlug)
     ) {
       toast.add({ type: "error", title: "That slug is already in use" })
       return
     }
-    updateSettings({
-      teamName: nextName,
-      teamSlug: nextSlug,
-    })
+    updateSettings({ teamName, teamSlug })
     toast.add({ type: "success", title: "Team saved" })
   }
 
   return (
-    <>
-      <SettingsLead>
-        Team identity. Self-hosted Opensend keeps this on your Convex deployment
-        — nothing is sent to us.
-      </SettingsLead>
-      <form onSubmit={save} className="max-w-lg">
-        <Surface>
+    <form onSubmit={save}>
+      <SettingsCard
+        title="Overview"
+        footer={
+          <Button type="submit" disabled={!admin}>
+            Save
+          </Button>
+        }
+      >
+        <Field>
+          <FieldLabel>Avatar</FieldLabel>
+          <div className="flex items-center gap-4">
+            {team ? (
+              <TeamGlyph team={team} className="size-20 rounded-2xl text-2xl" />
+            ) : null}
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!admin}
+                  onClick={() => file.current?.click()}
+                >
+                  <UploadIcon data-icon="inline-start" />
+                  Update image
+                </Button>
+                {state.settings.teamAvatar ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!admin}
+                    onClick={() => updateSettings({ teamAvatar: undefined })}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+              <FieldDescription>Maximum file size is 1MB.</FieldDescription>
+            </div>
+            <input
+              ref={file}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              aria-label="Team avatar"
+              tabIndex={-1}
+              onChange={(event) => {
+                const picked = event.target.files?.[0]
+                event.target.value = ""
+                if (!picked) return
+                readAvatar(picked).then(
+                  (teamAvatar) => {
+                    updateSettings({ teamAvatar })
+                    toast.add({ type: "success", title: "Avatar updated" })
+                  },
+                  (problem: Error) =>
+                    toast.add({ type: "error", title: problem.message })
+                )
+              }}
+            />
+          </div>
+        </Field>
+        <div className="grid max-w-2xl gap-5 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="team-name">Team name</FieldLabel>
             <Input
@@ -130,6 +198,7 @@ export function SettingsGeneral() {
               name="teamName"
               key={state.settings.teamName}
               defaultValue={state.settings.teamName}
+              disabled={!admin}
             />
           </Field>
           <Field>
@@ -137,218 +206,219 @@ export function SettingsGeneral() {
             <Input
               id="team-slug"
               name="teamSlug"
+              className="font-mono"
               key={state.settings.teamSlug}
               defaultValue={state.settings.teamSlug}
+              disabled={!admin}
             />
-            <FieldDescription>
-              Used in the sidebar and future invite URLs.
-            </FieldDescription>
           </Field>
-          <Button type="submit">Save</Button>
-        </Surface>
-      </form>
+        </div>
+      </SettingsCard>
+    </form>
+  )
+}
+
+const MEMBER_TABS = [
+  { value: "members", label: "Members" },
+  { value: "authorized-apps", label: "Authorized apps" },
+] as const
+
+function TeamMembers({ team }: { team: Team }) {
+  const { state, account, updateMemberRole, removeMember } = useDashboard()
+  const [tab, setTab] = React.useState<string>("members")
+  const [inviting, setInviting] = React.useState(false)
+  const [removing, setRemoving] = React.useState<TeamMember | null>(null)
+  const [leaving, setLeaving] = React.useState(false)
+  const admin = team.role === "admin"
+
+  return (
+    <>
+      <SettingsCard
+        className="px-2"
+        heading={
+          <Tabs value={tab} onValueChange={(next) => next && setTab(next)}>
+            <TabsList>
+              {MEMBER_TABS.map((item) => (
+                <TabsTrigger key={item.value} value={item.value}>
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        }
+        actions={
+          admin ? (
+            <Button onClick={() => setInviting(true)}>Invite</Button>
+          ) : null
+        }
+      >
+        {tab === "members" ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <Th>Email</Th>
+                <Th>Role</Th>
+                <Th>Enabled MFA</Th>
+                <Th className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.members.map((member) => {
+                const mfa = member.you ? account.mfa !== null : member.mfa
+                const promoted = member.role === "admin" ? "member" : "admin"
+                return (
+                  <TableRow key={member.id}>
+                    <TableCell>
+                      <div className="font-medium">
+                        {member.email}
+                        {member.you ? (
+                          <Badge variant="secondary" className="ml-2">
+                            You
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Joined on {formatDate(member.createdAt)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {roleLabel(member.role)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {mfa ? (
+                        <CircleCheckIcon
+                          aria-label="MFA enabled"
+                          className="size-4 text-success"
+                        />
+                      ) : (
+                        <CircleXIcon
+                          aria-label="MFA not enabled"
+                          className="size-4 text-muted-foreground"
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {member.you ? (
+                        <MoreMenu>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={!team.removable}
+                            onClick={() => setLeaving(true)}
+                          >
+                            <LogOutIcon />
+                            Leave team
+                          </DropdownMenuItem>
+                        </MoreMenu>
+                      ) : admin ? (
+                        <MoreMenu>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              updateMemberRole(member.id, promoted)
+                              toast.add({
+                                type: "success",
+                                title: `Role changed to ${roleLabel(promoted)}`,
+                              })
+                            }}
+                          >
+                            <ShieldIcon />
+                            Change role to {roleLabel(promoted)}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setRemoving(member)}
+                          >
+                            <UserMinusIcon />
+                            Remove from team
+                          </DropdownMenuItem>
+                        </MoreMenu>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <EmptyState
+            size="sm"
+            icon={BlocksIcon}
+            title="No authorized apps"
+            description="When someone on this team authorizes a third-party app, their consent will appear here."
+          />
+        )}
+      </SettingsCard>
+      <InviteMemberDialog open={inviting} onOpenChange={setInviting} />
+      <DeleteTeamDialog
+        team={team}
+        leaving
+        open={leaving}
+        onOpenChange={setLeaving}
+      />
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => {
+          if (!next) setRemoving(null)
+        }}
+        title="Remove from team?"
+        description={`${removing?.email ?? "They"} will lose access to this team.`}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (removing) removeMember(removing.id)
+          toast.add({ type: "success", title: "Member removed" })
+        }}
+      />
     </>
   )
 }
 
 export function SettingsTeam() {
-  const { state, inviteMember, updateMemberRole, removeMember } = useDashboard()
-  const [open, setOpen] = React.useState(false)
-  const [name, setName] = React.useState("")
-  const [email, setEmail] = React.useState("")
-  const [role, setRole] = React.useState<MemberRole>("member")
-  const [error, setError] = React.useState<string | null>(null)
-  const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!name.trim()) {
-      setError("Enter a name")
-      return
-    }
-    if (!isEmail(email)) {
-      setError("Enter a valid email")
-      return
-    }
-    if (
-      state.members.some(
-        (member) => member.email === email.trim().toLowerCase()
-      )
-    ) {
-      setError("That person is already on the team")
-      return
-    }
-    inviteMember({ name, email, role })
-    toast.add({ type: "success", title: "Member invited" })
-    setName("")
-    setEmail("")
-    setRole("member")
-    setError(null)
-    setOpen(false)
-  }
+  const { teams, activeTeamId } = useDashboard()
+  const [deleting, setDeleting] = React.useState(false)
+  const team = teams.find((item) => item.id === activeTeamId)
+  if (!team) return null
 
   return (
     <>
-      <SettingsLead
-        actions={<Button onClick={() => setOpen(true)}>Invite</Button>}
-      >
-        Admins can invite members and change roles. Authorization is always
-        checked server-side once auth is wired.
-      </SettingsLead>
-      {state.members.length === 0 ? (
-        <EmptyState
-          icon={UsersIcon}
-          title="No members"
-          description="Invite someone to this workspace."
+      <TeamOverview />
+      <TeamMembers team={team} />
+      <SettingsCard
+        title="Exports"
+        description="All available CSV exports for your team are listed here."
+        footer={
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/settings/exports" />}
+          >
+            Go to page
+          </Button>
+        }
+      />
+      {team.role === "admin" ? (
+        <SettingsCard
+          title="Delete team"
+          description={
+            team.removable
+              ? "Permanently delete the team and all of its contents from Opensend."
+              : "This is your only team. Create another one before deleting it."
+          }
+          footer={
+            <Button
+              variant="destructive"
+              disabled={!team.removable}
+              onClick={() => setDeleting(true)}
+            >
+              Delete team
+            </Button>
+          }
         />
-      ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Member</Th>
-              <Th>Role</Th>
-              <Th>Added</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {state.members.map((member) => (
-            <TableRow key={member.id}>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <Avatar size="sm">
-                    <AvatarFallback>{initials(member.name)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-medium">
-                      {member.name}
-                      {member.you ? (
-                        <Badge variant="secondary" className="ml-2">
-                          You
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {member.email}
-                    </div>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                {member.you ? (
-                  <span className="text-sm text-muted-foreground">
-                    {roleLabel(member.role)}
-                  </span>
-                ) : (
-                  <OptionSelect
-                    size="sm"
-                    aria-label={`Role for ${member.name}`}
-                    value={member.role}
-                    onChange={(next) =>
-                      updateMemberRole(member.id, next as MemberRole)
-                    }
-                    items={ROLE_ITEMS}
-                  />
-                )}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(member.createdAt)}
-              </TableCell>
-              <TableCell>
-                {member.you ? null : (
-                  <MoreMenu>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPendingDelete(member.id)}
-                    >
-                      Remove
-                    </DropdownMenuItem>
-                  </MoreMenu>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
-      )}
-
-      <Dialog
-        open={open}
-        onOpenChange={(next) => {
-          if (!next) {
-            setError(null)
-          }
-          setOpen(next)
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <form onSubmit={submit}>
-            <DialogHeader>
-              <DialogTitle>Invite member</DialogTitle>
-              <DialogDescription>
-                They will get access to this workspace after they accept.
-              </DialogDescription>
-            </DialogHeader>
-            <FieldGroup className="py-4">
-              <Field>
-                <FieldLabel htmlFor="invite-name">Name</FieldLabel>
-                <Input
-                  id="invite-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="invite-email">Email</FieldLabel>
-                <Input
-                  id="invite-email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => {
-                    setEmail(event.target.value)
-                    setError(null)
-                  }}
-                />
-                {error ? (
-                  <p className="text-sm text-destructive">{error}</p>
-                ) : null}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="invite-role">Role</FieldLabel>
-                <OptionSelect
-                  id="invite-role"
-                  className="w-full"
-                  value={role}
-                  onChange={(next) => setRole(next as MemberRole)}
-                  items={ROLE_ITEMS}
-                />
-              </Field>
-            </FieldGroup>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Send invite</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        onOpenChange={(next) => {
-          if (!next) setPendingDelete(null)
-        }}
-        title="Remove member?"
-        description="They will lose access to this workspace."
-        confirmLabel="Remove"
-        onConfirm={() => {
-          if (pendingDelete) removeMember(pendingDelete)
-          toast.add({ type: "success", title: "Member removed" })
-        }}
+      ) : null}
+      <DeleteTeamDialog
+        team={team}
+        open={deleting}
+        onOpenChange={setDeleting}
       />
     </>
   )
@@ -721,15 +791,15 @@ export function SettingsExports() {
 
   return (
     <>
-      <SettingsLead>
-        Admin exports from Emails, Broadcasts, Contacts, Segments, Domains,
-        Logs, and API keys. Ready files stay available for 7 days.
-      </SettingsLead>
+      <PageHeader
+        title="Exports"
+        description="Exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
+      />
       {state.exports.length === 0 ? (
         <EmptyState
-          icon={UsersIcon}
-          title="No exports"
-          description="Use Export on a list page. Members can view the job; only admins can download."
+          icon={DownloadIcon}
+          title="You haven't performed any exports yet"
+          description="Once you execute an export, you'll be able to see them here."
         />
       ) : (
         <ResourceTable

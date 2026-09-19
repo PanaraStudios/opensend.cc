@@ -37,6 +37,9 @@ import { DASHBOARD_USER_AGENT } from "./logs"
 import {
   activeWorkspace,
   createTeamInRoot,
+  deleteTeamInRoot,
+  renameTeamInRoot,
+  updateEmailInRoot,
   listTeams,
   parseRoot,
   seedRoot,
@@ -54,6 +57,8 @@ import {
 } from "./template"
 import { replayedDelivery } from "./webhooks"
 import type {
+  Account,
+  AuthProvider,
   ApiKey,
   ApiKeyPermission,
   Automation,
@@ -1259,19 +1264,17 @@ function updateSettings(
   }))
 }
 
-function inviteMember(input: {
-  name: string
-  email: string
-  role: MemberRole
-}) {
+function inviteMember(input: { email: string; role: MemberRole }) {
+  const email = input.email.trim().toLowerCase()
   mutate((current) => ({
     ...current,
     members: [
       ...current.members,
       {
         id: createId("mem"),
-        name: input.name.trim(),
-        email: input.email.trim().toLowerCase(),
+        /* An invite asks for the address alone. */
+        name: email.split("@")[0] ?? email,
+        email,
         role: input.role,
         you: false,
         createdAt: Date.now(),
@@ -1310,6 +1313,58 @@ function createTeam(name: string) {
   return { id: createdId }
 }
 
+function renameTeam(id: string, name: string) {
+  mutateRoot((current) => renameTeamInRoot(current, id, name))
+}
+
+/** Also how you leave a team: here, the workspace goes either way. */
+function deleteTeam(id: string) {
+  mutateRoot((current) => deleteTeamInRoot(current, id))
+}
+
+function updateEmail(email: string) {
+  mutateRoot((current) => updateEmailInRoot(current, email))
+}
+
+function updateAccount(patch: (current: Account) => Account) {
+  mutateRoot((current) => ({ ...current, account: patch(current.account) }))
+}
+
+function linkProvider(provider: AuthProvider) {
+  updateAccount((account) =>
+    account.providers.some((item) => item.provider === provider)
+      ? account
+      : {
+          ...account,
+          providers: [
+            ...account.providers,
+            { provider, connectedAt: Date.now() },
+          ],
+        }
+  )
+}
+
+/** The last way in cannot be unlinked. */
+function unlinkProvider(provider: AuthProvider) {
+  updateAccount((account) =>
+    account.providers.length < 2
+      ? account
+      : {
+          ...account,
+          providers: account.providers.filter(
+            (item) => item.provider !== provider
+          ),
+        }
+  )
+}
+
+function setMfa(secret: string | null) {
+  updateAccount((account) => ({
+    ...account,
+    mfa: secret ? { secret, enabledAt: Date.now() } : null,
+  }))
+}
+
 function resetDemo() {
   writeRoot(seedRoot())
 }
@@ -1317,6 +1372,12 @@ function resetDemo() {
 const actions = {
   switchTeam,
   createTeam,
+  renameTeam,
+  deleteTeam,
+  updateEmail,
+  linkProvider,
+  unlinkProvider,
+  setMfa,
   addDomain,
   deleteDomain,
   updateDomain,
@@ -1382,6 +1443,7 @@ export type DashboardStore = {
   state: DashboardState
   teams: Team[]
   activeTeamId: string
+  account: Account
 } & typeof actions
 
 const DashboardContext = createContext<DashboardStore | null>(null)
@@ -1407,6 +1469,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       state: activeWorkspace(root),
       teams: listTeams(root),
       activeTeamId: root.activeTeamId,
+      account: root.account,
       ...actions,
     }
   }, [raw])

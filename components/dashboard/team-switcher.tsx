@@ -2,9 +2,13 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react"
+import {
+  CheckIcon,
+  ChevronsUpDownIcon,
+  PlusIcon,
+  UserPlusIcon,
+} from "lucide-react"
 
-import { LogoMark } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,38 +37,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
 import { toast } from "@/components/ui/toast"
+import {
+  InviteMemberDialog,
+  TeamGlyph,
+} from "@/components/dashboard/team-dialogs"
 import { slugify } from "@/lib/dashboard/slug"
-import { SEED_TEAM_ID } from "@/lib/dashboard/teams"
 import { teamSafePath } from "@/lib/dashboard/nav"
 import { useDashboard } from "@/lib/dashboard/store"
-import type { Team } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
-
-function teamInitial(name: string): string {
-  const trimmed = name.trim()
-  return trimmed ? trimmed[0]!.toUpperCase() : "?"
-}
-
-function TeamGlyph({ team, className }: { team: Team; className?: string }) {
-  if (team.id === SEED_TEAM_ID) {
-    return (
-      <span className={cn("icon-tile size-7 rounded-lg", className)}>
-        <LogoMark className="size-4" />
-      </span>
-    )
-  }
-
-  return (
-    <span
-      className={cn(
-        "icon-tile size-7 rounded-lg text-xs font-semibold",
-        className
-      )}
-    >
-      {teamInitial(team.name)}
-    </span>
-  )
-}
 
 function CreateTeamDialog({
   open,
@@ -155,12 +135,9 @@ export function TeamSwitcher() {
   const { isMobile } = useSidebar()
   const { teams, activeTeamId, switchTeam } = useDashboard()
   const [createOpen, setCreateOpen] = React.useState(false)
-  const active = teams.find((team) => team.id === activeTeamId) ??
-    teams[0] ?? {
-      id: SEED_TEAM_ID,
-      name: "Opensend",
-      slug: "opensend",
-    }
+  const [inviteOpen, setInviteOpen] = React.useState(false)
+  /* There is always a team: the last one cannot be deleted. */
+  const active = teams.find((team) => team.id === activeTeamId) ?? teams[0]!
 
   function selectTeam(id: string) {
     if (id === activeTeamId) return
@@ -224,10 +201,17 @@ export function TeamSwitcher() {
               <PlusIcon />
               Create team
             </DropdownMenuItem>
+            {active.role === "admin" ? (
+              <DropdownMenuItem onClick={() => setInviteOpen(true)}>
+                <UserPlusIcon />
+                Invite members
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       <CreateTeamDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} />
     </>
   )
 }

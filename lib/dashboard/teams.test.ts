@@ -5,6 +5,9 @@ import { SEED_STATE } from "./data"
 import { teamSafePath } from "./nav"
 import {
   createTeamInRoot,
+  deleteTeamInRoot,
+  renameTeamInRoot,
+  updateEmailInRoot,
   emptyWorkspace,
   listTeams,
   parseRoot,
@@ -133,5 +136,66 @@ describe("teamSafePath", () => {
 
   it("falls back to emails for unknown routes", () => {
     assert.equal(teamSafePath("/not-a-page"), "/emails")
+  })
+})
+
+describe("team and account changes", () => {
+  it("makes whoever creates a team its admin, under their current email", () => {
+    const moved = updateEmailInRoot(seedRoot(), " New@Example.com ")
+    const { root, teamId } = createTeamInRoot(moved, "Acme")
+    const team = listTeams(root).find((item) => item.id === teamId)!
+    assert.equal(team.role, "admin")
+    assert.equal(team.members, 1)
+    assert.equal(root.workspaces[teamId]!.members[0]!.email, "new@example.com")
+    assert.equal(
+      root.workspaces[SEED_TEAM_ID]!.members.find((member) => member.you)!
+        .email,
+      "new@example.com"
+    )
+    /* Nobody else's address moves. */
+    assert.equal(
+      root.workspaces[SEED_TEAM_ID]!.members.find((member) => !member.you)!
+        .email,
+      "ada@opensend.cc"
+    )
+  })
+
+  it("renames a team by id, and ignores a blank name", () => {
+    const root = renameTeamInRoot(seedRoot(), SEED_TEAM_ID, "  Renamed ")
+    assert.equal(listTeams(root)[0]!.name, "Renamed")
+    assert.equal(renameTeamInRoot(root, SEED_TEAM_ID, " "), root)
+  })
+
+  it("deletes a team, moves off it, and keeps the last one", () => {
+    const { root, teamId } = createTeamInRoot(seedRoot(), "Acme")
+    assert.ok(listTeams(root).every((team) => team.removable))
+    const left = deleteTeamInRoot(root, teamId)
+    assert.equal(left.activeTeamId, SEED_TEAM_ID)
+    assert.deepEqual(Object.keys(left.workspaces), [SEED_TEAM_ID])
+    assert.equal(listTeams(left)[0]!.removable, false)
+    assert.equal(deleteTeamInRoot(left, SEED_TEAM_ID), left)
+  })
+
+  it("gives a root saved before accounts the seeded account", () => {
+    const legacy: Partial<ReturnType<typeof seedRoot>> = seedRoot()
+    delete legacy.account
+    const root = parseRoot(JSON.stringify(legacy))
+    assert.deepEqual(root.account, seedRoot().account)
+    const kept = parseRoot(
+      JSON.stringify({
+        ...legacy,
+        account: {
+          providers: [
+            { provider: "github", connectedAt: 5 },
+            { provider: "nope", connectedAt: 5 },
+          ],
+          mfa: { secret: "ABC", enabledAt: 9 },
+        },
+      })
+    )
+    assert.deepEqual(kept.account, {
+      providers: [{ provider: "github", connectedAt: 5 }],
+      mfa: { secret: "ABC", enabledAt: 9 },
+    })
   })
 })

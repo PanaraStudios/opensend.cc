@@ -35,6 +35,17 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardFrame,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -94,6 +105,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -364,6 +376,51 @@ export function Surface({
     <div className={cn("frame surface-shell", className)}>
       <div className="panel space-y-5">{children}</div>
     </div>
+  )
+}
+
+/** One framed block of a settings page: what it is about, its controls, and
+    a footer for the button that saves them. `heading` replaces the title
+    when the block has tabs of its own. */
+export function SettingsCard({
+  title,
+  heading,
+  description,
+  actions,
+  footer,
+  className,
+  children,
+}: {
+  title?: string
+  heading?: React.ReactNode
+  description?: React.ReactNode
+  actions?: React.ReactNode
+  footer?: React.ReactNode
+  className?: string
+  children?: React.ReactNode
+}) {
+  return (
+    <CardFrame>
+      <Card>
+        <CardHeader>
+          {heading ?? (
+            <CardTitle role="heading" aria-level={2} className="text-base">
+              {title}
+            </CardTitle>
+          )}
+          {description ? (
+            <CardDescription>{description}</CardDescription>
+          ) : null}
+          {actions ? <CardAction>{actions}</CardAction> : null}
+        </CardHeader>
+        {children ? (
+          <CardContent className={cn("flex flex-col gap-5", className)}>
+            {children}
+          </CardContent>
+        ) : null}
+        {footer ? <CardFooter className="gap-2">{footer}</CardFooter> : null}
+      </Card>
+    </CardFrame>
   )
 }
 
@@ -1061,6 +1118,100 @@ export function ConfirmDialog({
   )
 }
 
+/** A confirmation for what cannot be undone: the button stays off until the
+    phrase is typed, and the acknowledgement ticked when there is one. */
+export function TypeToConfirmDialog(props: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: React.ReactNode
+  /** What has to be typed, exactly. */
+  phrase: string
+  acknowledgement?: string
+  confirmLabel: string
+  onConfirm: () => void
+  /** What is about to go, shown under the description. */
+  children?: React.ReactNode
+}) {
+  return (
+    <AlertDialog open={props.open} onOpenChange={props.onOpenChange}>
+      {/* Mounted per opening, so the phrase is typed afresh each time. */}
+      {props.open ? <TypeToConfirmForm {...props} /> : null}
+    </AlertDialog>
+  )
+}
+
+function TypeToConfirmForm({
+  onOpenChange,
+  title,
+  description,
+  phrase,
+  acknowledgement,
+  confirmLabel,
+  onConfirm,
+  children,
+}: React.ComponentProps<typeof TypeToConfirmDialog>) {
+  const id = React.useId()
+  const [typed, setTyped] = React.useState("")
+  const [acknowledged, setAcknowledged] = React.useState(false)
+  const ready = typed === phrase && (acknowledged || !acknowledgement)
+
+  return (
+    <AlertDialogContent className="data-[size=default]:sm:max-w-md">
+      <form
+        className="contents"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!ready) return
+          onConfirm()
+          onOpenChange(false)
+        }}
+      >
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {children}
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={id} className="font-normal">
+              <span>
+                Type <span className="font-medium select-all">{phrase}</span> to
+                confirm.
+              </span>
+            </FieldLabel>
+            <Input
+              id={id}
+              value={typed}
+              autoComplete="off"
+              onChange={(event) => setTyped(event.target.value)}
+              autoFocus
+            />
+          </Field>
+          {acknowledgement ? (
+            <Field orientation="horizontal" className="items-start">
+              <Checkbox
+                id={`${id}-ack`}
+                checked={acknowledged}
+                onCheckedChange={(checked) => setAcknowledged(checked === true)}
+              />
+              <FieldLabel htmlFor={`${id}-ack`} className="font-normal">
+                {acknowledgement}
+              </FieldLabel>
+            </Field>
+          ) : null}
+        </FieldGroup>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+          <Button type="submit" variant="destructive" disabled={!ready}>
+            {confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </form>
+    </AlertDialogContent>
+  )
+}
+
 /** One text value, asked for in a dialog: a rename, an alias. The value is
     trimmed, and `validate` returns what is wrong with it, or null. */
 export function TextFieldDialog(props: {
@@ -1143,6 +1294,46 @@ function TextFieldDialogForm({
 }
 
 /* ---------------------------------------------------------------- selects */
+
+/** A choice between a few options that each need a sentence of explanation. */
+export function RadioCards<Value extends string>({
+  value,
+  onChange,
+  options,
+  disabled,
+  "aria-label": ariaLabel,
+}: {
+  value: Value
+  onChange: (value: Value) => void
+  options: readonly { value: Value; label: string; description: string }[]
+  disabled?: boolean
+  "aria-label"?: string
+}) {
+  return (
+    <RadioGroup
+      value={value}
+      onValueChange={(next) => onChange(next as Value)}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className="gap-3"
+    >
+      {options.map((option) => (
+        <label
+          key={option.value}
+          className="flex items-start gap-3 rounded-lg border border-border p-3"
+        >
+          <RadioGroupItem value={option.value} className="mt-0.5" />
+          <span>
+            <span className="block text-sm font-medium">{option.label}</span>
+            <span className="text-sm text-muted-foreground">
+              {option.description}
+            </span>
+          </span>
+        </label>
+      ))}
+    </RadioGroup>
+  )
+}
 
 export type SelectOption = {
   value: string
