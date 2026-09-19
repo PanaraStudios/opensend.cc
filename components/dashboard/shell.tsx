@@ -301,9 +301,9 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem render={<Link href="/settings" />}>
+                  <DropdownMenuItem render={<Link href="/profile" />}>
                     <UserRoundIcon />
-                    Profile
+                    My profile
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
