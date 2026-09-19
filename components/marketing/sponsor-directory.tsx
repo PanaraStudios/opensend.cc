@@ -23,11 +23,19 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  SponsorCheckoutButton,
+  sponsorCheckoutLink,
+} from "@/components/marketing/sponsor-checkout-button"
+import {
   SPONSOR_CATEGORIES,
-  SPONSOR_MAILTO,
   SPONSORS,
   SPONSORS_PAGE,
+  SPONSOR_TIERS,
+  sponsorOpenCount,
+  sponsorsOnTier,
+  sponsorTier,
   type SponsorCategory,
+  type SponsorTierId,
 } from "@/content/landing"
 
 type Filter = "all" | SponsorCategory
@@ -38,11 +46,15 @@ type Filter = "all" | SponsorCategory
 export function SponsorDirectory() {
   const [filter, setFilter] = useState<Filter>("all")
   const copy = SPONSORS_PAGE.directory
-  const sponsors =
-    filter === "all"
-      ? SPONSORS.items
-      : SPONSORS.items.filter((item) => item.category === filter)
+  /* Tier by tier, in the order the tiers are sold: Gold first. */
+  const sponsors = SPONSOR_TIERS.flatMap((tier) =>
+    sponsorsOnTier(tier.id)
+  ).filter((item) => filter === "all" || item.category === filter)
   const showOpen = filter === "all"
+  /* Tiers run from dearest to cheapest. */
+  const cheapestOpen = SPONSOR_TIERS.findLast(
+    (tier) => sponsorOpenCount(tier.id) > 0
+  )
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -67,25 +79,21 @@ export function SponsorDirectory() {
             <EmptyMedia variant="icon">
               <PlusIcon />
             </EmptyMedia>
-            <EmptyTitle>{copy.openName}</EmptyTitle>
+            <EmptyTitle>{copy.emptyTitle}</EmptyTitle>
             <EmptyDescription>{copy.emptyFilter}</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <Button
-              size="sm"
-              nativeButton={false}
-              render={
-                <a
-                  href={SPONSOR_MAILTO}
-                  data-umami-event="sponsor_cta"
-                  data-umami-event-section="directory-empty"
-                />
-              }
-            >
-              {copy.openAction}
-              <ArrowRightIcon />
-            </Button>
-          </EmptyContent>
+          {cheapestOpen ? (
+            <EmptyContent>
+              <SponsorCheckoutButton
+                tier={cheapestOpen.id}
+                section="directory-empty"
+                size="sm"
+              >
+                {copy.openAction}
+                <ArrowRightIcon />
+              </SponsorCheckoutButton>
+            </EmptyContent>
+          ) : null}
         </Empty>
       ) : (
         <Table>
@@ -100,7 +108,11 @@ export function SponsorDirectory() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {showOpen ? <OpenRow /> : null}
+            {showOpen
+              ? SPONSOR_TIERS.filter(
+                  (tier) => sponsorOpenCount(tier.id) > 0
+                ).map((tier) => <OpenRow key={tier.id} tier={tier.id} />)
+              : null}
             {sponsors.map((sponsor) => (
               <TableRow key={sponsor.name}>
                 <TableCell>
@@ -117,7 +129,7 @@ export function SponsorDirectory() {
                   </a>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="soft">{copy.partnerStatus}</Badge>
+                  <TierBadge tier={sponsor.tier} />
                 </TableCell>
                 <TableCell className="text-muted-foreground max-md:hidden">
                   {sponsor.category}
@@ -164,8 +176,17 @@ function FilterChip({
   )
 }
 
-function OpenRow() {
+function TierBadge({ tier }: { tier: SponsorTierId }) {
+  return (
+    <Badge variant={tier === "gold" ? "warning" : "secondary"}>
+      {sponsorTier(tier).name}
+    </Badge>
+  )
+}
+
+function OpenRow({ tier }: { tier: SponsorTierId }) {
   const copy = SPONSORS_PAGE.directory
+  const plan = sponsorTier(tier)
   return (
     <TableRow>
       <TableCell>
@@ -173,7 +194,10 @@ function OpenRow() {
           <span className="icon-tile size-8 [&_svg]:size-4">
             <PlusIcon strokeWidth={1.5} />
           </span>
-          <span className="font-medium">{copy.openName}</span>
+          <span className="font-medium">
+            {plan.name} · {plan.price}
+            {SPONSORS.perMonth}
+          </span>
         </span>
       </TableCell>
       <TableCell>
@@ -182,10 +206,8 @@ function OpenRow() {
       <TableCell className="text-muted-foreground max-md:hidden">—</TableCell>
       <TableCell className="text-right">
         <a
-          href={SPONSOR_MAILTO}
+          {...sponsorCheckoutLink(tier, "directory")}
           className="inline-flex items-center gap-1 text-small font-medium text-primary hover:text-primary-hover"
-          data-umami-event="sponsor_cta"
-          data-umami-event-section="directory"
         >
           {copy.openAction}
           <ArrowRightIcon className="size-3.5 shrink-0" />

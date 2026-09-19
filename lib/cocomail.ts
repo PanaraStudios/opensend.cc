@@ -27,12 +27,56 @@ export type CreateContactResult =
   | { ok: true; created: false; reason: "exists" }
   | {
       ok: false
-      reason: "suppressed" | "invalid" | "unauthorized" | "rate_limited" | "error"
+      reason:
+        "suppressed" | "invalid" | "unauthorized" | "rate_limited" | "error"
       message: string
     }
 
 function apiKey(): string | undefined {
-  return process.env.NEXT_COCOMAIL_API_KEY
+  return process.env.NEXT_COCOMAIL_API_KEY?.trim() || undefined
+}
+
+export type MailAttachment = {
+  filename: string
+  /** Base64. */
+  content: string
+  contentType: string
+}
+
+export type MailInput = {
+  to: string
+  from: string
+  replyTo: string
+  subject: string
+  text: string
+  attachments?: MailAttachment[]
+}
+
+export type SendMailResult = { ok: true } | { ok: false; message: string }
+
+export async function sendCocomailEmail(
+  input: MailInput
+): Promise<SendMailResult> {
+  const key = apiKey()
+  if (!key) return { ok: false, message: "NEXT_COCOMAIL_API_KEY is not set" }
+  try {
+    const response = await fetch(`${COCOMAIL_BASE_URL}/emails`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) {
+      return { ok: false, message: `Cocomail ${response.status}` }
+    }
+    return { ok: true }
+  } catch (error) {
+    console.error("Cocomail send request failed", error)
+    return { ok: false, message: "Cocomail request failed." }
+  }
 }
 
 async function findContactByEmail(
@@ -51,8 +95,9 @@ async function findContactByEmail(
   const body = (await response.json()) as { data?: CocomailContact[] }
   const matches = body.data ?? []
   return (
-    matches.find((contact) => contact.email.toLowerCase() === email.toLowerCase()) ??
-    null
+    matches.find(
+      (contact) => contact.email.toLowerCase() === email.toLowerCase()
+    ) ?? null
   )
 }
 

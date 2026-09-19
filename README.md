@@ -34,4 +34,4 @@ The SES component has its own setup guide: [`packages/ses/RUNBOOK.md`](./package
 
 ## Operator
 
-Opensend is a product of [Panara Studios](https://panarastudios.in). Questions: hello@opensend.cc
+Opensend is a product of [Panara Studios](https://panarastudios.in). Questions: info@panarastudios.in

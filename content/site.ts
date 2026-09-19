@@ -5,7 +5,7 @@
 export const SITE = {
   name: "opensend.cc",
   url: "https://opensend.cc",
-  email: "hello@opensend.cc",
+  email: "info@panarastudios.in",
   /* Under 60 characters so it is not cut in search results. */
   title: "opensend.cc: the self-hosted Resend alternative",
   /* Under 160 characters for the same reason. */
@@ -55,6 +55,13 @@ export const PAGES = {
     title: "Sponsor opensend.cc",
     description:
       "Buy a sponsor spot on opensend.cc. Your brand on the site. The money keeps the self-hosted Resend alternative free.",
+  },
+  sponsorThanks: {
+    path: "/sponsors/thanks",
+    title: "Send your sponsor logo",
+    description:
+      "Payment received. Upload your company name, website, and logo so it can go up on opensend.cc.",
+    index: false,
   },
   docs: {
     path: "/docs",

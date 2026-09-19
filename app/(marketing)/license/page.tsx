@@ -61,7 +61,7 @@ export default function LicensePage() {
           >
             Panara Studios
           </a>
-          . Questions: hello@opensend.cc.
+          . Questions: info@panarastudios.in.
         </p>
       </LegalSection>
     </LegalPage>

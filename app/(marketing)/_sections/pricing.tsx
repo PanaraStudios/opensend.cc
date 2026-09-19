@@ -1,29 +1,26 @@
 import {
   ArrowRightIcon,
-  CheckIcon,
   CloudIcon,
   HouseIcon,
   MailIcon,
   type LucideIcon,
 } from "lucide-react"
 
-import { Reveal, Stagger, StaggerItem } from "@/components/marketing/motion"
+import { Reveal, Stagger } from "@/components/marketing/motion"
 import { SectionHeader } from "@/components/marketing/section-header"
+import { TierCard } from "@/components/marketing/tier-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { PRICING } from "@/content/landing"
-import { cn } from "@/lib/utils"
 
-const TIER_ICONS: Record<string, LucideIcon> = {
+const TIER_ICONS: Record<(typeof PRICING.tiers)[number]["icon"], LucideIcon> = {
   home: HouseIcon,
   cloud: CloudIcon,
 }
 
 /* Two tiers side by side in the shared .frame + .panel shell: self-hosting
    is free forever and carries the primary button; the managed cloud is a
-   clearly-labeled coming soon with a waitlist link. The featured card moves
-   to the top when the cards stack. A list item that carries a badge shows
-   it as a green pill after the label. */
+   clearly-labeled coming soon with a waitlist link. */
 export function Pricing() {
   return (
     <section id="pricing" className="section scroll-mt-16 px-6 md:px-10">
@@ -38,44 +35,27 @@ export function Pricing() {
       <Stagger className="mx-auto mt-14 grid w-full max-w-3xl min-w-0 gap-6 md:grid-cols-2">
         {PRICING.tiers.map((tier) => {
           const external = tier.cta.href.startsWith("http")
-          const Icon = TIER_ICONS[tier.icon]
           return (
-            <StaggerItem
+            <TierCard
               key={tier.id}
-              className={cn("frame", tier.featured && "max-md:order-first")}
-            >
-              <div className="panel flex h-full flex-col">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="flex items-center gap-2 text-h4">
-                    {Icon ? (
-                      <Icon
-                        className="size-5 text-primary"
-                        strokeWidth={1.75}
-                      />
-                    ) : null}
-                    {tier.name}
-                  </h3>
-                  {tier.featured && (
-                    <Badge variant="primary">
-                      {"badge" in tier && tier.badge
-                        ? tier.badge
-                        : "Open source"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="mt-1 text-small text-muted-foreground">
-                  {tier.tagline}
-                </p>
-                <div className="mt-5 flex items-baseline gap-2">
-                  <span className="text-h1">{tier.price}</span>
-                  <span className="text-small text-muted-foreground">
-                    {tier.priceNote}
-                  </span>
-                </div>
+              icon={TIER_ICONS[tier.icon]}
+              name={tier.name}
+              badge={
+                tier.featured ? (
+                  <Badge variant="primary">
+                    {"badge" in tier && tier.badge ? tier.badge : "Open source"}
+                  </Badge>
+                ) : null
+              }
+              tagline={tier.tagline}
+              price={tier.price}
+              priceNote={tier.priceNote}
+              featured={tier.featured}
+              includes={tier.includes}
+              action={
                 <Button
                   size="lg"
                   variant={tier.featured ? "default" : "secondary"}
-                  className="mt-5 w-full"
                   nativeButton={false}
                   render={
                     <a
@@ -92,29 +72,8 @@ export function Pricing() {
                   {tier.cta.label}
                   {tier.id === "cloud" ? null : <ArrowRightIcon />}
                 </Button>
-                <ul className="mt-6 flex flex-col gap-2.5 border-t border-border pt-6">
-                  {tier.includes.map((item) => {
-                    const label = typeof item === "string" ? item : item.label
-                    const badge = typeof item === "string" ? null : item.badge
-                    return (
-                      <li
-                        key={label}
-                        className="flex items-start gap-2.5 text-small text-muted-foreground"
-                      >
-                        <CheckIcon
-                          className="mt-0.5 size-4 shrink-0 text-primary"
-                          strokeWidth={2.5}
-                        />
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span>{label}</span>
-                          {badge && <Badge variant="success">{badge}</Badge>}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            </StaggerItem>
+              }
+            />
           )
         })}
       </Stagger>

@@ -8,7 +8,7 @@ export const metadata: Metadata = pageMetadata(PAGES.privacy)
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="September 12, 2026">
+    <LegalPage title="Privacy Policy" updated="September 18, 2026">
       <LegalSection title="The short version">
         <p>
           opensend.cc is self-hosted. The email data in your deployment lives on
@@ -25,7 +25,10 @@ export default function PrivacyPage() {
         </p>
         <p>
           If you email us or join the cloud waitlist, we keep your address to
-          reply and to tell you when Cloud is ready. That is all we collect.
+          reply and to tell you when Cloud is ready. If you buy a sponsor spot,
+          Stripe processes the payment. We receive the email Stripe collects and
+          the company name, website, and logo you send so we can put the logo on
+          the site.
         </p>
       </LegalSection>
       <LegalSection title="What we never do">
@@ -37,7 +40,7 @@ export default function PrivacyPage() {
       </LegalSection>
       <LegalSection title="Data retention and deletion">
         <p>
-          Email hello@opensend.cc and we will remove your contact details within
+          Email info@panarastudios.in and we will remove your contact details within
           30 days.
         </p>
       </LegalSection>
@@ -52,7 +55,7 @@ export default function PrivacyPage() {
           >
             Panara Studios
           </a>
-          . Send questions about this policy to hello@opensend.cc. You run
+          . Send questions about this policy to info@panarastudios.in. You run
           opensend.cc on your own deployment, so the data in it is yours and
           never reaches us.
         </p>
