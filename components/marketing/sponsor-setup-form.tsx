@@ -10,19 +10,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { SPONSORS_THANKS } from "@/content/landing"
-import { LOGO_ACCEPT } from "@/lib/sponsor-logo"
+import { LOGO_ACCEPT, LOGO_MAX_BYTES } from "@/lib/sponsor-logo"
 
 export function SponsorSetupForm({
   email,
   sessionId,
+  submitted,
 }: {
   email: string
   sessionId: string
+  /** The logo already came in, on an earlier visit. */
+  submitted: boolean
 }) {
   const copy = SPONSORS_THANKS.form
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [sent, setSent] = useState(false)
+  const [sent, setSent] = useState(submitted)
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -31,6 +34,20 @@ export function SponsorSetupForm({
     setError(null)
     try {
       const form = new FormData(event.currentTarget)
+      /* A file past the limit never reaches the action: the request itself
+         is refused, with no reason the form could show. */
+      const tooLarge = (["logo", "logoDark"] as const).find((field) => {
+        const file = form.get(field)
+        return file instanceof File && file.size > LOGO_MAX_BYTES
+      })
+      if (tooLarge) {
+        setError(
+          copy.errors.tooLarge(
+            tooLarge === "logo" ? copy.logoLabel : copy.logoDarkLabel
+          )
+        )
+        return
+      }
       form.set("sessionId", sessionId)
       const result = await submitSponsorLogo(form)
       if (result.ok) {

@@ -19,10 +19,20 @@ export const LOGO_ACCEPT = [
   ...Object.keys(LOGO_TYPE_BY_EXTENSION).map((extension) => `.${extension}`),
 ].join(",")
 
-/** The file's type if it is an allowed one, going by its name when the
-    browser sent none. */
+function extensionOf(file: File): string {
+  return file.name.toLowerCase().split(".").pop() ?? ""
+}
+
+/** The file's type if it is an allowed one. The name decides, and what the
+    browser says has to agree with it when it says anything: a type alone is
+    whatever the sender typed. */
 export function logoType(file: File): string | null {
-  const extension = file.name.toLowerCase().split(".").pop() ?? ""
-  const type = file.type || LOGO_TYPE_BY_EXTENSION[extension] || ""
-  return LOGO_TYPES.has(type) ? type : null
+  const type = LOGO_TYPE_BY_EXTENSION[extensionOf(file)]
+  if (!type) return null
+  return !file.type || file.type === type ? type : null
+}
+
+/** A name of ours for the file, keeping only its checked extension. */
+export function logoFilename(file: File, base: string): string {
+  return `${base}.${extensionOf(file)}`
 }

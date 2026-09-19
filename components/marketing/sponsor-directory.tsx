@@ -51,6 +51,10 @@ export function SponsorDirectory() {
     sponsorsOnTier(tier.id)
   ).filter((item) => filter === "all" || item.category === filter)
   const showOpen = filter === "all"
+  /* Tiers run from dearest to cheapest. */
+  const cheapestOpen = SPONSOR_TIERS.findLast(
+    (tier) => sponsorOpenCount(tier.id) > 0
+  )
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -78,16 +82,18 @@ export function SponsorDirectory() {
             <EmptyTitle>{copy.emptyTitle}</EmptyTitle>
             <EmptyDescription>{copy.emptyFilter}</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <SponsorCheckoutButton
-              tier="silver"
-              section="directory-empty"
-              size="sm"
-            >
-              {copy.openAction}
-              <ArrowRightIcon />
-            </SponsorCheckoutButton>
-          </EmptyContent>
+          {cheapestOpen ? (
+            <EmptyContent>
+              <SponsorCheckoutButton
+                tier={cheapestOpen.id}
+                section="directory-empty"
+                size="sm"
+              >
+                {copy.openAction}
+                <ArrowRightIcon />
+              </SponsorCheckoutButton>
+            </EmptyContent>
+          ) : null}
         </Empty>
       ) : (
         <Table>

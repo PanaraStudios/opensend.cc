@@ -2,8 +2,11 @@
 
 import { createCocomailContact } from "@/lib/cocomail"
 import { sendMail, type MailAttachment } from "@/lib/mail"
-import { LOGO_MAX_BYTES, logoType } from "@/lib/sponsor-logo"
-import { confirmPaidSponsorCheckout } from "@/lib/stripe-sponsors"
+import { LOGO_MAX_BYTES, logoFilename, logoType } from "@/lib/sponsor-logo"
+import {
+  confirmPaidSponsorCheckout,
+  markLogoSubmitted,
+} from "@/lib/stripe-sponsors"
 import { SPONSORS_THANKS, sponsorTier } from "@/content/landing"
 import { SITE } from "@/content/site"
 
@@ -40,10 +43,15 @@ export async function submitSponsorLogo(formData: FormData): Promise<Result> {
   if (!paid) {
     return { ok: false, message: copy.errors.unpaid }
   }
+  if (paid.logoSubmitted) {
+    return { ok: false, message: copy.errors.alreadySent }
+  }
   const tierLabel = sponsorTier(paid.tier).name
 
-  const attachments = [await attachment(logo)]
-  if (isUpload(logoDark)) attachments.push(await attachment(logoDark))
+  const attachments = [await attachment(logo, "logo")]
+  if (isUpload(logoDark)) {
+    attachments.push(await attachment(logoDark, "logo-dark"))
+  }
 
   /* The tag is a nicety; the mail is what gets the logo onto the site. */
   const [, operator] = await Promise.all([
@@ -70,6 +78,7 @@ export async function submitSponsorLogo(formData: FormData): Promise<Result> {
     return { ok: false, message: copy.errors.sendFailed }
   }
 
+  await markLogoSubmitted(paid.sessionId)
   return { ok: true }
 }
 
@@ -84,9 +93,9 @@ function logoProblem(file: File, label: string): string | null {
   return null
 }
 
-async function attachment(file: File): Promise<MailAttachment> {
+async function attachment(file: File, name: string): Promise<MailAttachment> {
   return {
-    filename: file.name,
+    filename: logoFilename(file, name),
     content: Buffer.from(await file.arrayBuffer()).toString("base64"),
     contentType: logoType(file) ?? file.type,
   }

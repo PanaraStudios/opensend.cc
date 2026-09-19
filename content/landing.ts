@@ -549,6 +549,7 @@ export const SPONSORS_PAGE = {
     caption:
       "Pay with card. After payment you upload the logo. It stays up while the subscription is active. A year up front is 10 months.",
     soldOut: "Sold out",
+    soldOutNotice: `These spots are sold out. Write ${SITE_EMAIL} to be told when one opens.`,
     spotsOpen: (open: number) => `${open} ${open === 1 ? "spot" : "spots"} open`,
     homepageOpen: (open: number, total: number) =>
       `${open} of ${total} homepage spots open`,
@@ -625,6 +626,7 @@ export const SPONSORS_THANKS = {
       tooLarge: (label: string) => `${label} must be under 1 MB.`,
       badType: (label: string) => `${label} must be SVG, PNG, WebP, or JPEG.`,
       unpaid: "We could not confirm that payment.",
+      alreadySent: `We already have your logo. Write ${SITE_EMAIL} to change it.`,
       sendFailed: "Could not send the logo. Try again in a moment.",
     },
     logoLabel: "Logo",

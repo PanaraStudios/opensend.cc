@@ -84,8 +84,11 @@ async function onCheckoutCompleted(
         .join("\n"),
     }),
   ])
+  /* Thrown so the webhook answers 500 and Stripe sends the event again:
+     a sponsor who paid must not go unnoticed. Nothing above is undone by a
+     second run, as tagging a contact twice changes nothing. */
   if (!operator.ok) {
-    console.error("Could not email the operator", operator.message)
+    throw new Error(`Could not email the operator: ${operator.message}`)
   }
 }
 
@@ -93,30 +96,31 @@ async function onSubscriptionDeleted(
   stripe: Stripe,
   subscription: Stripe.Subscription
 ) {
-  let email: string | null = null
-  if (typeof subscription.customer === "string") {
-    try {
-      const customer = await stripe.customers.retrieve(subscription.customer)
-      if (!customer.deleted) email = customer.email
-    } catch (error) {
-      console.error("Could not load Stripe customer", error)
-    }
-  } else if (subscription.customer && !subscription.customer.deleted) {
-    email = subscription.customer.email
-  }
+  /* Other products may run subscriptions on the same Stripe account. A
+     sponsor's is the one whose checkout came through a tier's link. */
+  const sessions = await stripe.checkout.sessions.list({
+    subscription: subscription.id,
+    limit: 1,
+  })
+  const session = sessions.data[0]
+  const tierId = session ? await sponsorTierFromSession(stripe, session) : null
+  if (!session || !tierId) return
 
+  const email = customerEmailFromSession(session)
+  const plan = sponsorTier(tierId)
   const result = await sendMail({
     to: SITE.email,
-    subject: `Sponsor subscription ended${email ? `: ${email}` : ""}`,
+    subject: `${plan.name} sponsor subscription ended${email ? `: ${email}` : ""}`,
     text: [
-      "A sponsor subscription was cancelled or expired.",
+      `A ${plan.name} sponsor subscription was cancelled or expired.`,
       email ? `Customer: ${email}` : "Customer email was not on the record.",
       `Subscription: ${subscription.id}`,
+      `Stripe session: ${session.id}`,
       "",
       "Take the logo down if it is still on the site.",
     ].join("\n"),
   })
   if (!result.ok) {
-    console.error("Could not email subscription end", result.message)
+    throw new Error(`Could not email subscription end: ${result.message}`)
   }
 }

@@ -33,7 +33,11 @@ export default async function SponsorThanksPage({
           {copy.sub}
         </p>
         {paid ? (
-          <SponsorSetupForm email={paid.email} sessionId={paid.sessionId} />
+          <SponsorSetupForm
+            email={paid.email}
+            sessionId={paid.sessionId}
+            submitted={paid.logoSubmitted}
+          />
         ) : null}
       </div>
     </section>

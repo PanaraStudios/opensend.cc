@@ -7,6 +7,22 @@ export type PaidSponsorCheckout = {
   sessionId: string
   email: string
   tier: SponsorTierId
+  /** The logo was already sent in for this checkout. */
+  logoSubmitted: boolean
+}
+
+/* Kept on the Checkout Session itself, as there is no database here: one
+   checkout sends its logo in once, however often its link is opened. */
+const LOGO_SUBMITTED = "logo_submitted"
+
+export async function markLogoSubmitted(sessionId: string) {
+  try {
+    await getStripe()?.checkout.sessions.update(sessionId, {
+      metadata: { [LOGO_SUBMITTED]: new Date().toISOString() },
+    })
+  } catch (error) {
+    console.error("Could not mark the logo as submitted", error)
+  }
 }
 
 let client: { key: string; stripe: Stripe } | null = null
@@ -33,8 +49,10 @@ export async function sponsorTierFromSession(
       : link.url
   const paidThrough = linkKey(url)
   return (
-    SPONSOR_TIERS.find((tier) => sponsorPaymentLink(tier.id) === paidThrough)
-      ?.id ?? null
+    SPONSOR_TIERS.find((tier) => {
+      const ours = sponsorPaymentLink(tier.id)
+      return ours !== null && linkKey(ours) === paidThrough
+    })?.id ?? null
   )
 }
 
@@ -65,7 +83,8 @@ export async function confirmPaidSponsorCheckout(
       expand: ["subscription", "payment_link"],
     })
     if (session.status !== "complete") return null
-    if (session.payment_status !== "paid") return null
+    /* A trial or a first month at 100% off completes with nothing to pay. */
+    if (session.payment_status === "unpaid") return null
 
     const subscription = session.subscription
     if (!subscription || typeof subscription === "string") return null
@@ -80,7 +99,12 @@ export async function confirmPaidSponsorCheckout(
     const email = customerEmailFromSession(session)
     if (!tier || !email) return null
 
-    return { sessionId: session.id, email, tier }
+    return {
+      sessionId: session.id,
+      email,
+      tier,
+      logoSubmitted: Boolean(session.metadata?.[LOGO_SUBMITTED]),
+    }
   } catch (error) {
     console.error("Could not load Stripe session", error)
     return null

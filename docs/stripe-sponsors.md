@@ -120,16 +120,15 @@ RESEND_API_KEY=re_....
 Rules:
 
 - Live keys only. `sk_test_` / test Payment Links will not work on production cards.
-- `NEXT_PUBLIC_*` is baked in at **build** time. Changing it requires a **new deploy**, not just a restart.
-- Until the two Payment Link URLs are set, the site shows **Checkout not ready**.
+- The two Payment Link URLs are read when someone clicks Subscribe. Changing them needs a restart of the app at most, never a rebuild.
+- Until a tier's URL is set, its Subscribe button leads to a page that says **Checkout is not set up yet**.
+- `MAIL_FROM` is optional. Set it when the address people write to (in `content/site.ts`) is on a domain your mail provider has not verified.
 
 ---
 
-## 6. Redeploy
+## 6. Check the buttons
 
-Trigger a production deploy so the new `NEXT_PUBLIC_*` links are in the client bundle.
-
-After it is live, open [opensend.cc/sponsors](https://opensend.cc/sponsors) and click **Subscribe to Gold**. You should leave opensend.cc and land on `buy.stripe.com`. If the button still says **Checkout not ready**, the env vars are missing or the deploy did not pick them up.
+Restart the app so it sees the new values, then open [opensend.cc/sponsors](https://opensend.cc/sponsors) and click **Subscribe to Gold**. You go through `/sponsors/checkout/gold` and land on `buy.stripe.com`. If you get **Checkout is not set up yet** instead, `STRIPE_PAYMENT_LINK_GOLD` is missing or is not a URL.
 
 ---
 
@@ -182,9 +181,11 @@ When Stripe mails you that the subscription ended, remove that entry and deploy 
 | --- | --- |
 | **Checkout not ready** | `NEXT_PUBLIC_STRIPE_PAYMENT_LINK_*` empty, or deploy did not rebuild |
 | Stripe page loads, then return URL is wrong | Payment Link success URL missing `?session_id={CHECKOUT_SESSION_ID}` |
-| Thanks page: could not confirm payment | `STRIPE_SECRET_KEY` missing/test key, session not `paid`, or not Gold/Silver |
+| Thanks page: could not confirm payment | `STRIPE_SECRET_KEY` missing/test key, session unpaid, or the checkout did not come through the Gold or Silver link set in the env |
+| Subscribe says the spots are sold out | Every slot of that tier in `SPONSOR_TIERS` has a sponsor in `SPONSORS.items` |
+| Upload says "We already have your logo" | That checkout already sent one in. The mark is `logo_submitted` in the Checkout Session's metadata; clear it in the Dashboard to let them send again |
 | Webhook 400 | `STRIPE_WEBHOOK_SECRET` is the test secret or the CLI secret |
-| Webhook 500 | App error; check host logs |
+| Webhook 500 | App error, or the operator mail could not be sent. Stripe sends the event again; check host logs |
 | Upload fails with "Could not send the logo" | No mail got out. With `RESEND_API_KEY` set the mail goes through Resend, otherwise through Cocomail. Either way the domain of `MAIL_FROM` has to be verified with that provider |
 | Live card declined | Stripe account not fully activated |
 
