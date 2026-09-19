@@ -111,7 +111,7 @@ function parseWorkspaces(
 /** A root saved before accounts existed gets the seeded one. */
 function parseAccount(value: unknown): Account {
   if (!isRecord(value) || !Array.isArray(value.providers)) return SEED_ACCOUNT
-  const providers = value.providers.filter(
+  const known = value.providers.filter(
     (item): item is Account["providers"][number] =>
       isRecord(item) &&
       AUTH_PROVIDERS.includes(item.provider as AuthProvider) &&
@@ -123,7 +123,11 @@ function parseAccount(value: unknown): Account {
     typeof value.mfa.enabledAt === "number"
       ? { secret: value.mfa.secret, enabledAt: value.mfa.enabledAt }
       : null
-  return { providers, mfa }
+  /* There is always a way in. */
+  return {
+    providers: known.length > 0 ? known : SEED_ACCOUNT.providers,
+    mfa,
+  }
 }
 
 export function parseRoot(raw: string): DashboardRoot {
@@ -201,7 +205,8 @@ export function emptyWorkspace(
     members: [
       {
         id: createId("mem"),
-        ...owner,
+        name: owner.name,
+        email: owner.email,
         role: "admin",
         you: true,
         createdAt: Date.now(),
@@ -320,12 +325,22 @@ export function deleteTeamInRoot(
   }
 }
 
-/** Your email is on your member record in every team. */
+/** Whether somebody else, on any of your teams, has the address. */
+export function emailTaken(root: DashboardRoot, email: string): boolean {
+  const address = normalizeEmail(email)
+  return Object.values(root.workspaces).some((workspace) =>
+    workspace.members.some((member) => !member.you && member.email === address)
+  )
+}
+
+/** Your email is on your member record in every team. An address a
+    teammate has is refused: members are told apart by it. */
 export function updateEmailInRoot(
   root: DashboardRoot,
   email: string
 ): DashboardRoot {
   const next = normalizeEmail(email)
+  if (emailTaken(root, next)) return root
   return {
     ...root,
     workspaces: Object.fromEntries(

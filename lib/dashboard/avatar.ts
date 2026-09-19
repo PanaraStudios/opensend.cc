@@ -1,3 +1,10 @@
+/** What every browser can decode into a bitmap. */
+export const AVATAR_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]
 const AVATAR_MAX_BYTES = 1024 * 1024
 /* Twice the largest size it is shown at. */
 const AVATAR_SIZE = 160
@@ -5,8 +12,8 @@ const AVATAR_SIZE = 160
 /** An uploaded picture as a small square data URL: it is kept with the rest
     of the team, so it has to be light. Rejects with what is wrong. */
 export async function readAvatar(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Choose an image file")
+  if (!AVATAR_TYPES.includes(file.type)) {
+    throw new Error("Choose a PNG, JPEG, WebP or GIF image")
   }
   if (file.size > AVATAR_MAX_BYTES) {
     throw new Error("Maximum file size is 1MB")

@@ -6,6 +6,7 @@ import { teamSafePath } from "./nav"
 import {
   createTeamInRoot,
   deleteTeamInRoot,
+  emailTaken,
   renameTeamInRoot,
   updateEmailInRoot,
   emptyWorkspace,
@@ -161,6 +162,24 @@ describe("team and account changes", () => {
         .email,
       "ada@opensend.cc"
     )
+  })
+
+  it("gives a new team a member of its own, and refuses a teammate's email", () => {
+    const { root, teamId } = createTeamInRoot(seedRoot(), "Acme")
+    const seeded = root.workspaces[SEED_TEAM_ID]!.members.find((m) => m.you)!
+    const created = root.workspaces[teamId]!.members[0]!
+    assert.notEqual(created.id, seeded.id)
+    assert.equal(created.mfa, undefined)
+    assert.equal(emailTaken(root, " ADA@opensend.cc"), true)
+    assert.equal(emailTaken(root, seeded.email), false)
+    assert.equal(updateEmailInRoot(root, "ada@opensend.cc"), root)
+  })
+
+  it("keeps a way in when none of the saved providers is known", () => {
+    const root = parseRoot(
+      JSON.stringify({ ...seedRoot(), account: { providers: [], mfa: null } })
+    )
+    assert.deepEqual(root.account.providers, seedRoot().account.providers)
   })
 
   it("renames a team by id, and ignores a blank name", () => {

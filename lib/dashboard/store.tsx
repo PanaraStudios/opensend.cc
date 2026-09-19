@@ -39,6 +39,7 @@ import {
   activeWorkspace,
   createTeamInRoot,
   deleteTeamInRoot,
+  emailTaken,
   renameTeamInRoot,
   updateEmailInRoot,
   youOf,
@@ -1323,8 +1324,29 @@ function deleteTeam(id: string) {
   mutateRoot((current) => deleteTeamInRoot(current, id))
 }
 
-function updateEmail(email: string) {
+/** False, and nothing changes, when a teammate has the address. */
+function updateEmail(email: string): boolean {
+  if (emailTaken(rootFromRaw(readRaw()), email)) return false
   mutateRoot((current) => updateEmailInRoot(current, email))
+  return true
+}
+
+/** By id: the picture may be ready after another team was opened. */
+function setTeamAvatar(teamId: string, teamAvatar: string | undefined) {
+  mutateRoot((current) => {
+    const workspace = current.workspaces[teamId]
+    if (!workspace) return current
+    return {
+      ...current,
+      workspaces: {
+        ...current.workspaces,
+        [teamId]: {
+          ...workspace,
+          settings: { ...workspace.settings, teamAvatar },
+        },
+      },
+    }
+  })
 }
 
 function updateAccount(patch: (current: Account) => Account) {
@@ -1376,6 +1398,7 @@ const actions = {
   renameTeam,
   deleteTeam,
   updateEmail,
+  setTeamAvatar,
   linkProvider,
   unlinkProvider,
   setMfa,

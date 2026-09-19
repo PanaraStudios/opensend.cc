@@ -92,7 +92,10 @@ export function tabActive(pathname: string, href: string): boolean {
 }
 
 /** Pages of the dashboard that are no section's tab. */
-const STANDALONE_PATHS = ["/settings/exports", "/profile"] as const
+export const STANDALONE_PAGES: readonly SectionTab[] = [
+  { href: "/settings/exports", title: "Exports" },
+  { href: "/profile", title: "Profile" },
+]
 
 const TEAM_SAFE_PATHS = new Set<string>([
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
@@ -100,7 +103,7 @@ const TEAM_SAFE_PATHS = new Set<string>([
   ...AUDIENCE_TABS.map((item) => item.href),
   ...AUTOMATION_TABS.map((item) => item.href),
   ...SETTINGS_NAV.map((item) => item.href),
-  ...STANDALONE_PATHS,
+  ...STANDALONE_PAGES.map((item) => item.href),
 ])
 
 /** Keep list/settings routes when switching teams; drop record detail ids. */

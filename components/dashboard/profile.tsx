@@ -108,7 +108,10 @@ function EmailCard() {
           setError("Enter a valid email address")
           return
         }
-        updateEmail(next)
+        if (!updateEmail(next)) {
+          setError("Someone on one of your teams already uses that address")
+          return
+        }
         toast.add({ type: "success", title: "Email updated" })
       }}
     >
@@ -315,13 +318,28 @@ function MfaSetupForm({ onClose }: { onClose: () => void }) {
   const [showKey, setShowKey] = React.useState(false)
   const [code, setCode] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
+  const [checking, setChecking] = React.useState(false)
+  /* Checking takes a moment, in which the dialog may be closed: a setup that
+     was walked away from must not switch MFA on. */
+  const open = React.useRef(true)
+  React.useEffect(() => {
+    open.current = true
+    return () => {
+      open.current = false
+    }
+  }, [])
 
   return (
     <DialogContent className="sm:max-w-md">
       <form
         onSubmit={async (event) => {
           event.preventDefault()
-          if (!(await verifyTotp(secret, code, Date.now()))) {
+          if (checking) return
+          setChecking(true)
+          const valid = await verifyTotp(secret, code, Date.now())
+          if (!open.current) return
+          setChecking(false)
+          if (!valid) {
             setError("That code is not right. Enter the one the app shows now.")
             return
           }
@@ -397,7 +415,7 @@ function MfaSetupForm({ onClose }: { onClose: () => void }) {
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" disabled={code.length < 6}>
+          <Button type="submit" disabled={code.length < 6 || checking}>
             Add
           </Button>
         </DialogFooter>

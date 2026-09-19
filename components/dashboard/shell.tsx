@@ -60,7 +60,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/toast"
-import { DASHBOARD_NAV, navItemActive, SETTINGS_NAV } from "@/lib/dashboard/nav"
+import {
+  DASHBOARD_NAV,
+  SETTINGS_NAV,
+  STANDALONE_PAGES,
+  navItemActive,
+} from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
 import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
 
@@ -144,13 +149,23 @@ function CommandMenu({
                 {item.title}
               </CommandItem>
             ))}
-            {SETTINGS_NAV.map((item) => (
+            {/* The first tab is where Settings itself opens, listed above. */}
+            {SETTINGS_NAV.slice(1).map((item) => (
               <CommandItem
                 key={item.href}
                 value={`Settings ${item.title}`}
                 onSelect={() => go(item.href)}
               >
                 Settings · {item.title}
+              </CommandItem>
+            ))}
+            {STANDALONE_PAGES.map((item) => (
+              <CommandItem
+                key={item.href}
+                value={item.title}
+                onSelect={() => go(item.href)}
+              >
+                {item.title}
               </CommandItem>
             ))}
           </CommandGroup>

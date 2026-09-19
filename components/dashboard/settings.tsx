@@ -46,7 +46,7 @@ import {
   InviteMemberDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
-import { readAvatar } from "@/lib/dashboard/avatar"
+import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
 import { formatDate, regionLabel, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
@@ -79,7 +79,7 @@ function SettingsLead({ children }: { children: React.ReactNode }) {
 }
 
 function TeamOverview({ team }: { team: Team }) {
-  const { teams, updateSettings } = useDashboard()
+  const { teams, updateSettings, setTeamAvatar } = useDashboard()
   const admin = team.role === "admin"
   const file = React.useRef<HTMLInputElement>(null)
 
@@ -97,6 +97,10 @@ function TeamOverview({ team }: { team: Team }) {
       return
     }
     updateSettings({ teamName, teamSlug })
+    /* The fields show what was kept, which may not be what was typed. */
+    const fields = event.currentTarget.elements
+    ;(fields.namedItem("teamName") as HTMLInputElement).value = teamName
+    ;(fields.namedItem("teamSlug") as HTMLInputElement).value = teamSlug
     toast.add({ type: "success", title: "Team saved" })
   }
 
@@ -132,7 +136,7 @@ function TeamOverview({ team }: { team: Team }) {
                     variant="ghost"
                     size="sm"
                     disabled={!admin}
-                    onClick={() => updateSettings({ teamAvatar: undefined })}
+                    onClick={() => setTeamAvatar(team.id, undefined)}
                   >
                     Remove
                   </Button>
@@ -143,7 +147,7 @@ function TeamOverview({ team }: { team: Team }) {
             <input
               ref={file}
               type="file"
-              accept="image/*"
+              accept={AVATAR_TYPES.join(",")}
               className="sr-only"
               aria-label="Team avatar"
               tabIndex={-1}
@@ -152,8 +156,8 @@ function TeamOverview({ team }: { team: Team }) {
                 event.target.value = ""
                 if (!picked) return
                 readAvatar(picked).then(
-                  (teamAvatar) => {
-                    updateSettings({ teamAvatar })
+                  (avatar) => {
+                    setTeamAvatar(team.id, avatar)
                     toast.add({ type: "success", title: "Avatar updated" })
                   },
                   (problem: Error) =>
