@@ -56,6 +56,13 @@ export const PAGES = {
     description:
       "Buy a sponsor spot on opensend.cc. Your brand on the site. The money keeps the self-hosted Resend alternative free.",
   },
+  sponsorThanks: {
+    path: "/sponsors/thanks",
+    title: "Send your sponsor logo",
+    description:
+      "Payment received. Upload your company name, website, and logo so it can go up on opensend.cc.",
+    index: false,
+  },
   docs: {
     path: "/docs",
     title: "Docs",

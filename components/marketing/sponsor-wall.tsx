@@ -4,16 +4,18 @@ import Image from "next/image"
 import { ArrowRightIcon, PlusIcon } from "lucide-react"
 
 import { Stagger, StaggerItem } from "@/components/marketing/motion"
-import { SPONSOR_MAILTO, SPONSORS, type Sponsor } from "@/content/landing"
+import {
+  SPONSORS,
+  sponsorOpenCount,
+  sponsorTier,
+  sponsorsOnTier,
+  type Sponsor,
+} from "@/content/landing"
+import { sponsorCheckoutUrl } from "@/lib/sponsor-checkout"
 import { cn } from "@/lib/utils"
 
-/* Logo wall of current sponsors plus empty cells you can buy. Shared by
-   the homepage section and /sponsors. Add a company to SPONSORS.items
-   and drop its mark in public/logos/sponsors. */
-
-function sponsorOpenCount() {
-  return Math.max(1, SPONSORS.wallSlots - SPONSORS.items.length)
-}
+/* Gold logo wall. Silver does not appear here. Open cells are Gold
+   subscriptions for sale. */
 
 export function SponsorMark({
   sponsor,
@@ -48,7 +50,8 @@ export function SponsorMark({
 }
 
 export function SponsorWall({ className }: { className?: string }) {
-  const open = sponsorOpenCount()
+  const gold = sponsorsOnTier("gold")
+  const open = sponsorOpenCount("gold")
   return (
     <Stagger
       className={cn(
@@ -56,7 +59,7 @@ export function SponsorWall({ className }: { className?: string }) {
         className
       )}
     >
-      {SPONSORS.items.map((sponsor) => (
+      {gold.map((sponsor) => (
         <StaggerItem
           key={sponsor.name}
           className="flex min-h-32 items-center justify-center"
@@ -86,23 +89,38 @@ export function SponsorWall({ className }: { className?: string }) {
 }
 
 function OpenSlot() {
-  return (
-    <a
-      href={SPONSOR_MAILTO}
-      className="flex size-full flex-col items-center justify-center gap-3 text-center"
-      data-umami-event="sponsor_cta"
-      data-umami-event-section="wall"
-    >
+  const gold = sponsorTier("gold")
+  const href = sponsorCheckoutUrl("gold")
+  const inner = (
+    <>
       <span className="icon-tile">
         <PlusIcon strokeWidth={1.5} />
       </span>
       <span className="text-small text-muted-foreground">
-        {SPONSORS.openLabel}
+        {gold.name} · {gold.price}/mo
       </span>
       <span className="inline-flex items-center gap-1 text-caption font-medium text-primary">
         {SPONSORS.openAction}
         <ArrowRightIcon className="size-3.5 shrink-0" />
       </span>
+    </>
+  )
+  if (!href) {
+    return (
+      <div className="flex size-full flex-col items-center justify-center gap-3 text-center">
+        {inner}
+      </div>
+    )
+  }
+  return (
+    <a
+      href={href}
+      className="flex size-full flex-col items-center justify-center gap-3 text-center"
+      data-umami-event="sponsor_cta"
+      data-umami-event-section="wall"
+      data-umami-event-plan="gold"
+    >
+      {inner}
     </a>
   )
 }

@@ -10,6 +10,7 @@ import {
 
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/motion"
 import { SponsorDirectory } from "@/components/marketing/sponsor-directory"
+import { SponsorTiers } from "@/components/marketing/sponsor-tiers"
 import { SponsorWall } from "@/components/marketing/sponsor-wall"
 import { Button } from "@/components/ui/button"
 import { SPONSORS_PAGE } from "@/content/landing"
@@ -29,6 +30,7 @@ export default function SponsorsPage() {
   return (
     <>
       <Hero />
+      <SponsorTiers />
       <Directory />
       <Partner />
     </>
