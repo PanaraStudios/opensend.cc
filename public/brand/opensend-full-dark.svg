@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 236 32" fill="none">
+  <g stroke="#fafafa" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="15.15" cy="14.2" r="3.65"/>
+    <path d="M18.8 10.5V18.15C18.8 21.55 16.55 24.35 12.85 24.35C7.85 24.35 5.15 20.35 5.15 14.7C5.15 8.85 9.45 4.7 15.35 4.7C21.25 4.7 25.5 9 25.5 15.1C25.5 17.85 24.35 20.05 22.15 21.35"/>
+  </g>
+  <text x="38" y="22.2" fill="#fafafa" font-family="Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="600" letter-spacing="-0.03em">opensend.cc</text>
+</svg>

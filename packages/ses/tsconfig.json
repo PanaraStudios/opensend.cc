@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "target": "ESNext",
+    "lib": ["ES2022", "dom"],
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    // Stricter module resolution for Node16 compatibility.
+    // The build config switches to Bundler and ESNext for ESM output.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "skipLibCheck": true
+  },
+  "include": ["./src/**/*"]
+}

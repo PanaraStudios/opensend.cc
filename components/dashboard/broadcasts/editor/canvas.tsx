@@ -1,0 +1,105 @@
+"use client"
+
+import * as React from "react"
+import { stylesToCss, useEmailTheming } from "@react-email/editor/plugins"
+import { DragHandle } from "@tiptap/extension-drag-handle-react"
+import { EditorContent, type Editor } from "@tiptap/react"
+import { GripVerticalIcon } from "lucide-react"
+
+import {
+  insertAtCaret,
+  PALETTE_DRAG_TYPE,
+  PALETTE_ITEMS,
+} from "@/components/dashboard/broadcasts/editor/blocks"
+import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-menus"
+import { InsertRail } from "@/components/dashboard/broadcasts/editor/palette"
+import { SlashMenu } from "@/components/dashboard/broadcasts/editor/slash-menu"
+import type { EmailVariable } from "@/lib/dashboard/email-variables"
+
+/* The page, the paper on it, and the engine's document inside the paper. The
+   theme's `body` and `container` groups style the first two, so the canvas
+   reads like the sent email. */
+
+export function EmailCanvas({
+  editor,
+  header,
+}: {
+  editor: Editor
+  /** The envelope form, which sits on the paper above the document. */
+  header: React.ReactNode
+}) {
+  const theming = useEmailTheming(editor)
+  const css = React.useMemo(() => {
+    if (!theming) return { body: {}, container: {} }
+    const styles = stylesToCss(theming.styles, theming.theme)
+    /* Copied because the engine's style maps have no prototype, which
+         React's style handling does not accept. */
+    return { body: { ...styles.body }, container: { ...styles.container } }
+  }, [theming])
+
+  function insertVariable(variable: EmailVariable) {
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "variable",
+        attrs: { name: variable.name, fallback: variable.fallback },
+      })
+      .run()
+  }
+
+  return (
+    <div
+      className="relative flex min-h-full justify-center"
+      style={css.body}
+      data-testid="editor-canvas"
+    >
+      {/* The track spans the whole canvas so the sticky rail inside it holds
+          its place while the email scrolls underneath. */}
+      <div className="pointer-events-none absolute inset-y-0 left-4 z-30 pt-24 md:left-8">
+        <InsertRail
+          className="pointer-events-auto sticky top-24"
+          onInsertBlock={(entry) => insertAtCaret(editor, entry)}
+          onInsertVariable={insertVariable}
+        />
+      </div>
+      <div
+        id="email-paper"
+        data-testid="email-paper"
+        className="relative max-w-full bg-white text-black"
+        style={css.container}
+      >
+        {header}
+        <DragHandle
+          editor={editor}
+          className="flex size-6 cursor-grab items-center justify-center rounded-md text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111827] active:cursor-grabbing"
+        >
+          <GripVerticalIcon className="size-4" />
+        </DragHandle>
+        <EditorContent
+          editor={editor}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes(PALETTE_DRAG_TYPE)) {
+              event.preventDefault()
+            }
+          }}
+          onDrop={(event) => {
+            const id = event.dataTransfer.getData(PALETTE_DRAG_TYPE)
+            const entry = PALETTE_ITEMS.find((one) => one.id === id)
+            if (!entry) return
+            event.preventDefault()
+            const spot = editor.view.posAtCoords({
+              left: event.clientX,
+              top: event.clientY,
+            })
+            insertAtCaret(editor, entry, spot?.pos)
+          }}
+          className="pt-3"
+          data-testid="email-content"
+        />
+        <SlashMenu />
+        <BubbleMenus />
+      </div>
+    </div>
+  )
+}

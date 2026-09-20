@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+  msw: false
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@aws-sdk/client-sesv2@3.1131.0'
+  - '@convex-dev/workpool@0.4.12'
+  - convex-test@0.0.58
+  - '@shadcn/lint@0.1.0'

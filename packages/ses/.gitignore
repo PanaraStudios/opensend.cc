@@ -1,0 +1,6 @@
+dist
+*.tsbuildinfo
+*.tgz
+.eslintcache
+
+__pycache__/
