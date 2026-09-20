@@ -1,4 +1,5 @@
 "use client"
+import { authContinuation } from "@/lib/oauth/policy"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -73,7 +74,7 @@ function AuthNavigation({
         <Separator className="flex-1" />
       </div>
       <Link
-        href="/sso"
+        href={`/sso${nextQuery}`}
         className={buttonVariants({ variant: "outline", size: "lg" })}
       >
         <Building2Icon data-icon="inline-start" />
@@ -86,7 +87,11 @@ function AuthNavigation({
             Create account
           </AuthTextLink>
         </div>
-        <AuthTextLink href="/verify-email" icon={MailCheckIcon} size="xs">
+        <AuthTextLink
+          href={`/verify-email${nextQuery}`}
+          icon={MailCheckIcon}
+          size="xs"
+        >
           Resend verification email
         </AuthTextLink>
       </div>
@@ -98,9 +103,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter()
   const params = useSearchParams()
   const requestedNext = params.get("next")
-  const returnTo = requestedNext?.startsWith("/invitation?")
-    ? requestedNext
-    : "/emails"
+  const returnTo = authContinuation(requestedNext)
   const nextQuery =
     returnTo !== "/emails" ? `?next=${encodeURIComponent(returnTo)}` : ""
   const [pending, setPending] = useState(false)
@@ -123,7 +126,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         try {
           if (mode === "login") {
             const result = await authResult(
-              await authClient.signIn.email({ email, password })
+              await authClient.signIn.email({
+                email,
+                password,
+                callbackURL: returnTo,
+              })
             )
             if (
               result &&
@@ -151,7 +158,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             await authResult(
               await authClient.requestPasswordReset({
                 email,
-                redirectTo: "/reset-password",
+                redirectTo: `/reset-password${nextQuery}`,
               })
             )
             setMessage("If this account exists, a reset link has been sent.")
@@ -222,7 +229,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               <FieldLabel htmlFor="password">Password</FieldLabel>
               {mode === "login" && (
                 <AuthTextLink
-                  href="/forgot-password"
+                  href={`/forgot-password${nextQuery}`}
                   icon={KeyRoundIcon}
                   size="xs"
                 >

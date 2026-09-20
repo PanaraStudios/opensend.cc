@@ -4,6 +4,7 @@ import type { MutationCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { api } from "./_generated/api"
 import { requireMember, sessionUser } from "./policy"
+import { invalidate } from "./oauth"
 const role = v.union(v.literal("admin"), v.literal("member"))
 const teamValue = v.object({
   id: v.string(),
@@ -330,6 +331,7 @@ export const changeMember = mutation({
         role: args.role === "admin" ? "owner" : "member",
       })
     else await ctx.db.delete("member", target._id)
+    if (args.role !== "admin") await invalidate(ctx, `member:${target._id}`)
     return null
   },
 })

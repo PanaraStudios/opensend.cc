@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
+import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -224,6 +225,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(member.locator('p[role="alert"]')).toBeVisible()
   })
 
+  test("authorizes hosted and local OAuth clients, exchanges tokens and rejects refresh replay", async () => {
+    await oauthFlow(owner, organizationId)
+  })
+
   test("renders every existing dashboard section with a real session", async () => {
     const errors: string[] = []
     const record = (error: Error) => errors.push(error.message)
@@ -388,7 +393,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
       await member.emulateMedia({ colorScheme })
       for (const width of [1440, 390]) {
         await member.setViewportSize({ width, height: 1000 })
-        await expect(member.getByText(memberEmail, { exact: true })).toBeVisible()
+        await expect(
+          member.getByText(memberEmail, { exact: true })
+        ).toBeVisible()
         await expect(
           member.getByRole("button", { name: "Accept invitation" })
         ).toBeVisible()
@@ -399,7 +406,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
           await member.evaluate(() => document.documentElement.scrollWidth)
         ).toBe(width)
         await member.screenshot({
-          path: test.info().outputPath(`invitation-${colorScheme}-${width}.png`),
+          path: test
+            .info()
+            .outputPath(`invitation-${colorScheme}-${width}.png`),
           fullPage: true,
         })
       }
@@ -548,7 +557,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await logout(member)
     await expect(member).toHaveURL(/\/login/)
     expect(await oldClient.query(api.teams.snapshot)).toBeNull()
-    await login(member, memberEmail, memberPassword, "/mfa")
+    await beginOAuth(member)
+    await member.getByRole("link", { name: "Sign in", exact: true }).click()
+    await member.getByLabel("Email", { exact: true }).fill(memberEmail)
+    await member.getByLabel("Password", { exact: true }).fill(memberPassword)
+    await member.getByRole("button", { name: "Sign in", exact: true }).click()
+    await expect(member).toHaveURL(/\/mfa\?next=/)
     expect(
       (await member.request.get(`${base}/api/auth/convex/token`)).ok()
     ).toBeFalsy()
@@ -558,7 +572,14 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await member.getByRole("button", { name: "Use a backup code" }).click()
     await member.getByLabel("Backup code").fill(enrollment.backupCodes[0])
     await member.getByRole("button", { name: "Continue", exact: true }).click()
-    await expect(member).toHaveURL(/\/emails/)
+    await expect(member).toHaveURL(/\/oauth\/consent\?flow=/)
+    await expect(
+      member.getByRole("heading", { name: "Connect Continuation example" })
+    ).toBeVisible()
+    await member.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(
+      member.getByRole("heading", { name: "Authorization cancelled" })
+    ).toBeVisible()
     await member.goto("/profile")
     await member
       .getByRole("button", { name: "Regenerate backup codes" })
@@ -737,6 +758,29 @@ test.describe.serial("Docker self-hosted authentication", () => {
       }
     )
     expect(direct.status()).toBe(403)
+    await beginOAuth(passwordOwner)
+    await selectOAuthTeam(passwordOwner, organizationId)
+    await passwordOwner
+      .getByRole("button", { name: "Continue with SSO", exact: true })
+      .click()
+    await passwordOwner.getByLabel("Username or email").fill("oidc-owner")
+    await passwordOwner
+      .getByLabel("Password", { exact: true })
+      .fill("isolated-oidc-password")
+    await passwordOwner
+      .getByRole("button", { name: "Sign In", exact: true })
+      .click()
+    await expect(passwordOwner).toHaveURL(/\/oauth\/consent\?flow=/)
+    await selectOAuthTeam(passwordOwner, organizationId)
+    await expect(
+      passwordOwner.getByRole("button", { name: "Authorize", exact: true })
+    ).toBeEnabled()
+    await passwordOwner
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click()
+    await expect(
+      passwordOwner.getByRole("heading", { name: "Authorization cancelled" })
+    ).toBeVisible()
     await passwordContext.close()
     const c = await client(member)
     const snapshot = (await c.query(api.teams.snapshot))!

@@ -26,6 +26,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "playwright-report/**",
+    "test-results/**",
     // Convex-generated files are not hand-edited.
     "convex/_generated/**",
     "convex/betterAuth/_generated/**",

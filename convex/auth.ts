@@ -29,8 +29,19 @@ export function createAuth(
   ctx: GenericCtx<DataModel>,
   providers: GenericOAuthConfig[] = []
 ) {
+  const options = createAuthOptions(providers)
   return betterAuth({
-    ...createAuthOptions(providers),
+    ...options,
+    emailAndPassword: {
+      ...options.emailAndPassword,
+      onPasswordReset: async ({ user }) => {
+        if (!("runMutation" in ctx))
+          throw new Error("Password reset requires a writable context")
+        await ctx.runMutation(components.betterAuth.oauth.invalidateUser, {
+          userId: user.id,
+        })
+      },
+    },
     baseURL: env.SITE_URL,
     onAPIError: { errorURL: `${env.SITE_URL}/login` },
     secret: env.BETTER_AUTH_SECRET,
@@ -42,6 +53,9 @@ export function createAuth(
         // organization endpoint may bypass SSO, ownership, or deletion checks.
         if (
           context.path.startsWith("/organization/") ||
+          (context.path.startsWith("/oauth2/") &&
+            !context.path.startsWith("/oauth2/callback/") &&
+            context.path !== "/oauth2/link") ||
           context.path === "/delete-user" ||
           context.path === "/link-social" ||
           context.path === "/oauth2/link" ||

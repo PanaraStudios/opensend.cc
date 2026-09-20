@@ -1,12 +1,12 @@
 "use client"
 
 import * as React from "react"
+import { OAuthAppsCard } from "./oauth-apps"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation } from "convex/react"
 import { QRCodeSVG } from "qrcode.react"
 import {
-  BlocksIcon,
   Building2Icon,
   EyeIcon,
   KeyRoundIcon,
@@ -66,7 +66,6 @@ import {
 import { toast } from "@/components/ui/toast"
 import {
   CodeWell,
-  EmptyState,
   MonoValue,
   MoreMenu,
   PageHeader,
@@ -879,14 +878,7 @@ export function Profile() {
       <TeamsCard />
       <AuthenticationCard />
       <MfaCard />
-      <SettingsCard title="OAuth apps" flush>
-        <EmptyState
-          size="sm"
-          icon={BlocksIcon}
-          title="No authorized apps"
-          description="Third-party apps you authorize to access your account will appear here."
-        />
-      </SettingsCard>
+      <OAuthAppsCard />
       <DeleteAccountCard />
     </>
   )

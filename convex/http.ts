@@ -4,6 +4,7 @@ import { httpAction } from "./_generated/server"
 import { createAuth } from "./auth"
 import { loadProvider } from "./oidc"
 import { components } from "./_generated/api"
+import { handler as oauthHandler } from "./oauthHttp"
 const http = httpRouter()
 const handler = httpAction(async (ctx, request) => {
   try {
@@ -84,4 +85,26 @@ const handler = httpAction(async (ctx, request) => {
 })
 http.route({ pathPrefix: "/api/auth/", method: "GET", handler })
 http.route({ pathPrefix: "/api/auth/", method: "POST", handler })
+for (const path of [
+  "/oauth/authorize",
+  "/oauth/jwks",
+  "/oauth/flow",
+  "/oauth/grants",
+  "/.well-known/oauth-authorization-server",
+  "/.well-known/oauth-authorization-server/oauth",
+])
+  http.route({ path, method: "GET", handler: oauthHandler })
+for (const path of [
+  "/oauth/register",
+  "/oauth/token",
+  "/oauth/revoke",
+  "/oauth/introspect",
+  "/oauth/flow",
+])
+  http.route({ path, method: "POST", handler: oauthHandler })
+http.route({
+  pathPrefix: "/oauth/grants/",
+  method: "DELETE",
+  handler: oauthHandler,
+})
 export default http

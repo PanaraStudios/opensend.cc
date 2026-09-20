@@ -1,7 +1,10 @@
 "use client"
 import { AsyncForm, FormInput } from "@/components/auth/ui"
 import { authClient, authResult } from "@/lib/auth/client"
+import { useSearchParams } from "next/navigation"
+import { authContinuation } from "@/lib/oauth/policy"
 export default function Page() {
+  const params = useSearchParams()
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Sign in with SSO</h1>
@@ -15,7 +18,7 @@ export default function Page() {
           authResult(
             await authClient.signIn.oauth2({
               providerId: String(data.get("team")),
-              callbackURL: "/emails",
+              callbackURL: authContinuation(params.get("next")),
             })
           )
         }

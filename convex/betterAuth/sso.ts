@@ -1,6 +1,7 @@
 import { v, ConvexError } from "convex/values"
 import { query, mutation } from "./_generated/server"
 import { requireMember, sessionUser } from "./policy"
+import { invalidate } from "./oauth"
 const configValue = v.object({
   organizationId: v.string(),
   issuer: v.string(),
@@ -61,6 +62,7 @@ export const save = mutation({
     }
     if (old) await ctx.db.replace("sso", old._id, data)
     else await ctx.db.insert("sso", data)
+    await invalidate(ctx, `team:${args.organizationId}`)
     return null
   },
 })
@@ -136,6 +138,8 @@ export const enforce = mutation({
     if (!c || (args.enabled && !c.tested))
       throw new ConvexError("Complete a successful connection test first")
     await ctx.db.patch("sso", c._id, { enforced: args.enabled })
+    if (c.enforced !== args.enabled)
+      await invalidate(ctx, `team:${args.organizationId}`)
     return null
   },
 })
@@ -149,6 +153,7 @@ export const recover = mutation({
         q.eq("organizationId", args.organizationId)
       )
       .unique()
+    await invalidate(ctx, `team:${args.organizationId}`)
     if (c)
       await ctx.db.patch("sso", c._id, {
         enforced: false,

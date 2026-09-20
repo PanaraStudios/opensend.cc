@@ -19,6 +19,13 @@ export function useWorkspace() {
   if (!value) throw new Error("Account data is not available")
   return value
 }
+export function AccountTeamAccess({ account }: { account: Workspace }) {
+  return (
+    <Context.Provider value={account}>
+      <TeamAccess />
+    </Context.Provider>
+  )
+}
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth()
   const data = useQuery(api.teams.snapshot, isAuthenticated ? {} : "skip")

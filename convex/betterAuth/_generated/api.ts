@@ -11,6 +11,9 @@
 import type * as adapter from "../adapter.js";
 import type * as auth from "../auth.js";
 import type * as generatedSchema from "../generatedSchema.js";
+import type * as oauth from "../oauth.js";
+import type * as oauthClients from "../oauthClients.js";
+import type * as oauthSchema from "../oauthSchema.js";
 import type * as policy from "../policy.js";
 import type * as sso from "../sso.js";
 import type * as teams from "../teams.js";
@@ -26,6 +29,9 @@ const fullApi: ApiFromModules<{
   adapter: typeof adapter;
   auth: typeof auth;
   generatedSchema: typeof generatedSchema;
+  oauth: typeof oauth;
+  oauthClients: typeof oauthClients;
+  oauthSchema: typeof oauthSchema;
   policy: typeof policy;
   sso: typeof sso;
   teams: typeof teams;

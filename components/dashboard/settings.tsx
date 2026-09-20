@@ -1,9 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { OAuthAppsList } from "./oauth-apps"
 import Link from "next/link"
 import {
-  BlocksIcon,
   SendIcon,
   XIcon,
   CircleCheckIcon,
@@ -251,7 +251,7 @@ function TeamMembers({ team }: { team: Team }) {
           </Tabs>
         }
         actions={
-          admin ? (
+          admin && tab === "members" ? (
             <Button onClick={() => setInviting(true)}>Invite</Button>
           ) : null
         }
@@ -359,13 +359,12 @@ function TeamMembers({ team }: { team: Team }) {
               })}
             </TableBody>
           </Table>
+        ) : admin ? (
+          <OAuthAppsList key={team.id} organizationId={team.id} />
         ) : (
-          <EmptyState
-            size="sm"
-            icon={BlocksIcon}
-            title="No authorized apps"
-            description="When someone on this team authorizes a third-party app, their consent will appear here."
-          />
+          <p className="p-6 text-sm text-muted-foreground">
+            Only team admins can view and manage authorized apps.
+          </p>
         )}
       </SettingsCard>
       <InviteMemberDialog open={inviting} onOpenChange={setInviting} />

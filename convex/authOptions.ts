@@ -8,6 +8,8 @@ import {
 import { convex } from "@convex-dev/better-auth/plugins"
 import authConfig from "./auth.config"
 import { sendAuthEmail } from "./authEmail"
+import { oauthProvider } from "@better-auth/oauth-provider"
+import { jwt } from "better-auth/plugins/jwt"
 
 /** Shared by the runtime, component adapter and schema generator. */
 export function createAuthOptions(providers: GenericOAuthConfig[] = []) {
@@ -43,6 +45,17 @@ export function createAuthOptions(providers: GenericOAuthConfig[] = []) {
       },
     },
     plugins: [
+      // Schema only: protocol endpoints live in the isolated OAuth server.
+      {
+        id: "oauth-storage",
+        schema: {
+          ...oauthProvider({
+            loginPage: "/login",
+            consentPage: "/oauth/consent",
+          }).schema,
+          oauthJwks: jwt().schema.jwks,
+        },
+      },
       organization({
         creatorRole: "owner",
         membershipLimit: 100,

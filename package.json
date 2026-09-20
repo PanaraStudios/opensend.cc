@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@better-auth/oauth-provider": "1.6.15",
     "@bprogress/next": "^3.2.12",
     "@convex-dev/better-auth": "0.12.5",
     "@react-email/components": "^1.0.12",
