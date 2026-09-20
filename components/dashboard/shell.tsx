@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { WorkspaceProvider } from "@/components/auth/workspace"
+import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
 import { MARKETING_URL } from "@/lib/site"
@@ -218,7 +220,7 @@ function CommandMenu({
 function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { you, resetDemo } = useDashboard()
+  const { you } = useDashboard()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (
@@ -362,11 +364,12 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
               open={logoutOpen}
               onOpenChange={setLogoutOpen}
               title="Log out?"
-              description="You'll leave this demo workspace and go to the waitlist."
+              description="You can sign in again at any time."
               confirmLabel="Log out"
-              onConfirm={() => {
-                resetDemo()
-                router.push("/waitlist")
+              onConfirm={async () => {
+                await authResult(await authClient.signOut())
+                router.push("/login")
+                router.refresh()
               }}
             />
           </SidebarMenuItem>
@@ -409,11 +412,13 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardProvider>
-      <Toaster>
-        <DashboardChrome>{children}</DashboardChrome>
-      </Toaster>
-    </DashboardProvider>
+    <WorkspaceProvider>
+      <DashboardProvider>
+        <Toaster>
+          <DashboardChrome>{children}</DashboardChrome>
+        </Toaster>
+      </DashboardProvider>
+    </WorkspaceProvider>
   )
 }
 
@@ -421,8 +426,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     editors that own the whole viewport. */
 export function FullScreenShell({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardProvider>
-      <Toaster>{children}</Toaster>
-    </DashboardProvider>
+    <WorkspaceProvider>
+      <DashboardProvider>
+        <Toaster>{children}</Toaster>
+      </DashboardProvider>
+    </WorkspaceProvider>
   )
 }

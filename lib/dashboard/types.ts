@@ -462,7 +462,7 @@ export type AuthProvider = (typeof AUTH_PROVIDERS)[number]
 export type Account = {
   providers: { provider: AuthProvider; connectedAt: number }[]
   /** The second factor: its secret, and when it was verified. */
-  mfa: { secret: string; enabledAt: number } | null
+  mfa: { enabledAt: number } | null
 }
 
 export type Settings = {

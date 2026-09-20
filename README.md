@@ -56,3 +56,7 @@ Self-hosting Convex uses Convex's own backend license; see the SES runbook.
 
 Opensend is a product of [Panara Studios](https://panarastudios.in).
 Questions: info@panarastudios.in
+
+## Self-hosted authentication
+
+Run `pnpm setup` to start the Docker stack. See [self-hosting](docs/self-hosting.md) for setup, account verification, OIDC, backups, and recovery.

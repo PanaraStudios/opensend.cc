@@ -32,6 +32,7 @@ import { useDashboard } from "@/lib/dashboard/store"
 import { SEED_TEAM_ID } from "@/lib/dashboard/teams"
 import type { MemberRole, Team } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
+import { actionError } from "@/lib/action-error"
 
 const ROLE_OPTIONS = [
   {
@@ -94,12 +95,13 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
   const { state, inviteMember } = useDashboard()
   const [email, setEmail] = React.useState("")
   const [role, setRole] = React.useState<MemberRole>("member")
+  const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   return (
     <DialogContent className="sm:max-w-md">
       <form
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
           const address = normalizeEmail(email)
           if (!isEmail(address)) {
@@ -110,9 +112,16 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
             setError("That person is already on the team")
             return
           }
-          inviteMember({ email: address, role })
-          toast.add({ type: "success", title: "Invite sent" })
-          onClose()
+          setPending(true)
+          try {
+            await inviteMember({ email: address, role })
+            toast.add({ type: "success", title: "Invite sent" })
+            onClose()
+          } catch (e) {
+            setError(actionError(e))
+          } finally {
+            setPending(false)
+          }
         }}
       >
         <DialogHeader>
@@ -124,6 +133,7 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
             <Input
               id="invite-email"
               type="email"
+              required
               value={email}
               placeholder="ada.lovelace@example.com"
               onChange={(event) => {
@@ -148,7 +158,9 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit">Invite</Button>
+          <Button type="submit" disabled={pending}>
+            Invite
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>
@@ -178,9 +190,9 @@ export function DeleteTeamDialog({
     if (!open) onClose()
   }
 
-  const remove = () => {
+  const remove = async () => {
     if (!team) return
-    deleteTeam(team.id)
+    await deleteTeam(team.id, leaving)
     toast.add({
       type: "success",
       title: shared ? "You left the team" : "Team deleted",

@@ -6,24 +6,64 @@ import { cn } from "@/lib/utils"
 
 const QUOTES = [
   {
-    text: "Send email like Resend. Keep the data on your server.",
-    author: "opensend.cc",
+    text: "The purpose of a business is to create a customer.",
+    author: "Peter Drucker",
   },
   {
-    text: "One Docker Compose file. Next.js, Convex, Better Auth, AWS SES.",
-    author: "opensend.cc",
+    text: "There is only one boss. The customer.",
+    author: "Sam Walton",
   },
   {
-    text: "Point your Resend SDK at your own base URL.",
-    author: "opensend.cc",
+    text: "Make a customer, not a sale.",
+    author: "Katherine Barchetti",
   },
   {
-    text: "You pay Amazon for sending. Nothing per email to us.",
-    author: "opensend.cc",
+    text: "We're not competitor obsessed. We're customer obsessed.",
+    author: "Jeff Bezos",
   },
   {
-    text: "Your domain, your SES reputation, your Convex database.",
-    author: "opensend.cc",
+    text: "The fortune is in the follow-up.",
+    author: "Jim Rohn",
+  },
+  {
+    text: "People don't buy what you do. They buy why you do it.",
+    author: "Simon Sinek",
+  },
+  {
+    text: "Your most unhappy customers are your greatest source of learning.",
+    author: "Bill Gates",
+  },
+  {
+    text: "People don't like to be sold. They love to buy.",
+    author: "Jeffrey Gitomer",
+  },
+  {
+    text: "You don't close a sale. You open a relationship.",
+    author: "Patricia Fripp",
+  },
+  {
+    text: "Price is what you pay. Value is what you get.",
+    author: "Warren Buffett",
+  },
+  {
+    text: "Customer service shouldn't be a department. It should be the entire company.",
+    author: "Tony Hsieh",
+  },
+  {
+    text: "Seek first to understand, then to be understood.",
+    author: "Stephen Covey",
+  },
+  {
+    text: "Don't find customers for your products. Find products for your customers.",
+    author: "Seth Godin",
+  },
+  {
+    text: "If it doesn't sell, it isn't creative.",
+    author: "David Ogilvy",
+  },
+  {
+    text: "Make the customer the hero of your story.",
+    author: "Ann Handley",
   },
 ] as const
 

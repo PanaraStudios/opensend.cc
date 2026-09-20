@@ -3,6 +3,8 @@
 import {
   createContext,
   useContext,
+  useCallback,
+  useEffect,
   useMemo,
   useSyncExternalStore,
   type ReactNode,
@@ -32,22 +34,19 @@ import {
   reconcileDomain,
   verifyDomainRecords,
 } from "./domains"
-import { normalizeEmail } from "./format"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
+import { useMutation, useAction } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { useWorkspace } from "@/components/auth/workspace"
+import { authClient, authResult } from "@/lib/auth/client"
+
 import {
   activeWorkspace,
-  createTeamInRoot,
-  deleteTeamInRoot,
-  emailTaken,
-  renameTeamInRoot,
-  updateEmailInRoot,
   youOf,
-  listTeams,
   parseRoot,
   seedRoot,
   serializeRoot,
-  switchTeamInRoot,
   type DashboardRoot,
 } from "./teams"
 import {
@@ -60,8 +59,6 @@ import {
 } from "./template"
 import { replayedDelivery } from "./webhooks"
 import type {
-  Account,
-  AuthProvider,
   ApiKey,
   ApiKeyPermission,
   Automation,
@@ -92,8 +89,7 @@ import type {
   Webhook,
 } from "./types"
 
-const STORAGE_KEY = "opensend.dashboard.v3"
-const LEGACY_STORAGE_KEY = "opensend.dashboard.v2"
+let storageKey = "opensend.demo.uninitialized"
 const CHANGE_EVENT = "opensend-dashboard"
 
 const SERVER_SNAPSHOT = serializeRoot(seedRoot())
@@ -104,14 +100,8 @@ function emitChange() {
 
 function readRaw(): string {
   try {
-    const current = localStorage.getItem(STORAGE_KEY)
+    const current = localStorage.getItem(storageKey)
     if (current) return current
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
-    if (legacy) {
-      const migrated = serializeRoot(parseRoot(legacy))
-      localStorage.setItem(STORAGE_KEY, migrated)
-      return migrated
-    }
     return SERVER_SNAPSHOT
   } catch {
     return SERVER_SNAPSHOT
@@ -132,10 +122,26 @@ function rootFromRaw(raw: string): DashboardRoot {
 }
 
 function writeRoot(next: DashboardRoot) {
-  const raw = serializeRoot(next)
+  const raw = serializeRoot({
+    ...next,
+    account: { providers: [], mfa: null },
+    workspaces: Object.fromEntries(
+      Object.entries(next.workspaces).map(([id, workspace]) => [
+        id,
+        {
+          ...workspace,
+          members: [],
+          settings: {
+            ...workspace.settings,
+            sso: { enabled: false, issuer: "", clientId: "" },
+          },
+        },
+      ])
+    ),
+  })
   cachedRaw = raw
   cachedRoot = next
-  localStorage.setItem(STORAGE_KEY, raw)
+  localStorage.setItem(storageKey, raw)
   emitChange()
 }
 
@@ -1266,142 +1272,11 @@ function updateSettings(
   }))
 }
 
-function inviteMember(input: { email: string; role: MemberRole }) {
-  const email = normalizeEmail(input.email)
-  mutate((current) => ({
-    ...current,
-    members: [
-      ...current.members,
-      {
-        id: createId("mem"),
-        /* An invite asks for the address alone. */
-        name: email.split("@")[0] ?? email,
-        email,
-        role: input.role,
-        you: false,
-        createdAt: Date.now(),
-      },
-    ],
-  }))
-}
-
-function updateMemberRole(id: string, role: MemberRole) {
-  mutate((current) => ({
-    ...current,
-    members: current.members.map((member) =>
-      member.id === id ? { ...member, role } : member
-    ),
-  }))
-}
-
-function removeMember(id: string) {
-  mutate((current) => ({
-    ...current,
-    members: current.members.filter((member) => member.id !== id || member.you),
-  }))
-}
-
-function switchTeam(id: string) {
-  mutateRoot((current) => switchTeamInRoot(current, id))
-}
-
-function createTeam(name: string) {
-  let createdId = ""
-  mutateRoot((current) => {
-    const created = createTeamInRoot(current, name)
-    createdId = created.teamId
-    return created.root
-  })
-  return { id: createdId }
-}
-
-function renameTeam(id: string, name: string) {
-  mutateRoot((current) => renameTeamInRoot(current, id, name))
-}
-
-/** Also how you leave a team: here, the workspace goes either way. */
-function deleteTeam(id: string) {
-  mutateRoot((current) => deleteTeamInRoot(current, id))
-}
-
-/** False, and nothing changes, when a teammate has the address. */
-function updateEmail(email: string): boolean {
-  if (emailTaken(rootFromRaw(readRaw()), email)) return false
-  mutateRoot((current) => updateEmailInRoot(current, email))
-  return true
-}
-
-/** By id: the picture may be ready after another team was opened. */
-function setTeamAvatar(teamId: string, teamAvatar: string | undefined) {
-  mutateRoot((current) => {
-    const workspace = current.workspaces[teamId]
-    if (!workspace) return current
-    return {
-      ...current,
-      workspaces: {
-        ...current.workspaces,
-        [teamId]: {
-          ...workspace,
-          settings: { ...workspace.settings, teamAvatar },
-        },
-      },
-    }
-  })
-}
-
-function updateAccount(patch: (current: Account) => Account) {
-  mutateRoot((current) => ({ ...current, account: patch(current.account) }))
-}
-
-function linkProvider(provider: AuthProvider) {
-  updateAccount((account) =>
-    account.providers.some((item) => item.provider === provider)
-      ? account
-      : {
-          ...account,
-          providers: [
-            ...account.providers,
-            { provider, connectedAt: Date.now() },
-          ],
-        }
-  )
-}
-
-/** The last way in cannot be unlinked. */
-function unlinkProvider(provider: AuthProvider) {
-  updateAccount((account) =>
-    account.providers.length < 2
-      ? account
-      : {
-          ...account,
-          providers: account.providers.filter(
-            (item) => item.provider !== provider
-          ),
-        }
-  )
-}
-
-function setMfa(secret: string | null) {
-  updateAccount((account) => ({
-    ...account,
-    mfa: secret ? { secret, enabledAt: Date.now() } : null,
-  }))
-}
-
 function resetDemo() {
   writeRoot(seedRoot())
 }
 
 const actions = {
-  switchTeam,
-  createTeam,
-  renameTeam,
-  deleteTeam,
-  updateEmail,
-  setTeamAvatar,
-  linkProvider,
-  unlinkProvider,
-  setMfa,
   addDomain,
   deleteDomain,
   updateDomain,
@@ -1457,9 +1332,6 @@ const actions = {
   replayWebhookDelivery,
   addExport,
   updateSettings,
-  inviteMember,
-  updateMemberRole,
-  removeMember,
   resetDemo,
 }
 
@@ -1467,11 +1339,20 @@ export type DashboardStore = {
   state: DashboardState
   teams: Team[]
   activeTeamId: string
-  /* There is always one: the last team cannot be deleted. */
   activeTeam: Team
-  /** Your member record in the open team. */
   you: TeamMember | undefined
-  account: Account
+  switchTeam: (id: string) => Promise<unknown>
+  createTeam: (name: string) => Promise<unknown>
+  renameTeam: (id: string, name: string) => Promise<unknown>
+  deleteTeam: (id: string, leave?: boolean) => Promise<unknown>
+  updateEmail: (email: string) => Promise<unknown>
+  setTeamAvatar: (
+    teamId: string,
+    avatar: string | undefined
+  ) => Promise<unknown>
+  inviteMember: (input: { email: string; role: MemberRole }) => Promise<unknown>
+  updateMemberRole: (id: string, role: MemberRole) => Promise<unknown>
+  removeMember: (id: string) => Promise<unknown>
 } & typeof actions
 
 const DashboardContext = createContext<DashboardStore | null>(null)
@@ -1490,23 +1371,107 @@ export function useStoreHydrated(): boolean {
 }
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => SERVER_SNAPSHOT)
+  const auth = useWorkspace()
+  useEffect(() => {
+    // These old demo roots could contain plaintext authenticator secrets.
+    localStorage.removeItem("opensend.dashboard.v2")
+    localStorage.removeItem("opensend.dashboard.v3")
+  }, [])
+  const scope = `opensend.demo.v4:${auth.user.id}:${auth.activeTeamId ?? "account"}`
+  const read = useCallback(() => {
+    storageKey = scope
+    return readRaw()
+  }, [scope])
+  const raw = useSyncExternalStore(subscribe, read, () => SERVER_SNAPSHOT)
+  const create = useMutation(api.teams.create)
+  const switchTeam = useMutation(api.teams.switchTeam)
+  const rename = useMutation(api.teams.rename)
+  const remove = useMutation(api.teams.remove)
+  const invite = useMutation(api.teams.invite)
+  const changeMember = useMutation(api.teams.changeMember)
+  const upload = useAction(api.teams.uploadAvatar)
+  const avatar = useMutation(api.teams.removeAvatar)
   const value = useMemo<DashboardStore>(() => {
     const root = rootFromRaw(raw)
-    const state = activeWorkspace(root)
-    const teams = listTeams(root)
-    return {
-      state,
-      teams,
-      activeTeamId: root.activeTeamId,
-      activeTeam:
-        teams.find((team) => team.id === root.activeTeamId) ?? teams[0]!,
-      you: youOf(state),
-      account: root.account,
-      ...actions,
+    const demo = activeWorkspace(root)
+    const teams = auth.teams.map((t) => ({ ...t, removable: true }))
+    const activeTeam: Team = teams.find((t) => t.id === auth.activeTeamId) ?? {
+      id: "",
+      name: "Account",
+      slug: "",
+      role: "member" as const,
+      joinedAt: 0,
+      members: 0,
+      removable: false,
     }
-  }, [raw])
-
+    const members: TeamMember[] = auth.members.map((m) => ({
+      ...m,
+      createdAt: m.joinedAt,
+    }))
+    const you: TeamMember = members.find((m) => m.you) ?? {
+      id: auth.user.id,
+      name: auth.user.name,
+      email: auth.user.email,
+      role: "member",
+      createdAt: auth.user.createdAt,
+      you: true,
+      mfa: auth.user.mfa,
+    }
+    return {
+      ...actions,
+      state: {
+        ...demo,
+        members,
+        settings: {
+          ...demo.settings,
+          teamName: activeTeam.name,
+          teamSlug: activeTeam.slug,
+          teamAvatar: activeTeam.avatar,
+        },
+      },
+      teams,
+      activeTeamId: activeTeam.id,
+      activeTeam,
+      you,
+      switchTeam: (id) => switchTeam({ organizationId: id }),
+      createTeam: (name) => create({ name }),
+      renameTeam: (id, name) => rename({ organizationId: id, name }),
+      deleteTeam: (id, leave = false) => remove({ organizationId: id, leave }),
+      updateEmail: async (email) =>
+        authResult(
+          await authClient.changeEmail({
+            newEmail: email,
+            callbackURL: "/profile",
+          })
+        ),
+      inviteMember: (input) =>
+        invite({ ...input, organizationId: activeTeam.id }),
+      updateMemberRole: (id, role) =>
+        changeMember({ organizationId: activeTeam.id, memberId: id, role }),
+      removeMember: (id) =>
+        changeMember({ organizationId: activeTeam.id, memberId: id }),
+      setTeamAvatar: async (id, data) => {
+        if (!data) return avatar({ organizationId: id })
+        const blob = await (await fetch(data)).blob()
+        return upload({
+          organizationId: id,
+          bytes: await blob.arrayBuffer(),
+          contentType: blob.type,
+        })
+      },
+    }
+  }, [
+    raw,
+    auth,
+    create,
+    switchTeam,
+    rename,
+    remove,
+    invite,
+    changeMember,
+    upload,
+    avatar,
+  ])
   return (
     <DashboardContext.Provider value={value}>
       {children}

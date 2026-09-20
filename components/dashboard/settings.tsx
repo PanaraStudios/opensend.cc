@@ -4,6 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import {
   BlocksIcon,
+  SendIcon,
+  XIcon,
   CircleCheckIcon,
   CircleXIcon,
   DownloadIcon,
@@ -15,7 +17,10 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenuItem,
+  DropdownMenuGroup,
+} from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -46,6 +51,11 @@ import {
   InviteMemberDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
+import { useMutation, useAction } from "convex/react"
+import { authClient, authResult } from "@/lib/auth/client"
+import { api } from "@/convex/_generated/api"
+import { useWorkspace } from "@/components/auth/workspace"
+import { actionError } from "@/lib/action-error"
 import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
 import { formatDate, regionLabel, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
@@ -79,11 +89,14 @@ function SettingsLead({ children }: { children: React.ReactNode }) {
 }
 
 function TeamOverview({ team }: { team: Team }) {
-  const { teams, updateSettings, setTeamAvatar } = useDashboard()
+  const { setTeamAvatar } = useDashboard()
+  const rename = useMutation(api.teams.rename)
+  const [pending, setPending] = React.useState(false)
+  const [uploading, setUploading] = React.useState(false)
   const admin = team.role === "admin"
   const file = React.useRef<HTMLInputElement>(null)
 
-  function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const teamName = String(form.get("teamName") ?? "").trim()
@@ -92,16 +105,15 @@ function TeamOverview({ team }: { team: Team }) {
       toast.add({ type: "error", title: "Enter a team name and a slug" })
       return
     }
-    if (teams.some((item) => item.id !== team.id && item.slug === teamSlug)) {
-      toast.add({ type: "error", title: "That slug is already in use" })
-      return
+    setPending(true)
+    try {
+      await rename({ organizationId: team.id, name: teamName, slug: teamSlug })
+      toast.add({ type: "success", title: "Team saved" })
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      setPending(false)
     }
-    updateSettings({ teamName, teamSlug })
-    /* The fields show what was kept, which may not be what was typed. */
-    const fields = event.currentTarget.elements
-    ;(fields.namedItem("teamName") as HTMLInputElement).value = teamName
-    ;(fields.namedItem("teamSlug") as HTMLInputElement).value = teamSlug
-    toast.add({ type: "success", title: "Team saved" })
   }
 
   return (
@@ -109,7 +121,7 @@ function TeamOverview({ team }: { team: Team }) {
       <SettingsCard
         title="Overview"
         footer={
-          <Button type="submit" disabled={!admin}>
+          <Button type="submit" disabled={!admin || pending || uploading}>
             Save
           </Button>
         }
@@ -124,7 +136,7 @@ function TeamOverview({ team }: { team: Team }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!admin}
+                  disabled={!admin || pending || uploading}
                   onClick={() => file.current?.click()}
                 >
                   <UploadIcon data-icon="inline-start" />
@@ -135,8 +147,18 @@ function TeamOverview({ team }: { team: Team }) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!admin}
-                    onClick={() => setTeamAvatar(team.id, undefined)}
+                    disabled={!admin || pending || uploading}
+                    onClick={async () => {
+                      setUploading(true)
+                      try {
+                        await setTeamAvatar(team.id, undefined)
+                        toast.add({ type: "success", title: "Avatar removed" })
+                      } catch (error) {
+                        toast.add({ type: "error", title: actionError(error) })
+                      } finally {
+                        setUploading(false)
+                      }
+                    }}
                   >
                     Remove
                   </Button>
@@ -144,25 +166,26 @@ function TeamOverview({ team }: { team: Team }) {
               </div>
               <FieldDescription>Maximum file size is 1MB.</FieldDescription>
             </div>
-            <input
+            <Input
               ref={file}
               type="file"
               accept={AVATAR_TYPES.join(",")}
               className="sr-only"
               aria-label="Team avatar"
               tabIndex={-1}
-              onChange={(event) => {
+              onChange={async (event) => {
                 const picked = event.target.files?.[0]
                 event.target.value = ""
                 if (!picked) return
-                readAvatar(picked).then(
-                  (avatar) => {
-                    setTeamAvatar(team.id, avatar)
-                    toast.add({ type: "success", title: "Avatar updated" })
-                  },
-                  (problem: Error) =>
-                    toast.add({ type: "error", title: problem.message })
-                )
+                setUploading(true)
+                try {
+                  await setTeamAvatar(team.id, await readAvatar(picked))
+                  toast.add({ type: "success", title: "Avatar updated" })
+                } catch (error) {
+                  toast.add({ type: "error", title: actionError(error) })
+                } finally {
+                  setUploading(false)
+                }
               }}
             />
           </div>
@@ -173,9 +196,11 @@ function TeamOverview({ team }: { team: Team }) {
             <Input
               id="team-name"
               name="teamName"
+              required
+              maxLength={100}
               key={team.name}
               defaultValue={team.name}
-              disabled={!admin}
+              disabled={!admin || pending || uploading}
             />
           </Field>
           <Field>
@@ -183,10 +208,11 @@ function TeamOverview({ team }: { team: Team }) {
             <Input
               id="team-slug"
               name="teamSlug"
+              required
               className="font-mono"
               key={team.slug}
               defaultValue={team.slug}
-              disabled={!admin}
+              disabled={!admin || pending || uploading}
             />
           </Field>
         </div>
@@ -201,11 +227,12 @@ const MEMBER_TABS = [
 ] as const
 
 function TeamMembers({ team }: { team: Team }) {
-  const { state, account, updateMemberRole, removeMember } = useDashboard()
+  const { state, updateMemberRole, removeMember } = useDashboard()
   const [tab, setTab] = React.useState<string>("members")
   const [inviting, setInviting] = React.useState(false)
   const [removing, setRemoving] = React.useState<TeamMember | null>(null)
   const [leaving, setLeaving] = React.useState(false)
+  const [changingRole, setChangingRole] = React.useState(false)
   const admin = team.role === "admin"
 
   return (
@@ -241,7 +268,7 @@ function TeamMembers({ team }: { team: Team }) {
             </TableHeader>
             <TableBody>
               {state.members.map((member) => {
-                const mfa = member.you ? account.mfa !== null : member.mfa
+                const mfa = member.mfa
                 const promoted = member.role === "admin" ? "member" : "admin"
                 return (
                   <TableRow key={member.id}>
@@ -279,36 +306,51 @@ function TeamMembers({ team }: { team: Team }) {
                     <TableCell>
                       {member.you ? (
                         <MoreMenu>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={!team.removable}
-                            onClick={() => setLeaving(true)}
-                          >
-                            <LogOutIcon />
-                            Leave team
-                          </DropdownMenuItem>
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              disabled={!team.removable}
+                              onClick={() => setLeaving(true)}
+                            >
+                              <LogOutIcon />
+                              Leave team
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
                         </MoreMenu>
                       ) : admin ? (
                         <MoreMenu>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              updateMemberRole(member.id, promoted)
-                              toast.add({
-                                type: "success",
-                                title: `Role changed to ${roleLabel(promoted)}`,
-                              })
-                            }}
-                          >
-                            <ShieldIcon />
-                            Change role to {roleLabel(promoted)}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setRemoving(member)}
-                          >
-                            <UserMinusIcon />
-                            Remove from team
-                          </DropdownMenuItem>
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              disabled={changingRole}
+                              onClick={async () => {
+                                setChangingRole(true)
+                                try {
+                                  await updateMemberRole(member.id, promoted)
+                                  toast.add({
+                                    type: "success",
+                                    title: `Role changed to ${roleLabel(promoted)}`,
+                                  })
+                                } catch (error) {
+                                  toast.add({
+                                    type: "error",
+                                    title: actionError(error),
+                                  })
+                                } finally {
+                                  setChangingRole(false)
+                                }
+                              }}
+                            >
+                              <ShieldIcon />
+                              Change role to {roleLabel(promoted)}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setRemoving(member)}
+                            >
+                              <UserMinusIcon />
+                              Remove from team
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
                         </MoreMenu>
                       ) : null}
                     </TableCell>
@@ -340,12 +382,108 @@ function TeamMembers({ team }: { team: Team }) {
         title="Remove from team?"
         description={`${removing?.email ?? "They"} will lose access to this team.`}
         confirmLabel="Remove"
-        onConfirm={() => {
-          if (removing) removeMember(removing.id)
+        onConfirm={async () => {
+          if (removing) await removeMember(removing.id)
           toast.add({ type: "success", title: "Member removed" })
         }}
       />
     </>
+  )
+}
+
+function TeamInvitations({ team }: { team: Team }) {
+  const { invitations } = useWorkspace()
+  const invite = useMutation(api.teams.invite)
+  const cancel = useMutation(api.teams.cancelInvitation)
+  const [pending, setPending] = React.useState<string | null>(null)
+  async function update(id: string, resend: boolean) {
+    const invitation = invitations.find((item) => item.id === id)
+    if (!invitation) return
+    setPending(id)
+    try {
+      if (resend)
+        await invite({
+          organizationId: team.id,
+          email: invitation.email,
+          role: invitation.role,
+        })
+      else await cancel({ invitationId: id })
+      toast.add({
+        type: "success",
+        title: resend ? "Invitation resent" : "Invitation canceled",
+      })
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      setPending(null)
+    }
+  }
+  return (
+    <SettingsCard title="Invitations" flush>
+      {invitations.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <Th>Email</Th>
+              <Th>Role</Th>
+              <Th>Status</Th>
+              <Th>Expires</Th>
+              <Th className="w-10" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invitations.map((invitation) => (
+              <TableRow key={invitation.id}>
+                <TableCell className="font-medium">
+                  {invitation.email}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {roleLabel(invitation.role)}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">
+                    {invitation.status === "expired" ? "Expired" : "Pending"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(invitation.expiresAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        disabled={pending !== null}
+                        onClick={() => update(invitation.id, true)}
+                      >
+                        <SendIcon />
+                        Resend invitation
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={pending !== null}
+                        variant="destructive"
+                        onClick={() => update(invitation.id, false)}
+                      >
+                        <XIcon />
+                        Cancel invitation
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyState
+          size="sm"
+          icon={SendIcon}
+          title="No pending invitations"
+          description="Invite someone from the Members section to add them to this team."
+        />
+      )}
+    </SettingsCard>
   )
 }
 
@@ -357,6 +495,7 @@ export function SettingsTeam() {
     <>
       <TeamOverview team={team} />
       <TeamMembers team={team} />
+      {team.role === "admin" && <TeamInvitations team={team} />}
       <SettingsCard
         title="Exports"
         description="All available CSV exports for your team are listed here."
@@ -550,29 +689,42 @@ export function SettingsSmtp() {
 }
 
 export function SettingsSso() {
-  const { state, updateSettings } = useDashboard()
-  const sso = state.settings.sso
-
-  function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    updateSettings({
-      sso: {
-        ...sso,
-        issuer: String(form.get("issuer") ?? "").trim(),
-        clientId: String(form.get("clientId") ?? "").trim(),
-      },
-    })
-    toast.add({ type: "success", title: "SSO saved" })
-  }
-
+  const { activeTeam: team } = useDashboard()
+  const { sso } = useWorkspace()
+  const saveConnection = useAction(api.sso.save)
+  const enforce = useMutation(api.sso.enforce)
+  const [pending, setPending] = React.useState(false)
+  const admin = team.role === "admin"
   return (
     <>
       <SettingsLead>
-        Let the team sign in with your identity provider. Auth is not wired yet;
-        this stores the connection locally.
+        Let the team sign in with your identity provider. Test the connection
+        before requiring SSO.
       </SettingsLead>
-      <form onSubmit={save} className="max-w-lg">
+      <form
+        className="max-w-lg"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          const form = new FormData(event.currentTarget)
+          setPending(true)
+          try {
+            await saveConnection({
+              organizationId: team.id,
+              issuer: String(form.get("issuer")),
+              clientId: String(form.get("clientId")),
+              clientSecret: String(form.get("clientSecret")),
+            })
+            toast.add({
+              type: "success",
+              title: "Connection saved. Test sign-in before enabling SSO.",
+            })
+          } catch (error) {
+            toast.add({ type: "error", title: actionError(error) })
+          } finally {
+            setPending(false)
+          }
+        }}
+      >
         <Surface>
           <Field orientation="horizontal">
             <FieldLabel htmlFor="sso-enabled">
@@ -585,12 +737,22 @@ export function SettingsSso() {
             </FieldLabel>
             <Switch
               id="sso-enabled"
-              checked={sso.enabled}
-              onCheckedChange={(checked) =>
-                updateSettings({
-                  sso: { ...sso, enabled: checked },
-                })
-              }
+              checked={sso?.enforced ?? false}
+              disabled={!admin || !sso?.tested || pending}
+              onCheckedChange={async (enabled) => {
+                setPending(true)
+                try {
+                  await enforce({ organizationId: team.id, enabled })
+                  toast.add({
+                    type: "success",
+                    title: enabled ? "SSO enabled" : "SSO disabled",
+                  })
+                } catch (error) {
+                  toast.add({ type: "error", title: actionError(error) })
+                } finally {
+                  setPending(false)
+                }
+              }}
             />
           </Field>
           <Field>
@@ -598,9 +760,12 @@ export function SettingsSso() {
             <Input
               id="sso-issuer"
               name="issuer"
-              key={sso.issuer}
-              defaultValue={sso.issuer}
+              type="url"
+              key={sso?.issuer}
+              defaultValue={sso?.issuer ?? ""}
               placeholder="https://idp.example.com"
+              required
+              disabled={!admin || pending}
             />
           </Field>
           <Field>
@@ -608,11 +773,68 @@ export function SettingsSso() {
             <Input
               id="sso-client"
               name="clientId"
-              key={sso.clientId}
-              defaultValue={sso.clientId}
+              key={sso?.clientId}
+              defaultValue={sso?.clientId ?? ""}
+              required
+              disabled={!admin || pending}
             />
           </Field>
-          <Button type="submit">Save connection</Button>
+          <Field>
+            <FieldLabel htmlFor="sso-secret">Client secret</FieldLabel>
+            <Input
+              id="sso-secret"
+              name="clientSecret"
+              type="password"
+              autoComplete="off"
+              required
+              disabled={!admin || pending}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="sso-callback">Callback URL</FieldLabel>
+            <Input
+              id="sso-callback"
+              readOnly
+              value={`${typeof window === "undefined" ? "" : window.location.origin}/api/auth/oauth2/callback/${team.id}`}
+            />
+            <FieldDescription>
+              Register this URL with your identity provider.
+            </FieldDescription>
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={!admin || pending}>
+              Save connection
+            </Button>
+            {sso && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!admin || pending}
+                onClick={async () => {
+                  setPending(true)
+                  try {
+                    await authResult(
+                      await authClient.signIn.oauth2({
+                        providerId: team.id,
+                        callbackURL: "/settings/sso",
+                      })
+                    )
+                  } catch (error) {
+                    toast.add({ type: "error", title: actionError(error) })
+                  } finally {
+                    setPending(false)
+                  }
+                }}
+              >
+                Test connection
+              </Button>
+            )}
+          </div>
+          <FieldDescription>
+            {sso?.tested
+              ? "Connection test passed."
+              : "Complete a test sign-in before enabling SSO."}
+          </FieldDescription>
         </Surface>
       </form>
     </>

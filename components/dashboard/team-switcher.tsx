@@ -56,6 +56,7 @@ function CreateTeamDialog({
   const router = useRouter()
   const pathname = usePathname()
   const { createTeam } = useDashboard()
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
 
@@ -66,13 +67,21 @@ function CreateTeamDialog({
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!name.trim()) {
       setError("Enter a team name")
       return
     }
-    createTeam(name)
+    setPending(true)
+    try {
+      await createTeam(name)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Please try again")
+      return
+    } finally {
+      setPending(false)
+    }
     toast.add({ type: "success", title: "Team created" })
     reset()
     onOpenChange(false)
@@ -121,7 +130,9 @@ function CreateTeamDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit">Create team</Button>
+            <Button type="submit" disabled={pending}>
+              Create team
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -137,9 +148,17 @@ export function TeamSwitcher() {
   const [createOpen, setCreateOpen] = React.useState(false)
   const [inviteOpen, setInviteOpen] = React.useState(false)
 
-  function selectTeam(id: string) {
+  async function selectTeam(id: string) {
     if (id === activeTeamId) return
-    switchTeam(id)
+    try {
+      await switchTeam(id)
+    } catch (e) {
+      toast.add({
+        type: "error",
+        title: e instanceof Error ? e.message : "Could not switch teams",
+      })
+      return
+    }
     const next = teamSafePath(pathname)
     if (next !== pathname) router.push(next)
   }

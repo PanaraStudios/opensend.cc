@@ -117,12 +117,7 @@ function parseAccount(value: unknown): Account {
       AUTH_PROVIDERS.includes(item.provider as AuthProvider) &&
       typeof item.connectedAt === "number"
   )
-  const mfa =
-    isRecord(value.mfa) &&
-    typeof value.mfa.secret === "string" &&
-    typeof value.mfa.enabledAt === "number"
-      ? { secret: value.mfa.secret, enabledAt: value.mfa.enabledAt }
-      : null
+  const mfa = null
   /* There is always a way in. */
   return {
     providers: known.length > 0 ? known : SEED_ACCOUNT.providers,

@@ -28,6 +28,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Convex-generated files are not hand-edited.
     "convex/_generated/**",
+    "convex/betterAuth/_generated/**",
     // Workspace packages ship their own ESLint config.
     "packages/**",
   ]),

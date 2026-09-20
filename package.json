@@ -23,11 +23,16 @@
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/dashboard/*.test.ts"
+    "test": "tsx --test lib/dashboard/*.test.ts",
+    "setup": "node scripts/setup.mjs",
+    "test:auth": "vitest run --config vitest.auth.config.ts",
+    "backend": "node scripts/backend.mjs",
+    "test:e2e": "node scripts/test-e2e.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
     "@bprogress/next": "^3.2.12",
+    "@convex-dev/better-auth": "0.12.5",
     "@react-email/components": "^1.0.12",
     "@react-email/editor": "^1.7.7",
     "@react-email/render": "^2.1.0",
@@ -38,6 +43,7 @@
     "@tiptap/extension-placeholder": "3.31.3",
     "@tiptap/pm": "3.31.3",
     "@tiptap/react": "3.31.3",
+    "better-auth": "1.6.15",
     "chrono-node": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -47,6 +53,7 @@
     "date-fns": "^4.4.0",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.5.0",
+    "jose": "6.1.3",
     "lucide-react": "^1.43.0",
     "motion": "^13.2.0",
     "next": "16.2.6",
@@ -62,17 +69,23 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "5.0.0",
+    "@playwright/test": "1.63.0",
     "@shadcn/lint": "^0.1.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "convex-test": "0.0.41",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
-  }
+    "typescript": "^5",
+    "vite": "6.4.1",
+    "vitest": "3.2.4"
+  },
+  "packageManager": "pnpm@11.7.0"
 }

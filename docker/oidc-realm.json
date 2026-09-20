@@ -1,0 +1,56 @@
+{
+  "realm": "opensend",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "opensend-test",
+      "secret": "isolated-test-secret",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/api/auth/oauth2/callback/*",
+        "http://localhost:3400/api/auth/oauth2/callback/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:3400"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "oidc-owner",
+      "email": "owner@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "Owner",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "isolated-oidc-password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "uninvited",
+      "email": "uninvited-oidc@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Uninvited",
+      "lastName": "Tester",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "isolated-oidc-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

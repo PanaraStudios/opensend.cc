@@ -1,0 +1,70 @@
+name: opensend
+services:
+  convex:
+    image: ${CONVEX_IMAGE:-ghcr.io/get-convex/convex-backend@sha256:1b0dcd93a3d126400d16e256aea1106a2ee9538882dda545d2c979f28cff1483}
+    restart: unless-stopped
+    stop_grace_period: 20s
+    stop_signal: SIGINT
+    ports:
+      - "127.0.0.1:${CONVEX_PORT:-3210}:3210"
+      - "127.0.0.1:${CONVEX_SITE_PORT:-3211}:3211"
+    environment:
+      INSTANCE_NAME: ${INSTANCE_NAME}
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_PUBLIC_URL:-http://localhost:3210}
+      CONVEX_SITE_ORIGIN: ${CONVEX_PUBLIC_SITE_URL:-http://localhost:3211}
+      DISABLE_BEACON: "true"
+      REDACT_LOGS_TO_CLIENT: "true"
+    volumes:
+      - convex-data:/convex/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  dashboard:
+    image: ${CONVEX_DASHBOARD_IMAGE:-ghcr.io/get-convex/convex-dashboard@sha256:63e94c62940a09acd36464e02e1b0a7589f7ef48227003de78510f9523bb4e6b}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_PUBLIC_URL:-http://localhost:3210}
+    depends_on:
+      convex:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6791').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      CONVEX_INTERNAL_URL: http://convex:3210
+      CONVEX_INTERNAL_SITE_URL: http://convex:3211
+      CONVEX_PUBLIC_URL: ${CONVEX_PUBLIC_URL:-http://localhost:3210}
+    depends_on:
+      convex:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  oidc:
+    image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
+    profiles: [oidc-test]
+    command: [start-dev, --import-realm]
+    ports:
+      - "127.0.0.1:${OIDC_PORT:-8080}:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: test-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${OIDC_ADMIN_PASSWORD:-local-test-only}
+      KC_HOSTNAME: http://host.docker.internal:${OIDC_PORT:-8080}
+    volumes:
+      - ./docker/oidc-realm.json:/opt/keycloak/data/import/opensend.json:ro
+volumes:
+  convex-data:

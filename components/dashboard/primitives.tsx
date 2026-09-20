@@ -22,9 +22,9 @@ import {
 } from "lucide-react"
 
 import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -1093,26 +1093,47 @@ export function ConfirmDialog({
   title: string
   description: string
   confirmLabel?: string
-  onConfirm: () => void
+  onConfirm: () => unknown | Promise<unknown>
 }) {
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState("")
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!pending) onOpenChange(next)
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+          <Button
             variant="destructive"
-            onClick={() => {
-              onConfirm()
-              onOpenChange(false)
+            disabled={pending}
+            onClick={async () => {
+              setPending(true)
+              setError("")
+              try {
+                await onConfirm()
+                onOpenChange(false)
+              } catch (e) {
+                setError(actionError(e))
+              } finally {
+                setPending(false)
+              }
             }}
           >
             {confirmLabel}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -1130,7 +1151,7 @@ export function TypeToConfirmDialog(props: {
   phrase: string
   acknowledgement?: string
   confirmLabel: string
-  onConfirm: () => void
+  onConfirm: () => unknown | Promise<unknown>
   /** What is about to go, shown under the description. */
   children?: React.ReactNode
 }) {
@@ -1155,17 +1176,27 @@ function TypeToConfirmForm({
   const id = React.useId()
   const [typed, setTyped] = React.useState("")
   const [acknowledged, setAcknowledged] = React.useState(false)
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState("")
   const ready = typed === phrase && (acknowledged || !acknowledgement)
 
   return (
     <AlertDialogContent size="md">
       <form
         className="contents"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
-          if (!ready) return
-          onConfirm()
-          onOpenChange(false)
+          if (!ready || pending) return
+          setPending(true)
+          setError("")
+          try {
+            await onConfirm()
+            onOpenChange(false)
+          } catch (e) {
+            setError(actionError(e))
+          } finally {
+            setPending(false)
+          }
         }}
       >
         <AlertDialogHeader>
@@ -1202,9 +1233,18 @@ function TypeToConfirmForm({
             </Field>
           ) : null}
         </FieldGroup>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-          <Button type="submit" variant="destructive" disabled={!ready}>
+          <Button
+            type="submit"
+            variant="destructive"
+            disabled={!ready || pending}
+          >
             {confirmLabel}
           </Button>
         </AlertDialogFooter>
@@ -1223,7 +1263,7 @@ export function TextFieldDialog(props: {
   label: string
   value: string
   validate: (value: string) => string | null
-  onSubmit: (value: string) => void
+  onSubmit: (value: string) => unknown | Promise<unknown>
   mono?: boolean
 }) {
   return (
@@ -1244,6 +1284,7 @@ function TextFieldDialogForm({
   onSubmit,
   mono,
 }: React.ComponentProps<typeof TextFieldDialog>) {
+  const [pending, setPending] = React.useState(false)
   const id = React.useId()
   const [value, setValue] = React.useState(initial)
   const [error, setError] = React.useState<string | null>(null)
@@ -1251,7 +1292,7 @@ function TextFieldDialogForm({
   return (
     <DialogContent className="sm:max-w-md">
       <form
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
           const next = value.trim()
           const problem = validate(next)
@@ -1259,8 +1300,16 @@ function TextFieldDialogForm({
             setError(problem)
             return
           }
-          onSubmit(next)
-          onOpenChange(false)
+          if (pending) return
+          setPending(true)
+          try {
+            await onSubmit(next)
+            onOpenChange(false)
+          } catch (e) {
+            setError(actionError(e))
+          } finally {
+            setPending(false)
+          }
         }}
       >
         <DialogHeader>
@@ -1287,7 +1336,9 @@ function TextFieldDialogForm({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit">Save</Button>
+          <Button type="submit" disabled={pending}>
+            Save
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>

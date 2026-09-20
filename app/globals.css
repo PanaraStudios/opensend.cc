@@ -80,6 +80,11 @@
   --terminal-fg: #f5f5f5;
   --terminal-dot: #404040;
 
+  /* Auth quote panels keep their dark backdrop in both themes. */
+  --auth-panel: #171717;
+  --auth-panel-foreground: #ffffff;
+  --gradient-auth-panel: linear-gradient(180deg, #33363b 0%, #171717 100%);
+
   /* gradients (controls and pills are never flat fills) */
   --gradient-primary: linear-gradient(180deg, #33363b 0%, #171717 100%);
   --gradient-primary-hover: linear-gradient(180deg, #26262a 0%, #0a0a0a 100%);

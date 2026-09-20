@@ -1,3 +1,4 @@
+import { requireAccount } from "@/lib/auth/server"
 import type { Metadata } from "next"
 
 import { FullScreenShell } from "@/components/dashboard/shell"
@@ -13,10 +14,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export default function EditorLayout({
+export default async function EditorLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  await requireAccount()
   return <FullScreenShell>{children}</FullScreenShell>
 }

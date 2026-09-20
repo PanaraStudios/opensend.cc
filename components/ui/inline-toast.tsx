@@ -3,11 +3,15 @@
 import {
   Children,
   cloneElement,
+  createContext,
+  useContext,
+  useEffect,
   isValidElement,
   useId,
   useState,
   type ComponentProps,
   type FormEvent,
+  type FocusEvent,
   type InvalidEvent,
   type ReactElement,
   type ReactNode,
@@ -83,6 +87,14 @@ const validityKeys = [
 
 type FormControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
 
+export type InputValidationProps = {
+  validationMessage?: string | null
+  validationMessages?: Partial<ValidityMessages>
+  onValidationClear?: () => void
+}
+const FieldToastContext = createContext(false)
+const invalidControlSelector = "input:invalid, textarea:invalid, select:invalid"
+
 function isFormControl(target: EventTarget | null): target is FormControl {
   return (
     target instanceof HTMLInputElement ||
@@ -95,7 +107,37 @@ export function validityMessage(
   control: FormControl,
   messages?: Partial<ValidityMessages>
 ) {
-  const copy = { ...defaultValidityMessages, ...messages }
+  if (control.validity.customError) return control.validationMessage
+  const input = control instanceof HTMLInputElement ? control : null
+  const text =
+    control instanceof HTMLInputElement ||
+    control instanceof HTMLTextAreaElement
+      ? control
+      : null
+  const copy: ValidityMessages = {
+    ...defaultValidityMessages,
+    ...(input?.type === "email"
+      ? {
+          valueMissing: "Enter your email",
+          typeMismatch: "Enter a valid email",
+        }
+      : {}),
+    ...(input?.type === "url" ? { typeMismatch: "Enter a valid URL" } : {}),
+    ...(input?.type === "file" ? { valueMissing: "Choose a file" } : {}),
+    ...(input?.type === "checkbox"
+      ? { valueMissing: "Select this option to continue" }
+      : {}),
+    ...(text && text.minLength > 0
+      ? { tooShort: `Use at least ${text.minLength} characters` }
+      : {}),
+    ...(text && text.maxLength >= 0
+      ? { tooLong: `Use no more than ${text.maxLength} characters` }
+      : {}),
+    ...(input?.min ? { rangeUnderflow: `Enter ${input.min} or more` } : {}),
+    ...(input?.max ? { rangeOverflow: `Enter ${input.max} or less` } : {}),
+    ...(control.title ? { patternMismatch: control.title } : {}),
+    ...messages,
+  }
   for (const key of validityKeys) {
     if (control.validity[key]) return copy[key]
   }
@@ -104,7 +146,7 @@ export function validityMessage(
 
 export function reportFormValidity(form: HTMLFormElement) {
   if (form.checkValidity()) return true
-  const first = form.querySelector(":invalid")
+  const first = form.querySelector(invalidControlSelector)
   if (first instanceof HTMLElement) first.focus()
   return false
 }
@@ -113,6 +155,7 @@ type TooltipContentProps = ComponentProps<typeof TooltipContent>
 
 function InlineToast({
   open = false,
+  onOpenChange,
   variant = "warning",
   side = "top",
   align = "start",
@@ -125,6 +168,7 @@ function InlineToast({
   children,
 }: {
   open?: boolean
+  onOpenChange?: ComponentProps<typeof Tooltip>["onOpenChange"]
   variant?: InlineToastVariant
   side?: TooltipContentProps["side"]
   align?: TooltipContentProps["align"]
@@ -139,7 +183,7 @@ function InlineToast({
   const Icon = iconByVariant[variant]
 
   return (
-    <Tooltip open={open} disableHoverablePopup>
+    <Tooltip open={open} onOpenChange={onOpenChange} disableHoverablePopup>
       <TooltipTrigger render={trigger} closeOnClick={false} delay={0} />
       {open && children ? (
         <TooltipContent
@@ -174,6 +218,8 @@ type ControlProps = {
   onInvalid?: (event: InvalidEvent<FormControl>) => void
   onInput?: (event: FormEvent<FormControl>) => void
   onChange?: (event: FormEvent<FormControl>) => void
+  onFocus?: (event: FocusEvent<FormControl>) => void
+  onBlur?: (event: FocusEvent<FormControl>) => void
   "aria-invalid"?: boolean | "true" | "false"
   "aria-describedby"?: string
 }
@@ -187,8 +233,10 @@ function FieldToast({
   onClear,
   side,
   align,
+  wrap = true,
 }: {
   children: ReactElement<ControlProps>
+  wrap?: boolean
   className?: string
   variant?: InlineToastVariant
   message?: string | null
@@ -198,11 +246,24 @@ function FieldToast({
   align?: TooltipContentProps["align"]
 }) {
   const toastId = useId()
+  const [controlForm, setControlForm] = useState<HTMLFormElement | null>(null)
+  const [focused, setFocused] = useState(false)
   const [constraintMessage, setConstraintMessage] = useState<string | null>(
     null
   )
+  useEffect(() => {
+    if (!constraintMessage && !message) return
+    const reset = (event: Event) => {
+      if (event.target !== controlForm) return
+      setConstraintMessage(null)
+      if (message) onClear?.()
+    }
+    document.addEventListener("reset", reset, true)
+    return () => document.removeEventListener("reset", reset, true)
+  }, [constraintMessage, message, onClear, controlForm])
   const child = Children.only(children)
   const shown = message ?? constraintMessage
+  const open = Boolean(shown) && (Boolean(message) || focused)
 
   if (!isValidElement<ControlProps>(child)) {
     return children
@@ -214,43 +275,91 @@ function FieldToast({
   }
 
   const describedBy =
-    [shown ? toastId : undefined, child.props["aria-describedby"]]
+    [open ? toastId : undefined, child.props["aria-describedby"]]
       .filter(Boolean)
       .join(" ") || undefined
 
-  return (
-    <div data-slot="field-toast" className={cn("w-full", className)}>
-      <InlineToast
-        id={toastId}
-        open={Boolean(shown)}
-        variant={variant}
-        side={side}
-        align={align}
-        trigger={cloneElement(child, {
-          "aria-invalid": shown ? true : child.props["aria-invalid"],
-          "aria-describedby": describedBy,
-          onInvalid: (event) => {
-            event.preventDefault()
-            if (isFormControl(event.currentTarget)) {
-              setConstraintMessage(
-                validityMessage(event.currentTarget, messages)
-              )
+  const toast = (
+    <InlineToast
+      id={toastId}
+      open={open}
+      onOpenChange={(next, details) => {
+        if (!next && details.reason === "escape-key") setFocused(false)
+      }}
+      variant={variant}
+      side={side}
+      align={align}
+      trigger={cloneElement(child, {
+        "aria-invalid": shown ? true : child.props["aria-invalid"],
+        "aria-describedby": describedBy,
+        onInvalid: (event) => {
+          event.preventDefault()
+          if (isFormControl(event.currentTarget)) {
+            setConstraintMessage(validityMessage(event.currentTarget, messages))
+            const control = event.currentTarget
+            setControlForm(control.form)
+            const first = control.form?.querySelector(invalidControlSelector)
+            if (!first || first === control) {
+              setFocused(true)
+              control.focus()
             }
-            child.props.onInvalid?.(event)
-          },
-          onInput: (event) => {
-            clear()
-            child.props.onInput?.(event)
-          },
-          onChange: (event) => {
-            clear()
-            child.props.onChange?.(event)
-          },
-        })}
-      >
-        {shown}
-      </InlineToast>
-    </div>
+          }
+          child.props.onInvalid?.(event)
+        },
+        onFocus: (event) => {
+          setControlForm(event.currentTarget.form)
+          setFocused(true)
+          child.props.onFocus?.(event)
+        },
+        onBlur: (event) => {
+          setFocused(false)
+          child.props.onBlur?.(event)
+        },
+        onInput: (event) => {
+          clear()
+          child.props.onInput?.(event)
+        },
+        onChange: (event) => {
+          clear()
+          child.props.onChange?.(event)
+        },
+      })}
+    >
+      {shown}
+    </InlineToast>
+  )
+  return (
+    <FieldToastContext.Provider value={true}>
+      {wrap ? (
+        <div data-slot="field-toast" className={cn("w-full", className)}>
+          {toast}
+        </div>
+      ) : (
+        toast
+      )}
+    </FieldToastContext.Provider>
+  )
+}
+
+/** Default validation for primitives; an explicit FieldToast takes precedence. */
+function InputValidation({
+  children,
+  validationMessage,
+  validationMessages,
+  onValidationClear,
+}: InputValidationProps & { children: ReactElement<ControlProps> }) {
+  const alreadyWrapped = useContext(FieldToastContext)
+  if (alreadyWrapped) return children
+  return (
+    <FieldToast
+      wrap={false}
+      variant={validationMessage ? "error" : "warning"}
+      message={validationMessage}
+      messages={validationMessages}
+      onClear={onValidationClear}
+    >
+      {children}
+    </FieldToast>
   )
 }
 
@@ -270,4 +379,4 @@ function ValidatedForm({ onSubmit, ...props }: ComponentProps<"form">) {
   )
 }
 
-export { FieldToast, InlineToast, ValidatedForm }
+export { FieldToast, InlineToast, InputValidation, ValidatedForm }

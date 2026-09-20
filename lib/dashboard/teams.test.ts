@@ -198,7 +198,7 @@ describe("team and account changes", () => {
     assert.equal(deleteTeamInRoot(left, SEED_TEAM_ID), left)
   })
 
-  it("gives a root saved before accounts the seeded account", () => {
+  it("migrates old demo accounts without restoring MFA secrets", () => {
     const legacy: Partial<ReturnType<typeof seedRoot>> = seedRoot()
     delete legacy.account
     const root = parseRoot(JSON.stringify(legacy))
@@ -217,7 +217,7 @@ describe("team and account changes", () => {
     )
     assert.deepEqual(kept.account, {
       providers: [{ provider: "github", connectedAt: 5 }],
-      mfa: { secret: "ABC", enabledAt: 9 },
+      mfa: null,
     })
   })
 })

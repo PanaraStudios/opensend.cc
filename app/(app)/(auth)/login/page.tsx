@@ -1,7 +1,3 @@
-import { redirect } from "next/navigation"
-
-import { MARKETING_URL } from "@/lib/site"
-
-export default function LoginPage() {
-  redirect(`${MARKETING_URL}/waitlist`)
-}
+import { Suspense } from "react"
+import { AuthForm } from "@/components/auth/form"
+export default function Page() { return <Suspense><AuthForm mode="login" /></Suspense> }
