@@ -32,6 +32,8 @@ type Env = {
   readonly CONVEX_SITE_URL: string;
   readonly ALLOW_LOCAL_OIDC: string | undefined;
   readonly BETTER_AUTH_SECRET: string;
+  readonly SES_CALLBACK_ORIGIN: string | undefined;
+  readonly SES_ENCRYPTION_KEY: string | undefined;
   readonly SITE_URL: string;
   readonly SSO_ENCRYPTION_KEY: string;
 };

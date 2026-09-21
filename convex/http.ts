@@ -6,6 +6,9 @@ import { loadProvider } from "./oidc"
 import { components } from "./_generated/api"
 import { handler as oauthHandler } from "./oauthHttp"
 const http = httpRouter()
+import { health as sesHealth, receive as sesReceive } from "./ses/http"
+http.route({ path: "/ses/health", method: "GET", handler: sesHealth })
+http.route({ path: "/ses/events", method: "POST", handler: sesReceive })
 const handler = httpAction(async (ctx, request) => {
   try {
     const url = new URL(request.url)

@@ -216,9 +216,6 @@ function deleteDomain(id: string) {
   mutate((current) => ({
     ...current,
     domains: current.domains.filter((domain) => domain.id !== id),
-    apiKeys: current.apiKeys.map((key) =>
-      key.domainId === id ? { ...key, domainId: null } : key
-    ),
   }))
 }
 
@@ -1421,6 +1418,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       ...actions,
       state: {
         ...demo,
+        // Domains are now loaded by resource-specific Convex hooks.
+        domains: [],
         members,
         settings: {
           ...demo.settings,

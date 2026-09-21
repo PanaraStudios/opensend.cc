@@ -129,7 +129,7 @@ import {
 } from "@/components/ui/tooltip"
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
 import { cn } from "@/lib/utils"
-import { DEMO_NOW } from "@/lib/dashboard/data"
+import { useClock } from "@/lib/time/use-clock"
 import {
   AUTOMATION_RUN_STATUS_TONE,
   AUTOMATION_STATUS_TONE,
@@ -353,7 +353,7 @@ export function MetaStrip({
     <ItemGroup className="flex-row flex-wrap gap-2">
       {items.map((item) => (
         <Item key={item.label} size="sm" className="w-fit min-w-40 flex-1">
-          <ItemContent>
+          <ItemContent className="min-w-0">
             <ItemTitle>{item.label}</ItemTitle>
             <ItemDescription className="flex min-w-0 items-center gap-1.5">
               {item.value}
@@ -584,18 +584,25 @@ export function ListPagination({
   onPageSizeChange,
   previousLabel = "Previous",
   nextLabel = "Next",
-}: ReturnType<typeof usePagination>["pagination"] & {
+  hasMore = false,
+  loading = false,
+}: Omit<ReturnType<typeof usePagination>["pagination"], "onPageChange"> & {
+  onPageChange: (page: number) => void
   noun: string
   /** For a noun that does not just take an "s". */
   plural?: string
   previousLabel?: string
   nextLabel?: string
+  hasMore?: boolean
+  loading?: boolean
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
         <span>
-          Page {page + 1} of {pageCount} · {pluralize(total, noun, plural)}
+          Page {page + 1} of {pageCount}
+          {hasMore ? "+" : ""} · {pluralize(total, noun, plural)}
+          {hasMore ? "+" : ""}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -637,7 +644,7 @@ export function ListPagination({
         <Button
           variant="outline"
           size="sm"
-          disabled={page >= pageCount - 1}
+          disabled={loading || (page >= pageCount - 1 && !hasMore)}
           onClick={() => onPageChange(page + 1)}
         >
           {nextLabel}
@@ -1718,8 +1725,7 @@ export function DocsSheet({
 
 /* ------------------------------------------------------------------- time */
 
-/** Age against the demo clock, the one the date range picker uses, so
-    "Last 15 days" and "15d ago" agree. The exact time sits in the tooltip.
+/** Live age, refreshed by a shared browser clock. The exact time is in the tooltip.
     `at` may be null for records that never happened, e.g. an unused key. */
 export function RelativeTime({
   at,
@@ -1728,10 +1734,12 @@ export function RelativeTime({
   at: number | null
   fallback?: string
 }) {
+  const now = useClock()
   if (at === null) return <>{fallback}</>
+  const iso = new Date(at).toISOString()
   return (
-    <time dateTime={new Date(at).toISOString()} title={formatDateTime(at)}>
-      {formatRelative(at, DEMO_NOW)}
+    <time dateTime={iso} title={now === null ? iso : formatDateTime(at)}>
+      {now === null ? iso.slice(0, 10) : formatRelative(at, now)}
     </time>
   )
 }

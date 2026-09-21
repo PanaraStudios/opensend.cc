@@ -42,6 +42,11 @@ const PROVIDERS: Record<
     auto: false,
   },
   other: { label: "Other provider", url: "", auto: false },
+  hostinger: {
+    label: "Hostinger",
+    url: "https://hpanel.hostinger.com",
+    auto: false,
+  },
 }
 
 export function providerLabel(provider: DnsProvider | undefined): string {

@@ -121,7 +121,11 @@ export function DomainSection({
   title: string
   description?: string
   docLabel?: string
-  toggle?: { checked: boolean; onCheckedChange: (checked: boolean) => void }
+  toggle?: {
+    checked: boolean
+    disabled?: boolean
+    onCheckedChange: (checked: boolean) => void
+  }
   /** Rule above the block, to separate it from the one before. */
   divider?: boolean
   children?: React.ReactNode
@@ -150,6 +154,7 @@ export function DomainSection({
           <Switch
             aria-label={title}
             checked={toggle.checked}
+            disabled={toggle.disabled}
             onCheckedChange={toggle.onCheckedChange}
           />
         ) : null}
@@ -181,7 +186,7 @@ export function DnsRecordsTable({
 }) {
   return (
     <ResourceTable
-      className="[&_table]:table-fixed"
+      className="[&_table]:min-w-160 [&_table]:table-fixed"
       headers={
         <>
           <Th className="w-20">Type</Th>
@@ -237,7 +242,7 @@ const DOMAIN_DOCS = [
   },
   {
     title: "Receiving",
-    body: "Turning receiving on adds an inbound MX record at the apex. The domain shows as partially verified until that record resolves.",
+    body: "Inbound email and its receipt rules will be available in the receiving milestone.",
   },
   {
     title: "Where SES lives",

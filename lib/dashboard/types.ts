@@ -19,7 +19,7 @@ export type DomainStatus =
 
 /** DNS host we detected for a domain. Only some can be configured for you. */
 export type DnsProvider =
-  "cloudflare" | "route53" | "godaddy" | "namecheap" | "other"
+  "cloudflare" | "route53" | "godaddy" | "namecheap" | "hostinger" | "other"
 
 export type DomainEventType =
   "added" | "dns_verified" | "partially_verified" | "verified"

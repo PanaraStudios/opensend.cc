@@ -138,11 +138,11 @@ describe("apiKeyDomainLabel", () => {
     )
   })
 
-  it("falls back to all domains when unrestricted or deleted", () => {
+  it("keeps removed domain restrictions visible", () => {
     assert.equal(apiKeyDomainLabel(domains, { domainId: null }), "All domains")
     assert.equal(
       apiKeyDomainLabel(domains, { domainId: "dom_gone" }),
-      "All domains"
+      "Removed domain (sending disabled)"
     )
   })
 })

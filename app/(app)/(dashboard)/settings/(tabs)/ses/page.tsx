@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { SettingsSes } from "@/components/dashboard/settings"
+import { SettingsSes } from "@/components/dashboard/settings-ses"
 
 export const metadata: Metadata = {
   title: "Amazon SES",

@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
 import { WorkspaceProvider } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
@@ -9,6 +11,7 @@ import { MARKETING_URL } from "@/lib/site"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowUpRightIcon,
+  ArrowLeftIcon,
   BookOpenIcon,
   HouseIcon,
   LogOutIcon,
@@ -217,7 +220,13 @@ function CommandMenu({
   )
 }
 
-function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
+function DashboardSidebar({
+  onSearch,
+  setupPending,
+}: {
+  onSearch: () => void
+  setupPending: boolean
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const { you } = useDashboard()
@@ -231,7 +240,17 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <TeamSwitcher />
+            {setupPending ? (
+              <SidebarMenuButton
+                render={<Link href="/emails" />}
+                tooltip="Return to setup"
+              >
+                <ArrowLeftIcon />
+                <span>Setup</span>
+              </SidebarMenuButton>
+            ) : (
+              <TeamSwitcher />
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -239,21 +258,25 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem className="mb-1">
-                <SidebarMenuButton
-                  variant="outline"
-                  tooltip="Search"
-                  onClick={onSearch}
-                >
-                  <SearchIcon />
-                  <span>Search</span>
-                  <Kbd className="ml-auto px-1.5 group-data-[collapsible=icon]:hidden">
-                    <span>⌘</span>
-                    <span>K</span>
-                  </Kbd>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {DASHBOARD_NAV.map((item) => {
+              {!setupPending && (
+                <SidebarMenuItem className="mb-1">
+                  <SidebarMenuButton
+                    variant="outline"
+                    tooltip="Search"
+                    onClick={onSearch}
+                  >
+                    <SearchIcon />
+                    <span>Search</span>
+                    <Kbd className="ml-auto px-1.5 group-data-[collapsible=icon]:hidden">
+                      <span>⌘</span>
+                      <span>K</span>
+                    </Kbd>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {DASHBOARD_NAV.filter(
+                (item) => !setupPending || item.href === "/domains"
+              ).map((item) => {
                 const Icon = item.icon
                 const active = navItemActive(pathname, item)
                 return (
@@ -279,100 +302,106 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
           <SidebarMenuItem>
             <SidebarCollapseButton />
           </SidebarMenuItem>
-          <SidebarMenuItem className="flex w-full flex-row items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-start group-data-[collapsible=icon]:gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger
+          {!setupPending && (
+            <SidebarMenuItem className="flex w-full flex-row items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-start group-data-[collapsible=icon]:gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <SidebarMenuButton
+                      size="icon"
+                      tooltip={you?.name ?? "Account"}
+                      className="overflow-hidden rounded-full"
+                    />
+                  }
+                >
+                  <Avatar>
+                    <AvatarFallback>
+                      {initials(you?.name ?? "You")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="sr-only">{you?.name ?? "Account"}</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="p-0 font-normal text-foreground">
+                      <span className="flex items-center gap-2 px-1.5 py-1.5">
+                        <Avatar size="sm">
+                          <AvatarFallback>
+                            {initials(you?.name ?? "You")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                          <span className="truncate font-medium">
+                            {you?.name ?? "You"}
+                          </span>
+                          <span className="truncate font-mono text-caption text-muted-foreground">
+                            {you?.email}
+                          </span>
+                        </span>
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem render={<Link href="/profile" />}>
+                      <UserRoundIcon />
+                      My profile
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <AppearanceItems />
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    render={
+                      <a
+                        href={MARKETING_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                      />
+                    }
+                  >
+                    <HouseIcon />
+                    Homepage
+                    <ArrowUpRightIcon className="ml-auto" />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setLogoutOpen(true)}
+                  >
+                    <LogOutIcon />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <SidebarMenuButton
+                size="icon"
+                tooltip="Docs"
                 render={
-                  <SidebarMenuButton
-                    size="icon"
-                    tooltip={you?.name ?? "Account"}
-                    className="overflow-hidden rounded-full"
+                  <a
+                    href={`${MARKETING_URL}/docs`}
+                    target="_blank"
+                    rel="noreferrer"
                   />
                 }
               >
-                <Avatar>
-                  <AvatarFallback>
-                    {initials(you?.name ?? "You")}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="sr-only">{you?.name ?? "Account"}</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="p-0 font-normal text-foreground">
-                    <span className="flex items-center gap-2 px-1.5 py-1.5">
-                      <Avatar size="sm">
-                        <AvatarFallback>
-                          {initials(you?.name ?? "You")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-medium">
-                          {you?.name ?? "You"}
-                        </span>
-                        <span className="truncate font-mono text-caption text-muted-foreground">
-                          {you?.email}
-                        </span>
-                      </span>
-                    </span>
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem render={<Link href="/profile" />}>
-                    <UserRoundIcon />
-                    My profile
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <AppearanceItems />
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  render={
-                    <a href={MARKETING_URL} target="_blank" rel="noreferrer" />
-                  }
-                >
-                  <HouseIcon />
-                  Homepage
-                  <ArrowUpRightIcon className="ml-auto" />
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setLogoutOpen(true)}
-                >
-                  <LogOutIcon />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SidebarMenuButton
-              size="icon"
-              tooltip="Docs"
-              render={
-                <a
-                  href={`${MARKETING_URL}/docs`}
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              <BookOpenIcon />
-              <span className="sr-only">Docs</span>
-            </SidebarMenuButton>
-            <ConfirmDialog
-              open={logoutOpen}
-              onOpenChange={setLogoutOpen}
-              title="Log out?"
-              description="You can sign in again at any time."
-              confirmLabel="Log out"
-              onConfirm={async () => {
-                await authResult(await authClient.signOut())
-                router.push("/login")
-                router.refresh()
-              }}
-            />
-          </SidebarMenuItem>
+                <BookOpenIcon />
+                <span className="sr-only">Docs</span>
+              </SidebarMenuButton>
+              <ConfirmDialog
+                open={logoutOpen}
+                onOpenChange={setLogoutOpen}
+                title="Log out?"
+                description="You can sign in again at any time."
+                confirmLabel="Log out"
+                onConfirm={async () => {
+                  await authResult(await authClient.signOut())
+                  router.push("/login")
+                  router.refresh()
+                }}
+              />
+            </SidebarMenuItem>
+          )}
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
@@ -382,8 +411,11 @@ function DashboardSidebar({ onSearch }: { onSearch: () => void }) {
 
 function DashboardChrome({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const installation = useQuery(api.installation.status)
+  const setupPending = !installation?.installation?.completedAt
 
   React.useEffect(() => {
+    if (setupPending) return
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
@@ -392,19 +424,24 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [])
+  }, [setupPending])
 
   return (
     <div className="hatch min-h-svh">
       <SidebarProvider>
-        <DashboardSidebar onSearch={() => setSearchOpen(true)} />
+        <DashboardSidebar
+          setupPending={setupPending}
+          onSearch={() => setSearchOpen(true)}
+        />
         <SidebarInset className="min-w-0 bg-background">
           <div className="flex min-h-0 w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
             <SidebarTrigger className="-ml-1 md:hidden" />
             {children}
           </div>
         </SidebarInset>
-        <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
+        {!setupPending && (
+          <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
+        )}
       </SidebarProvider>
     </div>
   )

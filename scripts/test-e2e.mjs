@@ -9,8 +9,30 @@ import {
 } from "node:fs"
 import { spawn, spawnSync } from "node:child_process"
 import { resolve } from "node:path"
-const filename = resolve(".env.playwright")
-const project = "opensend-e2e"
+import { createServer } from "node:net"
+const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
+const filename = resolve(`.env.playwright-${project}`)
+async function freePort() {
+  const server = createServer()
+  await new Promise((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", resolve)
+  })
+  const port = server.address().port
+  await new Promise((resolve) => server.close(resolve))
+  return String(port)
+}
+const [appPort, convexPort, sitePort, dashboardPort, oidcPort] =
+  await Promise.all(Array.from({ length: 5 }, freePort))
+const resultDir = resolve("test-results", project)
+mkdirSync(resultDir, { recursive: true })
+const realm = JSON.parse(readFileSync("docker/oidc-realm.json", "utf8"))
+realm.clients[0].redirectUris = [
+  `http://localhost:${appPort}/api/auth/oauth2/callback/*`,
+]
+realm.clients[0].webOrigins = [`http://localhost:${appPort}`]
+const realmFile = resolve(resultDir, "oidc-realm.json")
+writeFileSync(realmFile, JSON.stringify(realm), { mode: 0o600 })
 const parse = (text) =>
   Object.fromEntries(
     text
@@ -48,14 +70,17 @@ const values = {
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
   BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
   SSO_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
-  SITE_URL: "http://localhost:3400",
-  APP_PORT: "3400",
-  CONVEX_PORT: "3410",
-  CONVEX_SITE_PORT: "3411",
-  DASHBOARD_PORT: "6792",
-  OIDC_PORT: "8180",
-  CONVEX_PUBLIC_URL: "http://localhost:3410",
-  CONVEX_PUBLIC_SITE_URL: "http://host.docker.internal:3411",
+  SITE_URL: `http://localhost:${appPort}`,
+  APP_PORT: appPort,
+  CONVEX_PORT: convexPort,
+  CONVEX_SITE_PORT: sitePort,
+  DASHBOARD_PORT: dashboardPort,
+  OIDC_PORT: oidcPort,
+  OIDC_REALM_FILE: realmFile,
+  APP_IMAGE: process.env.APP_IMAGE || "opensend-app:local",
+  CONVEX_PUBLIC_URL: `http://localhost:${convexPort}`,
+  // Exercise setup's Docker loopback normalization with a remapped host port.
+  CONVEX_PUBLIC_SITE_URL: `http://localhost:${sitePort}`,
   ALLOW_LOCAL_OIDC: "true",
   ...(process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE
     ? { CONVEX_IMAGE: process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE }
@@ -78,18 +103,27 @@ const env = {
   ...process.env,
   OPENSEND_ENV_FILE: filename,
   COMPOSE_PROJECT_NAME: project,
+  OPENSEND_BASE_URL: values.SITE_URL,
+  OPENSEND_CONVEX_URL: values.CONVEX_PUBLIC_URL,
+  OPENSEND_CALLBACK_ORIGIN: values.CONVEX_PUBLIC_SITE_URL,
+  OPENSEND_OIDC_URL: `http://host.docker.internal:${oidcPort}/realms/opensend`,
+  OPENSEND_TEST_RESULTS: resultDir,
 }
 mkdirSync("test-results", { recursive: true })
 let logs
 let status = 1
 try {
   run("node", ["scripts/setup.mjs"], env)
+  // Setup may normalize a loopback URL for requests originating inside Docker.
+  env.OPENSEND_CALLBACK_ORIGIN = parse(
+    readFileSync(filename, "utf8")
+  ).CONVEX_PUBLIC_SITE_URL
   run("docker", [...compose, "up", "-d", "oidc"])
   let ready = false
   for (let i = 0; i < 60; i++) {
     try {
       const r = await fetch(
-        "http://localhost:8180/realms/opensend/.well-known/openid-configuration"
+        `http://localhost:${oidcPort}/realms/opensend/.well-known/openid-configuration`
       )
       if (r.ok) {
         ready = true
@@ -99,7 +133,7 @@ try {
     await new Promise((r) => setTimeout(r, 1000))
   }
   if (!ready) throw new Error("OIDC test provider did not start")
-  const logPath = resolve("test-results/auth-function-logs.jsonl")
+  const logPath = resolve(resultDir, "auth-function-logs.jsonl")
   const fd = openSync(logPath, "w", 0o600)
   logs = spawn("pnpm", ["backend", "logs", "--jsonl"], {
     env,
@@ -108,10 +142,14 @@ try {
   })
   closeSync(fd)
   const result = await new Promise((resolve) => {
-    const tests = spawn("pnpm", ["exec", "playwright", "test"], {
-      env: { ...env, OPENSEND_TEST_LOG: logPath },
-      stdio: "inherit",
-    })
+    const tests = spawn(
+      "pnpm",
+      ["exec", "playwright", "test", ...process.argv.slice(2)],
+      {
+        env: { ...env, OPENSEND_TEST_LOG: logPath },
+        stdio: "inherit",
+      }
+    )
     tests.on("exit", (code) => resolve(code ?? 1))
     tests.on("error", () => resolve(1))
   })
@@ -122,7 +160,26 @@ try {
       process.kill(-logs.pid, "SIGTERM")
     } catch {}
   }
-  if (process.env.OPENSEND_KEEP_E2E !== "1")
+  if (process.env.OPENSEND_KEEP_E2E !== "1") {
+    if (
+      parse(readFileSync(filename, "utf8")).INSTANCE_NAME !== project ||
+      !project.startsWith("opensend-e2e-")
+    )
+      throw new Error("Refusing cleanup: test ownership changed")
+    const volume = spawnSync(
+      "docker",
+      [
+        "volume",
+        "inspect",
+        `${project}_convex-data`,
+        "--format",
+        '{{ index .Labels "com.docker.compose.project" }}',
+      ],
+      { encoding: "utf8" }
+    )
+    if (volume.status === 0 && volume.stdout.trim() !== project)
+      throw new Error("Refusing cleanup: Docker volume ownership changed")
     run("docker", [...compose, "down", "--volumes"])
+  }
 }
 process.exit(status)
