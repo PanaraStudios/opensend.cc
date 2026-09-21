@@ -25,6 +25,22 @@ const defaults = {
   CONVEX_PUBLIC_SITE_URL: "http://localhost:3211",
 }
 for (const [key, value] of Object.entries(defaults)) env[key] ||= value
+// The backend fetches Better Auth signing keys from this advertised HTTP origin.
+// With remapped Docker ports, localhost points back into the container instead
+// of the host. Browser auth requests already use the Next.js proxy.
+const siteOrigin = new URL(env.CONVEX_PUBLIC_SITE_URL)
+if (["localhost", "127.0.0.1"].includes(siteOrigin.hostname)) {
+  siteOrigin.hostname = "host.docker.internal"
+  env.CONVEX_PUBLIC_SITE_URL = siteOrigin.origin
+}
+// Node action callbacks use Convex's advertised origin from inside Docker.
+// A published localhost port is on the host, not the backend container.
+if (!env.CONVEX_BACKEND_ORIGIN) {
+  const origin = new URL(env.CONVEX_PUBLIC_URL)
+  if (["localhost", "127.0.0.1"].includes(origin.hostname))
+    origin.hostname = "host.docker.internal"
+  env.CONVEX_BACKEND_ORIGIN = origin.origin
+}
 function persist() {
   writeFileSync(
     filename,
@@ -74,6 +90,8 @@ for (const key of [
   "SITE_URL",
   "BETTER_AUTH_SECRET",
   "SSO_ENCRYPTION_KEY",
+  "SES_ENCRYPTION_KEY",
+  "SES_CALLBACK_ORIGIN",
   "ALLOW_LOCAL_OIDC",
 ])
   if (env[key])
@@ -81,7 +99,16 @@ for (const key of [
       env: cliEnv,
     })
 run("pnpm", ["exec", "convex", "deploy", "--yes"], { env: cliEnv })
-run("docker", [...compose, "up", "-d", "--build", "--wait", "app", "dashboard"])
+if (process.env.OPENSEND_BACKEND_ONLY !== "1")
+  run("docker", [
+    ...compose,
+    "up",
+    "-d",
+    ...(process.env.OPENSEND_SKIP_BUILD === "1" ? [] : ["--build"]),
+    "--wait",
+    "app",
+    "dashboard",
+  ])
 console.log(
   `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Auth links appear in Convex function logs.`
 )

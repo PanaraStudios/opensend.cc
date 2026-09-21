@@ -2,10 +2,30 @@ import { env } from "./_generated/server"
 import { mutation, query, action } from "./_generated/server"
 import { components } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
-import { sessionId } from "./access"
+import {
+  sessionId,
+  requireTeam,
+  findInstallation,
+  installationAccess,
+  requireSetupComplete,
+} from "./access"
+import type { MutationCtx } from "./_generated/server"
 import { snapshotValue } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
+import { ensureTeamTenant, removeTeamTenants } from "./tenants"
 const role = v.union(v.literal("admin"), v.literal("member"))
+async function requireEmptyDomains(ctx: MutationCtx, organizationId: string) {
+  const domain = await ctx.db
+    .query("domains")
+    .withIndex("by_organizationId_and_deleted_and_name", (q) =>
+      q.eq("organizationId", organizationId).eq("deleted", false)
+    )
+    .first()
+  if (domain)
+    throw new ConvexError(
+      "Remove this team's sending domains before deleting the team"
+    )
+}
 export const snapshot = query({
   args: {},
   returns: v.union(v.null(), snapshotValue),
@@ -33,20 +53,54 @@ export const snapshot = query({
 export const create = mutation({
   args: { name: v.string() },
   returns: v.string(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.create, {
+  handler: async (ctx, args) => {
+    const sid = await sessionId(ctx)
+    const installation = await findInstallation(ctx)
+    if (!installation?.completedAt) {
+      const access = await installationAccess(ctx)
+      const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
+        sessionId: sid,
+      })
+      const regions = await ctx.db
+        .query("sesRegions")
+        .withIndex("by_region")
+        .take(20)
+      if (
+        !access.admin ||
+        installation?.setupStep !== "team" ||
+        !installation.accountId ||
+        !installation.environmentCheckedAt ||
+        account.teams.length ||
+        !regions.length ||
+        regions.some((region) => region.phase !== "ready")
+      )
+        throw new ConvexError(
+          "Create your first team at the team step of installation setup"
+        )
+    }
+    const id = await ctx.runMutation(components.betterAuth.teams.create, {
       ...args,
-      sessionId: await sessionId(ctx),
-    }),
+      sessionId: sid,
+    })
+    if (installation?.defaultRegion)
+      await ensureTeamTenant(ctx, id, installation.defaultRegion)
+    if (installation && !installation.completedAt)
+      await ctx.db.patch("installation", installation._id, {
+        setupStep: "domain",
+      })
+    return id
+  },
 })
 export const switchTeam = mutation({
   args: { organizationId: v.string() },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.switchTeam, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.switchTeam, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })
 export const rename = mutation({
   args: {
@@ -55,20 +109,37 @@ export const rename = mutation({
     slug: v.optional(v.string()),
   },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.rename, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.rename, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })
 export const remove = mutation({
   args: { organizationId: v.string(), leave: v.boolean() },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.remove, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    await requireTeam(ctx, args.organizationId, !args.leave)
+    const sid = await sessionId(ctx)
+    const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
+      sessionId: sid,
+    })
+    if (
+      !args.leave ||
+      account.teams.find((team) => team.id === args.organizationId)?.members ===
+        1
+    ) {
+      await requireEmptyDomains(ctx, args.organizationId)
+      await removeTeamTenants(ctx, args.organizationId)
+    }
+    return ctx.runMutation(components.betterAuth.teams.remove, {
       ...args,
-      sessionId: await sessionId(ctx),
-    }),
+      sessionId: sid,
+    })
+  },
 })
 export const changeMember = mutation({
   args: {
@@ -77,16 +148,19 @@ export const changeMember = mutation({
     role: v.optional(role),
   },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.changeMember, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.changeMember, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })
 export const invite = mutation({
   args: { organizationId: v.string(), email: v.string(), role },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
     const invitation = await ctx.runMutation(
       components.betterAuth.teams.invite,
       { ...args, sessionId: await sessionId(ctx) }
@@ -102,28 +176,48 @@ export const invite = mutation({
 export const cancelInvitation = mutation({
   args: { invitationId: v.string() },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.cancelInvitation, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.cancelInvitation, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })
 export const respond = mutation({
   args: { invitationId: v.string(), accept: v.boolean() },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.respond, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.respond, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })
 export const deleteAccount = mutation({
   args: {},
   returns: v.null(),
-  handler: async (ctx) =>
-    ctx.runMutation(components.betterAuth.teams.deleteAccount, {
-      sessionId: await sessionId(ctx),
-    }),
+  handler: async (ctx) => {
+    await requireSetupComplete(ctx)
+    const sid = await sessionId(ctx)
+    const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
+      sessionId: sid,
+    })
+    const installation = await findInstallation(ctx)
+    if (installation?.accountId && (await installationAccess(ctx)).admin)
+      throw new ConvexError(
+        "The installation administrator cannot delete their account while AWS is connected"
+      )
+    for (const team of account.teams)
+      if (team.members === 1) {
+        await requireEmptyDomains(ctx, team.id)
+        await removeTeamTenants(ctx, team.id)
+      }
+    return ctx.runMutation(components.betterAuth.teams.deleteAccount, {
+      sessionId: sid,
+    })
+  },
 })
 export const uploadAvatar = action({
   args: {
@@ -141,9 +235,11 @@ export const uploadAvatar = action({
 export const removeAvatar = mutation({
   args: { organizationId: v.string() },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runMutation(components.betterAuth.teams.setAvatar, {
+  handler: async (ctx, args) => {
+    await requireSetupComplete(ctx)
+    return ctx.runMutation(components.betterAuth.teams.setAvatar, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+  },
 })

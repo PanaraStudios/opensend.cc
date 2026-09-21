@@ -22,7 +22,6 @@ import {
   providerLabel,
   providerUrl,
   regionFlag,
-  truncateMiddle,
 } from "@/lib/dashboard/domains"
 import { regionLabel, statusLabel } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
@@ -121,7 +120,11 @@ export function DomainSection({
   title: string
   description?: string
   docLabel?: string
-  toggle?: { checked: boolean; onCheckedChange: (checked: boolean) => void }
+  toggle?: {
+    checked: boolean
+    disabled?: boolean
+    onCheckedChange: (checked: boolean) => void
+  }
   /** Rule above the block, to separate it from the one before. */
   divider?: boolean
   children?: React.ReactNode
@@ -150,6 +153,7 @@ export function DomainSection({
           <Switch
             aria-label={title}
             checked={toggle.checked}
+            disabled={toggle.disabled}
             onCheckedChange={toggle.onCheckedChange}
           />
         ) : null}
@@ -168,8 +172,8 @@ export function DomainSection({
   )
 }
 
-/** The DNS table, shared by every block and by the tracking record on the
-    Configuration tab. Name and Content copy the full value on click. */
+/** Name and Content share the remaining width after the compact metadata
+    columns. Copy controls always use the full record values. */
 export function DnsRecordsTable({
   records,
   domainName,
@@ -181,15 +185,18 @@ export function DnsRecordsTable({
 }) {
   return (
     <ResourceTable
-      className="[&_table]:table-fixed"
+      className={cn(
+        "[&_table]:table-fixed",
+        showPriority ? "[&_table]:min-w-176" : "[&_table]:min-w-160"
+      )}
       headers={
         <>
           <Th className="w-20">Type</Th>
-          <Th className="w-44">Name</Th>
+          <Th>Name</Th>
           <Th>Content</Th>
-          <Th className="w-20">TTL</Th>
+          <Th className="w-16">TTL</Th>
           {showPriority ? <Th className="w-20">Priority</Th> : null}
-          <Th className="w-32">Status</Th>
+          <Th className="w-44">Status</Th>
         </>
       }
     >
@@ -197,26 +204,24 @@ export function DnsRecordsTable({
         const host = dnsHost(record.name, domainName)
         return (
           <TableRow key={record.id}>
-            <TableCell className="w-20 min-w-0 font-mono text-[13px]">
+            <TableCell className="font-mono text-[13px]">
               {record.type}
             </TableCell>
-            <TableCell className="w-44 min-w-0">
+            <TableCell className="min-w-0">
               <MonoValue copyValue={record.name}>{host}</MonoValue>
             </TableCell>
             <TableCell className="min-w-0">
-              <MonoValue copyValue={record.value}>
-                {truncateMiddle(record.value)}
-              </MonoValue>
+              <MonoValue copyValue={record.value}>{record.value}</MonoValue>
             </TableCell>
-            <TableCell className="w-20 min-w-0 text-muted-foreground">
+            <TableCell className="text-muted-foreground">
               {record.ttl}
             </TableCell>
             {showPriority ? (
-              <TableCell className="w-20 min-w-0 text-muted-foreground">
+              <TableCell className="text-muted-foreground">
                 {record.priority ?? "—"}
               </TableCell>
             ) : null}
-            <TableCell className="w-32 min-w-0">
+            <TableCell>
               <StatusBadge status={record.status} />
             </TableCell>
           </TableRow>
@@ -233,11 +238,11 @@ const DOMAIN_DOCS = [
   },
   {
     title: "Verification",
-    body: "Add the DKIM and SPF records at your DNS provider, then start verification. DNS changes can take up to 72 hours to propagate.",
+    body: "Add the DKIM and SPF records at your DNS provider, then click Check DNS records. Checks do not repeat automatically. DNS changes can take up to 72 hours to propagate.",
   },
   {
     title: "Receiving",
-    body: "Turning receiving on adds an inbound MX record at the apex. The domain shows as partially verified until that record resolves.",
+    body: "Turning receiving on adds an MX record that points inbound mail for the domain at SES. It replaces the mail provider the domain uses today, so use a subdomain when that mailbox must keep working. Receipt rules and an inbox come later.",
   },
   {
     title: "Where SES lives",
@@ -270,6 +275,9 @@ export function downloadTextFile(name: string, contents: string) {
   URL.revokeObjectURL(url)
 }
 
-export function downloadZoneFile(domain: Domain) {
-  downloadTextFile(`${domain.name}.zone`, `${domainZoneFile(domain)}\n`)
+export function downloadZoneFile(domain: Domain, records?: DnsRecord[]) {
+  downloadTextFile(
+    `${domain.name}.zone`,
+    `${domainZoneFile(domain, records)}\n`
+  )
 }

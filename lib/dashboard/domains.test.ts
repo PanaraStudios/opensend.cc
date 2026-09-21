@@ -7,6 +7,7 @@ import {
   deriveDomainStatus,
   dnsHost,
   domainBanner,
+  domainCsvFile,
   domainEventSteps,
   domainRecordSections,
   domainRecords,
@@ -17,7 +18,6 @@ import {
   truncateMiddle,
   validateDnsLabel,
   validateDomainName,
-  verifyDomainRecords,
 } from "./domains"
 import type { DomainEventStep } from "./domains"
 import type { DnsRecord, Domain, DomainStatus } from "./types"
@@ -25,6 +25,20 @@ import type { DnsRecord, Domain, DomainStatus } from "./types"
 const NOW = Date.parse("2026-09-18T12:00:00.000Z")
 const CREATED = NOW - 86_400_000
 const LATER = 3_600_000
+
+/** Every record this domain needs now resolves. */
+function verifyDomainRecords(domain: Domain, now: number): Domain {
+  return reconcileDomain(
+    {
+      ...domain,
+      records: domainRecords(domain).map((record) => ({
+        ...record,
+        status: "verified" as const,
+      })),
+    },
+    now
+  )
+}
 
 function stepAt(
   steps: readonly DomainEventStep[],
@@ -196,6 +210,55 @@ describe("domainRecords", () => {
     assert.equal(dnsHost(inbound.name, item.name), "@")
     assert.equal(inbound.value, "inbound-smtp.us-east-1.amazonaws.com")
     assert.equal(inbound.status, "not_started")
+  })
+
+  it("falls back to a DMARC policy for a domain stored without one", () => {
+    const item = domain({ records: [record("DKIM", "not_started")] })
+    const dmarc = domainRecords(item).filter((entry) => entry.kind === "DMARC")
+    assert.equal(dmarc.length, 1)
+    assert.equal(dmarc[0].type, "TXT")
+    assert.equal(dmarc[0].name, "_dmarc.example.com")
+    assert.equal(dmarc[0].value, "v=DMARC1; p=none;")
+    assert.equal(dmarc[0].status, "not_started")
+    /* Recommended, so the fallback never holds the domain back. */
+    assert.equal(
+      deriveDomainStatus(domain({ records: [record("DKIM", "verified")] })),
+      "verified"
+    )
+  })
+
+  it("keeps the stored DMARC record once the backend returns one", () => {
+    const stored = record("DMARC", "verified", {
+      id: "dmarc",
+      type: "TXT",
+      name: "_dmarc.example.com",
+      value: "v=DMARC1; p=quarantine;",
+    })
+    const records = domainRecords(domain({ records: [stored] }))
+    assert.deepEqual(
+      records.filter((entry) => entry.kind === "DMARC"),
+      [stored]
+    )
+  })
+
+  it("keeps one Receiving record once the backend stores its own", () => {
+    const stored = record("Receiving", "verified", {
+      id: "receiving-mx",
+      type: "MX",
+      name: "example.com",
+      value: "inbound-smtp.us-east-1.amazonaws.com",
+      priority: 10,
+    })
+    const item = domain({
+      receiving: true,
+      records: [record("DKIM", "verified"), stored],
+    })
+    assert.deepEqual(
+      domainRecords(item).filter((entry) => entry.kind === "Receiving"),
+      [stored]
+    )
+    /* And it is required, unlike DMARC. */
+    assert.equal(deriveDomainStatus(item), "verified")
   })
 
   it("adds a tracking CNAME only once a subdomain and a toggle are set", () => {
@@ -389,6 +452,16 @@ describe("domainRecordSections", () => {
     assert.equal(sections[2].enabled, true)
     assert.equal(sections[2].showPriority, true)
     assert.equal(sections[0].records.length, 1)
+    /* The MX block fills as soon as the switch is on, and the recommended
+       block is never empty. */
+    assert.equal(sections[2].records.length, 1)
+    assert.equal(sections[3].records.length, 1)
+  })
+
+  it("leaves the receiving block empty while the switch is off", () => {
+    const sections = domainRecordSections(domain())
+    assert.equal(sections[2].enabled, false)
+    assert.equal(sections[2].records.length, 0)
   })
 })
 
@@ -415,6 +488,41 @@ describe("domainZoneFile", () => {
       '_dmarc.example.com.\t300\tIN\tTXT\t"v=DMARC1; p=none;"',
     ])
   })
+
+  it("carries the fallback DMARC line for a domain stored without one", () => {
+    const lines = domainZoneFile(
+      domain({ records: [record("DKIM", "not_started")] })
+    ).split("\n")
+    assert.ok(
+      lines.includes('_dmarc.example.com.\t300\tIN\tTXT\t"v=DMARC1; p=none;"'),
+      lines.join(" | ")
+    )
+  })
+})
+
+describe("domainCsvFile", () => {
+  it("quotes every cell, doubles a quote, and leaves priority empty", () => {
+    const item = domain({
+      records: [
+        record("SPF", "verified", {
+          type: "MX",
+          name: "send.example.com",
+          value: "feedback-smtp.us-east-1.amazonses.com",
+          priority: 10,
+        }),
+        record("DMARC", "verified", {
+          type: "TXT",
+          name: "_dmarc.example.com",
+          value: 'v=DMARC1; p=none; rua="mailto:dmarc@example.com"',
+        }),
+      ],
+    })
+    assert.deepEqual(domainCsvFile(item).split("\r\n"), [
+      '"Type","Name","Content","TTL","Priority"',
+      '"MX","send.example.com","feedback-smtp.us-east-1.amazonses.com","Auto","10"',
+      '"TXT","_dmarc.example.com","v=DMARC1; p=none; rua=""mailto:dmarc@example.com""","Auto",""',
+    ])
+  })
 })
 
 describe("providers", () => {
@@ -422,7 +530,8 @@ describe("providers", () => {
     assert.equal(providerLabel("cloudflare"), "Cloudflare")
     assert.equal(providerLabel(undefined), "Not detected")
     assert.equal(canAutoConfigure("cloudflare"), true)
-    assert.equal(canAutoConfigure("route53"), false)
+    assert.equal(canAutoConfigure("route53"), true)
+    assert.equal(canAutoConfigure("godaddy"), false)
     assert.equal(canAutoConfigure(undefined), false)
   })
 })

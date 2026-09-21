@@ -11,12 +11,14 @@ services:
     environment:
       INSTANCE_NAME: ${INSTANCE_NAME}
       INSTANCE_SECRET: ${INSTANCE_SECRET}
-      CONVEX_CLOUD_ORIGIN: ${CONVEX_PUBLIC_URL:-http://localhost:3210}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_BACKEND_ORIGIN:-http://host.docker.internal:3210}
       CONVEX_SITE_ORIGIN: ${CONVEX_PUBLIC_SITE_URL:-http://localhost:3211}
       DISABLE_BEACON: "true"
       REDACT_LOGS_TO_CLIENT: "true"
     volumes:
       - convex-data:/convex/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
       interval: 5s
@@ -38,6 +40,7 @@ services:
       timeout: 5s
       retries: 10
   app:
+    image: ${APP_IMAGE:-opensend-app:local}
     build: .
     restart: unless-stopped
     ports:
@@ -65,6 +68,6 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${OIDC_ADMIN_PASSWORD:-local-test-only}
       KC_HOSTNAME: http://host.docker.internal:${OIDC_PORT:-8080}
     volumes:
-      - ./docker/oidc-realm.json:/opt/keycloak/data/import/opensend.json:ro
+      - ${OIDC_REALM_FILE:-./docker/oidc-realm.json}:/opt/keycloak/data/import/opensend.json:ro
 volumes:
   convex-data:

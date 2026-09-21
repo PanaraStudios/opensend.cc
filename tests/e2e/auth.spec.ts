@@ -1,11 +1,13 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
+import { seedSesConnection, seedTeamTenant, testBackend } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
-const base = "http://localhost:3400"
+import type { Id } from "../../convex/_generated/dataModel"
+const base = process.env.OPENSEND_BASE_URL ?? "http://localhost:3400"
 const ownerEmail = "owner@example.test"
 const ownerPassword = "Playwright-owner-password-123"
 let memberEmail = "member@example.test"
@@ -14,6 +16,7 @@ let owner: Page
 let member: Page
 let ownerContext: BrowserContext
 let memberContext: BrowserContext
+let sendingDomainId: Id<"domains">
 let organizationId: string
 let secondTeamId: string
 const forms = (page: Page, button: string) =>
@@ -84,7 +87,9 @@ async function client(page: Page) {
       return response.status()
     })
     .toBe(200)
-  const result = new ConvexHttpClient("http://localhost:3410")
+  const result = new ConvexHttpClient(
+    process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
+  )
   result.setAuth(token)
   return result
 }
@@ -123,6 +128,22 @@ async function createTeam(page: Page, name: string) {
   await dialog.getByLabel("Team name").fill(name)
   await dialog.getByRole("button", { name: "Create team", exact: true }).click()
   await expect(dialog).toBeHidden()
+  // Team creation queues AWS tenant setup; wait until the worker settles before
+  // testing destructive operations. This isolated fixture has no usable AWS key.
+  const c = await client(page)
+  await expect
+    .poll(async () => {
+      const account = await c.query(api.teams.snapshot)
+      if (!account?.activeTeamId) return false
+      const tenants = await c.query(api.tenants.list, {
+        organizationId: account.activeTeamId,
+      })
+      return (
+        tenants.length > 0 &&
+        tenants.every((tenant) => tenant.phase !== "running")
+      )
+    })
+    .toBe(true)
 }
 async function logout(page: Page) {
   await page
@@ -183,7 +204,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
   })
 
   test("protects dashboard/editor routes and verifies the bootstrap account", async () => {
-    const anonymous = new ConvexHttpClient("http://localhost:3410")
+    const anonymous = new ConvexHttpClient(
+      process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
+    )
     expect(await anonymous.query(api.teams.snapshot)).toBeNull()
     await expect(
       anonymous.mutation(api.teams.create, { name: "Anonymous" })
@@ -202,17 +225,520 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await owner.goto(await emailLink(ownerEmail, "verify"))
     await login(owner, ownerEmail, ownerPassword)
     await expect(
-      owner.getByRole("heading", { name: "Create or join a team" })
+      owner.getByRole("heading", { name: "Set up Opensend", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Account settings", exact: true })
+    ).toHaveCount(0)
+    await owner.goto("/profile")
+    await expect(owner).toHaveURL(/\/emails$/)
+    await expect(
+      owner.getByRole("heading", { name: "Set up Opensend", exact: true })
+    ).toBeVisible()
+    await expect(owner.locator('[data-slot="sidebar-header"]')).toHaveCount(0)
+    for (const route of ["/instance/ses", "/settings/ses"]) {
+      await owner.goto(route)
+      await expect(owner).toHaveURL(/\/emails$/)
+      await expect(owner.getByTestId("installation-wizard")).toBeVisible()
+      await expect(owner.getByTestId("ses-settings")).toHaveCount(0)
+    }
+    const pendingClient = await client(owner)
+    await expect(
+      pendingClient.mutation(api.teams.create, { name: "Bypass setup" })
+    ).rejects.toBeTruthy()
+    await expect(owner.getByLabel("Public backend URL")).toHaveCount(0)
+    await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
+    await owner
+      .getByRole("button", { name: "Get started", exact: true })
+      .click()
+    await expect(
+      owner.getByRole("heading", {
+        name: "Connect your AWS account",
+        exact: true,
+      })
+    ).toBeVisible()
+    await expect(
+      owner.getByLabel("Secret access key", { exact: true })
+    ).toBeVisible()
+    const credentialsHelpButton = owner.getByRole("button", {
+      name: "Help with AWS credentials",
+    })
+    await credentialsHelpButton.click()
+    const credentialsHelp = owner.getByRole("dialog", {
+      name: "Get AWS credentials",
+      exact: true,
+    })
+    await expect(
+      credentialsHelp.getByRole("button", { name: "Download permissions" })
+    ).toBeDisabled()
+    await expect(
+      credentialsHelp.getByText(/Enter your 12-digit AWS account ID/)
+    ).toBeVisible()
+    await owner.keyboard.press("Escape")
+    await expect(credentialsHelp).toBeHidden()
+    await expect(credentialsHelpButton).toBeFocused()
+    await expect(
+      owner.getByText("SES_ENCRYPTION_KEY", { exact: false })
+    ).toHaveCount(0)
+    await owner.reload()
+    await expect(
+      owner.getByRole("heading", {
+        name: "Connect your AWS account",
+        exact: true,
+      })
+    ).toBeVisible()
+    await owner.getByRole("button", { name: "Back", exact: true }).click()
+    await expect(
+      owner.getByRole("heading", { name: "Set up Opensend", exact: true })
+    ).toBeVisible()
+    await owner
+      .getByRole("button", { name: "Get started", exact: true })
+      .click()
+    await expect(
+      owner.getByRole("heading", {
+        name: "Connect your AWS account",
+        exact: true,
+      })
+    ).toBeVisible()
+    await owner
+      .getByRole("button", { name: "Create AWS user", exact: true })
+      .click()
+    const awsSetup = owner.getByRole("dialog", {
+      name: "Create your AWS user",
+      exact: true,
+    })
+    await expect(
+      awsSetup.getByLabel("AWS user name", { exact: true })
+    ).toHaveValue("opensend")
+    const downloadEvent = owner.waitForEvent("download")
+    await awsSetup
+      .getByRole("button", { name: "Download setup file", exact: true })
+      .click()
+    const setupFile = await downloadEvent
+    expect(setupFile.suggestedFilename()).toBe("opensend-aws-access.json")
+    const templatePath = test.info().outputPath("opensend-aws-access.json")
+    await setupFile.saveAs(templatePath)
+    const template = JSON.parse(readFileSync(templatePath, "utf8")) as {
+      Parameters: { UserName: { Default: string } }
+      Resources: Record<string, { Type: string }>
+    }
+    expect(template.Parameters.UserName.Default).toBe("opensend")
+    expect(template.Resources.OpensendUser.Type).toBe("AWS::IAM::User")
+    expect(template.Resources.OpensendPolicy.Type).toBe(
+      "AWS::IAM::ManagedPolicy"
+    )
+    expect(JSON.stringify(template)).not.toContain("AWS::IAM::AccessKey")
+    await expect(
+      awsSetup.getByRole("link", { name: "Open AWS setup", exact: true })
+    ).toHaveAttribute(
+      "href",
+      /https:\/\/us-east-1\.console\.aws\.amazon\.com\/cloudformation\/home\?region=us-east-1/
+    )
+    await owner.screenshot({
+      path: test.info().outputPath("aws-setup-helper.png"),
+      fullPage: true,
+    })
+    await awsSetup
+      .getByRole("button", { name: "Back to connection", exact: true })
+      .click()
+    await expect(awsSetup).toHaveCount(0)
+    await owner
+      .getByLabel("AWS access key CSV", { exact: true })
+      .setInputFiles({
+        name: "access-key.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from(
+          `Access key ID,Secret access key\nAKIA1234567890123456,${"b".repeat(40)}\n`
+        ),
+      })
+    await expect(
+      owner.getByLabel("Access key ID", { exact: true })
+    ).toHaveValue("AKIA1234567890123456")
+    await expect(
+      owner.getByLabel("Secret access key", { exact: true })
+    ).toHaveValue("b".repeat(40))
+    await owner.getByLabel("Access key ID", { exact: true }).fill("")
+    await owner.getByLabel("Secret access key", { exact: true }).fill("")
+    await owner.screenshot({
+      path: test.info().outputPath("onboarding-desktop.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 390, height: 844 })
+    await owner.screenshot({
+      path: test.info().outputPath("onboarding-mobile.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 1280, height: 900 })
+    await seedSesConnection(owner)
+    await expect(
+      owner.getByRole("heading", {
+        name: "Receive delivery updates",
+        exact: true,
+      })
+    ).toBeVisible()
+    await expect(owner.getByLabel("Public backend URL")).toHaveValue("")
+    await expect(
+      owner.getByText("AWS cannot reach localhost.", { exact: false })
+    ).toBeVisible()
+    await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
+    await owner.screenshot({
+      path: test.info().outputPath("onboarding-delivery-updates.png"),
+      fullPage: true,
+    })
+    // Probe the actual local HTTP service through the authenticated API; a live AWS callback still requires HTTPS.
+    const setupClient = await client(owner)
+    await setupClient.action(api.installationActions.checkEnvironment, {
+      callbackOrigin: process.env.OPENSEND_CALLBACK_ORIGIN!,
+    })
+    await expect(
+      owner.getByRole("heading", {
+        name: "Set up your AWS resources",
+        exact: true,
+      })
+    ).toBeVisible()
+    await owner.getByRole("button", { name: "Continue", exact: true }).click()
+    await expect(
+      owner.getByRole("heading", { name: "Create your team", exact: true })
     ).toBeVisible()
     await owner.getByLabel("Team name").fill("Playwright Team")
     await owner
       .getByRole("button", { name: "Create team", exact: true })
       .click()
     await expect(
+      owner.getByRole("heading", {
+        name: "Add your sending domain",
+        exact: true,
+      })
+    ).toBeVisible()
+    await owner.goto("/profile")
+    await expect(owner).toHaveURL(/\/emails$/)
+    await expect(
+      owner.getByRole("heading", {
+        name: "Add your sending domain",
+        exact: true,
+      })
+    ).toBeVisible()
+    await expect(owner.locator('[data-slot="sidebar-header"]')).toHaveCount(0)
+    const pendingTeam = (await pendingClient.query(api.teams.snapshot))!
+      .activeTeamId!
+    await expect(
+      pendingClient.mutation(api.teams.create, { name: "Extra team" })
+    ).rejects.toBeTruthy()
+    await expect(
+      pendingClient.mutation(api.teams.invite, {
+        organizationId: pendingTeam,
+        email: "blocked@example.test",
+        role: "member",
+      })
+    ).rejects.toBeTruthy()
+    await seedTeamTenant(owner, pendingTeam)
+    await owner
+      .getByRole("button", { name: "Add first domain", exact: true })
+      .click()
+    const domainDialog = owner.getByRole("dialog", {
+      name: "Add domain",
+      exact: true,
+    })
+    await domainDialog
+      .getByLabel("Name", { exact: true })
+      .fill("onboarding.example.test")
+    await domainDialog
+      .getByRole("button", { name: "Add domain", exact: true })
+      .click()
+    await owner.waitForURL(/\/domains\//)
+    await expect(owner.locator('[data-slot="sidebar-header"]')).toBeVisible()
+    await expect(owner.getByText("Domain setup needs attention")).toBeVisible()
+    await expect(
+      owner.getByRole("button", { name: "Review existing identity" })
+    ).toHaveCount(0)
+    await expect(owner.getByRole("button", { name: /^Search/ })).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Settings", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Return to setup" })
+    ).toHaveCount(0)
+    expect(
+      (await pendingClient.query(api.installation.status)).installation
+        ?.completedAt
+    ).toBeTruthy()
+    const domainContent = owner.locator('[data-slot="sidebar-inset"]')
+    expect((await domainContent.boundingBox())!.width).toBeGreaterThan(700)
+    const domainId = new URL(owner.url()).pathname.split("/").at(-1)!
+    sendingDomainId = domainId as Id<"domains">
+    // Controlled AWS result fixture: this is UI/backend persistence coverage, not live AWS evidence.
+    testBackend("domains:finish", {
+      id: domainId,
+      changes: {
+        status: "pending",
+        tenantAssociated: true,
+        records: [
+          {
+            id: "fixture-token",
+            kind: "DKIM",
+            type: "CNAME",
+            name: "fixture-token._domainkey.onboarding.example.test",
+            value: "fixture.dkim.test",
+            ttl: "300",
+            status: "pending",
+          },
+        ],
+      },
+    })
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await expect(
+      owner.getByRole("heading", { name: "Domain events", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByText("Team SES tenant", { exact: true })
+    ).toHaveCount(0)
+    await owner
+      .getByRole("button", { name: "More options", exact: true })
+      .last()
+      .click()
+    const csvDownload = owner.waitForEvent("download")
+    await owner
+      .getByRole("menuitem", { name: "Export as CSV", exact: true })
+      .click()
+    const csv = await csvDownload
+    const csvPath = test.info().outputPath("domain-records.csv")
+    await csv.saveAs(csvPath)
+    expect(readFileSync(csvPath, "utf8")).toContain("fixture.dkim.test")
+    await owner
+      .getByRole("link", { name: "Domains", exact: true })
+      .last()
+      .click()
+    await expect(
+      owner.getByRole("heading", { name: "Domains", exact: true })
+    ).toBeVisible()
+    await owner
+      .getByRole("link", { name: "onboarding.example.test", exact: true })
+      .click()
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await owner.reload()
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await owner.screenshot({
+      path: test.info().outputPath("domain-dns.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 390, height: 844 })
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await owner.screenshot({
+      path: test.info().outputPath("domain-mobile.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 1280, height: 900 })
+    await owner.goto("/profile")
+    await expect(owner).toHaveURL(/\/profile$/)
+    await owner.goto(`/domains/${domainId}`)
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await owner.emulateMedia({ colorScheme: "dark" })
+    await owner.screenshot({
+      path: test.info().outputPath("domain-dark.png"),
+      fullPage: true,
+    })
+    await owner.emulateMedia({ colorScheme: "light" })
+    const sending = owner.getByRole("switch", {
+      name: "Enable Sending",
+      exact: true,
+    })
+    await expect(sending).toBeChecked()
+    const mirrorContext = await ownerContext.browser()!.newContext({
+      baseURL: base,
+      storageState: await ownerContext.storageState(),
+    })
+    const mirror = await mirrorContext.newPage()
+    await mirror.goto(owner.url())
+    await expect(
+      mirror.getByRole("switch", { name: "Enable Sending", exact: true })
+    ).toBeChecked()
+    await sending.click()
+    await expect(
+      mirror.getByRole("switch", { name: "Enable Sending", exact: true })
+    ).not.toBeChecked()
+    await mirrorContext.close()
+    await expect(sending).not.toBeChecked()
+    await owner.reload()
+    await expect(
+      owner.getByRole("switch", { name: "Enable Sending", exact: true })
+    ).not.toBeChecked()
+    await owner.getByRole("link", { name: "Emails", exact: true }).click()
+    await expect(
       owner.getByRole("heading", { name: "Emails", exact: true })
     ).toBeVisible()
     const c = await client(owner)
+    expect(
+      (await c.query(api.installation.status)).installation?.completedAt
+    ).toBeTruthy()
     organizationId = (await c.query(api.teams.snapshot))!.activeTeamId!
+    const domainCreatedAt = (await c.query(api.domains.get, {
+      id: sendingDomainId,
+    }))!.domain._creationTime
+    const clockContext = await ownerContext.browser()!.newContext({
+      baseURL: base,
+      storageState: await ownerContext.storageState(),
+    })
+    const clockPage = await clockContext.newPage()
+    await clockPage.clock.install({ time: new Date(domainCreatedAt + 125_000) })
+    await clockPage.goto("/domains")
+    const createdTime = clockPage
+      .getByRole("row")
+      .filter({ hasText: "onboarding.example.test" })
+      .locator("time")
+    await expect(createdTime).toHaveText("2m ago")
+    await clockPage.clock.fastForward(60_000)
+    await expect(createdTime).toHaveText("3m ago")
+    await clockContext.close()
+    await owner.goto("/settings/ses")
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await owner
+      .locator('[data-slot="sidebar-footer"]')
+      .getByRole("button", { name: /Test Owner/ })
+      .click()
+    const profileItems = owner.getByRole("menuitem")
+    await expect(profileItems.nth(0)).toHaveText("My profile")
+    await expect(profileItems.nth(1)).toHaveText("Amazon SES")
+    await owner.screenshot({
+      path: test.info().outputPath("ses-profile-menu.png"),
+      fullPage: true,
+    })
+    await profileItems.nth(1).click()
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await owner.getByRole("button", { name: /^Search/ }).click()
+    await owner.getByRole("combobox").fill("Amazon SES")
+    await owner.getByRole("option", { name: "Amazon SES", exact: true }).click()
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
+    await expect(owner.getByTestId("installation-wizard")).toHaveCount(0)
+    await expect(owner.getByText(/Step \d+ of \d+/)).toHaveCount(0)
+    await expect(
+      owner.getByRole("button", { name: "Create AWS user", exact: true })
+    ).toHaveCount(0)
+    await expect(
+      owner.getByRole("button", { name: "Keep current connection" })
+    ).toHaveCount(0)
+    const permissionFile = owner.waitForEvent("download")
+    await owner
+      .getByRole("button", { name: "Download permissions", exact: true })
+      .click()
+    const permissions = await permissionFile
+    const permissionsPath = test.info().outputPath("settings-permissions.json")
+    await permissions.saveAs(permissionsPath)
+    expect(readFileSync(permissionsPath, "utf8")).toContain("ses:GetTenant")
+    expect(readFileSync(permissionsPath, "utf8")).not.toContain("Fn::Sub")
+    await owner
+      .getByRole("button", { name: "Update connection", exact: true })
+      .click()
+    const connectionDialog = owner.getByRole("dialog", {
+      name: "Update AWS connection",
+      exact: true,
+    })
+    await expect(
+      connectionDialog.getByLabel("AWS account ID")
+    ).toHaveJSProperty("readOnly", true)
+    await expect(
+      connectionDialog.getByLabel("Secret access key", { exact: true })
+    ).toHaveValue("")
+    await connectionDialog
+      .getByLabel("Access key ID", { exact: true })
+      .fill("draft-key")
+    await connectionDialog
+      .getByLabel("Secret access key", { exact: true })
+      .fill("draft-secret")
+    const updateHelpButton = connectionDialog.getByRole("button", {
+      name: "Help with AWS credentials",
+    })
+    await updateHelpButton.click()
+    const updateHelp = owner.getByRole("dialog", {
+      name: "Get AWS credentials",
+      exact: true,
+    })
+    await expect(
+      updateHelp.getByRole("link", { name: "Open AWS users" })
+    ).toHaveAttribute("href", /console\.aws\.amazon\.com/)
+    const helpDownload = owner.waitForEvent("download")
+    await updateHelp
+      .getByRole("button", { name: "Download permissions" })
+      .click()
+    const helpPolicyPath = test
+      .info()
+      .outputPath("credential-help-permissions.json")
+    await (await helpDownload).saveAs(helpPolicyPath)
+    const helpPolicy = readFileSync(helpPolicyPath, "utf8")
+    expect(helpPolicy).toContain("123456789012")
+    expect(helpPolicy).toContain("ses:GetTenant")
+    expect(helpPolicy).not.toContain("Fn::Sub")
+    expect(helpPolicy).not.toContain("draft-secret")
+    await owner.screenshot({
+      path: test.info().outputPath("credentials-help-desktop.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 390, height: 844 })
+    await owner.screenshot({
+      path: test.info().outputPath("credentials-help-mobile.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 1280, height: 900 })
+    await owner.keyboard.press("Escape")
+    await expect(updateHelp).toBeHidden()
+    await expect(connectionDialog).toBeVisible()
+    await expect(updateHelpButton).toBeFocused()
+    await expect(
+      connectionDialog.getByLabel("Access key ID", { exact: true })
+    ).toHaveValue("draft-key")
+    await expect(
+      connectionDialog.getByLabel("Secret access key", { exact: true })
+    ).toHaveValue("draft-secret")
+    const revision = (await c.query(api.installation.status)).installation!
+      .credentialRevision
+    await connectionDialog
+      .getByLabel("Access key ID", { exact: true })
+      .fill("invalid")
+    await connectionDialog
+      .getByLabel("Secret access key", { exact: true })
+      .fill("invalid-test-only")
+    await connectionDialog
+      .getByRole("button", { name: "Save connection", exact: true })
+      .click()
+    await expect(connectionDialog.getByRole("alert")).toContainText(
+      "Enter valid AWS credentials"
+    )
+    expect(
+      (await c.query(api.installation.status)).installation!.credentialRevision
+    ).toBe(revision)
+    await owner.keyboard.press("Escape")
+    await expect(connectionDialog).toHaveCount(0)
+    await expect(
+      owner.getByRole("button", { name: "Update connection", exact: true })
+    ).toBeFocused()
+    await owner
+      .getByRole("button", { name: "Check connection", exact: true })
+      .click()
+    await expect(
+      owner.getByRole("status").filter({ hasText: "Connection checked" })
+    ).toBeVisible()
+    await owner.evaluate(() => window.scrollTo(0, 0))
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-desktop.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 390, height: 844 })
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-mobile.png"),
+      fullPage: true,
+    })
+    await owner.emulateMedia({ colorScheme: "dark" })
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-mobile-dark.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 1280, height: 900 })
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-desktop-dark.png"),
+      fullPage: true,
+    })
+    await owner.emulateMedia({ colorScheme: "light" })
+    await owner.goto("/emails")
     await member.goto("/signup")
     await member.getByLabel("Name", { exact: true }).fill("Uninvited")
     await member
@@ -223,6 +749,51 @@ test.describe.serial("Docker self-hosted authentication", () => {
       .getByRole("button", { name: "Create account", exact: true })
       .click()
     await expect(member.locator('p[role="alert"]')).toBeVisible()
+  })
+
+  test("keeps installation settings accessible without team membership", async () => {
+    const c = await client(owner)
+    const account = (await c.query(api.teams.snapshot))!
+    const membership = account.members.find((member) => member.you)!
+    const setMemberUser = (userId: string) =>
+      testBackend(
+        "adapter:updateOne",
+        {
+          input: {
+            model: "member",
+            where: [{ field: "_id", value: membership.id }],
+            update: { userId },
+          },
+        },
+        "betterAuth"
+      )
+    // Only this disposable test project's membership is changed, then restored.
+    try {
+      setMemberUser("ses-navigation-test-no-user")
+      await expect
+        .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
+        .toBeNull()
+      await owner.goto("/settings/ses")
+      await expect(owner).toHaveURL(/\/instance\/ses$/)
+      await expect(owner.getByTestId("ses-settings")).toBeVisible()
+      await expect(
+        owner.getByRole("button", { name: "Update connection" })
+      ).toBeVisible()
+      await owner
+        .locator('[data-slot="sidebar-footer"]')
+        .getByRole("button", { name: /Test Owner/ })
+        .click()
+      await expect(
+        owner.getByRole("menuitem", { name: "Amazon SES" })
+      ).toBeVisible()
+      await owner.keyboard.press("Escape")
+    } finally {
+      setMemberUser(account.user.id)
+    }
+    await expect
+      .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
+      .toBe(organizationId)
+    await owner.goto("/emails")
   })
 
   test("authorizes hosted and local OAuth clients, exchanges tokens and rejects refresh replay", async () => {
@@ -253,7 +824,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
       "/settings/team",
       "/settings/sso",
       "/settings/unsubscribe",
-      "/settings/ses",
+      "/instance/ses",
       "/settings/smtp",
       "/settings/exports",
       "/profile",
@@ -310,6 +881,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
     await owner.goto("/settings/team")
+    await expect(owner.getByRole("tab", { name: "Amazon SES" })).toHaveCount(0)
     const overview = forms(owner, "Save")
     await overview.getByLabel("Team name", { exact: true }).fill("Renamed Team")
     await overview.getByLabel("Slug", { exact: true }).fill("renamed-team")
@@ -338,8 +910,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByRole("button", { name: "Remove", exact: true })
     ).toHaveCount(0)
-    await owner.goto("/profile")
+    await owner.goto("/instance/ses")
     await createTeam(owner, "Second Team")
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
     const c = await client(owner)
     await expect
       .poll(async () => (await c.query(api.teams.snapshot))!.teams.length)
@@ -357,6 +931,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByText("That slug is already in use", { exact: true })
     ).toBeVisible()
+    await owner.goto("/instance/ses")
     await owner.getByRole("button", { name: /Second Team second-team/ }).click()
     await owner
       .getByRole("menuitem", { name: /Renamed Team renamed-team/ })
@@ -364,6 +939,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect
       .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
       .toBe(organizationId)
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
   })
 
   test("resends, cancels, rejects and accepts matching-email invitations", async () => {
@@ -458,6 +1035,47 @@ test.describe.serial("Docker self-hosted authentication", () => {
 
   test("enforces cross-team permissions and last-admin rules in UI and direct requests", async () => {
     const c = await client(member)
+    for (const route of ["/instance/ses", "/settings/ses"]) {
+      await member.goto(route)
+      await expect(member).toHaveURL(/\/instance\/ses$/)
+      await expect(
+        member.getByText("Administrator access required", { exact: true })
+      ).toBeVisible()
+      await expect(member.getByTestId("ses-settings")).toHaveCount(0)
+      await expect(
+        member.getByRole("button", { name: "Update connection" })
+      ).toHaveCount(0)
+    }
+    await member
+      .locator('[data-slot="sidebar-footer"]')
+      .getByRole("button", { name: /Test Member/ })
+      .click()
+    await expect(
+      member.getByRole("menuitem", { name: "My profile" })
+    ).toBeVisible()
+    await expect(
+      member.getByRole("menuitem", { name: "Amazon SES" })
+    ).toHaveCount(0)
+    await member.keyboard.press("Escape")
+    await member.getByRole("button", { name: /^Search/ }).click()
+    await member.getByRole("combobox").fill("Amazon SES")
+    await expect(
+      member.getByRole("option", { name: /Amazon SES/ })
+    ).toHaveCount(0)
+    await expect(member.getByText("No results found.")).toBeVisible()
+    await member.keyboard.press("Escape")
+    await expect(
+      c.mutation(api.installation.provisionRegion, { region: "us-east-1" })
+    ).rejects.toBeTruthy()
+    await expect(
+      c.mutation(api.domains.update, { id: sendingDomainId, sending: true })
+    ).rejects.toBeTruthy()
+    await member.goto(`/domains/${sendingDomainId}`)
+    await expect(
+      member.getByRole("button", {
+        name: "Check DNS records",
+      })
+    ).toBeDisabled()
     await expect(
       c.mutation(api.teams.rename, {
         organizationId: secondTeamId,
@@ -504,6 +1122,11 @@ test.describe.serial("Docker self-hosted authentication", () => {
         .filter({ hasText: memberEmail })
         .getByText("Admin", { exact: true })
     ).toBeVisible()
+    await member.goto("/instance/ses")
+    await expect(
+      member.getByText("Administrator access required", { exact: true })
+    ).toBeVisible()
+    await expect(member.getByTestId("ses-settings")).toHaveCount(0)
     await memberMenu(owner, memberEmail)
     await owner.getByRole("menuitem", { name: "Change role to Member" }).click()
     await expect(
@@ -697,9 +1320,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
       "Enter a valid URL"
     )
 
-    await save
-      .getByLabel("Issuer URL")
-      .fill("http://host.docker.internal:8180/realms/opensend")
+    await save.getByLabel("Issuer URL").fill(process.env.OPENSEND_OIDC_URL!)
     await save.getByLabel("Client ID").fill("opensend-test")
     await save.getByLabel("Client secret").fill("isolated-test-secret")
     await save.getByRole("button", { name: "Save connection" }).click()
@@ -832,7 +1453,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
         "--env-file",
         process.env.OPENSEND_ENV_FILE!,
         "-p",
-        "opensend-e2e",
+        process.env.COMPOSE_PROJECT_NAME!,
         "restart",
         "convex",
         "app",
@@ -846,7 +1467,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
         "--env-file",
         process.env.OPENSEND_ENV_FILE!,
         "-p",
-        "opensend-e2e",
+        process.env.COMPOSE_PROJECT_NAME!,
         "up",
         "-d",
         "--wait",
@@ -917,6 +1538,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       member.getByRole("heading", { name: "Create or join a team" })
     ).toBeVisible()
+    await member.goto("/instance/ses")
+    await expect(
+      member.getByText("Administrator access required", { exact: true })
+    ).toBeVisible()
+    await expect(member.getByTestId("ses-settings")).toHaveCount(0)
+    await member.goto("/emails")
     await member.getByRole("link", { name: "Account settings" }).click()
     await expect(
       member.getByRole("heading", { name: "Profile", exact: true })
@@ -942,6 +1569,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
     // A fresh password login proves recent authentication before deletion.
     await logout(member)
     await login(member, memberEmail, memberPassword)
+    await expect(
+      member.getByRole("heading", {
+        name: "Create or join a team",
+        exact: true,
+      })
+    ).toBeVisible()
     await member.goto("/profile")
     const stale = await client(member)
     await member

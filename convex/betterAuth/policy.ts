@@ -95,3 +95,29 @@ export const checkSession = query({
     }
   },
 })
+
+/** Component-only authorization bridge; never trust roles from a JWT or client. */
+export const authorizeInstallation = query({
+  args: { sessionId: v.string() },
+  returns: v.object({ admin: v.boolean() }),
+  handler: async (ctx, { sessionId }) => {
+    const { user } = await sessionUser(ctx, sessionId)
+    const bootstrap = await ctx.db
+      .query("bootstrap")
+      .withIndex("by_key", (q) => q.eq("key", "initial-account"))
+      .unique()
+    return { admin: bootstrap?.userId === user._id }
+  },
+})
+export const authorizeTeam = query({
+  args: {
+    sessionId: v.string(),
+    organizationId: v.string(),
+    write: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.sessionId, args.organizationId, args.write)
+    return null
+  },
+})

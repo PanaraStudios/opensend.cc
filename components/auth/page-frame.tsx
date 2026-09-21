@@ -1,12 +1,15 @@
 import { QuoteIcon } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
+import { cn } from "@/lib/utils"
 import { RandomQuote } from "@/components/random-quote"
 
 export function AuthPageFrame({
   children,
+  wide = false,
 }: Readonly<{
   children: React.ReactNode
+  wide?: boolean
 }>) {
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
@@ -17,7 +20,9 @@ export function AuthPageFrame({
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-xs">{children}</div>
+          <div className={cn("w-full", wide ? "max-w-md" : "max-w-xs")}>
+            {children}
+          </div>
         </div>
       </div>
       <div className="relative hidden overflow-hidden bg-(--auth-panel) text-(--auth-panel-foreground) lg:block">

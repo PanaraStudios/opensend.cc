@@ -10,7 +10,6 @@ import type {
 } from "./types"
 
 export const DEFAULT_RETURN_PATH = "send"
-export const DEFAULT_TRACKING_SUBDOMAIN = "links"
 /* "Auto" is what providers show for an inherited TTL; a zone file needs a
    number, and 300s is the usual default. */
 const ZONE_TTL = 300
@@ -29,7 +28,7 @@ const PROVIDERS: Record<
   route53: {
     label: "Route 53",
     url: "https://console.aws.amazon.com/route53",
-    auto: false,
+    auto: true,
   },
   godaddy: {
     label: "GoDaddy",
@@ -42,6 +41,11 @@ const PROVIDERS: Record<
     auto: false,
   },
   other: { label: "Other provider", url: "", auto: false },
+  hostinger: {
+    label: "Hostinger",
+    url: "https://hpanel.hostinger.com",
+    auto: false,
+  },
 }
 
 export function providerLabel(provider: DnsProvider | undefined): string {
@@ -91,7 +95,7 @@ export function validateDomainName(
 }
 
 /** A single DNS label, the shape a return-path or tracking subdomain takes. */
-export function isDnsLabel(value: string): boolean {
+function isDnsLabel(value: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(value.trim())
 }
 
@@ -153,6 +157,20 @@ function receivingRecord(domain: Domain): DnsRecord {
   }
 }
 
+/** The policy we recommend. Only synthesized for a domain stored before SES
+    started returning one; the stored record wins as soon as it arrives. */
+function dmarcRecord(domain: Domain): DnsRecord {
+  return {
+    id: `${domain.id}_dmarc`,
+    kind: "DMARC",
+    type: "TXT",
+    name: `_dmarc.${domain.name}`,
+    value: "v=DMARC1; p=none;",
+    ttl: "Auto",
+    status: "not_started",
+  }
+}
+
 /** Stored records, plus the optional ones the current switches ask for and
     minus the ones they turn off. A record that appears starts unverified,
     which is what pulls a verified domain back to partially verified. */
@@ -176,6 +194,9 @@ export function domainRecords(domain: Domain): DnsRecord[] {
     !records.some((record) => record.kind === "Receiving")
   ) {
     records.push(receivingRecord(domain))
+  }
+  if (!records.some((record) => record.kind === "DMARC")) {
+    records.push(dmarcRecord(domain))
   }
   return records
 }
@@ -219,7 +240,7 @@ const STATUS_MILESTONES: DomainEventType[] = ["partially_verified", "verified"]
     turning receiving on drops a verified domain back to partially verified, so
     its verified event is no longer true and goes away. Re-verifying stamps a
     fresh time, which keeps the trail in order. */
-export function domainEvents(
+function domainEvents(
   domain: Domain,
   status: DomainStatus,
   records: DnsRecord[],
@@ -313,23 +334,9 @@ export function normalizeDomain(domain: Domain): Domain {
   return reconcileDomain(domain, domain.createdAt)
 }
 
-/** The simulated lookup: every record this domain needs now resolves. */
-export function verifyDomainRecords(domain: Domain, now: number): Domain {
-  return reconcileDomain(
-    {
-      ...domain,
-      records: domainRecords(domain).map((record) => ({
-        ...record,
-        status: "verified" as const,
-      })),
-    },
-    now
-  )
-}
-
 /* -------------------------------------------------------------- sections */
 
-export type DomainRecordSection = {
+type DomainRecordSection = {
   id: "verification" | "sending" | "receiving" | "dmarc"
   title: string
   /** Record type this block is about, linked to the docs. */
@@ -344,8 +351,10 @@ export type DomainRecordSection = {
 
 /** The Records tab, top to bottom. One shape for every block so the table
     below each heading is the same component. */
-export function domainRecordSections(domain: Domain): DomainRecordSection[] {
-  const records = domainRecords(domain)
+export function domainRecordSections(
+  domain: Domain,
+  records: DnsRecord[] = domainRecords(domain)
+): DomainRecordSection[] {
   const of = (...kinds: DnsRecord["kind"][]) =>
     records.filter((record) => kinds.includes(record.kind))
   return [
@@ -375,7 +384,7 @@ export function domainRecordSections(domain: Domain): DomainRecordSection[] {
       title: "Enable Receiving",
       docLabel: "MX",
       description:
-        "Delivers inbound mail for this domain to SES. Messages appear under Emails → Receiving.",
+        "Points inbound mail for this domain at SES. The MX record replaces the mail provider the domain uses today, such as Google Workspace, so use a subdomain if that mailbox must keep working.",
       toggle: "receiving",
       enabled: domain.receiving,
       showPriority: true,
@@ -424,30 +433,30 @@ export function domainBanner(status: DomainStatus): DomainBanner {
     case "pending":
       return {
         tone: "warning",
-        title: "Looking for your DNS records",
+        title: "Waiting for your DNS records",
         description:
-          "We check again every few minutes. DNS changes can take up to 72 hours to propagate.",
+          "Add the records at your DNS provider, then click Check DNS records. Checks do not repeat automatically. DNS changes can take up to 72 hours to propagate.",
       }
     case "failed":
       return {
         tone: "destructive",
         title: "Verification failed",
         description:
-          "We could not find these records at your DNS provider. Check them, then restart verification.",
+          "We could not find these records at your DNS provider. Review them, then click Check DNS records to try again.",
       }
     case "temporary_failure":
       return {
         tone: "warning",
         title: "Temporary failure",
         description:
-          "Your DNS provider did not answer our last lookup. We will try again shortly.",
+          "Your DNS provider did not answer our last lookup. Click Check DNS records to try again.",
       }
     case "not_started":
       return {
         tone: "default",
         title: "Verification not started",
         description:
-          "Add the records below at your DNS provider, then start verification.",
+          "Add the records below at your DNS provider, then click Check DNS records.",
       }
   }
 }
@@ -465,9 +474,31 @@ function zoneLine(record: DnsRecord, domainName: string): string {
 
 /** BIND-style zone file for the records this domain needs, ready to import
     at a provider that accepts one. */
-export function domainZoneFile(domain: Domain): string {
-  const lines = domainRecords(domain).map((record) =>
-    zoneLine(record, domain.name)
-  )
+export function domainZoneFile(
+  domain: Domain,
+  records: DnsRecord[] = domainRecords(domain)
+): string {
+  const lines = records.map((record) => zoneLine(record, domain.name))
   return [`; Opensend DNS records for ${domain.name}`, ...lines].join("\n")
+}
+
+const csvCell = (value: string | number) =>
+  `"${String(value).replaceAll('"', '""')}"`
+
+/** The same records as a spreadsheet, for a provider that imports CSV. */
+export function domainCsvFile(
+  domain: Domain,
+  records: DnsRecord[] = domainRecords(domain)
+): string {
+  const rows = [
+    ["Type", "Name", "Content", "TTL", "Priority"],
+    ...records.map((record) => [
+      record.type,
+      record.name,
+      record.value,
+      record.ttl,
+      record.priority ?? "",
+    ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n")
 }

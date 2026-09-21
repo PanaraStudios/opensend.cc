@@ -44,8 +44,10 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
-  ListPagination,
+  IconCell,
   ListToolbar,
+  ListPagination,
+  usePagination,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -54,7 +56,7 @@ import {
   StatusBadge,
   Th,
   copyToClipboard,
-  usePagination,
+  useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import {
   DOMAIN_STATUS_ITEMS,
@@ -68,8 +70,11 @@ import {
   validateDnsLabel,
   validateDomainName,
 } from "@/lib/dashboard/domains"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import { usePaginatedQuery, useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
+import { actionError } from "@/lib/action-error"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { Region } from "@/lib/dashboard/types"
 
 export function AddDomainDialog({
@@ -80,25 +85,27 @@ export function AddDomainDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addDomain, state } = useDashboard()
+  const { addDomain } = useDomainCommands()
+  const installation = useQuery(api.installation.status)
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
-  const [region, setRegion] = React.useState<Region>("us-east-1")
+  const [chosenRegion, setRegion] = React.useState<Region | undefined>()
+  const region =
+    chosenRegion ?? installation?.installation?.defaultRegion ?? "us-east-1"
   const [returnPath, setReturnPath] = React.useState(DEFAULT_RETURN_PATH)
   const [error, setError] = React.useState<string | null>(null)
 
   function reset() {
     setName("")
-    setRegion("us-east-1")
+    setRegion(undefined)
     setReturnPath(DEFAULT_RETURN_PATH)
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    const nameError = validateDomainName(
-      name,
-      state.domains.map((domain) => domain.name)
-    )
+    if (pending) return
+    const nameError = validateDomainName(name, [])
     if (nameError) {
       setError(nameError)
       return
@@ -108,19 +115,26 @@ export function AddDomainDialog({
       setError(pathError)
       return
     }
-    const domain = addDomain({
-      name,
-      region,
-      customReturnPath: returnPath,
-    })
-    toast.add({
-      type: "success",
-      title: "Domain added",
-      description: "Add the DNS records below, then start verification.",
-    })
-    reset()
-    onOpenChange(false)
-    router.push(`/domains/${domain.id}`)
+    setPending(true)
+    try {
+      const id = await addDomain({
+        name,
+        region,
+        customReturnPath: returnPath,
+      })
+      toast.add({
+        type: "success",
+        title: "Domain added",
+        description: "Add the DNS records below, then start verification.",
+      })
+      reset()
+      onOpenChange(false)
+      router.push(`/domains/${id}`)
+    } catch (e) {
+      setError(actionError(e))
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -169,7 +183,12 @@ export function AddDomainDialog({
                 className="w-full"
                 value={region}
                 onChange={(next) => setRegion(next as Region)}
-                items={REGION_ITEMS}
+                items={REGION_ITEMS.filter((item) =>
+                  installation?.regions.some(
+                    (saved) =>
+                      saved.region === item.value && saved.phase === "ready"
+                  )
+                )}
               />
               <FieldDescription>
                 The AWS region your SES identity lives in.
@@ -218,7 +237,9 @@ export function AddDomainDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit">Add domain</Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Adding…" : "Add domain"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -227,22 +248,47 @@ export function AddDomainDialog({
 }
 
 export function DomainsView() {
-  const { state, addExport, deleteDomain, verifyDomain } = useDashboard()
+  const { organizationId, canWrite, deleteDomain, verifyDomain } =
+    useDomainCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [region, setRegion] = React.useState("all")
   const [addOpen, setAddOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
+  const search = useDebouncedValue(query)
 
-  const needle = searchNeedle(query)
-  const rows = state.domains.filter(
-    (domain) =>
-      matchesNeedle(needle, domain.name) &&
-      (status === "all" || domain.status === status) &&
-      (region === "all" || domain.region === region)
+  const {
+    results,
+    status: loading,
+    loadMore,
+  } = usePaginatedQuery(
+    api.domains.list,
+    organizationId
+      ? {
+          organizationId,
+          search,
+          ...(status !== "all"
+            ? {
+                status: status as
+                  "pending" | "verified" | "partially_verified" | "failed",
+              }
+            : {}),
+          ...(region !== "all" ? { region: region as Region } : {}),
+        }
+      : "skip",
+    { initialNumItems: 40 }
   )
+  const rows = results.map(asDomain)
   const { pageRows, pagination } = usePagination(rows)
+  async function verify(id: string) {
+    try {
+      await verifyDomain(id)
+      toast.add({ type: "success", title: "DNS check queued" })
+    } catch (e) {
+      toast.add({ type: "error", title: actionError(e) })
+    }
+  }
 
   return (
     <>
@@ -250,7 +296,7 @@ export function DomainsView() {
         title="Domains"
         description="Verify a domain you own to send email. DNS records are published here. SES stays on your AWS account."
       >
-        <Button onClick={() => setAddOpen(true)}>
+        <Button disabled={!canWrite} onClick={() => setAddOpen(true)}>
           <PlusIcon />
           Add domain
         </Button>
@@ -259,12 +305,20 @@ export function DomainsView() {
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
-        placeholder="Search domains…"
+        placeholder="Search domain prefix…"
         filters={[
           {
             value: status,
             onChange: setStatus,
-            items: DOMAIN_STATUS_ITEMS,
+            items: DOMAIN_STATUS_ITEMS.filter((item) =>
+              [
+                "all",
+                "pending",
+                "verified",
+                "partially_verified",
+                "failed",
+              ].includes(item.value)
+            ),
             "aria-label": "Filter by status",
           },
           {
@@ -274,23 +328,25 @@ export function DomainsView() {
             "aria-label": "Filter by region",
           },
         ]}
-        onExport={() => {
-          addExport("Domains", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
       />
-      {rows.length === 0 ? (
+      {loading === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={DomainIcon}
-          title={state.domains.length === 0 ? "No domains" : "No domains found"}
+          title={
+            !query && status === "all" && region === "all"
+              ? "No domains"
+              : "No domains found"
+          }
           description={
-            state.domains.length === 0
+            !query && status === "all" && region === "all"
               ? "Add a domain you own to send email from addresses on that domain."
               : "No domains match these filters."
           }
         >
-          {state.domains.length === 0 ? (
-            <Button onClick={() => setAddOpen(true)}>
+          {!query && status === "all" && region === "all" ? (
+            <Button disabled={!canWrite} onClick={() => setAddOpen(true)}>
               <PlusIcon />
               Add domain
             </Button>
@@ -312,17 +368,14 @@ export function DomainsView() {
             {pageRows.map((domain) => (
               <TableRow key={domain.id}>
                 <TableCell>
-                  <div className="flex items-center gap-3">
-                    <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
-                      <DomainIcon />
-                    </span>
+                  <IconCell icon={DomainIcon}>
                     <Link
                       href={`/domains/${domain.id}`}
                       className="font-medium hover:underline"
                     >
                       {domain.name}
                     </Link>
-                  </div>
+                  </IconCell>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={domain.status} />
@@ -354,19 +407,15 @@ export function DomainsView() {
                       </DropdownMenuItem>
                       {domain.status === "verified" ? null : (
                         <DropdownMenuItem
-                          onClick={() => {
-                            verifyDomain(domain.id)
-                            toast.add({
-                              type: "success",
-                              title: "Verification finished",
-                            })
-                          }}
+                          disabled={!canWrite}
+                          onClick={() => void verify(domain.id)}
                         >
                           <RefreshCwIcon />
-                          Verify DNS records
+                          Check DNS records
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
+                        disabled={!canWrite}
                         variant="destructive"
                         onClick={() => setPendingDelete(domain.id)}
                       >
@@ -379,7 +428,25 @@ export function DomainsView() {
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination {...pagination} noun="domain" />
+          <ListPagination
+            {...pagination}
+            noun="domain"
+            hasMore={loading !== "Exhausted"}
+            loading={loading === "LoadingMore"}
+            onPageChange={(page) => {
+              if (
+                (page + 1) * pagination.pageSize > rows.length &&
+                loading === "CanLoadMore"
+              )
+                loadMore(pagination.pageSize)
+              pagination.onPageChange(page)
+            }}
+            onPageSizeChange={(size) => {
+              pagination.onPageSizeChange(size)
+              if (size > rows.length && loading === "CanLoadMore")
+                loadMore(size - rows.length)
+            }}
+          />
         </>
       )}
       <AddDomainDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -391,9 +458,9 @@ export function DomainsView() {
         }}
         title="Delete domain?"
         description="You cannot send from this domain until you add it again and verify DNS."
-        onConfirm={() => {
-          if (pendingDelete) deleteDomain(pendingDelete)
-          toast.add({ type: "success", title: "Domain deleted" })
+        onConfirm={async () => {
+          if (pendingDelete) await deleteDomain(pendingDelete)
+          toast.add({ type: "success", title: "Domain removal queued" })
         }}
       />
     </>

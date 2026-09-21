@@ -27,13 +27,6 @@ import {
   transitionBroadcast,
 } from "./broadcast"
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
-import { recordsForDomain } from "./data"
-import {
-  DEFAULT_RETURN_PATH,
-  normalizeDomainName,
-  reconcileDomain,
-  verifyDomainRecords,
-} from "./domains"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction } from "convex/react"
@@ -69,13 +62,11 @@ import type {
   Contact,
   CreateApiKeyResult,
   DashboardState,
-  Domain,
   EmailStatus,
   EmailDraft,
   EmailTemplate,
   MemberRole,
   PropertyType,
-  Region,
   SentEmail,
   Settings,
   SuppressionReason,
@@ -174,90 +165,6 @@ function mutate(mutator: (current: DashboardState) => DashboardState) {
       },
     }
   })
-}
-
-function addDomain(input: {
-  name: string
-  region: Region
-  customReturnPath?: string
-}) {
-  const name = normalizeDomainName(input.name)
-  const returnPath = (input.customReturnPath || DEFAULT_RETURN_PATH)
-    .trim()
-    .toLowerCase()
-  const now = Date.now()
-  const domain: Domain = reconcileDomain(
-    {
-      id: createId("dom"),
-      name,
-      region: input.region,
-      status: "not_started",
-      createdAt: now,
-      sending: true,
-      openTracking: false,
-      clickTracking: false,
-      trackingSubdomain: "",
-      tls: "opportunistic",
-      customReturnPath: returnPath,
-      receiving: false,
-      events: [],
-      records: recordsForDomain(name, input.region, "not_started", returnPath),
-    },
-    now
-  )
-  mutate((current) => ({
-    ...current,
-    domains: [domain, ...current.domains],
-  }))
-  return domain
-}
-
-function deleteDomain(id: string) {
-  mutate((current) => ({
-    ...current,
-    domains: current.domains.filter((domain) => domain.id !== id),
-    apiKeys: current.apiKeys.map((key) =>
-      key.domainId === id ? { ...key, domainId: null } : key
-    ),
-  }))
-}
-
-/* Every field here can change the records a domain needs, so the patch runs
-   through `reconcileDomain`: it syncs the record list, re-derives the status,
-   and stamps any milestone the change just reached. */
-function updateDomain(
-  id: string,
-  patch: Partial<
-    Pick<
-      Domain,
-      | "sending"
-      | "openTracking"
-      | "clickTracking"
-      | "trackingSubdomain"
-      | "tls"
-      | "customReturnPath"
-      | "receiving"
-      | "provider"
-    >
-  >
-) {
-  const now = Date.now()
-  mutate((current) => ({
-    ...current,
-    domains: current.domains.map((domain) =>
-      domain.id === id ? reconcileDomain({ ...domain, ...patch }, now) : domain
-    ),
-  }))
-}
-
-function verifyDomain(id: string) {
-  const now = Date.now()
-  mutate((current) => ({
-    ...current,
-    domains: current.domains.map((domain) =>
-      domain.id === id ? verifyDomainRecords(domain, now) : domain
-    ),
-  }))
 }
 
 type ContactInput = {
@@ -1277,10 +1184,6 @@ function resetDemo() {
 }
 
 const actions = {
-  addDomain,
-  deleteDomain,
-  updateDomain,
-  verifyDomain,
   addContact,
   upsertContacts,
   updateContact,
@@ -1421,6 +1324,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       ...actions,
       state: {
         ...demo,
+        // Domains are now loaded by resource-specific Convex hooks.
+        domains: [],
         members,
         settings: {
           ...demo.settings,

@@ -13,6 +13,7 @@ import {
   type FormEvent,
   type FocusEvent,
   type InvalidEvent,
+  type KeyboardEvent,
   type ReactElement,
   type ReactNode,
 } from "react"
@@ -220,6 +221,7 @@ type ControlProps = {
   onChange?: (event: FormEvent<FormControl>) => void
   onFocus?: (event: FocusEvent<FormControl>) => void
   onBlur?: (event: FocusEvent<FormControl>) => void
+  onKeyDown?: (event: KeyboardEvent<FormControl>) => void
   "aria-invalid"?: boolean | "true" | "false"
   "aria-describedby"?: string
 }
@@ -314,6 +316,12 @@ function FieldToast({
         onBlur: (event) => {
           setFocused(false)
           child.props.onBlur?.(event)
+        },
+        onKeyDown: (event) => {
+          // Firefox can consume Escape before the tooltip's document listener.
+          // Handle dismissal on the focused control as well.
+          if (event.key === "Escape" && open) setFocused(false)
+          child.props.onKeyDown?.(event)
         },
         onInput: (event) => {
           clear()

@@ -1,15 +1,16 @@
 # Opensend
 
-The open-source Opensend application and AWS SES delivery component.
+The open-source Opensend application with built-in Amazon SES setup.
 
 **Website:** [opensend.cc](https://opensend.cc)
 
 ## Status
 
-This repository contains the product dashboard, email editor, and the AWS SES
-Convex delivery engine in `packages/ses`. The dashboard currently uses a local
-demo store. Backend integration, authentication, the Resend-compatible HTTP API,
-and Docker Compose deployment are still being built.
+Authentication, teams, SSO and OAuth use Convex. Installation onboarding and domains
+now use persistent Convex state and AWS SES. Other dashboard features still use
+the demo store while their backend milestones are implemented. The standalone
+`packages/ses` package has been retired; its implementation lessons and regression
+scenarios are preserved in [the archive](docs/legacy-ses/README.md).
 
 The marketing website is maintained separately in the private
 `PanaraStudios/opensend-website` repository. Its pages, sponsor checkout, Stripe
@@ -25,8 +26,8 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open http://localhost:3000. `/` redirects to `/emails`. Authentication routes
-currently link to the public Cloud waitlist. App pages are excluded from indexing.
+Open http://localhost:3000. `/` redirects to `/emails`. Sign up for the first account, verify using the backend logs, and log in to start
+the setup wizard. App pages are excluded from indexing.
 
 ```sh
 pnpm lint
@@ -35,8 +36,7 @@ pnpm test
 pnpm build
 ```
 
-The SES component has its own setup guide:
-[`packages/ses/RUNBOOK.md`](./packages/ses/RUNBOOK.md).
+See [SES onboarding](docs/ses-onboarding.md) and the [remaining milestones](docs/parity-backlog.md).
 
 ## Deployment boundary
 

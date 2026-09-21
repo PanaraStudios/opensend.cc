@@ -57,17 +57,11 @@ import { api } from "@/convex/_generated/api"
 import { useWorkspace } from "@/components/auth/workspace"
 import { actionError } from "@/lib/action-error"
 import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
-import { formatDate, regionLabel, roleLabel } from "@/lib/dashboard/format"
+import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
-import { REGIONS } from "@/lib/dashboard/types"
-import type { Region, Team, TeamMember } from "@/lib/dashboard/types"
-
-const REGION_ITEMS = REGIONS.map((item) => ({
-  value: item.value,
-  label: `${item.label} (${item.code})`,
-}))
+import type { Team, TeamMember } from "@/lib/dashboard/types"
 
 const SMTP_PORT_ITEMS = [
   { value: "465", label: "465 · implicit TLS" },
@@ -531,97 +525,6 @@ export function SettingsTeam() {
         team={deleting ? team : null}
         onClose={() => setDeleting(false)}
       />
-    </>
-  )
-}
-
-export function SettingsSes() {
-  const { state, updateSettings } = useDashboard()
-  const ses = state.settings.ses
-
-  function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const region = String(form.get("region") ?? ses.region) as Region
-    const configurationSet = String(form.get("configurationSet") ?? "").trim()
-    const accessKey = String(form.get("accessKey") ?? "").trim()
-    updateSettings((current) => ({
-      ...current,
-      ses: {
-        ...current.ses,
-        connected: true,
-        region,
-        configurationSet,
-        accessKeyLast4: accessKey
-          ? accessKey.slice(-4).toUpperCase()
-          : ses.accessKeyLast4,
-      },
-    }))
-    toast.add({ type: "success", title: "SES connection saved" })
-  }
-
-  return (
-    <>
-      <SettingsLead>
-        Connect the AWS account that pays for delivery. Credentials stay on this
-        server. API callers never receive them.
-      </SettingsLead>
-      <form onSubmit={save} className="max-w-lg">
-        <Surface>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Connection</span>
-            <Badge variant={ses.connected ? "success" : "warning"} dot>
-              {ses.connected ? "Connected" : "Not connected"}
-            </Badge>
-          </div>
-          <Field>
-            <FieldLabel htmlFor="ses-region">Region</FieldLabel>
-            <OptionSelect
-              id="ses-region"
-              name="region"
-              key={ses.region}
-              className="w-full"
-              defaultValue={ses.region}
-              items={REGION_ITEMS}
-            />
-            <FieldDescription>
-              Current: {regionLabel(ses.region)}
-            </FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="ses-key">Access key</FieldLabel>
-            <Input
-              id="ses-key"
-              name="accessKey"
-              type="password"
-              autoComplete="off"
-              placeholder={
-                ses.accessKeyLast4
-                  ? `Stored key ending in ${ses.accessKeyLast4}`
-                  : "AKIA…"
-              }
-            />
-            <FieldDescription>
-              Leave blank to keep the existing key. Only the last four
-              characters are displayed after save.
-            </FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="ses-config">Configuration set</FieldLabel>
-            <Input
-              id="ses-config"
-              name="configurationSet"
-              key={ses.configurationSet}
-              defaultValue={ses.configurationSet}
-              placeholder="opensend-prod"
-            />
-            <FieldDescription>
-              Used for event publishing (bounces, complaints, deliveries).
-            </FieldDescription>
-          </Field>
-          <Button type="submit">Save connection</Button>
-        </Surface>
-      </form>
     </>
   )
 }

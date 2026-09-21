@@ -9,7 +9,7 @@ export async function selectOAuthTeam(page: Page, teamId: string) {
 }
 export async function beginOAuth(page: Page) {
   const response = await page.request.post(
-    "http://localhost:3400/oauth/register",
+    `${process.env.OPENSEND_BASE_URL}/oauth/register`,
     {
       data: {
         client_name: "Continuation example",
@@ -22,7 +22,7 @@ export async function beginOAuth(page: Page) {
   const app = await response.json()
   const verifier = randomBytes(32).toString("base64url")
   await page.goto(
-    "http://localhost:3400/oauth/authorize?" +
+    `${process.env.OPENSEND_BASE_URL}/oauth/authorize?` +
       new URLSearchParams({
         client_id: app.client_id,
         redirect_uri: "https://example-client.test/callback",
@@ -36,7 +36,7 @@ export async function beginOAuth(page: Page) {
   )
 }
 export async function oauthFlow(page: Page, teamId: string) {
-  const base = "http://localhost:3400"
+  const base = process.env.OPENSEND_BASE_URL ?? "http://localhost:3400"
   for (const method of ["none", "client_secret_basic", "client_secret_post"]) {
     const callback =
       method === "none"
@@ -169,7 +169,9 @@ export async function oauthFlow(page: Page, teamId: string) {
       form: { ...credentials, token: tokens.access_token },
     })
     expect((await introspect.json()).active).toBe(true)
-    const dashboard = new ConvexHttpClient("http://localhost:3410")
+    const dashboard = new ConvexHttpClient(
+      process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
+    )
     dashboard.setAuth(tokens.access_token)
     await expect(dashboard.query(api.teams.snapshot)).rejects.toBeTruthy()
     const direct = await page.request.post(`${base}/api/auth/oauth2/token`, {
@@ -186,9 +188,9 @@ export async function oauthFlow(page: Page, teamId: string) {
         [
           "compose",
           "--env-file",
-          ".env.playwright",
+          process.env.OPENSEND_ENV_FILE!,
           "-p",
-          "opensend-e2e",
+          process.env.COMPOSE_PROJECT_NAME!,
           "restart",
           "convex",
         ],

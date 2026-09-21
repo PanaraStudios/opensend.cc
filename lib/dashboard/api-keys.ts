@@ -41,6 +41,6 @@ export function apiKeyDomainLabel(
   if (!key.domainId) return ALL_DOMAINS_LABEL
   return (
     domains.find((domain) => domain.id === key.domainId)?.name ??
-    ALL_DOMAINS_LABEL
+    "Removed domain (sending disabled)"
   )
 }

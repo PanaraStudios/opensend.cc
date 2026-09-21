@@ -4068,6 +4068,20 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      authorizeInstallation: FunctionReference<
+        "query",
+        "internal",
+        { sessionId: string },
+        { admin: boolean },
+        Name
+      >;
+      authorizeTeam: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string; sessionId: string; write: boolean },
+        null,
+        Name
+      >;
       checkSession: FunctionReference<
         "query",
         "internal",
