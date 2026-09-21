@@ -9,13 +9,12 @@ import { credentialsValue, validateRegion } from "./contracts"
 import { decryptCredentials } from "./crypto"
 import type { Doc } from "../_generated/dataModel"
 
-export function clients(
+function clientConfig(
   region: string,
-  credentials: Infer<typeof credentialsValue>,
-  beforeSesCall?: () => Promise<void>
+  credentials: Infer<typeof credentialsValue>
 ) {
   validateRegion(region)
-  const config = {
+  return {
     region,
     maxAttempts: 1,
     requestHandler: { connectionTimeout: 5000, requestTimeout: 15000 },
@@ -28,6 +27,29 @@ export function clients(
             sessionToken: credentials.sessionToken,
           },
   }
+}
+function installationCredentials(installation: Doc<"installation">) {
+  return installation.credentialKind === "role"
+    ? { kind: "role" as const }
+    : decryptCredentials(
+        installation.encryptedCredentials ?? "",
+        installation._id,
+        installation.wrappedEncryptionKey
+      )
+}
+/** For AWS clients this module does not build, such as global Route 53. */
+export function connectionConfig(
+  installation: Doc<"installation">,
+  region: string
+) {
+  return clientConfig(region, installationCredentials(installation))
+}
+export function clients(
+  region: string,
+  credentials: Infer<typeof credentialsValue>,
+  beforeSesCall?: () => Promise<void>
+) {
+  const config = clientConfig(region, credentials)
   const result = {
     ses: new SESv2Client(config),
     sns: new SNSClient(config),
@@ -58,15 +80,7 @@ export function connectionClients(
   region: string,
   beforeSesCall?: () => Promise<void>
 ) {
-  const credentials =
-    installation.credentialKind === "role"
-      ? { kind: "role" as const }
-      : decryptCredentials(
-          installation.encryptedCredentials ?? "",
-          installation._id,
-          installation.wrappedEncryptionKey
-        )
-  return clients(region, credentials, beforeSesCall)
+  return clients(region, installationCredentials(installation), beforeSesCall)
 }
 export async function readAccount(ses: SESv2Client) {
   const result = await ses.send(new GetAccountCommand({}))
@@ -78,6 +92,11 @@ export async function readAccount(ses: SESv2Client) {
     sent: result.SendQuota?.SentLast24Hours ?? 0,
   }
 }
+/** An email identity that exists in AWS but is not ours. An installation admin
+    can review and adopt it, so the failure carries that structurally instead of
+    leaving the dashboard to read the message. The message is unchanged: the
+    data is a string, so `awsError` still reports it verbatim. */
+export class AdoptionConflict extends ConvexError<string> {}
 export function awsError(error: unknown) {
   if (error instanceof ConvexError && typeof error.data === "string")
     return error.data

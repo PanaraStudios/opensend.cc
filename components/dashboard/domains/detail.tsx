@@ -33,6 +33,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
@@ -44,6 +46,7 @@ import {
 import {
   ConfirmDialog,
   DetailHeader,
+  DetailSection,
   DocsButton,
   EventTrail,
   MetaStrip,
@@ -71,8 +74,11 @@ import {
   downloadTextFile,
 } from "@/components/dashboard/domains/shared"
 import {
+  canAutoConfigure,
   domainBanner,
+  domainCsvFile,
   domainEventSteps,
+  domainRecords,
   domainRecordSections,
   domainTrackingRecords,
   domainZoneFile,
@@ -81,8 +87,12 @@ import {
   type DomainBanner,
   type DomainEventStep,
 } from "@/lib/dashboard/domains"
-import { formatDateTime } from "@/lib/dashboard/format"
-import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
+import { formatDateTime, pluralize } from "@/lib/dashboard/format"
+import {
+  asDomain,
+  useDomainCommands,
+  type DnsAutoConfigConflict,
+} from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import type { Domain, TlsMode } from "@/lib/dashboard/types"
 const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
@@ -91,6 +101,16 @@ const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
   destructive: CircleAlertIcon,
   default: InfoIcon,
 }
+
+/** Optional permissions, on top of the sending policy: only an automatic DNS
+    setup in Route 53 needs them. */
+const ROUTE53_PERMISSIONS = [
+  "route53:ListHostedZonesByName",
+  "route53:ListResourceRecordSets",
+  "route53:ChangeResourceRecordSets",
+]
+
+const CLOUDFLARE_TOKEN_URL = "https://dash.cloudflare.com/profile/api-tokens"
 
 const EVENT_ICON: Record<DomainEventStep["type"], LucideIcon> = {
   added: DomainIcon,
@@ -117,10 +137,7 @@ function DomainStatusAlert({
         {error ? "Domain setup needs attention" : banner.title}
       </AlertTitle>
       <AlertDescription>
-        {error ??
-          (domain.status === "pending"
-            ? "Add these records at your DNS provider, then check verification. DNS changes can take up to 72 hours."
-            : banner.description)}
+        {error ?? banner.description}
         {onReview && (
           <Button variant="outline" onClick={onReview}>
             Review existing identity
@@ -225,30 +242,187 @@ function DomainEvents({ domain }: { domain: Domain }) {
     caption: step.at === undefined ? undefined : formatDateTime(step.at),
   }))
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">Domain events</h2>
+    <DetailSection title="Domain events">
       <EventTrail steps={steps} />
-    </section>
+    </DetailSection>
   )
 }
 
-function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
+/** Writes the records for you at Cloudflare or Route 53. Cloudflare needs a
+    token for the one call; Route 53 rides on the connected AWS account. */
+function AutoConfigureDialog({
+  domain,
+  open,
+  onOpenChange,
+}: {
+  domain: Domain
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { autoConfigureDns } = useDomainCommands()
+  const cloudflare = domain.provider === "cloudflare"
+  const [token, setToken] = React.useState("")
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState("")
+  const [conflicts, setConflicts] = React.useState<DnsAutoConfigConflict[]>([])
+
+  /* The token lives no longer than the dialog does. */
+  function change(next: boolean) {
+    if (!next) {
+      setToken("")
+      setError("")
+      setConflicts([])
+    }
+    onOpenChange(next)
+  }
+
+  async function submit() {
+    if (pending) return
+    setPending(true)
+    setError("")
+    try {
+      const result = await autoConfigureDns(
+        domain.id,
+        cloudflare ? token.trim() : undefined
+      )
+      toast.add({
+        type: "success",
+        title: `${pluralize(result.created, "record")} added`,
+        description: `${result.skipped} already in place`,
+      })
+      setToken("")
+      setConflicts(result.conflicts)
+      if (result.conflicts.length === 0) change(false)
+    } catch (e) {
+      setError(actionError(e))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={change}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Auto configure DNS</DialogTitle>
+          <DialogDescription>
+            {cloudflare
+              ? `Opensend adds the records for ${domain.name} to its Cloudflare zone.`
+              : `Opensend adds the records for ${domain.name} to its Route 53 hosted zone, using the AWS account this installation is connected to.`}{" "}
+            A record that already exists is never overwritten.
+          </DialogDescription>
+        </DialogHeader>
+        {conflicts.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm">
+              These records hold another value already. Update them at{" "}
+              {providerLabel(domain.provider)} yourself.
+            </p>
+            <ul className="flex flex-col gap-1">
+              {conflicts.map((conflict) => (
+                <li
+                  key={`${conflict.type}-${conflict.name}`}
+                  className="text-sm text-muted-foreground"
+                >
+                  <MonoValue copyValue={conflict.name}>
+                    {conflict.name}
+                  </MonoValue>{" "}
+                  {conflict.type} — {conflict.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : cloudflare ? (
+          <Field>
+            <FieldLabel htmlFor="cloudflare-token">
+              Cloudflare API token
+            </FieldLabel>
+            <Input
+              id="cloudflare-token"
+              type="password"
+              autoComplete="off"
+              disabled={pending}
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+            />
+            <FieldDescription>
+              <a href={CLOUDFLARE_TOKEN_URL} target="_blank" rel="noreferrer">
+                Create a token
+              </a>{" "}
+              with Zone → DNS → Edit. It is used for this one call and never
+              stored.
+            </FieldDescription>
+          </Field>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
+              Your AWS user needs these permissions, which are optional
+              everywhere else:
+            </p>
+            <ul className="flex flex-col gap-1">
+              {ROUTE53_PERMISSIONS.map((permission) => (
+                <li key={permission}>
+                  <MonoValue copyValue={permission}>{permission}</MonoValue>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>
+            {conflicts.length > 0 ? "Done" : "Cancel"}
+          </DialogClose>
+          {conflicts.length === 0 && (
+            <Button
+              disabled={pending || (cloudflare && token.trim() === "")}
+              onClick={() => void submit()}
+            >
+              Add records
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DomainRecords({
+  domain,
+  busy,
+  installationAdmin,
+}: {
+  domain: Domain
+  busy: boolean
+  installationAdmin: boolean
+}) {
   const { canWrite, updateDomain, verifyDomain } = useDomainCommands()
   const [pending, setPending] = React.useState(false)
-  const sections = domainRecordSections(domain)
-  const zone = domainZoneFile(domain)
-  const canAuto = false
-  const verifyLabel =
-    domain.status === "not_started"
-      ? "Verify DNS records"
-      : "Restart verification"
+  const [autoOpen, setAutoOpen] = React.useState(false)
+  const records = domainRecords(domain)
+  const sections = domainRecordSections(domain, records)
+  const canAuto = canAutoConfigure(domain.provider)
+  // Route 53 writes ride on the installation's AWS account, not the caller's.
+  const blockedReason = !canAuto
+    ? `Automatic DNS setup is available for Cloudflare and Route 53. Add the records at ${
+        domain.provider && domain.provider !== "other"
+          ? providerLabel(domain.provider)
+          : "your DNS provider"
+      } manually.`
+    : domain.provider === "route53" && !installationAdmin
+      ? "Ask an installation admin — Route 53 setup uses the connected AWS account."
+      : ""
 
   async function runVerification() {
     if (pending || busy) return
     setPending(true)
     try {
       await verifyDomain(domain.id)
-      toast.add({ type: "success", title: "Verification queued" })
+      toast.add({ type: "success", title: "DNS check queued" })
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })
     } finally {
@@ -257,7 +431,11 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
   }
 
   const autoConfigureButton = (
-    <Button variant="outline" disabled={!canAuto}>
+    <Button
+      variant="outline"
+      disabled={!!blockedReason || !canWrite || busy || pending}
+      onClick={() => setAutoOpen(true)}
+    >
       <ProviderMark provider={domain.provider} className="size-4 shrink-0" />
       Auto configure
     </Button>
@@ -268,76 +446,50 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-medium">DNS Records</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {canAuto ? (
-            autoConfigureButton
-          ) : (
+          {blockedReason ? (
             <Tooltip>
               <TooltipTrigger render={<span className="inline-flex" />}>
                 {autoConfigureButton}
               </TooltipTrigger>
-              <TooltipContent>
-                Automatic DNS changes aren’t available yet. Add the records at{" "}
-                {domain.provider && domain.provider !== "other"
-                  ? providerLabel(domain.provider)
-                  : "your DNS provider"}
-                .
-              </TooltipContent>
+              <TooltipContent>{blockedReason}</TooltipContent>
             </Tooltip>
+          ) : (
+            autoConfigureButton
           )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={verifyLabel}
-                  disabled={!canWrite || busy || pending}
-                  onClick={() => void runVerification()}
-                />
-              }
-            >
-              <RefreshCwIcon />
-            </TooltipTrigger>
-            <TooltipContent>{verifyLabel}</TooltipContent>
-          </Tooltip>
+          <Button
+            variant="outline"
+            disabled={!canWrite || busy || pending}
+            onClick={() => void runVerification()}
+          >
+            <RefreshCwIcon data-icon="inline-start" />
+            Check DNS records
+          </Button>
           <MoreMenu>
             <DropdownMenuGroup>
               <DropdownMenuItem
-                onClick={() => void copyToClipboard(zone, "Records")}
+                onClick={() =>
+                  void copyToClipboard(
+                    domainZoneFile(domain, records),
+                    "Records"
+                  )
+                }
               >
                 <CopyIcon />
                 Copy all records
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadZoneFile(domain)}>
+              <DropdownMenuItem
+                onClick={() => downloadZoneFile(domain, records)}
+              >
                 <DownloadIcon />
                 Download zone file
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {
-                  const rows = [
-                    ["Type", "Name", "Content", "TTL", "Priority"],
-                    ...domain.records.map((record) => [
-                      record.type,
-                      record.name,
-                      record.value,
-                      record.ttl,
-                      record.priority ?? "",
-                    ]),
-                  ]
+                onClick={() =>
                   downloadTextFile(
                     `${domain.name}-dns.csv`,
-                    rows
-                      .map((row) =>
-                        row
-                          .map(
-                            (value) =>
-                              '"' + String(value).replaceAll('"', '""') + '"'
-                          )
-                          .join(",")
-                      )
-                      .join("\r\n")
+                    domainCsvFile(domain, records)
                   )
-                }}
+                }
               >
                 <DownloadIcon />
                 Export as CSV
@@ -346,46 +498,49 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
           </MoreMenu>
         </div>
       </div>
-      {sections.map((section, index) => (
-        <DomainSection
-          key={section.id}
-          title={section.title}
-          description={
-            section.toggle === "receiving"
-              ? "Incoming email isn’t supported yet."
-              : section.description
-          }
-          docLabel={section.enabled ? section.docLabel : undefined}
-          divider={index > 0}
-          toggle={
-            section.toggle
-              ? {
-                  checked: section.enabled,
-                  disabled:
-                    section.toggle !== "sending" ||
-                    !canWrite ||
-                    busy ||
-                    pending,
-                  onCheckedChange: (checked) => {
-                    if (section.toggle !== "sending") return
-                    void updateDomain(domain.id, { sending: checked }).catch(
-                      (error) =>
+      {sections.map((section, index) => {
+        const toggle = section.toggle
+        return (
+          <DomainSection
+            key={section.id}
+            title={section.title}
+            description={section.description}
+            docLabel={section.enabled ? section.docLabel : undefined}
+            divider={index > 0}
+            toggle={
+              toggle
+                ? {
+                    checked: section.enabled,
+                    disabled: !canWrite || busy || pending,
+                    onCheckedChange: (checked) => {
+                      void updateDomain(
+                        domain.id,
+                        toggle === "sending"
+                          ? { sending: checked }
+                          : { receiving: checked }
+                      ).catch((error) =>
                         toast.add({ type: "error", title: actionError(error) })
-                    )
-                  },
-                }
-              : undefined
-          }
-        >
-          {section.enabled && section.records.length > 0 ? (
-            <DnsRecordsTable
-              records={section.records}
-              domainName={domain.name}
-              showPriority={section.showPriority}
-            />
-          ) : null}
-        </DomainSection>
-      ))}
+                      )
+                    },
+                  }
+                : undefined
+            }
+          >
+            {section.enabled && section.records.length > 0 ? (
+              <DnsRecordsTable
+                records={section.records}
+                domainName={domain.name}
+                showPriority={section.showPriority}
+              />
+            ) : null}
+          </DomainSection>
+        )
+      })}
+      <AutoConfigureDialog
+        domain={domain}
+        open={autoOpen}
+        onOpenChange={setAutoOpen}
+      />
     </Surface>
   )
 }
@@ -481,13 +636,23 @@ export function DomainDetail() {
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState(false)
   const [providerLookupFailed, setProviderLookupFailed] = React.useState(false)
-  const providerDomainId = result?.domain._id
+  const stored = result?.domain
+  const domain = React.useMemo(
+    () => (stored ? asDomain(stored) : undefined),
+    [stored]
+  )
+  const providerDomainId = stored?._id
+  const providerCheckedAt = stored?.dnsProviderCheckedAt
   React.useEffect(() => {
-    if (providerDomainId)
+    // The server claim is the backstop; don't ask again while it is fresh.
+    if (
+      providerDomainId &&
+      (!providerCheckedAt || Date.now() - providerCheckedAt > 3600000)
+    )
       void inspectProvider({ id: providerDomainId })
         .then(() => setProviderLookupFailed(false))
         .catch(() => setProviderLookupFailed(true))
-  }, [providerDomainId, inspectProvider])
+  }, [providerDomainId, providerCheckedAt, inspectProvider])
   // Resume installations that added their domain before setup completion moved here.
   React.useEffect(() => {
     if (
@@ -506,21 +671,18 @@ export function DomainDetail() {
     complete,
   ])
   if (result === undefined) return <Skeleton className="h-64 w-full" />
-  if (!result) {
+  if (!result || !domain) {
     if (leaving) return null
     return <NotFoundState icon={DomainIcon} noun="domain" backHref="/domains" />
   }
-  const domain = asDomain(result.domain)
   const busy = result.domain.phase === "running"
   const error = result.domain.error ?? result.tenant?.error
+  // The worker flags an identity it could not claim; error text is never parsed.
   const reviewable =
     installation?.admin &&
     result.domain.phase === "failed" &&
     result.domain.operation === "provision" &&
-    (!!result.domain.adoption ||
-      /already exists|another tenant|not owned by this installation/.test(
-        error ?? ""
-      ))
+    (!!result.domain.adoption || !!result.domain.needsAdoptionReview)
   return (
     <div className="flex flex-col gap-6">
       <DetailHeader
@@ -589,7 +751,11 @@ export function DomainDetail() {
         </TabsList>
       </Tabs>
       {tab === "records" ? (
-        <DomainRecords domain={domain} busy={busy} />
+        <DomainRecords
+          domain={domain}
+          busy={busy}
+          installationAdmin={!!installation?.admin}
+        />
       ) : (
         <DomainConfiguration domain={domain} busy={busy} />
       )}

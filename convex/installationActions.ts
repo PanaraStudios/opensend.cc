@@ -124,15 +124,16 @@ export const connect = action({
         throw new ConvexError(
           "AWS account does not match; no changes were made"
         )
-      const checked = []
-      for (const region of regions)
-        checked.push({
+      // The pacer is keyed per region, so these never queue behind each other.
+      const checked = await Promise.all(
+        regions.map(async (region) => ({
           region,
           quota: await readAccount(
             clients(region, args.credentials, controlPlanePacer(ctx, region))
               .ses
           ),
-        })
+        }))
+      )
       await ctx.runMutation(internal.installation.activateConnection, {
         revision: installation.credentialRevision,
         accountId: identity.Account,

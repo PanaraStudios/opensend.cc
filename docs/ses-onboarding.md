@@ -113,6 +113,37 @@ Use an AWS role with these permissions, or a dedicated least-privilege IAM user.
 | `arn:aws:sns:REGION:ACCOUNT:opensend-INSTALLATION-events`              | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:SetTopicAttributes`, `sns:ListSubscriptionsByTopic`, `sns:Subscribe`, `sns:ConfirmSubscription`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`                                                                                                  |
 | `arn:aws:sqs:REGION:ACCOUNT:opensend-INSTALLATION-events-dlq`          | `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:ListQueueTags`, `sqs:TagQueue`, `sqs:SetQueueAttributes`                                                                                                                                                                                                                                      |
 
+### Optional: automatic DNS setup
+
+**Auto configure DNS** writes a domain's records at its DNS provider for you.
+It is never required — every record stays visible on the domain page for manual
+entry, and provisioning works without any of the grants below.
+
+| Resource scope                                | Actions                                                              |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| `*` (no resource-level scope)                 | `route53:ListHostedZonesByName`                                      |
+| `arn:aws:route53:::hostedzone/HOSTED_ZONE_ID` | `route53:ListResourceRecordSets`, `route53:ChangeResourceRecordSets` |
+
+Add these only for domains whose DNS is hosted in the same AWS account. Route 53
+is a global service, so the grants are not regional. Without them the button
+reports the missing permissions and changes nothing.
+
+Only an installation admin can run automatic setup for a Route 53 domain. The
+write is signed with the installation's connected AWS account and can reach any
+hosted zone in it, so team membership alone is not enough authority.
+
+Cloudflare-hosted domains need no AWS permission, and any team admin can run
+them: Opensend asks for a Cloudflare API token scoped to **Zone → DNS → Edit**
+at the moment you press the button, so the caller supplies their own authority.
+The token is used for that one request and is never stored, logged, or echoed
+back.
+
+Automatic setup only ever adds records. A name that already answers with a
+different value, an existing SPF policy, or an apex already served by another
+mail provider is reported as a conflict and left untouched; an existing DMARC
+policy is left in place. Unrelated TXT values at a name Opensend writes to are
+preserved.
+
 SNS subscription attribute operations authorize against the parent topic. The
 generated template scopes these grants to the installation’s regional topic.
 An AWS denial reports the failed operation without exposing the raw request or

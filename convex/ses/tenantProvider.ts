@@ -15,7 +15,7 @@ import {
 import type { Doc } from "../_generated/dataModel"
 import { assertOwned, missing } from "./aws"
 
-export function assertTenantOwned(
+function assertTenantOwned(
   tenant: Tenant | undefined,
   installation: Doc<"installation">,
   row: Doc<"sesTenants">
@@ -52,6 +52,13 @@ export async function getOwnedTenant(
   )
   return response ? assertTenantOwned(response.Tenant, installation, row) : null
 }
+/** Bounces and complaints are held on the tenant, not the whole account. */
+const suppressed = (tenant: Tenant) =>
+  tenant.SuppressionAttributes?.SuppressionScope === "TENANT" &&
+  (["BOUNCE", "COMPLAINT"] as const).every((reason) =>
+    tenant.SuppressionAttributes?.SuppressedReasons?.includes(reason)
+  )
+
 export async function provisionTenant(
   ses: SESv2Client,
   installation: Doc<"installation">,
@@ -88,13 +95,7 @@ export async function provisionTenant(
     throw new ConvexError(
       "SES tenant was not found after creation. Retry setup."
     )
-  const suppression = tenant.SuppressionAttributes
-  if (
-    suppression?.SuppressionScope !== "TENANT" ||
-    !["BOUNCE", "COMPLAINT"].every((reason) =>
-      suppression.SuppressedReasons?.includes(reason as "BOUNCE" | "COMPLAINT")
-    )
-  ) {
+  if (!suppressed(tenant)) {
     await ses.send(
       new PutTenantSuppressionAttributesCommand({
         TenantName: row.name,
@@ -103,12 +104,7 @@ export async function provisionTenant(
       })
     )
     tenant = await getOwnedTenant(ses, installation, row)
-    if (
-      !tenant ||
-      tenant.SuppressionAttributes?.SuppressionScope !== "TENANT" ||
-      !tenant.SuppressionAttributes.SuppressedReasons?.includes("BOUNCE") ||
-      !tenant.SuppressionAttributes.SuppressedReasons?.includes("COMPLAINT")
-    )
+    if (!tenant || !suppressed(tenant))
       throw new ConvexError("Tenant suppression is not ready. Retry setup.")
   }
   // Preserve AWS/customer pauses. Provisioning must never re-enable a paused tenant.
@@ -178,6 +174,10 @@ export async function removeTenant(
   installation: Doc<"installation">,
   row: Doc<"sesTenants">
 ) {
+  // SES evaluates GetTenant on a name that does not exist against Resource "*",
+  // which the scoped policy denies. A row that never recorded an ARN has no
+  // acknowledged AWS tenant, so reading one would strand the removal forever.
+  if (!row.arn) return
   const tenant = await getOwnedTenant(ses, installation, row)
   if (!tenant) return
   const resources = await ses.send(

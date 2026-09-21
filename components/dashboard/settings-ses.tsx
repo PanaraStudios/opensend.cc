@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
-import { DownloadIcon, KeyRoundIcon, ShieldIcon } from "lucide-react"
+import { KeyRoundIcon, ShieldIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
@@ -21,11 +21,10 @@ import {
   RelativeTime,
   EmptyState,
 } from "@/components/dashboard/primitives"
-import { downloadTextFile } from "@/components/dashboard/domains/shared"
 import { AwsConnectionForm } from "@/components/ses/connection-form"
+import { DownloadIamPolicyButton } from "@/components/ses/credentials-help"
 import { SesRegions } from "@/components/ses/regions"
 import { TenantCleanup } from "@/components/onboarding/team-ses-status"
-import { buildAwsIamPolicy } from "@/lib/aws/setup"
 
 export function SettingsSes() {
   const status = useQuery(api.installation.status)
@@ -42,6 +41,7 @@ export function SettingsSes() {
     )
   const installation = status.installation
   const connected = !!installation?.accountId
+  const callbackOrigin = installation?.callbackOrigin
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
       <p className="text-sm text-muted-foreground">
@@ -55,40 +55,20 @@ export function SettingsSes() {
           </Badge>
         }
         footer={
-          status.admin ? (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                <KeyRoundIcon data-icon="inline-start" />
-                Update connection
-              </Button>
-              {installation?.accountId && (
-                <Button
-                  variant="ghost"
-                  onClick={() =>
-                    downloadTextFile(
-                      "opensend-iam-policy.json",
-                      JSON.stringify(
-                        buildAwsIamPolicy(
-                          installation._id,
-                          status.regions.map((region) => region.region),
-                          installation.accountId!
-                        ),
-                        null,
-                        2
-                      ) + "\n"
-                    )
-                  }
-                >
-                  <DownloadIcon data-icon="inline-start" />
-                  Download permissions
-                </Button>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Managed by your installation administrator.
-            </p>
-          )
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              <KeyRoundIcon data-icon="inline-start" />
+              Update connection
+            </Button>
+            {installation?.accountId && (
+              <DownloadIamPolicyButton
+                variant="ghost"
+                installationId={installation._id}
+                accountId={installation.accountId}
+                regions={status.regions.map((region) => region.region)}
+              />
+            )}
+          </div>
         }
       >
         <dl className="grid gap-5 sm:grid-cols-2">
@@ -122,20 +102,18 @@ export function SettingsSes() {
         title="Delivery updates"
         description="AWS sends delivery and bounce events to this address."
         footer={
-          status.admin && installation?.callbackOrigin ? (
+          callbackOrigin ? (
             <AsyncForm
               submitLabel="Check connection"
               success="Connection checked"
-              onSubmit={() =>
-                check({ callbackOrigin: installation.callbackOrigin })
-              }
+              onSubmit={() => check({ callbackOrigin })}
             />
           ) : undefined
         }
       >
         <div className="min-w-0 text-sm break-all">
-          <MonoValue copyValue={installation?.callbackOrigin}>
-            {installation?.callbackOrigin || "Not configured"}
+          <MonoValue copyValue={callbackOrigin}>
+            {callbackOrigin || "Not configured"}
           </MonoValue>
         </div>
         {!!installation?.environmentCheckedAt && (
@@ -144,7 +122,7 @@ export function SettingsSes() {
           </p>
         )}
       </SettingsCard>
-      {status.admin && <TenantCleanup />}
+      <TenantCleanup />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

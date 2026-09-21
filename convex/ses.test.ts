@@ -152,7 +152,9 @@ async function fixture() {
       operation: "provision",
     })
   )
-  await t.run((ctx) => ctx.db.patch(installation, { completedAt: Date.now() }))
+  await t.run((ctx) =>
+    ctx.db.patch("installation", installation, { completedAt: Date.now() })
+  )
   return {
     t,
     owner,
@@ -188,6 +190,35 @@ describe("installation and domain authorization", () => {
       })
     ).rejects.toThrow("installation administrator")
     await expect(f.t.query(api.installation.status)).rejects.toThrow("Sign in")
+  })
+  test("a signed-in member never receives the AWS account, its key hint or its quotas", async () => {
+    const f = await fixture()
+    const member = await f.outsider.client.query(api.installation.status)
+    for (const field of [
+      "accountId",
+      "accessKeyLast4",
+      "credentialKind",
+      "credentialRevision",
+      "callbackOrigin",
+      "siteUrl",
+      "environmentCheckedAt",
+    ] as const)
+      expect(member.installation?.[field]).toBeUndefined()
+    expect(member.suggestedCallbackOrigin).toBe("")
+    expect(member.regions[0].quota).toBeUndefined()
+    expect(member.regions[0].callbackConfirmed).toBeUndefined()
+    // What a member still needs to route the dashboard and add a domain.
+    expect(member.installation?.completedAt).toBeTruthy()
+    expect(member.regions[0]).toMatchObject({
+      region: "us-east-1",
+      phase: "ready",
+    })
+    const admin = await f.owner.client.query(api.installation.status)
+    expect(admin.installation).toMatchObject({
+      accountId: "123456789012",
+      accessKeyLast4: "1234",
+    })
+    expect(admin.regions[0].quota?.daily).toBe(200)
   })
   test("cross-team reads and writes are denied using live membership", async () => {
     const f = await fixture()
@@ -336,7 +367,9 @@ describe("installation and domain authorization", () => {
     expect(
       await f.owner.client.query(api.domains.get, { id: f.domain })
     ).toBeNull()
-    expect(await f.t.run((ctx) => ctx.db.get(f.domain))).not.toBeNull()
+    expect(
+      await f.t.run((ctx) => ctx.db.get("domains", f.domain))
+    ).not.toBeNull()
   })
   test("SNS ingestion deduplicates events and refuses unknown topics", async () => {
     const f = await fixture()
@@ -418,7 +451,10 @@ describe("AWS boundary regression scenarios", () => {
       resolveMx: async () => [
         { exchange: "feedback-smtp.us-east-1.amazonses.com.", priority: 10 },
       ],
-      resolveTxt: async () => [["v=spf1 ", "include:amazonses.com ~all"]],
+      resolveTxt: async (name: string) =>
+        name.startsWith("_dmarc.")
+          ? [["v=DMARC1; ", "p=none;"]]
+          : [["v=spf1 ", "include:amazonses.com ~all"]],
     } as unknown as Resolver
     expect(
       (await checkRecords(records, resolver)).every(
@@ -491,7 +527,7 @@ describe("AWS boundary regression scenarios", () => {
 async function awsFixture() {
   const f = await fixture()
   await f.t.run((ctx) =>
-    ctx.db.patch(f.installation, {
+    ctx.db.patch("installation", f.installation, {
       encryptedCredentials: encryptCredentials(
         {
           kind: "keys",
@@ -531,6 +567,7 @@ async function awsFixture() {
     associations,
     failAssociation: false,
     denyMissingTenantLookup: false,
+    throttle: false,
     identity: null as GetEmailIdentityResponse | null,
     config: false,
     calls: [] as string[],
@@ -580,12 +617,17 @@ async function awsFixture() {
           SuppressionScope: input.SuppressionScope as "TENANT",
           SuppressedReasons: ["BOUNCE", "COMPLAINT"],
         }
-      if (name === "ListResourceTenantsCommand")
+      if (name === "ListResourceTenantsCommand") {
+        if (state.throttle)
+          throw Object.assign(new Error("slow down"), {
+            name: "ThrottlingException",
+          })
         return {
           ResourceTenants: [...(state.associations.get(resourceArn) ?? [])].map(
             (TenantName) => ({ TenantName, ResourceArn: resourceArn })
           ),
         } as never
+      }
       if (name === "CreateTenantResourceAssociationCommand") {
         if (state.failAssociation)
           throw Object.assign(new Error(), { name: "AccessDeniedException" })
@@ -694,7 +736,10 @@ describe("provisioning actions with a controlled AWS boundary", () => {
     expect(result?.domain.records[0].value).toBe(
       "provider-token.regional.dkim.amazonses.com"
     )
-    expect(result?.region?.quota.production).toBe(false)
+    expect(
+      (await f.t.run((ctx) => ctx.db.get("sesRegions", f.region._id)))?.quota
+        .production
+    ).toBe(false)
   })
   test("partial provisioning resumes without duplicate resources and redacts provider details", async () => {
     const f = await awsFixture()
@@ -775,7 +820,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       configurationSet: "other-app",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch(f.domain, {
+      ctx.db.patch("domains", f.domain, {
         adoption: { ...domain.adoption!, approved: true },
       })
     )
@@ -786,7 +831,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       Value: "marketing",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch(f.domain, { operation: "remove", sending: false })
+      ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
     )
     await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -795,6 +840,84 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       MailFromAttributes: { MailFromDomain: "old.example.test" },
       Tags: [{ Key: "department", Value: "marketing" }],
     })
+  })
+  test("an identity we cannot claim is flagged for review structurally, not by its message", async () => {
+    vi.useFakeTimers()
+    const f = await awsFixture()
+    f.aws.identity = {
+      ConfigurationSetName: "other-app",
+      Tags: [{ Key: "department", Value: "marketing" }],
+      DkimAttributes: {
+        Tokens: ["existing"],
+        SigningHostedZone: "dkim.amazonses.com",
+      },
+    }
+    const stored = async () =>
+      (await f.owner.client.query(api.domains.get, { id: f.domain }))!.domain
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    const flagged = await stored()
+    expect(flagged).toMatchObject({
+      phase: "failed",
+      operation: "provision",
+      needsAdoptionReview: true,
+    })
+    expect(flagged.error).toContain("already exists in SES")
+    await f.owner.client.action(api.ses.adoption.preview, { id: f.domain })
+    await f.owner.client.mutation(api.domains.approveAdoption, {
+      id: f.domain,
+      fingerprint: (await stored()).adoption!.fingerprint,
+    })
+    expect((await stored()).needsAdoptionReview).toBeUndefined()
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    const adopted = await stored()
+    expect(adopted.phase).toBe("ready")
+    expect(adopted.needsAdoptionReview).toBeUndefined()
+  })
+  test("removal abandons an identity we never tagged, even after an adoption was approved", async () => {
+    const f = await awsFixture()
+    f.aws.identity = {
+      ConfigurationSetName: "other-app",
+      Tags: [{ Key: "department", Value: "marketing" }],
+      DkimAttributes: {
+        Tokens: ["existing"],
+        SigningHostedZone: "dkim.amazonses.com",
+      },
+      MailFromAttributes: {
+        MailFromDomain: "old.example.test",
+        MailFromDomainStatus: "SUCCESS",
+        BehaviorOnMxFailure: "USE_DEFAULT_VALUE",
+      },
+    }
+    // Approved, but the provision never reached TagResource and AWS has drifted
+    // since: there is nothing of ours to restore or delete here.
+    await f.t.run((ctx) =>
+      ctx.db.patch("domains", f.domain, {
+        operation: "remove",
+        sending: false,
+        adoption: {
+          fingerprint: "recorded-before-the-identity-changed",
+          approved: true,
+          configurationSet: "other-app",
+          mailFromDomain: "old.example.test",
+        },
+      })
+    )
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    for (const call of [
+      "DeleteEmailIdentityCommand",
+      "UntagResourceCommand",
+      "PutEmailIdentityMailFromAttributesCommand",
+      "PutEmailIdentityConfigurationSetAttributesCommand",
+    ])
+      expect(f.aws.calls).not.toContain(call)
+    expect(f.aws.identity).toMatchObject({
+      ConfigurationSetName: "other-app",
+      MailFromAttributes: { MailFromDomain: "old.example.test" },
+      Tags: [{ Key: "department", Value: "marketing" }],
+    })
+    expect(
+      await f.owner.client.query(api.domains.get, { id: f.domain })
+    ).toBeNull()
   })
   test("concurrent duplicate creation reserves only one active domain and retries remain serialized", async () => {
     vi.useFakeTimers()
@@ -976,7 +1099,7 @@ test("removing a refused identity claim preserves the unrelated AWS identity", a
     Tags: [{ Key: "owner", Value: "other" }],
   }
   await f.t.run((ctx) =>
-    ctx.db.patch(f.domain, { operation: "remove", sending: false })
+    ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
   )
   await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
   expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -1148,7 +1271,7 @@ test("wizard progress persists and cannot skip missing setup prerequisites", asy
       ?.setupStep
   ).toBe("callback")
   await f.t.run((ctx) =>
-    ctx.db.patch(f.installation, { environmentCheckedAt: 0 })
+    ctx.db.patch("installation", f.installation, { environmentCheckedAt: 0 })
   )
   await expect(
     f.owner.client.mutation(api.installation.navigate, { step: "team" })
@@ -1162,7 +1285,10 @@ test("setup gates teams and invitations, with one first-team creation at the wiz
   vi.useFakeTimers()
   const f = await fixture()
   await f.t.run((ctx) =>
-    ctx.db.patch(f.installation, { completedAt: undefined, setupStep: "aws" })
+    ctx.db.patch("installation", f.installation, {
+      completedAt: undefined,
+      setupStep: "aws",
+    })
   )
   await expect(
     f.owner.client.mutation(api.teams.create, { name: "Bypass" })
@@ -1191,7 +1317,9 @@ test("setup gates teams and invitations, with one first-team creation at the wiz
     organizationId: f.owner.team,
     leave: false,
   })
-  await f.t.run((ctx) => ctx.db.patch(f.installation, { setupStep: "team" }))
+  await f.t.run((ctx) =>
+    ctx.db.patch("installation", f.installation, { setupStep: "team" })
+  )
   await f.owner.client.mutation(api.teams.create, { name: "First team" })
   expect(
     (await f.owner.client.query(api.installation.status)).installation
@@ -1201,7 +1329,7 @@ test("setup gates teams and invitations, with one first-team creation at the wiz
     f.owner.client.mutation(api.teams.create, { name: "Second team" })
   ).rejects.toThrow("team step")
   await f.t.run((ctx) =>
-    ctx.db.patch(f.installation, { completedAt: Date.now() })
+    ctx.db.patch("installation", f.installation, { completedAt: Date.now() })
   )
   await expect(
     f.owner.client.mutation(api.teams.create, { name: "Second team" })
@@ -1215,7 +1343,7 @@ describe("native SES team tenants", () => {
     f.aws.tenants.delete(f.tenantName)
     f.aws.denyMissingTenantLookup = true
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, {
+      ctx.db.patch("sesTenants", f.tenant, {
         arn: undefined,
         phase: "running",
         generation: 2,
@@ -1234,7 +1362,7 @@ describe("native SES team tenants", () => {
     ).toBe("ready")
     // Model a lost acknowledgment: retry the same name without a stored ARN.
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, {
+      ctx.db.patch("sesTenants", f.tenant, {
         arn: undefined,
         phase: "running",
         generation: 3,
@@ -1249,6 +1377,29 @@ describe("native SES team tenants", () => {
       (await f.t.query(internal.tenants.get, { id: f.tenant }))?.phase
     ).toBe("ready")
   })
+  test("removing a tenant that AWS never acknowledged finishes without reading it", async () => {
+    const f = await awsFixture()
+    f.aws.tenants.delete(f.tenantName)
+    // GetTenant on a name that does not exist is evaluated against Resource "*",
+    // which the scoped installation policy denies.
+    f.aws.denyMissingTenantLookup = true
+    await f.t.run((ctx) =>
+      ctx.db.patch("sesTenants", f.tenant, {
+        arn: undefined,
+        phase: "running",
+        generation: 2,
+        operation: "remove",
+      })
+    )
+    await f.t.action(internal.ses.tenantActions.run, {
+      tenantId: f.tenant,
+      generation: 2,
+    })
+    expect(f.aws.calls).toEqual([])
+    expect(
+      await f.t.query(internal.tenants.get, { id: f.tenant })
+    ).toMatchObject({ deleted: true, phase: "ready" })
+  })
   test("a new tenant name collision checks ownership before changing the existing tenant", async () => {
     const f = await awsFixture()
     const original = f.aws.tenants.get(f.tenantName)!
@@ -1256,7 +1407,7 @@ describe("native SES team tenants", () => {
       { Key: "opensend:installation", Value: "another-installation" },
     ]
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, {
+      ctx.db.patch("sesTenants", f.tenant, {
         arn: undefined,
         phase: "running",
         generation: 2,
@@ -1330,6 +1481,8 @@ describe("native SES team tenants", () => {
     const result = await f.owner.client.query(api.domains.get, { id: f.domain })
     expect(result?.domain.phase).toBe("failed")
     expect(result?.domain.error).toContain("another tenant")
+    // A tenant binding is not an identity an administrator can adopt.
+    expect(result?.domain.needsAdoptionReview).toBeUndefined()
     expect(f.aws.calls).not.toContain(
       "PutEmailIdentityMailFromAttributesCommand"
     )
@@ -1342,7 +1495,7 @@ describe("native SES team tenants", () => {
       { Key: "opensend:team", Value: "different-team" },
     ]
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, { phase: "running", generation: 2 })
+      ctx.db.patch("sesTenants", f.tenant, { phase: "running", generation: 2 })
     )
     await f.t.action(internal.ses.tenantActions.run, {
       tenantId: f.tenant,
@@ -1364,7 +1517,9 @@ describe("native SES team tenants", () => {
     expect(
       f.aws.calls.indexOf("DeleteTenantResourceAssociationCommand")
     ).toBeLessThan(f.aws.calls.indexOf("DeleteEmailIdentityCommand"))
-    expect((await f.t.run((ctx) => ctx.db.get(f.domain)))?.deleted).toBe(true)
+    expect(
+      (await f.t.run((ctx) => ctx.db.get("domains", f.domain)))?.deleted
+    ).toBe(true)
     await f.owner.client.mutation(api.teams.remove, {
       organizationId: f.owner.team,
       leave: false,
@@ -1378,7 +1533,7 @@ describe("native SES team tenants", () => {
   test("unexpected tenant resources stop cleanup and remain intact until an administrator retries", async () => {
     vi.useFakeTimers()
     const f = await awsFixture()
-    await f.t.run((ctx) => ctx.db.patch(f.domain, { deleted: true }))
+    await f.t.run((ctx) => ctx.db.patch("domains", f.domain, { deleted: true }))
     f.aws.associations.set(
       "arn:aws:ses:us-east-1:123456789012:identity/unrelated.test",
       new Set([f.tenantName])
@@ -1404,7 +1559,7 @@ describe("native SES team tenants", () => {
   test("stale lifecycle workers cannot overwrite a newer removal operation", async () => {
     const f = await awsFixture()
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, {
+      ctx.db.patch("sesTenants", f.tenant, {
         phase: "running",
         generation: 2,
         operation: "remove",
@@ -1433,12 +1588,12 @@ describe("native SES team tenants", () => {
       })
     ).rejects.toThrow("Domain is not ready")
     await f.t.run(async (ctx) => {
-      await ctx.db.patch(f.domain, {
+      await ctx.db.patch("domains", f.domain, {
         status: "verified",
         tenantAssociated: true,
         configurationSet: "team-configuration",
       })
-      await ctx.db.patch(f.region._id, {
+      await ctx.db.patch("sesRegions", f.region._id, {
         callbackConfirmed: true,
         quota: { ...f.region.quota, production: true },
       })
@@ -1459,7 +1614,7 @@ describe("native SES team tenants", () => {
       })
     ).rejects.toThrow("does not belong")
     await f.t.run((ctx) =>
-      ctx.db.patch(f.tenant, { sendingStatus: "DISABLED" })
+      ctx.db.patch("sesTenants", f.tenant, { sendingStatus: "DISABLED" })
     )
     await expect(
       f.t.query(internal.ses.sendContext.get, {
@@ -1486,13 +1641,15 @@ describe("native SES team tenants", () => {
 test("setup completion requires a ready tenant belonging to the first domain's team", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
-    await ctx.db.patch(f.installation, { completedAt: undefined })
-    await ctx.db.patch(f.domain, {
+    await ctx.db.patch("installation", f.installation, {
+      completedAt: undefined,
+    })
+    await ctx.db.patch("domains", f.domain, {
       tenantAssociated: false,
       phase: "failed",
       status: "failed",
     })
-    await ctx.db.patch(f.tenant, { phase: "failed" })
+    await ctx.db.patch("sesTenants", f.tenant, { phase: "failed" })
   })
   await expect(
     f.owner.client.mutation(api.installation.complete, {
@@ -1500,7 +1657,10 @@ test("setup completion requires a ready tenant belonging to the first domain's t
     })
   ).rejects.toThrow("Provision")
   await f.t.run((ctx) =>
-    ctx.db.patch(f.tenant, { phase: "ready", organizationId: f.outsider.team })
+    ctx.db.patch("sesTenants", f.tenant, {
+      phase: "ready",
+      organizationId: f.outsider.team,
+    })
   )
   await expect(
     f.owner.client.mutation(api.installation.complete, {
@@ -1508,7 +1668,7 @@ test("setup completion requires a ready tenant belonging to the first domain's t
     })
   ).rejects.toThrow("Provision")
   await f.t.run((ctx) =>
-    ctx.db.patch(f.tenant, { organizationId: f.owner.team })
+    ctx.db.patch("sesTenants", f.tenant, { organizationId: f.owner.team })
   )
   await f.owner.client.mutation(api.installation.complete, {
     organizationId: f.owner.team,
@@ -1528,11 +1688,11 @@ test("setup completion requires a ready tenant belonging to the first domain's t
 test("saving the first domain atomically completes setup before AWS/DNS verification", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
-    await ctx.db.patch(f.installation, {
+    await ctx.db.patch("installation", f.installation, {
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch(f.domain, { deleted: true })
+    await ctx.db.patch("domains", f.domain, { deleted: true })
   })
   const id = await f.owner.client.mutation(api.domains.create, {
     organizationId: f.owner.team,
@@ -1558,12 +1718,12 @@ test("saving the first domain atomically completes setup before AWS/DNS verifica
 test("first domain creation rolls back if team setup is not ready", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
-    await ctx.db.patch(f.installation, {
+    await ctx.db.patch("installation", f.installation, {
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch(f.domain, { deleted: true })
-    await ctx.db.patch(f.tenant, { phase: "failed" })
+    await ctx.db.patch("domains", f.domain, { deleted: true })
+    await ctx.db.patch("sesTenants", f.tenant, { phase: "failed" })
   })
   await expect(
     f.owner.client.mutation(api.domains.create, {
@@ -1581,7 +1741,7 @@ test("first domain creation rolls back if team setup is not ready", async () => 
     await f.t.run((ctx) =>
       ctx.db
         .query("domains")
-        .withIndex("by_name_and_region", (q) =>
+        .withIndex("by_name_and_region_and_deleted", (q) =>
           q.eq("name", "new.example.test").eq("region", "us-east-1")
         )
         .unique()
@@ -1698,7 +1858,7 @@ test("TLS changes preserve verified DNS, identity state and tenant associations,
     },
   ]
   await f.t.run((ctx) =>
-    ctx.db.patch(f.domain, {
+    ctx.db.patch("domains", f.domain, {
       records,
       status: "verified",
       sesVerified: true,
@@ -1750,5 +1910,256 @@ test("TLS changes preserve verified DNS, identity state and tenant associations,
     sesVerified: true,
     dkimVerified: true,
     mailFromVerified: true,
+  })
+})
+
+/** A domain AWS already reports as fully verified, waiting on a refresh. */
+async function receivingFixture() {
+  const f = await awsFixture()
+  f.aws.config = true
+  f.aws.identity = {
+    Tags: [
+      { Key: "opensend:installation", Value: f.installation },
+      { Key: "opensend:domain", Value: f.domain },
+    ],
+    VerifiedForSendingStatus: true,
+    DkimAttributes: {
+      Tokens: ["provider-token"],
+      SigningHostedZone: "regional.dkim.amazonses.com",
+      Status: "SUCCESS",
+      SigningEnabled: true,
+    },
+    MailFromAttributes: {
+      MailFromDomain: "send.mail.example.test",
+      MailFromDomainStatus: "SUCCESS",
+      BehaviorOnMxFailure: "REJECT_MESSAGE",
+    },
+  }
+  await f.t.run((ctx) =>
+    ctx.db.patch("domains", f.domain, { operation: "refresh" })
+  )
+  return f
+}
+/** Publish everything SES asks for, plus the optional inbound MX and DMARC. */
+function publish(zone: { inbound?: number; dmarc?: string } = {}) {
+  vi.mocked(Resolver.prototype.resolveCname).mockResolvedValue([
+    "provider-token.regional.dkim.amazonses.com",
+  ])
+  vi.mocked(Resolver.prototype.resolveMx).mockImplementation(async (name) =>
+    name === "send.mail.example.test"
+      ? [{ exchange: "feedback-smtp.us-east-1.amazonses.com", priority: 10 }]
+      : zone.inbound
+        ? [
+            {
+              exchange: "inbound-smtp.us-east-1.amazonaws.com",
+              priority: zone.inbound,
+            },
+          ]
+        : []
+  )
+  vi.mocked(Resolver.prototype.resolveTxt).mockImplementation(async (name) =>
+    name.startsWith("_dmarc.")
+      ? zone.dmarc
+        ? [[zone.dmarc]]
+        : []
+      : [["v=spf1 include:amazonses.com ~all"]]
+  )
+}
+const read = async (f: Awaited<ReturnType<typeof receivingFixture>>) =>
+  (await f.owner.client.query(api.domains.get, { id: f.domain }))!.domain
+
+describe("DMARC guidance and inbound receiving", () => {
+  test("DMARC is always published, accepts a stricter policy, and never blocks verification", async () => {
+    const f = await receivingFixture()
+    publish()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    let domain = await read(f)
+    expect(domain.records.find((r) => r.id === "dmarc")).toEqual({
+      id: "dmarc",
+      kind: "DMARC",
+      type: "TXT",
+      name: "_dmarc.mail.example.test",
+      value: "v=DMARC1; p=none;",
+      ttl: "300",
+      status: "pending",
+    })
+    expect(domain).toMatchObject({ status: "verified", phase: "ready" })
+    expect(domain.dnsVerifiedAt).toBeTruthy()
+    expect(domain.records.some((r) => r.kind === "Receiving")).toBe(false)
+    publish({ dmarc: "v=DMARC1; p=reject; rua=mailto:dmarc@example.test" })
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    domain = await read(f)
+    expect(domain.records.find((r) => r.id === "dmarc")?.status).toBe(
+      "verified"
+    )
+    expect(domain.status).toBe("verified")
+  })
+
+  test("receiving adds an inbound MX at any priority and disappears when turned off", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    publish({ dmarc: "v=DMARC1; p=none;" })
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(await read(f)).toMatchObject({ status: "verified" })
+    await f.owner.client.mutation(api.domains.update, {
+      id: f.domain,
+      receiving: true,
+    })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    let domain = await read(f)
+    expect(domain.records.find((r) => r.id === "receiving-mx")).toMatchObject({
+      kind: "Receiving",
+      type: "MX",
+      name: "mail.example.test",
+      value: "inbound-smtp.us-east-1.amazonaws.com",
+      priority: 10,
+      status: "pending",
+    })
+    expect(domain).toMatchObject({
+      receiving: true,
+      status: "partially_verified",
+      phase: "ready",
+    })
+    publish({ inbound: 20, dmarc: "v=DMARC1; p=none;" })
+    await f.owner.client.mutation(api.domains.refresh, { id: f.domain })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    domain = await read(f)
+    expect(domain.records.find((r) => r.id === "receiving-mx")?.status).toBe(
+      "verified"
+    )
+    expect(domain.status).toBe("verified")
+    await f.owner.client.mutation(api.domains.update, {
+      id: f.domain,
+      receiving: false,
+    })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    domain = await read(f)
+    expect(domain.records.some((r) => r.kind === "Receiving")).toBe(false)
+    expect(domain).toMatchObject({ receiving: false, status: "verified" })
+  })
+
+  test("changing TLS and receiving together runs a single operation that settles both", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    publish({ inbound: 10, dmarc: "v=DMARC1; p=none;" })
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    await f.owner.client.mutation(api.domains.update, {
+      id: f.domain,
+      tls: "enforced",
+      receiving: true,
+    })
+    expect(await read(f)).toMatchObject({
+      operation: "refresh",
+      phase: "running",
+    })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    const result = (await f.owner.client.query(api.domains.get, {
+      id: f.domain,
+    }))!
+    expect(result.domain).toMatchObject({
+      tls: "enforced",
+      receiving: true,
+      status: "verified",
+      phase: "ready",
+    })
+    expect(result.domain.pendingTls).toBeUndefined()
+    expect(f.aws.tlsPolicy).toBe("REQUIRE")
+    expect(
+      result.domain.records.find((r) => r.id === "receiving-mx")?.status
+    ).toBe("verified")
+    const history = await f.t.run((ctx) =>
+      ctx.db
+        .query("domainHistory")
+        .withIndex("by_domainId", (q) => q.eq("domainId", f.domain))
+        .take(100)
+    )
+    expect(history.filter((h) => h.message.endsWith("requested"))).toHaveLength(
+      1
+    )
+  })
+})
+
+describe("transient failures never unpublish a working domain", () => {
+  test("a resolver that cannot answer keeps the status AWS already verified", async () => {
+    const f = await receivingFixture()
+    publish({ dmarc: "v=DMARC1; p=none;" })
+    vi.mocked(Resolver.prototype.resolveCname).mockRejectedValue(
+      Object.assign(new Error(), { code: "ETIMEOUT" })
+    )
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    let domain = await read(f)
+    expect(domain.records.find((r) => r.kind === "DKIM")?.status).toBe(
+      "temporary_failure"
+    )
+    expect(domain).toMatchObject({ status: "verified", phase: "ready" })
+    // A record the resolver positively did not find still holds the domain back.
+    vi.mocked(Resolver.prototype.resolveCname).mockResolvedValue([])
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    domain = await read(f)
+    expect(domain.records.find((r) => r.kind === "DKIM")?.status).toBe(
+      "pending"
+    )
+    expect(domain.status).toBe("partially_verified")
+  })
+  test("a throttled refresh keeps a verified domain sending, editable and retryable", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    publish({ dmarc: "v=DMARC1; p=none;" })
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(await read(f)).toMatchObject({
+      status: "verified",
+      phase: "ready",
+      tenantAssociated: true,
+    })
+    await f.t.run((ctx) =>
+      ctx.db.patch("sesRegions", f.region._id, {
+        callbackConfirmed: true,
+        quota: { ...f.region.quota, production: true },
+      })
+    )
+    const sendContext = () =>
+      f.t.query(internal.ses.sendContext.get, {
+        organizationId: f.owner.team,
+        domainId: f.domain,
+      })
+    await expect(sendContext()).resolves.toMatchObject({
+      TenantName: f.tenantName,
+    })
+    f.aws.throttle = true
+    await f.owner.client.mutation(api.domains.refresh, { id: f.domain })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    const failed = await read(f)
+    expect(failed).toMatchObject({
+      status: "verified",
+      phase: "failed",
+      tenantAssociated: true,
+    })
+    expect(failed.error).toContain("throttled")
+    expect(
+      failed.records.every((r) => r.kind === "DMARC" || r.status === "verified")
+    ).toBe(true)
+    await expect(sendContext()).resolves.toMatchObject({
+      TenantName: f.tenantName,
+    })
+    // Settings stay editable, and failing again changes nothing either.
+    await expect(
+      f.owner.client.mutation(api.domains.update, {
+        id: f.domain,
+        tls: "enforced",
+      })
+    ).resolves.toBeNull()
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    expect(await read(f)).toMatchObject({ status: "verified", phase: "failed" })
+    await expect(sendContext()).resolves.toBeTruthy()
+    f.aws.throttle = false
+    await f.owner.client.mutation(api.domains.refresh, { id: f.domain })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    const healed = await read(f)
+    expect(healed).toMatchObject({
+      status: "verified",
+      phase: "ready",
+      tls: "enforced",
+    })
+    expect(healed.error).toBeUndefined()
   })
 })

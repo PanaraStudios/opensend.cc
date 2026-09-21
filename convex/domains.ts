@@ -14,11 +14,16 @@ import { adoptionValue, dnsProviderValue } from "./ses/contracts"
 import { completeInstallation, findInstallation } from "./installation"
 import { internal } from "./_generated/api"
 import schema from "./schema"
-import { domainStatusValue, regionValue, tlsValue } from "./ses/contracts"
+import {
+  domainStatusValue,
+  provisioned,
+  regionValue,
+  tlsValue,
+} from "./ses/contracts"
 import { validateDomainName, validateDnsLabel } from "../lib/dashboard/domains"
 import { workflow } from "./ses/workflows"
 import type { MutationCtx } from "./_generated/server"
-import type { Doc } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 
 export const list = query({
   args: {
@@ -32,56 +37,40 @@ export const list = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     const prefix = (args.search ?? "").trim().toLowerCase().slice(0, 253)
+    const domains = ctx.db.query("domains")
+    /* Every index below is scoped the same way and ends on the name prefix;
+       only the filters between the two differ. */
+    const scope = <R>(q: {
+      eq(
+        field: "organizationId",
+        value: string
+      ): { eq(field: "deleted", value: boolean): R }
+    }) => q.eq("organizationId", args.organizationId).eq("deleted", false)
+    const named = <R>(q: {
+      gte(field: "name", value: string): { lt(field: "name", value: string): R }
+    }) => q.gte("name", prefix).lt("name", prefix + "\uffff")
     const rows =
       args.status && args.region
-        ? ctx.db
-            .query("domains")
-            .withIndex(
-              "by_organizationId_and_deleted_and_status_and_region_and_name",
-              (q) =>
-                q
-                  .eq("organizationId", args.organizationId)
-                  .eq("deleted", false)
-                  .eq("status", args.status!)
-                  .eq("region", args.region!)
-                  .gte("name", prefix)
-                  .lt("name", prefix + "\uffff")
-            )
-        : args.status
-          ? ctx.db
-              .query("domains")
-              .withIndex(
-                "by_organizationId_and_deleted_and_status_and_name",
-                (q) =>
-                  q
-                    .eq("organizationId", args.organizationId)
-                    .eq("deleted", false)
-                    .eq("status", args.status!)
-                    .gte("name", prefix)
-                    .lt("name", prefix + "\uffff")
+        ? domains.withIndex(
+            "by_organizationId_and_deleted_and_status_and_region_and_name",
+            (q) =>
+              named(
+                scope(q).eq("status", args.status!).eq("region", args.region!)
               )
+          )
+        : args.status
+          ? domains.withIndex(
+              "by_organizationId_and_deleted_and_status_and_name",
+              (q) => named(scope(q).eq("status", args.status!))
+            )
           : args.region
-            ? ctx.db
-                .query("domains")
-                .withIndex(
-                  "by_organizationId_and_deleted_and_region_and_name",
-                  (q) =>
-                    q
-                      .eq("organizationId", args.organizationId)
-                      .eq("deleted", false)
-                      .eq("region", args.region!)
-                      .gte("name", prefix)
-                      .lt("name", prefix + "\uffff")
-                )
-            : ctx.db
-                .query("domains")
-                .withIndex("by_organizationId_and_deleted_and_name", (q) =>
-                  q
-                    .eq("organizationId", args.organizationId)
-                    .eq("deleted", false)
-                    .gte("name", prefix)
-                    .lt("name", prefix + "\uffff")
-                )
+            ? domains.withIndex(
+                "by_organizationId_and_deleted_and_region_and_name",
+                (q) => named(scope(q).eq("region", args.region!))
+              )
+            : domains.withIndex("by_organizationId_and_deleted_and_name", (q) =>
+                named(scope(q))
+              )
     return rows.paginate(args.paginationOpts)
   },
 })
@@ -91,59 +80,70 @@ export const get = query({
     v.null(),
     v.object({
       domain: schema.doc("domains"),
-      region: v.union(v.null(), schema.doc("sesRegions")),
-      history: v.array(schema.doc("domainHistory")),
-      tenant: v.union(v.null(), schema.doc("sesTenants")),
+      tenant: v.union(
+        v.null(),
+        schema.doc("sesTenants").pick("_id", "phase", "error")
+      ),
     })
   ),
   handler: async (ctx, { id }) => {
     const normalized = ctx.db.normalizeId("domains", id)
-    const domain = normalized ? await ctx.db.get(normalized) : null
+    const domain = normalized ? await ctx.db.get("domains", normalized) : null
     if (!domain) return null
     await requireTeam(ctx, domain.organizationId)
     if (domain.deleted) return null
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", domain.region))
-      .unique()
-    const history = await ctx.db
-      .query("domainHistory")
-      .withIndex("by_domainId", (q) => q.eq("domainId", domain._id))
-      .order("desc")
-      .take(50)
-    const tenant = domain.tenantId ? await ctx.db.get(domain.tenantId) : null
+    const tenant = domain.tenantId
+      ? await ctx.db.get("sesTenants", domain.tenantId)
+      : null
     return {
       domain,
-      region,
-      history,
       tenant:
         tenant?.organizationId === domain.organizationId &&
         tenant.region === domain.region
-          ? tenant
+          ? { _id: tenant._id, phase: tenant.phase, error: tenant.error }
           : null,
     }
   },
 })
-async function start(
+/** History is append-only per domain; keep only the newest entries. */
+export async function logHistory(
+  ctx: MutationCtx,
+  domainId: Id<"domains">,
+  message: string
+) {
+  await ctx.db.insert("domainHistory", { domainId, message })
+  const rows = await ctx.db
+    .query("domainHistory")
+    .withIndex("by_domainId", (q) => q.eq("domainId", domainId))
+    .order("desc")
+    .take(200)
+  for (const row of rows.slice(100))
+    await ctx.db.delete("domainHistory", row._id)
+}
+/** A failed operation is retried, never replaced: a failed provision has to stay
+    a provision so its adoption review remains reachable. */
+export const retryOperation = (domain: Doc<"domains">) =>
+  domain.phase === "failed" ? domain.operation : "refresh"
+export async function start(
   ctx: MutationCtx,
   domain: Doc<"domains">,
   operation: Doc<"domains">["operation"]
 ) {
   if (domain.phase === "running")
     throw new ConvexError("A domain operation is already running")
-  await ctx.db.patch(domain._id, {
+  await ctx.db.patch("domains", domain._id, {
     phase: "running",
     operation,
     error: undefined,
     ...(operation === "remove" ? { sending: false } : {}),
   })
-  await ctx.db.insert("domainHistory", {
-    domainId: domain._id,
-    message: `${operation} requested`,
-  })
-  await workflow.start(ctx, internal.ses.workflows.domainOperationWithTenant, {
-    domainId: domain._id,
-  })
+  await logHistory(ctx, domain._id, `${operation} requested`)
+  await workflow.start(
+    ctx,
+    internal.ses.workflows.domainOperationWithTenant,
+    { domainId: domain._id },
+    { onComplete: internal.ses.workflows.cleanup, context: null }
+  )
 }
 export const create = mutation({
   args: {
@@ -193,7 +193,7 @@ export const create = mutation({
       mailFromVerified: false,
       operation: "provision",
     })
-    await start(ctx, (await ctx.db.get(id))!, "provision")
+    await start(ctx, (await ctx.db.get("domains", id))!, "provision")
     const installation = await findInstallation(ctx)
     if (installation && !installation.completedAt)
       await completeInstallation(ctx, args.organizationId)
@@ -204,14 +204,10 @@ export const refresh = mutation({
   args: { id: v.id("domains") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get(id)
+    const domain = await ctx.db.get("domains", id)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     await requireTeam(ctx, domain.organizationId, true)
-    await start(
-      ctx,
-      domain,
-      domain.phase === "failed" ? domain.operation : "refresh"
-    )
+    await start(ctx, domain, retryOperation(domain))
     return null
   },
 })
@@ -219,25 +215,49 @@ export const update = mutation({
   args: {
     id: v.id("domains"),
     sending: v.optional(v.boolean()),
+    receiving: v.optional(v.boolean()),
     tls: v.optional(tlsValue),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get(args.id)
+    const domain = await ctx.db.get("domains", args.id)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     await requireTeam(ctx, domain.organizationId, true)
-    if (domain.phase !== "ready")
+    // A refresh or TLS change that failed left the provisioned domain intact,
+    // so its settings stay editable; an unfinished provision or removal does not.
+    if (!provisioned(domain))
       throw new ConvexError("Finish provisioning this domain first")
-    await ctx.db.patch(domain._id, {
-      ...(args.sending !== undefined ? { sending: args.sending } : {}),
-      ...(args.tls && args.tls !== domain.tls ? { pendingTls: args.tls } : {}),
+    const tls = args.tls && args.tls !== domain.tls ? args.tls : undefined
+    const receiving =
+      args.receiving !== undefined &&
+      args.receiving !== (domain.receiving ?? false)
+        ? args.receiving
+        : undefined
+    const sending =
+      args.sending !== undefined && args.sending !== domain.sending
+        ? args.sending
+        : undefined
+    if (sending === undefined && tls === undefined && receiving === undefined)
+      return null
+    await ctx.db.patch("domains", domain._id, {
+      ...(sending !== undefined ? { sending } : {}),
+      ...(tls ? { pendingTls: tls } : {}),
+      ...(receiving !== undefined ? { receiving } : {}),
     })
-    if (args.tls && args.tls !== domain.tls)
-      await start(ctx, domain, "settings")
-    await ctx.db.insert("domainHistory", {
-      domainId: domain._id,
-      message: "Settings updated",
-    })
+    // Receiving changes which records we publish, so it needs the full refresh
+    // that rebuilds and rechecks DNS; that refresh also settles a pending TLS
+    // change, keeping a combined update to a single operation.
+    if (tls || receiving !== undefined)
+      await start(ctx, domain, receiving === undefined ? "settings" : "refresh")
+    await logHistory(
+      ctx,
+      domain._id,
+      receiving === undefined
+        ? "Settings updated"
+        : receiving
+          ? "Inbound receiving enabled"
+          : "Inbound receiving disabled"
+    )
     return null
   },
 })
@@ -245,7 +265,7 @@ export const remove = mutation({
   args: { id: v.id("domains") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get(id)
+    const domain = await ctx.db.get("domains", id)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     await requireTeam(ctx, domain.organizationId, true)
     await start(ctx, domain, "remove")
@@ -260,7 +280,7 @@ export const workerContext = internalQuery({
     tenant: v.union(v.null(), schema.doc("sesTenants")),
   }),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get(id)
+    const domain = await ctx.db.get("domains", id)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     const region = await ctx.db
       .query("sesRegions")
@@ -268,7 +288,9 @@ export const workerContext = internalQuery({
       .unique()
     if (!region?.topicArn || region.phase !== "ready")
       throw new ConvexError("Region is not ready")
-    const tenant = domain.tenantId ? await ctx.db.get(domain.tenantId) : null
+    const tenant = domain.tenantId
+      ? await ctx.db.get("sesTenants", domain.tenantId)
+      : null
     if (
       tenant &&
       (tenant.organizationId !== domain.organizationId ||
@@ -296,17 +318,20 @@ export const finish = internalMutation({
       )
       .partial(),
     error: v.optional(v.string()),
+    needsAdoptionReview: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get(args.id)
+    const domain = await ctx.db.get("domains", args.id)
     if (!domain) throw new ConvexError("Domain not found")
     const now = Date.now()
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch("domains", args.id, {
       ...args.changes,
       ...(!domain.dnsVerifiedAt &&
       args.changes.records?.length &&
-      args.changes.records.every((record) => record.status === "verified")
+      args.changes.records.every(
+        (record) => record.kind === "DMARC" || record.status === "verified"
+      )
         ? { dnsVerifiedAt: now }
         : {}),
       ...(!domain.partiallyVerifiedAt &&
@@ -316,26 +341,35 @@ export const finish = internalMutation({
       ...(!domain.verifiedAt && args.changes.status === "verified"
         ? { verifiedAt: now }
         : {}),
-      ...(args.error && domain.operation !== "settings"
+      /* Only a provision can fail with nothing standing behind it. A refresh,
+         a settings change or a removal that fails leaves the status its last
+         successful run proved, so one throttled call never stops sending. */
+      ...(args.error && domain.operation === "provision"
         ? { status: "failed" as const }
         : {}),
-      ...(domain.operation === "settings" && !args.error && args.changes.tls
-        ? { pendingTls: undefined }
-        : {}),
+      ...(!args.error && args.changes.tls ? { pendingTls: undefined } : {}),
       phase: args.error ? "failed" : "ready",
       error: args.error,
-      checkedAt: Date.now(),
+      // Cleared by every run that does not raise it again, including a success.
+      needsAdoptionReview: args.needsAdoptionReview,
+      checkedAt: now,
     })
-    await ctx.db.insert("domainHistory", {
-      domainId: args.id,
-      message:
+    // A removed domain is unreadable, so its history has nowhere left to show.
+    if (args.changes.deleted)
+      for (const row of await ctx.db
+        .query("domainHistory")
+        .withIndex("by_domainId", (q) => q.eq("domainId", args.id))
+        .take(200))
+        await ctx.db.delete("domainHistory", row._id)
+    else
+      await logHistory(
+        ctx,
+        args.id,
         args.error ??
-        (args.changes.deleted
-          ? "Domain removed; sending disabled"
-          : domain.operation === "settings"
+          (domain.operation === "settings"
             ? "TLS policy updated"
-            : "AWS and DNS state refreshed"),
-    })
+            : "AWS and DNS state refreshed")
+      )
     return null
   },
 })
@@ -345,7 +379,7 @@ export const previewContext = internalQuery({
   returns: schema.doc("domains"),
   handler: async (ctx, { id }) => {
     await requireInstallationAdmin(ctx)
-    const domain = await ctx.db.get(id)
+    const domain = await ctx.db.get("domains", id)
     if (
       !domain ||
       domain.deleted ||
@@ -364,11 +398,11 @@ export const savePreview = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireInstallationAdmin(ctx)
-    const domain = await ctx.db.get(args.id)
+    const domain = await ctx.db.get("domains", args.id)
     if (!domain || domain.phase !== "failed" || domain.deleted)
       throw new ConvexError("Domain changed. Review it again.")
     await requireTeam(ctx, domain.organizationId, true)
-    await ctx.db.patch(domain._id, { adoption: args.adoption })
+    await ctx.db.patch("domains", domain._id, { adoption: args.adoption })
     return null
   },
 })
@@ -377,7 +411,7 @@ export const approveAdoption = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireInstallationAdmin(ctx)
-    const domain = await ctx.db.get(args.id)
+    const domain = await ctx.db.get("domains", args.id)
     if (
       !domain ||
       domain.deleted ||
@@ -389,8 +423,9 @@ export const approveAdoption = mutation({
         "Review the current AWS identity before approving changes"
       )
     await requireTeam(ctx, domain.organizationId, true)
-    await ctx.db.patch(domain._id, {
+    await ctx.db.patch("domains", domain._id, {
       adoption: { ...domain.adoption, approved: true },
+      needsAdoptionReview: undefined,
     })
     await start(ctx, domain, "provision")
     return null
@@ -405,7 +440,7 @@ export const claimDnsProviderLookup = internalMutation({
     v.object({ name: v.string(), requestedAt: v.number() })
   ),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get(id)
+    const domain = await ctx.db.get("domains", id)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     await requireTeam(ctx, domain.organizationId)
     const now = Date.now()
@@ -416,7 +451,7 @@ export const claimDnsProviderLookup = internalMutation({
         now - domain.dnsProviderRequestedAt < 60000)
     )
       return null
-    await ctx.db.patch(id, { dnsProviderRequestedAt: now })
+    await ctx.db.patch("domains", id, { dnsProviderRequestedAt: now })
     return { name: domain.name, requestedAt: now }
   },
 })
@@ -428,11 +463,11 @@ export const saveDnsProvider = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get(args.id)
+    const domain = await ctx.db.get("domains", args.id)
     if (!domain || domain.deleted) return null
     await requireTeam(ctx, domain.organizationId)
     if (domain.dnsProviderRequestedAt !== args.requestedAt) return null
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch("domains", args.id, {
       dnsProvider: args.provider,
       dnsProviderCheckedAt: Date.now(),
     })

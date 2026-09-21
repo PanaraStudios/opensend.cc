@@ -1,5 +1,5 @@
 "use client"
-import { useMutation } from "convex/react"
+import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -17,7 +17,7 @@ export function asDomain(row: Doc<"domains">): Domain {
     clickTracking: false,
     tls: row.tls,
     customReturnPath: row.customReturnPath,
-    receiving: false,
+    receiving: row.receiving ?? false,
     records: row.records,
     sending: row.sending,
     events: [
@@ -34,12 +34,27 @@ export function asDomain(row: Doc<"domains">): Domain {
     ],
   }
 }
+/** One record the provider already holds with another value, which we never
+    overwrite. The user fixes these by hand. */
+export type DnsAutoConfigConflict = {
+  name: string
+  type: string
+  reason: string
+}
+
+export type DnsAutoConfigResult = {
+  created: number
+  skipped: number
+  conflicts: DnsAutoConfigConflict[]
+}
+
 export function useDomainCommands() {
   const workspace = useWorkspace()
   const create = useMutation(api.domains.create)
   const refresh = useMutation(api.domains.refresh)
   const remove = useMutation(api.domains.remove)
   const update = useMutation(api.domains.update)
+  const autoConfigure = useAction(api.ses.dnsAutoConfig.configure)
   const canWrite =
     workspace.teams.find((t) => t.id === workspace.activeTeamId)?.role ===
     "admin"
@@ -58,7 +73,17 @@ export function useDomainCommands() {
     deleteDomain: (id: string) => remove({ id: id as Id<"domains"> }),
     updateDomain: (
       id: string,
-      patch: { tls?: Domain["tls"]; sending?: boolean }
+      patch: { tls?: Domain["tls"]; sending?: boolean; receiving?: boolean }
     ) => update({ id: id as Id<"domains">, ...patch }),
+    /** Writes the records at the detected provider. The Cloudflare token is
+        used for this one call and never stored. */
+    autoConfigureDns: (
+      id: string,
+      cloudflareToken?: string
+    ): Promise<DnsAutoConfigResult> =>
+      autoConfigure({
+        id: id as Id<"domains">,
+        ...(cloudflareToken ? { cloudflareToken } : {}),
+      }),
   }
 }

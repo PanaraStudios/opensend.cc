@@ -3,12 +3,14 @@ import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
 import type { Infer } from "convex/values"
 import { recordValue } from "./contracts"
+import { canonical, zoneCandidates } from "./dnsWriters"
 export type DnsRecord = Infer<typeof recordValue>
 export function identityRecords(
   name: string,
   region: string,
   returnPath: string,
-  identity: GetEmailIdentityResponse
+  identity: GetEmailIdentityResponse,
+  receiving = false
 ): DnsRecord[] {
   const dkim = identity.DkimAttributes
   if (!dkim?.SigningHostedZone || !dkim.Tokens?.length)
@@ -43,11 +45,33 @@ export function identityRecords(
       value: "v=spf1 include:amazonses.com ~all",
       ttl: "300",
       status: "pending",
+    },
+    // Recommended, never required: any existing policy stays authoritative.
+    {
+      id: "dmarc",
+      kind: "DMARC",
+      type: "TXT",
+      name: `_dmarc.${name}`,
+      value: "v=DMARC1; p=none;",
+      ttl: "300",
+      status: "pending",
     }
   )
+  if (receiving)
+    records.push({
+      id: "receiving-mx",
+      kind: "Receiving",
+      type: "MX",
+      name,
+      value: `inbound-smtp.${region}.amazonaws.com`,
+      priority: 10,
+      ttl: "300",
+      status: "pending",
+    })
   return records
 }
-const canonical = (value: string) => value.toLowerCase().replace(/\.$/, "")
+const dnsCode = (e: unknown) =>
+  e && typeof e === "object" && "code" in e ? e.code : ""
 export async function checkRecords(
   records: DnsRecord[],
   resolver = new Resolver({ timeout: 3000, tries: 1 })
@@ -63,9 +87,15 @@ export async function checkRecords(
         else if (record.type === "MX")
           found = (await resolver.resolveMx(record.name)).some(
             (value) =>
-              value.priority === record.priority &&
+              // Inbound mail keeps whatever priority the operator chose.
+              (record.kind === "Receiving" ||
+                value.priority === record.priority) &&
               canonical(value.exchange) === canonical(record.value)
           )
+        else if (record.kind === "DMARC")
+          found = (await resolver.resolveTxt(record.name))
+            .map((parts) => parts.join(""))
+            .some((value) => value.startsWith("v=DMARC1"))
         else {
           const spf = (await resolver.resolveTxt(record.name))
             .map((parts) => parts.join(""))
@@ -76,7 +106,7 @@ export async function checkRecords(
         }
         return { ...record, status: found ? "verified" : "pending" }
       } catch (e) {
-        const code = e && typeof e === "object" && "code" in e ? e.code : ""
+        const code = dnsCode(e)
         return {
           ...record,
           status:
@@ -123,16 +153,14 @@ export async function detectDnsProvider(
     tries: 1,
   })
 ) {
-  const labels = name.split(".")
   // Subdomains commonly inherit their parent's DNS host. Bound the lookup work
   // and never query a top-level domain as if it were the user's DNS provider.
-  for (let offset = 0; offset < Math.min(labels.length - 1, 6); offset++) {
+  for (const zone of zoneCandidates(name)) {
     try {
-      const servers = await resolver.resolveNs(labels.slice(offset).join("."))
+      const servers = await resolver.resolveNs(zone)
       if (servers.length) return providerFromNameservers(servers)
     } catch (error) {
-      const code =
-        error && typeof error === "object" && "code" in error ? error.code : ""
+      const code = dnsCode(error)
       if (code !== "ENODATA" && code !== "ENOTFOUND") return undefined
     }
   }

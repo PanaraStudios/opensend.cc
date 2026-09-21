@@ -30,6 +30,7 @@
     "test:e2e": "node scripts/test-e2e.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-route-53": "3.1131.0",
     "@aws-sdk/client-sesv2": "3.1131.0",
     "@aws-sdk/client-sns": "^3.1136.0",
     "@aws-sdk/client-sqs": "^3.1136.0",

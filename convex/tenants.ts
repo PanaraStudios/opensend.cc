@@ -8,10 +8,36 @@ import {
 } from "./_generated/server"
 import { internal } from "./_generated/api"
 import schema from "./schema"
-import { requireTeam, requireInstallationAdmin } from "./access"
+import {
+  findInstallation,
+  requireTeam,
+  requireInstallationAdmin,
+} from "./access"
 import { regionValue, teamTenantName } from "./ses/contracts"
 import { workflow } from "./ses/workflows"
 import type { Doc, Id } from "./_generated/dataModel"
+
+/** Claim the tenant with a fresh generation, then hand it to the workflow.
+    Every tenant write that needs AWS work goes through here. */
+async function startTenantOperation(
+  ctx: MutationCtx,
+  tenant: Doc<"sesTenants">,
+  operation?: Doc<"sesTenants">["operation"]
+) {
+  const generation = tenant.generation + 1
+  await ctx.db.patch("sesTenants", tenant._id, {
+    phase: "running",
+    generation,
+    error: undefined,
+    ...(operation ? { operation } : {}),
+  })
+  await workflow.start(
+    ctx,
+    internal.ses.workflows.tenantOperation,
+    { tenantId: tenant._id, generation },
+    { onComplete: internal.ses.workflows.cleanup, context: null }
+  )
+}
 
 export async function ensureTeamTenant(
   ctx: MutationCtx,
@@ -35,10 +61,7 @@ export async function ensureTeamTenant(
   if (tenant?.operation === "remove" || tenant?.deleted)
     throw new ConvexError("This team's SES tenant is being removed")
   if (!tenant) {
-    const installation = await ctx.db
-      .query("installation")
-      .withIndex("by_key", (q) => q.eq("key", "installation"))
-      .unique()
+    const installation = await findInstallation(ctx)
     if (!installation?.accountId) throw new ConvexError("Connect AWS first")
     const id = await ctx.db.insert("sesTenants", {
       organizationId,
@@ -49,20 +72,10 @@ export async function ensureTeamTenant(
       generation: 0,
       deleted: false,
     })
-    tenant = (await ctx.db.get(id))!
+    tenant = (await ctx.db.get("sesTenants", id))!
   }
-  if (tenant.phase === "pending" || tenant.phase === "failed") {
-    const generation = tenant.generation + 1
-    await ctx.db.patch(tenant._id, {
-      phase: "running",
-      generation,
-      error: undefined,
-    })
-    await workflow.start(ctx, internal.ses.workflows.tenantOperation, {
-      tenantId: tenant._id,
-      generation,
-    })
-  }
+  if (tenant.phase === "pending" || tenant.phase === "failed")
+    await startTenantOperation(ctx, tenant)
   return tenant._id
 }
 /** Accepted deletion remains durable even after the Better Auth team no longer exists. */
@@ -82,17 +95,7 @@ export async function removeTeamTenants(
     )
   for (const tenant of tenants) {
     if (tenant.deleted) continue
-    const generation = tenant.generation + 1
-    await ctx.db.patch(tenant._id, {
-      phase: "running",
-      operation: "remove",
-      generation,
-      error: undefined,
-    })
-    await workflow.start(ctx, internal.ses.workflows.tenantOperation, {
-      tenantId: tenant._id,
-      generation,
-    })
+    await startTenantOperation(ctx, tenant, "remove")
   }
 }
 export const list = query({
@@ -120,7 +123,7 @@ export const retry = mutation({
       )
       .unique()
     if (row?.phase === "ready" && !row.deleted && row.operation === "provision")
-      await ctx.db.patch(row._id, { phase: "pending" })
+      await ctx.db.patch("sesTenants", row._id, { phase: "pending" })
     await ensureTeamTenant(ctx, args.organizationId, args.region)
     return null
   },
@@ -143,29 +146,24 @@ export const retryCleanup = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     await requireInstallationAdmin(ctx)
-    const tenant = await ctx.db.get(id)
+    const tenant = await ctx.db.get("sesTenants", id)
     if (!tenant || tenant.deleted || tenant.operation !== "remove")
       throw new ConvexError("Tenant cleanup not found")
     if (tenant.phase === "running") return null
-    const generation = tenant.generation + 1
-    await ctx.db.patch(id, { phase: "running", generation, error: undefined })
-    await workflow.start(ctx, internal.ses.workflows.tenantOperation, {
-      tenantId: id,
-      generation,
-    })
+    await startTenantOperation(ctx, tenant)
     return null
   },
 })
 export const get = internalQuery({
   args: { id: v.id("sesTenants") },
   returns: v.union(v.null(), schema.doc("sesTenants")),
-  handler: (ctx, { id }) => ctx.db.get(id),
+  handler: (ctx, { id }) => ctx.db.get("sesTenants", id),
 })
 export const prepareDomain = internalMutation({
   args: { domainId: v.id("domains") },
   returns: v.union(v.null(), v.id("sesTenants")),
   handler: async (ctx, { domainId }): Promise<Id<"sesTenants"> | null> => {
-    const domain = await ctx.db.get(domainId)
+    const domain = await ctx.db.get("domains", domainId)
     if (!domain || domain.deleted) throw new ConvexError("Domain not found")
     if (domain.operation === "remove" || domain.operation === "settings")
       return null
@@ -174,7 +172,15 @@ export const prepareDomain = internalMutation({
       domain.organizationId,
       domain.region
     )
-    await ctx.db.patch(domainId, { tenantId, tenantAssociated: false })
+    /* A provision can recreate the identity, and a different tenant makes the
+       old association meaningless; a refresh only re-checks the association it
+       already has, so it must not take a verified domain out of sending. */
+    await ctx.db.patch("domains", domainId, {
+      tenantId,
+      ...(domain.operation === "provision" || domain.tenantId !== tenantId
+        ? { tenantAssociated: false }
+        : {}),
+    })
     return tenantId
   },
 })
@@ -190,14 +196,14 @@ export const finish = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const tenant = await ctx.db.get(args.id)
+    const tenant = await ctx.db.get("sesTenants", args.id)
     if (
       !tenant ||
       tenant.generation !== args.generation ||
       tenant.phase !== "running"
     )
       return null
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch("sesTenants", args.id, {
       phase: args.error ? "failed" : "ready",
       error: args.error,
       checkedAt: Date.now(),
@@ -218,14 +224,14 @@ export const observe = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const tenant = await ctx.db.get(args.id)
+    const tenant = await ctx.db.get("sesTenants", args.id)
     if (
       tenant?.generation === args.generation &&
       tenant.phase === "ready" &&
       tenant.operation === "provision" &&
       !tenant.deleted
     )
-      await ctx.db.patch(args.id, {
+      await ctx.db.patch("sesTenants", args.id, {
         ...(args.error ? { phase: "failed" as const, error: args.error } : {}),
         ...(args.sendingStatus ? { sendingStatus: args.sendingStatus } : {}),
         checkedAt: Date.now(),

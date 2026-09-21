@@ -1,8 +1,26 @@
-import { WorkflowManager } from "@convex-dev/workflow"
+import {
+  WorkflowManager,
+  vResultValidator,
+  vWorkflowId,
+} from "@convex-dev/workflow"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
+import { internalMutation } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 export const workflow = new WorkflowManager(components.workflow)
+/** The component never reclaims a finished workflow's journal on its own. */
+export const cleanup = internalMutation({
+  args: {
+    workflowId: vWorkflowId,
+    result: vResultValidator,
+    context: v.any(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await workflow.cleanup(ctx, args.workflowId)
+    return null
+  },
+})
 export const tenantOperation = workflow
   .define({
     args: { tenantId: v.id("sesTenants"), generation: v.number() },
@@ -38,24 +56,6 @@ export const provisionRegion = workflow
           error:
             "Provisioning stopped. Check AWS permissions and retry; existing owned resources will be reused.",
         },
-      })
-    }
-    return null
-  })
-// Preserve the journal shape for operations started before tenant provisioning.
-export const domainOperation = workflow
-  .define({ args: { domainId: v.id("domains") }, returns: v.null() })
-  .handler(async (step, args): Promise<null> => {
-    try {
-      await step.runAction(internal.ses.provision.domain, args, {
-        retry: false,
-      })
-    } catch {
-      await step.runMutation(internal.domains.finish, {
-        id: args.domainId,
-        changes: {},
-        error:
-          "Domain operation stopped. Retry after checking AWS permissions.",
       })
     }
     return null

@@ -1,4 +1,4 @@
-import { v } from "convex/values"
+import { v, type Infer } from "convex/values"
 export const setupStepValue = v.union(
   v.literal("welcome"),
   v.literal("aws"),
@@ -24,18 +24,15 @@ export const dnsProviderValue = v.union(
 )
 
 // Supported commercial regions match the dashboard's existing region selector.
-export const regionValue = v.union(
-  v.literal("us-east-1"),
-  v.literal("eu-west-1"),
-  v.literal("sa-east-1"),
-  v.literal("ap-northeast-1")
-)
 export const regions = [
   "us-east-1",
   "eu-west-1",
   "sa-east-1",
   "ap-northeast-1",
 ] as const
+export const regionValue = v.union(
+  ...regions.map((region) => v.literal(region))
+)
 export const phaseValue = v.union(
   v.literal("pending"),
   v.literal("running"),
@@ -60,7 +57,13 @@ export const quotaValue = v.object({
 })
 export const recordValue = v.object({
   id: v.string(),
-  kind: v.union(v.literal("DKIM"), v.literal("MX"), v.literal("SPF")),
+  kind: v.union(
+    v.literal("DKIM"),
+    v.literal("MX"),
+    v.literal("SPF"),
+    v.literal("DMARC"),
+    v.literal("Receiving")
+  ),
   type: v.union(v.literal("CNAME"), v.literal("MX"), v.literal("TXT")),
   name: v.string(),
   value: v.string(),
@@ -82,6 +85,22 @@ export const tlsValue = v.union(
   v.literal("opportunistic"),
   v.literal("enforced")
 )
+export const domainOperationValue = v.union(
+  v.literal("provision"),
+  v.literal("refresh"),
+  v.literal("settings"),
+  v.literal("remove")
+)
+/** A failed refresh or settings run leaves AWS exactly as the last successful
+    run left it, so the domain keeps everything that run proved. Only an
+    unfinished provision or a removal leaves it unusable. */
+export const provisioned = (domain: {
+  phase: Infer<typeof phaseValue>
+  operation: Infer<typeof domainOperationValue>
+}) =>
+  domain.phase === "ready" ||
+  (domain.phase === "failed" &&
+    (domain.operation === "refresh" || domain.operation === "settings"))
 
 export function validateRegion(value: string) {
   if (!regions.some((r) => r === value))

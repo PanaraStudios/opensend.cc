@@ -1,6 +1,6 @@
 import { v, ConvexError } from "convex/values"
 import { internalQuery } from "../_generated/server"
-import { regionValue } from "./contracts"
+import { provisioned, regionValue } from "./contracts"
 
 /** Shared send contract: callers authorize the team, then use this immutable resource binding. */
 export const get = internalQuery({
@@ -12,14 +12,16 @@ export const get = internalQuery({
     domain: v.string(),
   }),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get(args.domainId)
+    const domain = await ctx.db.get("domains", args.domainId)
     if (
       !domain ||
       domain.deleted ||
       domain.organizationId !== args.organizationId
     )
       throw new ConvexError("Domain does not belong to this team")
-    const tenant = domain.tenantId ? await ctx.db.get(domain.tenantId) : null
+    const tenant = domain.tenantId
+      ? await ctx.db.get("sesTenants", domain.tenantId)
+      : null
     if (
       !tenant ||
       tenant.deleted ||
@@ -34,7 +36,7 @@ export const get = internalQuery({
       !domain.tenantAssociated ||
       !domain.configurationSet ||
       !domain.sending ||
-      domain.phase !== "ready" ||
+      !provisioned(domain) ||
       domain.status !== "verified"
     )
       throw new ConvexError("Domain is not ready to send")

@@ -44,6 +44,7 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  IconCell,
   ListToolbar,
   ListPagination,
   usePagination,
@@ -55,6 +56,7 @@ import {
   StatusBadge,
   Th,
   copyToClipboard,
+  useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import {
   DOMAIN_STATUS_ITEMS,
@@ -254,6 +256,7 @@ export function DomainsView() {
   const [addOpen, setAddOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
+  const search = useDebouncedValue(query)
 
   const {
     results,
@@ -264,7 +267,7 @@ export function DomainsView() {
     organizationId
       ? {
           organizationId,
-          search: query,
+          search,
           ...(status !== "all"
             ? {
                 status: status as
@@ -281,7 +284,7 @@ export function DomainsView() {
   async function verify(id: string) {
     try {
       await verifyDomain(id)
-      toast.add({ type: "success", title: "Verification queued" })
+      toast.add({ type: "success", title: "DNS check queued" })
     } catch (e) {
       toast.add({ type: "error", title: actionError(e) })
     }
@@ -365,17 +368,14 @@ export function DomainsView() {
             {pageRows.map((domain) => (
               <TableRow key={domain.id}>
                 <TableCell>
-                  <div className="flex items-center gap-3">
-                    <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
-                      <DomainIcon />
-                    </span>
+                  <IconCell icon={DomainIcon}>
                     <Link
                       href={`/domains/${domain.id}`}
                       className="font-medium hover:underline"
                     >
                       {domain.name}
                     </Link>
-                  </div>
+                  </IconCell>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={domain.status} />
@@ -411,7 +411,7 @@ export function DomainsView() {
                           onClick={() => void verify(domain.id)}
                         >
                           <RefreshCwIcon />
-                          Verify DNS records
+                          Check DNS records
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem

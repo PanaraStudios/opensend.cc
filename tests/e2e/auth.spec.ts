@@ -260,6 +260,23 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByLabel("Secret access key", { exact: true })
     ).toBeVisible()
+    const credentialsHelpButton = owner.getByRole("button", {
+      name: "Help with AWS credentials",
+    })
+    await credentialsHelpButton.click()
+    const credentialsHelp = owner.getByRole("dialog", {
+      name: "Get AWS credentials",
+      exact: true,
+    })
+    await expect(
+      credentialsHelp.getByRole("button", { name: "Download permissions" })
+    ).toBeDisabled()
+    await expect(
+      credentialsHelp.getByText(/Enter your 12-digit AWS account ID/)
+    ).toBeVisible()
+    await owner.keyboard.press("Escape")
+    await expect(credentialsHelp).toBeHidden()
+    await expect(credentialsHelpButton).toBeFocused()
     await expect(
       owner.getByText("SES_ENCRYPTION_KEY", { exact: false })
     ).toHaveCount(0)
@@ -622,6 +639,56 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       connectionDialog.getByLabel("Secret access key", { exact: true })
     ).toHaveValue("")
+    await connectionDialog
+      .getByLabel("Access key ID", { exact: true })
+      .fill("draft-key")
+    await connectionDialog
+      .getByLabel("Secret access key", { exact: true })
+      .fill("draft-secret")
+    const updateHelpButton = connectionDialog.getByRole("button", {
+      name: "Help with AWS credentials",
+    })
+    await updateHelpButton.click()
+    const updateHelp = owner.getByRole("dialog", {
+      name: "Get AWS credentials",
+      exact: true,
+    })
+    await expect(
+      updateHelp.getByRole("link", { name: "Open AWS users" })
+    ).toHaveAttribute("href", /console\.aws\.amazon\.com/)
+    const helpDownload = owner.waitForEvent("download")
+    await updateHelp
+      .getByRole("button", { name: "Download permissions" })
+      .click()
+    const helpPolicyPath = test
+      .info()
+      .outputPath("credential-help-permissions.json")
+    await (await helpDownload).saveAs(helpPolicyPath)
+    const helpPolicy = readFileSync(helpPolicyPath, "utf8")
+    expect(helpPolicy).toContain("123456789012")
+    expect(helpPolicy).toContain("ses:GetTenant")
+    expect(helpPolicy).not.toContain("Fn::Sub")
+    expect(helpPolicy).not.toContain("draft-secret")
+    await owner.screenshot({
+      path: test.info().outputPath("credentials-help-desktop.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 390, height: 844 })
+    await owner.screenshot({
+      path: test.info().outputPath("credentials-help-mobile.png"),
+      fullPage: true,
+    })
+    await owner.setViewportSize({ width: 1280, height: 900 })
+    await owner.keyboard.press("Escape")
+    await expect(updateHelp).toBeHidden()
+    await expect(connectionDialog).toBeVisible()
+    await expect(updateHelpButton).toBeFocused()
+    await expect(
+      connectionDialog.getByLabel("Access key ID", { exact: true })
+    ).toHaveValue("draft-key")
+    await expect(
+      connectionDialog.getByLabel("Secret access key", { exact: true })
+    ).toHaveValue("draft-secret")
     const revision = (await c.query(api.installation.status)).installation!
       .credentialRevision
     await connectionDialog
@@ -1006,7 +1073,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await member.goto(`/domains/${sendingDomainId}`)
     await expect(
       member.getByRole("button", {
-        name: /^(Verify DNS records|Restart verification)$/,
+        name: "Check DNS records",
       })
     ).toBeDisabled()
     await expect(

@@ -5,7 +5,7 @@ export const region = internalQuery({
   args: { id: v.id("sesRegions") },
   returns: schema.doc("sesRegions"),
   handler: async (ctx, { id }) => {
-    const r = await ctx.db.get(id)
+    const r = await ctx.db.get("sesRegions", id)
     if (!r) throw new Error("Region not found")
     return r
   },
@@ -20,7 +20,7 @@ export const patchRegion = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, args.changes)
+    await ctx.db.patch("sesRegions", args.id, args.changes)
     return null
   },
 })

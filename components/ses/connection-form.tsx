@@ -21,11 +21,13 @@ import {
   FieldLegend,
 } from "@/components/ui/field"
 import { OptionSelect } from "@/components/dashboard/primitives"
+import { REGION_ITEMS } from "@/components/dashboard/domains/shared"
 import {
   AwsAccessSetup,
   ImportAwsCredentials,
 } from "@/components/onboarding/aws-access-setup"
 import { REGIONS, type Region } from "@/lib/dashboard/types"
+import { AwsCredentialsHelp } from "./credentials-help"
 
 export type SesStatus = FunctionReturnType<typeof api.installation.status>
 export function SetupDetails({
@@ -66,6 +68,9 @@ export function AwsConnectionForm({
 }) {
   const connect = useAction(api.installationActions.connect)
   const installation = status.installation
+  const [accountId, setAccountId] = React.useState(
+    installation?.accountId ?? ""
+  )
   const [kind, setKind] = React.useState(installation?.credentialKind ?? "keys")
   const [region, setRegion] = React.useState<Region>(
     installation?.defaultRegion ?? "us-east-1"
@@ -118,10 +123,7 @@ export function AwsConnectionForm({
             id="ses-connection-region"
             value={region}
             onChange={(next) => setRegion(next as Region)}
-            items={REGIONS.map((item) => ({
-              value: item.value,
-              label: `${item.label} (${item.value})`,
-            }))}
+            items={REGION_ITEMS}
           />
         </Field>
         {kind === "keys" && !updating && installation && (
@@ -140,7 +142,8 @@ export function AwsConnectionForm({
         <FormInput
           name="accountId"
           label="AWS account ID"
-          defaultValue={installation?.accountId}
+          value={accountId}
+          onChange={(event) => setAccountId(event.target.value)}
           readOnly={updating}
           pattern="[0-9]{12}"
           maxLength={12}
@@ -149,7 +152,16 @@ export function AwsConnectionForm({
         {kind === "keys" && (
           <FieldSet>
             <FieldLegend className="flex w-full flex-wrap items-center justify-between gap-2">
-              <span>AWS credentials</span>
+              <span className="inline-flex items-center gap-1">
+                AWS credentials
+                {installation && (
+                  <AwsCredentialsHelp
+                    installationId={installation._id}
+                    accountId={accountId}
+                    regions={regions}
+                  />
+                )}
+              </span>
               <ImportAwsCredentials
                 onImport={(credentials) =>
                   setImported((previous) => ({

@@ -119,7 +119,7 @@ export function InstallationWizard() {
     step === "domain" && active && !active.ssoRequired
       ? {
           organizationId: active.id,
-          paginationOpts: { cursor: null, numItems: 25 },
+          paginationOpts: { cursor: null, numItems: 1 },
         }
       : "skip"
   )

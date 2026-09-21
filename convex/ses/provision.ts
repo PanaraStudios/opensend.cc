@@ -11,6 +11,7 @@ import {
 import { controlPlanePacer } from "./pacing"
 import { resourcePrefix } from "./contracts"
 import {
+  AdoptionConflict,
   assertOwned,
   awsError,
   connectionClients,
@@ -53,6 +54,7 @@ import {
   PutConfigurationSetSuppressionOptionsCommand,
   DeleteEmailIdentityCommand,
   DeleteConfigurationSetCommand,
+  type GetEmailIdentityResponse,
   type SESv2Client,
 } from "@aws-sdk/client-sesv2"
 
@@ -332,20 +334,25 @@ export const domain = internalAction({
         { Key: "opensend:installation", Value: installation._id },
         { Key: "opensend:domain", Value: domainId },
       ]
-      let identity = await missing(() =>
-        ses.send(new GetEmailIdentityCommand({ EmailIdentity: domain.name }))
-      )
-      if (
-        identity?.DkimAttributes?.Tokens?.length &&
-        identity.DkimAttributes.SigningHostedZone &&
-        domain.operation !== "remove"
-      )
-        discoveredRecords = identityRecords(
+      const dnsRecords = (identity: GetEmailIdentityResponse) =>
+        identityRecords(
           domain.name,
           domain.region,
           domain.customReturnPath,
-          identity
+          identity,
+          domain.receiving
         )
+      let identity = await missing(() =>
+        ses.send(new GetEmailIdentityCommand({ EmailIdentity: domain.name }))
+      )
+      // Only a provision may have no stored records yet. A failed refresh keeps
+      // the ones its last successful run checked, instead of resetting them.
+      if (
+        identity?.DkimAttributes?.Tokens?.length &&
+        identity.DkimAttributes.SigningHostedZone &&
+        domain.operation === "provision"
+      )
+        discoveredRecords = dnsRecords(identity)
       if (identity && tenant && domain.operation !== "remove")
         await resourceAssociation(ses, tenant.TenantName, identityArn)
       let needsAdoption = false
@@ -353,15 +360,18 @@ export const domain = internalAction({
         try {
           assertOwned(identity.Tags, installation._id, domainId)
         } catch {
-          if (domain.operation === "remove" && !domain.adoption?.approved) {
-            // Abandon a failed claim without changing an unrelated identity.
+          if (domain.operation === "remove") {
+            /* Nothing here is ours: an approved adoption that never reached
+               TagResource left no configuration of ours to restore. Abandon the
+               claim rather than change or delete an unrelated identity — a
+               drifted fingerprint must never block deleting the domain. */
             identity = null
           } else if (
             !domain.adoption?.approved ||
             identityFingerprint(identity) !== domain.adoption.fingerprint ||
-            !["provision", "remove"].includes(domain.operation)
+            domain.operation !== "provision"
           )
-            throw new ConvexError(
+            throw new AdoptionConflict(
               "This domain already exists in SES. Review the existing identity before connecting it to Opensend."
             )
           else needsAdoption = true
@@ -387,42 +397,42 @@ export const domain = internalAction({
           if (identity) await disassociate(ses, tenant.TenantName, identityArn)
           if (config) await disassociate(ses, tenant.TenantName, configArn)
         }
+        // An identity still held here is one we own; an unowned one was
+        // abandoned above, so removal never restores or deletes it.
         if (identity && domain.adoption?.approved) {
-          if (!needsAdoption) {
-            if (
-              identity.ConfigurationSetName !== configName &&
-              identity.ConfigurationSetName !== domain.adoption.configurationSet
+          if (
+            identity.ConfigurationSetName !== configName &&
+            identity.ConfigurationSetName !== domain.adoption.configurationSet
+          )
+            throw new ConvexError(
+              "AWS configuration changed outside Opensend. Review it before removal."
             )
-              throw new ConvexError(
-                "AWS configuration changed outside Opensend. Review it before removal."
-              )
-            if (
-              identity.MailFromAttributes?.MailFromDomain &&
-              ![
-                `${domain.customReturnPath}.${domain.name}`,
-                domain.adoption.mailFromDomain,
-              ].includes(identity.MailFromAttributes.MailFromDomain)
+          if (
+            identity.MailFromAttributes?.MailFromDomain &&
+            ![
+              `${domain.customReturnPath}.${domain.name}`,
+              domain.adoption.mailFromDomain,
+            ].includes(identity.MailFromAttributes.MailFromDomain)
+          )
+            throw new ConvexError(
+              "AWS MAIL FROM changed outside Opensend. Review it before removal."
             )
-              throw new ConvexError(
-                "AWS MAIL FROM changed outside Opensend. Review it before removal."
-              )
-            await ses.send(
-              new PutEmailIdentityConfigurationSetAttributesCommand({
-                EmailIdentity: domain.name,
-                ConfigurationSetName: domain.adoption.configurationSet,
-              })
-            )
-            await ses.send(
-              new PutEmailIdentityMailFromAttributesCommand({
-                EmailIdentity: domain.name,
-                MailFromDomain: domain.adoption.mailFromDomain,
-                BehaviorOnMxFailure:
-                  domain.adoption.behaviorOnMxFailure === "REJECT_MESSAGE"
-                    ? "REJECT_MESSAGE"
-                    : "USE_DEFAULT_VALUE",
-              })
-            )
-          }
+          await ses.send(
+            new PutEmailIdentityConfigurationSetAttributesCommand({
+              EmailIdentity: domain.name,
+              ConfigurationSetName: domain.adoption.configurationSet,
+            })
+          )
+          await ses.send(
+            new PutEmailIdentityMailFromAttributesCommand({
+              EmailIdentity: domain.name,
+              MailFromDomain: domain.adoption.mailFromDomain,
+              BehaviorOnMxFailure:
+                domain.adoption.behaviorOnMxFailure === "REJECT_MESSAGE"
+                  ? "REJECT_MESSAGE"
+                  : "USE_DEFAULT_VALUE",
+            })
+          )
         } else if (identity)
           await ses.send(
             new DeleteEmailIdentityCommand({ EmailIdentity: domain.name })
@@ -433,7 +443,7 @@ export const domain = internalAction({
               ConfigurationSetName: configName,
             })
           )
-        if (identity && domain.adoption?.approved && !needsAdoption)
+        if (identity && domain.adoption?.approved)
           await ses.send(
             new UntagResourceCommand({
               ResourceArn: identityArn,
@@ -524,12 +534,7 @@ export const domain = internalAction({
           )
           assertOwned(identity.Tags, installation._id, domainId)
         }
-        discoveredRecords = identityRecords(
-          domain.name,
-          domain.region,
-          domain.customReturnPath,
-          identity
-        )
+        discoveredRecords = dnsRecords(identity)
         if (needsAdoption)
           await ses.send(
             new TagResourceCommand({ ResourceArn: identityArn, Tags: tags })
@@ -551,22 +556,20 @@ export const domain = internalAction({
       }
       if (!identity || !config)
         throw new Error("AWS identity or configuration set is missing")
-      if (domain.operation === "provision")
-        await applyTlsPolicy(ses, configName, domain.tls)
+      // A refresh queued alongside a TLS change still applies the pending
+      // policy, so one operation can rebuild records and settle TLS together.
+      const tlsPolicy = domain.pendingTls ?? domain.tls
+      if (domain.operation === "provision" || domain.pendingTls)
+        await applyTlsPolicy(ses, configName, tlsPolicy)
       if (!tenant) throw new ConvexError("SES tenant is not ready")
       await associateExclusive(ses, tenant.TenantName, identityArn)
       await associateExclusive(ses, tenant.TenantName, configArn)
-      identity = await ses.send(
-        new GetEmailIdentityCommand({ EmailIdentity: domain.name })
-      )
-      const records = await checkRecords(
-        identityRecords(
-          domain.name,
-          domain.region,
-          domain.customReturnPath,
-          identity
+      // Only a provision rewrites the identity, so a refresh reads it once.
+      if (domain.operation === "provision")
+        identity = await ses.send(
+          new GetEmailIdentityCommand({ EmailIdentity: domain.name })
         )
-      )
+      const records = await checkRecords(dnsRecords(identity))
       const sesVerified = !!identity.VerifiedForSendingStatus
       const dkimVerified =
         identity.DkimAttributes?.Status === "SUCCESS" &&
@@ -576,15 +579,19 @@ export const domain = internalAction({
         identity.MailFromAttributes.MailFromDomain ===
           `${domain.customReturnPath}.${domain.name}` &&
         identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
+      /* DMARC is advisory, so it never holds a domain back from verified, and
+         a resolver that timed out proves nothing: only a record the resolver
+         positively did not find keeps a domain partially verified. */
       const allVerified =
         sesVerified &&
         dkimVerified &&
         mailFromVerified &&
-        records.every((r) => r.status === "verified")
+        records.every((r) => r.kind === "DMARC" || r.status !== "pending")
       await ctx.runMutation(internal.domains.finish, {
         id: domainId,
         changes: {
           records,
+          tls: tlsPolicy,
           configurationSet: configName,
           tenantAssociated: true,
           sesVerified,
@@ -606,6 +613,7 @@ export const domain = internalAction({
         id: domainId,
         changes: discoveredRecords ? { records: discoveredRecords } : {},
         error: awsError(e),
+        needsAdoptionReview: e instanceof AdoptionConflict ? true : undefined,
       })
     }
     return null

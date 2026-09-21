@@ -11,7 +11,7 @@ import {
   ItemDescription,
   ItemActions,
 } from "@/components/ui/item"
-import { REGIONS } from "@/lib/dashboard/types"
+import { regionLabel } from "@/lib/dashboard/format"
 import type { SesStatus } from "./connection-form"
 
 export function SesRegions({
@@ -28,24 +28,27 @@ export function SesRegions({
         <div key={region._id} className="flex flex-col gap-2">
           <Item variant="outline">
             <ItemContent className="min-w-0">
-              <ItemTitle>
-                {REGIONS.find((item) => item.value === region.region)?.label ??
-                  region.region}
-              </ItemTitle>
+              <ItemTitle>{regionLabel(region.region)}</ItemTitle>
               <ItemDescription>
                 {region.region}
                 {region.region === status.installation?.defaultRegion
                   ? " · Default"
                   : ""}
               </ItemDescription>
-              <ItemDescription>
-                {region.quota.production ? "Production access" : "Sandbox"} ·{" "}
-                {region.quota.daily.toLocaleString("en-US")} recipients/day
-              </ItemDescription>
+              {/* Account limits reach installation admins only. */}
+              {region.quota && (
+                <ItemDescription>
+                  {region.quota.production ? "Production access" : "Sandbox"} ·{" "}
+                  {region.quota.daily.toLocaleString("en-US")} recipients/day
+                </ItemDescription>
+              )}
               {settings && (
                 <ItemDescription>
-                  {region.quota.rate.toLocaleString("en-US")}/second · Delivery
-                  updates {region.callbackConfirmed ? "connected" : "pending"}
+                  {region.quota
+                    ? `${region.quota.rate.toLocaleString("en-US")}/second · `
+                    : ""}
+                  Delivery updates{" "}
+                  {region.callbackConfirmed ? "connected" : "pending"}
                 </ItemDescription>
               )}
             </ItemContent>

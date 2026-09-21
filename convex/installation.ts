@@ -6,6 +6,7 @@ import {
   internalMutation,
 } from "./_generated/server"
 import {
+  findInstallation,
   installationAccess,
   requireInstallationAdmin,
   requireTeam,
@@ -14,23 +15,40 @@ import schema from "./schema"
 import { quotaValue, regionValue, setupStepValue } from "./ses/contracts"
 import { internal } from "./_generated/api"
 import { workflow } from "./ses/workflows"
-import type { QueryCtx, MutationCtx } from "./_generated/server"
+import type { MutationCtx } from "./_generated/server"
+import type { Doc } from "./_generated/dataModel"
 
-export const findInstallation = (ctx: QueryCtx | MutationCtx) =>
-  ctx.db
-    .query("installation")
-    .withIndex("by_key", (q) => q.eq("key", "installation"))
-    .unique()
+export { findInstallation }
+/* Every member needs the setup state to route the dashboard, so the AWS
+   account, its key hint, the callback URL and the regional quotas are the
+   optional half of this shape: present for an installation admin only. */
 const publicInstallation = schema
   .doc("installation")
   .omit("encryptedCredentials", "wrappedEncryptionKey")
+  .partial()
+  .extend({
+    _id: v.id("installation"),
+    _creationTime: v.number(),
+    key: v.literal("installation"),
+  })
+/* Topic, queue and subscription ARNs are internal plumbing, not dashboard data.
+   Members need only which regions they can add a domain in; the account's
+   limits and the state of its callback belong to the installation admin. */
+const publicRegion = schema
+  .doc("sesRegions")
+  .pick("_id", "region", "phase")
+  .extend({
+    quota: v.optional(quotaValue),
+    error: v.optional(v.string()),
+    callbackConfirmed: v.optional(v.boolean()),
+  })
 export const status = query({
   args: {},
   returns: v.object({
     admin: v.boolean(),
     suggestedCallbackOrigin: v.string(),
     installation: v.union(v.null(), publicInstallation),
-    regions: v.array(schema.doc("sesRegions")),
+    regions: v.array(publicRegion),
   }),
   handler: async (ctx) => {
     const { admin } = await installationAccess(ctx)
@@ -41,24 +59,39 @@ export const status = query({
           _id: installation._id,
           _creationTime: installation._creationTime,
           key: installation.key,
-          siteUrl: installation.siteUrl,
-          callbackOrigin: installation.callbackOrigin,
-          environmentCheckedAt: installation.environmentCheckedAt,
           completedAt: installation.completedAt,
-          accountId: installation.accountId,
-          credentialKind: installation.credentialKind,
-          accessKeyLast4: installation.accessKeyLast4,
-          credentialRevision: installation.credentialRevision,
           defaultRegion: installation.defaultRegion,
           setupStep: installation.setupStep,
+          ...(admin
+            ? {
+                siteUrl: installation.siteUrl,
+                callbackOrigin: installation.callbackOrigin,
+                environmentCheckedAt: installation.environmentCheckedAt,
+                accountId: installation.accountId,
+                credentialKind: installation.credentialKind,
+                accessKeyLast4: installation.accessKeyLast4,
+                credentialRevision: installation.credentialRevision,
+              }
+            : {}),
         }
       : null
     return {
       admin,
-      suggestedCallbackOrigin:
-        process.env.SES_CALLBACK_ORIGIN || process.env.CONVEX_SITE_URL || "",
+      suggestedCallbackOrigin: admin
+        ? process.env.SES_CALLBACK_ORIGIN || process.env.CONVEX_SITE_URL || ""
+        : "",
       installation: safe,
-      regions: await ctx.db.query("sesRegions").withIndex("by_region").take(20),
+      regions: (
+        await ctx.db.query("sesRegions").withIndex("by_region").take(20)
+      ).map((region) => ({
+        _id: region._id,
+        region: region.region,
+        phase: region.phase,
+        // Sending volume, production access and the callback are AWS details.
+        quota: admin ? region.quota : undefined,
+        error: admin ? region.error : undefined,
+        callbackConfirmed: admin ? region.callbackConfirmed : undefined,
+      })),
     }
   },
 })
@@ -90,11 +123,11 @@ export const saveEncryptionKey = internalMutation({
       throw new ConvexError("Installation not found")
     // Concurrent setup clicks must never replace an already-active key.
     if (!installation.wrappedEncryptionKey)
-      await ctx.db.patch(installation._id, {
+      await ctx.db.patch("installation", installation._id, {
         wrappedEncryptionKey: args.wrappedKey,
       })
     if (!installation.setupStep || installation.setupStep === "welcome")
-      await ctx.db.patch(installation._id, { setupStep: "aws" })
+      await ctx.db.patch("installation", installation._id, { setupStep: "aws" })
     return null
   },
 })
@@ -123,7 +156,7 @@ export const navigate = mutation({
       if (!regions.length || regions.some((region) => region.phase !== "ready"))
         throw new ConvexError("Finish setting up your AWS regions first")
     }
-    await ctx.db.patch(installation._id, { setupStep: step })
+    await ctx.db.patch("installation", installation._id, { setupStep: step })
     return null
   },
 })
@@ -164,7 +197,7 @@ export const saveEnvironment = internalMutation({
         throw new ConvexError(
           "Connection URLs are already in use. Keep the configured origins while provisioning resources."
         )
-      await ctx.db.patch(installation._id, {
+      await ctx.db.patch("installation", installation._id, {
         ...args,
         environmentCheckedAt: Date.now(),
         ...(!installation.completedAt
@@ -211,7 +244,7 @@ export const activateConnection = internalMutation({
       throw new ConvexError(
         "Keep existing regions enabled; resources may still use them"
       )
-    await ctx.db.patch(installation._id, {
+    await ctx.db.patch("installation", installation._id, {
       accountId: args.accountId,
       credentialKind: args.credentialKind,
       encryptedCredentials: args.encryptedCredentials,
@@ -223,7 +256,7 @@ export const activateConnection = internalMutation({
     for (const item of args.regions) {
       const current = existing.find((r) => r.region === item.region)
       if (current)
-        await ctx.db.patch(current._id, {
+        await ctx.db.patch("sesRegions", current._id, {
           quota: item.quota,
           checkedAt: Date.now(),
         })
@@ -255,10 +288,16 @@ export const provisionRegion = mutation({
       .unique()
     if (!region) throw new ConvexError("Enable this region first")
     if (region.phase === "running") return null
-    await ctx.db.patch(region._id, { phase: "running", error: undefined })
-    await workflow.start(ctx, internal.ses.workflows.provisionRegion, {
-      regionId: region._id,
+    await ctx.db.patch("sesRegions", region._id, {
+      phase: "running",
+      error: undefined,
     })
+    await workflow.start(
+      ctx,
+      internal.ses.workflows.provisionRegion,
+      { regionId: region._id },
+      { onComplete: internal.ses.workflows.cleanup, context: null }
+    )
     return null
   },
 })
@@ -288,27 +327,38 @@ export async function completeInstallation(
       q.eq("organizationId", organizationId).eq("deleted", false)
     )
     .take(100)
+  /* Domains repeat their region, and the team's tenant is pinned to one
+     region, so both lookups answer the same question over and over. */
+  const tenants = new Map<string, Doc<"sesTenants"> | null>()
+  const regions = new Map<string, Doc<"sesRegions"> | null>()
   let ready = false
   for (const domain of domains) {
-    const tenant = await ctx.db
-      .query("sesTenants")
-      .withIndex("by_organizationId_and_region", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("region", installation.defaultRegion ?? domain.region)
+    const tenantRegion = installation.defaultRegion ?? domain.region
+    if (!tenants.has(tenantRegion))
+      tenants.set(
+        tenantRegion,
+        await ctx.db
+          .query("sesTenants")
+          .withIndex("by_organizationId_and_region", (q) =>
+            q.eq("organizationId", organizationId).eq("region", tenantRegion)
+          )
+          .unique()
       )
-      .unique()
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", domain.region))
-      .unique()
+    if (!regions.has(domain.region))
+      regions.set(
+        domain.region,
+        await ctx.db
+          .query("sesRegions")
+          .withIndex("by_region", (q) => q.eq("region", domain.region))
+          .unique()
+      )
+    const tenant = tenants.get(tenantRegion)!
+    const region = regions.get(domain.region)!
     if (
       tenant?.phase === "ready" &&
       region?.phase === "ready" &&
       !tenant.deleted &&
-      tenant.operation === "provision" &&
-      tenant.organizationId === organizationId &&
-      tenant.region === (installation.defaultRegion ?? domain.region)
+      tenant.operation === "provision"
     ) {
       ready = true
       break
@@ -318,5 +368,7 @@ export async function completeInstallation(
     throw new ConvexError(
       "Provision the team tenant and add your first domain before continuing"
     )
-  await ctx.db.patch(installation._id, { completedAt: Date.now() })
+  await ctx.db.patch("installation", installation._id, {
+    completedAt: Date.now(),
+  })
 }

@@ -545,6 +545,17 @@ export function Th({
   return <TableHead className={className}>{children}</TableHead>
 }
 
+/** Trails `value` by `delay`, so a controlled input can keep every keystroke
+    while the query behind it only sees the pauses. */
+export function useDebouncedValue<T>(value: T, delay = 250) {
+  const [settled, setSettled] = React.useState(value)
+  React.useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delay)
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  return settled
+}
+
 /* ------------------------------------------------------------- pagination */
 
 export const PAGE_SIZES = [40, 80, 120] as const

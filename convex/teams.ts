@@ -5,6 +5,7 @@ import { v, ConvexError } from "convex/values"
 import {
   sessionId,
   requireTeam,
+  findInstallation,
   installationAccess,
   requireSetupComplete,
 } from "./access"
@@ -54,10 +55,7 @@ export const create = mutation({
   returns: v.string(),
   handler: async (ctx, args) => {
     const sid = await sessionId(ctx)
-    const installation = await ctx.db
-      .query("installation")
-      .withIndex("by_key", (q) => q.eq("key", "installation"))
-      .unique()
+    const installation = await findInstallation(ctx)
     if (!installation?.completedAt) {
       const access = await installationAccess(ctx)
       const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
@@ -87,7 +85,9 @@ export const create = mutation({
     if (installation?.defaultRegion)
       await ensureTeamTenant(ctx, id, installation.defaultRegion)
     if (installation && !installation.completedAt)
-      await ctx.db.patch(installation._id, { setupStep: "domain" })
+      await ctx.db.patch("installation", installation._id, {
+        setupStep: "domain",
+      })
     return id
   },
 })
@@ -204,10 +204,7 @@ export const deleteAccount = mutation({
     const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
       sessionId: sid,
     })
-    const installation = await ctx.db
-      .query("installation")
-      .withIndex("by_key", (q) => q.eq("key", "installation"))
-      .unique()
+    const installation = await findInstallation(ctx)
     if (installation?.accountId && (await installationAccess(ctx)).admin)
       throw new ConvexError(
         "The installation administrator cannot delete their account while AWS is connected"

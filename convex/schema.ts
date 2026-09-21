@@ -6,6 +6,7 @@ import {
   dnsProviderValue,
 } from "./ses/contracts"
 import {
+  domainOperationValue,
   domainStatusValue,
   phaseValue,
   quotaValue,
@@ -66,9 +67,13 @@ export default defineSchema({
     dnsProvider: v.optional(dnsProviderValue),
     dnsProviderCheckedAt: v.optional(v.number()),
     dnsProviderRequestedAt: v.optional(v.number()),
+    dnsWriteClaimedAt: v.optional(v.number()),
     tenantId: v.optional(v.id("sesTenants")),
     tenantAssociated: v.optional(v.boolean()),
     adoption: v.optional(adoptionValue),
+    /* Set by the worker when a failure is an identity-ownership conflict an
+       installation admin can resolve by reviewing the existing identity. */
+    needsAdoptionReview: v.optional(v.boolean()),
     organizationId: v.string(),
     name: v.string(),
     region: regionValue,
@@ -77,6 +82,7 @@ export default defineSchema({
     phase: phaseValue,
     deleted: v.boolean(),
     sending: v.boolean(),
+    receiving: v.optional(v.boolean()),
     tls: tlsValue,
     pendingTls: v.optional(tlsValue),
     records: v.array(recordValue),
@@ -89,14 +95,8 @@ export default defineSchema({
     configurationSet: v.optional(v.string()),
     checkedAt: v.optional(v.number()),
     error: v.optional(v.string()),
-    operation: v.union(
-      v.literal("provision"),
-      v.literal("refresh"),
-      v.literal("settings"),
-      v.literal("remove")
-    ),
+    operation: domainOperationValue,
   })
-    .index("by_name_and_region", ["name", "region"])
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
     .index("by_organizationId_and_deleted_and_name", [
       "organizationId",
