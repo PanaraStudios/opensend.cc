@@ -6,24 +6,26 @@ installation administrator; a team administrator does not gain installation acce
 
 ## Run the wizard
 
-1. Run `pnpm setup`, then open `/signup`. Verify the first account through the
-   backend logs and log in.
+Run `pnpm setup`, then open `/signup`. Verify the first account through the
+backend logs and log in. The wizard has six steps:
+
+1. **Welcome.** Choose **Get started** to begin setup.
 2. **Connect AWS.** Choose a region and enter your account ID and access key.
    Opensend creates an encryption key and saves your progress automatically.
-   **Create AWS user** opens inline help if you need keys. Additional regions
+   **Create AWS user** opens a dialog if you need keys. Additional regions
    and an existing server role are under **Advanced options**.
-3. Opensend checks the detected HTTPS backend URL and sets up AWS resources.
+3. **Receive delivery updates.** Opensend checks the detected HTTPS backend URL.
    Local installations must enter a public HTTPS URL first. Use a tunnel to the
    backend HTTP service, not the dashboard. The default port is **3211**; the
    review instance uses **3511**. Opensend checks that the URL reaches this
-   installation. Failed checks and resource setup show a retry option.
-4. **Create your team.** Name your workspace once AWS is ready.
-5. **Add your sending domain.** Enter it directly in the wizard. Region and
-   Return-Path settings are under **Advanced options**. Saving opens
+   installation. Failed checks show a retry option.
+4. **Set up AWS resources.** Review and provision the regional resources. Failed
+   provisioning can be retried.
+5. **Create your team.** Name your workspace once AWS is ready.
+6. **Add your sending domain.** Use the existing domain dialog. Saving opens
    `/domains/{id}` in the dashboard, where you add DNS records and verify them.
 
-The wizard uses the auth layout and shows three steps. Delivery checks and AWS
-resource setup run within the AWS step. Before completion,
+The wizard uses the auth layout and shows one of six steps at a time. Before completion,
 Back navigation and reloads preserve the saved step. After completion the wizard
 closes and all dashboard navigation is available. AWS credentials are never persisted as
 browser drafts. Pending DNS, SNS confirmation or AWS production approval remain
@@ -72,6 +74,14 @@ management and invitation mutations also require setup completion. The first-tea
 creation is allowed only at the wizard's team step and advances it atomically.
 
 ## Credentials and permissions
+
+After setup, the installation administrator opens **Amazon SES** immediately
+below **My profile** in the profile menu, or through command search. The page at
+`/instance/ses` uses the dashboard layout and manages the connection for all teams.
+It remains available when switching teams or when no team is active. Amazon SES
+is no longer a team settings tab; `/settings/ses` redirects to the new page.
+Other users, including team administrators, see an access-required message with
+no configuration controls. Incomplete installations stay in onboarding.
 
 A backend role uses the official AWS Node credential provider chain, allowing
 instance/container/web-identity credentials to renew. Configure its runtime

@@ -14,6 +14,7 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   HouseIcon,
+  CloudIcon,
   LogOutIcon,
   MonitorIcon,
   MoonIcon,
@@ -70,6 +71,7 @@ import { Toaster } from "@/components/ui/toast"
 import {
   DASHBOARD_NAV,
   SETTINGS_NAV,
+  SES_SETTINGS_PAGE,
   STANDALONE_PAGES,
   navItemActive,
 } from "@/lib/dashboard/nav"
@@ -123,9 +125,11 @@ function SidebarCollapseButton() {
 function CommandMenu({
   open,
   onOpenChange,
+  installationAdmin,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  installationAdmin: boolean
 }) {
   const router = useRouter()
   const { state } = useDashboard()
@@ -175,6 +179,14 @@ function CommandMenu({
                 {item.title}
               </CommandItem>
             ))}
+            {installationAdmin && (
+              <CommandItem
+                value={SES_SETTINGS_PAGE.title}
+                onSelect={() => go(SES_SETTINGS_PAGE.href)}
+              >
+                {SES_SETTINGS_PAGE.title}
+              </CommandItem>
+            )}
           </CommandGroup>
           <CommandSeparator />
           {open ? (
@@ -223,9 +235,11 @@ function CommandMenu({
 function DashboardSidebar({
   onSearch,
   setupPending,
+  installationAdmin,
 }: {
   onSearch: () => void
   setupPending: boolean
+  installationAdmin: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -347,6 +361,14 @@ function DashboardSidebar({
                       <UserRoundIcon />
                       My profile
                     </DropdownMenuItem>
+                    {installationAdmin && (
+                      <DropdownMenuItem
+                        render={<Link href={SES_SETTINGS_PAGE.href} />}
+                      >
+                        <CloudIcon />
+                        {SES_SETTINGS_PAGE.title}
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <AppearanceItems />
@@ -431,6 +453,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
       <SidebarProvider>
         <DashboardSidebar
           setupPending={setupPending}
+          installationAdmin={installation?.admin === true}
           onSearch={() => setSearchOpen(true)}
         />
         <SidebarInset className="min-w-0 bg-background">
@@ -440,7 +463,11 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
           </div>
         </SidebarInset>
         {!setupPending && (
-          <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
+          <CommandMenu
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            installationAdmin={installation?.admin === true}
+          />
         )}
       </SidebarProvider>
     </div>

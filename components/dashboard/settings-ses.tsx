@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
-import { DownloadIcon, KeyRoundIcon } from "lucide-react"
+import { DownloadIcon, KeyRoundIcon, ShieldIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import {
   SettingsCard,
   MonoValue,
   RelativeTime,
+  EmptyState,
 } from "@/components/dashboard/primitives"
 import { downloadTextFile } from "@/components/dashboard/domains/shared"
 import { AwsConnectionForm } from "@/components/ses/connection-form"
@@ -31,6 +32,14 @@ export function SettingsSes() {
   const check = useAction(api.installationActions.checkEnvironment)
   const [editing, setEditing] = React.useState(false)
   if (!status) return <Skeleton className="h-64 max-w-3xl" />
+  if (!status.admin)
+    return (
+      <EmptyState
+        icon={ShieldIcon}
+        title="Administrator access required"
+        description="Only the installation administrator can manage the AWS connection."
+      />
+    )
   const installation = status.installation
   const connected = !!installation?.accountId
   return (

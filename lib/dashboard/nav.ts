@@ -15,6 +15,7 @@ import {
 
 /** Where Settings opens. */
 export const SETTINGS_NAV_INDEX = "/settings/team"
+export const SES_SETTINGS_PAGE = { href: "/instance/ses", title: "Amazon SES" }
 
 export type NavItem = {
   href: string
@@ -72,7 +73,6 @@ export const SETTINGS_NAV: SectionTabs = [
   { href: SETTINGS_NAV_INDEX, title: "Team" },
   { href: "/settings/sso", title: "SSO" },
   { href: "/settings/unsubscribe", title: "Unsubscribe" },
-  { href: "/settings/ses", title: "Amazon SES" },
   { href: "/settings/smtp", title: "SMTP" },
 ]
 
@@ -98,6 +98,7 @@ export const STANDALONE_PAGES: readonly SectionTab[] = [
 ]
 
 const TEAM_SAFE_PATHS = new Set<string>([
+  SES_SETTINGS_PAGE.href,
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
   ...EMAIL_TABS.map((item) => item.href),
   ...AUDIENCE_TABS.map((item) => item.href),

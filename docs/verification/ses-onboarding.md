@@ -4,6 +4,70 @@ Branch: `feat/ses-onboarding`.
 Base commit: `08cf36a05b01dcd32c402fe514fd4c321db2f01e` plus the implementation
 working tree. No changes have been merged or published.
 
+## Installation navigation revision (2026-09-21)
+
+Completed SES work was committed as `02120ca` before the navigation revision.
+Amazon SES now appears immediately below My profile for installation
+administrators and opens `/instance/ses` in the existing dashboard layout. Its
+command-search entry uses the same installation permission. Team settings no
+longer includes an SES tab. The legacy URL redirects, including without an active
+team. The installation page remains available across team switches and without
+membership; team administrators and other non-administrators receive an
+access-required message without configuration controls. Incomplete installations
+still show the six-step onboarding flow. No permission model or schema changed.
+
+The existing domain dialog and SES settings design are retained. Documentation
+left over from the discarded three-step wizard was corrected to match the UI.
+
+Verification repairs:
+
+- Corrected an exact profile-button test locator to include its avatar initials.
+- The new no-team regression caught the workspace gate hiding the old route's
+  server redirect. Both SES URLs now bypass only the team gate; the installation
+  completion gate still takes precedence.
+- Regenerated local Next.js route types after moving the page; stale generated
+  validators still referenced the deleted route file.
+
+The no-team fixture temporarily changes a membership only in the disposable
+test project and restores it in `finally`. It does not touch the review account.
+
+Automated provider tests cover DNS-provider detection and TLS updates preserving
+verified DNS, identity state and tenant associations, including failure. Browser
+journeys cover six-step setup, domain dialogs, advancing Created timestamps,
+credential validation preserving the current revision, and focus restoration.
+Live AWS writes, credential rotation and DNS acceptance remain manual.
+
+Final verification:
+
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Passed |
+| Production `pnpm build` in Docker | Passed |
+| `pnpm test` | 209 passed |
+| `pnpm test:auth` | 79 passed |
+| Full Chromium regression | 19 passed |
+| Critical Firefox journeys | 5 passed |
+| Critical WebKit journeys | 5 passed |
+| Desktop/mobile, light/dark screenshots | Reviewed; existing designs retained |
+
+The critical journeys cover onboarding, administrator access without membership,
+team creation/switching, invitations and member/team-admin access rejection.
+All disposable projects created for this revision were cleaned up.
+
+- [Chromium report](../../test-results/opensend-e2e-1789968665395-5c9c68/html/index.html)
+- [Firefox report](../../test-results/opensend-e2e-1789968820678-b00f66/html/index.html)
+- [WebKit report](../../test-results/opensend-e2e-1789968915380-ba4189/html/index.html)
+- [Profile menu placement](../../test-results/opensend-e2e-1789968665395-5c9c68/browser/auth-Docker-self-hosted-au-a6600-ifies-the-bootstrap-account/ses-profile-menu.png)
+- [Mobile SES settings](../../test-results/opensend-e2e-1789968915380-ba4189/browser/auth-Docker-self-hosted-au-a6600-ifies-the-bootstrap-account/ses-settings-mobile.png)
+- [Dark desktop SES settings](../../test-results/opensend-e2e-1789968915380-ba4189/browser/auth-Docker-self-hosted-au-a6600-ifies-the-bootstrap-account/ses-settings-desktop-dark.png)
+
+Verified review image:
+`sha256:775a1b777851e0edecd2cdfec0ba1c3a869108e17037261a7cb709f5da19d721`.
+The review URL is http://localhost:3500/instance/ses. Only the app container is
+replaced; the existing backend and database volume are preserved. No live AWS or
+DNS writes were performed. No changes were pushed or merged. The pre-existing
+`.env.example` documentation edit remains outside both commits as requested.
+
 ## Completed implementation checkpoint (2026-09-21)
 
 Before committing the completed SES integration, lint, typechecking, 209 unit

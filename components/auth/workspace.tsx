@@ -12,6 +12,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
+import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
 export type Workspace = NonNullable<
   FunctionReturnType<typeof api.teams.snapshot>
 >
@@ -42,7 +43,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (
       isAuthenticated &&
       setupPending &&
-      (path === "/profile" || path.startsWith("/settings"))
+      (path === "/profile" ||
+        path.startsWith("/settings") ||
+        path === SES_SETTINGS_PAGE.href)
     )
       router.replace("/emails")
   }, [isAuthenticated, setupPending, path, router])
@@ -85,7 +88,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </AuthPageFrame>
-      ) : path !== "/profile" && (!active || active.ssoRequired) ? (
+      ) : path !== "/profile" &&
+        path !== SES_SETTINGS_PAGE.href &&
+        path !== "/settings/ses" &&
+        (!active || active.ssoRequired) ? (
         <AuthPageFrame>
           <div className="flex flex-col gap-6">
             <TeamAccess />

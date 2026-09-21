@@ -16,11 +16,17 @@ function assertTestOwnership() {
     throw new Error("Refusing to seed an instance not owned by this test run")
 }
 /** Test-only admin commands, never shipped as public application endpoints. */
-export function testBackend(name: string, args: unknown) {
+export function testBackend(name: string, args: unknown, component?: string) {
   assertTestOwnership()
   execFileSync(
     "node",
-    ["scripts/backend.mjs", "run", name, JSON.stringify(args)],
+    [
+      "scripts/backend.mjs",
+      "run",
+      ...(component ? ["--component", component] : []),
+      name,
+      JSON.stringify(args),
+    ],
     { stdio: "pipe", env: process.env }
   )
 }

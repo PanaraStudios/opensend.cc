@@ -236,6 +236,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
       owner.getByRole("heading", { name: "Set up Opensend", exact: true })
     ).toBeVisible()
     await expect(owner.locator('[data-slot="sidebar-header"]')).toHaveCount(0)
+    for (const route of ["/instance/ses", "/settings/ses"]) {
+      await owner.goto(route)
+      await expect(owner).toHaveURL(/\/emails$/)
+      await expect(owner.getByTestId("installation-wizard")).toBeVisible()
+      await expect(owner.getByTestId("ses-settings")).toHaveCount(0)
+    }
     const pendingClient = await client(owner)
     await expect(
       pendingClient.mutation(api.teams.create, { name: "Bypass setup" })
@@ -567,6 +573,24 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(createdTime).toHaveText("3m ago")
     await clockContext.close()
     await owner.goto("/settings/ses")
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await owner
+      .locator('[data-slot="sidebar-footer"]')
+      .getByRole("button", { name: /Test Owner/ })
+      .click()
+    const profileItems = owner.getByRole("menuitem")
+    await expect(profileItems.nth(0)).toHaveText("My profile")
+    await expect(profileItems.nth(1)).toHaveText("Amazon SES")
+    await owner.screenshot({
+      path: test.info().outputPath("ses-profile-menu.png"),
+      fullPage: true,
+    })
+    await profileItems.nth(1).click()
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await owner.getByRole("button", { name: /^Search/ }).click()
+    await owner.getByRole("combobox").fill("Amazon SES")
+    await owner.getByRole("option", { name: "Amazon SES", exact: true }).click()
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
     await expect(owner.getByTestId("ses-settings")).toBeVisible()
     await expect(owner.getByTestId("installation-wizard")).toHaveCount(0)
     await expect(owner.getByText(/Step \d+ of \d+/)).toHaveCount(0)
@@ -636,7 +660,17 @@ test.describe.serial("Docker self-hosted authentication", () => {
       path: test.info().outputPath("ses-settings-mobile.png"),
       fullPage: true,
     })
+    await owner.emulateMedia({ colorScheme: "dark" })
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-mobile-dark.png"),
+      fullPage: true,
+    })
     await owner.setViewportSize({ width: 1280, height: 900 })
+    await owner.screenshot({
+      path: test.info().outputPath("ses-settings-desktop-dark.png"),
+      fullPage: true,
+    })
+    await owner.emulateMedia({ colorScheme: "light" })
     await owner.goto("/emails")
     await member.goto("/signup")
     await member.getByLabel("Name", { exact: true }).fill("Uninvited")
@@ -648,6 +682,51 @@ test.describe.serial("Docker self-hosted authentication", () => {
       .getByRole("button", { name: "Create account", exact: true })
       .click()
     await expect(member.locator('p[role="alert"]')).toBeVisible()
+  })
+
+  test("keeps installation settings accessible without team membership", async () => {
+    const c = await client(owner)
+    const account = (await c.query(api.teams.snapshot))!
+    const membership = account.members.find((member) => member.you)!
+    const setMemberUser = (userId: string) =>
+      testBackend(
+        "adapter:updateOne",
+        {
+          input: {
+            model: "member",
+            where: [{ field: "_id", value: membership.id }],
+            update: { userId },
+          },
+        },
+        "betterAuth"
+      )
+    // Only this disposable test project's membership is changed, then restored.
+    try {
+      setMemberUser("ses-navigation-test-no-user")
+      await expect
+        .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
+        .toBeNull()
+      await owner.goto("/settings/ses")
+      await expect(owner).toHaveURL(/\/instance\/ses$/)
+      await expect(owner.getByTestId("ses-settings")).toBeVisible()
+      await expect(
+        owner.getByRole("button", { name: "Update connection" })
+      ).toBeVisible()
+      await owner
+        .locator('[data-slot="sidebar-footer"]')
+        .getByRole("button", { name: /Test Owner/ })
+        .click()
+      await expect(
+        owner.getByRole("menuitem", { name: "Amazon SES" })
+      ).toBeVisible()
+      await owner.keyboard.press("Escape")
+    } finally {
+      setMemberUser(account.user.id)
+    }
+    await expect
+      .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
+      .toBe(organizationId)
+    await owner.goto("/emails")
   })
 
   test("authorizes hosted and local OAuth clients, exchanges tokens and rejects refresh replay", async () => {
@@ -678,7 +757,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
       "/settings/team",
       "/settings/sso",
       "/settings/unsubscribe",
-      "/settings/ses",
+      "/instance/ses",
       "/settings/smtp",
       "/settings/exports",
       "/profile",
@@ -735,6 +814,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
     await owner.goto("/settings/team")
+    await expect(owner.getByRole("tab", { name: "Amazon SES" })).toHaveCount(0)
     const overview = forms(owner, "Save")
     await overview.getByLabel("Team name", { exact: true }).fill("Renamed Team")
     await overview.getByLabel("Slug", { exact: true }).fill("renamed-team")
@@ -763,8 +843,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByRole("button", { name: "Remove", exact: true })
     ).toHaveCount(0)
-    await owner.goto("/profile")
+    await owner.goto("/instance/ses")
     await createTeam(owner, "Second Team")
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
     const c = await client(owner)
     await expect
       .poll(async () => (await c.query(api.teams.snapshot))!.teams.length)
@@ -782,6 +864,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByText("That slug is already in use", { exact: true })
     ).toBeVisible()
+    await owner.goto("/instance/ses")
     await owner.getByRole("button", { name: /Second Team second-team/ }).click()
     await owner
       .getByRole("menuitem", { name: /Renamed Team renamed-team/ })
@@ -789,6 +872,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect
       .poll(async () => (await c.query(api.teams.snapshot))!.activeTeamId)
       .toBe(organizationId)
+    await expect(owner).toHaveURL(/\/instance\/ses$/)
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
   })
 
   test("resends, cancels, rejects and accepts matching-email invitations", async () => {
@@ -883,6 +968,35 @@ test.describe.serial("Docker self-hosted authentication", () => {
 
   test("enforces cross-team permissions and last-admin rules in UI and direct requests", async () => {
     const c = await client(member)
+    for (const route of ["/instance/ses", "/settings/ses"]) {
+      await member.goto(route)
+      await expect(member).toHaveURL(/\/instance\/ses$/)
+      await expect(
+        member.getByText("Administrator access required", { exact: true })
+      ).toBeVisible()
+      await expect(member.getByTestId("ses-settings")).toHaveCount(0)
+      await expect(
+        member.getByRole("button", { name: "Update connection" })
+      ).toHaveCount(0)
+    }
+    await member
+      .locator('[data-slot="sidebar-footer"]')
+      .getByRole("button", { name: /Test Member/ })
+      .click()
+    await expect(
+      member.getByRole("menuitem", { name: "My profile" })
+    ).toBeVisible()
+    await expect(
+      member.getByRole("menuitem", { name: "Amazon SES" })
+    ).toHaveCount(0)
+    await member.keyboard.press("Escape")
+    await member.getByRole("button", { name: /^Search/ }).click()
+    await member.getByRole("combobox").fill("Amazon SES")
+    await expect(
+      member.getByRole("option", { name: /Amazon SES/ })
+    ).toHaveCount(0)
+    await expect(member.getByText("No results found.")).toBeVisible()
+    await member.keyboard.press("Escape")
     await expect(
       c.mutation(api.installation.provisionRegion, { region: "us-east-1" })
     ).rejects.toBeTruthy()
@@ -941,6 +1055,11 @@ test.describe.serial("Docker self-hosted authentication", () => {
         .filter({ hasText: memberEmail })
         .getByText("Admin", { exact: true })
     ).toBeVisible()
+    await member.goto("/instance/ses")
+    await expect(
+      member.getByText("Administrator access required", { exact: true })
+    ).toBeVisible()
+    await expect(member.getByTestId("ses-settings")).toHaveCount(0)
     await memberMenu(owner, memberEmail)
     await owner.getByRole("menuitem", { name: "Change role to Member" }).click()
     await expect(
@@ -1352,6 +1471,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       member.getByRole("heading", { name: "Create or join a team" })
     ).toBeVisible()
+    await member.goto("/instance/ses")
+    await expect(
+      member.getByText("Administrator access required", { exact: true })
+    ).toBeVisible()
+    await expect(member.getByTestId("ses-settings")).toHaveCount(0)
+    await member.goto("/emails")
     await member.getByRole("link", { name: "Account settings" }).click()
     await expect(
       member.getByRole("heading", { name: "Profile", exact: true })
