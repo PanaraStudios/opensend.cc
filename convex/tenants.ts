@@ -11,6 +11,7 @@ import schema from "./schema"
 import {
   findInstallation,
   findRegion,
+  findTenant,
   requireTeam,
   requireInstallationAdmin,
 } from "./access"
@@ -49,12 +50,7 @@ export async function ensureTeamTenant(
     throw new ConvexError(
       "Provision this AWS region before creating a team tenant"
     )
-  let tenant = await ctx.db
-    .query("sesTenants")
-    .withIndex("by_organizationId_and_region", (q) =>
-      q.eq("organizationId", organizationId).eq("region", region)
-    )
-    .unique()
+  let tenant = await findTenant(ctx, organizationId, region)
   if (tenant?.operation === "remove" || tenant?.deleted)
     throw new ConvexError("This team's SES tenant is being removed")
   if (!tenant) {
@@ -113,12 +109,7 @@ export const retry = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, true)
-    const row = await ctx.db
-      .query("sesTenants")
-      .withIndex("by_organizationId_and_region", (q) =>
-        q.eq("organizationId", args.organizationId).eq("region", args.region)
-      )
-      .unique()
+    const row = await findTenant(ctx, args.organizationId, args.region)
     if (row && tenantProvisioned(row))
       await ctx.db.patch("sesTenants", row._id, { phase: "pending" })
     await ensureTeamTenant(ctx, args.organizationId, args.region)

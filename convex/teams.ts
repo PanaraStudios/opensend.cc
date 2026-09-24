@@ -10,6 +10,7 @@ import {
   requireSetupComplete,
   listRegions,
   allRegionsReady,
+  findRegion,
 } from "./access"
 import type { MutationCtx } from "./_generated/server"
 import { snapshotValue } from "./betterAuth/teams"
@@ -83,7 +84,12 @@ export const create = mutation({
       ...args,
       sessionId: sid,
     })
-    if (installation?.defaultRegion)
+    /* A region that is re-provisioning or failed must not block team
+       creation; adding the team's first domain creates its tenant then. */
+    if (
+      installation?.defaultRegion &&
+      (await findRegion(ctx, installation.defaultRegion))?.phase === "ready"
+    )
       await ensureTeamTenant(ctx, id, installation.defaultRegion)
     if (installation && !installation.completedAt)
       await ctx.db.patch("installation", installation._id, {

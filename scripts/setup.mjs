@@ -1,8 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs"
-import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
-import { parse } from "./lib.mjs"
+import { parse, run } from "./lib.mjs"
 const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
 const defaults = {
@@ -51,13 +50,6 @@ const compose = [
     ? ["-p", process.env.COMPOSE_PROJECT_NAME]
     : []),
 ]
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: "inherit", ...options })
-  if (result.error) throw result.error
-  if (result.status !== 0)
-    throw new Error(`${command} failed (${result.status})`)
-  return result.stdout?.trim()
-}
 console.log(
   `Target: self-hosted local deployment ${env.INSTANCE_NAME} (${env.CONVEX_PUBLIC_URL})`
 )

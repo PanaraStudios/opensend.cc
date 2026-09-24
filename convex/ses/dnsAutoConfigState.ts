@@ -5,7 +5,7 @@ import {
   requireTeam,
   requireInstallationAdmin,
 } from "../access"
-import { findActiveDomain, logHistory, retryOperation, start } from "../domains"
+import { findActiveDomain, logHistory, start } from "../domains"
 import schema from "../schema"
 import type { MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
@@ -39,6 +39,8 @@ export const claim = internalMutation({
       )
     if (domain.phase === "running")
       throw new ConvexError("A domain operation is already running")
+    if (domain.operation === "remove")
+      throw new ConvexError("This domain is being removed")
     if (!domain.records.length)
       throw new ConvexError(
         "This domain has no DNS records yet. Refresh it and try again."
@@ -72,11 +74,19 @@ export const finish = internalMutation({
       args.id,
       `${args.created} DNS records written to ${label}`
     )
-    // A refresh queued while another operation runs would be rejected; the
-    // running operation rechecks DNS on its own. A failed operation is retried
-    // as itself, so a failed provision stays reviewable.
-    if (domain.phase !== "running")
-      await start(ctx, domain, retryOperation(domain))
+    /* A refresh queued while another operation runs would be rejected; the
+       running operation rechecks DNS on its own. Only a failed provision is
+       retried as itself, so it stays reviewable; anything else rechecks DNS
+       with a refresh, which also settles a pending TLS change. A removal
+       started meanwhile is never re-run from here. */
+    if (domain.phase !== "running" && domain.operation !== "remove")
+      await start(
+        ctx,
+        domain,
+        domain.phase === "failed" && domain.operation === "provision"
+          ? "provision"
+          : "refresh"
+      )
     return null
   },
 })

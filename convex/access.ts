@@ -24,6 +24,18 @@ export const findRegion = (
     .query("sesRegions")
     .withIndex("by_region", (q) => q.eq("region", region))
     .unique()
+/** A team has at most one tenant per region. */
+export const findTenant = (
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  region: Doc<"sesTenants">["region"]
+) =>
+  ctx.db
+    .query("sesTenants")
+    .withIndex("by_organizationId_and_region", (q) =>
+      q.eq("organizationId", organizationId).eq("region", region)
+    )
+    .unique()
 /** At most one row per supported region, so the list is always small. */
 export const listRegions = (ctx: QueryCtx | MutationCtx) =>
   ctx.db.query("sesRegions").withIndex("by_region").take(20)

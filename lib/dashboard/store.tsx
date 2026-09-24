@@ -29,8 +29,9 @@ import {
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
-import { useMutation, useAction } from "convex/react"
+import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { asDomain } from "@/lib/domains/use-domains"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 
@@ -1286,6 +1287,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return readRaw()
   }, [scope])
   const raw = useSyncExternalStore(subscribe, read, () => SERVER_SNAPSHOT)
+  /* Screens outside the domain pages (API keys, broadcasts, receiving, the
+     command menu) read the team's domains from the store. One page covers
+     them; the domain list itself paginates on its own. */
+  const domainPage = useQuery(
+    api.domains.list,
+    auth.activeTeamId
+      ? {
+          organizationId: auth.activeTeamId,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  const domains = useMemo(
+    () => domainPage?.page.map(asDomain) ?? [],
+    [domainPage]
+  )
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -1324,8 +1341,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       ...actions,
       state: {
         ...demo,
-        // Domains are now loaded by resource-specific Convex hooks.
-        domains: [],
+        domains,
         members,
         settings: {
           ...demo.settings,
@@ -1368,6 +1384,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [
     raw,
     auth,
+    domains,
     create,
     switchTeam,
     rename,

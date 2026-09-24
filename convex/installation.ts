@@ -10,6 +10,7 @@ import {
   defaultCallbackOrigin,
   findInstallation,
   findRegion,
+  findTenant,
   installationAccess,
   listRegions,
   requireConnection,
@@ -327,12 +328,7 @@ export async function completeInstallation(
     if (!tenants.has(tenantRegion))
       tenants.set(
         tenantRegion,
-        await ctx.db
-          .query("sesTenants")
-          .withIndex("by_organizationId_and_region", (q) =>
-            q.eq("organizationId", organizationId).eq("region", tenantRegion)
-          )
-          .unique()
+        await findTenant(ctx, organizationId, tenantRegion)
       )
     if (!regions.has(domain.region))
       regions.set(domain.region, await findRegion(ctx, domain.region))

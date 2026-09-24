@@ -53,13 +53,13 @@ try {
       "--path",
       original,
     ],
-    { ...process.env, OPENSEND_ENV_FILE: sourceFile }
+    { env: { ...process.env, OPENSEND_ENV_FILE: sourceFile } }
   )
-  run("node", ["scripts/setup.mjs"], env)
+  run("node", ["scripts/setup.mjs"], { env })
   run(
     "node",
     ["scripts/backend.mjs", "import", "--replace-all", "--yes", original],
-    env
+    { env }
   )
   run(
     "node",
@@ -70,7 +70,7 @@ try {
       "--path",
       restored,
     ],
-    env
+    { env }
   )
   // Compare stable application/auth rows, not queue heartbeat/checkpoint metadata.
   run("python3", [

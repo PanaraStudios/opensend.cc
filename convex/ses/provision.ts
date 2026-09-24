@@ -315,9 +315,7 @@ export const domain = internalAction({
       if (domain.operation === "settings") {
         // Changing TLS never recreates identities, rewrites MAIL FROM, checks
         // DNS, or invalidates the tenant associations of a provisioned domain.
-        await ses.send(
-          new GetConfigurationSetCommand({ ConfigurationSetName: configName })
-        )
+        // Reading the set's tags also proves it exists.
         await assertConfigOwned()
         if (!tenant) throw new ConvexError("SES tenant is not ready")
         await resourceAssociation(ses, tenant.TenantName, configArn)

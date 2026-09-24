@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createServer } from "node:net"
 
-/** Reads KEY=value lines, skipping blanks and comments. */
+/** Reads KEY=value lines, skipping blanks, comments and anything else. */
 export function parse(text) {
   return Object.fromEntries(
     text
       .split("\n")
-      .filter((line) => line && !line.startsWith("#"))
+      .filter((line) => line.includes("=") && !line.startsWith("#"))
       .map((line) => {
         const i = line.indexOf("=")
         return [line.slice(0, i), line.slice(i + 1)]
@@ -15,11 +15,13 @@ export function parse(text) {
   )
 }
 
-export function run(command, args, env = process.env) {
-  const result = spawnSync(command, args, { env, stdio: "inherit" })
+/** Runs a command to completion; returns its stdout when that is piped. */
+export function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { stdio: "inherit", ...options })
   if (result.error) throw result.error
   if (result.status !== 0)
     throw new Error(`${command} failed (${result.status})`)
+  return result.stdout?.trim()
 }
 
 export async function freePort() {

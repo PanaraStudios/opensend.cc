@@ -144,7 +144,10 @@ function resourceRecord(
   }
   return { name, type, value }
 }
-function route53Change({ record, preserve }: PlannedWrite): Change {
+function route53Change(
+  { record, preserve }: PlannedWrite,
+  existingTtl?: number
+): Change {
   const values =
     record.type === "TXT"
       ? [...preserve, record.value].map(quoteTxtValue)
@@ -157,7 +160,8 @@ function route53Change({ record, preserve }: PlannedWrite): Change {
     ResourceRecordSet: {
       Name: record.name,
       Type: record.type,
-      TTL: Number(record.ttl) || 300,
+      // Rewriting a set keeps the TTL its owner chose.
+      TTL: existingTtl ?? (Number(record.ttl) || 300),
       ResourceRecords: values.map((Value) => ({ Value })),
     },
   }
@@ -184,6 +188,8 @@ async function writeRoute53(
 ): Promise<DnsPlan> {
   const HostedZoneId = await route53Zone(client, name)
   const existing: ExistingRecord[] = []
+  const sets = new Map<string, { ttl?: number; routed: boolean }>()
+  const setKey = (name: string, type: string) => `${name}|${type}`
   for (const name of targets(records)) {
     const page = await client.send(
       new ListResourceRecordSetsCommand({
@@ -194,6 +200,11 @@ async function writeRoute53(
     )
     for (const set of page.ResourceRecordSets ?? []) {
       if (canonical(set.Name ?? "") !== name || !set.Type) continue
+      const key = setKey(name, set.Type)
+      sets.set(key, {
+        ttl: set.TTL ?? sets.get(key)?.ttl,
+        routed: !!set.SetIdentifier || !!sets.get(key)?.routed,
+      })
       if (set.AliasTarget?.DNSName)
         existing.push({
           name,
@@ -205,11 +216,33 @@ async function writeRoute53(
     }
   }
   const plan = planDnsWrites(records, existing)
+  /* A set with a routing policy (weighted, latency, …) can't be merged into
+     one simple set, and one rejected change fails the whole batch. */
+  plan.writes = plan.writes.filter((write) => {
+    const routed = sets.get(setKey(write.record.name, write.record.type))
+    if (!routed?.routed || !write.preserve.length) return true
+    plan.conflicts.push({
+      name: write.record.name,
+      type: write.record.type,
+      reason:
+        "This name uses a Route 53 routing policy. Add the value to it by hand.",
+    })
+    return false
+  })
   if (plan.writes.length) {
     await client.send(
       new ChangeResourceRecordSetsCommand({
         HostedZoneId,
-        ChangeBatch: { Changes: plan.writes.map(route53Change) },
+        ChangeBatch: {
+          Changes: plan.writes.map((write) =>
+            route53Change(
+              write,
+              write.preserve.length
+                ? sets.get(setKey(write.record.name, write.record.type))?.ttl
+                : undefined
+            )
+          ),
+        },
       })
     )
     progress.created = plan.writes.length

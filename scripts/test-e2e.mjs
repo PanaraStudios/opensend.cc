@@ -88,7 +88,7 @@ mkdirSync("test-results", { recursive: true })
 let logs
 let status = 1
 try {
-  run("node", ["scripts/setup.mjs"], env)
+  run("node", ["scripts/setup.mjs"], { env })
   // Setup may normalize a loopback URL for requests originating inside Docker.
   env.OPENSEND_CALLBACK_ORIGIN = parse(
     readFileSync(filename, "utf8")
