@@ -9,7 +9,7 @@ import {
   disassociate,
 } from "./tenantProvider"
 import { controlPlanePacer } from "./pacing"
-import { resourcePrefix } from "./contracts"
+import { resourcePrefix, tenantProvisioned } from "./contracts"
 import {
   AdoptionConflict,
   assertOwned,
@@ -274,10 +274,7 @@ export const domain = internalAction({
       )
       if (
         domain.operation !== "remove" &&
-        (!tenantRow ||
-          tenantRow.deleted ||
-          tenantRow.operation !== "provision" ||
-          tenantRow.phase !== "ready")
+        (!tenantRow || !tenantProvisioned(tenantRow))
       )
         throw new ConvexError(
           "This team's SES tenant is not ready. Retry tenant setup."
@@ -304,12 +301,7 @@ export const domain = internalAction({
       // Hash-sized document IDs keep SES configuration-set names below 64 chars.
       const configName = `${prefix}-${domain._id.slice(-12)}`
       const configArn = `arn:aws:ses:${domain.region}:${installation.accountId}:configuration-set/${configName}`
-      if (domain.operation === "settings") {
-        // Changing TLS never recreates identities, rewrites MAIL FROM, checks
-        // DNS, or invalidates the tenant associations of a provisioned domain.
-        await ses.send(
-          new GetConfigurationSetCommand({ ConfigurationSetName: configName })
-        )
+      const assertConfigOwned = async () =>
         assertOwned(
           (
             await ses.send(
@@ -319,6 +311,14 @@ export const domain = internalAction({
           installation._id,
           domainId
         )
+      const mailFromDomain = `${domain.customReturnPath}.${domain.name}`
+      if (domain.operation === "settings") {
+        // Changing TLS never recreates identities, rewrites MAIL FROM, checks
+        // DNS, or invalidates the tenant associations of a provisioned domain.
+        await ses.send(
+          new GetConfigurationSetCommand({ ConfigurationSetName: configName })
+        )
+        await assertConfigOwned()
         if (!tenant) throw new ConvexError("SES tenant is not ready")
         await resourceAssociation(ses, tenant.TenantName, configArn)
         const tls = domain.pendingTls ?? domain.tls
@@ -353,8 +353,11 @@ export const domain = internalAction({
         domain.operation === "provision"
       )
         discoveredRecords = dnsRecords(identity)
-      if (identity && tenant && domain.operation !== "remove")
-        await resourceAssociation(ses, tenant.TenantName, identityArn)
+      // Checked early so a foreign association fails before anything changes.
+      const identityAssociated =
+        identity && tenant && domain.operation !== "remove"
+          ? await resourceAssociation(ses, tenant.TenantName, identityArn)
+          : false
       let needsAdoption = false
       if (identity) {
         try {
@@ -377,21 +380,12 @@ export const domain = internalAction({
           else needsAdoption = true
         }
       }
-      let config = await missing(() =>
+      let config = !!(await missing(() =>
         ses.send(
           new GetConfigurationSetCommand({ ConfigurationSetName: configName })
         )
-      )
-      if (config)
-        assertOwned(
-          (
-            await ses.send(
-              new ListTagsForResourceCommand({ ResourceArn: configArn })
-            )
-          ).Tags,
-          installation._id,
-          domainId
-        )
+      ))
+      if (config) await assertConfigOwned()
       if (domain.operation === "remove") {
         if (tenant) {
           if (identity) await disassociate(ses, tenant.TenantName, identityArn)
@@ -409,10 +403,9 @@ export const domain = internalAction({
             )
           if (
             identity.MailFromAttributes?.MailFromDomain &&
-            ![
-              `${domain.customReturnPath}.${domain.name}`,
-              domain.adoption.mailFromDomain,
-            ].includes(identity.MailFromAttributes.MailFromDomain)
+            ![mailFromDomain, domain.adoption.mailFromDomain].includes(
+              identity.MailFromAttributes.MailFromDomain
+            )
           )
             throw new ConvexError(
               "AWS MAIL FROM changed outside Opensend. Review it before removal."
@@ -472,18 +465,9 @@ export const domain = internalAction({
               },
             })
           )
-          config = await ses.send(
-            new GetConfigurationSetCommand({ ConfigurationSetName: configName })
-          )
-          assertOwned(
-            (
-              await ses.send(
-                new ListTagsForResourceCommand({ ResourceArn: configArn })
-              )
-            ).Tags,
-            installation._id,
-            domainId
-          )
+          // Reading the new set's tags also proves it now exists.
+          await assertConfigOwned()
+          config = true
         }
         await ses.send(
           new PutConfigurationSetSuppressionOptionsCommand({
@@ -549,7 +533,7 @@ export const domain = internalAction({
         await ses.send(
           new PutEmailIdentityMailFromAttributesCommand({
             EmailIdentity: domain.name,
-            MailFromDomain: `${domain.customReturnPath}.${domain.name}`,
+            MailFromDomain: mailFromDomain,
             BehaviorOnMxFailure: "REJECT_MESSAGE",
           })
         )
@@ -562,7 +546,8 @@ export const domain = internalAction({
       if (domain.operation === "provision" || domain.pendingTls)
         await applyTlsPolicy(ses, configName, tlsPolicy)
       if (!tenant) throw new ConvexError("SES tenant is not ready")
-      await associateExclusive(ses, tenant.TenantName, identityArn)
+      if (!identityAssociated)
+        await associateExclusive(ses, tenant.TenantName, identityArn)
       await associateExclusive(ses, tenant.TenantName, configArn)
       // Only a provision rewrites the identity, so a refresh reads it once.
       if (domain.operation === "provision")
@@ -576,8 +561,7 @@ export const domain = internalAction({
         !!identity.DkimAttributes.SigningEnabled
       const mailFromVerified =
         identity.MailFromAttributes?.MailFromDomainStatus === "SUCCESS" &&
-        identity.MailFromAttributes.MailFromDomain ===
-          `${domain.customReturnPath}.${domain.name}` &&
+        identity.MailFromAttributes.MailFromDomain === mailFromDomain &&
         identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
       /* DMARC is advisory, so it never holds a domain back from verified, and
          a resolver that timed out proves nothing: only a record the resolver

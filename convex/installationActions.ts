@@ -11,7 +11,8 @@ import {
 import { clients, readAccount, awsError } from "./ses/aws"
 import { GetCallerIdentityCommand } from "@aws-sdk/client-sts"
 import { controlPlanePacer } from "./ses/pacing"
-import { createHmac } from "node:crypto"
+import { setupProof } from "./ses/web"
+import { defaultCallbackOrigin } from "./access"
 
 export const initialize = action({
   args: {},
@@ -20,8 +21,7 @@ export const initialize = action({
     await ctx.runQuery(internal.installation.adminContext, {})
     const id = await ctx.runMutation(internal.installation.begin, {
       siteUrl: installationUrl(process.env.SITE_URL ?? "", true),
-      callbackOrigin:
-        process.env.SES_CALLBACK_ORIGIN || process.env.CONVEX_SITE_URL || "",
+      callbackOrigin: defaultCallbackOrigin(),
     })
     await ctx.runMutation(internal.installation.saveEncryptionKey, {
       id,
@@ -45,9 +45,7 @@ export const checkEnvironment = action({
         { signal: AbortSignal.timeout(10000), redirect: "error" }
       )
       const body: unknown = await response.json()
-      const expected = createHmac("sha256", process.env.BETTER_AUTH_SECRET!)
-        .update(`opensend:setup-proof:${challenge}`)
-        .digest("hex")
+      const expected = await setupProof(challenge)
       if (
         !response.ok ||
         !body ||

@@ -1,8 +1,11 @@
 import { v, ConvexError } from "convex/values"
 import { internalMutation } from "../_generated/server"
-import { requireTeam, requireInstallationAdmin } from "../access"
-import { logHistory, retryOperation, start } from "../domains"
-import { findInstallation } from "../installation"
+import {
+  requireConnection,
+  requireTeam,
+  requireInstallationAdmin,
+} from "../access"
+import { findActiveDomain, logHistory, retryOperation, start } from "../domains"
 import schema from "../schema"
 import type { MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
@@ -27,8 +30,7 @@ export const claim = internalMutation({
     provider: v.union(v.literal("cloudflare"), v.literal("route53")),
   }),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, id)
     await authorize(ctx, domain)
     const provider = domain.dnsProvider
     if (provider !== "cloudflare" && provider !== "route53")
@@ -46,9 +48,7 @@ export const claim = internalMutation({
       throw new ConvexError(
         "Automatic DNS setup is already running for this domain"
       )
-    const installation = await findInstallation(ctx)
-    if (!installation?.accountId || !installation.credentialKind)
-      throw new ConvexError("Connect AWS first")
+    const installation = await requireConnection(ctx)
     await ctx.db.patch("domains", id, { dnsWriteClaimedAt: now })
     return { domain, installation, provider }
   },
@@ -62,8 +62,7 @@ export const finish = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get("domains", args.id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, args.id)
     await authorize(ctx, domain)
     await ctx.db.patch("domains", args.id, { dnsWriteClaimedAt: undefined })
     if (!args.created) return null

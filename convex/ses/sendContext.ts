@@ -1,6 +1,12 @@
 import { v, ConvexError } from "convex/values"
 import { internalQuery } from "../_generated/server"
-import { provisioned, regionValue } from "./contracts"
+import { findRegion } from "../access"
+import {
+  provisioned,
+  regionValue,
+  tenantMatches,
+  tenantProvisioned,
+} from "./contracts"
 
 /** Shared send contract: callers authorize the team, then use this immutable resource binding. */
 export const get = internalQuery({
@@ -24,11 +30,8 @@ export const get = internalQuery({
       : null
     if (
       !tenant ||
-      tenant.deleted ||
-      tenant.operation !== "provision" ||
-      tenant.organizationId !== args.organizationId ||
-      tenant.region !== domain.region ||
-      tenant.phase !== "ready" ||
+      !tenantProvisioned(tenant) ||
+      !tenantMatches(tenant, domain) ||
       !["ENABLED", "REINSTATED"].includes(tenant.sendingStatus ?? "")
     )
       throw new ConvexError("Team SES tenant is not ready to send")
@@ -40,10 +43,7 @@ export const get = internalQuery({
       domain.status !== "verified"
     )
       throw new ConvexError("Domain is not ready to send")
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", domain.region))
-      .unique()
+    const region = await findRegion(ctx, domain.region)
     if (
       !region ||
       region.phase !== "ready" ||

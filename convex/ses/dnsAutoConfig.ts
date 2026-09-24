@@ -86,25 +86,33 @@ async function writeCloudflare(
   progress: Progress
 ): Promise<DnsPlan> {
   const zoneId = await cloudflareZone(token, name)
-  const existing: ExistingRecord[] = []
-  for (const name of targets(records)) {
-    const rows = (await cloudflare(
-      token,
-      `/zones/${zoneId}/dns_records?per_page=100&name=${encodeURIComponent(name)}`
-    )) as
-      | { name?: string; type?: string; content?: string; priority?: number }[]
-      | null
-    for (const row of rows ?? [])
-      existing.push({
-        name: row.name ?? name,
-        type: row.type ?? "",
-        value:
-          row.type === "TXT"
-            ? parseTxtValue(row.content ?? "")
-            : (row.content ?? ""),
-        priority: row.priority,
+  // Each name is an independent read, so they are fetched together.
+  const existing: ExistingRecord[] = (
+    await Promise.all(
+      targets(records).map(async (name) => {
+        const rows = (await cloudflare(
+          token,
+          `/zones/${zoneId}/dns_records?per_page=100&name=${encodeURIComponent(name)}`
+        )) as
+          | {
+              name?: string
+              type?: string
+              content?: string
+              priority?: number
+            }[]
+          | null
+        return (rows ?? []).map((row) => ({
+          name: row.name ?? name,
+          type: row.type ?? "",
+          value:
+            row.type === "TXT"
+              ? parseTxtValue(row.content ?? "")
+              : (row.content ?? ""),
+          priority: row.priority,
+        }))
       })
-  }
+    )
+  ).flat()
   const plan = planDnsWrites(records, existing)
   // Cloudflare stores one record per value, so preserved values need no rewrite.
   for (const { record } of plan.writes) {

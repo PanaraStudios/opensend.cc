@@ -7,7 +7,20 @@ import {
   GetSubscriptionAttributesCommand,
 } from "@aws-sdk/client-sns"
 import { connectionClients } from "./aws"
-import { certificateUrl, limitedBody, parseSns, verifySignature } from "./sns"
+import { certificateUrl, parseSns, verifySignature } from "./sns"
+import { limitedBody } from "./web"
+/* SNS signs with a few long-lived certificates, so a warm instance reuses the
+   ones that already verified a signature instead of fetching one per event.
+   Validity is still checked on every message. */
+const certificates = new Map<string, string>()
+async function certificate(url: string) {
+  const response = await fetch(url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) throw new Error("Unable to fetch SNS certificate")
+  return limitedBody(response, 32768)
+}
 export const receive = internalAction({
   args: { body: v.string() },
   returns: v.null(),
@@ -17,12 +30,14 @@ export const receive = internalAction({
       arn: message.TopicArn,
     })
     if (!region) throw new Error("Unknown SNS topic")
-    const response = await fetch(certificateUrl(message), {
-      redirect: "error",
-      signal: AbortSignal.timeout(10000),
-    })
-    if (!response.ok) throw new Error("Unable to fetch SNS certificate")
-    verifySignature(message, await limitedBody(response, 32768))
+    const url = certificateUrl(message)
+    const cached = certificates.get(url)
+    const pem = cached ?? (await certificate(url))
+    verifySignature(message, pem)
+    if (!cached) {
+      if (certificates.size >= 16) certificates.clear()
+      certificates.set(url, pem)
+    }
     if (message.Type === "SubscriptionConfirmation") {
       const installation = await ctx.runQuery(
         internal.installation.connection,

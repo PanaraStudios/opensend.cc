@@ -8,13 +8,16 @@ import {
   findInstallation,
   installationAccess,
   requireSetupComplete,
+  listRegions,
+  allRegionsReady,
 } from "./access"
 import type { MutationCtx } from "./_generated/server"
 import { snapshotValue } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
 const role = v.union(v.literal("admin"), v.literal("member"))
-async function requireEmptyDomains(ctx: MutationCtx, organizationId: string) {
+/** A team is deleted only once it has no domains; its tenants go with it. */
+async function retireTeam(ctx: MutationCtx, organizationId: string) {
   const domain = await ctx.db
     .query("domains")
     .withIndex("by_organizationId_and_deleted_and_name", (q) =>
@@ -25,6 +28,7 @@ async function requireEmptyDomains(ctx: MutationCtx, organizationId: string) {
     throw new ConvexError(
       "Remove this team's sending domains before deleting the team"
     )
+  await removeTeamTenants(ctx, organizationId)
 }
 export const snapshot = query({
   args: {},
@@ -58,21 +62,18 @@ export const create = mutation({
     const installation = await findInstallation(ctx)
     if (!installation?.completedAt) {
       const access = await installationAccess(ctx)
-      const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
-        sessionId: sid,
-      })
-      const regions = await ctx.db
-        .query("sesRegions")
-        .withIndex("by_region")
-        .take(20)
+      // The account snapshot is the costly check, so it runs last.
       if (
         !access.admin ||
         installation?.setupStep !== "team" ||
         !installation.accountId ||
         !installation.environmentCheckedAt ||
-        account.teams.length ||
-        !regions.length ||
-        regions.some((region) => region.phase !== "ready")
+        !allRegionsReady(await listRegions(ctx)) ||
+        (
+          await ctx.runQuery(components.betterAuth.teams.snapshot, {
+            sessionId: sid,
+          })
+        ).teams.length
       )
         throw new ConvexError(
           "Create your first team at the team step of installation setup"
@@ -124,17 +125,16 @@ export const remove = mutation({
     await requireSetupComplete(ctx)
     await requireTeam(ctx, args.organizationId, !args.leave)
     const sid = await sessionId(ctx)
-    const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
-      sessionId: sid,
-    })
+    // Leaving retires the team only when this member is its last one.
     if (
       !args.leave ||
-      account.teams.find((team) => team.id === args.organizationId)?.members ===
-        1
-    ) {
-      await requireEmptyDomains(ctx, args.organizationId)
-      await removeTeamTenants(ctx, args.organizationId)
-    }
+      (
+        await ctx.runQuery(components.betterAuth.teams.snapshot, {
+          sessionId: sid,
+        })
+      ).teams.find((team) => team.id === args.organizationId)?.members === 1
+    )
+      await retireTeam(ctx, args.organizationId)
     return ctx.runMutation(components.betterAuth.teams.remove, {
       ...args,
       sessionId: sid,
@@ -199,21 +199,17 @@ export const deleteAccount = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    await requireSetupComplete(ctx)
+    const { access, installation } = await requireSetupComplete(ctx)
+    if (installation.accountId && access.admin)
+      throw new ConvexError(
+        "The installation administrator cannot delete their account while AWS is connected"
+      )
     const sid = await sessionId(ctx)
     const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
       sessionId: sid,
     })
-    const installation = await findInstallation(ctx)
-    if (installation?.accountId && (await installationAccess(ctx)).admin)
-      throw new ConvexError(
-        "The installation administrator cannot delete their account while AWS is connected"
-      )
     for (const team of account.teams)
-      if (team.members === 1) {
-        await requireEmptyDomains(ctx, team.id)
-        await removeTeamTenants(ctx, team.id)
-      }
+      if (team.members === 1) await retireTeam(ctx, team.id)
     return ctx.runMutation(components.betterAuth.teams.deleteAccount, {
       sessionId: sid,
     })

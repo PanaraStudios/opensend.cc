@@ -92,22 +92,3 @@ export function verifySignature(message: SnsMessage, pem: string) {
   )
     throw new Error("Invalid SNS signature")
 }
-export async function limitedBody(response: Request | Response, limit: number) {
-  const reader = response.body?.getReader()
-  if (!reader) return ""
-  const decoder = new TextDecoder()
-  let size = 0
-  let body = ""
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.byteLength
-      if (size > limit) throw new Error("SNS body too large")
-      body += decoder.decode(value, { stream: true })
-    }
-    return body + decoder.decode()
-  } finally {
-    await reader.cancel()
-  }
-}

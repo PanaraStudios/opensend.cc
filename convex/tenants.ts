@@ -10,11 +10,13 @@ import { internal } from "./_generated/api"
 import schema from "./schema"
 import {
   findInstallation,
+  findRegion,
   requireTeam,
   requireInstallationAdmin,
 } from "./access"
-import { regionValue, teamTenantName } from "./ses/contracts"
-import { workflow } from "./ses/workflows"
+import { findActiveDomain } from "./domains"
+import { regionValue, teamTenantName, tenantProvisioned } from "./ses/contracts"
+import { startWorkflow } from "./ses/workflows"
 import type { Doc, Id } from "./_generated/dataModel"
 
 /** Claim the tenant with a fresh generation, then hand it to the workflow.
@@ -31,12 +33,10 @@ async function startTenantOperation(
     error: undefined,
     ...(operation ? { operation } : {}),
   })
-  await workflow.start(
-    ctx,
-    internal.ses.workflows.tenantOperation,
-    { tenantId: tenant._id, generation },
-    { onComplete: internal.ses.workflows.cleanup, context: null }
-  )
+  await startWorkflow(ctx, internal.ses.workflows.tenantOperation, {
+    tenantId: tenant._id,
+    generation,
+  })
 }
 
 export async function ensureTeamTenant(
@@ -44,10 +44,7 @@ export async function ensureTeamTenant(
   organizationId: string,
   region: Doc<"sesRegions">["region"]
 ) {
-  const configuredRegion = await ctx.db
-    .query("sesRegions")
-    .withIndex("by_region", (q) => q.eq("region", region))
-    .unique()
+  const configuredRegion = await findRegion(ctx, region)
   if (!configuredRegion || configuredRegion.phase !== "ready")
     throw new ConvexError(
       "Provision this AWS region before creating a team tenant"
@@ -122,7 +119,7 @@ export const retry = mutation({
         q.eq("organizationId", args.organizationId).eq("region", args.region)
       )
       .unique()
-    if (row?.phase === "ready" && !row.deleted && row.operation === "provision")
+    if (row && tenantProvisioned(row))
       await ctx.db.patch("sesTenants", row._id, { phase: "pending" })
     await ensureTeamTenant(ctx, args.organizationId, args.region)
     return null
@@ -163,8 +160,7 @@ export const prepareDomain = internalMutation({
   args: { domainId: v.id("domains") },
   returns: v.union(v.null(), v.id("sesTenants")),
   handler: async (ctx, { domainId }): Promise<Id<"sesTenants"> | null> => {
-    const domain = await ctx.db.get("domains", domainId)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, domainId)
     if (domain.operation === "remove" || domain.operation === "settings")
       return null
     const tenantId = await ensureTeamTenant(
@@ -225,12 +221,7 @@ export const observe = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const tenant = await ctx.db.get("sesTenants", args.id)
-    if (
-      tenant?.generation === args.generation &&
-      tenant.phase === "ready" &&
-      tenant.operation === "provision" &&
-      !tenant.deleted
-    )
+    if (tenant?.generation === args.generation && tenantProvisioned(tenant))
       await ctx.db.patch("sesTenants", args.id, {
         ...(args.error ? { phase: "failed" as const, error: args.error } : {}),
         ...(args.sendingStatus ? { sendingStatus: args.sendingStatus } : {}),

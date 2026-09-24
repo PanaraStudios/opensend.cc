@@ -6,15 +6,25 @@ import {
   internalMutation,
 } from "./_generated/server"
 import {
+  allRegionsReady,
+  defaultCallbackOrigin,
   findInstallation,
+  findRegion,
   installationAccess,
+  listRegions,
+  requireConnection,
   requireInstallationAdmin,
   requireTeam,
 } from "./access"
 import schema from "./schema"
-import { quotaValue, regionValue, setupStepValue } from "./ses/contracts"
+import {
+  quotaValue,
+  regionValue,
+  setupStepValue,
+  tenantProvisioned,
+} from "./ses/contracts"
 import { internal } from "./_generated/api"
-import { workflow } from "./ses/workflows"
+import { startWorkflow } from "./ses/workflows"
 import type { MutationCtx } from "./_generated/server"
 import type { Doc } from "./_generated/dataModel"
 
@@ -77,13 +87,9 @@ export const status = query({
       : null
     return {
       admin,
-      suggestedCallbackOrigin: admin
-        ? process.env.SES_CALLBACK_ORIGIN || process.env.CONVEX_SITE_URL || ""
-        : "",
+      suggestedCallbackOrigin: admin ? defaultCallbackOrigin() : "",
       installation: safe,
-      regions: (
-        await ctx.db.query("sesRegions").withIndex("by_region").take(20)
-      ).map((region) => ({
+      regions: (await listRegions(ctx)).map((region) => ({
         _id: region._id,
         region: region.region,
         phase: region.phase,
@@ -121,13 +127,17 @@ export const saveEncryptionKey = internalMutation({
     const installation = await findInstallation(ctx)
     if (!installation || installation._id !== args.id)
       throw new ConvexError("Installation not found")
-    // Concurrent setup clicks must never replace an already-active key.
-    if (!installation.wrappedEncryptionKey)
-      await ctx.db.patch("installation", installation._id, {
-        wrappedEncryptionKey: args.wrappedKey,
-      })
-    if (!installation.setupStep || installation.setupStep === "welcome")
-      await ctx.db.patch("installation", installation._id, { setupStep: "aws" })
+    const changes = {
+      // Concurrent setup clicks must never replace an already-active key.
+      ...(!installation.wrappedEncryptionKey
+        ? { wrappedEncryptionKey: args.wrappedKey }
+        : {}),
+      ...(!installation.setupStep || installation.setupStep === "welcome"
+        ? { setupStep: "aws" as const }
+        : {}),
+    }
+    if (Object.keys(changes).length)
+      await ctx.db.patch("installation", installation._id, changes)
     return null
   },
 })
@@ -148,14 +158,11 @@ export const navigate = mutation({
       !installation.environmentCheckedAt
     )
       throw new ConvexError("Check your delivery updates URL first")
-    if (["team", "domain"].includes(step)) {
-      const regions = await ctx.db
-        .query("sesRegions")
-        .withIndex("by_region")
-        .take(20)
-      if (!regions.length || regions.some((region) => region.phase !== "ready"))
-        throw new ConvexError("Finish setting up your AWS regions first")
-    }
+    if (
+      ["team", "domain"].includes(step) &&
+      !allRegionsReady(await listRegions(ctx))
+    )
+      throw new ConvexError("Finish setting up your AWS regions first")
     await ctx.db.patch("installation", installation._id, { setupStep: step })
     return null
   },
@@ -171,12 +178,7 @@ export const adminContext = internalQuery({
 export const connection = internalQuery({
   args: {},
   returns: schema.doc("installation"),
-  handler: async (ctx) => {
-    const installation = await findInstallation(ctx)
-    if (!installation?.accountId || !installation.credentialKind)
-      throw new ConvexError("Connect AWS first")
-    return installation
-  },
+  handler: (ctx) => requireConnection(ctx),
 })
 export const saveEnvironment = internalMutation({
   args: { siteUrl: v.string(), callbackOrigin: v.string() },
@@ -185,10 +187,7 @@ export const saveEnvironment = internalMutation({
     await requireInstallationAdmin(ctx)
     const installation = await findInstallation(ctx)
     if (installation) {
-      const provisioned = await ctx.db
-        .query("sesRegions")
-        .withIndex("by_region")
-        .take(20)
+      const provisioned = await listRegions(ctx)
       if (
         provisioned.some((region) => region.topicArn) &&
         (installation.siteUrl !== args.siteUrl ||
@@ -232,10 +231,7 @@ export const activateConnection = internalMutation({
       throw new ConvexError("Setup changed. Reload and try again.")
     if (installation.accountId && installation.accountId !== args.accountId)
       throw new ConvexError("An installation can use only one AWS account")
-    const existing = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region")
-      .take(20)
+    const existing = await listRegions(ctx)
     if (
       existing.some(
         (r) => !args.regions.some((next) => next.region === r.region)
@@ -282,22 +278,16 @@ export const provisionRegion = mutation({
       throw new ConvexError(
         "Configure a public HTTPS callback before provisioning AWS"
       )
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", args.region))
-      .unique()
+    const region = await findRegion(ctx, args.region)
     if (!region) throw new ConvexError("Enable this region first")
     if (region.phase === "running") return null
     await ctx.db.patch("sesRegions", region._id, {
       phase: "running",
       error: undefined,
     })
-    await workflow.start(
-      ctx,
-      internal.ses.workflows.provisionRegion,
-      { regionId: region._id },
-      { onComplete: internal.ses.workflows.cleanup, context: null }
-    )
+    await startWorkflow(ctx, internal.ses.workflows.provisionRegion, {
+      regionId: region._id,
+    })
     return null
   },
 })
@@ -345,21 +335,10 @@ export async function completeInstallation(
           .unique()
       )
     if (!regions.has(domain.region))
-      regions.set(
-        domain.region,
-        await ctx.db
-          .query("sesRegions")
-          .withIndex("by_region", (q) => q.eq("region", domain.region))
-          .unique()
-      )
+      regions.set(domain.region, await findRegion(ctx, domain.region))
     const tenant = tenants.get(tenantRegion)!
     const region = regions.get(domain.region)!
-    if (
-      tenant?.phase === "ready" &&
-      region?.phase === "ready" &&
-      !tenant.deleted &&
-      tenant.operation === "provision"
-    ) {
+    if (tenant && tenantProvisioned(tenant) && region?.phase === "ready") {
       ready = true
       break
     }
