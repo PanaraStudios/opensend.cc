@@ -115,7 +115,6 @@ describe("emptyWorkspace", () => {
       email: "ada@example.com",
     })
     assert.equal(workspace.settings.teamSlug, "studio")
-    assert.equal(workspace.settings.ses.connected, false)
     assert.equal(workspace.settings.smtp.enabled, false)
     assert.equal(
       workspace.members.every((member) => member.you),

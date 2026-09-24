@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronsUpDownIcon,
   CopyIcon,
   DownloadIcon,
@@ -45,6 +46,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogClose,
@@ -855,6 +861,40 @@ export function ExportStatusBadge({ status }: { status: ExportStatus }) {
       tone={EXPORT_STATUS_TONE[status]}
       label={exportStatusLabel(status)}
     />
+  )
+}
+
+/* ---------------------------------------------------------- setup details */
+
+/** Optional details kept out of the way behind a disclosure button. */
+export function SetupDetails({
+  label,
+  className = "self-start",
+  iconClassName,
+  children,
+}: {
+  label: string
+  className?: string
+  iconClassName?: string
+  children: React.ReactNode
+}) {
+  return (
+    <Collapsible className="flex flex-col gap-3">
+      <CollapsibleTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={className}
+          />
+        }
+      >
+        <ChevronDownIcon data-icon="inline-start" className={iconClassName} />
+        {label}
+      </CollapsibleTrigger>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
   )
 }
 

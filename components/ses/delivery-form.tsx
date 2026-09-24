@@ -5,16 +5,10 @@ import { api } from "@/convex/_generated/api"
 import { AsyncForm, FormInput } from "@/components/auth/ui"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
-import { CopyButton } from "@/components/dashboard/primitives"
-import { SetupDetails, type SesStatus } from "./connection-form"
+import { CopyButton, SetupDetails } from "@/components/dashboard/primitives"
+import type { SesStatus } from "./connection-form"
 
-export function DeliveryUrlForm({
-  status,
-  onSaved,
-}: {
-  status: SesStatus
-  onSaved?: () => void
-}) {
+export function DeliveryUrlForm({ status }: { status: SesStatus }) {
   const check = useAction(api.installationActions.checkEnvironment)
   const detected =
     status.installation?.callbackOrigin || status.suggestedCallbackOrigin
@@ -51,7 +45,6 @@ export function DeliveryUrlForm({
           await check({
             callbackOrigin: String(form.get("callbackOrigin")).trim(),
           })
-          onSaved?.()
         }}
       >
         <FieldGroup>

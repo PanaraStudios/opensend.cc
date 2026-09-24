@@ -114,13 +114,6 @@ export function dnsHost(name: string, domainName: string): string {
   return name.endsWith(suffix) ? name.slice(0, -suffix.length) : name
 }
 
-/** Long values such as a DKIM key read better with the middle elided. The
-    full value is still what a copy button hands over. */
-export function truncateMiddle(value: string, head = 16, tail = 14): string {
-  if (value.length <= head + tail + 1) return value
-  return `${value.slice(0, head)}…${value.slice(-tail)}`
-}
-
 export function trackingEnabled(domain: Domain): boolean {
   return (
     (domain.trackingSubdomain ?? "") !== "" &&

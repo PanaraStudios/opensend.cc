@@ -7,21 +7,11 @@ import {
   openSync,
   closeSync,
 } from "node:fs"
-import { spawn, spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import { resolve } from "node:path"
-import { createServer } from "node:net"
+import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
 const filename = resolve(`.env.playwright-${project}`)
-async function freePort() {
-  const server = createServer()
-  await new Promise((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", resolve)
-  })
-  const port = server.address().port
-  await new Promise((resolve) => server.close(resolve))
-  return String(port)
-}
 const [appPort, convexPort, sitePort, dashboardPort, oidcPort] =
   await Promise.all(Array.from({ length: 5 }, freePort))
 const resultDir = resolve("test-results", project)
@@ -33,21 +23,6 @@ realm.clients[0].redirectUris = [
 realm.clients[0].webOrigins = [`http://localhost:${appPort}`]
 const realmFile = resolve(resultDir, "oidc-realm.json")
 writeFileSync(realmFile, JSON.stringify(realm), { mode: 0o600 })
-const parse = (text) =>
-  Object.fromEntries(
-    text
-      .split("\n")
-      .filter((l) => l.includes("=") && !l.startsWith("#"))
-      .map((l) => {
-        const i = l.indexOf("=")
-        return [l.slice(0, i), l.slice(i + 1)]
-      })
-  )
-function run(command, args, env = process.env) {
-  const r = spawnSync(command, args, { env, stdio: "inherit" })
-  if (r.error) throw r.error
-  if (r.status !== 0) throw new Error(`${command} failed (${r.status})`)
-}
 const compose = [
   "compose",
   "--env-file",
@@ -160,26 +135,7 @@ try {
       process.kill(-logs.pid, "SIGTERM")
     } catch {}
   }
-  if (process.env.OPENSEND_KEEP_E2E !== "1") {
-    if (
-      parse(readFileSync(filename, "utf8")).INSTANCE_NAME !== project ||
-      !project.startsWith("opensend-e2e-")
-    )
-      throw new Error("Refusing cleanup: test ownership changed")
-    const volume = spawnSync(
-      "docker",
-      [
-        "volume",
-        "inspect",
-        `${project}_convex-data`,
-        "--format",
-        '{{ index .Labels "com.docker.compose.project" }}',
-      ],
-      { encoding: "utf8" }
-    )
-    if (volume.status === 0 && volume.stdout.trim() !== project)
-      throw new Error("Refusing cleanup: Docker volume ownership changed")
-    run("docker", [...compose, "down", "--volumes"])
-  }
+  if (process.env.OPENSEND_KEEP_E2E !== "1")
+    removeTestInstance(filename, project, compose)
 }
 process.exit(status)

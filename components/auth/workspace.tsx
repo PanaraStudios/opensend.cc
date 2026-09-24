@@ -179,11 +179,7 @@ export function TeamAccess({ onboarding = false }: { onboarding?: boolean }) {
   )
 }
 
-export function CreateTeamForm({
-  onCreated,
-}: {
-  onCreated?: () => Promise<unknown>
-}) {
+export function CreateTeamForm() {
   const create = useMutation(api.teams.create)
   return (
     <AsyncForm
@@ -192,7 +188,6 @@ export function CreateTeamForm({
       success={false}
       onSubmit={async (form) => {
         await create({ name: String(form.get("name")) })
-        await onCreated?.()
       }}
     >
       <FieldGroup>

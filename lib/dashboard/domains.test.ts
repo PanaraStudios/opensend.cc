@@ -15,7 +15,6 @@ import {
   normalizeDomain,
   providerLabel,
   reconcileDomain,
-  truncateMiddle,
   validateDnsLabel,
   validateDomainName,
 } from "./domains"
@@ -138,17 +137,6 @@ describe("dnsHost", () => {
     assert.equal(dnsHost("send.example.com", "example.com"), "send")
     assert.equal(dnsHost("example.com", "example.com"), "@")
     assert.equal(dnsHost("@", "example.com"), "@")
-  })
-})
-
-describe("truncateMiddle", () => {
-  it("keeps both ends and leaves short values alone", () => {
-    assert.equal(truncateMiddle("short", 16, 14), "short")
-    const long = `${"a".repeat(20)}${"b".repeat(20)}`
-    const cut = truncateMiddle(long, 16, 14)
-    assert.ok(cut.startsWith("a".repeat(16)))
-    assert.ok(cut.endsWith("b".repeat(14)))
-    assert.ok(cut.includes("…"))
   })
 })
 

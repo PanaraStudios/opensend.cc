@@ -1,5 +1,10 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
-import { seedSesConnection, seedTeamTenant, testBackend } from "./ses-fixtures"
+import {
+  client,
+  seedSesConnection,
+  seedTeamTenant,
+  testBackend,
+} from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
@@ -76,22 +81,6 @@ async function login(
   await page.getByLabel("Password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
   await page.waitForURL(`**${next}`)
-}
-async function client(page: Page) {
-  let token = ""
-  await expect
-    .poll(async () => {
-      const response = await page.request.get(`${base}/api/auth/convex/token`)
-      if (response.ok())
-        token = ((await response.json()) as { token: string }).token
-      return response.status()
-    })
-    .toBe(200)
-  const result = new ConvexHttpClient(
-    process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
-  )
-  result.setAuth(token)
-  return result
 }
 function totp(secret: string) {
   let bits = ""

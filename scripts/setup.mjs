@@ -2,18 +2,8 @@ import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { parse } from "./lib.mjs"
 const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
-function parse(text) {
-  return Object.fromEntries(
-    text
-      .split("\n")
-      .filter((l) => l && !l.startsWith("#"))
-      .map((l) => {
-        const i = l.indexOf("=")
-        return [l.slice(0, i), l.slice(i + 1)]
-      })
-  )
-}
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
 const defaults = {
   INSTANCE_NAME: "opensend",
@@ -25,22 +15,23 @@ const defaults = {
   CONVEX_PUBLIC_SITE_URL: "http://localhost:3211",
 }
 for (const [key, value] of Object.entries(defaults)) env[key] ||= value
+/** A loopback origin rewritten to reach the host from inside a container, or
+    undefined when `url` is not on loopback. */
+function hostOrigin(url) {
+  const origin = new URL(url)
+  if (!["localhost", "127.0.0.1"].includes(origin.hostname)) return undefined
+  origin.hostname = "host.docker.internal"
+  return origin.origin
+}
 // The backend fetches Better Auth signing keys from this advertised HTTP origin.
 // With remapped Docker ports, localhost points back into the container instead
 // of the host. Browser auth requests already use the Next.js proxy.
-const siteOrigin = new URL(env.CONVEX_PUBLIC_SITE_URL)
-if (["localhost", "127.0.0.1"].includes(siteOrigin.hostname)) {
-  siteOrigin.hostname = "host.docker.internal"
-  env.CONVEX_PUBLIC_SITE_URL = siteOrigin.origin
-}
+env.CONVEX_PUBLIC_SITE_URL =
+  hostOrigin(env.CONVEX_PUBLIC_SITE_URL) ?? env.CONVEX_PUBLIC_SITE_URL
 // Node action callbacks use Convex's advertised origin from inside Docker.
 // A published localhost port is on the host, not the backend container.
-if (!env.CONVEX_BACKEND_ORIGIN) {
-  const origin = new URL(env.CONVEX_PUBLIC_URL)
-  if (["localhost", "127.0.0.1"].includes(origin.hostname))
-    origin.hostname = "host.docker.internal"
-  env.CONVEX_BACKEND_ORIGIN = origin.origin
-}
+env.CONVEX_BACKEND_ORIGIN ||=
+  hostOrigin(env.CONVEX_PUBLIC_URL) ?? new URL(env.CONVEX_PUBLIC_URL).origin
 function persist() {
   writeFileSync(
     filename,

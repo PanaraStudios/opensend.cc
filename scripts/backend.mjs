@@ -1,15 +1,8 @@
 import { readFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
+import { parse } from "./lib.mjs"
 const filename = process.env.OPENSEND_ENV_FILE || ".env.docker"
-const values = Object.fromEntries(
-  readFileSync(filename, "utf8")
-    .split("\n")
-    .filter((line) => line && !line.startsWith("#"))
-    .map((line) => {
-      const i = line.indexOf("=")
-      return [line.slice(0, i), line.slice(i + 1)]
-    })
-)
+const values = parse(readFileSync(filename, "utf8"))
 if (!values.CONVEX_SELF_HOSTED_ADMIN_KEY)
   throw new Error("Run pnpm setup first")
 const env = {

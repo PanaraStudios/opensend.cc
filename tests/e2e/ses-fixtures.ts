@@ -55,15 +55,26 @@ function importFixture(
     { stdio: "pipe", env: process.env }
   )
 }
-export async function seedSesConnection(page: Page) {
-  const response = await page.request.get(
-    `${process.env.OPENSEND_BASE_URL}/api/auth/convex/token`
+/** A Convex client signed in as the page's user. */
+export async function client(page: Page) {
+  const base = process.env.OPENSEND_BASE_URL ?? "http://localhost:3400"
+  let token = ""
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(`${base}/api/auth/convex/token`)
+      if (response.ok())
+        token = ((await response.json()) as { token: string }).token
+      return response.status()
+    })
+    .toBe(200)
+  const result = new ConvexHttpClient(
+    process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
   )
-  expect(response.ok()).toBe(true)
-  const { token } = await response.json()
-  const client = new ConvexHttpClient(process.env.OPENSEND_CONVEX_URL!)
-  client.setAuth(token)
-  const status = await client.query(api.installation.status)
+  result.setAuth(token)
+  return result
+}
+export async function seedSesConnection(page: Page) {
+  const status = await (await client(page)).query(api.installation.status)
   // Synthetic ciphertext deliberately cannot authenticate an AWS request.
   importFixture(
     "installation",
@@ -96,14 +107,11 @@ export async function seedSesConnection(page: Page) {
 }
 
 export async function seedTeamTenant(page: Page, organizationId: string) {
-  const response = await page.request.get(
-    `${process.env.OPENSEND_BASE_URL}/api/auth/convex/token`
-  )
-  expect(response.ok()).toBe(true)
-  const { token } = await response.json()
-  const client = new ConvexHttpClient(process.env.OPENSEND_CONVEX_URL!)
-  client.setAuth(token)
-  const rows = await client.query(api.tenants.list, { organizationId })
+  const rows = await (
+    await client(page)
+  ).query(api.tenants.list, {
+    organizationId,
+  })
   expect(rows).toHaveLength(1)
   const tenant = rows[0]
   importFixture(

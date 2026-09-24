@@ -3,20 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  ChevronDownIcon,
-  CopyIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { CopyIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogClose,
@@ -53,6 +42,7 @@ import {
   PageHeader,
   RelativeTime,
   ResourceTable,
+  SetupDetails,
   StatusBadge,
   Th,
   copyToClipboard,
@@ -71,11 +61,14 @@ import {
   validateDomainName,
 } from "@/lib/dashboard/domains"
 import { usePaginatedQuery, useQuery } from "convex/react"
+import type { FunctionArgs } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Region } from "@/lib/dashboard/types"
+
+type DomainListArgs = FunctionArgs<typeof api.domains.list>
 
 export function AddDomainDialog({
   open,
@@ -194,44 +187,30 @@ export function AddDomainDialog({
                 The AWS region your SES identity lives in.
               </FieldDescription>
             </Field>
-            <Collapsible className="flex flex-col gap-3">
-              <CollapsibleTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="group -ml-2 w-fit text-foreground"
-                  />
-                }
-              >
-                <ChevronDownIcon
-                  data-icon="inline-start"
-                  className="-rotate-90 transition-transform group-data-[panel-open]:rotate-0"
+            <SetupDetails
+              label="Advanced options"
+              className="group -ml-2 w-fit text-foreground"
+              iconClassName="-rotate-90 transition-transform group-data-[panel-open]:rotate-0"
+            >
+              <Field>
+                <FieldLabel htmlFor="domain-return-path">
+                  Custom Return-Path
+                </FieldLabel>
+                <Input
+                  id="domain-return-path"
+                  value={returnPath}
+                  onChange={(event) => {
+                    setReturnPath(event.target.value)
+                    setError(null)
+                  }}
+                  placeholder={DEFAULT_RETURN_PATH}
                 />
-                Advanced options
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <Field>
-                  <FieldLabel htmlFor="domain-return-path">
-                    Custom Return-Path
-                  </FieldLabel>
-                  <Input
-                    id="domain-return-path"
-                    value={returnPath}
-                    onChange={(event) => {
-                      setReturnPath(event.target.value)
-                      setError(null)
-                    }}
-                    placeholder={DEFAULT_RETURN_PATH}
-                  />
-                  <FieldDescription>
-                    Subdomain that carries the MX and SPF records for bounces.
-                    It cannot be changed later.
-                  </FieldDescription>
-                </Field>
-              </CollapsibleContent>
-            </Collapsible>
+                <FieldDescription>
+                  Subdomain that carries the MX and SPF records for bounces. It
+                  cannot be changed later.
+                </FieldDescription>
+              </Field>
+            </SetupDetails>
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>
@@ -269,10 +248,7 @@ export function DomainsView() {
           organizationId,
           search,
           ...(status !== "all"
-            ? {
-                status: status as
-                  "pending" | "verified" | "partially_verified" | "failed",
-              }
+            ? { status: status as DomainListArgs["status"] }
             : {}),
           ...(region !== "all" ? { region: region as Region } : {}),
         }
@@ -281,6 +257,7 @@ export function DomainsView() {
   )
   const rows = results.map(asDomain)
   const { pageRows, pagination } = usePagination(rows)
+  const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
       await verifyDomain(id)
@@ -310,15 +287,7 @@ export function DomainsView() {
           {
             value: status,
             onChange: setStatus,
-            items: DOMAIN_STATUS_ITEMS.filter((item) =>
-              [
-                "all",
-                "pending",
-                "verified",
-                "partially_verified",
-                "failed",
-              ].includes(item.value)
-            ),
+            items: DOMAIN_STATUS_ITEMS,
             "aria-label": "Filter by status",
           },
           {
@@ -334,18 +303,14 @@ export function DomainsView() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={DomainIcon}
-          title={
-            !query && status === "all" && region === "all"
-              ? "No domains"
-              : "No domains found"
-          }
+          title={unfiltered ? "No domains" : "No domains found"}
           description={
-            !query && status === "all" && region === "all"
+            unfiltered
               ? "Add a domain you own to send email from addresses on that domain."
               : "No domains match these filters."
           }
         >
-          {!query && status === "all" && region === "all" ? (
+          {unfiltered ? (
             <Button disabled={!canWrite} onClick={() => setAddOpen(true)}>
               <PlusIcon />
               Add domain

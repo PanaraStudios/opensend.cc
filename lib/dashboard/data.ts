@@ -1234,12 +1234,6 @@ export const SEED_STATE: DashboardState = {
       body: "Choose the topics you still want from this workspace.",
       brandName: "Opensend",
     },
-    ses: {
-      connected: true,
-      region: "us-east-1",
-      accessKeyLast4: "4K2P",
-      configurationSet: "opensend-prod",
-    },
     smtp: {
       enabled: true,
       host: "smtp.opensend.cc",

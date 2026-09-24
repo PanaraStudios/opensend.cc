@@ -39,15 +39,9 @@ export const REGION_ITEMS: readonly SelectOption[] = REGIONS.map((item) => ({
 
 export const DOMAIN_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
-  ...(
-    [
-      "pending",
-      "verified",
-      "partially_verified",
-      "failed",
-      "not_started",
-    ] as const
-  ).map((value) => ({ value, label: statusLabel(value) })),
+  ...(["pending", "verified", "partially_verified", "failed"] as const).map(
+    (value) => ({ value, label: statusLabel(value) })
+  ),
 ]
 
 export const TLS_ITEMS: readonly SelectOption[] = [

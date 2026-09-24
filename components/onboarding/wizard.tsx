@@ -18,7 +18,6 @@ import {
 } from "@/components/auth/workspace"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
@@ -32,13 +31,12 @@ import {
 } from "@/components/ui/item"
 import { AddDomainDialog } from "@/components/dashboard/domains/list"
 import { TeamSesStatus } from "./team-ses-status"
-import {
-  AwsConnectionForm,
-  SetupDetails,
-} from "@/components/ses/connection-form"
+import { AwsConnectionForm } from "@/components/ses/connection-form"
+import { SetupDetails } from "@/components/dashboard/primitives"
 import { DeliveryUrlForm } from "@/components/ses/delivery-form"
 import { SesRegions } from "@/components/ses/regions"
 import { actionError } from "@/lib/action-error"
+import { resourcePrefix } from "@/convex/ses/contracts"
 const steps = [
   "welcome",
   "aws",
@@ -132,33 +130,19 @@ export function InstallationWizard() {
       tenant.region === (installation?.defaultRegion ?? "us-east-1") &&
       tenant.phase === "ready"
   )
-  const firstDomain = domains?.page[0]
+  const completedAt = installation?.completedAt
+  const firstDomainId = domains?.page[0]?._id
+  const activeId = active?.id
   React.useEffect(() => {
-    if (!installation?.completedAt && firstDomain && active && tenantReady)
-      void complete({ organizationId: active.id })
-        .then(() => router.replace(`/domains/${firstDomain._id}`))
+    if (!completedAt && firstDomainId && activeId && tenantReady)
+      void complete({ organizationId: activeId })
+        .then(() => router.replace(`/domains/${firstDomainId}`))
         .catch((e) => setError(actionError(e)))
-  }, [
-    installation?.completedAt,
-    firstDomain,
-    active,
-    tenantReady,
-    complete,
-    router,
-  ])
+  }, [completedAt, firstDomainId, activeId, tenantReady, complete, router])
   React.useEffect(() => {
     heading.current?.focus()
   }, [step])
   if (!status) return <Skeleton className="h-40 w-full" />
-  if (!status.admin)
-    return (
-      <Alert>
-        <AlertTitle>Setup is in progress</AlertTitle>
-        <AlertDescription>
-          Your installation administrator is setting up Opensend.
-        </AlertDescription>
-      </Alert>
-    )
   async function go(next: Step) {
     setMoving(true)
     setError("")
@@ -172,6 +156,7 @@ export function InstallationWizard() {
     }
   }
   const busy = status.regions.some((region) => region.phase === "running")
+  const prefix = resourcePrefix(installation?._id ?? "")
   return (
     <div
       className="flex w-full flex-col gap-7"
@@ -282,9 +267,9 @@ export function InstallationWizard() {
                 missed updates. Each domain gets its own sending configuration.
               </p>
               <p className="mt-2 font-mono text-xs break-all text-muted-foreground">
-                opensend-{installation?._id}-events
+                {prefix}-events
                 <br />
-                opensend-{installation?._id}-events-dlq
+                {prefix}-events-dlq
               </p>
             </SetupDetails>
             {ready ? (
@@ -319,7 +304,7 @@ export function InstallationWizard() {
               </Button>
             </>
           ) : (
-            <CreateTeamForm onCreated={() => navigate({ step: "domain" })} />
+            <CreateTeamForm />
           ))}
         {step === "domain" && (
           <>

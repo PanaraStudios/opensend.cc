@@ -1,38 +1,13 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { randomBytes } from "node:crypto"
-import { spawnSync } from "node:child_process"
-import { createServer } from "node:net"
 import { resolve } from "node:path"
+import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 const sourceFile = process.argv[2]
 if (!sourceFile?.includes(".env.playwright-opensend-e2e-"))
   throw new Error("Supply an isolated test instance environment file")
-const parse = (text) =>
-  Object.fromEntries(
-    text
-      .split("\n")
-      .filter((line) => line && !line.startsWith("#"))
-      .map((line) => {
-        const i = line.indexOf("=")
-        return [line.slice(0, i), line.slice(i + 1)]
-      })
-  )
 const source = parse(readFileSync(sourceFile, "utf8"))
 if (!source.INSTANCE_NAME?.startsWith("opensend-e2e-"))
   throw new Error("Refusing non-test export")
-function run(command, args, env = process.env) {
-  const result = spawnSync(command, args, { stdio: "inherit", env })
-  if (result.status !== 0) throw new Error(`${command} failed`)
-}
-async function freePort() {
-  const server = createServer()
-  await new Promise((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", resolve)
-  })
-  const port = server.address().port
-  await new Promise((resolve) => server.close(resolve))
-  return String(port)
-}
 const name = `opensend-e2e-restore-${Date.now()}`
 const directory = resolve("test-results", name)
 mkdirSync(directory, { recursive: true })
@@ -129,28 +104,11 @@ with zipfile.ZipFile(sys.argv[1]) as a, zipfile.ZipFile(sys.argv[2]) as b:
     )
   )
 } finally {
-  if (parse(readFileSync(targetFile, "utf8")).INSTANCE_NAME !== name)
-    throw new Error("Refusing cleanup: ownership changed")
-  const volume = spawnSync(
-    "docker",
-    [
-      "volume",
-      "inspect",
-      `${name}_convex-data`,
-      "--format",
-      '{{ index .Labels "com.docker.compose.project" }}',
-    ],
-    { encoding: "utf8" }
-  )
-  if (volume.status === 0 && volume.stdout.trim() !== name)
-    throw new Error("Refusing cleanup: Docker volume ownership changed")
-  run("docker", [
+  removeTestInstance(targetFile, name, [
     "compose",
     "--env-file",
     targetFile,
     "-p",
     name,
-    "down",
-    "--volumes",
   ])
 }

@@ -161,6 +161,8 @@ function IdentityReview({
   const approve = useMutation(api.domains.approveAdoption)
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState("")
+  const adoption =
+    domain.adoption && !domain.adoption.approved ? domain.adoption : null
   async function run(operation: () => Promise<unknown>, close = false) {
     setPending(true)
     setError("")
@@ -183,12 +185,11 @@ function IdentityReview({
             Existing DKIM records are preserved.
           </DialogDescription>
         </DialogHeader>
-        {domain.adoption && !domain.adoption.approved && (
+        {adoption && (
           <p className="text-sm">
-            Current configuration set:{" "}
-            {domain.adoption.configurationSet ?? "None"}
+            Current configuration set: {adoption.configurationSet ?? "None"}
             <br />
-            Current MAIL FROM: {domain.adoption.mailFromDomain ?? "Default"}
+            Current MAIL FROM: {adoption.mailFromDomain ?? "Default"}
             <br />
             Opensend will assign its configuration set and use{" "}
             {domain.customReturnPath}.{domain.name} for MAIL FROM. Removing the
@@ -211,7 +212,7 @@ function IdentityReview({
           >
             Review AWS settings
           </Button>
-          {domain.adoption && !domain.adoption.approved && (
+          {adoption && (
             <Button
               disabled={pending || !!error}
               onClick={() =>
@@ -219,7 +220,7 @@ function IdentityReview({
                   () =>
                     approve({
                       id: domain._id,
-                      fingerprint: domain.adoption!.fingerprint,
+                      fingerprint: adoption.fingerprint,
                     }),
                   true
                 )
@@ -406,6 +407,7 @@ function DomainRecords({
   const records = domainRecords(domain)
   const sections = domainRecordSections(domain, records)
   const canAuto = canAutoConfigure(domain.provider)
+  const locked = !canWrite || busy || pending
   // Route 53 writes ride on the installation's AWS account, not the caller's.
   const blockedReason = !canAuto
     ? `Automatic DNS setup is available for Cloudflare and Route 53. Add the records at ${
@@ -433,7 +435,7 @@ function DomainRecords({
   const autoConfigureButton = (
     <Button
       variant="outline"
-      disabled={!!blockedReason || !canWrite || busy || pending}
+      disabled={!!blockedReason || locked}
       onClick={() => setAutoOpen(true)}
     >
       <ProviderMark provider={domain.provider} className="size-4 shrink-0" />
@@ -458,7 +460,7 @@ function DomainRecords({
           )}
           <Button
             variant="outline"
-            disabled={!canWrite || busy || pending}
+            disabled={locked}
             onClick={() => void runVerification()}
           >
             <RefreshCwIcon data-icon="inline-start" />
@@ -511,7 +513,7 @@ function DomainRecords({
               toggle
                 ? {
                     checked: section.enabled,
-                    disabled: !canWrite || busy || pending,
+                    disabled: locked,
                     onCheckedChange: (checked) => {
                       void updateDomain(
                         domain.id,

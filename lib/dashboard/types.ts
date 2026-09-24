@@ -479,12 +479,6 @@ export type Settings = {
     body: string
     brandName: string
   }
-  ses: {
-    connected: boolean
-    region: Region
-    accessKeyLast4: string
-    configurationSet: string
-  }
   smtp: {
     enabled: boolean
     host: string
