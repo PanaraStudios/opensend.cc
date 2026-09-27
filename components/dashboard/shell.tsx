@@ -26,7 +26,11 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
-import { ConfirmDialog } from "@/components/dashboard/primitives"
+import {
+  ConfirmDialog,
+  useDebouncedValue,
+} from "@/components/dashboard/primitives"
+import { useContactSearch } from "@/lib/audience/use-audience"
 import { TeamSwitcher } from "@/components/dashboard/team-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Kbd } from "@/components/ui/kbd"
@@ -133,21 +137,31 @@ function CommandMenu({
 }) {
   const router = useRouter()
   const { state } = useDashboard()
+  const [search, setSearch] = React.useState("")
+  const contacts = useContactSearch(useDebouncedValue(search), open)
 
+  function setOpen(next: boolean) {
+    if (!next) setSearch("")
+    onOpenChange(next)
+  }
   function go(href: string) {
-    onOpenChange(false)
+    setOpen(false)
     router.push(href)
   }
 
   return (
     <CommandDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={setOpen}
       title="Search"
       description="Jump to a page or record"
     >
       <Command>
-        <CommandInput placeholder="Search pages, emails, contacts…" />
+        <CommandInput
+          placeholder="Search pages, emails, contacts…"
+          value={search}
+          onValueChange={setSearch}
+        />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           <CommandGroup heading="Pages">
@@ -214,7 +228,7 @@ function CommandMenu({
                 ))}
               </CommandGroup>
               <CommandGroup heading="Contacts">
-                {state.contacts.map((contact) => (
+                {contacts.map((contact) => (
                   <CommandItem
                     key={contact.id}
                     value={`contact ${contact.email} ${contact.firstName} ${contact.lastName}`}

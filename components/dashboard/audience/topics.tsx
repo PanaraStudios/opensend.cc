@@ -44,7 +44,9 @@ import {
 import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useAudienceCommands, useTopics } from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
+import { Skeleton } from "@/components/ui/skeleton"
 import type {
   Topic,
   TopicDefault,
@@ -153,7 +155,8 @@ function AddTopicDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { addTopic } = useDashboard()
+  const { addTopic } = useAudienceCommands()
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [defaultSubscription, setDefaultSubscription] =
@@ -167,18 +170,25 @@ function AddTopicDialog({
     setVisibility("public")
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (!name.trim()) return
-    addTopic({
-      name,
-      description,
-      defaultSubscription,
-      visibility,
-    })
-    toast.add({ type: "success", title: "Topic created" })
-    reset()
-    onOpenChange(false)
+    if (!name.trim() || pending) return
+    setPending(true)
+    try {
+      await addTopic({
+        name,
+        description,
+        defaultSubscription,
+        visibility,
+      })
+      toast.add({ type: "success", title: "Topic created" })
+      reset()
+      onOpenChange(false)
+    } catch (caught) {
+      toast.add({ type: "error", title: actionError(caught) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -212,7 +222,7 @@ function AddTopicDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={!name.trim()}>
+            <Button type="submit" disabled={!name.trim() || pending}>
               Create topic
             </Button>
           </DialogFooter>
@@ -229,19 +239,31 @@ function EditTopicForm({
   topic: Topic
   onOpenChange: (open: boolean) => void
 }) {
-  const { updateTopic } = useDashboard()
+  const { updateTopic } = useAudienceCommands()
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState(topic.name)
   const [description, setDescription] = React.useState(topic.description)
   const [visibility, setVisibility] = React.useState<TopicVisibility>(
     topic.visibility
   )
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (!name.trim()) return
-    updateTopic(topic.id, { name: name.trim(), description, visibility })
-    toast.add({ type: "success", title: "Topic updated" })
-    onOpenChange(false)
+    if (!name.trim() || pending) return
+    setPending(true)
+    try {
+      await updateTopic(topic.id, {
+        name: name.trim(),
+        description,
+        visibility,
+      })
+      toast.add({ type: "success", title: "Topic updated" })
+      onOpenChange(false)
+    } catch (caught) {
+      toast.add({ type: "error", title: actionError(caught) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -269,7 +291,7 @@ function EditTopicForm({
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" disabled={!name.trim()}>
+          <Button type="submit" disabled={!name.trim() || pending}>
             Save
           </Button>
         </DialogFooter>
@@ -301,7 +323,8 @@ function EditTopicDialog({
 }
 
 export function TopicsView() {
-  const { state, deleteTopic } = useDashboard()
+  const { deleteTopic } = useAudienceCommands()
+  const topics = useTopics()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -309,7 +332,7 @@ export function TopicsView() {
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
   const needle = searchNeedle(query)
-  const rows = state.topics.filter((topic) =>
+  const rows = (topics ?? []).filter((topic) =>
     matchesNeedle(needle, topic.name, topic.description)
   )
 
@@ -330,7 +353,9 @@ export function TopicsView() {
         onQueryChange={setQuery}
         placeholder="Search topics…"
       />
-      {rows.length === 0 ? (
+      {topics === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={TagIcon}
           title="No topics"
@@ -410,8 +435,8 @@ export function TopicsView() {
         }}
         title="Delete topic?"
         description="Contacts lose this preference. Existing broadcasts that referenced it keep their historical topic name."
-        onConfirm={() => {
-          if (pendingDelete) deleteTopic(pendingDelete)
+        onConfirm={async () => {
+          if (pendingDelete) await deleteTopic(pendingDelete)
           toast.add({ type: "success", title: "Topic deleted" })
         }}
       />

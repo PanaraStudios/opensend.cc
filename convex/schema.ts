@@ -1,4 +1,5 @@
 import { defineSchema } from "convex/server"
+import { audienceTables } from "./tables/audience"
 import { domainTables } from "./tables/domains"
 import { eventTables } from "./tables/events"
 import { sesTables } from "./tables/ses"
@@ -11,4 +12,5 @@ export default defineSchema({
   ...domainTables,
   ...eventTables,
   ...templateTables,
+  ...audienceTables,
 })

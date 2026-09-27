@@ -37,10 +37,27 @@ import {
   Surface,
   Th,
   useDeleteRecord,
+  useDraft,
 } from "@/components/dashboard/primitives"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
 import { contactTopicStatus } from "@/lib/dashboard/contacts"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
+import {
+  asContact,
+  useAudienceCommands,
+  useProperties,
+  useSegments,
+  useTopics,
+} from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
+import type { Contact, ContactProperty } from "@/lib/dashboard/types"
+
+/** Reports a failed save; the stored value then shows again. */
+const reportError = (caught: unknown) =>
+  toast.add({ type: "error", title: actionError(caught) })
 
 function HistorySection({
   title,
@@ -68,13 +85,14 @@ function SegmentMembership({
   contactId: string
   segmentIds: string[]
 }) {
-  const { state, setContactSegments } = useDashboard()
-  const assigned = state.segments.filter((segment) =>
-    segmentIds.includes(segment.id)
-  )
-  const available = state.segments.filter(
+  const { setContactSegment } = useAudienceCommands()
+  const segments = useSegments() ?? []
+  const assigned = segments.filter((segment) => segmentIds.includes(segment.id))
+  const available = segments.filter(
     (segment) => !segmentIds.includes(segment.id)
   )
+  const toggle = (segmentId: string, member: boolean) =>
+    setContactSegment(contactId, segmentId, member).catch(reportError)
 
   return (
     <Surface>
@@ -85,7 +103,7 @@ function SegmentMembership({
           see these names.
         </p>
       </div>
-      {state.segments.length === 0 ? (
+      {segments.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No segments yet.{" "}
           <Link href="/segments" className="underline underline-offset-4">
@@ -115,12 +133,7 @@ function SegmentMembership({
                       variant="ghost"
                       size="icon-xs"
                       aria-label={`Remove from ${segment.name}`}
-                      onClick={() =>
-                        setContactSegments(
-                          contactId,
-                          segmentIds.filter((id) => id !== segment.id)
-                        )
-                      }
+                      onClick={() => toggle(segment.id, false)}
                     >
                       <XIcon />
                     </Button>
@@ -143,9 +156,7 @@ function SegmentMembership({
                 {available.map((segment) => (
                   <DropdownMenuItem
                     key={segment.id}
-                    onClick={() =>
-                      setContactSegments(contactId, [...segmentIds, segment.id])
-                    }
+                    onClick={() => toggle(segment.id, true)}
                   >
                     {segment.name}
                   </DropdownMenuItem>
@@ -166,18 +177,61 @@ function SegmentMembership({
   )
 }
 
+function TextField({
+  id,
+  label,
+  value,
+  onCommit,
+  type,
+  placeholder,
+}: {
+  id: string
+  label: string
+  value: string
+  onCommit: (next: string) => void
+  type?: string
+  placeholder?: string
+}) {
+  const draft = useDraft(value, onCommit)
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input id={id} type={type} placeholder={placeholder} {...draft} />
+    </Field>
+  )
+}
+
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateContact, deleteContact, setContactTopic } =
-    useDashboard()
-  const contact = state.contacts.find((item) => item.id === id)
+  const stored = useQuery(api.contacts.get, { id })
   const { leaving, deleteAndLeave } = useDeleteRecord("/contacts")
-  const [pendingDelete, setPendingDelete] = React.useState(false)
 
-  if (!contact) {
+  if (stored === undefined) return <Skeleton className="h-64 w-full" />
+  if (!stored) {
     if (leaving) return null
     return <NotFoundState icon={UserIcon} noun="contact" backHref="/contacts" />
   }
+  return <ContactPage contact={asContact(stored)} onDelete={deleteAndLeave} />
+}
+
+function ContactPage({
+  contact,
+  onDelete,
+}: {
+  contact: Contact
+  onDelete: (remove: () => void) => void
+}) {
+  /* Sends, broadcasts and replies are still demo data, matched by address. */
+  const { state } = useDashboard()
+  const { updateContact, deleteContacts, setContactTopic } =
+    useAudienceCommands()
+  const topics = useTopics() ?? []
+  const properties = useProperties() ?? []
+  const [pendingDelete, setPendingDelete] = React.useState(false)
+  const update = (patch: Parameters<typeof updateContact>[1]) =>
+    updateContact(contact.id, patch).catch(reportError)
+  const setProperty = (property: ContactProperty, value: string) =>
+    update({ properties: { [property.key]: value } })
 
   const emails = state.emails
     .filter((email) => email.to === contact.email)
@@ -223,30 +277,18 @@ export function ContactDetail() {
             <Surface>
               <h2 className="text-sm font-medium">Profile</h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="first">First name</FieldLabel>
-                  <Input
-                    id="first"
-                    value={contact.firstName}
-                    onChange={(event) =>
-                      updateContact(contact.id, {
-                        firstName: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="last">Last name</FieldLabel>
-                  <Input
-                    id="last"
-                    value={contact.lastName}
-                    onChange={(event) =>
-                      updateContact(contact.id, {
-                        lastName: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
+                <TextField
+                  id="first"
+                  label="First name"
+                  value={contact.firstName}
+                  onCommit={(firstName) => update({ firstName })}
+                />
+                <TextField
+                  id="last"
+                  label="Last name"
+                  value={contact.lastName}
+                  onCommit={(lastName) => update({ lastName })}
+                />
               </div>
               <Field orientation="horizontal">
                 <FieldLabel htmlFor="subscribed">
@@ -262,32 +304,22 @@ export function ContactDetail() {
                   id="subscribed"
                   checked={!contact.unsubscribed}
                   onCheckedChange={(checked) =>
-                    updateContact(contact.id, { unsubscribed: !checked })
+                    update({ unsubscribed: !checked })
                   }
                 />
               </Field>
-              {state.properties.length > 0 ? (
+              {properties.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {state.properties.map((property) => (
-                    <Field key={property.id}>
-                      <FieldLabel htmlFor={`prop-${property.key}`}>
-                        {property.name}
-                      </FieldLabel>
-                      <Input
-                        id={`prop-${property.key}`}
-                        type={property.type === "number" ? "number" : "text"}
-                        value={contact.properties?.[property.key] ?? ""}
-                        placeholder={property.fallbackValue}
-                        onChange={(event) =>
-                          updateContact(contact.id, {
-                            properties: {
-                              ...(contact.properties ?? {}),
-                              [property.key]: event.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
+                  {properties.map((property) => (
+                    <TextField
+                      key={property.id}
+                      id={`prop-${property.key}`}
+                      label={property.name}
+                      type={property.type === "number" ? "number" : "text"}
+                      value={contact.properties[property.key] ?? ""}
+                      placeholder={property.fallbackValue}
+                      onCommit={(value) => setProperty(property, value)}
+                    />
                   ))}
                 </div>
               ) : null}
@@ -304,7 +336,7 @@ export function ContactDetail() {
                 Topics appear on the preference page. Public topics can be
                 managed by the contact; private topics stay off that page.
               </p>
-              {state.topics.length === 0 ? (
+              {topics.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No topics yet.{" "}
                   <Link href="/topics" className="underline underline-offset-4">
@@ -322,7 +354,7 @@ export function ContactDetail() {
                     </>
                   }
                 >
-                  {state.topics.map((topic) => {
+                  {topics.map((topic) => {
                     const subscription = contactTopicStatus(contact, topic)
                     return (
                       <TableRow key={topic.id}>
@@ -345,7 +377,7 @@ export function ContactDetail() {
                                 contact.id,
                                 topic.id,
                                 checked ? "subscribed" : "unsubscribed"
-                              )
+                              ).catch(reportError)
                             }
                           />
                         </TableCell>
@@ -444,7 +476,7 @@ export function ContactDetail() {
         title={`Delete ${contact.email}?`}
         description="The contact is removed from every segment. This cannot be undone."
         onConfirm={() => {
-          deleteAndLeave(() => deleteContact(contact.id))
+          onDelete(() => void deleteContacts([contact.id]))
           toast.add({ type: "success", title: "Contact deleted" })
         }}
       />

@@ -33,23 +33,36 @@ import {
   DetailHeader,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   NotFoundState,
   ResourceTable,
   Surface,
   Th,
+  useDebouncedValue,
   useDeleteRecord,
+  useDraft,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
   AudienceDocsSheet,
 } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
-import { contactMatches, segmentContactCounts } from "@/lib/dashboard/contacts"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
+import {
+  asSegment,
+  useAudienceCommands,
+  useContactList,
+  useSegments,
+} from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
 
 function AddSegmentDialog({
   open,
@@ -59,18 +72,26 @@ function AddSegmentDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addSegment } = useDashboard()
+  const { addSegment } = useAudienceCommands()
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return
-    const { id } = addSegment(trimmed)
-    toast.add({ type: "success", title: "Segment created" })
-    setName("")
-    onOpenChange(false)
-    router.push(`/segments/${id}`)
+    if (!trimmed || pending) return
+    setPending(true)
+    try {
+      const id = await addSegment(trimmed)
+      toast.add({ type: "success", title: "Segment created" })
+      setName("")
+      onOpenChange(false)
+      router.push(`/segments/${id}`)
+    } catch (caught) {
+      toast.add({ type: "error", title: actionError(caught) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -106,7 +127,7 @@ function AddSegmentDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={!name.trim()}>
+            <Button type="submit" disabled={!name.trim() || pending}>
               Create segment
             </Button>
           </DialogFooter>
@@ -117,17 +138,18 @@ function AddSegmentDialog({
 }
 
 export function SegmentsView() {
-  const { state, deleteSegment, addExport } = useDashboard()
+  const { addExport } = useDashboard()
+  const { deleteSegment } = useAudienceCommands()
+  const segments = useSegments()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
 
   const needle = searchNeedle(query)
-  const rows = state.segments.filter((segment) =>
+  const rows = (segments ?? []).filter((segment) =>
     matchesNeedle(needle, segment.name)
   )
-  const memberCounts = segmentContactCounts(state.contacts)
 
   return (
     <AudienceChrome
@@ -150,7 +172,9 @@ export function SegmentsView() {
           toast.add({ type: "success", title: "Export started" })
         }}
       />
-      {rows.length === 0 ? (
+      {segments === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={LayersIcon}
           title="No segments"
@@ -183,7 +207,7 @@ export function SegmentsView() {
                 </Link>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {memberCounts.get(segment.id) ?? 0}
+                {segment.count}
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(segment.createdAt)}
@@ -220,8 +244,8 @@ export function SegmentsView() {
         }}
         title="Delete segment?"
         description="Contacts stay in the workspace. They are only removed from this group."
-        onConfirm={() => {
-          if (pendingDelete) deleteSegment(pendingDelete)
+        onConfirm={async () => {
+          if (pendingDelete) await deleteSegment(pendingDelete)
           toast.add({ type: "success", title: "Segment deleted" })
         }}
       />
@@ -231,26 +255,40 @@ export function SegmentsView() {
 
 export function SegmentDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateSegment, deleteSegment, setContactSegments } =
-    useDashboard()
-  const segment = state.segments.find((item) => item.id === id)
+  const stored = useQuery(api.segments.get, { id })
   const { leaving, deleteAndLeave } = useDeleteRecord("/segments")
-  const [pendingDelete, setPendingDelete] = React.useState(false)
-  const [query, setQuery] = React.useState("")
 
-  if (!segment) {
+  if (stored === undefined) return <Skeleton className="h-64 w-full" />
+  if (!stored) {
     if (leaving) return null
     return (
       <NotFoundState icon={LayersIcon} noun="segment" backHref="/segments" />
     )
   }
+  return <SegmentPage segment={asSegment(stored)} onDelete={deleteAndLeave} />
+}
 
-  const members = state.contacts.filter((contact) =>
-    contact.segmentIds.includes(segment.id)
-  )
-  const needle = searchNeedle(query)
-  const candidates = state.contacts.filter((contact) =>
-    contactMatches(contact, needle)
+function SegmentPage({
+  segment,
+  onDelete,
+}: {
+  segment: ReturnType<typeof asSegment>
+  onDelete: (remove: () => void) => void
+}) {
+  const { updateSegment, deleteSegment, setContactSegment } =
+    useAudienceCommands()
+  const [pendingDelete, setPendingDelete] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const search = useDebouncedValue(query)
+  const name = useDraft(segment.name, (next) => {
+    updateSegment(segment.id, next).catch((caught) =>
+      toast.add({ type: "error", title: actionError(caught) })
+    )
+  })
+  const candidates = useContactList({ search })
+  const { pageRows, pagination } = useLoadedPagination(
+    candidates.rows,
+    candidates
   )
 
   return (
@@ -260,7 +298,7 @@ export function SegmentDetail() {
         backLabel="Segments"
         title={segment.name}
         icon={LayersIcon}
-        description={`${pluralize(members.length, "contact")} · Created ${formatDate(segment.createdAt)}`}
+        description={`${pluralize(segment.count, "contact")} · Created ${formatDate(segment.createdAt)}`}
         actions={
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
             Delete
@@ -271,11 +309,7 @@ export function SegmentDetail() {
       <Surface className="max-w-lg">
         <Field>
           <FieldLabel htmlFor="segment-rename">Name</FieldLabel>
-          <Input
-            id="segment-rename"
-            value={segment.name}
-            onChange={(event) => updateSegment(segment.id, event.target.value)}
-          />
+          <Input id="segment-rename" {...name} />
           <FieldDescription>
             Only your team sees this name. It is not shown on unsubscribe pages.
           </FieldDescription>
@@ -291,7 +325,9 @@ export function SegmentDetail() {
             placeholder="Filter contacts…"
           />
         </div>
-        {candidates.length === 0 ? (
+        {candidates.status === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : candidates.rows.length === 0 ? (
           <EmptyState
             icon={LayersIcon}
             title="No matching contacts"
@@ -302,45 +338,54 @@ export function SegmentDetail() {
             </Button>
           </EmptyState>
         ) : (
-          <ResourceTable
-            headers={
-              <>
-                <Th className="w-10" />
-                <Th>Email</Th>
-                <Th>Name</Th>
-              </>
-            }
-          >
-            {candidates.map((contact) => (
-              <TableRow key={contact.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={contact.segmentIds.includes(segment.id)}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(contact.segmentIds)
-                      if (checked === true) next.add(segment.id)
-                      else next.delete(segment.id)
-                      setContactSegments(contact.id, [...next])
-                    }}
-                    aria-label={`Include ${contact.email}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={`/contacts/${contact.id}`}
-                    className="hover:underline"
-                  >
-                    {contact.email}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {[contact.firstName, contact.lastName]
-                    .filter(Boolean)
-                    .join(" ") || "—"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
+          <>
+            <ResourceTable
+              headers={
+                <>
+                  <Th className="w-10" />
+                  <Th>Email</Th>
+                  <Th>Name</Th>
+                </>
+              }
+            >
+              {pageRows.map((contact) => (
+                <TableRow key={contact.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={contact.segmentIds.includes(segment.id)}
+                      onCheckedChange={(checked) => {
+                        setContactSegment(
+                          contact.id,
+                          segment.id,
+                          checked === true
+                        ).catch((caught) =>
+                          toast.add({
+                            type: "error",
+                            title: actionError(caught),
+                          })
+                        )
+                      }}
+                      aria-label={`Include ${contact.email}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/contacts/${contact.id}`}
+                      className="hover:underline"
+                    >
+                      {contact.email}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {[contact.firstName, contact.lastName]
+                      .filter(Boolean)
+                      .join(" ") || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+            <ListPagination {...pagination} noun="contact" />
+          </>
         )}
       </section>
 
@@ -350,7 +395,7 @@ export function SegmentDetail() {
         title={`Delete ${segment.name}?`}
         description="Contacts remain in the workspace. They are only removed from this segment."
         onConfirm={() => {
-          deleteAndLeave(() => deleteSegment(segment.id))
+          onDelete(() => void deleteSegment(segment.id))
           toast.add({ type: "success", title: "Segment deleted" })
         }}
       />

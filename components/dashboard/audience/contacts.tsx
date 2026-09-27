@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
+import type { Id } from "@/convex/_generated/dataModel"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MonoValue,
   MoreMenu,
@@ -45,7 +47,10 @@ import {
   ResourceTable,
   SelectionBar,
   Th,
+  useDebouncedValue,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   AudienceChrome,
   AudienceDocsSheet,
@@ -69,21 +74,27 @@ import {
 } from "@/lib/dashboard/csv"
 import {
   RESERVED_PROPERTY_KEYS,
-  contactMatches,
-  segmentContactCounts,
+  type ContactInput,
 } from "@/lib/dashboard/contacts"
-import { searchNeedle } from "@/lib/dashboard/search"
-import { inDateRange } from "@/lib/dashboard/email-range"
+import { rangeBounds } from "@/lib/dashboard/email-range"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
+import {
+  useAudienceCommands,
+  useContactList,
+  useProperties,
+  useSegments,
+  useTopics,
+} from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
+import { useClock } from "@/lib/time/use-clock"
 
-function segmentItems(state: ReturnType<typeof useDashboard>["state"]) {
-  const counts = segmentContactCounts(state.contacts)
+function segmentItems(segments: { id: string; name: string; count: number }[]) {
   return [
     { value: "all", label: "All segments" },
-    ...state.segments.map((segment) => ({
+    ...segments.map((segment) => ({
       value: segment.id,
-      label: `${segment.name} (${counts.get(segment.id) ?? 0})`,
+      label: `${segment.name} (${segment.count})`,
     })),
   ]
 }
@@ -103,7 +114,9 @@ function AddManuallyDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addContact, state } = useDashboard()
+  const { upsertContacts } = useAudienceCommands()
+  const segments = useSegments() ?? []
+  const [pending, setPending] = React.useState(false)
   const [emails, setEmails] = React.useState("")
   const [segmentId, setSegmentId] = React.useState("none")
   const [error, setError] = React.useState<string | null>(null)
@@ -114,36 +127,40 @@ function AddManuallyDialog({
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     const list = splitEmails(emails)
     if (list.length === 0) {
       setError("Enter at least one valid email address")
       return
     }
-    const existing = new Set(state.contacts.map((contact) => contact.email))
-    const created = list.filter((email) => !existing.has(email))
-    const skipped = list.length - created.length
-    const segmentIds = segmentId === "none" ? [] : [segmentId]
-    let firstId: string | null = null
-    for (const email of created) {
-      const contact = addContact({ email, segmentIds })
-      firstId ??= contact.id
+    setPending(true)
+    try {
+      const { createdIds, skipped } = await upsertContacts(
+        list.map((email) => ({ email })),
+        segmentId === "none" ? [] : [segmentId],
+        true
+      )
+      toast.add({
+        type: "success",
+        title:
+          createdIds.length === 1
+            ? "Contact created"
+            : `${createdIds.length} contacts created`,
+        description:
+          skipped > 0
+            ? `${skipped} already in this workspace were skipped.`
+            : undefined,
+      })
+      reset()
+      onOpenChange(false)
+      if (createdIds.length === 1) router.push(`/contacts/${createdIds[0]}`)
+    } catch (caught) {
+      setError(actionError(caught))
+    } finally {
+      setPending(false)
     }
-    toast.add({
-      type: "success",
-      title:
-        created.length === 1
-          ? "Contact created"
-          : `${created.length} contacts created`,
-      description:
-        skipped > 0
-          ? `${skipped} already in this workspace were skipped.`
-          : undefined,
-    })
-    reset()
-    onOpenChange(false)
-    if (created.length === 1 && firstId) router.push(`/contacts/${firstId}`)
   }
 
   return (
@@ -179,7 +196,7 @@ function AddManuallyDialog({
               />
               {error ? <FieldError>{error}</FieldError> : null}
             </Field>
-            {state.segments.length > 0 ? (
+            {segments.length > 0 ? (
               <Field>
                 <FieldLabel htmlFor="manual-segment">Segment</FieldLabel>
                 <OptionSelect
@@ -187,7 +204,7 @@ function AddManuallyDialog({
                   className="w-full"
                   value={segmentId}
                   onChange={setSegmentId}
-                  items={segmentOptions(state.segments)}
+                  items={segmentOptions(segments)}
                 />
                 <FieldDescription>
                   Optional. You can assign more segments from the contact page.
@@ -199,7 +216,9 @@ function AddManuallyDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit">Add</Button>
+            <Button type="submit" disabled={pending}>
+              Add
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -214,7 +233,10 @@ function ImportCsvDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { state, upsertContacts } = useDashboard()
+  const { upsertContacts } = useAudienceCommands()
+  const properties = useProperties() ?? []
+  const segments = useSegments() ?? []
+  const [pending, setPending] = React.useState(false)
   const [fileName, setFileName] = React.useState<string | null>(null)
   const [headers, setHeaders] = React.useState<string[]>([])
   const [rows, setRows] = React.useState<string[][]>([])
@@ -226,7 +248,7 @@ function ImportCsvDialog({
   const mapItems = [
     { value: "ignore", label: "Ignore" },
     ...RESERVED_PROPERTY_KEYS.map((key) => ({ value: key, label: key })),
-    ...state.properties.map((property) => ({
+    ...properties.map((property) => ({
       value: property.key,
       label: property.key,
     })),
@@ -258,7 +280,7 @@ function ImportCsvDialog({
           table.headers.map((header) =>
             suggestCsvMapping(
               header,
-              state.properties.map((property) => property.key)
+              properties.map((property) => property.key)
             )
           )
         )
@@ -272,15 +294,15 @@ function ImportCsvDialog({
     reader.readAsText(file)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     const emailIndex = mapping.indexOf("email")
     if (emailIndex === -1) {
       setError("Map one column to email")
       return
     }
-    const segmentIds = segmentId === "none" ? [] : [segmentId]
-    const inputs = rows.flatMap((row) => {
+    const inputs = rows.flatMap((row): ContactInput[] => {
       const email = row[emailIndex]?.trim().toLowerCase() ?? ""
       if (!email) return []
       const properties: Record<string, string> = {}
@@ -296,22 +318,34 @@ function ImportCsvDialog({
           unsubscribed = parseUnsubscribed(value)
         else if (value) properties[target] = value
       })
-      return [
-        { email, firstName, lastName, unsubscribed, properties, segmentIds },
-      ]
+      return [{ email, firstName, lastName, unsubscribed, properties }]
     })
     if (inputs.length === 0) {
       setError("No rows with an email address")
       return
     }
-    const result = upsertContacts(inputs)
-    toast.add({
-      type: "success",
-      title: "Import finished",
-      description: `${result.created} created, ${result.updated} updated.`,
-    })
-    reset()
-    onOpenChange(false)
+    setPending(true)
+    try {
+      const result = await upsertContacts(
+        inputs,
+        segmentId === "none" ? [] : [segmentId]
+      )
+      toast.add({
+        type: "success",
+        title: "Import finished",
+        description: `${result.created} created, ${result.updated} updated.${
+          result.skipped > 0
+            ? ` ${pluralize(result.skipped, "row")} skipped: ${result.errors[0]}`
+            : ""
+        }`,
+      })
+      reset()
+      onOpenChange(false)
+    } catch (caught) {
+      setError(actionError(caught))
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -381,7 +415,7 @@ function ImportCsvDialog({
                 </div>
               </Field>
             ) : null}
-            {state.segments.length > 0 ? (
+            {segments.length > 0 ? (
               <Field>
                 <FieldLabel htmlFor="import-segment">Add to segment</FieldLabel>
                 <OptionSelect
@@ -389,7 +423,7 @@ function ImportCsvDialog({
                   className="w-full"
                   value={segmentId}
                   onChange={setSegmentId}
-                  items={segmentOptions(state.segments)}
+                  items={segmentOptions(segments)}
                 />
               </Field>
             ) : null}
@@ -399,7 +433,7 @@ function ImportCsvDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={rows.length === 0}>
+            <Button type="submit" disabled={rows.length === 0 || pending}>
               Import
             </Button>
           </DialogFooter>
@@ -422,8 +456,11 @@ function BulkEditDialog({
   onApplied: () => void
   mode: "segments" | "topics"
 }) {
-  const { state, addContactsToSegments, subscribeContactsToTopics } =
-    useDashboard()
+  const { addContactsToSegments, subscribeContactsToTopics } =
+    useAudienceCommands()
+  const segments = useSegments() ?? []
+  const topics = useTopics() ?? []
+  const [pending, setPending] = React.useState(false)
   const [picked, setPicked] = React.useState<string[]>([])
 
   function toggle(id: string, checked: boolean) {
@@ -432,25 +469,32 @@ function BulkEditDialog({
     )
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (picked.length === 0) return
-    if (mode === "segments") {
-      addContactsToSegments(selectedIds, picked)
-      toast.add({ type: "success", title: "Added to segments" })
-    } else {
-      subscribeContactsToTopics(selectedIds, picked)
-      toast.add({ type: "success", title: "Subscribed to topics" })
+    if (picked.length === 0 || pending) return
+    setPending(true)
+    try {
+      if (mode === "segments") {
+        await addContactsToSegments(selectedIds, picked)
+        toast.add({ type: "success", title: "Added to segments" })
+      } else {
+        await subscribeContactsToTopics(selectedIds, picked)
+        toast.add({ type: "success", title: "Subscribed to topics" })
+      }
+      setPicked([])
+      onOpenChange(false)
+      onApplied()
+    } catch (caught) {
+      toast.add({ type: "error", title: actionError(caught) })
+    } finally {
+      setPending(false)
     }
-    setPicked([])
-    onOpenChange(false)
-    onApplied()
   }
 
-  const options =
-    mode === "segments"
-      ? state.segments.map((item) => ({ id: item.id, name: item.name }))
-      : state.topics.map((item) => ({ id: item.id, name: item.name }))
+  const options = (mode === "segments" ? segments : topics).map((item) => ({
+    id: item.id,
+    name: item.name,
+  }))
 
   return (
     <Dialog
@@ -500,7 +544,7 @@ function BulkEditDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={picked.length === 0}>
+            <Button type="submit" disabled={picked.length === 0 || pending}>
               Apply
             </Button>
           </DialogFooter>
@@ -511,11 +555,14 @@ function BulkEditDialog({
 }
 
 export function ContactsView() {
-  const { state, deleteContact, deleteContacts, addExport } = useDashboard()
+  const { addExport } = useDashboard()
+  const { deleteContacts } = useAudienceCommands()
+  const segments = useSegments()
   const [query, setQuery] = React.useState("")
   const [subscribed, setSubscribed] = React.useState("all")
   const [segment, setSegment] = React.useState("all")
   const [range, setRange] = React.useState<DateRange | undefined>(undefined)
+  const now = useClock() ?? undefined
   const [manualOpen, setManualOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -526,25 +573,34 @@ export function ContactsView() {
     null
   )
 
-  const needle = searchNeedle(query)
-  const rows = state.contacts.filter((contact) => {
-    if (!contactMatches(contact, needle)) return false
-    if (subscribed === "subscribed" && contact.unsubscribed) return false
-    if (subscribed === "unsubscribed" && !contact.unsubscribed) return false
-    if (segment !== "all" && !contact.segmentIds.includes(segment)) return false
-    return inDateRange(contact.createdAt, range)
+  const search = useDebouncedValue(query)
+  const contacts = useContactList({
+    search,
+    ...(subscribed !== "all"
+      ? { unsubscribed: subscribed === "unsubscribed" }
+      : {}),
+    ...(segment !== "all" ? { segmentId: segment as Id<"segments"> } : {}),
+    ...rangeBounds(range),
   })
+  const rows = contacts.rows
+  const { pageRows, pagination } = useLoadedPagination(rows, contacts)
+  const unfiltered =
+    !query && subscribed === "all" && segment === "all" && !range?.from
 
-  const visibleIds = rows.map((contact) => contact.id)
   /* Bulk actions only ever touch rows the current filters still show. */
-  const visibleSet = new Set(visibleIds)
+  const visibleSet = new Set(rows.map((contact) => contact.id))
   const selected = selection.filter((id) => visibleSet.has(id))
   const selectedSet = new Set(selected)
+  const pageIds = pageRows.map((contact) => contact.id)
   const allVisibleSelected =
-    visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
+    pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id))
 
   function toggleAll(checked: boolean) {
-    setSelected(checked ? visibleIds : [])
+    setSelected((current) =>
+      checked
+        ? [...new Set([...current, ...pageIds])]
+        : current.filter((id) => !pageIds.includes(id))
+    )
   }
 
   function toggleOne(id: string, checked: boolean) {
@@ -586,6 +642,7 @@ export function ContactsView() {
         placeholder="Search contacts…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: subscribed,
@@ -596,7 +653,7 @@ export function ContactsView() {
           {
             value: segment,
             onChange: setSegment,
-            items: segmentItems(state),
+            items: segmentItems(segments ?? []),
             "aria-label": "Filter by segment",
           },
         ]}
@@ -607,9 +664,7 @@ export function ContactsView() {
       />
       <SelectionBar count={selected.length} onClear={() => setSelected([])}>
         <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button variant="ghost" />}
-          >
+          <DropdownMenuTrigger render={<Button variant="ghost" />}>
             Edit
             <ChevronDownIcon data-icon="inline-end" />
           </DropdownMenuTrigger>
@@ -635,91 +690,102 @@ export function ContactsView() {
           Delete
         </Button>
       </SelectionBar>
-      {rows.length === 0 ? (
+      {contacts.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
-          title="No contacts"
-          description="Add a contact or import a CSV to start building your audience."
-        >
-          <Button onClick={() => setManualOpen(true)}>
-            <PlusIcon data-icon="inline-start" />
-            Add Contacts
-          </Button>
-        </EmptyState>
-      ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th className="w-10">
-                <Checkbox
-                  checked={allVisibleSelected}
-                  onCheckedChange={(checked) => toggleAll(checked === true)}
-                  aria-label="Select all contacts"
-                />
-              </Th>
-              <Th>Email</Th>
-              <Th>First name</Th>
-              <Th>Last name</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
+          title={unfiltered ? "No contacts" : "No contacts found"}
+          description={
+            unfiltered
+              ? "Add a contact or import a CSV to start building your audience."
+              : "No contacts match these filters."
           }
         >
-          {rows.map((contact) => (
-            <TableRow key={contact.id}>
-              <TableCell>
-                <Checkbox
-                  checked={selectedSet.has(contact.id)}
-                  onCheckedChange={(checked) =>
-                    toggleOne(contact.id, checked === true)
-                  }
-                  aria-label={`Select ${contact.email}`}
-                />
-              </TableCell>
-              <TableCell>
-                <Link
-                  href={`/contacts/${contact.id}`}
-                  className="font-medium hover:underline"
-                >
-                  {contact.email}
-                </Link>
-                {contact.unsubscribed ? (
-                  <Badge variant="secondary" className="ml-2">
-                    Unsubscribed
-                  </Badge>
-                ) : null}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {contact.firstName || "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {contact.lastName || "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(contact.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/contacts/${contact.id}`} />}
-                    >
-                      <PencilIcon />
-                      Edit Contact
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPendingDelete(contact.id)}
-                    >
-                      <Trash2Icon />
-                      Delete Contact
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+          {unfiltered ? (
+            <Button onClick={() => setManualOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              Add Contacts
+            </Button>
+          ) : null}
+        </EmptyState>
+      ) : (
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th className="w-10">
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={(checked) => toggleAll(checked === true)}
+                    aria-label="Select all contacts"
+                  />
+                </Th>
+                <Th>Email</Th>
+                <Th>First name</Th>
+                <Th>Last name</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((contact) => (
+              <TableRow key={contact.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedSet.has(contact.id)}
+                    onCheckedChange={(checked) =>
+                      toggleOne(contact.id, checked === true)
+                    }
+                    aria-label={`Select ${contact.email}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Link
+                    href={`/contacts/${contact.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {contact.email}
+                  </Link>
+                  {contact.unsubscribed ? (
+                    <Badge variant="secondary" className="ml-2">
+                      Unsubscribed
+                    </Badge>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {contact.firstName || "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {contact.lastName || "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(contact.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/contacts/${contact.id}`} />}
+                      >
+                        <PencilIcon />
+                        Edit Contact
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPendingDelete(contact.id)}
+                      >
+                        <Trash2Icon />
+                        Delete Contact
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="contact" />
+        </>
       )}
       <AddManuallyDialog open={manualOpen} onOpenChange={setManualOpen} />
       <ImportCsvDialog open={importOpen} onOpenChange={setImportOpen} />
@@ -740,9 +806,9 @@ export function ContactsView() {
         }}
         title="Delete contact?"
         description="This removes the address from every segment. Suppression history is kept separately."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (pendingDelete) {
-            deleteContact(pendingDelete)
+            await deleteContacts([pendingDelete])
             setSelected((current) =>
               current.filter((id) => id !== pendingDelete)
             )
@@ -755,8 +821,8 @@ export function ContactsView() {
         onOpenChange={setBulkDelete}
         title={`Delete ${pluralize(selected.length, "contact")}?`}
         description="Selected addresses are removed from every segment."
-        onConfirm={() => {
-          deleteContacts(selected)
+        onConfirm={async () => {
+          await deleteContacts(selected)
           setSelected([])
           toast.add({ type: "success", title: "Contacts deleted" })
         }}

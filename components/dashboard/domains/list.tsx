@@ -36,6 +36,7 @@ import {
   IconCell,
   ListToolbar,
   ListPagination,
+  useLoadedPagination,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -54,7 +55,6 @@ import {
   REGION_ITEMS,
   RegionValue,
 } from "@/components/dashboard/domains/shared"
-import { useQueryPagination } from "@/components/dashboard/use-query-pagination"
 import {
   DEFAULT_RETURN_PATH,
   validateDnsLabel,
@@ -240,11 +240,7 @@ export function DomainsView() {
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const search = useDebouncedValue(query)
 
-  const {
-    results,
-    status: loading,
-    loadMore,
-  } = usePaginatedQuery(
+  const domains = usePaginatedQuery(
     api.domains.list,
     organizationId
       ? {
@@ -258,9 +254,12 @@ export function DomainsView() {
       : "skip",
     { initialNumItems: 40 }
   )
-  const rows = React.useMemo(() => results.map(asDomain), [results])
+  const rows = React.useMemo(
+    () => domains.results.map(asDomain),
+    [domains.results]
+  )
   const check = useDomainCheck(rows)
-  const { pageRows, pagination } = useQueryPagination(rows, loading, loadMore)
+  const { pageRows, pagination } = useLoadedPagination(rows, domains)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
@@ -301,7 +300,7 @@ export function DomainsView() {
           },
         ]}
       />
-      {loading === "LoadingFirstPage" ? (
+      {domains.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState

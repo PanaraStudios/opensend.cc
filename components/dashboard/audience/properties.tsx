@@ -44,14 +44,15 @@ import {
 } from "@/components/dashboard/audience/shared"
 import { DatabaseIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import {
-  isReservedPropertyKey,
-  isValidPropertyKey,
   normalizePropertyKey,
+  propertyKeyError,
 } from "@/lib/dashboard/contacts"
 import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/data"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useAudienceCommands, useProperties } from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { PropertyType } from "@/lib/dashboard/types"
 
 const PROPERTY_TYPES = [
@@ -66,7 +67,9 @@ function AddPropertyDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { state, addProperty } = useDashboard()
+  const { addProperty } = useAudienceCommands()
+  const properties = useProperties()
+  const [pending, setPending] = React.useState(false)
   const [key, setKey] = React.useState("")
   const [type, setType] = React.useState<PropertyType>("string")
   const [fallbackValue, setFallbackValue] = React.useState("")
@@ -79,29 +82,34 @@ function AddPropertyDialog({
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     const nextKey = normalizePropertyKey(key)
-    if (!isValidPropertyKey(nextKey)) {
-      setError("Use a lowercase key with letters, numbers, and underscores")
+    const keyError = propertyKeyError(
+      nextKey,
+      (properties ?? []).map((item) => item.key)
+    )
+    if (keyError) {
+      setError(keyError)
       return
     }
-    if (
-      isReservedPropertyKey(nextKey) ||
-      state.properties.some((item) => item.key === nextKey)
-    ) {
-      setError("That key already exists")
-      return
+    setPending(true)
+    try {
+      await addProperty({
+        name: propertyDisplayName(nextKey),
+        key: nextKey,
+        type,
+        fallbackValue,
+      })
+      toast.add({ type: "success", title: "Property created" })
+      reset()
+      onOpenChange(false)
+    } catch (caught) {
+      setError(actionError(caught))
+    } finally {
+      setPending(false)
     }
-    addProperty({
-      name: propertyDisplayName(nextKey),
-      key: nextKey,
-      type,
-      fallbackValue,
-    })
-    toast.add({ type: "success", title: "Property created" })
-    reset()
-    onOpenChange(false)
   }
 
   return (
@@ -165,7 +173,9 @@ function AddPropertyDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit">Add property</Button>
+            <Button type="submit" disabled={pending}>
+              Add property
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -174,7 +184,8 @@ function AddPropertyDialog({
 }
 
 export function PropertiesView() {
-  const { state, deleteProperty } = useDashboard()
+  const { deleteProperty } = useAudienceCommands()
+  const properties = useProperties()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -184,7 +195,7 @@ export function PropertiesView() {
   const propertyMatches = (item: { name: string; key: string }) =>
     matchesNeedle(needle, item.name, item.key)
   const defaults = DEFAULT_CONTACT_PROPERTIES.filter(propertyMatches)
-  const custom = state.properties.filter(propertyMatches)
+  const custom = (properties ?? []).filter(propertyMatches)
 
   return (
     <AudienceChrome
@@ -203,7 +214,9 @@ export function PropertiesView() {
         onQueryChange={setQuery}
         placeholder="Search properties…"
       />
-      {defaults.length === 0 && custom.length === 0 ? (
+      {properties === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : defaults.length === 0 && custom.length === 0 ? (
         <EmptyState
           icon={DatabaseIcon}
           title="No properties"
@@ -282,8 +295,8 @@ export function PropertiesView() {
         }}
         title="Delete property?"
         description="Values are removed from every contact. The fallback is discarded."
-        onConfirm={() => {
-          if (pending) deleteProperty(pending)
+        onConfirm={async () => {
+          if (pending) await deleteProperty(pending)
           toast.add({ type: "success", title: "Property deleted" })
         }}
       />

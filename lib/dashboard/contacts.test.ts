@@ -2,11 +2,9 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
-  contactMatches,
   isReservedPropertyKey,
   isValidPropertyKey,
   normalizePropertyKey,
-  segmentContactCounts,
 } from "./contacts"
 import { SEED_STATE } from "./data"
 import { matchesNeedle, searchNeedle } from "./search"
@@ -21,24 +19,12 @@ describe("normalizePropertyKey", () => {
   })
 })
 
-describe("segmentContactCounts", () => {
-  it("counts every segment in one pass", () => {
-    const counts = segmentContactCounts(SEED_STATE.contacts)
-    for (const segment of SEED_STATE.segments) {
-      const expected = SEED_STATE.contacts.filter((contact) =>
-        contact.segmentIds.includes(segment.id)
-      ).length
-      assert.equal(counts.get(segment.id) ?? 0, expected)
-    }
-  })
-})
-
 describe("search helpers", () => {
   it("matches any field case-insensitively and matches all on empty", () => {
     const contact = SEED_STATE.contacts[0]!
-    assert.equal(contactMatches(contact, ""), true)
+    assert.equal(matchesNeedle("", contact.email), true)
     assert.equal(
-      contactMatches(contact, searchNeedle(contact.email.toUpperCase())),
+      matchesNeedle(searchNeedle(contact.email.toUpperCase()), contact.email),
       true
     )
     assert.equal(matchesNeedle("zzz", "abc", undefined), false)

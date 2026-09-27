@@ -16,6 +16,7 @@ import {
   DocsButton,
   EmptyState,
   ListPagination,
+  useLoadedPagination,
   ListToolbar,
   MonoValue,
   PAGE_SIZES,
@@ -32,7 +33,6 @@ import {
   TemplatesDocsSheet,
   TemplateThumbnail,
 } from "@/components/dashboard/templates/shared"
-import { useQueryPagination } from "@/components/dashboard/use-query-pagination"
 import { api } from "@/convex/_generated/api"
 import { actionError } from "@/lib/action-error"
 import { UNTITLED_TEMPLATE } from "@/lib/dashboard/template"
@@ -104,7 +104,10 @@ export function TemplatesView() {
     () => results.map((row) => asTemplate(row, row)),
     [results]
   )
-  const { pageRows, pagination } = useQueryPagination(rows, loading, loadMore)
+  const { pageRows, pagination } = useLoadedPagination(rows, {
+    status: loading,
+    loadMore,
+  })
   const unfiltered = !query && status === "all"
 
   async function createTemplate() {

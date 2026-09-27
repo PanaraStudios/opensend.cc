@@ -26,13 +26,18 @@ import {
   emptyBroadcastStats,
   transitionBroadcast,
 } from "./broadcast"
-import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
 import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asDomain } from "@/lib/domains/use-domains"
 import { asTemplate } from "@/lib/templates/use-templates"
+import {
+  asContact,
+  useProperties,
+  useSegments,
+  useTopics,
+} from "@/lib/audience/use-audience"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 
@@ -58,16 +63,12 @@ import type {
   DashboardState,
   EmailStatus,
   MemberRole,
-  PropertyType,
+  Segment,
   SentEmail,
   Settings,
   SuppressionReason,
   Team,
   TeamMember,
-  Topic,
-  TopicDefault,
-  TopicSubscription,
-  TopicVisibility,
   Webhook,
 } from "./types"
 
@@ -140,10 +141,6 @@ function mutateRoot(mutator: (current: DashboardRoot) => DashboardRoot) {
   writeRoot(mutator(rootFromRaw(readRaw())))
 }
 
-function uniqueIds(ids: string[]): string[] {
-  return [...new Set(ids.filter(Boolean))]
-}
-
 function mutate(mutator: (current: DashboardState) => DashboardState) {
   mutateRoot((root) => {
     const current = root.workspaces[root.activeTeamId]
@@ -154,317 +151,6 @@ function mutate(mutator: (current: DashboardState) => DashboardState) {
         ...root.workspaces,
         [root.activeTeamId]: mutator(current),
       },
-    }
-  })
-}
-
-type ContactInput = {
-  email: string
-  firstName?: string
-  lastName?: string
-  unsubscribed?: boolean
-  properties?: Record<string, string>
-  segmentIds?: string[]
-}
-
-function buildContact(
-  current: DashboardState,
-  input: ContactInput,
-  email: string
-): Contact {
-  return {
-    id: createId("con"),
-    email,
-    firstName: input.firstName?.trim() ?? "",
-    lastName: input.lastName?.trim() ?? "",
-    createdAt: Date.now(),
-    unsubscribed: input.unsubscribed ?? false,
-    segmentIds: uniqueIds(input.segmentIds ?? []),
-    topics: current.topics.map((topic) => ({
-      topicId: topic.id,
-      subscription: defaultTopicSubscription(topic),
-    })),
-    properties: input.properties ?? {},
-  }
-}
-
-function mergeContact(existing: Contact, input: ContactInput): Contact {
-  return {
-    ...existing,
-    firstName: input.firstName?.trim() || existing.firstName,
-    lastName: input.lastName?.trim() || existing.lastName,
-    unsubscribed: input.unsubscribed ?? existing.unsubscribed,
-    segmentIds: uniqueIds([
-      ...existing.segmentIds,
-      ...(input.segmentIds ?? []),
-    ]),
-    properties: { ...existing.properties, ...(input.properties ?? {}) },
-  }
-}
-
-function addContact(input: ContactInput) {
-  const current = activeWorkspace(rootFromRaw(readRaw()))
-  const contact = buildContact(current, input, input.email.trim().toLowerCase())
-  mutate((prev) => ({ ...prev, contacts: [contact, ...prev.contacts] }))
-  return contact
-}
-
-/** Creates or merges by email. Rows that repeat an address within the same
-    batch merge into the row that introduced it. */
-function upsertContacts(inputs: ContactInput[]) {
-  let created = 0
-  let updated = 0
-  mutate((current) => {
-    const contacts = [...current.contacts]
-    const indexByEmail = new Map(
-      contacts.map((contact, index) => [contact.email, index])
-    )
-    const added = new Map<string, Contact>()
-    for (const input of inputs) {
-      const email = input.email.trim().toLowerCase()
-      if (!email) continue
-      const index = indexByEmail.get(email)
-      if (index !== undefined) {
-        contacts[index] = mergeContact(contacts[index], input)
-        updated += 1
-        continue
-      }
-      const pending = added.get(email)
-      if (pending) {
-        added.set(email, mergeContact(pending, input))
-        updated += 1
-        continue
-      }
-      added.set(email, buildContact(current, input, email))
-      created += 1
-    }
-    return {
-      ...current,
-      contacts: [...[...added.values()].reverse(), ...contacts],
-    }
-  })
-  return { created, updated }
-}
-
-function updateContact(
-  id: string,
-  patch: Partial<
-    Pick<Contact, "firstName" | "lastName" | "unsubscribed" | "properties">
-  >
-) {
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.map((contact) =>
-      contact.id === id ? { ...contact, ...patch } : contact
-    ),
-  }))
-}
-
-function deleteContact(id: string) {
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.filter((contact) => contact.id !== id),
-  }))
-}
-
-function deleteContacts(ids: string[]) {
-  const remove = new Set(ids)
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.filter((contact) => !remove.has(contact.id)),
-  }))
-}
-
-function setContactSegments(id: string, segmentIds: string[]) {
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.map((contact) =>
-      contact.id === id ? { ...contact, segmentIds } : contact
-    ),
-  }))
-}
-
-function addContactsToSegments(ids: string[], segmentIds: string[]) {
-  const selected = new Set(ids)
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.map((contact) =>
-      selected.has(contact.id)
-        ? {
-            ...contact,
-            segmentIds: uniqueIds([...contact.segmentIds, ...segmentIds]),
-          }
-        : contact
-    ),
-  }))
-}
-
-function withTopic(
-  contact: Contact,
-  topicId: string,
-  subscription: TopicSubscription
-): Contact {
-  const hasTopic = contact.topics.some((item) => item.topicId === topicId)
-  return {
-    ...contact,
-    topics: hasTopic
-      ? contact.topics.map((item) =>
-          item.topicId === topicId ? { ...item, subscription } : item
-        )
-      : [...contact.topics, { topicId, subscription }],
-  }
-}
-
-function setContactTopic(
-  id: string,
-  topicId: string,
-  subscription: TopicSubscription
-) {
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.map((contact) =>
-      contact.id === id ? withTopic(contact, topicId, subscription) : contact
-    ),
-  }))
-}
-
-function subscribeContactsToTopics(ids: string[], topicIds: string[]) {
-  const selected = new Set(ids)
-  mutate((current) => ({
-    ...current,
-    contacts: current.contacts.map((contact) =>
-      selected.has(contact.id)
-        ? topicIds.reduce(
-            (next, topicId) => withTopic(next, topicId, "subscribed"),
-            contact
-          )
-        : contact
-    ),
-  }))
-}
-
-function addSegment(name: string) {
-  const id = createId("seg")
-  mutate((current) => ({
-    ...current,
-    segments: [
-      { id, name: name.trim(), createdAt: Date.now() },
-      ...current.segments,
-    ],
-  }))
-  return { id }
-}
-
-function updateSegment(id: string, name: string) {
-  mutate((current) => ({
-    ...current,
-    segments: current.segments.map((segment) =>
-      segment.id === id ? { ...segment, name: name.trim() } : segment
-    ),
-  }))
-}
-
-function deleteSegment(id: string) {
-  mutate((current) => ({
-    ...current,
-    segments: current.segments.filter((segment) => segment.id !== id),
-    contacts: current.contacts.map((contact) => ({
-      ...contact,
-      segmentIds: contact.segmentIds.filter((segmentId) => segmentId !== id),
-    })),
-    broadcasts: current.broadcasts.map((broadcast) =>
-      broadcast.segmentId === id ? { ...broadcast, segmentId: null } : broadcast
-    ),
-  }))
-}
-
-function addTopic(input: {
-  name: string
-  description: string
-  defaultSubscription: TopicDefault
-  visibility: TopicVisibility
-}) {
-  const id = createId("top")
-  mutate((current) => ({
-    ...current,
-    topics: [
-      {
-        id,
-        name: input.name.trim(),
-        description: input.description.trim(),
-        defaultSubscription: input.defaultSubscription,
-        visibility: input.visibility,
-        createdAt: Date.now(),
-      },
-      ...current.topics,
-    ],
-  }))
-  return { id }
-}
-
-function updateTopic(
-  id: string,
-  patch: Partial<Pick<Topic, "name" | "description" | "visibility">>
-) {
-  mutate((current) => ({
-    ...current,
-    topics: current.topics.map((topic) =>
-      topic.id === id ? { ...topic, ...patch } : topic
-    ),
-  }))
-}
-
-function deleteTopic(id: string) {
-  mutate((current) => ({
-    ...current,
-    topics: current.topics.filter((topic) => topic.id !== id),
-    contacts: current.contacts.map((contact) => ({
-      ...contact,
-      topics: contact.topics.filter((item) => item.topicId !== id),
-    })),
-    broadcasts: current.broadcasts.map((broadcast) =>
-      broadcast.topicId === id ? { ...broadcast, topicId: null } : broadcast
-    ),
-  }))
-}
-
-function addProperty(input: {
-  name: string
-  key: string
-  type: PropertyType
-  fallbackValue?: string
-}) {
-  const id = createId("prop")
-  const fallbackValue = input.fallbackValue?.trim()
-  mutate((current) => ({
-    ...current,
-    properties: [
-      {
-        id,
-        name: input.name.trim(),
-        key: normalizePropertyKey(input.key),
-        type: input.type,
-        fallbackValue: fallbackValue || undefined,
-        createdAt: Date.now(),
-      },
-      ...current.properties,
-    ],
-  }))
-  return { id }
-}
-
-function deleteProperty(id: string) {
-  mutate((current) => {
-    const property = current.properties.find((item) => item.id === id)
-    return {
-      ...current,
-      properties: current.properties.filter((item) => item.id !== id),
-      contacts: current.contacts.map((contact) => {
-        if (!property) return contact
-        const next = { ...contact.properties }
-        delete next[property.key]
-        return { ...contact, properties: next }
-      }),
     }
   })
 }
@@ -895,15 +581,20 @@ function deleteAutomation(id: string) {
   }))
 }
 
-/** Sends the trigger event for one contact and starts a run. */
+/** Sends the trigger event for one contact and starts a run. Contacts and
+    segments are the team's real ones, so the caller passes them in. */
 function runAutomation(
   id: string,
-  input: { contactId: string; payload: Record<string, unknown> }
+  input: {
+    contact: Contact | undefined
+    segments: Segment[]
+    payload: Record<string, unknown>
+  }
 ): boolean {
   let made = false
   mutate((current) => {
     const automation = current.automations.find((item) => item.id === id)
-    const contact = current.contacts.find((item) => item.id === input.contactId)
+    const contact = input.contact
     if (!automation || !contact) return current
     made = true
     return {
@@ -914,7 +605,7 @@ function runAutomation(
           automation,
           contact,
           payload: input.payload,
-          context: current,
+          context: { ...current, segments: input.segments },
           now: Date.now(),
         }),
         ...current.automationRuns,
@@ -1062,23 +753,6 @@ function resetDemo() {
 }
 
 const actions = {
-  addContact,
-  upsertContacts,
-  updateContact,
-  deleteContact,
-  deleteContacts,
-  setContactSegments,
-  addContactsToSegments,
-  setContactTopic,
-  subscribeContactsToTopics,
-  addSegment,
-  updateSegment,
-  deleteSegment,
-  addTopic,
-  updateTopic,
-  deleteTopic,
-  addProperty,
-  deleteProperty,
   createApiKey,
   updateApiKey,
   deleteApiKey,
@@ -1185,6 +859,25 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => templateRows?.map((row) => asTemplate(row)) ?? [],
     [templateRows]
   )
+  /* The audience is real as well. Demo screens that read it (broadcasts,
+     automations, the unsubscribe preview, the editor's merge tags) get
+     every segment, topic and property, and the newest page of contacts. */
+  const segments = useSegments()
+  const topics = useTopics()
+  const properties = useProperties()
+  const contactPage = useQuery(
+    api.contacts.list,
+    auth.activeTeamId
+      ? {
+          organizationId: auth.activeTeamId,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  const contacts = useMemo(
+    () => contactPage?.page.map(asContact) ?? [],
+    [contactPage]
+  )
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -1225,6 +918,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         ...demo,
         domains,
         templates,
+        contacts,
+        segments: segments ?? [],
+        topics: topics ?? [],
+        properties: properties ?? [],
         members,
         settings: {
           ...demo.settings,
@@ -1269,6 +966,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     auth,
     domains,
     templates,
+    contacts,
+    segments,
+    topics,
+    properties,
     create,
     switchTeam,
     rename,

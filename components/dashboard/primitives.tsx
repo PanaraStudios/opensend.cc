@@ -589,6 +589,36 @@ export function usePagination<T>(rows: readonly T[]) {
   }
 }
 
+/** `usePagination` over rows a paginated query has loaded so far: paging
+    past them loads more. Spread `pagination` into `ListPagination`. */
+export function useLoadedPagination<T>(
+  rows: readonly T[],
+  query: {
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted"
+    loadMore: (numItems: number) => void
+  }
+) {
+  const { pageRows, pagination } = usePagination(rows)
+  const canLoad = query.status === "CanLoadMore"
+  return {
+    pageRows,
+    pagination: {
+      ...pagination,
+      hasMore: query.status !== "Exhausted",
+      loading: query.status === "LoadingMore",
+      onPageChange(page: number) {
+        if (canLoad && (page + 1) * pagination.pageSize > rows.length)
+          query.loadMore(pagination.pageSize)
+        pagination.onPageChange(page)
+      },
+      onPageSizeChange(size: number) {
+        pagination.onPageSizeChange(size)
+        if (canLoad && size > rows.length) query.loadMore(size - rows.length)
+      },
+    },
+  }
+}
+
 /** Footer for a paged list: position, page size, and the two step buttons. */
 export function ListPagination({
   page,
@@ -1625,11 +1655,14 @@ export function ToolbarFilters({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
 }: {
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  /** The real clock, for lists of real records; see `DateRangePicker`. */
+  now?: number
   filters?: readonly ToolbarFilter[]
 }) {
   return (
@@ -1639,6 +1672,7 @@ export function ToolbarFilters({
           range={range}
           onRangeChange={onRangeChange}
           allowAllTime={allowAllTime}
+          now={now}
         />
       ) : null}
       {filters.map((filter) => (
@@ -1665,6 +1699,7 @@ export function ListToolbar({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
   onExport,
   children,
@@ -1675,6 +1710,7 @@ export function ListToolbar({
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  now?: number
   filters?: readonly ToolbarFilter[]
   onExport?: () => void
   children?: React.ReactNode
@@ -1696,6 +1732,7 @@ export function ListToolbar({
         range={range}
         onRangeChange={onRangeChange}
         allowAllTime={allowAllTime}
+        now={now}
         filters={filters}
       />
       {children}
