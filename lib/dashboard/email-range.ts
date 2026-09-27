@@ -72,11 +72,12 @@ export function rangeFromPreset(
 }
 
 export function presetFromRange(
-  range: DateRange | undefined
+  range: DateRange | undefined,
+  now?: number
 ): RangePreset | "custom" {
   if (!range?.from) return "all"
   for (const { value: preset } of RANGE_PRESETS) {
-    const candidate = rangeFromPreset(preset)
+    const candidate = rangeFromPreset(preset, now)
     if (
       candidate.from &&
       isSameDay(candidate.from, range.from) &&
@@ -90,10 +91,11 @@ export function presetFromRange(
 
 export function rangeLabel(
   range: DateRange | undefined,
-  allowAllTime = false
+  allowAllTime = false,
+  now?: number
 ): string {
   if (!range?.from) return allowAllTime ? ALL_TIME_PRESET.label : "Date range"
-  const preset = presetFromRange(range)
+  const preset = presetFromRange(range, now)
   if (preset !== "custom" && preset !== "all") {
     return (
       RANGE_PRESETS.find((item) => item.value === preset)?.label ?? "Date range"
@@ -113,12 +115,22 @@ export function rangeAfterCalendarClear(
   return allowAllTime ? undefined : defaultEmailRange()
 }
 
+/** The range's first and last millisecond, whole days; none for all time. */
+export function rangeBounds(range: DateRange | undefined): {
+  from?: number
+  to?: number
+} {
+  if (!range?.from) return {}
+  return {
+    from: startOfDay(range.from).getTime(),
+    to: endOfDay(range.to ?? range.from).getTime(),
+  }
+}
+
 export function inDateRange(
   timestamp: number,
   range: DateRange | undefined
 ): boolean {
-  if (!range?.from) return true
-  const start = startOfDay(range.from).getTime()
-  const end = endOfDay(range.to ?? range.from).getTime()
-  return timestamp >= start && timestamp <= end
+  const { from = -Infinity, to = Infinity } = rangeBounds(range)
+  return timestamp >= from && timestamp <= to
 }

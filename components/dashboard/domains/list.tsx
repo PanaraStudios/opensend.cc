@@ -36,7 +36,7 @@ import {
   IconCell,
   ListToolbar,
   ListPagination,
-  usePagination,
+  useLoadedPagination,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -240,11 +240,7 @@ export function DomainsView() {
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const search = useDebouncedValue(query)
 
-  const {
-    results,
-    status: loading,
-    loadMore,
-  } = usePaginatedQuery(
+  const domains = usePaginatedQuery(
     api.domains.list,
     organizationId
       ? {
@@ -258,9 +254,12 @@ export function DomainsView() {
       : "skip",
     { initialNumItems: 40 }
   )
-  const rows = React.useMemo(() => results.map(asDomain), [results])
+  const rows = React.useMemo(
+    () => domains.results.map(asDomain),
+    [domains.results]
+  )
   const check = useDomainCheck(rows)
-  const { pageRows, pagination } = usePagination(rows)
+  const { pageRows, pagination } = useLoadedPagination(rows, domains)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
@@ -301,7 +300,7 @@ export function DomainsView() {
           },
         ]}
       />
-      {loading === "LoadingFirstPage" ? (
+      {domains.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
@@ -396,25 +395,7 @@ export function DomainsView() {
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination
-            {...pagination}
-            noun="domain"
-            hasMore={loading !== "Exhausted"}
-            loading={loading === "LoadingMore"}
-            onPageChange={(page) => {
-              if (
-                (page + 1) * pagination.pageSize > rows.length &&
-                loading === "CanLoadMore"
-              )
-                loadMore(pagination.pageSize)
-              pagination.onPageChange(page)
-            }}
-            onPageSizeChange={(size) => {
-              pagination.onPageSizeChange(size)
-              if (size > rows.length && loading === "CanLoadMore")
-                loadMore(size - rows.length)
-            }}
-          />
+          <ListPagination {...pagination} noun="domain" />
         </>
       )}
       <AddDomainDialog open={addOpen} onOpenChange={setAddOpen} />

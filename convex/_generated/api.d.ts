@@ -9,10 +9,13 @@
  */
 
 import type * as access from "../access.js";
+import type * as audience from "../audience.js";
 import type * as auth from "../auth.js";
 import type * as authEmail from "../authEmail.js";
 import type * as authHttp from "../authHttp.js";
 import type * as authOptions from "../authOptions.js";
+import type * as contactProperties from "../contactProperties.js";
+import type * as contacts from "../contacts.js";
 import type * as crons from "../crons.js";
 import type * as domains from "../domains.js";
 import type * as email_render from "../email/render.js";
@@ -27,6 +30,7 @@ import type * as oauthAdmin from "../oauthAdmin.js";
 import type * as oauthHttp from "../oauthHttp.js";
 import type * as oauthProvider from "../oauthProvider.js";
 import type * as oidc from "../oidc.js";
+import type * as segments from "../segments.js";
 import type * as ses_adoption from "../ses/adoption.js";
 import type * as ses_aws from "../ses/aws.js";
 import type * as ses_contracts from "../ses/contracts.js";
@@ -49,12 +53,14 @@ import type * as ses_verify from "../ses/verify.js";
 import type * as ses_web from "../ses/web.js";
 import type * as ses_workflows from "../ses/workflows.js";
 import type * as sso from "../sso.js";
+import type * as tables_audience from "../tables/audience.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_events from "../tables/events.js";
 import type * as tables_ses from "../tables/ses.js";
 import type * as teams from "../teams.js";
 import type * as tenants from "../tenants.js";
 import type * as testHelpers_snsFixture from "../testHelpers/snsFixture.js";
+import type * as topics from "../topics.js";
 
 import type {
   ApiFromModules,
@@ -64,10 +70,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  audience: typeof audience;
   auth: typeof auth;
   authEmail: typeof authEmail;
   authHttp: typeof authHttp;
   authOptions: typeof authOptions;
+  contactProperties: typeof contactProperties;
+  contacts: typeof contacts;
   crons: typeof crons;
   domains: typeof domains;
   "email/render": typeof email_render;
@@ -82,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   oauthHttp: typeof oauthHttp;
   oauthProvider: typeof oauthProvider;
   oidc: typeof oidc;
+  segments: typeof segments;
   "ses/adoption": typeof ses_adoption;
   "ses/aws": typeof ses_aws;
   "ses/contracts": typeof ses_contracts;
@@ -104,12 +114,14 @@ declare const fullApi: ApiFromModules<{
   "ses/web": typeof ses_web;
   "ses/workflows": typeof ses_workflows;
   sso: typeof sso;
+  "tables/audience": typeof tables_audience;
   "tables/domains": typeof tables_domains;
   "tables/events": typeof tables_events;
   "tables/ses": typeof tables_ses;
   teams: typeof teams;
   tenants: typeof tenants;
   "testHelpers/snsFixture": typeof testHelpers_snsFixture;
+  topics: typeof topics;
 }>;
 
 /**

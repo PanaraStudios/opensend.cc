@@ -428,7 +428,13 @@ function TestEventForm({
             setError(`Rejected with 422: ${problem}`)
             return
           }
-          if (!runAutomation(automation.id, { contactId, payload: body })) {
+          if (
+            !runAutomation(automation.id, {
+              contact: state.contacts.find((item) => item.id === contactId),
+              segments: state.segments,
+              payload: body,
+            })
+          ) {
             setError("Choose a contact")
             return
           }
