@@ -238,7 +238,7 @@ export const create = mutation({
   },
   returns: v.id("domains"),
   handler: async (ctx, args) => {
-    await requireTeam(ctx, args.organizationId, true)
+    await requireTeam(ctx, args.organizationId, "write")
     const name = normalizeDomainName(args.name)
     const customReturnPath = args.customReturnPath.trim().toLowerCase()
     const error =
@@ -287,7 +287,7 @@ export const refresh = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     await start(ctx, domain, retryOperation(domain))
     return null
   },
@@ -300,7 +300,7 @@ export const verify = mutation({
   returns: v.boolean(),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     if (domain.phase === "failed") {
       await start(ctx, domain, retryOperation(domain))
       return false
@@ -322,7 +322,7 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const domain = await findActiveDomain(ctx, args.id)
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     // A refresh or TLS change that failed left the provisioned domain intact,
     // so its settings stay editable; an unfinished provision or removal does not.
     if (!provisioned(domain))
@@ -366,7 +366,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     await start(ctx, domain, "remove")
     return null
   },
@@ -502,7 +502,7 @@ export const writable = internalQuery({
   returns: schema.doc("domains"),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     return domain
   },
 })
@@ -592,7 +592,7 @@ export const previewContext = internalQuery({
       throw new ConvexError(
         "Review a failed domain provisioning operation first"
       )
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     return domain
   },
 })
@@ -604,7 +604,7 @@ export const savePreview = internalMutation({
     const domain = await ctx.db.get("domains", args.id)
     if (!domain || domain.phase !== "failed" || domain.deleted)
       throw new ConvexError("Domain changed. Review it again.")
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     await ctx.db.patch("domains", domain._id, { adoption: args.adoption })
     return null
   },
@@ -625,7 +625,7 @@ export const approveAdoption = mutation({
       throw new ConvexError(
         "Review the current AWS identity before approving changes"
       )
-    await requireTeam(ctx, domain.organizationId, true)
+    await requireTeam(ctx, domain.organizationId, "write")
     await ctx.db.patch("domains", domain._id, {
       adoption: { ...domain.adoption, approved: true },
       needsAdoptionReview: undefined,

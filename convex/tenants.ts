@@ -108,7 +108,7 @@ export const retry = mutation({
   args: { organizationId: v.string(), region: regionValue },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireTeam(ctx, args.organizationId, true)
+    await requireTeam(ctx, args.organizationId, "write")
     const row = await findTenant(ctx, args.organizationId, args.region)
     if (row && tenantProvisioned(row))
       await ctx.db.patch("sesTenants", row._id, { phase: "pending" })

@@ -1,6 +1,6 @@
 import { parseCsv } from "@/lib/dashboard/csv"
 import { REGIONS, type Region } from "@/lib/dashboard/types"
-import { resourcePrefix } from "@/convex/ses/contracts"
+import { POLICY_REVISION, resourcePrefix } from "@/convex/ses/contracts"
 
 export const IAM_USERS_URL = "https://console.aws.amazon.com/iam/home#/users"
 export const AWS_SETUP_FILENAME = "opensend-aws-access.json"
@@ -30,16 +30,33 @@ export function cloudFormationConsoleUrl(region: Region) {
   return `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/create`
 }
 const sub = (value: string) => ({ "Fn::Sub": value })
+type Statement = {
+  Sid: string
+  Effect: "Allow"
+  Action: string[]
+  Resource: "*" | ReturnType<typeof sub>[]
+  Condition?: Record<string, Record<string, string | string[]>>
+}
+type Policy = { Version: "2012-10-17"; Statement: Statement[] }
+const policies = { setup: buildAwsSetupPolicy, sending: buildAwsSendingPolicy }
+export type AwsPolicyKind = keyof typeof policies
+/** IAM caps a managed policy at 6,144 characters, so the permissions ship as
+    two policies: setup (revision 1) and sending/receiving (revision 2). */
+export const AWS_IAM_POLICY_FILES: Record<AwsPolicyKind, string> = {
+  setup: "opensend-iam-policy.json",
+  sending: "opensend-iam-sending-policy.json",
+}
 
 /** A ready-to-paste policy for repairing an existing IAM user's permissions. */
 export function buildAwsIamPolicy(
   installationId: string,
   regions: readonly Region[],
-  accountId: string
+  accountId: string,
+  kind: AwsPolicyKind = "setup"
 ) {
   if (!/^\d{12}$/.test(accountId))
     throw new Error("Use a 12-digit AWS account ID")
-  const policy = buildAwsSetupPolicy(installationId, regions)
+  const policy = policies[kind](installationId, regions)
   return {
     ...policy,
     Statement: policy.Statement.map((statement) => ({
@@ -55,20 +72,31 @@ export function buildAwsIamPolicy(
     })),
   }
 }
+function policyScope(installationId: string, selected: readonly Region[]) {
+  const prefix = resourcePrefix(checkedInstallationId(installationId))
+  const regions = checkedRegions(selected)
+  return {
+    prefix,
+    regions,
+    resources: (service: string, suffix: string) =>
+      regions.map((region) =>
+        sub(
+          `arn:\${AWS::Partition}:${service}:${region}:\${AWS::AccountId}:${suffix}`
+        )
+      ),
+    inRegions: { StringEquals: { "aws:RequestedRegion": regions } },
+  }
+}
 
 /** Permissions for the actual provisioning/domain operations, not account administration. */
 export function buildAwsSetupPolicy(
   installationId: string,
   selected: readonly Region[]
-) {
-  const prefix = resourcePrefix(checkedInstallationId(installationId))
-  const regions = checkedRegions(selected)
-  const resources = (service: string, suffix: string) =>
-    regions.map((region) =>
-      sub(
-        `arn:\${AWS::Partition}:${service}:${region}:\${AWS::AccountId}:${suffix}`
-      )
-    )
+): Policy {
+  const { prefix, regions, resources, inRegions } = policyScope(
+    installationId,
+    selected
+  )
   return {
     Version: "2012-10-17",
     Statement: [
@@ -83,7 +111,7 @@ export function buildAwsSetupPolicy(
         Effect: "Allow",
         Action: ["ses:GetAccount"],
         Resource: "*",
-        Condition: { StringEquals: { "aws:RequestedRegion": regions } },
+        Condition: inRegions,
       },
       {
         Sid: "ManageSendingDomains",
@@ -185,6 +213,114 @@ export function buildAwsSetupPolicy(
   }
 }
 
+/** What sending, suppression sync, tracking, tenant pausing and receiving
+    need. Added in policy revision 2. */
+export function buildAwsSendingPolicy(
+  installationId: string,
+  selected: readonly Region[]
+): Policy {
+  const { prefix, resources, inRegions } = policyScope(installationId, selected)
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "SendTeamEmail",
+        Effect: "Allow",
+        Action: ["ses:SendEmail"],
+        Resource: [
+          ...resources("ses", "identity/*"),
+          ...resources("ses", `configuration-set/${prefix}-*`),
+        ],
+        // A send without one of this installation's tenants is refused.
+        Condition: { StringLike: { "ses:TenantName": `${prefix}-t-*` } },
+      },
+      {
+        Sid: "ManageSuppressedDestinations",
+        Effect: "Allow",
+        Action: [
+          "ses:GetSuppressedDestination",
+          "ses:ListSuppressedDestinations",
+          "ses:PutSuppressedDestination",
+          "ses:DeleteSuppressedDestination",
+        ],
+        // The account-level suppression list has no resource ARN.
+        Resource: "*",
+        Condition: inRegions,
+      },
+      {
+        Sid: "ConfigureTracking",
+        Effect: "Allow",
+        Action: ["ses:PutConfigurationSetTrackingOptions"],
+        Resource: resources("ses", `configuration-set/${prefix}-*`),
+      },
+      {
+        Sid: "PauseTeamSending",
+        Effect: "Allow",
+        Action: [
+          "ses:GetReputationEntity",
+          "ses:UpdateReputationEntityCustomerManagedStatus",
+        ],
+        Resource: resources("ses", `tenant/${prefix}-t-*`),
+      },
+      {
+        Sid: "ManageInboundRules",
+        Effect: "Allow",
+        Action: [
+          "ses:DescribeActiveReceiptRuleSet",
+          "ses:DescribeReceiptRuleSet",
+          "ses:DescribeReceiptRule",
+          "ses:CreateReceiptRuleSet",
+          "ses:SetActiveReceiptRuleSet",
+          "ses:CreateReceiptRule",
+          "ses:UpdateReceiptRule",
+          "ses:DeleteReceiptRule",
+        ],
+        // Receipt rules have no resource-level permissions.
+        Resource: "*",
+        Condition: inRegions,
+      },
+      {
+        Sid: "ManageInboundMailBucket",
+        Effect: "Allow",
+        Action: [
+          "s3:CreateBucket",
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
+          "s3:GetLifecycleConfiguration",
+          "s3:PutLifecycleConfiguration",
+          "s3:GetEncryptionConfiguration",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+          "s3:GetObject",
+          "s3:DeleteObject",
+        ],
+        // S3 ARNs carry no region or account; the pattern covers the objects too.
+        Resource: [sub(`arn:\${AWS::Partition}:s3:::${prefix}-inbound*`)],
+        Condition: inRegions,
+      },
+      {
+        Sid: "ManageInboundNotifications",
+        Effect: "Allow",
+        Action: [
+          "sns:CreateTopic",
+          "sns:GetTopicAttributes",
+          "sns:ListTagsForResource",
+          "sns:TagResource",
+          "sns:SetTopicAttributes",
+          "sns:ListSubscriptionsByTopic",
+          "sns:Subscribe",
+          "sns:ConfirmSubscription",
+          "sns:GetSubscriptionAttributes",
+          "sns:SetSubscriptionAttributes",
+        ],
+        Resource: resources("sns", `${prefix}-inbound`),
+      },
+    ],
+  }
+}
+
 /** Contains no access keys, login profile, or secrets in stack outputs. */
 export function buildAwsSetupTemplate(input: {
   installationId: string
@@ -196,11 +332,9 @@ export function buildAwsSetupTemplate(input: {
     throw new Error(
       "Use 1–64 letters, numbers, or +=,.@_- for the AWS user name"
     )
-  const policy = buildAwsSetupPolicy(input.installationId, input.regions)
   return {
     AWSTemplateFormatVersion: "2010-09-09",
-    Description:
-      "Create an Opensend IAM user with SES tenant and domain setup, SNS notification and SQS recovery permissions. No console login or access keys are created.",
+    Description: `Opensend AWS access, permissions revision ${POLICY_REVISION}. Creates an IAM user that can set up SES tenants and domains, send and receive mail, and manage SNS notifications, SQS recovery and the inbound mail bucket. No console login or access keys are created.`,
     Parameters: {
       UserName: {
         Type: "String",
@@ -220,7 +354,23 @@ export function buildAwsSetupTemplate(input: {
         Properties: {
           Description:
             "Scoped permissions for Opensend setup and domain management",
-          PolicyDocument: policy,
+          PolicyDocument: buildAwsSetupPolicy(
+            input.installationId,
+            input.regions
+          ),
+        },
+      },
+      OpensendSendingPolicy: {
+        Type: "AWS::IAM::ManagedPolicy",
+        DeletionPolicy: "Retain",
+        UpdateReplacePolicy: "Retain",
+        Properties: {
+          Description:
+            "Scoped permissions for Opensend sending, suppression, tracking and receiving",
+          PolicyDocument: buildAwsSendingPolicy(
+            input.installationId,
+            input.regions
+          ),
         },
       },
       OpensendUser: {
@@ -230,7 +380,10 @@ export function buildAwsSetupTemplate(input: {
         Properties: {
           UserName: { Ref: "UserName" },
           Tags: [{ Key: "opensend:installation", Value: input.installationId }],
-          ManagedPolicyArns: [{ Ref: "OpensendPolicy" }],
+          ManagedPolicyArns: [
+            { Ref: "OpensendPolicy" },
+            { Ref: "OpensendSendingPolicy" },
+          ],
         },
       },
     },
@@ -249,9 +402,18 @@ export function buildAwsSetupTemplate(input: {
           "Open the user above to create an access key, then return to Opensend.",
         Value: IAM_USERS_URL,
       },
+      PolicyRevision: {
+        Description: "Opensend checks for this permissions revision.",
+        Value: String(POLICY_REVISION),
+      },
     },
   }
 }
+
+/** The setup template as the file the admin uploads to CloudFormation. */
+export const awsSetupTemplateFile = (
+  input: Parameters<typeof buildAwsSetupTemplate>[0]
+) => JSON.stringify(buildAwsSetupTemplate(input), null, 2) + "\n"
 
 /** AWS's downloaded CSV is parsed locally. Never echo its contents in an error. */
 export function parseAwsCredentialsCsv(source: string) {

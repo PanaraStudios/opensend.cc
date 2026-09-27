@@ -24,6 +24,7 @@ import {
   setupStepValue,
   tenantProvisioned,
 } from "./ses/contracts"
+import { limitPermissionCheck } from "./ses/limits"
 import { internal } from "./_generated/api"
 import { startWorkflow } from "./ses/workflows"
 import type { MutationCtx } from "./_generated/server"
@@ -82,6 +83,7 @@ export const status = query({
                 credentialKind: installation.credentialKind,
                 accessKeyLast4: installation.accessKeyLast4,
                 credentialRevision: installation.credentialRevision,
+                policyRevision: installation.policyRevision,
               }
             : {}),
         }
@@ -181,6 +183,37 @@ export const connection = internalQuery({
   returns: schema.doc("installation"),
   handler: (ctx) => requireConnection(ctx),
 })
+/** The connection and its regions for one paced AWS permission check. */
+export const beginPermissionCheck = internalMutation({
+  args: {},
+  returns: v.object({
+    installation: schema.doc("installation"),
+    regions: v.array(regionValue),
+  }),
+  handler: async (ctx) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await requireConnection(ctx)
+    const regions = await listRegions(ctx)
+    if (!regions.length) throw new ConvexError("Enable an AWS region first")
+    await limitPermissionCheck(ctx)
+    return { installation, regions: regions.map((region) => region.region) }
+  },
+})
+export const recordPolicyRevision = internalMutation({
+  args: { credentialRevision: v.number(), policyRevision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await requireConnection(ctx)
+    // A check made with replaced credentials proves nothing about the new ones.
+    if (installation.credentialRevision !== args.credentialRevision)
+      throw new ConvexError("Setup changed. Reload and try again.")
+    await ctx.db.patch("installation", installation._id, {
+      policyRevision: args.policyRevision,
+    })
+    return null
+  },
+})
 export const saveEnvironment = internalMutation({
   args: { siteUrl: v.string(), callbackOrigin: v.string() },
   returns: v.id("installation"),
@@ -248,6 +281,8 @@ export const activateConnection = internalMutation({
       accessKeyLast4: args.accessKeyLast4,
       defaultRegion: args.defaultRegion,
       credentialRevision: args.revision + 1,
+      // New credentials may belong to a user with an older policy.
+      policyRevision: undefined,
       ...(!installation.completedAt ? { setupStep: "callback" as const } : {}),
     })
     for (const item of args.regions) {
@@ -306,7 +341,7 @@ export async function completeInstallation(
   organizationId: string
 ) {
   await requireInstallationAdmin(ctx)
-  await requireTeam(ctx, organizationId, true)
+  await requireTeam(ctx, organizationId, "admin")
   const installation = await findInstallation(ctx)
   if (!installation?.accountId) throw new ConvexError("Connect AWS first")
   if (installation.completedAt) return

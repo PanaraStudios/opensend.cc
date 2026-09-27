@@ -155,6 +155,9 @@ export function installationUrl(value: string, allowLocal = false) {
     throw new Error("Use a public HTTPS hostname")
   return url.origin
 }
+/** Bumped whenever the generated IAM policy gains permissions. An installation
+    without a recorded revision runs revision 1, the setup-only policy. */
+export const POLICY_REVISION = 2
 export function resourcePrefix(installationId: string) {
   return `opensend-${installationId}`
 }

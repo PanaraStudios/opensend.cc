@@ -1,3 +1,4 @@
+import type { HttpRouter } from "convex/server"
 import { httpAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { BodyTooLarge, limitedBody, setupProof } from "./web"
@@ -21,3 +22,7 @@ export const receive = httpAction(async (ctx, request) => {
     return new Response("SNS event was not accepted", { status: 503 })
   }
 })
+export function registerSesRoutes(http: HttpRouter) {
+  http.route({ path: "/ses/health", method: "GET", handler: health })
+  http.route({ path: "/ses/events", method: "POST", handler: receive })
+}

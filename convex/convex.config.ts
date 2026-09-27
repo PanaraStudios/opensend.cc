@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import betterAuth from "./betterAuth/convex.config"
 import workflow from "@convex-dev/workflow/convex.config.js"
 import rateLimiter from "@convex-dev/rate-limiter/convex.config.js"
+import workpool from "@convex-dev/workpool/convex.config.js"
 const app = defineApp({
   env: {
     SITE_URL: v.string(),
@@ -20,4 +21,7 @@ const app = defineApp({
 app.use(betterAuth)
 app.use(workflow)
 app.use(rateLimiter)
+// Separate pools so a webhook backlog never delays outgoing mail.
+app.use(workpool, { name: "sendPool" })
+app.use(workpool, { name: "webhookPool" })
 export default app

@@ -4,6 +4,8 @@ import { describe, it } from "node:test"
 import { SEED_STATE } from "./data"
 import {
   availableVariables,
+  escapeHtml,
+  fillVariables,
   formatVariable,
   hasUnsubscribeLink,
   parseVariables,
@@ -60,6 +62,28 @@ describe("availableVariables", () => {
     assert.equal(
       variables.filter((one) => one.name === "contact.first_name").length,
       1
+    )
+  })
+})
+
+describe("fillVariables", () => {
+  it("fills values, falls back when missing or empty, and escapes", () => {
+    const source = `Hi ${formatVariable("contact.first_name", "there")} ${formatVariable("contact.plan")}!`
+    assert.equal(
+      fillVariables(source, { "contact.first_name": "Ada" }),
+      "Hi Ada !"
+    )
+    assert.equal(
+      fillVariables(source, { "contact.first_name": "" }),
+      "Hi there !"
+    )
+    assert.equal(
+      fillVariables(
+        source,
+        { "contact.first_name": '<b>"A&B"</b>' },
+        escapeHtml
+      ),
+      "Hi &lt;b&gt;&quot;A&amp;B&quot;&lt;/b&gt; !"
     )
   })
 })

@@ -129,7 +129,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireSetupComplete(ctx)
-    await requireTeam(ctx, args.organizationId, !args.leave)
+    await requireTeam(ctx, args.organizationId, args.leave ? "read" : "admin")
     const sid = await sessionId(ctx)
     // Leaving retires the team only when this member is its last one.
     if (

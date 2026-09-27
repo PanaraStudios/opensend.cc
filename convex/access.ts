@@ -63,15 +63,19 @@ export async function requireInstallationAdmin(
 ) {
   if (!(await installationAccess(ctx)).admin) throw new ConvexError(message)
 }
+/** Team roles follow Resend: every member reads and writes the product
+    (domains, keys, emails, audience…); only admins (stored as `owner`)
+    manage members, invitations, SSO and the team itself. */
+export type TeamAccess = "read" | "write" | "admin"
 export async function requireTeam(
   ctx: QueryCtx | MutationCtx | ActionCtx,
   organizationId: string,
-  write = false
+  access: TeamAccess = "read"
 ) {
   await ctx.runQuery(components.betterAuth.policy.authorizeTeam, {
     sessionId: await sessionId(ctx),
     organizationId,
-    write,
+    owner: access === "admin",
   })
 }
 export async function requireSetupComplete(ctx: QueryCtx | MutationCtx) {

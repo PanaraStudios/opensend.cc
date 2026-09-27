@@ -1,7 +1,8 @@
 import { v, ConvexError } from "convex/values"
 import { internalQuery } from "../_generated/server"
-import { findRegion } from "../access"
+import { findInstallation, findRegion } from "../access"
 import {
+  POLICY_REVISION,
   provisioned,
   regionValue,
   tenantMatches,
@@ -18,6 +19,9 @@ export const get = internalQuery({
     domain: v.string(),
   }),
   handler: async (ctx, args) => {
+    // No recorded revision is the setup-only policy, which cannot send.
+    if (((await findInstallation(ctx))?.policyRevision ?? 1) < POLICY_REVISION)
+      throw new ConvexError("Ask your administrator to update AWS permissions")
     const domain = await ctx.db.get("domains", args.domainId)
     if (
       !domain ||

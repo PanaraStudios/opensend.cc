@@ -3,7 +3,7 @@ import * as React from "react"
 import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
 import { domainCheckResult } from "@/lib/dashboard/domains"
 import type { Domain } from "@/lib/dashboard/types"
@@ -54,9 +54,7 @@ export function useDomainCommands() {
   const remove = useMutation(api.domains.remove)
   const update = useMutation(api.domains.update)
   const applyUrl = useAction(api.ses.domainConnect.apply)
-  const canWrite =
-    workspace.teams.find((t) => t.id === workspace.activeTeamId)?.role ===
-    "admin"
+  const { canWrite } = useTeamRole()
   return {
     organizationId: workspace.activeTeamId,
     canWrite,

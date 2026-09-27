@@ -30,6 +30,7 @@
     "test:e2e": "node scripts/test-e2e.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1136.0",
     "@aws-sdk/client-sesv2": "3.1131.0",
     "@aws-sdk/client-sns": "^3.1136.0",
     "@aws-sdk/client-sqs": "^3.1136.0",
@@ -38,9 +39,11 @@
     "@base-ui/react": "^1.8.0",
     "@better-auth/oauth-provider": "1.6.15",
     "@bprogress/next": "^3.2.12",
+    "@convex-dev/aggregate": "0.3.1",
     "@convex-dev/better-auth": "0.12.5",
     "@convex-dev/rate-limiter": "0.3.2",
     "@convex-dev/workflow": "^0.4.8",
+    "@convex-dev/workpool": "0.4.12",
     "@react-email/components": "^1.0.12",
     "@react-email/editor": "^1.7.7",
     "@react-email/render": "^2.1.0",

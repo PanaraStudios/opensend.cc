@@ -2,6 +2,7 @@ import { createLocalJWKSet, jwtVerify } from "jose"
 import { ConvexError } from "convex/values"
 import { httpAction, env } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
+import type { HttpRouter } from "convex/server"
 import { components } from "./_generated/api"
 import { createAuth } from "./auth"
 import { oauthServer } from "./oauthProvider"
@@ -423,3 +424,27 @@ export const handler = httpAction(async (ctx, request) => {
     return json({ error: "invalid_request", error_description: message }, 400)
   }
 })
+export function registerOAuthRoutes(http: HttpRouter) {
+  for (const path of [
+    "/oauth/authorize",
+    "/oauth/jwks",
+    "/oauth/flow",
+    "/oauth/grants",
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-authorization-server/oauth",
+  ])
+    http.route({ path, method: "GET", handler })
+  for (const path of [
+    "/oauth/register",
+    "/oauth/token",
+    "/oauth/revoke",
+    "/oauth/introspect",
+    "/oauth/flow",
+  ])
+    http.route({ path, method: "POST", handler })
+  http.route({
+    pathPrefix: "/oauth/grants/",
+    method: "DELETE",
+    handler,
+  })
+}

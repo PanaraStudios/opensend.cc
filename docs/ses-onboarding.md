@@ -48,7 +48,7 @@ setup file with `opensend` as the default user name and the required permissions
 for the selected regions. **Open AWS setup** opens the CloudFormation console.
 Upload the file, use the copied stack name, review the IAM acknowledgement and
 submit. AWS determines the account ID from the account you are signed into.
-The template creates a dedicated user and a scoped managed policy; it does not
+The template creates a dedicated user and two scoped managed policies; it does not
 create console access or expose access-key secrets in stack outputs.
 
 After the stack completes, open the user in IAM and create an access key. Download
@@ -100,10 +100,14 @@ remain readable with their original SES encryption environment key.
 Workflows contain resource IDs and load current credentials only inside actions.
 Replacement credentials are validated before activation using a revision check.
 
-Provisioning requires the following IAM actions. This is a **setup** policy,
-not the future mail-sending policy. Substitute the account, enabled regions,
-installation ID displayed in the resource preview, and allowed sending domains.
-Use an AWS role with these permissions, or a dedicated least-privilege IAM user.
+Opensend needs the following IAM actions. IAM caps a managed policy at 6,144
+characters, so they ship as two managed policies: the **setup** policy
+(`OpensendPolicy`, revision 1) and the **sending** policy
+(`OpensendSendingPolicy`, added in revision 2) for sending, suppression sync,
+tracking, pausing a team's sending and receiving. Substitute the account,
+enabled regions, installation ID displayed in the resource preview, and allowed
+sending domains. Use an AWS role with these permissions, or a dedicated
+least-privilege IAM user.
 
 | Resource scope                                                         | Actions                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -112,6 +116,44 @@ Use an AWS role with these permissions, or a dedicated least-privilege IAM user.
 | `arn:aws:ses:REGION:ACCOUNT:identity/YOUR_DOMAIN`                      | `ses:CreateEmailIdentity`, `ses:GetEmailIdentity`, `ses:DeleteEmailIdentity`, `ses:PutEmailIdentityMailFromAttributes`, `ses:PutEmailIdentityConfigurationSetAttributes`, `ses:TagResource`, `ses:UntagResource`                                                                                                                                                   |
 | `arn:aws:sns:REGION:ACCOUNT:opensend-INSTALLATION-events`              | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:SetTopicAttributes`, `sns:ListSubscriptionsByTopic`, `sns:Subscribe`, `sns:ConfirmSubscription`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`                                                                                                  |
 | `arn:aws:sqs:REGION:ACCOUNT:opensend-INSTALLATION-events-dlq`          | `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:ListQueueTags`, `sqs:TagQueue`, `sqs:SetQueueAttributes`                                                                                                                                                                                                                                      |
+
+The sending policy (revision 2) adds:
+
+| Resource scope                                                                                                                                          | Actions                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `arn:aws:ses:REGION:ACCOUNT:identity/*` and `configuration-set/opensend-INSTALLATION-*`, only when `ses:TenantName` is like `opensend-INSTALLATION-t-*` | `ses:SendEmail`                                                                                                                                                                                                                                                                                   |
+| `*` in the enabled regions (the account-level suppression list has no ARN)                                                                              | `ses:GetSuppressedDestination`, `ses:ListSuppressedDestinations`, `ses:PutSuppressedDestination`, `ses:DeleteSuppressedDestination`                                                                                                                                                               |
+| `arn:aws:ses:REGION:ACCOUNT:configuration-set/opensend-INSTALLATION-*`                                                                                  | `ses:PutConfigurationSetTrackingOptions`                                                                                                                                                                                                                                                          |
+| `arn:aws:ses:REGION:ACCOUNT:tenant/opensend-INSTALLATION-t-*`                                                                                           | `ses:GetReputationEntity`, `ses:UpdateReputationEntityCustomerManagedStatus`                                                                                                                                                                                                                      |
+| `*` in the enabled regions (receipt rules have no resource-level permissions)                                                                           | `ses:DescribeActiveReceiptRuleSet`, `ses:DescribeReceiptRuleSet`, `ses:DescribeReceiptRule`, `ses:CreateReceiptRuleSet`, `ses:SetActiveReceiptRuleSet`, `ses:CreateReceiptRule`, `ses:UpdateReceiptRule`, `ses:DeleteReceiptRule`                                                                 |
+| `arn:aws:s3:::opensend-INSTALLATION-inbound*` (buckets and their objects), in the enabled regions                                                       | `s3:CreateBucket`, `s3:ListBucket`, `s3:GetBucketPolicy`, `s3:PutBucketPolicy`, `s3:GetLifecycleConfiguration`, `s3:PutLifecycleConfiguration`, `s3:GetEncryptionConfiguration`, `s3:PutEncryptionConfiguration`, `s3:GetBucketTagging`, `s3:PutBucketTagging`, `s3:GetObject`, `s3:DeleteObject` |
+| `arn:aws:sns:REGION:ACCOUNT:opensend-INSTALLATION-inbound`                                                                                              | The same SNS actions as the events topic                                                                                                                                                                                                                                                          |
+
+The tenant condition means AWS refuses any send that does not name one of this
+installation's team tenants. SES allows one active receipt rule set per region;
+Opensend adds its rule to the active set and creates and activates its own set
+only when none is active. IAM cannot tell sets apart, so that rule is enforced
+by Opensend, not by the policy.
+
+### Permissions revisions
+
+The setup file names its revision in its description and in the
+`PolicyRevision` stack output. An installation with no recorded revision is on
+revision 1, which cannot send: every send path stops with "Ask your
+administrator to update AWS permissions". When the installation is behind,
+`/instance/ses` shows the installation administrator an **AWS permissions**
+card. Download the new setup file and update the existing stack with
+**Replace existing template**, or create a policy from the sending permissions
+file and attach it to the Opensend user. Then choose **Check permissions**.
+
+The check runs two harmless calls in every enabled region with the
+installation's credentials. A `SendEmail` from `probe@permission-check.invalid`
+to the SES mailbox simulator, named for one of this installation's tenants: SES
+always rejects it (the domain can never be verified), so nothing is sent. And a
+read-only `DescribeActiveReceiptRuleSet`. An access denial means the new
+permissions are missing. Any documented SES rejection means IAM allowed the
+call. Only then is the revision recorded. Checks are rate limited, and AWS
+error details are never shown.
 
 ### Optional: automatic DNS setup
 
@@ -137,7 +179,7 @@ credentials. SCPs, permission boundaries and session policies also apply. IAM
 simulation is not presented as proof that provisioning will succeed.
 
 If tenant setup fails, the domain page shows the tenant error and explains why DNS
-records are not available. **Download IAM permissions** exports the current policy
+records are not available. **Download IAM permissions** exports the setup policy
 with the installation's account, regions and resource names filled in. For an AWS
 access denial, review/update the existing user's managed policy in IAM, then choose
 **Retry operation**. This retries tenant setup and continues domain provisioning;

@@ -32,7 +32,7 @@ import {
   IAM_USERS_URL,
   MAX_CREDENTIAL_CSV_BYTES,
   awsSetupStackName,
-  buildAwsSetupTemplate,
+  awsSetupTemplateFile,
   cloudFormationConsoleUrl,
   parseAwsCredentialsCsv,
   validIamUserName,
@@ -126,11 +126,7 @@ function AwsAccessInstructions({
             onClick={() => {
               downloadTextFile(
                 AWS_SETUP_FILENAME,
-                JSON.stringify(
-                  buildAwsSetupTemplate({ installationId, regions, userName }),
-                  null,
-                  2
-                ) + "\n"
+                awsSetupTemplateFile({ installationId, regions, userName })
               )
               setDownloaded(true)
             }}

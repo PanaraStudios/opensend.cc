@@ -4078,7 +4078,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       authorizeTeam: FunctionReference<
         "query",
         "internal",
-        { organizationId: string; sessionId: string; write: boolean },
+        { organizationId: string; owner: boolean; sessionId: string },
         null,
         Name
       >;
@@ -4093,6 +4093,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           name: string;
           userId: string;
         },
+        Name
+      >;
+      transferInstallationAdmin: FunctionReference<
+        "mutation",
+        "internal",
+        { email: string },
+        null,
         Name
       >;
     };

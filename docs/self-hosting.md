@@ -15,6 +15,12 @@ The setup command generates `.env.docker` with mode 0600, starts Convex, generat
 
 Open http://localhost:3000/signup. The first account claims instance setup atomically. Verify its email, sign in, and create a team. Subsequent accounts require a pending invitation matching their email. Deleting the first account does not reopen registration. A team invitation does not become a membership until the recipient accepts it.
 
+The first account is the installation administrator: only it can change the AWS connection, regions and other instance-wide SES settings. Inside a team, every member manages the product (domains, keys, emails, audience); team admins also manage members, invitations, SSO and the team itself. To hand the installation administrator role to another verified account, run:
+
+```sh
+pnpm backend run installationAdmin:transfer '{"email":"new-admin@example.com"}'
+```
+
 Auth emails currently use a console transport. View them in the Convex dashboard at http://localhost:6791, or use the helper below. Each message is one JSON log entry with recipient, subject, content, and actionLink. These logs contain sign-in and recovery links; restrict log access. SMTP is not configured.
 
 ```sh

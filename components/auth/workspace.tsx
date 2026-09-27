@@ -22,6 +22,15 @@ export function useWorkspace() {
   if (!value) throw new Error("Account data is not available")
   return value
 }
+/** Mirrors `requireTeam` in convex/access.ts: any member writes the product;
+    only admins manage the team itself. */
+export function useTeamRole() {
+  const workspace = useWorkspace()
+  const role = workspace.teams.find(
+    (t) => t.id === workspace.activeTeamId
+  )?.role
+  return { canWrite: role !== undefined, isAdmin: role === "admin" }
+}
 export function AccountTeamAccess({ account }: { account: Workspace }) {
   return (
     <Context.Provider value={account}>
