@@ -69,6 +69,17 @@ export function parseUnsubscribed(value: string): boolean | undefined {
   return undefined
 }
 
+/** One CSV line (RFC 4180), with a CRLF. A cell a spreadsheet would run as
+    a formula is prefixed with an apostrophe. */
+export function csvLine(cells: readonly string[]): string {
+  return `${cells
+    .map((cell) => {
+      const safe = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell
+      return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
+    })
+    .join(",")}\r\n`
+}
+
 function splitCsvLines(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = []

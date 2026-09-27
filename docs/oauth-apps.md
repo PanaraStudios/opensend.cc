@@ -18,7 +18,7 @@ All URLs use the running application's public origin, configured by `SITE_URL`.
 | `GET /.well-known/oauth-authorization-server/oauth` | Authorization-server metadata (root alias also available) |
 | `GET /oauth/jwks` | Public signing keys |
 
-`full_access` permits grant listing and revocation. `emails:send` reserves permission for sending, but **email sending and other product APIs are not implemented on this branch**. Account security and membership management never accept OAuth tokens. Hosted client metadata discovery is deferred.
+`full_access` permits grant listing and revocation, and every [REST API](rest-api.md) endpoint. `emails:send` is the equivalent of a sending-access API key: it reaches only the sending endpoints. Account security and membership management never accept OAuth tokens. Hosted client metadata discovery is deferred.
 
 ## Register and authorize
 
@@ -111,7 +111,7 @@ Maintenance invalidates existing authorizations. Reconnect after updating or rot
 
 Profile shows the signed-in user's authorizations across teams. Settings → Team → Authorized apps shows all live authorizations for the selected team to its admins, including authorizations created by other admins. Both views share the same records and revocation controls. Disconnect takes effect immediately. Ordinary logout preserves integrations. Password reset, admin removal/demotion, user/team deletion, app maintenance, and SSO connection/policy changes invalidate access. Reconnecting creates a new grant ID, so old tokens cannot become valid again.
 
-`authorizeOAuth` in `convex/oauthHttp.ts` checks signature, expiration, separate issuer/audience, and live authorization, returning user, team, application, grant, and scopes. Future product endpoints must also call `liveGrant` and check resource ownership **inside the mutation/query that reads or writes the resource**. Never use the dashboard session helper for an OAuth token. The current grant API demonstrates this second check.
+`authorizeOAuth` in `convex/oauthHttp.ts` checks signature, expiration, separate issuer/audience, and live authorization, returning user, team, application, grant, and scopes. Product endpoints must also call `liveGrant` and check resource ownership **inside the mutation/query that reads or writes the resource**; REST routes built with `apiRoute` do this through `requireCaller` (`convex/api/caller.ts`). Never use the dashboard session helper for an OAuth token. The current grant API demonstrates this second check.
 
 OAuth signing keys live in `oauthJwks`, separate from dashboard keys. Client secrets, authorization codes, and refresh tokens are hashed. Convex transaction reservations make upstream code consumption and refresh rotation exclusive across workers; persistent replay tombstones and live grants prevent a late racing token issuance from restoring revoked access. The upstream Better Auth provider retains responsibility for PKCE verification, protocol code issuance, refresh token generation and signing.
 

@@ -9,6 +9,15 @@
  */
 
 import type * as access from "../access.js";
+import type * as api_caller from "../api/caller.js";
+import type * as api_domains from "../api/domains.js";
+import type * as api_http from "../api/http.js";
+import type * as api_keys from "../api/keys.js";
+import type * as api_logs from "../api/logs.js";
+import type * as api_paging from "../api/paging.js";
+import type * as api_route from "../api/route.js";
+import type * as api_state from "../api/state.js";
+import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
 import type * as authEmail from "../authEmail.js";
 import type * as authHttp from "../authHttp.js";
@@ -17,10 +26,13 @@ import type * as crons from "../crons.js";
 import type * as domains from "../domains.js";
 import type * as email_render from "../email/render.js";
 import type * as events from "../events.js";
+import type * as exportSources from "../exportSources.js";
+import type * as exports from "../exports.js";
 import type * as http from "../http.js";
 import type * as installation from "../installation.js";
 import type * as installationActions from "../installationActions.js";
 import type * as installationAdmin from "../installationAdmin.js";
+import type * as logs from "../logs.js";
 import type * as oauth from "../oauth.js";
 import type * as oauthAdapter from "../oauthAdapter.js";
 import type * as oauthAdmin from "../oauthAdmin.js";
@@ -49,8 +61,10 @@ import type * as ses_verify from "../ses/verify.js";
 import type * as ses_web from "../ses/web.js";
 import type * as ses_workflows from "../ses/workflows.js";
 import type * as sso from "../sso.js";
+import type * as tables_api from "../tables/api.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_events from "../tables/events.js";
+import type * as tables_exports from "../tables/exports.js";
 import type * as tables_ses from "../tables/ses.js";
 import type * as teams from "../teams.js";
 import type * as tenants from "../tenants.js";
@@ -64,6 +78,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  "api/caller": typeof api_caller;
+  "api/domains": typeof api_domains;
+  "api/http": typeof api_http;
+  "api/keys": typeof api_keys;
+  "api/logs": typeof api_logs;
+  "api/paging": typeof api_paging;
+  "api/route": typeof api_route;
+  "api/state": typeof api_state;
+  apiKeys: typeof apiKeys;
   auth: typeof auth;
   authEmail: typeof authEmail;
   authHttp: typeof authHttp;
@@ -72,10 +95,13 @@ declare const fullApi: ApiFromModules<{
   domains: typeof domains;
   "email/render": typeof email_render;
   events: typeof events;
+  exportSources: typeof exportSources;
+  exports: typeof exports;
   http: typeof http;
   installation: typeof installation;
   installationActions: typeof installationActions;
   installationAdmin: typeof installationAdmin;
+  logs: typeof logs;
   oauth: typeof oauth;
   oauthAdapter: typeof oauthAdapter;
   oauthAdmin: typeof oauthAdmin;
@@ -104,8 +130,10 @@ declare const fullApi: ApiFromModules<{
   "ses/web": typeof ses_web;
   "ses/workflows": typeof ses_workflows;
   sso: typeof sso;
+  "tables/api": typeof tables_api;
   "tables/domains": typeof tables_domains;
   "tables/events": typeof tables_events;
+  "tables/exports": typeof tables_exports;
   "tables/ses": typeof tables_ses;
   teams: typeof teams;
   tenants: typeof tenants;
