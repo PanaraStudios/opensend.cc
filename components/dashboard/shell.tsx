@@ -435,6 +435,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const installation = useQuery(api.installation.status)
   const setupPending = !installation?.installation?.completedAt
+  const installationAdmin = installation?.admin === true
 
   React.useEffect(() => {
     if (setupPending) return
@@ -453,7 +454,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
       <SidebarProvider>
         <DashboardSidebar
           setupPending={setupPending}
-          installationAdmin={installation?.admin === true}
+          installationAdmin={installationAdmin}
           onSearch={() => setSearchOpen(true)}
         />
         <SidebarInset className="min-w-0 bg-background">
@@ -466,7 +467,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
           <CommandMenu
             open={searchOpen}
             onOpenChange={setSearchOpen}
-            installationAdmin={installation?.admin === true}
+            installationAdmin={installationAdmin}
           />
         )}
       </SidebarProvider>

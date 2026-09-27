@@ -101,6 +101,22 @@ export const provisioned = (domain: {
   domain.phase === "ready" ||
   (domain.phase === "failed" &&
     (domain.operation === "refresh" || domain.operation === "settings"))
+/** A tenant that finished provisioning and is not being removed. */
+export const tenantProvisioned = (tenant: {
+  phase: Infer<typeof phaseValue>
+  operation: "provision" | "remove"
+  deleted: boolean
+}) =>
+  tenant.phase === "ready" &&
+  !tenant.deleted &&
+  tenant.operation === "provision"
+/** A domain's tenant must be its own team's, in the domain's region. */
+export const tenantMatches = (
+  tenant: { organizationId: string; region: string },
+  domain: { organizationId: string; region: string }
+) =>
+  tenant.organizationId === domain.organizationId &&
+  tenant.region === domain.region
 
 export function validateRegion(value: string) {
   if (!regions.some((r) => r === value))

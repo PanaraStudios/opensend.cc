@@ -227,12 +227,6 @@ export function emptyWorkspace(
         ...SEED_STATE.settings.unsubscribe,
         brandName: name,
       },
-      ses: {
-        ...SEED_STATE.settings.ses,
-        connected: false,
-        accessKeyLast4: "",
-        configurationSet: "",
-      },
       smtp: {
         ...SEED_STATE.settings.smtp,
         enabled: false,

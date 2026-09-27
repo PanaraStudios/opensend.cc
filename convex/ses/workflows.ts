@@ -2,12 +2,27 @@ import {
   WorkflowManager,
   vResultValidator,
   vWorkflowId,
+  type WorkflowId,
 } from "@convex-dev/workflow"
 import { v } from "convex/values"
+import type { FunctionArgs, FunctionReference } from "convex/server"
 import { components, internal } from "../_generated/api"
-import { internalMutation } from "../_generated/server"
+import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 export const workflow = new WorkflowManager(components.workflow)
+/** Every workflow is started with `cleanup`, so no journal outlives its run. */
+export function startWorkflow<
+  F extends FunctionReference<"mutation", "internal">,
+>(
+  ctx: MutationCtx,
+  ref: F,
+  args: FunctionArgs<F>["args"]
+): Promise<WorkflowId> {
+  return workflow.start(ctx, ref, args, {
+    onComplete: internal.ses.workflows.cleanup,
+    context: null,
+  })
+}
 /** The component never reclaims a finished workflow's journal on its own. */
 export const cleanup = internalMutation({
   args: {

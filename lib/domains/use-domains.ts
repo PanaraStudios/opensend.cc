@@ -1,5 +1,6 @@
 "use client"
 import { useAction, useMutation } from "convex/react"
+import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -34,19 +35,12 @@ export function asDomain(row: Doc<"domains">): Domain {
     ],
   }
 }
+export type DnsAutoConfigResult = FunctionReturnType<
+  typeof api.ses.dnsAutoConfig.configure
+>
 /** One record the provider already holds with another value, which we never
     overwrite. The user fixes these by hand. */
-export type DnsAutoConfigConflict = {
-  name: string
-  type: string
-  reason: string
-}
-
-export type DnsAutoConfigResult = {
-  created: number
-  skipped: number
-  conflicts: DnsAutoConfigConflict[]
-}
+export type DnsAutoConfigConflict = DnsAutoConfigResult["conflicts"][number]
 
 export function useDomainCommands() {
   const workspace = useWorkspace()

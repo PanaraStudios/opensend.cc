@@ -24,9 +24,9 @@ import {
   certificateUrl,
   parseSns,
   stringToSign,
-  limitedBody,
   verifySignature,
 } from "./ses/sns"
+import { limitedBody } from "./ses/web"
 import {
   SESv2Client,
   type GetEmailIdentityResponse,

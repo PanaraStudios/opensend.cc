@@ -42,21 +42,18 @@ export function AwsAccessSetup({
   installationId,
   regions,
   defaultRegion,
-  compact = false,
 }: {
   installationId: string
   regions: Region[]
   defaultRegion: Region
-  compact?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   return (
     <>
       <Button
         type="button"
-        variant={compact ? "ghost" : "outline"}
-        size={compact ? "sm" : "default"}
-        className={compact ? undefined : "w-full"}
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen(true)}
       >
         Create AWS user

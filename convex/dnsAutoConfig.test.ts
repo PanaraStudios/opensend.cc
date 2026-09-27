@@ -497,6 +497,8 @@ describe("automatic DNS setup on Cloudflare", () => {
 type RecordSet = {
   Name: string
   Type: string
+  TTL?: number
+  SetIdentifier?: string
   ResourceRecords?: { Value: string }[]
 }
 function route53Api(sets: RecordSet[], fail?: string) {
@@ -616,6 +618,48 @@ describe("automatic DNS setup on Route 53", () => {
       },
     })
   })
+  test("keeps an existing set's TTL and leaves routing-policy sets alone", async () => {
+    const f = await fixture("route53")
+    const aws = route53Api([
+      {
+        Name: `${spf.name}.`,
+        Type: "TXT",
+        TTL: 3600,
+        ResourceRecords: [{ Value: '"google-site-verification=abc"' }],
+      },
+      {
+        Name: `${dmarc.name}.`,
+        Type: "TXT",
+        TTL: 60,
+        SetIdentifier: "primary",
+        ResourceRecords: [{ Value: '"unrelated=1"' }],
+      },
+    ])
+    const result = await f.configure()
+    expect(result.conflicts).toEqual([
+      {
+        name: dmarc.name,
+        type: "TXT",
+        reason:
+          "This name uses a Route 53 routing policy. Add the value to it by hand.",
+      },
+    ])
+    expect(aws.changes).toContainEqual(
+      expect.objectContaining({
+        Action: "UPSERT",
+        ResourceRecordSet: expect.objectContaining({
+          Name: spf.name,
+          TTL: 3600,
+        }),
+      })
+    )
+    expect(
+      aws.changes.some(
+        (change) =>
+          (change.ResourceRecordSet as { Name: string }).Name === dmarc.name
+      )
+    ).toBe(false)
+  })
   test("names the optional IAM permissions when AWS denies the write", async () => {
     const f = await fixture("route53")
     route53Api([], "AccessDeniedException")
@@ -657,6 +701,14 @@ describe("automatic DNS setup authorization", () => {
       ctx.db.patch("domains", f.domain, { records, phase: "running" })
     )
     await expect(f.configure()).rejects.toThrow("already running")
+    // Writing records must never restart a removal that stopped.
+    await f.t.run((ctx) =>
+      ctx.db.patch("domains", f.domain, {
+        phase: "failed",
+        operation: "remove",
+      })
+    )
+    await expect(f.configure()).rejects.toThrow("being removed")
   })
   test("route53 refuses a team admin who is not an installation admin", async () => {
     const f = await fixture("route53")

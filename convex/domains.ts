@@ -9,20 +9,31 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server"
-import { requireTeam, requireInstallationAdmin } from "./access"
-import { adoptionValue, dnsProviderValue } from "./ses/contracts"
-import { completeInstallation, findInstallation } from "./installation"
-import { internal } from "./_generated/api"
-import schema from "./schema"
 import {
+  findInstallation,
+  findRegion,
+  requireTeam,
+  requireInstallationAdmin,
+} from "./access"
+import {
+  adoptionValue,
+  dnsProviderValue,
   domainStatusValue,
   provisioned,
   regionValue,
+  tenantMatches,
   tlsValue,
 } from "./ses/contracts"
-import { validateDomainName, validateDnsLabel } from "../lib/dashboard/domains"
-import { workflow } from "./ses/workflows"
-import type { MutationCtx } from "./_generated/server"
+import { completeInstallation } from "./installation"
+import { internal } from "./_generated/api"
+import schema from "./schema"
+import {
+  normalizeDomainName,
+  validateDomainName,
+  validateDnsLabel,
+} from "../lib/dashboard/domains"
+import { startWorkflow } from "./ses/workflows"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
 export const list = query({
@@ -98,13 +109,21 @@ export const get = query({
     return {
       domain,
       tenant:
-        tenant?.organizationId === domain.organizationId &&
-        tenant.region === domain.region
+        tenant && tenantMatches(tenant, domain)
           ? { _id: tenant._id, phase: tenant.phase, error: tenant.error }
           : null,
     }
   },
 })
+/** Load a domain that has not been removed, or throw. */
+export async function findActiveDomain(
+  ctx: QueryCtx | MutationCtx,
+  id: Id<"domains">
+) {
+  const domain = await ctx.db.get("domains", id)
+  if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+  return domain
+}
 /** History is append-only per domain; keep only the newest entries. */
 export async function logHistory(
   ctx: MutationCtx,
@@ -138,12 +157,9 @@ export async function start(
     ...(operation === "remove" ? { sending: false } : {}),
   })
   await logHistory(ctx, domain._id, `${operation} requested`)
-  await workflow.start(
-    ctx,
-    internal.ses.workflows.domainOperationWithTenant,
-    { domainId: domain._id },
-    { onComplete: internal.ses.workflows.cleanup, context: null }
-  )
+  await startWorkflow(ctx, internal.ses.workflows.domainOperationWithTenant, {
+    domainId: domain._id,
+  })
 }
 export const create = mutation({
   args: {
@@ -155,16 +171,13 @@ export const create = mutation({
   returns: v.id("domains"),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, true)
-    const name = args.name.trim().toLowerCase()
+    const name = normalizeDomainName(args.name)
     const customReturnPath = args.customReturnPath.trim().toLowerCase()
     const error =
       validateDomainName(name, []) || validateDnsLabel(customReturnPath)
     if (error || `${customReturnPath}.${name}`.length > 253)
       throw new ConvexError(error ?? "Return-Path is too long")
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", args.region))
-      .unique()
+    const region = await findRegion(ctx, args.region)
     if (!region || region.phase !== "ready")
       throw new ConvexError(
         "Provision this AWS region in installation settings first"
@@ -204,8 +217,7 @@ export const refresh = mutation({
   args: { id: v.id("domains") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, true)
     await start(ctx, domain, retryOperation(domain))
     return null
@@ -220,8 +232,7 @@ export const update = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get("domains", args.id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, args.id)
     await requireTeam(ctx, domain.organizationId, true)
     // A refresh or TLS change that failed left the provisioned domain intact,
     // so its settings stay editable; an unfinished provision or removal does not.
@@ -265,8 +276,7 @@ export const remove = mutation({
   args: { id: v.id("domains") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, true)
     await start(ctx, domain, "remove")
     return null
@@ -280,22 +290,14 @@ export const workerContext = internalQuery({
     tenant: v.union(v.null(), schema.doc("sesTenants")),
   }),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
-    const region = await ctx.db
-      .query("sesRegions")
-      .withIndex("by_region", (q) => q.eq("region", domain.region))
-      .unique()
+    const domain = await findActiveDomain(ctx, id)
+    const region = await findRegion(ctx, domain.region)
     if (!region?.topicArn || region.phase !== "ready")
       throw new ConvexError("Region is not ready")
     const tenant = domain.tenantId
       ? await ctx.db.get("sesTenants", domain.tenantId)
       : null
-    if (
-      tenant &&
-      (tenant.organizationId !== domain.organizationId ||
-        tenant.region !== domain.region)
-    )
+    if (tenant && !tenantMatches(tenant, domain))
       throw new ConvexError("Domain tenant ownership does not match")
     return { domain, region, tenant }
   },
@@ -440,8 +442,7 @@ export const claimDnsProviderLookup = internalMutation({
     v.object({ name: v.string(), requestedAt: v.number() })
   ),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId)
     const now = Date.now()
     if (

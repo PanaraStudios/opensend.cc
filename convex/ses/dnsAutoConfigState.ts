@@ -1,8 +1,11 @@
 import { v, ConvexError } from "convex/values"
 import { internalMutation } from "../_generated/server"
-import { requireTeam, requireInstallationAdmin } from "../access"
-import { logHistory, retryOperation, start } from "../domains"
-import { findInstallation } from "../installation"
+import {
+  requireConnection,
+  requireTeam,
+  requireInstallationAdmin,
+} from "../access"
+import { findActiveDomain, logHistory, start } from "../domains"
 import schema from "../schema"
 import type { MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
@@ -27,8 +30,7 @@ export const claim = internalMutation({
     provider: v.union(v.literal("cloudflare"), v.literal("route53")),
   }),
   handler: async (ctx, { id }) => {
-    const domain = await ctx.db.get("domains", id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, id)
     await authorize(ctx, domain)
     const provider = domain.dnsProvider
     if (provider !== "cloudflare" && provider !== "route53")
@@ -37,6 +39,8 @@ export const claim = internalMutation({
       )
     if (domain.phase === "running")
       throw new ConvexError("A domain operation is already running")
+    if (domain.operation === "remove")
+      throw new ConvexError("This domain is being removed")
     if (!domain.records.length)
       throw new ConvexError(
         "This domain has no DNS records yet. Refresh it and try again."
@@ -46,9 +50,7 @@ export const claim = internalMutation({
       throw new ConvexError(
         "Automatic DNS setup is already running for this domain"
       )
-    const installation = await findInstallation(ctx)
-    if (!installation?.accountId || !installation.credentialKind)
-      throw new ConvexError("Connect AWS first")
+    const installation = await requireConnection(ctx)
     await ctx.db.patch("domains", id, { dnsWriteClaimedAt: now })
     return { domain, installation, provider }
   },
@@ -62,8 +64,7 @@ export const finish = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const domain = await ctx.db.get("domains", args.id)
-    if (!domain || domain.deleted) throw new ConvexError("Domain not found")
+    const domain = await findActiveDomain(ctx, args.id)
     await authorize(ctx, domain)
     await ctx.db.patch("domains", args.id, { dnsWriteClaimedAt: undefined })
     if (!args.created) return null
@@ -73,11 +74,19 @@ export const finish = internalMutation({
       args.id,
       `${args.created} DNS records written to ${label}`
     )
-    // A refresh queued while another operation runs would be rejected; the
-    // running operation rechecks DNS on its own. A failed operation is retried
-    // as itself, so a failed provision stays reviewable.
-    if (domain.phase !== "running")
-      await start(ctx, domain, retryOperation(domain))
+    /* A refresh queued while another operation runs would be rejected; the
+       running operation rechecks DNS on its own. Only a failed provision is
+       retried as itself, so it stays reviewable; anything else rechecks DNS
+       with a refresh, which also settles a pending TLS change. A removal
+       started meanwhile is never re-run from here. */
+    if (domain.phase !== "running" && domain.operation !== "remove")
+      await start(
+        ctx,
+        domain,
+        domain.phase === "failed" && domain.operation === "provision"
+          ? "provision"
+          : "refresh"
+      )
     return null
   },
 })

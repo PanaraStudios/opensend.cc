@@ -2,16 +2,9 @@
 import * as React from "react"
 import { useAction } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { ChevronDownIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm, FormInput } from "@/components/auth/ui"
-import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import {
   Field,
   FieldDescription,
@@ -20,7 +13,7 @@ import {
   FieldSet,
   FieldLegend,
 } from "@/components/ui/field"
-import { OptionSelect } from "@/components/dashboard/primitives"
+import { OptionSelect, SetupDetails } from "@/components/dashboard/primitives"
 import { REGION_ITEMS } from "@/components/dashboard/domains/shared"
 import {
   AwsAccessSetup,
@@ -30,33 +23,6 @@ import { REGIONS, type Region } from "@/lib/dashboard/types"
 import { AwsCredentialsHelp } from "./credentials-help"
 
 export type SesStatus = FunctionReturnType<typeof api.installation.status>
-export function SetupDetails({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <Collapsible className="flex flex-col gap-3">
-      <CollapsibleTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="self-start"
-          />
-        }
-      >
-        <ChevronDownIcon data-icon="inline-start" />
-        {label}
-      </CollapsibleTrigger>
-      <CollapsibleContent>{children}</CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 export function AwsConnectionForm({
   status,
   updating = false,
@@ -132,7 +98,6 @@ export function AwsConnectionForm({
               Need AWS access keys?
             </span>
             <AwsAccessSetup
-              compact
               installationId={installation._id}
               defaultRegion={region}
               regions={regions}
