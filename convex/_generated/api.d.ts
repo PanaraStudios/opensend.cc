@@ -9,7 +9,6 @@
  */
 
 import type * as access from "../access.js";
-import type * as audience from "../audience.js";
 import type * as api_caller from "../api/caller.js";
 import type * as api_domains from "../api/domains.js";
 import type * as api_http from "../api/http.js";
@@ -19,6 +18,7 @@ import type * as api_paging from "../api/paging.js";
 import type * as api_route from "../api/route.js";
 import type * as api_state from "../api/state.js";
 import type * as apiKeys from "../apiKeys.js";
+import type * as audience from "../audience.js";
 import type * as auth from "../auth.js";
 import type * as authEmail from "../authEmail.js";
 import type * as authHttp from "../authHttp.js";
@@ -65,8 +65,8 @@ import type * as ses_verify from "../ses/verify.js";
 import type * as ses_web from "../ses/web.js";
 import type * as ses_workflows from "../ses/workflows.js";
 import type * as sso from "../sso.js";
-import type * as tables_audience from "../tables/audience.js";
 import type * as tables_api from "../tables/api.js";
+import type * as tables_audience from "../tables/audience.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_events from "../tables/events.js";
 import type * as tables_exports from "../tables/exports.js";
@@ -89,7 +89,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
-  audience: typeof audience;
   "api/caller": typeof api_caller;
   "api/domains": typeof api_domains;
   "api/http": typeof api_http;
@@ -99,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   "api/route": typeof api_route;
   "api/state": typeof api_state;
   apiKeys: typeof apiKeys;
+  audience: typeof audience;
   auth: typeof auth;
   authEmail: typeof authEmail;
   authHttp: typeof authHttp;
@@ -145,8 +145,8 @@ declare const fullApi: ApiFromModules<{
   "ses/web": typeof ses_web;
   "ses/workflows": typeof ses_workflows;
   sso: typeof sso;
-  "tables/audience": typeof tables_audience;
   "tables/api": typeof tables_api;
+  "tables/audience": typeof tables_audience;
   "tables/domains": typeof tables_domains;
   "tables/events": typeof tables_events;
   "tables/exports": typeof tables_exports;

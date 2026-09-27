@@ -82,6 +82,12 @@ export function apiRoute(http: HttpRouter, options: ApiRouteOptions) {
 type Pattern = { segments: string[]; options: ApiRouteOptions }
 const routes = new WeakMap<HttpRouter, Map<string, Pattern[]>>()
 const MAX_BODY = 1_048_576
+/** Convex's runtime types have no iterable `Headers`. */
+function headerEntries(headers: Headers) {
+  const entries: [string, string][] = []
+  headers.forEach((value, name) => entries.push([name, value]))
+  return entries
+}
 const REDACTED = new Set(["authorization", "cookie", "proxy-authorization"])
 const isParam = (segment: string) =>
   segment.startsWith("{") && segment.endsWith("}")
@@ -282,7 +288,7 @@ function dispatch(patterns: Pattern[]) {
           durationMs: Date.now() - started,
           userAgent: request.headers.get("user-agent") ?? "Unknown",
           emailId,
-          requestHeaders: [...request.headers]
+          requestHeaders: headerEntries(request.headers)
             .slice(0, 50)
             .map(([name, value]) => ({
               name,
