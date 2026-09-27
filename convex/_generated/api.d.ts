@@ -52,7 +52,9 @@ import type * as sso from "../sso.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_events from "../tables/events.js";
 import type * as tables_ses from "../tables/ses.js";
+import type * as tables_templates from "../tables/templates.js";
 import type * as teams from "../teams.js";
+import type * as templates from "../templates.js";
 import type * as tenants from "../tenants.js";
 import type * as testHelpers_snsFixture from "../testHelpers/snsFixture.js";
 
@@ -107,7 +109,9 @@ declare const fullApi: ApiFromModules<{
   "tables/domains": typeof tables_domains;
   "tables/events": typeof tables_events;
   "tables/ses": typeof tables_ses;
+  "tables/templates": typeof tables_templates;
   teams: typeof teams;
+  templates: typeof templates;
   tenants: typeof tenants;
   "testHelpers/snsFixture": typeof testHelpers_snsFixture;
 }>;
