@@ -93,6 +93,11 @@ export function templateParams(domain: Doc<"domains">, zone: string) {
   const dkim = domain.records.filter((record) => record.kind === "DKIM")
   if (dkim.length !== 3)
     throw new ConvexError("SES has not issued this domain's DKIM keys yet")
+  // The template fixes the DKIM zone, so a request can't point DKIM elsewhere.
+  if (dkim.some((r) => r.value !== `${r.id}.dkim.amazonses.com`))
+    throw new ConvexError(
+      "Automatic setup doesn't support this region's DKIM zone. Add the records manually."
+    )
   const missing = (...kinds: Doc<"domains">["records"][number]["kind"][]) =>
     domain.records.some(
       (record) => kinds.includes(record.kind) && record.status !== "verified"
@@ -115,7 +120,6 @@ export function templateParams(domain: Doc<"domains">, zone: string) {
     dkim1: dkim[0].id,
     dkim2: dkim[1].id,
     dkim3: dkim[2].id,
-    dkimzone: dkim[0].value.slice(dkim[0].id.length + 1),
     mailfrom: domain.customReturnPath,
     region: domain.region,
     groupId: groups.join(","),

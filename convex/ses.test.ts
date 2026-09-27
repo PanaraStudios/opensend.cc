@@ -2486,7 +2486,6 @@ describe("Domain Connect", () => {
       dkim1: "t1",
       dkim2: "t2",
       dkim3: "t3",
-      dkimzone: "dkim.amazonses.com",
       mailfrom: "send",
       region: "us-east-1",
       groupId: "sending,dmarc",
@@ -2513,6 +2512,13 @@ describe("Domain Connect", () => {
     expect(() => templateParams(done, "example.test")).toThrow(
       "already in place"
     )
+    const elsewhere = domain()
+    elsewhere.records = elsewhere.records.map((record) =>
+      record.kind === "DKIM"
+        ? { ...record, value: `${record.id}.attacker.example` }
+        : record
+    )
+    expect(() => templateParams(elsewhere, "example.test")).toThrow("DKIM zone")
   })
   const keyPair = () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", {
