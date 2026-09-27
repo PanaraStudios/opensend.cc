@@ -236,8 +236,8 @@ set. DNS integrations, HTTPS tracking, and receiving are later milestones.
 - Enabled regions cannot yet be removed while resources may reference them.
 - SNS signatures and topic ownership are checked before confirming subscriptions
   or storing events. Notifications are deduplicated. Recipient feedback processing
-  and customer webhooks belong to later milestones; stored events are not yet
-  transformed into delivery outcomes.
+  belongs to a later milestone; stored events are not yet transformed into
+  delivery outcomes.
 - The remaining dashboard features still use their existing demo store. This
   milestone supplies no production send endpoint, API key service, SDK, or SMTP.
 - Backups need both Convex data (including components) and deployment secrets.

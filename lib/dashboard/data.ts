@@ -27,9 +27,6 @@ import type {
   Suppression,
   TeamMember,
   Topic,
-  Webhook,
-  WebhookDelivery,
-  WebhookEvent,
 } from "./types"
 
 export const DAY = 86_400_000
@@ -968,70 +965,6 @@ const automationRuns: AutomationRun[] = [
   },
 ]
 
-const webhooks: Webhook[] = [
-  {
-    id: "wh_prod",
-    endpoint: "https://api.opensend.cc/hooks/resend",
-    events: [
-      "email.delivered",
-      "email.bounced",
-      "email.complained",
-      "email.received",
-    ],
-    enabled: true,
-    signingSecret: "whsec_3f9a1c7e5b2d48f0a6c4e8b1d7f2a91c",
-    createdAt: daysAgo(27),
-  },
-  {
-    id: "wh_staging",
-    endpoint: "https://staging.opensend.cc/hooks/email",
-    events: ["email.sent", "email.failed"],
-    enabled: false,
-    signingSecret: "whsec_9d2b6f4a1c8e47b3a5d0f7c2b8e4e2b0",
-    createdAt: daysAgo(8),
-  },
-]
-
-function emailEventPayload(type: WebhookEvent, at: number) {
-  return {
-    type,
-    created_at: new Date(at).toISOString(),
-    data: {
-      email_id: "em_launch_ada",
-      from: "Opensend <hello@opensend.cc>",
-      to: ["ada@example.com"],
-      subject: "Launch week is live",
-    },
-  }
-}
-
-const webhookDeliveries: WebhookDelivery[] = (
-  [
-    ["whd_1", "wh_prod", "email.delivered", 200, 1, 212, minutesAgo(12)],
-    ["whd_2", "wh_prod", "email.bounced", 200, 1, 187, minutesAgo(95)],
-    ["whd_3", "wh_prod", "email.delivered", 500, 3, 3021, hoursAgo(5)],
-    ["whd_4", "wh_prod", "email.received", 200, 1, 240, hoursAgo(9)],
-    ["whd_5", "wh_prod", "email.complained", 200, 2, 198, daysAgo(1)],
-    ["whd_6", "wh_prod", "email.delivered", 200, 1, 176, daysAgo(2)],
-    ["whd_7", "wh_staging", "email.failed", 404, 5, 96, daysAgo(8)],
-  ] as const
-).map(([id, webhookId, event, status, attempts, durationMs, createdAt]) => ({
-  id,
-  webhookId,
-  event,
-  status,
-  attempts,
-  durationMs,
-  createdAt,
-  payload: emailEventPayload(event, createdAt),
-  response:
-    status === 200
-      ? "OK"
-      : status === 404
-        ? "Not Found"
-        : "Internal Server Error",
-}))
-
 const NODE_SDK = LOG_USER_AGENTS[0]
 
 const recentLogs: ApiLog[] = [
@@ -1217,8 +1150,6 @@ export const SEED_STATE: DashboardState = {
   automations,
   automationEvents,
   automationRuns,
-  webhooks,
-  webhookDeliveries,
   logs,
   exports: exportsSeed,
   settings: {

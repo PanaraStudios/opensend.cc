@@ -1,4 +1,5 @@
 import { v, type Infer } from "convex/values"
+import { isPublicHostname } from "../../lib/net/public-host"
 export const setupStepValue = v.union(
   v.literal("welcome"),
   v.literal("aws"),
@@ -145,13 +146,7 @@ export function installationUrl(value: string, allowLocal = false) {
     url.pathname !== "/"
   )
     throw new Error("Use an HTTPS origin without a path, query, or credentials")
-  if (
-    !allowLocal &&
-    (local ||
-      !url.hostname.includes(".") ||
-      /^[\d.]+$/.test(url.hostname) ||
-      url.hostname.includes(":"))
-  )
+  if (!allowLocal && !isPublicHostname(url.hostname))
     throw new Error("Use a public HTTPS hostname")
   return url.origin
 }

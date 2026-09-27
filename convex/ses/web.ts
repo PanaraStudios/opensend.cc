@@ -5,7 +5,13 @@ export class BodyTooLarge extends Error {
     super("SNS body too large")
   }
 }
-export async function limitedBody(response: Request | Response, limit: number) {
+/** Reads a body of at most `limit` bytes. A longer one throws, or with
+    `truncate` is cut to its first `limit` bytes. */
+export async function limitedBody(
+  response: Request | Response,
+  limit: number,
+  { truncate = false } = {}
+) {
   const reader = response.body?.getReader()
   if (!reader) return ""
   const decoder = new TextDecoder()
@@ -16,7 +22,13 @@ export async function limitedBody(response: Request | Response, limit: number) {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > limit) throw new BodyTooLarge()
+      if (size > limit) {
+        if (!truncate) throw new BodyTooLarge()
+        return (
+          body +
+          decoder.decode(value.subarray(0, limit - size + value.byteLength))
+        )
+      }
       body += decoder.decode(value, { stream: true })
     }
     return body + decoder.decode()

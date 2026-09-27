@@ -2,9 +2,11 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useQuery } from "convex/react"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
@@ -26,20 +28,29 @@ import {
   WebhooksDocsSheet,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
+import { api } from "@/convex/_generated/api"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
 import { webhookEventsLabel } from "@/lib/dashboard/webhooks"
+import { asWebhook, useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 
 export function WebhooksView() {
   const router = useRouter()
-  const { state, createWebhook } = useDashboard()
+  const { organizationId, createWebhook } = useWebhookCommands()
+  const result = useQuery(
+    api.webhooks.list,
+    organizationId ? { organizationId } : "skip"
+  )
+  const webhooks = React.useMemo(
+    () => result?.map((row) => asWebhook(row)) ?? [],
+    [result]
+  )
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
 
   const needle = searchNeedle(query)
-  const rows = state.webhooks.filter(
+  const rows = webhooks.filter(
     (item) =>
       matchesNeedle(needle, item.endpoint, ...item.events) &&
       (status === "all" || item.enabled === (status === "enabled"))
@@ -71,7 +82,9 @@ export function WebhooksView() {
           },
         ]}
       />
-      {state.webhooks.length === 0 ? (
+      {result === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : webhooks.length === 0 ? (
         <EmptyState
           icon={WebhookIcon}
           title="No webhooks yet"
@@ -125,10 +138,10 @@ export function WebhooksView() {
       <WebhookFormDialog
         open={adding}
         onOpenChange={setAdding}
-        onSubmit={(values) => {
-          const created = createWebhook(values)
+        onSubmit={async (values) => {
+          const id = await createWebhook(values)
           toast.add({ type: "success", title: "Webhook added" })
-          router.push(`/webhooks/${created.id}`)
+          router.push(`/webhooks/${id}`)
         }}
       />
       <WebhooksDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />

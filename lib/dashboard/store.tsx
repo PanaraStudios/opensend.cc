@@ -26,7 +26,7 @@ import {
   emptyBroadcastStats,
   transitionBroadcast,
 } from "./broadcast"
-import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
+import { createId, createToken, tokenParts } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -49,7 +49,6 @@ import {
   serializeRoot,
   type DashboardRoot,
 } from "./teams"
-import { replayedDelivery } from "./webhooks"
 import type {
   ApiKey,
   ApiKeyPermission,
@@ -69,7 +68,6 @@ import type {
   SuppressionReason,
   Team,
   TeamMember,
-  Webhook,
 } from "./types"
 
 let storageKey = "opensend.demo.uninitialized"
@@ -655,70 +653,6 @@ function deleteAutomationEvent(id: string) {
   }))
 }
 
-function createWebhook(input: Pick<Webhook, "endpoint" | "events">) {
-  const id = createId("wh")
-  mutate((current) => ({
-    ...current,
-    webhooks: [
-      {
-        id,
-        endpoint: input.endpoint.trim(),
-        events: input.events,
-        enabled: true,
-        signingSecret: createWebhookSecret(),
-        createdAt: Date.now(),
-      },
-      ...current.webhooks,
-    ],
-  }))
-  return { id }
-}
-
-function updateWebhook(
-  id: string,
-  patch: Partial<Pick<Webhook, "endpoint" | "events" | "enabled">>
-) {
-  mutate((current) => ({
-    ...current,
-    webhooks: current.webhooks.map((item) =>
-      item.id === id ? { ...item, ...patch } : item
-    ),
-  }))
-}
-
-function deleteWebhook(id: string) {
-  mutate((current) => ({
-    ...current,
-    webhooks: current.webhooks.filter((item) => item.id !== id),
-    webhookDeliveries: current.webhookDeliveries.filter(
-      (item) => item.webhookId !== id
-    ),
-  }))
-}
-
-function replayWebhookDelivery(id: string): { id: string } | null {
-  const source = activeWorkspace(rootFromRaw(readRaw())).webhookDeliveries.find(
-    (item) => item.id === id
-  )
-  if (!source) return null
-  const next = replayedDelivery(source, createId("whd"), Date.now())
-  mutate((current) => ({
-    ...current,
-    webhookDeliveries: [next, ...current.webhookDeliveries],
-  }))
-  return { id: next.id }
-}
-
-function rotateWebhookSecret(id: string) {
-  const signingSecret = createWebhookSecret()
-  mutate((current) => ({
-    ...current,
-    webhooks: current.webhooks.map((item) =>
-      item.id === id ? { ...item, signingSecret } : item
-    ),
-  }))
-}
-
 function addExport(resource: string, rows: number) {
   mutate((current) => ({
     ...current,
@@ -775,11 +709,6 @@ const actions = {
   cancelAutomationRun,
   saveAutomationEvent,
   deleteAutomationEvent,
-  createWebhook,
-  updateWebhook,
-  deleteWebhook,
-  rotateWebhookSecret,
-  replayWebhookDelivery,
   addExport,
   updateSettings,
   resetDemo,

@@ -506,8 +506,6 @@ export type DashboardState = {
   automations: Automation[]
   automationEvents: AutomationEvent[]
   automationRuns: AutomationRun[]
-  webhooks: Webhook[]
-  webhookDeliveries: WebhookDelivery[]
   logs: ApiLog[]
   exports: ExportJob[]
   settings: Settings

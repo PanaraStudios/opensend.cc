@@ -37,6 +37,7 @@ import {
 import { startWorkflow } from "./ses/workflows"
 import { mailRecords } from "./ses/records"
 import { limitDomainCheck } from "./ses/limits"
+import { emitEvent } from "./events"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -127,6 +128,35 @@ export async function findActiveDomain(
   const domain = await ctx.db.get("domains", id)
   if (!domain || domain.deleted) throw new ConvexError("Domain not found")
   return domain
+}
+/** Emits a `domain.*` event with the domain as it now stands, shaped like
+    the domain in Resend's domain events. */
+async function emitDomain(
+  ctx: MutationCtx,
+  id: Id<"domains">,
+  type: "domain.created" | "domain.updated" | "domain.deleted"
+) {
+  const domain = (await ctx.db.get("domains", id))!
+  await emitEvent(ctx, domain.organizationId, type, {
+    id: domain._id,
+    name: domain.name,
+    status: domain.status,
+    created_at: new Date(domain._creationTime).toISOString(),
+    region: domain.region,
+    capabilities: {
+      sending: domain.sending ? "enabled" : "disabled",
+      receiving: domain.receiving ? "enabled" : "disabled",
+    },
+    records: domain.records.map((record) => ({
+      record: record.kind,
+      name: record.name,
+      type: record.type,
+      ttl: record.ttl,
+      status: record.status,
+      value: record.value,
+      ...(record.priority === undefined ? {} : { priority: record.priority }),
+    })),
+  })
 }
 /** History is append-only per domain; keep only the newest entries. */
 export async function logHistory(
@@ -275,6 +305,7 @@ export const create = mutation({
       mailFromVerified: false,
       operation: "provision",
     })
+    await emitDomain(ctx, id, "domain.created")
     await start(ctx, (await ctx.db.get("domains", id))!, "provision")
     const installation = await findInstallation(ctx)
     if (installation && !installation.completedAt)
@@ -344,6 +375,7 @@ export const update = mutation({
       ...(tls ? { pendingTls: tls } : {}),
       ...(receiving !== undefined ? { receiving } : {}),
     })
+    await emitDomain(ctx, domain._id, "domain.updated")
     // Receiving changes which records we publish, so it needs the full refresh
     // that rebuilds and rechecks DNS; that refresh also settles a pending TLS
     // change, keeping a combined update to a single operation.
@@ -459,6 +491,9 @@ export const finish = internalMutation({
       nextCheckAt: checking ? now + checkDelay(0)! : undefined,
       checkAttempt: 0,
     })
+    if (args.changes.deleted) await emitDomain(ctx, args.id, "domain.deleted")
+    else if (status !== domain.status)
+      await emitDomain(ctx, args.id, "domain.updated")
     // A removed domain is unreadable, so its history has nowhere left to show.
     if (args.changes.deleted)
       for (const row of await ctx.db
@@ -563,7 +598,8 @@ export const saveCheck = internalMutation({
       ...next,
       checkedAt: now,
     })
-    if (status !== domain.status)
+    if (status !== domain.status) {
+      await emitDomain(ctx, args.id, "domain.updated")
       await logHistory(
         ctx,
         args.id,
@@ -573,6 +609,7 @@ export const saveCheck = internalMutation({
             ? "Domain partially verified"
             : "Waiting for DNS records"
       )
+    }
     return null
   },
 })
