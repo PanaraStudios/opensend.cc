@@ -32,6 +32,7 @@ import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asDomain } from "@/lib/domains/use-domains"
+import { asTemplate } from "@/lib/templates/use-templates"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 
@@ -43,14 +44,6 @@ import {
   serializeRoot,
   type DashboardRoot,
 } from "./teams"
-import {
-  publishedAtAfterEdit,
-  renamedTemplateAlias,
-  templateVariables,
-  UNTITLED_TEMPLATE,
-  uniqueTemplateAlias,
-  type TemplateInput,
-} from "./template"
 import { replayedDelivery } from "./webhooks"
 import type {
   ApiKey,
@@ -64,8 +57,6 @@ import type {
   CreateApiKeyResult,
   DashboardState,
   EmailStatus,
-  EmailDraft,
-  EmailTemplate,
   MemberRole,
   PropertyType,
   SentEmail,
@@ -73,7 +64,6 @@ import type {
   SuppressionReason,
   Team,
   TeamMember,
-  TemplateStatus,
   Topic,
   TopicDefault,
   TopicSubscription,
@@ -782,119 +772,6 @@ function deleteBroadcast(id: string) {
   }))
 }
 
-function addTemplate(input: TemplateInput) {
-  const id = createId("tpl")
-  mutate((current) => {
-    const name = input.name.trim() || UNTITLED_TEMPLATE
-    return {
-      ...current,
-      templates: [
-        {
-          id,
-          name,
-          alias: uniqueTemplateAlias(name, current.templates),
-          subject: input.subject.trim(),
-          preview: input.preview ?? "",
-          html: input.html ?? "",
-          content: input.content,
-          from: input.from,
-          replyTo: input.replyTo,
-          status: "draft",
-          variables: templateVariables({
-            subject: input.subject,
-            preview: input.preview ?? "",
-            html: input.html ?? "",
-          }),
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          publishedAt: null,
-        },
-        ...current.templates,
-      ],
-    }
-  })
-  return { id }
-}
-
-function updateTemplate(
-  id: string,
-  patch: Partial<Omit<EmailDraft, "id"> & Pick<EmailTemplate, "alias">>
-) {
-  const now = Date.now()
-  mutate((current) => ({
-    ...current,
-    templates: current.templates.map((item) => {
-      if (item.id !== id) return item
-      /* A template is listed and deleted by its name, so it always has one. */
-      const name =
-        patch.name === undefined
-          ? undefined
-          : patch.name.trim() || UNTITLED_TEMPLATE
-      const next = { ...item, ...patch, name: name ?? item.name }
-      return {
-        ...next,
-        alias:
-          patch.alias ?? renamedTemplateAlias(item, name, current.templates),
-        variables: templateVariables(next),
-        updatedAt: now,
-        publishedAt: publishedAtAfterEdit(item, patch, now),
-      }
-    }),
-  }))
-}
-
-function setTemplateStatus(id: string, status: TemplateStatus) {
-  const now = Date.now()
-  mutate((current) => ({
-    ...current,
-    templates: current.templates.map((item) =>
-      item.id === id
-        ? {
-            ...item,
-            status,
-            updatedAt: now,
-            publishedAt: status === "published" ? now : item.publishedAt,
-          }
-        : item
-    ),
-  }))
-}
-
-function duplicateTemplate(id: string): { id: string } | null {
-  const source = activeWorkspace(rootFromRaw(readRaw())).templates.find(
-    (item) => item.id === id
-  )
-  if (!source) return null
-  const nextId = createId("tpl")
-  mutate((current) => {
-    const name = `${source.name} copy`
-    return {
-      ...current,
-      templates: [
-        {
-          ...source,
-          id: nextId,
-          name,
-          alias: uniqueTemplateAlias(name, current.templates),
-          status: "draft",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          publishedAt: null,
-        },
-        ...current.templates,
-      ],
-    }
-  })
-  return { id: nextId }
-}
-
-function deleteTemplate(id: string) {
-  mutate((current) => ({
-    ...current,
-    templates: current.templates.filter((item) => item.id !== id),
-  }))
-}
-
 /** A new automation is blank and disabled; it is set up in the editor. */
 function addAutomation() {
   const id = createId("atm")
@@ -1215,11 +1092,6 @@ const actions = {
   duplicateBroadcast,
   setBroadcastStatus,
   deleteBroadcast,
-  addTemplate,
-  updateTemplate,
-  setTemplateStatus,
-  duplicateTemplate,
-  deleteTemplate,
   addAutomation,
   updateAutomation,
   setAutomationStatus,
@@ -1303,6 +1175,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => domainPage?.page.map(asDomain) ?? [],
     [domainPage]
   )
+  /* Automations pick templates from the store; the templates pages query
+     their own. Bodies stay out, so an autosave does not resend them. */
+  const templateRows = useQuery(
+    api.templates.options,
+    auth.activeTeamId ? { organizationId: auth.activeTeamId } : "skip"
+  )
+  const templates = useMemo(
+    () => templateRows?.map((row) => asTemplate(row)) ?? [],
+    [templateRows]
+  )
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -1342,6 +1224,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       state: {
         ...demo,
         domains,
+        templates,
         members,
         settings: {
           ...demo.settings,
@@ -1385,6 +1268,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     raw,
     auth,
     domains,
+    templates,
     create,
     switchTeam,
     rename,

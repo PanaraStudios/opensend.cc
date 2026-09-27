@@ -25,13 +25,14 @@ import {
   TextFieldDialog,
   type SelectOption,
 } from "@/components/dashboard/primitives"
+import { actionError } from "@/lib/action-error"
 import { templateStatusLabel } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
 import {
   templateAliasError,
   templatePublishLabel,
 } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
+import { useTemplateCommands } from "@/lib/templates/use-templates"
 
 /* The email itself, drawn small: a 600px sheet at half size, cut off by the
    card. It is a picture of the template, so it takes no clicks or focus. */
@@ -103,15 +104,19 @@ export function TemplatesDocsSheet(props: {
   )
 }
 
+/** Runs a template command, and says how it went. */
+async function report(run: () => Promise<unknown>, title: string) {
+  try {
+    await run()
+    toast.add({ type: "success", title })
+  } catch (error) {
+    toast.add({ type: "error", title: actionError(error) })
+  }
+}
+
 export function usePublishTemplate() {
-  const { setTemplateStatus } = useDashboard()
-  return React.useCallback(
-    (id: string) => {
-      setTemplateStatus(id, "published")
-      toast.add({ type: "success", title: "Template published" })
-    },
-    [setTemplateStatus]
-  )
+  const { publishTemplate } = useTemplateCommands()
+  return (id: string) => report(() => publishTemplate(id), "Template published")
 }
 
 /** The "…" menu of one template, with the dialogs it opens. The list's card,
@@ -135,12 +140,11 @@ export function TemplateMenu({
   onDelete?: () => void
 }) {
   const {
-    state,
     updateTemplate,
     duplicateTemplate,
-    setTemplateStatus,
+    unpublishTemplate,
     deleteTemplate,
-  } = useDashboard()
+  } = useTemplateCommands()
   const publish = usePublishTemplate()
   const [aliasOpen, setAliasOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
@@ -163,27 +167,29 @@ export function TemplateMenu({
           <DropdownMenuItem
             onClick={async () => {
               if (save && !(await save())) return
-              const created = duplicateTemplate(item.id)
-              if (!created) return
-              toast.add({ type: "success", title: "Template duplicated" })
-              onDuplicated?.(created.id)
+              await report(async () => {
+                const created = await duplicateTemplate(item.id)
+                onDuplicated?.(created)
+              }, "Template duplicated")
             }}
           >
             <CopyIcon />
             Duplicate
           </DropdownMenuItem>
           {!inEditor && publishLabel ? (
-            <DropdownMenuItem onClick={() => publish(item.id)}>
+            <DropdownMenuItem onClick={() => void publish(item.id)}>
               <RocketIcon />
               {publishLabel}
             </DropdownMenuItem>
           ) : null}
           {item.status === "published" ? (
             <DropdownMenuItem
-              onClick={() => {
-                setTemplateStatus(item.id, "draft")
-                toast.add({ type: "success", title: "Template unpublished" })
-              }}
+              onClick={() =>
+                void report(
+                  () => unpublishTemplate(item.id),
+                  "Template unpublished"
+                )
+              }
             >
               <Undo2Icon />
               Revert to draft
@@ -206,14 +212,10 @@ export function TemplateMenu({
         label="Alias"
         mono
         value={item.alias}
-        validate={(alias) =>
-          templateAliasError(
-            alias,
-            state.templates.filter((other) => other.id !== item.id)
-          )
-        }
-        onSubmit={(alias) => {
-          updateTemplate(item.id, { alias })
+        // The server knows every alias; it answers for the ones taken.
+        validate={(alias) => templateAliasError(alias, [])}
+        onSubmit={async (alias) => {
+          await updateTemplate(item.id, { alias })
           toast.add({ type: "success", title: "Alias updated" })
         }}
       />
@@ -222,9 +224,9 @@ export function TemplateMenu({
         onOpenChange={setDeleteOpen}
         title={`Delete ${item.name}?`}
         description="Emails already sent keep their rendered copy. New API calls cannot use this template."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (onDelete) onDelete()
-          else deleteTemplate(item.id)
+          else await deleteTemplate(item.id)
           toast.add({ type: "success", title: "Template deleted" })
         }}
       />
