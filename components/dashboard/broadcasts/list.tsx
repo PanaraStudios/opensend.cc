@@ -46,6 +46,7 @@ import { formatDateTime } from "@/lib/dashboard/format"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast } from "@/lib/dashboard/types"
+import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 export function BroadcastsView() {
   const router = useRouter()
@@ -55,9 +56,9 @@ export function BroadcastsView() {
     updateBroadcast,
     duplicateBroadcast,
     deleteBroadcast,
-    addTemplate,
     addExport,
   } = useDashboard()
+  const saveAsTemplate = useSaveAsTemplate()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [audience, setAudience] = React.useState("all")
@@ -86,8 +87,7 @@ export function BroadcastsView() {
   }
 
   function cloneAsTemplate(item: Broadcast) {
-    addTemplate(broadcastAsTemplateInput(item))
-    toast.add({ type: "success", title: "Template created" })
+    void saveAsTemplate(broadcastAsTemplateInput(item))
   }
 
   return (

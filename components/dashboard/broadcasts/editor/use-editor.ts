@@ -9,6 +9,7 @@ import { redoDepth, undoDepth } from "@tiptap/pm/history"
 import { useEditorState, type Editor } from "@tiptap/react"
 
 import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import { useEmailEngine } from "@/components/dashboard/broadcasts/editor/engine"
 import {
   emailEditorMode,
@@ -57,12 +58,19 @@ const EXPORT_MS = 2000
 /** What the editor writes back: the document, its export, or both. */
 export type EmailEditorPatch = Partial<Pick<EmailDraft, "content" | "html">>
 
+/* A browser store fails when it is full; a server says why it refused. */
+const saveFailure = (error: unknown) =>
+  error instanceof DOMException
+    ? "Your browser storage may be full."
+    : actionError(error)
+
 /** Editing state for one email: the engine (or the raw markup, for a
     hand-written one) and a debounced write-through to `onSave`, which stores
-    it on whatever record the email belongs to. */
+    it on whatever record the email belongs to, and may return a promise that
+    settles once it is stored. */
 export function useEmailEditor(
   item: EmailDraft,
-  onSave: (patch: EmailEditorPatch) => void,
+  onSave: (patch: EmailEditorPatch) => void | Promise<unknown>,
   /** Set when the screen was remounted on another theme preset: the saved
       markup was exported under the old one. */
   exportOnMount = false
@@ -99,6 +107,7 @@ export function useEmailEditor(
      to send, or to hand the markup over, must not do so with the one before. */
   const running = React.useRef<Promise<boolean>>(Promise.resolve(true))
   const busy = React.useRef(0)
+  const failure = React.useRef<unknown>(null)
 
   const flush = React.useCallback((): Promise<boolean> => {
     window.clearTimeout(timers.current.save)
@@ -115,10 +124,11 @@ export function useEmailEditor(
         .then(job)
         .then(
           () => true,
-          () => {
+          (error) => {
             /* Still owed, unless newer work has replaced it: the next flush
                tries again rather than reporting a save that never happened. */
             pending.current ??= job
+            failure.current = error
             return false
           }
         )
@@ -127,13 +137,13 @@ export function useEmailEditor(
     return running.current.then((saved) => {
       if (saved) setSave("saved")
       else {
-        /* Most likely the browser's storage is full. The work is still in
-           the editor, so say so rather than showing a save that never ends. */
+        /* The work is still in the editor, so say so rather than showing a
+           save that never ends. */
         setSave("idle")
         toast.add({
           type: "error",
           title: "Could not save this email",
-          description: "Your browser storage may be full.",
+          description: saveFailure(failure.current),
         })
       }
       return saved
@@ -161,19 +171,23 @@ export function useEmailEditor(
         /* A switch to hand-written HTML while this ran wins. */
         if (modeRef.current !== "visual") return
         showHtml(email.html)
-        onSaveRef.current({ content: current.getJSON(), html: email.html })
+        await onSaveRef.current({
+          content: current.getJSON(),
+          html: email.html,
+        })
       }
       if (saveDocument) {
         window.clearTimeout(timers.current.save)
         timers.current.save = window.setTimeout(() => {
           const current = editorRef.current
           if (!current || current.isDestroyed) return
-          try {
-            onSaveRef.current({ content: current.getJSON() })
-            setSave("saved")
-          } catch {
-            /* Still owed: the export that follows retries and reports it. */
-          }
+          void Promise.resolve()
+            .then(() => onSaveRef.current({ content: current.getJSON() }))
+            .then(
+              () => setSave("saved"),
+              /* Still owed: the export that follows retries and reports it. */
+              () => {}
+            )
         }, SAVE_MS)
       }
       window.clearTimeout(timers.current.export)
@@ -230,7 +244,9 @@ export function useEmailEditor(
   function saveHtml(next: string) {
     showHtml(next)
     setSave("saving")
-    pending.current = async () => onSaveRef.current({ html: next })
+    pending.current = async () => {
+      await onSaveRef.current({ html: next })
+    }
     window.clearTimeout(timers.current.save)
     timers.current.save = window.setTimeout(() => void flush(), SAVE_MS)
   }
@@ -243,18 +259,18 @@ export function useEmailEditor(
     setHtml: saveHtml,
     editAsHtml: () => {
       /* Export first, so the markup handed over is the email on screen. */
-      void flush().then((saved) => {
+      void flush().then(async (saved) => {
         /* The document is dropped here, so never for markup that is stale. */
         if (!saved) return
         /* Stored before the screen changes: a write that fails must not
            leave hand-written mode on screen over a saved visual document. */
         try {
-          onSaveRef.current({ content: undefined, html: htmlRef.current })
-        } catch {
+          await onSaveRef.current({ content: undefined, html: htmlRef.current })
+        } catch (error) {
           toast.add({
             type: "error",
             title: "Could not save this email",
-            description: "Your browser storage may be full.",
+            description: saveFailure(error),
           })
           return
         }

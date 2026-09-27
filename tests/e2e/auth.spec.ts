@@ -24,6 +24,7 @@ let memberContext: BrowserContext
 let sendingDomainId: Id<"domains">
 let organizationId: string
 let secondTeamId: string
+let templateHref: string
 const forms = (page: Page, button: string) =>
   page
     .locator("form")
@@ -849,15 +850,24 @@ test.describe.serial("Docker self-hosted authentication", () => {
         owner.getByRole("heading", { name: "Something went wrong." })
       ).toHaveCount(0)
     }
+    // Templates live in Convex, so the editor opens one this team made.
+    const templateId = await (
+      await client(owner)
+    ).mutation(api.templates.create, {
+      organizationId,
+      name: "Welcome",
+      html: "<p>Welcome</p>",
+    })
+    templateHref = `/templates/${templateId}`
     for (const route of [
-      "/templates/tpl_welcome",
+      templateHref,
       "/broadcasts/brd_beta/edit",
       "/automations/atm_onboard",
     ]) {
       await owner.goto(route)
       await expect(owner.getByTestId("editor-topbar")).toBeVisible()
     }
-    await owner.goto("/templates/tpl_welcome")
+    await owner.goto(templateHref)
     await owner.getByTestId("editor-name").fill("Scoped demo template")
     await owner.getByTestId("editor-name").press("Tab")
     await owner.goto("/contacts")
@@ -933,10 +943,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
       .poll(async () => (await c.query(api.teams.snapshot))!.teams.length)
       .toBe(2)
     secondTeamId = (await c.query(api.teams.snapshot))!.activeTeamId!
-    await owner.goto("/templates/tpl_welcome")
-    await expect(owner.getByTestId("editor-name")).not.toHaveValue(
-      "Scoped demo template"
-    )
+    // Another team's template does not open in this one.
+    await owner.goto(templateHref)
+    await expect(owner.getByText("Template not found")).toBeVisible()
+    await expect(owner.getByTestId("editor-name")).toHaveCount(0)
     await owner.goto("/settings/team")
     await forms(owner, "Save").getByLabel("Slug").fill("renamed-team")
     await forms(owner, "Save")

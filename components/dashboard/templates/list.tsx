@@ -7,18 +7,24 @@ import { FileCodeIcon, LayoutGridIcon, PlusIcon, Rows3Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
+import { usePaginatedQuery } from "convex/react"
+
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MonoValue,
+  PAGE_SIZES,
   PageHeader,
   RelativeTime,
   ResourceTable,
   TemplateStatusBadge,
   Th,
+  useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import {
   TEMPLATE_STATUS_ITEMS,
@@ -26,10 +32,12 @@ import {
   TemplatesDocsSheet,
   TemplateThumbnail,
 } from "@/components/dashboard/templates/shared"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useQueryPagination } from "@/components/dashboard/use-query-pagination"
+import { api } from "@/convex/_generated/api"
+import { actionError } from "@/lib/action-error"
 import { UNTITLED_TEMPLATE } from "@/lib/dashboard/template"
-import type { EmailTemplate } from "@/lib/dashboard/types"
+import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
+import { asTemplate, useTemplateCommands } from "@/lib/templates/use-templates"
 
 type TemplatesLayout = "grid" | "table"
 
@@ -69,23 +77,48 @@ function TemplateCard({ item }: { item: EmailTemplate }) {
 
 export function TemplatesView() {
   const router = useRouter()
-  const { state, addTemplate } = useDashboard()
+  const { organizationId, addTemplate } = useTemplateCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [layout, setLayout] = React.useState<TemplatesLayout>("grid")
   const [docsOpen, setDocsOpen] = React.useState(false)
+  const creating = React.useRef(false)
+  const search = useDebouncedValue(query)
 
-  const needle = searchNeedle(query)
-  const rows = state.templates.filter(
-    (item) =>
-      matchesNeedle(needle, item.name, item.alias) &&
-      (status === "all" || item.status === status)
+  const {
+    results,
+    status: loading,
+    loadMore,
+  } = usePaginatedQuery(
+    api.templates.list,
+    organizationId
+      ? {
+          organizationId,
+          search,
+          ...(status !== "all" ? { status: status as TemplateStatus } : {}),
+        }
+      : "skip",
+    { initialNumItems: PAGE_SIZES[0] }
   )
+  const rows = React.useMemo(
+    () => results.map((row) => asTemplate(row, row)),
+    [results]
+  )
+  const { pageRows, pagination } = useQueryPagination(rows, loading, loadMore)
+  const unfiltered = !query && status === "all"
 
-  function createTemplate() {
-    const created = addTemplate({ name: UNTITLED_TEMPLATE, subject: "" })
-    toast.add({ type: "success", title: "Draft created" })
-    router.push(`/templates/${created.id}`)
+  async function createTemplate() {
+    if (creating.current) return
+    creating.current = true
+    try {
+      const id = await addTemplate({ name: UNTITLED_TEMPLATE, subject: "" })
+      toast.add({ type: "success", title: "Draft created" })
+      router.push(`/templates/${id}`)
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      creating.current = false
+    }
   }
 
   const createButton = (
@@ -123,7 +156,9 @@ export function TemplatesView() {
           className="ml-auto w-auto"
         />
       </ListToolbar>
-      {state.templates.length === 0 ? (
+      {loading === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 && unfiltered ? (
         <EmptyState
           icon={FileCodeIcon}
           title="No templates yet"
@@ -137,52 +172,57 @@ export function TemplatesView() {
           title="No templates found"
           description="Nothing matches this search and status."
         />
-      ) : layout === "grid" ? (
-        <ul
-          data-testid="templates-grid"
-          className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-x-6 gap-y-8"
-        >
-          {rows.map((item) => (
-            <TemplateCard key={item.id} item={item} />
-          ))}
-        </ul>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Status</Th>
-              <Th>Alias</Th>
-              <Th>Updated</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <Link
-                  href={`/templates/${item.id}`}
-                  className="font-medium hover:underline"
-                >
-                  {item.name}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <TemplateStatusBadge status={item.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <MonoValue copyValue={item.alias}>{item.alias}</MonoValue>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.updatedAt} />
-              </TableCell>
-              <TableCell>
-                <TemplateMenu item={item} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          {layout === "grid" ? (
+            <ul
+              data-testid="templates-grid"
+              className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-x-6 gap-y-8"
+            >
+              {pageRows.map((item) => (
+                <TemplateCard key={item.id} item={item} />
+              ))}
+            </ul>
+          ) : (
+            <ResourceTable
+              headers={
+                <>
+                  <Th>Name</Th>
+                  <Th>Status</Th>
+                  <Th>Alias</Th>
+                  <Th>Updated</Th>
+                  <Th className="w-10" />
+                </>
+              }
+            >
+              {pageRows.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <Link
+                      href={`/templates/${item.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {item.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <TemplateStatusBadge status={item.status} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <MonoValue copyValue={item.alias}>{item.alias}</MonoValue>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <RelativeTime at={item.updatedAt} />
+                  </TableCell>
+                  <TableCell>
+                    <TemplateMenu item={item} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+          )}
+          <ListPagination {...pagination} noun="template" />
+        </>
       )}
       <TemplatesDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>

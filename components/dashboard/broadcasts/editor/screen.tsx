@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
 import { ConfirmDialog, NotFoundState } from "@/components/dashboard/primitives"
 import { EmailCanvas } from "@/components/dashboard/broadcasts/editor/canvas"
@@ -26,6 +27,7 @@ import {
   type EmailEditorState,
   type SaveState,
 } from "@/components/dashboard/broadcasts/editor/use-editor"
+import { actionError } from "@/lib/action-error"
 import type { EmailEditorMode } from "@/lib/dashboard/broadcast"
 import type { EmailDraft } from "@/lib/dashboard/types"
 
@@ -63,8 +65,9 @@ type EmailEditorScreenProps = {
   headerExtra?: React.ReactNode
   /** The top bar's closing actions: a send, a publish. */
   actions: (editor: EmailEditorState) => React.ReactNode
-  /** Stores an edit on the record the email belongs to. */
-  onChange: (patch: Partial<Omit<EmailDraft, "id">>) => void
+  /** Stores an edit on the record the email belongs to. A save that goes
+      to the server resolves once it is stored, and rejects if it is not. */
+  onChange: (patch: Partial<Omit<EmailDraft, "id">>) => void | Promise<unknown>
 }
 
 /* The engine is built on a theme preset and cannot change it afterwards, so
@@ -105,6 +108,12 @@ function EditorScreen({
   presetChanged: boolean
 }) {
   const editor = useEmailEditor(item, onChange, presetChanged)
+  /* The envelope and the name save on their own, so a failure is said here;
+     the body's saves report through the editor. */
+  const commit = (patch: Partial<Omit<EmailDraft, "id">>) =>
+    void Promise.resolve()
+      .then(() => onChange(patch))
+      .catch((error) => toast.add({ type: "error", title: actionError(error) }))
   const [view, setView] = React.useState<EmailEditorMode>(editor.mode)
   const [inspectorOpen, setInspectorOpen] = React.useState(true)
   const collapseInspector = React.useCallback(() => setInspectorOpen(false), [])
@@ -122,7 +131,7 @@ function EditorScreen({
           listHref={listHref}
           listLabel={listLabel}
           name={item.name}
-          onRename={(value) => onChange({ name: value })}
+          onRename={(value) => commit({ name: value })}
           badge={badge}
         >
           <SaveIndicator save={editor.save} />
@@ -200,7 +209,7 @@ function EditorScreen({
               <EmailCanvas
                 editor={editor.editor}
                 header={
-                  <EmailHeaderForm item={item} onChange={onChange}>
+                  <EmailHeaderForm item={item} onChange={commit}>
                     {headerExtra}
                   </EmailHeaderForm>
                 }

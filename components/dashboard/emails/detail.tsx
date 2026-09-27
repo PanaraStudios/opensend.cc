@@ -54,6 +54,7 @@ import {
 } from "@/lib/dashboard/highlight-html"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
+import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 type TimelineEvent = {
   id: string
@@ -251,7 +252,8 @@ function EmailBodyTabs({
 export function EmailDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, cancelEmail, addTemplate } = useDashboard()
+  const { state, cancelEmail } = useDashboard()
+  const saveAsTemplate = useSaveAsTemplate()
   const email = state.emails.find((item) => item.id === id)
   const log = state.logs.find(
     (item) =>
@@ -281,14 +283,13 @@ export function EmailDetail() {
           <>
             <Button
               variant="outline"
-              onClick={() => {
-                const created = addTemplate({
+              onClick={async () => {
+                const id = await saveAsTemplate({
                   name: email.subject,
                   subject: email.subject,
                   html: email.html,
                 })
-                toast.add({ type: "success", title: "Template created" })
-                router.push(`/templates/${created.id}`)
+                if (id) router.push(`/templates/${id}`)
               }}
             >
               Convert to template

@@ -54,6 +54,7 @@ import {
 import { percent } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
+import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 const EVENT_TABS: {
   value: BroadcastEventTab
@@ -249,8 +250,8 @@ export function BroadcastDetail() {
     duplicateBroadcast,
     setBroadcastStatus,
     deleteBroadcast,
-    addTemplate,
   } = useDashboard()
+  const saveAsTemplate = useSaveAsTemplate()
   const item = state.broadcasts.find((row) => row.id === id)
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
@@ -281,8 +282,7 @@ export function BroadcastDetail() {
   const audience = audienceLabel(broadcast.segmentId, state.segments)
 
   function cloneAsTemplate() {
-    addTemplate(broadcastAsTemplateInput(broadcast))
-    toast.add({ type: "success", title: "Template created" })
+    void saveAsTemplate(broadcastAsTemplateInput(broadcast))
   }
 
   function sendNow() {

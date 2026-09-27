@@ -41,6 +41,7 @@ import {
 } from "@/lib/dashboard/automation"
 import { formatVariable } from "@/lib/dashboard/email-variables"
 import { useDashboard } from "@/lib/dashboard/store"
+import { useTemplate } from "@/lib/templates/use-templates"
 import {
   AUTOMATION_RULE_OPERATORS,
   type Automation,
@@ -592,6 +593,8 @@ function SendEmailBody({
   const { state } = useDashboard()
   const references = [...useEventReferences(trigger), ...CONTACT_REFERENCES]
   const template = state.templates.find((item) => item.id === step.templateId)
+  /* The store lists templates without their bodies; the preview needs one. */
+  const withBody = useTemplate(template?.id)
   const from = useDraft(step.from, (value) =>
     onChange({ ...step, from: value })
   )
@@ -638,7 +641,7 @@ function SendEmailBody({
       {template ? (
         <>
           <div className="relative">
-            <TemplateThumbnail item={template} />
+            <TemplateThumbnail item={withBody ?? template} />
             <Badge
               variant="secondary"
               className="absolute top-2 left-2 font-mono"
