@@ -6,6 +6,7 @@ import {
   deriveDomainStatus,
   dnsHost,
   domainBanner,
+  domainCheckResult,
   domainCsvFile,
   domainEventSteps,
   domainRecordSections,
@@ -530,11 +531,54 @@ describe("domainBanner", () => {
       "temporary_failure",
     ]
     for (const status of statuses) {
-      const banner = domainBanner(status)
+      const banner = domainBanner(domain({ status }))
       assert.ok(banner.title.length > 0, status)
       assert.ok(banner.description.length > 0, status)
     }
-    assert.equal(domainBanner("verified").tone, "success")
-    assert.equal(domainBanner("failed").tone, "destructive")
+    assert.equal(domainBanner(domain({ status: "verified" })).tone, "success")
+    assert.equal(domainBanner(domain({ status: "failed" })).tone, "destructive")
+  })
+
+  it("says the records are found while Amazon SES has yet to confirm them", () => {
+    const published = domain({
+      status: "pending",
+      records: [record("DKIM", "verified"), record("SPF", "verified")],
+    })
+    assert.equal(domainBanner(published).title, "Records found")
+    const missing = domain({
+      status: "pending",
+      records: [record("DKIM", "verified"), record("SPF", "pending")],
+    })
+    assert.equal(domainBanner(missing).title, "Waiting for your DNS records")
+  })
+})
+
+describe("domainCheckResult", () => {
+  it("reports what a finished check found", () => {
+    const check = (status: DomainStatus, records: DnsRecord[]) =>
+      domainCheckResult(domain({ status, records }))
+    assert.equal(
+      check("verified", [record("DKIM", "verified")]).title,
+      "Domain verified"
+    )
+    assert.deepEqual(
+      check("pending", [record("DKIM", "verified"), record("SPF", "verified")]),
+      { type: "info", title: "Records found" }
+    )
+    assert.equal(
+      check("pending", [
+        record("DKIM", "pending"),
+        record("SPF", "pending"),
+        record("DMARC", "pending"),
+      ]).title,
+      "2 records not found yet"
+    )
+    assert.equal(
+      check("temporary_failure", [
+        record("DKIM", "temporary_failure"),
+        record("SPF", "verified"),
+      ]).title,
+      "Temporary failure"
+    )
   })
 })

@@ -15,6 +15,7 @@ import {
 } from "./ses/crypto"
 import { identityRecords } from "./ses/records"
 import {
+  authoritativeLookups,
   checkRecords,
   detectDnsProvider,
   providerFromNameservers,
@@ -481,7 +482,7 @@ describe("AWS boundary regression scenarios", () => {
           : [["v=spf1 ", "include:amazonses.com ~all"]],
     } as unknown as Resolver
     expect(
-      (await checkRecords(records, resolver)).every(
+      (await checkRecords(records, [resolver])).every(
         (r) => r.status === "verified"
       )
     ).toBe(true)
@@ -491,9 +492,68 @@ describe("AWS boundary regression scenarios", () => {
     resolver.resolveMx = async () => {
       throw Object.assign(new Error(), { code: "ETIMEOUT" })
     }
-    const result = await checkRecords(records, resolver)
+    const result = await checkRecords(records, [resolver])
     expect(result[0].status).toBe("pending")
     expect(result[1].status).toBe("temporary_failure")
+  })
+  test("a record the zone's own nameservers already serve is found, whatever a cache says", async () => {
+    const records = identityRecords(
+      { name: "example.test", region: "us-east-1", customReturnPath: "send" },
+      {
+        DkimAttributes: {
+          Tokens: ["token"],
+          SigningHostedZone: "dkim.amazonses.com",
+        },
+      }
+    )
+    const answer = (code: string) => async () => {
+      throw Object.assign(new Error(), { code })
+    }
+    const cached = {
+      resolveCname: answer("ENOTFOUND"),
+      resolveMx: answer("ETIMEOUT"),
+      resolveTxt: answer("ETIMEOUT"),
+    } as unknown as Resolver
+    const zone = {
+      resolveCname: async () => ["token.dkim.amazonses.com"],
+      resolveMx: answer("ENODATA"),
+      resolveTxt: answer("ETIMEOUT"),
+    } as unknown as Resolver
+    const [dkim, mx, spf] = await checkRecords(records, [zone, cached])
+    expect(dkim.status).toBe("verified")
+    expect(mx.status).toBe("pending")
+    expect(spf.status).toBe("temporary_failure")
+  })
+  test("authoritative lookups ask the nameservers of the domain's zone, each on its own resolver", async () => {
+    const setServers = vi.spyOn(Resolver.prototype, "setServers")
+    const recursive = {
+      resolveNs: vi.fn(async (zone: string) => {
+        if (zone === "example.test") return ["ns1.dns.test", "ns2.dns.test"]
+        throw Object.assign(new Error(), { code: "ENODATA" })
+      }),
+      resolve4: vi.fn(async (server: string) =>
+        server === "ns1.dns.test" ? ["192.0.2.1"] : ["192.0.2.2"]
+      ),
+    }
+    const zone = await authoritativeLookups("mail.example.test", recursive)
+    expect(recursive.resolveNs.mock.calls.map((call) => call[0])).toEqual([
+      "mail.example.test",
+      "example.test",
+    ])
+    vi.spyOn(Resolver.prototype, "resolveCname").mockResolvedValue([])
+    await zone!.resolveCname("a._domainkey.mail.example.test")
+    await zone!.resolveCname("b._domainkey.mail.example.test")
+    // A resolver per lookup, each asking the zone's nameservers.
+    expect(setServers.mock.calls).toEqual([
+      [["192.0.2.1", "192.0.2.2"]],
+      [["192.0.2.1", "192.0.2.2"]],
+    ])
+    recursive.resolveNs.mockRejectedValue(
+      Object.assign(new Error(), { code: "ETIMEOUT" })
+    )
+    expect(
+      await authoritativeLookups("mail.example.test", recursive)
+    ).toBeUndefined()
   })
   test("policy merges preserve unrelated AWS grants and refuse unowned resources", () => {
     const grant = { Sid: "Opensend", Effect: "Allow" }
@@ -603,6 +663,7 @@ async function awsFixture() {
     /** Runs before each SES call, to observe the database mid-action. */
     onCall: undefined as ((name: string) => Promise<void>) | undefined,
   }
+  vi.spyOn(Resolver.prototype, "resolveNs").mockResolvedValue([])
   vi.spyOn(Resolver.prototype, "resolveCname").mockResolvedValue([])
   vi.spyOn(Resolver.prototype, "resolveMx").mockResolvedValue([])
   vi.spyOn(Resolver.prototype, "resolveTxt").mockResolvedValue([])
@@ -2340,6 +2401,7 @@ describe("automatic status checks", () => {
       checkAttempt: 1,
     })
     expect(domain.error).toBeUndefined()
+    expect(domain.checking).toBeUndefined()
     expect(domain.nextCheckAt! - Date.now()).toBeGreaterThan(50000)
     const history = await f.t.run((ctx) =>
       ctx.db
@@ -2379,10 +2441,15 @@ describe("automatic status checks", () => {
     await expect(
       f.outsider.client.mutation(api.domains.verify, { id: f.domain })
     ).rejects.toThrow()
-    await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    expect(
+      await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    ).toBe(true)
+    expect(await read(f)).toMatchObject({ checking: true })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).toEqual(["GetEmailIdentityCommand"])
-    expect(await read(f)).toMatchObject({ status: "verified" })
+    const domain = await read(f)
+    expect(domain).toMatchObject({ status: "verified" })
+    expect(domain.checking).toBeUndefined()
     await expect(
       f.owner.client.mutation(api.domains.verify, { id: f.domain })
     ).rejects.toThrow("Checked just now")
@@ -2395,7 +2462,9 @@ describe("automatic status checks", () => {
         operation: "provision",
       })
     )
-    await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    expect(
+      await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    ).toBe(false)
     expect(await read(f)).toMatchObject({
       phase: "running",
       operation: "provision",

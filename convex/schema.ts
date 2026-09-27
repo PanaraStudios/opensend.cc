@@ -100,6 +100,8 @@ export default defineSchema({
        checks run out. */
     nextCheckAt: v.optional(v.number()),
     checkAttempt: v.optional(v.number()),
+    /** Set while a status check is running, so the UI can show it. */
+    checking: v.optional(v.boolean()),
     error: v.optional(v.string()),
     operation: domainOperationValue,
   })

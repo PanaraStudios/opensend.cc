@@ -4,12 +4,12 @@
    involved. Spec: https://github.com/Domain-Connect/spec
    Template: domain-connect/opensend.cc.ses.json at the repository root. */
 import { createSign } from "node:crypto"
-import { Resolver } from "node:dns/promises"
+import type { Resolver } from "node:dns/promises"
 import { v, ConvexError, type Infer } from "convex/values"
 import { action, env } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc } from "../_generated/dataModel"
-import { zoneCandidates } from "./dns"
+import { lookups, zoneCandidates } from "./dns"
 import type { domainConnectValue } from "./contracts"
 
 export const PROVIDER_ID = "opensend.cc"
@@ -40,10 +40,7 @@ const get = (url: string) =>
     template. Undefined otherwise: the records are then added by hand. */
 export async function discover(
   name: string,
-  resolver: Pick<Resolver, "resolveTxt"> = new Resolver({
-    timeout: 2000,
-    tries: 1,
-  })
+  resolver: Pick<Resolver, "resolveTxt"> = lookups(2000)
 ): Promise<Settings | undefined> {
   for (const zone of zoneCandidates(name)) {
     const prefix = await resolver

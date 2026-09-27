@@ -113,6 +113,8 @@ export type Domain = {
   events?: DomainEvent[]
   /** Set when the DNS provider can apply the records itself (Domain Connect). */
   autoConfigure?: { providerName: string; width?: number; height?: number }
+  /** A status check is running. */
+  checking?: boolean
 }
 
 export type Contact = {

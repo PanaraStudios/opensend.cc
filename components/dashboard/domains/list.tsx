@@ -63,7 +63,11 @@ import {
 import { usePaginatedQuery, useQuery } from "convex/react"
 import type { FunctionArgs } from "convex/server"
 import { api } from "@/convex/_generated/api"
-import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
+import {
+  asDomain,
+  useDomainCheck,
+  useDomainCommands,
+} from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Region } from "@/lib/dashboard/types"
@@ -227,8 +231,7 @@ export function AddDomainDialog({
 }
 
 export function DomainsView() {
-  const { organizationId, canWrite, deleteDomain, verifyDomain } =
-    useDomainCommands()
+  const { organizationId, canWrite, deleteDomain } = useDomainCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [region, setRegion] = React.useState("all")
@@ -255,13 +258,13 @@ export function DomainsView() {
       : "skip",
     { initialNumItems: 40 }
   )
-  const rows = results.map(asDomain)
+  const rows = React.useMemo(() => results.map(asDomain), [results])
+  const check = useDomainCheck(rows)
   const { pageRows, pagination } = usePagination(rows)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
-      await verifyDomain(id)
-      toast.add({ type: "success", title: "DNS check queued" })
+      await check(id)
     } catch (e) {
       toast.add({ type: "error", title: actionError(e) })
     }
@@ -372,7 +375,7 @@ export function DomainsView() {
                       </DropdownMenuItem>
                       {domain.status === "verified" ? null : (
                         <DropdownMenuItem
-                          disabled={!canWrite}
+                          disabled={!canWrite || domain.checking}
                           onClick={() => void verify(domain.id)}
                         >
                           <RefreshCwIcon />

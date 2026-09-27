@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import {
   Tooltip,
@@ -85,7 +86,11 @@ import {
   type DomainEventStep,
 } from "@/lib/dashboard/domains"
 import { formatDateTime } from "@/lib/dashboard/format"
-import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
+import {
+  asDomain,
+  useDomainCheck,
+  useDomainCommands,
+} from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import type { Domain, TlsMode } from "@/lib/dashboard/types"
 const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
@@ -111,7 +116,7 @@ function DomainStatusAlert({
   error?: string
   onReview?: () => void
 }) {
-  const banner = domainBanner(domain.status)
+  const banner = domainBanner(domain)
   const Icon = error ? CircleAlertIcon : BANNER_ICON[banner.tone]
   return (
     <Alert variant={error ? "destructive" : banner.tone}>
@@ -233,12 +238,13 @@ function DomainEvents({ domain }: { domain: Domain }) {
 }
 
 function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
-  const { canWrite, updateDomain, verifyDomain, autoConfigureUrl } =
-    useDomainCommands()
+  const { canWrite, updateDomain, autoConfigureUrl } = useDomainCommands()
+  const check = useDomainCheck(React.useMemo(() => [domain], [domain]))
   const [pending, setPending] = React.useState(false)
   const records = domainRecords(domain)
   const sections = domainRecordSections(domain, records)
   const locked = !canWrite || busy || pending
+  const checking = domain.checking
   const auto = domain.autoConfigure
   const blockedReason = auto
     ? ""
@@ -273,7 +279,7 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
         if (!popup.closed) return
         window.clearInterval(closed)
         // A check that was rate limited just runs on the automatic schedule.
-        void verifyDomain(domain.id).catch(() => {})
+        void check(domain.id).catch(() => {})
       }, 1000)
     } catch (error) {
       popup.close()
@@ -284,11 +290,10 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
   }
 
   async function runVerification() {
-    if (pending || busy) return
+    if (locked || checking) return
     setPending(true)
     try {
-      await verifyDomain(domain.id)
-      toast.add({ type: "success", title: "Checking DNS records" })
+      await check(domain.id)
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })
     } finally {
@@ -324,11 +329,21 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
           )}
           <Button
             variant="outline"
-            disabled={locked}
+            disabled={locked || checking}
+            aria-busy={checking}
             onClick={() => void runVerification()}
           >
-            <RefreshCwIcon data-icon="inline-start" />
-            Check DNS records
+            {checking ? (
+              <>
+                <Spinner data-icon="inline-start" />
+                Checking DNS records
+              </>
+            ) : (
+              <>
+                <RefreshCwIcon data-icon="inline-start" />
+                Check DNS records
+              </>
+            )}
           </Button>
           <MoreMenu>
             <DropdownMenuGroup>

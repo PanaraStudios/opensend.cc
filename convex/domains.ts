@@ -201,6 +201,7 @@ async function dispatchCheck(
   await ctx.db.patch("domains", domain._id, {
     checkAttempt: attempt,
     nextCheckAt: Date.now() + CHECK_LEASE,
+    checking: true,
   })
   await ctx.scheduler.runAfter(0, internal.ses.verify.run, {
     domainId: domain._id,
@@ -220,6 +221,7 @@ export async function start(
     error: undefined,
     // The operation checks the domain itself; `finish` schedules what follows.
     nextCheckAt: undefined,
+    checking: undefined,
     ...(operation === "remove" ? { sending: false } : {}),
   })
   await logHistory(ctx, domain._id, `${operation} requested`)
@@ -291,22 +293,23 @@ export const refresh = mutation({
   },
 })
 /** "Check DNS records". A failed operation is retried. Otherwise the status is
-    read now, without re-running the AWS setup, and automatic checks restart. */
+    read now, without re-running the AWS setup, and automatic checks restart.
+    Returns whether a status check started, rather than an operation. */
 export const verify = mutation({
   args: { id: v.id("domains") },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, true)
     if (domain.phase === "failed") {
       await start(ctx, domain, retryOperation(domain))
-      return null
+      return false
     }
     if (!checkable(domain))
       throw new ConvexError("A domain operation is already running")
     await limitDomainCheck(ctx, id)
     await dispatchCheck(ctx, domain, 0)
-    return null
+    return true
   },
 })
 export const update = mutation({
@@ -542,6 +545,7 @@ export const saveCheck = internalMutation({
     const next = {
       checkAttempt: args.attempt + 1,
       nextCheckAt: delay === null ? undefined : now + delay,
+      checking: undefined,
     }
     if ("error" in args.result) {
       // A failed read proves nothing, so the status stands until the next one.

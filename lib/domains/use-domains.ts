@@ -1,8 +1,11 @@
 "use client"
+import * as React from "react"
 import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
+import { toast } from "@/components/ui/toast"
+import { domainCheckResult } from "@/lib/dashboard/domains"
 import type { Domain } from "@/lib/dashboard/types"
 
 export function asDomain(row: Doc<"domains">): Domain {
@@ -20,6 +23,7 @@ export function asDomain(row: Doc<"domains">): Domain {
     receiving: row.receiving ?? false,
     records: row.records,
     sending: row.sending,
+    checking: row.checking ?? false,
     ...(row.domainConnect
       ? {
           autoConfigure: {
@@ -72,5 +76,26 @@ export function useDomainCommands() {
     ) => update({ id: id as Id<"domains">, ...patch }),
     /** The DNS provider's own page, with every record filled in. */
     autoConfigureUrl: (id: string) => applyUrl({ id: id as Id<"domains"> }),
+  }
+}
+
+/** "Check DNS records" for the `domains` on screen. The check runs on the
+    server and sets `checking` until its result is saved; once a check started
+    here finishes, a toast says what it found. */
+export function useDomainCheck(domains: Domain[]) {
+  const { verifyDomain } = useDomainCommands()
+  const waiting = React.useRef(new Set<string>())
+  React.useEffect(() => {
+    for (const domain of domains) {
+      if (!waiting.current.has(domain.id) || domain.checking) continue
+      waiting.current.delete(domain.id)
+      toast.add(domainCheckResult(domain))
+    }
+  }, [domains])
+  return async (id: string) => {
+    // Convex settles a mutation only once queries show its writes, so the
+    // domain already reads `checking` by now. A failed domain retries its
+    // operation instead, which reports through the domain's phase.
+    if (await verifyDomain(id)) waiting.current.add(id)
   }
 }

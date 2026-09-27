@@ -20,50 +20,130 @@ export function zoneCandidates(name: string) {
 }
 const dnsCode = (e: unknown) =>
   e && typeof e === "object" && "code" in e ? e.code : ""
+type Lookup = Pick<
+  Resolver,
+  "resolveCname" | "resolveMx" | "resolveTxt" | "resolveNs"
+> & { resolve4(hostname: string): Promise<string[]> }
+type RecordLookup = Pick<Lookup, "resolveCname" | "resolveMx" | "resolveTxt">
+/** DNS lookups, each on a resolver of its own. Concurrent queries on one
+    resolver share its socket, and behind some NATs (Docker Desktop's, for
+    one) the remote answers are dropped, each costing a full timeout. */
+export function lookups(timeout: number, servers?: string[]): Lookup {
+  const fresh = () => {
+    const resolver = new Resolver({ timeout, tries: 1 })
+    if (servers) resolver.setServers(servers)
+    return resolver
+  }
+  return {
+    resolveCname: (host) => fresh().resolveCname(host),
+    resolveMx: (host) => fresh().resolveMx(host),
+    resolveTxt: (host) => fresh().resolveTxt(host),
+    resolveNs: (host) => fresh().resolveNs(host),
+    resolve4: (host) => fresh().resolve4(host),
+  }
+}
+/** One resolver's view of one record. */
+async function lookup(
+  record: DnsRecord,
+  resolver: RecordLookup
+): Promise<DnsRecord["status"]> {
+  try {
+    let found = false
+    if (record.type === "CNAME")
+      found = (await resolver.resolveCname(record.name)).some(
+        (value) => canonical(value) === canonical(record.value)
+      )
+    else if (record.type === "MX")
+      found = (await resolver.resolveMx(record.name)).some(
+        (value) =>
+          // Inbound mail keeps whatever priority the operator chose.
+          (record.kind === "Receiving" || value.priority === record.priority) &&
+          canonical(value.exchange) === canonical(record.value)
+      )
+    else if (record.kind === "DMARC")
+      found = (await resolver.resolveTxt(record.name))
+        .map((parts) => parts.join(""))
+        .some(isDmarc)
+    else {
+      const spf = (await resolver.resolveTxt(record.name))
+        .map((parts) => parts.join(""))
+        .filter(isSpf)
+      // RFC 7208 allows one SPF policy per name; two make both invalid.
+      found = spf.length === 1 && includesSes(spf[0])
+    }
+    return found ? "verified" : "pending"
+  } catch (e) {
+    const code = dnsCode(e)
+    return code === "ENOTFOUND" || code === "ENODATA"
+      ? "pending"
+      : "temporary_failure"
+  }
+}
+/** A record any resolver finds is published, and the first to find it
+    settles it. Otherwise one a resolver positively did not find is pending,
+    and one no resolver could answer for is a temporary failure. */
+async function recordStatus(
+  record: DnsRecord,
+  resolvers: RecordLookup[]
+): Promise<DnsRecord["status"]> {
+  const answers = resolvers.map((resolver) => lookup(record, resolver))
+  try {
+    return await Promise.any(
+      answers.map(async (answer) => {
+        if ((await answer) !== "verified") throw new Error("Not found")
+        return "verified" as const
+      })
+    )
+  } catch {
+    return (await Promise.all(answers)).includes("pending")
+      ? "pending"
+      : "temporary_failure"
+  }
+}
 export async function checkRecords(
   records: DnsRecord[],
-  resolver = new Resolver({ timeout: 3000, tries: 1 })
+  resolvers: RecordLookup[]
 ): Promise<DnsRecord[]> {
   return Promise.all(
-    records.map(async (record) => {
-      try {
-        let found = false
-        if (record.type === "CNAME")
-          found = (await resolver.resolveCname(record.name)).some(
-            (value) => canonical(value) === canonical(record.value)
-          )
-        else if (record.type === "MX")
-          found = (await resolver.resolveMx(record.name)).some(
-            (value) =>
-              // Inbound mail keeps whatever priority the operator chose.
-              (record.kind === "Receiving" ||
-                value.priority === record.priority) &&
-              canonical(value.exchange) === canonical(record.value)
-          )
-        else if (record.kind === "DMARC")
-          found = (await resolver.resolveTxt(record.name))
-            .map((parts) => parts.join(""))
-            .some(isDmarc)
-        else {
-          const spf = (await resolver.resolveTxt(record.name))
-            .map((parts) => parts.join(""))
-            .filter(isSpf)
-          // RFC 7208 allows one SPF policy per name; two make both invalid.
-          found = spf.length === 1 && includesSes(spf[0])
-        }
-        return { ...record, status: found ? "verified" : "pending" }
-      } catch (e) {
-        const code = dnsCode(e)
-        return {
-          ...record,
-          status:
-            code === "ENOTFOUND" || code === "ENODATA"
-              ? "pending"
-              : "temporary_failure",
-        }
-      }
-    })
+    records.map(async (record) => ({
+      ...record,
+      status: await recordStatus(record, resolvers),
+    }))
   )
+}
+/** The nameservers of the zone that holds `name`, or none. */
+async function zoneNameservers(
+  name: string,
+  resolver: Pick<Lookup, "resolveNs">
+) {
+  // Subdomains commonly inherit their parent's zone. Bound the lookup work
+  // and never query a top-level domain as if it were the user's zone.
+  for (const zone of zoneCandidates(name)) {
+    try {
+      const servers = await resolver.resolveNs(zone)
+      if (servers.length) return servers
+    } catch (error) {
+      const code = dnsCode(error)
+      if (code !== "ENODATA" && code !== "ENOTFOUND") return []
+    }
+  }
+  return []
+}
+/** Lookups against the zone's own nameservers. They answer from the zone
+    itself, so a record added a moment ago is found at once, where a recursive
+    resolver can keep a cached "not found" for the zone's negative TTL
+    (RFC 2308). */
+export async function authoritativeLookups(
+  name: string,
+  recursive: Pick<Lookup, "resolveNs" | "resolve4">
+) {
+  const servers = await zoneNameservers(name, recursive)
+  const addresses = (
+    await Promise.allSettled(
+      servers.slice(0, 4).map((server) => recursive.resolve4(server))
+    )
+  ).flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+  return addresses.length ? lookups(2000, addresses) : undefined
 }
 
 /** A domain's status, read from its SES identity and its live DNS. */
@@ -74,7 +154,12 @@ export async function verificationState(
     "name" | "region" | "customReturnPath" | "receiving"
   >
 ) {
-  const records = await checkRecords(identityRecords(domain, identity))
+  const recursive = lookups(3000)
+  const authoritative = await authoritativeLookups(domain.name, recursive)
+  const records = await checkRecords(
+    identityRecords(domain, identity),
+    authoritative ? [authoritative, recursive] : [recursive]
+  )
   const sesVerified = !!identity.VerifiedForSendingStatus
   const dkimVerified =
     identity.DkimAttributes?.Status === "SUCCESS" &&
@@ -134,21 +219,7 @@ export function providerFromNameservers(servers: string[]) {
 
 export async function detectDnsProvider(
   name: string,
-  resolver: Pick<Resolver, "resolveNs"> = new Resolver({
-    timeout: 2000,
-    tries: 1,
-  })
+  resolver: Pick<Lookup, "resolveNs"> = lookups(2000)
 ) {
-  // Subdomains commonly inherit their parent's DNS host. Bound the lookup work
-  // and never query a top-level domain as if it were the user's DNS provider.
-  for (const zone of zoneCandidates(name)) {
-    try {
-      const servers = await resolver.resolveNs(zone)
-      if (servers.length) return providerFromNameservers(servers)
-    } catch (error) {
-      const code = dnsCode(error)
-      if (code !== "ENODATA" && code !== "ENOTFOUND") return undefined
-    }
-  }
-  return undefined
+  return providerFromNameservers(await zoneNameservers(name, resolver))
 }

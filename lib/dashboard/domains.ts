@@ -2,7 +2,7 @@ import {
   dmarcRecord as serverDmarcRecord,
   receivingRecord as serverReceivingRecord,
 } from "../../convex/ses/records"
-import { isDomainName } from "./format"
+import { isDomainName, pluralize } from "./format"
 import type {
   DnsProvider,
   DnsRecord,
@@ -391,8 +391,18 @@ export type DomainBanner = {
   description: string
 }
 
-export function domainBanner(status: DomainStatus): DomainBanner {
-  switch (status) {
+export function domainBanner(domain: Domain): DomainBanner {
+  /* Every record is published, but Amazon SES has not confirmed them yet. SES
+     checks DNS on its own schedule, so this is the wait people otherwise
+     mistake for missing records. */
+  if (domain.status !== "verified" && deriveDomainStatus(domain) === "verified")
+    return {
+      tone: "default",
+      title: "Records found",
+      description:
+        "Every record is published. Amazon SES confirms them on its own schedule, which can take up to 72 hours. We keep checking automatically.",
+    }
+  switch (domain.status) {
     case "verified":
       return {
         tone: "success",
@@ -434,6 +444,27 @@ export function domainBanner(status: DomainStatus): DomainBanner {
         description:
           "Add the records below at your DNS provider, then click Check DNS records.",
       }
+  }
+}
+
+const TOAST_TYPE = {
+  success: "success",
+  default: "info",
+  warning: "warning",
+  destructive: "error",
+} as const
+
+/** What a finished "Check DNS records" found, as a toast. */
+export function domainCheckResult(domain: Domain) {
+  const missing = requiredRecords(domain, domainRecords(domain)).filter(
+    (record) => record.status === "pending"
+  ).length
+  const banner = domainBanner(domain)
+  return {
+    type: TOAST_TYPE[banner.tone],
+    title: missing
+      ? `${pluralize(missing, "record")} not found yet`
+      : banner.title,
   }
 }
 
