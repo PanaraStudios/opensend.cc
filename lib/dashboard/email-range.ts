@@ -29,8 +29,10 @@ export type RollingPreset = keyof typeof ROLLING_DAYS
 export type NamedRangePreset = (typeof RANGE_PRESETS)[number]["value"]
 export type RangePreset = NamedRangePreset | "all"
 
-export function defaultEmailRange(): DateRange {
-  return rangeFromPreset("15d")
+/** The last 15 days. `now` defaults to the demo clock; screens on real
+    data pass the real one. */
+export function defaultEmailRange(now?: number): DateRange {
+  return rangeFromPreset("15d", now)
 }
 
 function lastDays(current: Date, days: number): DateRange {
@@ -72,11 +74,12 @@ export function rangeFromPreset(
 }
 
 export function presetFromRange(
-  range: DateRange | undefined
+  range: DateRange | undefined,
+  now?: number
 ): RangePreset | "custom" {
   if (!range?.from) return "all"
   for (const { value: preset } of RANGE_PRESETS) {
-    const candidate = rangeFromPreset(preset)
+    const candidate = rangeFromPreset(preset, now)
     if (
       candidate.from &&
       isSameDay(candidate.from, range.from) &&
@@ -90,10 +93,11 @@ export function presetFromRange(
 
 export function rangeLabel(
   range: DateRange | undefined,
-  allowAllTime = false
+  allowAllTime = false,
+  now?: number
 ): string {
   if (!range?.from) return allowAllTime ? ALL_TIME_PRESET.label : "Date range"
-  const preset = presetFromRange(range)
+  const preset = presetFromRange(range, now)
   if (preset !== "custom" && preset !== "all") {
     return (
       RANGE_PRESETS.find((item) => item.value === preset)?.label ?? "Date range"
@@ -108,9 +112,10 @@ export function pickerPresets(allowAllTime: boolean) {
 }
 
 export function rangeAfterCalendarClear(
-  allowAllTime: boolean
+  allowAllTime: boolean,
+  now?: number
 ): DateRange | undefined {
-  return allowAllTime ? undefined : defaultEmailRange()
+  return allowAllTime ? undefined : defaultEmailRange(now)
 }
 
 export function inDateRange(

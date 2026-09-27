@@ -27,17 +27,18 @@ import {
   transitionBroadcast,
 } from "./broadcast"
 import { defaultTopicSubscription, normalizePropertyKey } from "./contacts"
-import { createId, createToken, createWebhookSecret, tokenParts } from "./ids"
+import { createId, createWebhookSecret } from "./ids"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asDomain } from "@/lib/domains/use-domains"
+import { asApiKey } from "@/lib/api-keys/use-api-keys"
+import { SEED_STATE } from "./data"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 
 import {
   activeWorkspace,
-  youOf,
   parseRoot,
   seedRoot,
   serializeRoot,
@@ -53,15 +54,12 @@ import {
 } from "./template"
 import { replayedDelivery } from "./webhooks"
 import type {
-  ApiKey,
-  ApiKeyPermission,
   Automation,
   AutomationEvent,
   AutomationStatus,
   Broadcast,
   BroadcastStatus,
   Contact,
-  CreateApiKeyResult,
   DashboardState,
   EmailStatus,
   EmailDraft,
@@ -477,60 +475,6 @@ function deleteProperty(id: string) {
       }),
     }
   })
-}
-
-function createApiKey(input: {
-  name: string
-  permission: ApiKeyPermission
-  domainId: string | null
-}): CreateApiKeyResult {
-  const token = createToken()
-  const { prefix, last4 } = tokenParts(token)
-  const you = youOf(activeWorkspace(rootFromRaw(readRaw())))
-  const key = {
-    id: createId("key"),
-    name: input.name.trim(),
-    tokenPrefix: prefix,
-    tokenLast4: last4,
-    permission: input.permission,
-    domainId: input.permission === "sending_access" ? input.domainId : null,
-    createdAt: Date.now(),
-    lastUsedAt: null,
-    createdBy: you?.id ?? null,
-  }
-  mutate((current) => ({
-    ...current,
-    apiKeys: [key, ...current.apiKeys],
-  }))
-  return { key, token }
-}
-
-function updateApiKey(
-  id: string,
-  patch: Partial<Pick<ApiKey, "name" | "permission" | "domainId">>
-) {
-  mutate((current) => ({
-    ...current,
-    apiKeys: current.apiKeys.map((key) => {
-      if (key.id !== id) return key
-      const permission = patch.permission ?? key.permission
-      return {
-        ...key,
-        ...patch,
-        domainId:
-          permission === "sending_access"
-            ? (patch.domainId ?? key.domainId)
-            : null,
-      }
-    }),
-  }))
-}
-
-function deleteApiKey(id: string) {
-  mutate((current) => ({
-    ...current,
-    apiKeys: current.apiKeys.filter((key) => key.id !== id),
-  }))
 }
 
 function sendEmail(input: {
@@ -1202,9 +1146,6 @@ const actions = {
   deleteTopic,
   addProperty,
   deleteProperty,
-  createApiKey,
-  updateApiKey,
-  deleteApiKey,
   sendEmail,
   cancelEmail,
   addReceived,
@@ -1303,6 +1244,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => domainPage?.page.map(asDomain) ?? [],
     [domainPage]
   )
+  /* API keys and logs are real; screens that still run on the demo read
+     the team's keys from here, and demo logs are gone. */
+  const keyPage = useQuery(
+    api.apiKeys.list,
+    auth.activeTeamId
+      ? {
+          organizationId: auth.activeTeamId,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  const apiKeys = useMemo(() => keyPage?.page.map(asApiKey) ?? [], [keyPage])
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -1342,6 +1295,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       state: {
         ...demo,
         domains,
+        apiKeys,
+        logs: [],
+        // Real exports list on their own; only exports of demo lists stay.
+        exports: demo.exports.filter(
+          (item) => !SEED_STATE.exports.some((seed) => seed.id === item.id)
+        ),
         members,
         settings: {
           ...demo.settings,
@@ -1385,6 +1344,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     raw,
     auth,
     domains,
+    apiKeys,
     create,
     switchTeam,
     rename,

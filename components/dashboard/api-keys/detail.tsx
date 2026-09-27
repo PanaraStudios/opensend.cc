@@ -2,12 +2,14 @@
 
 import * as React from "react"
 import { useParams } from "next/navigation"
+import { useQuery } from "convex/react"
 import { PencilIcon, Trash2Icon } from "lucide-react"
 
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
 import {
   ApiKeyFormDialog,
@@ -32,23 +34,39 @@ import {
   ResourceTable,
   useDeleteRecord,
 } from "@/components/dashboard/primitives"
-import { apiKeyDomainLabel, apiKeyLogs } from "@/lib/dashboard/api-keys"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
+import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
 import { permissionLabel, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
+import { asLog } from "@/lib/logs/use-logs"
 
 /** Requests shown inline. The full history stays on the logs page. */
 const RECENT_REQUESTS = 10
 
 export function ApiKeyDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateApiKey, deleteApiKey } = useDashboard()
+  const { state } = useDashboard()
+  const { organizationId, updateApiKey, deleteApiKey } = useApiKeyCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/api-keys")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
-  const apiKey = state.apiKeys.find((item) => item.id === id)
+  const found = useQuery(api.apiKeys.get, { id })
+  const recent = useQuery(
+    api.logs.list,
+    organizationId && found
+      ? {
+          organizationId,
+          apiKeyId: id as Id<"apiKeys">,
+          paginationOpts: { numItems: RECENT_REQUESTS, cursor: null },
+        }
+      : "skip"
+  )
 
-  if (!apiKey) {
+  if (found === undefined) return <Skeleton className="h-40 w-full" />
+  if (!found) {
     if (leaving) return null
     return (
       <NotFoundState
@@ -60,8 +78,8 @@ export function ApiKeyDetail() {
     )
   }
 
-  const logs = apiKeyLogs(state.logs, apiKey.id)
-  const creator = state.members.find((member) => member.id === apiKey.createdBy)
+  const apiKey = asApiKey(found.key)
+  const logs = recent?.page.map(asLog) ?? []
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,19 +116,24 @@ export function ApiKeyDetail() {
             label: "Domain",
             value: apiKeyDomainLabel(state.domains, apiKey),
           },
-          { label: "Total uses", value: pluralize(logs.length, "request") },
+          {
+            label: "Total uses",
+            value: pluralize(found.requests, "request"),
+          },
           { label: "Token", value: <ApiKeyToken apiKey={apiKey} /> },
           {
             label: "Last used",
             value: <RelativeTime at={apiKey.lastUsedAt} fallback="Never" />,
           },
           { label: "Created", value: <RelativeTime at={apiKey.createdAt} /> },
-          { label: "Creator", value: creator?.name ?? "—" },
+          { label: "Creator", value: apiKey.createdBy ?? "—" },
         ]}
       />
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Recent requests</h2>
-        {logs.length === 0 ? (
+        {recent === undefined ? (
+          <Skeleton className="h-40 w-full" />
+        ) : logs.length === 0 ? (
           <EmptyState
             icon={LogIcon}
             title="No requests yet"
@@ -118,7 +141,7 @@ export function ApiKeyDetail() {
           />
         ) : (
           <ResourceTable headers={LOG_TABLE_HEADERS}>
-            {logs.slice(0, RECENT_REQUESTS).map((log) => (
+            {logs.map((log) => (
               <LogRow key={log.id} log={log} />
             ))}
           </ResourceTable>
@@ -130,8 +153,8 @@ export function ApiKeyDetail() {
         title="Edit API Key"
         submitLabel="Save"
         apiKey={apiKey}
-        onSubmit={(values) => {
-          updateApiKey(apiKey.id, values)
+        onSubmit={async (values) => {
+          await updateApiKey(apiKey.id, values)
           toast.add({ type: "success", title: "API key updated" })
         }}
       />
@@ -140,8 +163,8 @@ export function ApiKeyDetail() {
         open={deleting}
         onOpenChange={setDeleting}
         onConfirm={() =>
-          deleteAndLeave(() => {
-            deleteApiKey(apiKey.id)
+          deleteAndLeave(async () => {
+            await deleteApiKey(apiKey.id)
             toast.add({ type: "success", title: "API key removed" })
           })
         }

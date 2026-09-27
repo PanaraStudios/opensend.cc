@@ -589,6 +589,39 @@ export function usePagination<T>(rows: readonly T[]) {
   }
 }
 
+/** `usePagination` over a Convex paginated query's `results`: loads the
+    next server page when the view steps past what is loaded, and keeps
+    loading while a filtered page came back short. */
+export function usePaginatedRows<T>(
+  rows: readonly T[],
+  status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted",
+  loadMore: (count: number) => void
+) {
+  const { pageRows, pagination } = usePagination(rows)
+  const { page, pageSize } = pagination
+  const canLoad = status === "CanLoadMore"
+  React.useEffect(() => {
+    if (canLoad && rows.length < (page + 1) * pageSize)
+      loadMore((page + 1) * pageSize - rows.length)
+  }, [canLoad, rows.length, page, pageSize, loadMore])
+  return {
+    pageRows,
+    pagination: {
+      ...pagination,
+      hasMore: status !== "Exhausted",
+      loading: status === "LoadingMore",
+      onPageChange(next: number) {
+        if ((next + 1) * pageSize > rows.length && canLoad) loadMore(pageSize)
+        pagination.onPageChange(next)
+      },
+      onPageSizeChange(size: number) {
+        pagination.onPageSizeChange(size)
+        if (size > rows.length && canLoad) loadMore(size - rows.length)
+      },
+    },
+  }
+}
+
 /** Footer for a paged list: position, page size, and the two step buttons. */
 export function ListPagination({
   page,
@@ -1059,7 +1092,7 @@ export function JsonSection({
   value,
 }: {
   title: string
-  value: object
+  value: unknown
 }) {
   const source = React.useMemo(() => JSON.stringify(value, null, 2), [value])
   const tokens = React.useMemo(() => tokenizeJson(source), [source])
@@ -1625,11 +1658,14 @@ export function ToolbarFilters({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
 }: {
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  /** The clock the date presets use; see `DateRangePicker`. */
+  now?: number
   filters?: readonly ToolbarFilter[]
 }) {
   return (
@@ -1639,6 +1675,7 @@ export function ToolbarFilters({
           range={range}
           onRangeChange={onRangeChange}
           allowAllTime={allowAllTime}
+          now={now}
         />
       ) : null}
       {filters.map((filter) => (
@@ -1665,6 +1702,7 @@ export function ListToolbar({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
   onExport,
   children,
@@ -1675,6 +1713,7 @@ export function ListToolbar({
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  now?: number
   filters?: readonly ToolbarFilter[]
   onExport?: () => void
   children?: React.ReactNode
@@ -1696,6 +1735,7 @@ export function ListToolbar({
         range={range}
         onRangeChange={onRangeChange}
         allowAllTime={allowAllTime}
+        now={now}
         filters={filters}
       />
       {children}
