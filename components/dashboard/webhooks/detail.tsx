@@ -76,9 +76,13 @@ export function WebhookDetail() {
     { initialNumItems: 40 }
   )
   const rows = React.useMemo(() => results.map(asWebhookDelivery), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, { status: loading, loadMore })
+  const { pageRows, pagination } = useLoadedPagination(rows, {
+    status: loading,
+    loadMore,
+  })
 
-  if (result === undefined) return <Skeleton className="h-64 w-full" />
+  if (result === undefined || signingSecret === undefined)
+    return <Skeleton className="h-64 w-full" />
   if (!result || !webhook) {
     if (leaving) return null
     return (
@@ -124,15 +128,11 @@ export function WebhookDetail() {
       />
       <DetailSection title="Signing secret" className="max-w-xl">
         {/* Keyed so a rotated secret comes back hidden. */}
-        {signingSecret ? (
-          <SecretField
-            key={signingSecret}
-            label="Signing secret"
-            value={signingSecret}
-          />
-        ) : (
-          <Skeleton className="h-9 w-full" />
-        )}
+        <SecretField
+          key={webhook.signingSecret}
+          label="Signing secret"
+          value={webhook.signingSecret}
+        />
       </DetailSection>
       <DetailSection title="Events">
         <ul className="flex flex-wrap gap-1.5">

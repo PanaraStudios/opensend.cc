@@ -36,8 +36,6 @@ const RETRY_DELAYS = [0, 5, 300, 1800, 7200, 18000, 36000, 36000].map(
 )
 /** Svix disables an endpoint once its attempts have failed for five days. */
 const DISABLE_AFTER = 5 * DAY
-/** Svix keeps a rotated-out secret signing for 24 hours. */
-const ROTATION_GRACE = DAY
 /** Svix's default payload retention; also applied to the event outbox. */
 const RETENTION = 90 * DAY
 /** Bounds every read of a team's webhooks. */
@@ -380,18 +378,14 @@ export const rotateSecret = action({
     }),
 })
 
-/** The new secret signs from now on; the old one signs beside it for the
-    grace period, so a receiver that has not switched yet keeps verifying. */
+/** The new secret replaces the old one at once: every attempt from now on,
+    retries included, is signed with it alone. */
 export const saveSecret = internalMutation({
   args: { id: v.id("webhooks"), secret: v.string() },
   returns: v.null(),
   handler: async (ctx, { id, secret }) => {
-    const webhook = await writableWebhook(ctx, id)
-    await ctx.db.patch("webhooks", id, {
-      secret,
-      previousSecret: webhook.secret,
-      previousSecretExpiresAt: Date.now() + ROTATION_GRACE,
-    })
+    await writableWebhook(ctx, id)
+    await ctx.db.patch("webhooks", id, { secret })
     return null
   },
 })
@@ -525,9 +519,8 @@ export const claimAttempt = internalMutation({
       endpoint: v.string(),
       messageId: v.string(),
       payload: v.record(v.string(), v.any()),
-      /** For signing: the current secret, then one still in its grace
-          period. */
-      secrets: v.array(v.string()),
+      /** For signing. */
+      secret: v.string(),
     })
   ),
   handler: async (ctx, args) => {
@@ -544,17 +537,7 @@ export const claimAttempt = internalMutation({
       endpoint: webhook.endpoint,
       messageId: delivery.messageId,
       payload: delivery.payload,
-      secrets: [
-        await decryptSecret(webhook.secret),
-        // One sealed under a since-replaced key is simply dropped.
-        ...(webhook.previousSecret &&
-        (webhook.previousSecretExpiresAt ?? 0) > Date.now()
-          ? await decryptSecret(webhook.previousSecret).then(
-              (secret) => [secret],
-              () => []
-            )
-          : []),
-      ],
+      secret: await decryptSecret(webhook.secret),
     }
   },
 })

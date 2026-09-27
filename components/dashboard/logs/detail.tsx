@@ -85,7 +85,7 @@ export function LogDetail() {
   const [docsOpen, setDocsOpen] = React.useState(false)
   const found = useQuery(api.logs.get, { id })
 
-  if (found === undefined) return <Skeleton className="h-40 w-full" />
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
   if (!found) {
     return (
       <NotFoundState

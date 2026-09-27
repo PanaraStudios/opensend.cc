@@ -7,7 +7,7 @@ import { FileCodeIcon, LayoutGridIcon, PlusIcon, Rows3Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
-import { usePaginatedQuery } from "convex/react"
+import { usePaginatedQuery, useQuery } from "convex/react"
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -108,7 +108,10 @@ export function TemplatesView() {
     status: loading,
     loadMore,
   })
-  const unfiltered = !query && status === "all"
+  const hasTemplates = useQuery(
+    api.templates.hasAny,
+    organizationId ? { organizationId } : "skip"
+  )
 
   async function createTemplate() {
     if (creating.current) return
@@ -159,9 +162,9 @@ export function TemplatesView() {
           className="ml-auto w-auto"
         />
       </ListToolbar>
-      {loading === "LoadingFirstPage" ? (
+      {loading === "LoadingFirstPage" || hasTemplates === undefined ? (
         <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 && unfiltered ? (
+      ) : !hasTemplates ? (
         <EmptyState
           icon={FileCodeIcon}
           title="No templates yet"

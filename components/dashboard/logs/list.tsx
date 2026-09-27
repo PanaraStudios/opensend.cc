@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
-import { usePaginatedQuery } from "convex/react"
+import { usePaginatedQuery, useQuery } from "convex/react"
 import { endOfDay, startOfDay } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
@@ -84,13 +84,14 @@ export function LogsView() {
     { initialNumItems: 40 }
   )
   const rows = React.useMemo(() => results.map(asLog), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, { status: loading, loadMore })
-  const unfiltered =
-    !query &&
-    !emailFilter &&
-    status === "all" &&
-    userAgent === "all" &&
-    source === "all"
+  const { pageRows, pagination } = useLoadedPagination(rows, {
+    status: loading,
+    loadMore,
+  })
+  const hasLogs = useQuery(
+    api.logs.hasAny,
+    activeTeamId ? { organizationId: activeTeamId } : "skip"
+  )
 
   /* The agents seen so far; the selected one stays listed when filtered. */
   const userAgentItems: SelectOption[] = [
@@ -143,16 +144,16 @@ export function LogsView() {
           <Badge variant="secondary">email {emailFilter}</Badge>
         ) : null}
       </ListToolbar>
-      {loading === "LoadingFirstPage" ? (
+      {loading === "LoadingFirstPage" || hasLogs === undefined ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={LogIcon}
-          title={unfiltered ? "No logs yet" : "No logs found"}
+          title={hasLogs ? "No logs found" : "No logs yet"}
           description={
-            unfiltered
-              ? "Start sending emails to see every request land here."
-              : "No requests match these filters."
+            hasLogs
+              ? "No requests match these filters."
+              : "Start sending emails to see every request land here."
           }
         />
       ) : (

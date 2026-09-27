@@ -34,7 +34,7 @@ import {
   useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
-import { usePaginatedQuery } from "convex/react"
+import { usePaginatedQuery, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
@@ -72,8 +72,14 @@ export function ApiKeysView() {
     { initialNumItems: 40 }
   )
   const rows = React.useMemo(() => results.map(asApiKey), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, { status: loading, loadMore })
-  const unfiltered = !query && permission === ALL_PERMISSIONS
+  const { pageRows, pagination } = useLoadedPagination(rows, {
+    status: loading,
+    loadMore,
+  })
+  const hasKeys = useQuery(
+    api.apiKeys.hasAny,
+    organizationId ? { organizationId } : "skip"
+  )
 
   return (
     <>
@@ -98,19 +104,19 @@ export function ApiKeysView() {
         ]}
         onExport={() => void startExport("api-keys", filters)}
       />
-      {loading === "LoadingFirstPage" ? (
+      {loading === "LoadingFirstPage" || hasKeys === undefined ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={ApiKeyIcon}
-          title={unfiltered ? "No API keys" : "No API keys found"}
+          title={hasKeys ? "No API keys found" : "No API keys"}
           description={
-            unfiltered
-              ? "Create a key to send through the REST API or SMTP."
-              : "No keys match these filters."
+            hasKeys
+              ? "No keys match these filters."
+              : "Create a key to send through the REST API or SMTP."
           }
         >
-          {unfiltered ? (
+          {!hasKeys ? (
             <Button onClick={() => setAdding(true)}>
               <PlusIcon data-icon="inline-start" />
               Create API key

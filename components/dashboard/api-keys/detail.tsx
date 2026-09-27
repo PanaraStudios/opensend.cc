@@ -65,7 +65,7 @@ export function ApiKeyDetail() {
       : "skip"
   )
 
-  if (found === undefined) return <Skeleton className="h-40 w-full" />
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
   if (!found) {
     if (leaving) return null
     return (

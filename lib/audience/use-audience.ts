@@ -96,8 +96,12 @@ export function useContactList(filters: ContactFilters) {
   return { ...query, rows }
 }
 
-/** A few of the team's contacts matching `search` (the newest when empty),
-    for pickers such as the command menu. Skipped while `enabled` is false. */
+/** How many contacts a picker shows. The command menu used to list every
+    contact; this keeps a team's usual handful whole while bounding the read. */
+const CONTACT_SEARCH_LIMIT = 20
+
+/** The team's contacts matching `search` (the newest when empty), for
+    pickers such as the command menu. Skipped while `enabled` is false. */
 export function useContactSearch(search: string, enabled = true) {
   const { activeTeamId } = useWorkspace()
   const page = useQuery(
@@ -106,7 +110,7 @@ export function useContactSearch(search: string, enabled = true) {
       ? {
           organizationId: activeTeamId,
           search,
-          paginationOpts: { numItems: 8, cursor: null },
+          paginationOpts: { numItems: CONTACT_SEARCH_LIMIT, cursor: null },
         }
       : "skip"
   )

@@ -217,6 +217,22 @@ export const list = query({
     return keyPage(ctx, args)
   },
 })
+/** Whether the team has any key at all, whatever the list's filters: the
+    list says "No API keys" only when it has none. */
+export const hasAny = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    const first = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .first()
+    return first !== null
+  },
+})
 export const get = query({
   args: { id: v.string() },
   returns: v.union(

@@ -109,6 +109,24 @@ describe("API keys in the dashboard", () => {
     ).rejects.toThrow("permission")
   })
 
+  test("hasAny tells a team with no keys or logs from one with some", async () => {
+    const f = await fixture()
+    const team = { organizationId: f.owner.team }
+    const has = async () => [
+      await f.owner.client.query(api.apiKeys.hasAny, team),
+      await f.owner.client.query(api.logs.hasAny, team),
+    ]
+    expect(await has()).toEqual([false, false])
+    const { token } = await key(f)
+    expect(await has()).toEqual([true, false])
+    await call(f, token, "/api-keys")
+    expect(await has()).toEqual([true, true])
+    for (const query of [api.apiKeys.hasAny, api.logs.hasAny])
+      await expect(f.outsider.client.query(query, team)).rejects.toThrow(
+        "permission"
+      )
+  })
+
   test("validates names and domains; only sending keys keep a domain", async () => {
     const f = await fixture()
     await expect(key(f, { name: "   " })).rejects.toThrow("Enter a name")

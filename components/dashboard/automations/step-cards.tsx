@@ -593,8 +593,11 @@ function SendEmailBody({
   const { state } = useDashboard()
   const references = [...useEventReferences(trigger), ...CONTACT_REFERENCES]
   const template = state.templates.find((item) => item.id === step.templateId)
-  /* The store lists templates without their bodies; the preview needs one. */
+  /* The store lists templates without their bodies; the preview needs one.
+     Until it loads, the step shows what it shows with no template picked,
+     rather than a blank preview that fills in. */
   const withBody = useTemplate(template?.id)
+  const picked = withBody === undefined ? undefined : template
   const from = useDraft(step.from, (value) =>
     onChange({ ...step, from: value })
   )
@@ -638,22 +641,22 @@ function SendEmailBody({
             item.status === "published" ? item.name : `${item.name} (draft)`,
         }))}
       />
-      {template ? (
+      {picked ? (
         <>
           <div className="relative">
-            <TemplateThumbnail item={withBody ?? template} />
+            <TemplateThumbnail item={withBody ?? picked} />
             <Badge
               variant="secondary"
               className="absolute top-2 left-2 font-mono"
             >
-              {template.alias}
+              {picked.alias}
             </Badge>
           </div>
           <CardSection label="Sender">
             <Input
               {...from}
               aria-label="From"
-              placeholder={template.from || "From"}
+              placeholder={picked.from || "From"}
             />
             <Input
               {...replyTo}
@@ -661,9 +664,9 @@ function SendEmailBody({
               placeholder="Reply to (optional)"
             />
           </CardSection>
-          {template.variables.length > 0 ? (
+          {picked.variables.length > 0 ? (
             <CardSection label="Set variables">
-              {template.variables.map((name) => (
+              {picked.variables.map((name) => (
                 <div key={name} className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate font-mono text-[13px]">
                     {formatVariable(name)}

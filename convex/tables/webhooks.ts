@@ -10,10 +10,6 @@ export const webhookTables = {
     enabled: v.boolean(),
     /** `whsec_…`, encrypted with SSO_ENCRYPTION_KEY. */
     secret: v.string(),
-    /* After a rotation the old secret keeps signing beside the new one
-       until this time, as Svix does, so receivers can switch unhurried. */
-    previousSecret: v.optional(v.string()),
-    previousSecretExpiresAt: v.optional(v.number()),
     /** When attempts started failing without a success since; after five
         days of that the endpoint is disabled, as Svix does. */
     failingSince: v.optional(v.number()),

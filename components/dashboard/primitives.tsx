@@ -277,6 +277,81 @@ export function useDraft(
   }
 }
 
+/** Input props for a stored text field that saves as you type: each
+    keystroke shows at once, and the value is saved after a short pause, on
+    blur, and on unmount, so typing costs one write per pause rather than one
+    per keystroke. While an edit waits or saves, the stored value does not
+    replace it; a rejected save reports the error and shows the stored value
+    again. `draft` is the live text, for headings that follow the field. */
+export function useAutosaveDraft(
+  value: string,
+  commit: (next: string) => Promise<unknown>,
+  delay = 400
+) {
+  const [draft, setDraft] = React.useState(value)
+  const [synced, setSynced] = React.useState(value)
+  const [editing, setEditing] = React.useState(false)
+  if (synced !== value) {
+    setSynced(value)
+    if (!editing) setDraft(value)
+  }
+  const latest = React.useRef({ draft, value, commit })
+  React.useEffect(() => {
+    latest.current.value = value
+    latest.current.commit = commit
+  })
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sent = React.useRef<string | null>(null)
+
+  const flush = React.useCallback((onlyIfWaiting = false) => {
+    if (onlyIfWaiting && timer.current === null) return
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = null
+    const { draft: next, value: stored, commit: save } = latest.current
+    const settle = () => {
+      if (timer.current === null && latest.current.draft === next)
+        setEditing(false)
+    }
+    if (next === stored || next === sent.current) return settle()
+    sent.current = next
+    const done = () => {
+      if (sent.current === next) sent.current = null
+    }
+    save(next).then(
+      () => {
+        done()
+        settle()
+      },
+      (caught: unknown) => {
+        done()
+        toast.add({ type: "error", title: actionError(caught) })
+        if (timer.current !== null || latest.current.draft !== next) return
+        latest.current.draft = latest.current.value
+        setDraft(latest.current.value)
+        setEditing(false)
+      }
+    )
+  }, [])
+  React.useEffect(() => () => flush(true), [flush])
+
+  return {
+    draft,
+    props: {
+      value: draft,
+      onChange: (
+        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+      ) => {
+        latest.current.draft = event.target.value
+        setDraft(event.target.value)
+        setEditing(true)
+        if (timer.current !== null) clearTimeout(timer.current)
+        timer.current = setTimeout(flush, delay)
+      },
+      onBlur: () => flush(true),
+    },
+  }
+}
+
 /** Delete a record from its detail page without flashing "not found" while
     the navigation back to the list is still in flight. */
 export function useDeleteRecord(listHref: string) {

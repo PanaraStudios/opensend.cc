@@ -163,9 +163,9 @@ export const connect = action({
     } catch (e) {
       throw new ConvexError(awsError(e))
     }
-    /* Record the permissions these credentials already have, so a fresh
-       install from the current template never shows the update card. A
-       failure only leaves that card for the administrator. */
+    /* Record the permissions these credentials already have. This is how an
+       administrator upgrades: update IAM, then update the connection. A
+       failure leaves the revision unrecorded, so sending keeps waiting. */
     try {
       const granted = await Promise.all(
         regions.map((region) =>
