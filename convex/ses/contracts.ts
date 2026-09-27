@@ -22,6 +22,14 @@ export const dnsProviderValue = v.union(
   v.literal("hostinger"),
   v.literal("other")
 )
+/** A DNS provider that applies our Domain Connect template: where to open it. */
+export const domainConnectValue = v.object({
+  zone: v.string(),
+  providerName: v.string(),
+  urlSyncUX: v.string(),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+})
 
 // Supported commercial regions match the dashboard's existing region selector.
 export const regions = [

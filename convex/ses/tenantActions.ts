@@ -2,8 +2,8 @@
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { awsError, connectionClients } from "./aws"
-import { controlPlanePacer } from "./pacing"
+import { awsError } from "./aws"
+import { pacedConnection } from "./pacing"
 import { provisionTenant, removeTenant } from "./tenantProvider"
 export const run = internalAction({
   args: { tenantId: v.id("sesTenants"), generation: v.number() },
@@ -18,15 +18,7 @@ export const run = internalAction({
     )
       return null
     try {
-      const installation = await ctx.runQuery(
-        internal.installation.connection,
-        {}
-      )
-      const { ses } = connectionClients(
-        installation,
-        row.region,
-        controlPlanePacer(ctx, row.region)
-      )
+      const { installation, ses } = await pacedConnection(ctx, row.region)
       if (row.operation === "remove") {
         await removeTenant(ses, installation, row)
         await ctx.runMutation(internal.tenants.finish, {

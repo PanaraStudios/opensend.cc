@@ -435,6 +435,11 @@ test.describe.serial("Docker self-hosted authentication", () => {
       .getByRole("button", { name: "Add domain", exact: true })
       .click()
     await owner.waitForURL(/\/domains\//)
+    // Records that need nothing from AWS show before SES has answered.
+    await expect(
+      owner.getByText("feedback-smtp.us-east-1.amazonses.com")
+    ).toBeVisible()
+    await expect(owner.getByText("_dmarc", { exact: true })).toBeVisible()
     await expect(owner.locator('[data-slot="sidebar-header"]')).toBeVisible()
     await expect(owner.getByText("Domain setup needs attention")).toBeVisible()
     await expect(
@@ -478,6 +483,26 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByRole("heading", { name: "Domain events", exact: true })
     ).toBeVisible()
+    /* "Check DNS records" reads the status without re-running the AWS setup.
+       The fixture's credentials cannot reach AWS, so the read fails, and a
+       failed read changes nothing but the check schedule. */
+    const checkDns = owner.getByRole("button", {
+      name: "Check DNS records",
+      exact: true,
+    })
+    await checkDns.click()
+    await expect(owner.getByText("Checking DNS records")).toBeVisible()
+    await expect
+      .poll(
+        async () =>
+          (await (await client(owner)).query(api.domains.get, { id: domainId }))
+            ?.domain.checkAttempt
+      )
+      .toBe(1)
+    await checkDns.click()
+    await expect(owner.getByText(/Checked just now/)).toBeVisible()
+    await expect(owner.getByText("fixture.dkim.test")).toBeVisible()
+    await expect(owner.getByText("Domain setup needs attention")).toHaveCount(0)
     await expect(
       owner.getByText("Team SES tenant", { exact: true })
     ).toHaveCount(0)

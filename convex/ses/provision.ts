@@ -8,19 +8,19 @@ import {
   associateExclusive,
   disassociate,
 } from "./tenantProvider"
-import { controlPlanePacer } from "./pacing"
+import { pacedConnection } from "./pacing"
 import { resourcePrefix, tenantProvisioned } from "./contracts"
 import {
   AdoptionConflict,
   assertOwned,
   awsError,
-  connectionClients,
   mergePolicy,
   missing,
   readAccount,
 } from "./aws"
 import { identityFingerprint } from "./adoption"
-import { checkRecords, identityRecords } from "./dns"
+import { verificationState } from "./dns"
+import { identityRecords } from "./records"
 import {
   CreateTopicCommand,
   GetTopicAttributesCommand,
@@ -54,10 +54,11 @@ import {
   PutConfigurationSetSuppressionOptionsCommand,
   DeleteEmailIdentityCommand,
   DeleteConfigurationSetCommand,
-  type GetEmailIdentityResponse,
   type SESv2Client,
 } from "@aws-sdk/client-sesv2"
 
+const tlsPolicyValue = (tls: "enforced" | "opportunistic") =>
+  tls === "enforced" ? "REQUIRE" : "OPTIONAL"
 function applyTlsPolicy(
   ses: SESv2Client,
   configurationSet: string,
@@ -66,7 +67,7 @@ function applyTlsPolicy(
   return ses.send(
     new PutConfigurationSetDeliveryOptionsCommand({
       ConfigurationSetName: configurationSet,
-      TlsPolicy: tls === "enforced" ? "REQUIRE" : "OPTIONAL",
+      TlsPolicy: tlsPolicyValue(tls),
     })
   )
 }
@@ -76,17 +77,12 @@ export const region = internalAction({
   returns: v.null(),
   handler: async (ctx, { regionId }) => {
     try {
-      const installation = await ctx.runQuery(
-        internal.installation.connection,
-        {}
-      )
       const region = await ctx.runQuery(internal.ses.state.region, {
         id: regionId,
       })
-      const { ses, sns, sqs } = connectionClients(
-        installation,
-        region.region,
-        controlPlanePacer(ctx, region.region)
+      const { installation, ses, sns, sqs } = await pacedConnection(
+        ctx,
+        region.region
       )
       const prefix = resourcePrefix(installation._id)
       const name = `${prefix}-events`
@@ -258,20 +254,12 @@ export const domain = internalAction({
   handler: async (ctx, { domainId }) => {
     let discoveredRecords: ReturnType<typeof identityRecords> | undefined
     try {
-      const installation = await ctx.runQuery(
-        internal.installation.connection,
-        {}
-      )
       const {
         domain,
         region,
         tenant: tenantRow,
       } = await ctx.runQuery(internal.domains.workerContext, { id: domainId })
-      const { ses } = connectionClients(
-        installation,
-        domain.region,
-        controlPlanePacer(ctx, domain.region)
-      )
+      const { installation, ses } = await pacedConnection(ctx, domain.region)
       if (
         domain.operation !== "remove" &&
         (!tenantRow || !tenantProvisioned(tenantRow))
@@ -332,14 +320,6 @@ export const domain = internalAction({
         { Key: "opensend:installation", Value: installation._id },
         { Key: "opensend:domain", Value: domainId },
       ]
-      const dnsRecords = (identity: GetEmailIdentityResponse) =>
-        identityRecords(
-          domain.name,
-          domain.region,
-          domain.customReturnPath,
-          identity,
-          domain.receiving
-        )
       let identity = await missing(() =>
         ses.send(new GetEmailIdentityCommand({ EmailIdentity: domain.name }))
       )
@@ -350,7 +330,7 @@ export const domain = internalAction({
         identity.DkimAttributes.SigningHostedZone &&
         domain.operation === "provision"
       )
-        discoveredRecords = dnsRecords(identity)
+        discoveredRecords = identityRecords(domain, identity)
       // Checked early so a foreign association fails before anything changes.
       const identityAssociated =
         identity && tenant && domain.operation !== "remove"
@@ -452,6 +432,14 @@ export const domain = internalAction({
         })
         return null
       }
+      // A refresh queued alongside a TLS change still applies the pending
+      // policy, so one operation can rebuild records and settle TLS together.
+      const tlsPolicy = domain.pendingTls ?? domain.tls
+      /* Every SES management call waits its turn in the region's ~1/s pacer,
+         so a provision issues the identity, and publishes its records, before
+         the rest of the setup. A set created here already carries the
+         suppression and TLS settings and has no event destinations yet. */
+      let createdConfig = false
       if (domain.operation === "provision") {
         if (!config) {
           await ses.send(
@@ -461,24 +449,54 @@ export const domain = internalAction({
               SuppressionOptions: {
                 SuppressedReasons: ["BOUNCE", "COMPLAINT"],
               },
+              DeliveryOptions: { TlsPolicy: tlsPolicyValue(tlsPolicy) },
             })
           )
           // Reading the new set's tags also proves it now exists.
           await assertConfigOwned()
           config = true
+          createdConfig = true
         }
-        await ses.send(
-          new PutConfigurationSetSuppressionOptionsCommand({
-            ConfigurationSetName: configName,
-            SuppressedReasons: ["BOUNCE", "COMPLAINT"],
-          })
-        )
-        const destinations = await ses.send(
-          new GetConfigurationSetEventDestinationsCommand({
-            ConfigurationSetName: configName,
-          })
-        )
-        const Destination = destinations.EventDestinations?.some(
+        if (!identity) {
+          const created = await ses.send(
+            new CreateEmailIdentityCommand({
+              EmailIdentity: domain.name,
+              ConfigurationSetName: configName,
+              Tags: tags,
+              DkimSigningAttributes: { NextSigningKeyLength: "RSA_2048_BIT" },
+            })
+          )
+          if (
+            created.DkimAttributes?.Tokens?.length &&
+            created.DkimAttributes.SigningHostedZone
+          ) {
+            discoveredRecords = identityRecords(domain, created)
+            await ctx.runMutation(internal.domains.saveRecords, {
+              id: domainId,
+              records: discoveredRecords,
+            })
+          }
+          identity = await ses.send(
+            new GetEmailIdentityCommand({ EmailIdentity: domain.name })
+          )
+          assertOwned(identity.Tags, installation._id, domainId)
+        }
+        discoveredRecords = identityRecords(domain, identity)
+        if (!createdConfig)
+          await ses.send(
+            new PutConfigurationSetSuppressionOptionsCommand({
+              ConfigurationSetName: configName,
+              SuppressedReasons: ["BOUNCE", "COMPLAINT"],
+            })
+          )
+        const destinations = createdConfig
+          ? undefined
+          : await ses.send(
+              new GetConfigurationSetEventDestinationsCommand({
+                ConfigurationSetName: configName,
+              })
+            )
+        const Destination = destinations?.EventDestinations?.some(
           (d) => d.Name === "opensend-events"
         )
           ? UpdateConfigurationSetEventDestinationCommand
@@ -502,21 +520,6 @@ export const domain = internalAction({
             },
           })
         )
-        if (!identity) {
-          await ses.send(
-            new CreateEmailIdentityCommand({
-              EmailIdentity: domain.name,
-              ConfigurationSetName: configName,
-              Tags: tags,
-              DkimSigningAttributes: { NextSigningKeyLength: "RSA_2048_BIT" },
-            })
-          )
-          identity = await ses.send(
-            new GetEmailIdentityCommand({ EmailIdentity: domain.name })
-          )
-          assertOwned(identity.Tags, installation._id, domainId)
-        }
-        discoveredRecords = dnsRecords(identity)
         if (needsAdoption)
           await ses.send(
             new TagResourceCommand({ ResourceArn: identityArn, Tags: tags })
@@ -538,10 +541,10 @@ export const domain = internalAction({
       }
       if (!identity || !config)
         throw new Error("AWS identity or configuration set is missing")
-      // A refresh queued alongside a TLS change still applies the pending
-      // policy, so one operation can rebuild records and settle TLS together.
-      const tlsPolicy = domain.pendingTls ?? domain.tls
-      if (domain.operation === "provision" || domain.pendingTls)
+      if (
+        !createdConfig &&
+        (domain.operation === "provision" || domain.pendingTls)
+      )
         await applyTlsPolicy(ses, configName, tlsPolicy)
       if (!tenant) throw new ConvexError("SES tenant is not ready")
       if (!identityAssociated)
@@ -552,38 +555,13 @@ export const domain = internalAction({
         identity = await ses.send(
           new GetEmailIdentityCommand({ EmailIdentity: domain.name })
         )
-      const records = await checkRecords(dnsRecords(identity))
-      const sesVerified = !!identity.VerifiedForSendingStatus
-      const dkimVerified =
-        identity.DkimAttributes?.Status === "SUCCESS" &&
-        !!identity.DkimAttributes.SigningEnabled
-      const mailFromVerified =
-        identity.MailFromAttributes?.MailFromDomainStatus === "SUCCESS" &&
-        identity.MailFromAttributes.MailFromDomain === mailFromDomain &&
-        identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
-      /* DMARC is advisory, so it never holds a domain back from verified, and
-         a resolver that timed out proves nothing: only a record the resolver
-         positively did not find keeps a domain partially verified. */
-      const allVerified =
-        sesVerified &&
-        dkimVerified &&
-        mailFromVerified &&
-        records.every((r) => r.kind === "DMARC" || r.status !== "pending")
       await ctx.runMutation(internal.domains.finish, {
         id: domainId,
         changes: {
-          records,
+          ...(await verificationState(identity, domain)),
           tls: tlsPolicy,
           configurationSet: configName,
           tenantAssociated: true,
-          sesVerified,
-          dkimVerified,
-          mailFromVerified,
-          status: allVerified
-            ? "verified"
-            : sesVerified
-              ? "partially_verified"
-              : "pending",
         },
       })
       await ctx.runMutation(internal.ses.state.patchRegion, {

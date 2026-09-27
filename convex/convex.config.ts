@@ -11,6 +11,10 @@ const app = defineApp({
     ALLOW_LOCAL_OIDC: v.optional(v.string()),
     SES_ENCRYPTION_KEY: v.optional(v.string()),
     SES_CALLBACK_ORIGIN: v.optional(v.string()),
+    // Domain Connect signing; see domain-connect/README.md.
+    DOMAIN_CONNECT_PRIVATE_KEY: v.optional(v.string()),
+    DOMAIN_CONNECT_KEY: v.optional(v.string()),
+    DOMAIN_CONNECT_SIGNER: v.optional(v.string()),
   },
 })
 app.use(betterAuth)

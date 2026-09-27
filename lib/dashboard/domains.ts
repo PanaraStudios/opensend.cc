@@ -1,3 +1,7 @@
+import {
+  dmarcRecord as serverDmarcRecord,
+  receivingRecord as serverReceivingRecord,
+} from "../../convex/ses/records"
 import { isDomainName } from "./format"
 import type {
   DnsProvider,
@@ -16,35 +20,27 @@ const ZONE_TTL = 300
 
 /* ------------------------------------------------------------- providers */
 
-const PROVIDERS: Record<
-  DnsProvider,
-  { label: string; url: string; auto: boolean }
-> = {
+const PROVIDERS: Record<DnsProvider, { label: string; url: string }> = {
   cloudflare: {
     label: "Cloudflare",
     url: "https://dash.cloudflare.com",
-    auto: true,
   },
   route53: {
     label: "Route 53",
     url: "https://console.aws.amazon.com/route53",
-    auto: true,
   },
   godaddy: {
     label: "GoDaddy",
     url: "https://dcc.godaddy.com/control/dnsmanagement",
-    auto: false,
   },
   namecheap: {
     label: "Namecheap",
     url: "https://ap.www.namecheap.com/domains/list",
-    auto: false,
   },
-  other: { label: "Other provider", url: "", auto: false },
+  other: { label: "Other provider", url: "" },
   hostinger: {
     label: "Hostinger",
     url: "https://hpanel.hostinger.com",
-    auto: false,
   },
 }
 
@@ -55,11 +51,6 @@ export function providerLabel(provider: DnsProvider | undefined): string {
 export function providerUrl(provider: DnsProvider | undefined): string | null {
   const url = provider ? PROVIDERS[provider].url : ""
   return url === "" ? null : url
-}
-
-/** Only providers we hold an API token for can be written to for you. */
-export function canAutoConfigure(provider: DnsProvider | undefined): boolean {
-  return provider ? PROVIDERS[provider].auto : false
 }
 
 const REGION_FLAGS: Record<Region, string> = {
@@ -137,31 +128,23 @@ function trackingRecord(domain: Domain): DnsRecord {
   }
 }
 
+/** A record the switches ask for before the server has stored it: the
+    server's own values, not yet started. */
+const unstarted = (domain: Domain, record: DnsRecord): DnsRecord => ({
+  ...record,
+  id: `${domain.id}_${record.id}`,
+  ttl: "Auto",
+  status: "not_started",
+})
+
 function receivingRecord(domain: Domain): DnsRecord {
-  return {
-    id: `${domain.id}_receiving`,
-    kind: "Receiving",
-    type: "MX",
-    name: domain.name,
-    value: `inbound-smtp.${domain.region}.amazonaws.com`,
-    ttl: "Auto",
-    priority: 10,
-    status: "not_started",
-  }
+  return unstarted(domain, serverReceivingRecord(domain.name, domain.region))
 }
 
 /** The policy we recommend. Only synthesized for a domain stored before SES
     started returning one; the stored record wins as soon as it arrives. */
 function dmarcRecord(domain: Domain): DnsRecord {
-  return {
-    id: `${domain.id}_dmarc`,
-    kind: "DMARC",
-    type: "TXT",
-    name: `_dmarc.${domain.name}`,
-    value: "v=DMARC1; p=none;",
-    ttl: "Auto",
-    status: "not_started",
-  }
+  return unstarted(domain, serverDmarcRecord(domain.name))
 }
 
 /** Stored records, plus the optional ones the current switches ask for and
@@ -428,7 +411,7 @@ export function domainBanner(status: DomainStatus): DomainBanner {
         tone: "warning",
         title: "Waiting for your DNS records",
         description:
-          "Add the records at your DNS provider, then click Check DNS records. Checks do not repeat automatically. DNS changes can take up to 72 hours to propagate.",
+          "Add the records at your DNS provider, then click Check DNS records. We also check them automatically for 72 hours, since DNS changes can take that long to propagate.",
       }
     case "failed":
       return {

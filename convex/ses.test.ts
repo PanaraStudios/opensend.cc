@@ -7,18 +7,32 @@ import { teamTenantName } from "./ses/contracts"
 import schema from "./schema"
 import authSchema from "./betterAuth/schema"
 import { api, components, internal } from "./_generated/api"
+import type { Doc } from "./_generated/dataModel"
 import {
   encryptCredentials,
   decryptCredentials,
   createWrappedKey,
 } from "./ses/crypto"
+import { identityRecords } from "./ses/records"
 import {
-  identityRecords,
   checkRecords,
   detectDnsProvider,
   providerFromNameservers,
 } from "./ses/dns"
-import { assertOwned, mergePolicy, awsError } from "./ses/aws"
+import { assertOwned, mergePolicy, awsError, clients } from "./ses/aws"
+import { checkDelay } from "./domains"
+import {
+  PROVIDER_ID,
+  SERVICE_ID,
+  applyUrl,
+  discover,
+  signature,
+  templateParams,
+  templateQuery,
+} from "./ses/domainConnect"
+import template from "../domain-connect/opensend.cc.ses.json"
+import { createVerify, generateKeyPairSync } from "node:crypto"
+import { Readable } from "node:stream"
 import { installationUrl } from "./ses/contracts"
 import {
   certificateUrl,
@@ -29,6 +43,7 @@ import {
 import { limitedBody } from "./ses/web"
 import {
   SESv2Client,
+  GetEmailIdentityCommand,
   type GetEmailIdentityResponse,
   type Tenant,
 } from "@aws-sdk/client-sesv2"
@@ -425,27 +440,36 @@ describe("AWS boundary regression scenarios", () => {
     )
   })
   test("DNS comes from AWS tokens and hosted zone; no guessed DKIM suffix", () => {
-    const records = identityRecords("example.test", "eu-west-1", "send", {
-      DkimAttributes: {
-        Tokens: ["aws-token"],
-        SigningHostedZone: "regional.dkim.amazonses.com",
-      },
-    })
+    const records = identityRecords(
+      { name: "example.test", region: "eu-west-1", customReturnPath: "send" },
+      {
+        DkimAttributes: {
+          Tokens: ["aws-token"],
+          SigningHostedZone: "regional.dkim.amazonses.com",
+        },
+      }
+    )
     expect(records[0]).toMatchObject({
       name: "aws-token._domainkey.example.test",
       value: "aws-token.regional.dkim.amazonses.com",
     })
     expect(() =>
-      identityRecords("example.test", "eu-west-1", "send", {})
+      identityRecords(
+        { name: "example.test", region: "eu-west-1", customReturnPath: "send" },
+        {}
+      )
     ).toThrow("hosted zone")
   })
   test("DNS compares answers, joins TXT chunks, and distinguishes missing from temporary failures", async () => {
-    const records = identityRecords("example.test", "us-east-1", "send", {
-      DkimAttributes: {
-        Tokens: ["token"],
-        SigningHostedZone: "dkim.amazonses.com",
-      },
-    })
+    const records = identityRecords(
+      { name: "example.test", region: "us-east-1", customReturnPath: "send" },
+      {
+        DkimAttributes: {
+          Tokens: ["token"],
+          SigningHostedZone: "dkim.amazonses.com",
+        },
+      }
+    )
     const resolver = {
       resolveCname: async () => ["token.dkim.amazonses.com."],
       resolveMx: async () => [
@@ -576,6 +600,8 @@ async function awsFixture() {
     honorCreateConfigurationSet: true,
     failTls: false,
     tlsPolicy: "OPTIONAL",
+    /** Runs before each SES call, to observe the database mid-action. */
+    onCall: undefined as ((name: string) => Promise<void>) | undefined,
   }
   vi.spyOn(Resolver.prototype, "resolveCname").mockResolvedValue([])
   vi.spyOn(Resolver.prototype, "resolveMx").mockResolvedValue([])
@@ -585,6 +611,7 @@ async function awsFixture() {
       const name = command.constructor.name
       const input = command.input as Record<string, unknown>
       state.calls.push(name)
+      await state.onCall?.(name)
       const tenantName = input.TenantName as string
       const resourceArn = input.ResourceArn as string
       if (name === "GetTenantCommand") {
@@ -658,7 +685,12 @@ async function awsFixture() {
           })
         return {} as never
       }
-      if (name === "CreateConfigurationSetCommand") state.config = true
+      if (name === "CreateConfigurationSetCommand") {
+        state.config = true
+        const delivery = input.DeliveryOptions as
+          { TlsPolicy?: string } | undefined
+        if (delivery?.TlsPolicy) state.tlsPolicy = delivery.TlsPolicy
+      }
       if (name === "PutConfigurationSetDeliveryOptionsCommand") {
         if (state.failTls)
           throw Object.assign(new Error("provider request must stay private"), {
@@ -667,7 +699,7 @@ async function awsFixture() {
         state.tlsPolicy = input.TlsPolicy as string
       }
       if (name === "ListTagsForResourceCommand") return { Tags: tags } as never
-      if (name === "CreateEmailIdentityCommand")
+      if (name === "CreateEmailIdentityCommand") {
         state.identity = {
           Tags: tags,
           ConfigurationSetName: state.honorCreateConfigurationSet
@@ -680,6 +712,9 @@ async function awsFixture() {
             SigningEnabled: true,
           },
         }
+        // SES answers the create with the Easy DKIM values it just issued.
+        return { DkimAttributes: state.identity.DkimAttributes } as never
+      }
       if (name === "PutEmailIdentityMailFromAttributesCommand") {
         if (state.failMailFrom)
           throw Object.assign(
@@ -740,6 +775,35 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       (await f.t.run((ctx) => ctx.db.get("sesRegions", f.region._id)))?.quota
         .production
     ).toBe(false)
+  })
+  test("publishes AWS-issued records before the rest of the setup runs", async () => {
+    const f = await awsFixture()
+    await f.t.run((ctx) =>
+      ctx.db.patch("domains", f.domain, { phase: "running" })
+    )
+    let early: Doc<"domains"> | null = null
+    f.aws.onCall = async (name) => {
+      if (name === "CreateConfigurationSetEventDestinationCommand")
+        early = await f.t.run((ctx) => ctx.db.get("domains", f.domain))
+    }
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(early).toMatchObject({ phase: "running" })
+    expect(early!.records[0]).toMatchObject({
+      value: "provider-token.regional.dkim.amazonses.com",
+      status: "pending",
+    })
+    // A set created with its settings needs no follow-up calls to apply them.
+    for (const call of [
+      "PutConfigurationSetSuppressionOptionsCommand",
+      "GetConfigurationSetEventDestinationsCommand",
+      "PutConfigurationSetDeliveryOptionsCommand",
+    ])
+      expect(f.aws.calls).not.toContain(call)
+    expect(f.aws.tlsPolicy).toBe("OPTIONAL")
+    expect(
+      (await f.owner.client.query(api.domains.get, { id: f.domain }))?.domain
+        .phase
+    ).toBe("ready")
   })
   test("partial provisioning resumes without duplicate resources and redacts provider details", async () => {
     const f = await awsFixture()
@@ -1705,7 +1769,12 @@ test("saving the first domain atomically completes setup before AWS/DNS verifica
       ?.completedAt
   ).toBeTruthy()
   const domain = (await f.owner.client.query(api.domains.get, { id }))!.domain
-  expect(domain.records).toEqual([])
+  // Records that need nothing from AWS show at once, and none is faked verified.
+  expect(domain.records.map((r) => [r.kind, r.name, r.status])).toEqual([
+    ["MX", "send.new.example.test", "pending"],
+    ["SPF", "send.new.example.test", "pending"],
+    ["DMARC", "_dmarc.new.example.test", "pending"],
+  ])
   expect(domain.sesVerified).toBe(false)
   await expect(
     f.t.query(internal.ses.sendContext.get, {
@@ -2161,5 +2230,394 @@ describe("transient failures never unpublish a working domain", () => {
       tls: "enforced",
     })
     expect(healed.error).toBeUndefined()
+  })
+})
+
+describe("throttled AWS calls", () => {
+  /** A real SES client whose HTTP responses are scripted, counting how many
+      attempts waited for the pacer. */
+  function scriptedSes(responses: { status: number; error?: string }[]) {
+    vi.spyOn(Math, "random").mockReturnValue(0)
+    const paced = { count: 0 }
+    const { ses } = clients(
+      "us-east-1",
+      { kind: "keys", accessKeyId: "AKIDEXAMPLE", secretAccessKey: "secret" },
+      async () => void paced.count++
+    )
+    ses.config.requestHandler = {
+      handle: async () => {
+        const { status, error } = responses.shift()!
+        return {
+          response: {
+            statusCode: status,
+            headers: error
+              ? { "x-amzn-errortype": error }
+              : { "content-type": "application/json" },
+            body: Readable.from([
+              Buffer.from(
+                error
+                  ? '{"message":"refused"}'
+                  : '{"VerifiedForSendingStatus":true}'
+              ),
+            ]),
+          },
+        }
+      },
+    } as never
+    const read = () =>
+      ses.send(
+        new GetEmailIdentityCommand({ EmailIdentity: "mail.example.test" })
+      )
+    return { paced, read }
+  }
+  test("the SDK retries throttling, and each attempt waits for the pacer", async () => {
+    const { paced, read } = scriptedSes([
+      { status: 429, error: "TooManyRequestsException" },
+      { status: 200 },
+    ])
+    expect((await read()).VerifiedForSendingStatus).toBe(true)
+    expect(paced.count).toBe(2)
+  })
+  test("errors that cannot succeed on retry fail at once, with a safe message", async () => {
+    const { paced, read } = scriptedSes([
+      { status: 403, error: "AccessDeniedException" },
+    ])
+    const error = await read().catch((e: unknown) => e)
+    expect(paced.count).toBe(1)
+    expect(awsError(error)).toBe(
+      "GetEmailIdentity: AWS denied this operation. Check the installation IAM policy and the selected region."
+    )
+  })
+})
+
+describe("automatic status checks", () => {
+  test("run often at first, then hourly, until SES's 72 hours are spent", () => {
+    expect([0, 1, 2, 3].map(checkDelay)).toEqual([30000, 60000, 120000, 300000])
+    let total = 0
+    let attempt = 0
+    for (let delay; (delay = checkDelay(attempt)) !== null; attempt++)
+      total += delay
+    expect(total).toBeLessThanOrEqual(72 * 3600000)
+    expect(total).toBeGreaterThan(71 * 3600000)
+  })
+  test("a due check reads SES once, never re-runs setup, and stops once verified", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    let domain = await read(f)
+    expect(domain).toMatchObject({
+      status: "partially_verified",
+      checkAttempt: 0,
+      nextCheckAt: Date.now() + 30000,
+    })
+    publish()
+    f.aws.calls.length = 0
+    // Not due yet: the sweep leaves it alone.
+    await f.t.mutation(internal.domains.dispatchChecks, {})
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    expect(f.aws.calls).toEqual([])
+    vi.advanceTimersByTime(30000)
+    await f.t.mutation(internal.domains.dispatchChecks, {})
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    expect(f.aws.calls).toEqual(["GetEmailIdentityCommand"])
+    domain = await read(f)
+    expect(domain).toMatchObject({ status: "verified", phase: "ready" })
+    expect(domain.verifiedAt).toBeTruthy()
+    expect(domain.nextCheckAt).toBeUndefined()
+  })
+  test("a check that cannot read SES keeps the status and backs off", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    f.aws.identity = null
+    vi.advanceTimersByTime(30000)
+    await f.t.mutation(internal.domains.dispatchChecks, {})
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    const domain = await read(f)
+    expect(domain).toMatchObject({
+      status: "partially_verified",
+      phase: "ready",
+      checkAttempt: 1,
+    })
+    expect(domain.error).toBeUndefined()
+    expect(domain.nextCheckAt! - Date.now()).toBeGreaterThan(50000)
+    const history = await f.t.run((ctx) =>
+      ctx.db
+        .query("domainHistory")
+        .withIndex("by_domainId", (q) => q.eq("domainId", f.domain))
+        .take(10)
+    )
+    expect(history.map((h) => h.message).join()).toContain(
+      "Status check failed"
+    )
+  })
+  test("an operation that starts during a check keeps the check from writing", async () => {
+    const f = await receivingFixture()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    publish()
+    f.aws.onCall = async (name) => {
+      if (name === "GetEmailIdentityCommand")
+        await f.t.run((ctx) =>
+          ctx.db.patch("domains", f.domain, { phase: "running" })
+        )
+    }
+    await f.t.action(internal.ses.verify.run, {
+      domainId: f.domain,
+      attempt: 0,
+    })
+    expect(await read(f)).toMatchObject({
+      status: "partially_verified",
+      phase: "running",
+    })
+  })
+  test("Check DNS records reads the status now and refuses repeat clicks", async () => {
+    vi.useFakeTimers()
+    const f = await receivingFixture()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    publish()
+    f.aws.calls.length = 0
+    await expect(
+      f.outsider.client.mutation(api.domains.verify, { id: f.domain })
+    ).rejects.toThrow()
+    await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+    expect(f.aws.calls).toEqual(["GetEmailIdentityCommand"])
+    expect(await read(f)).toMatchObject({ status: "verified" })
+    await expect(
+      f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    ).rejects.toThrow("Checked just now")
+  })
+  test("Check DNS records retries a failed operation instead", async () => {
+    const f = await receivingFixture()
+    await f.t.run((ctx) =>
+      ctx.db.patch("domains", f.domain, {
+        phase: "failed",
+        operation: "provision",
+      })
+    )
+    await f.owner.client.mutation(api.domains.verify, { id: f.domain })
+    expect(await read(f)).toMatchObject({
+      phase: "running",
+      operation: "provision",
+    })
+  })
+})
+
+describe("Domain Connect", () => {
+  const settings = {
+    providerName: "Cloudflare",
+    providerDisplayName: "Cloudflare",
+    urlSyncUX: "https://dash.cloudflare.com/domainconnect/",
+    urlAPI: "https://api.cloudflare.com/client/v4/dns/domainconnect",
+    width: 600,
+  }
+  /** A DNS provider whose `_domainconnect` record sits on the parent zone. */
+  function provider(
+    templateStatus: number,
+    prefix = "api.cloudflare.com/client/v4/dns/domainconnect"
+  ) {
+    const resolver = {
+      resolveTxt: vi.fn(async (name: string) => {
+        if (name !== "_domainconnect.example.test")
+          throw Object.assign(new Error(), { code: "ENOTFOUND" })
+        return [[prefix]]
+      }),
+    }
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) =>
+        String(input).endsWith("/v2/example.test/settings")
+          ? Response.json(settings)
+          : new Response(null, { status: templateStatus })
+      )
+    return { resolver, fetch }
+  }
+  test("finds the provider on the parent zone once it applies our template", async () => {
+    const { resolver, fetch } = provider(200)
+    expect(await discover("mail.example.test", resolver)).toEqual({
+      zone: "example.test",
+      providerName: "Cloudflare",
+      urlSyncUX: "https://dash.cloudflare.com/domainconnect",
+      width: 600,
+      height: undefined,
+    })
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+      "https://api.cloudflare.com/client/v4/dns/domainconnect/v2/example.test/settings",
+      `https://api.cloudflare.com/client/v4/dns/domainconnect/v2/domainTemplates/providers/${PROVIDER_ID}/services/${SERVICE_ID}`,
+    ])
+  })
+  test("offers nothing until the provider onboards the template, or for an unsafe prefix", async () => {
+    expect(
+      await discover("mail.example.test", provider(404).resolver)
+    ).toBeUndefined()
+    vi.restoreAllMocks()
+    const internal = provider(200, "10.0.0.1/domainconnect")
+    expect(
+      await discover("mail.example.test", internal.resolver)
+    ).toBeUndefined()
+    expect(internal.fetch).not.toHaveBeenCalled()
+  })
+  const dkim = {
+    DkimAttributes: {
+      Tokens: ["t1", "t2", "t3"],
+      SigningHostedZone: "dkim.amazonses.com",
+    },
+  }
+  const domain = (receiving = false) =>
+    ({
+      name: "mail.example.test",
+      region: "us-east-1",
+      customReturnPath: "send",
+      receiving,
+      records: identityRecords(
+        {
+          name: "mail.example.test",
+          region: "us-east-1",
+          customReturnPath: "send",
+          receiving,
+        },
+        dkim
+      ),
+    }) as Doc<"domains">
+  test("fills the template from the stored records, only for what is missing", () => {
+    expect(templateParams(domain(), "example.test")).toEqual({
+      domain: "example.test",
+      host: "mail",
+      dkim1: "t1",
+      dkim2: "t2",
+      dkim3: "t3",
+      mailfrom: "send",
+      region: "us-east-1",
+      groupId: "sending,dmarc",
+    })
+    const receiving = domain(true)
+    // An existing DMARC policy, or one DNS could not confirm, is never replaced.
+    receiving.records = receiving.records.map((record) =>
+      record.kind === "DMARC"
+        ? { ...record, status: "temporary_failure" }
+        : record
+    )
+    expect(templateParams(receiving, "mail.example.test")).toMatchObject({
+      domain: "mail.example.test",
+      groupId: "sending,receiving",
+    })
+    expect(templateParams(receiving, "mail.example.test")).not.toHaveProperty(
+      "host"
+    )
+    const done = domain()
+    done.records = done.records.map((record) => ({
+      ...record,
+      status: "verified" as const,
+    }))
+    expect(() => templateParams(done, "example.test")).toThrow(
+      "already in place"
+    )
+    const elsewhere = domain()
+    elsewhere.records = elsewhere.records.map((record) =>
+      record.kind === "DKIM"
+        ? { ...record, value: `${record.id}.attacker.example` }
+        : record
+    )
+    expect(() => templateParams(elsewhere, "example.test")).toThrow("DKIM zone")
+  })
+  const keyPair = () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    })
+    return {
+      publicKey,
+      pem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    }
+  }
+  test("an installation with the key signs the encoded query itself", async () => {
+    const { pem, publicKey } = keyPair()
+    vi.stubEnv("DOMAIN_CONNECT_PRIVATE_KEY", pem.replace(/\n/g, "\\n"))
+    vi.stubEnv("DOMAIN_CONNECT_KEY", "_dck1")
+    const fetch = vi.spyOn(globalThis, "fetch")
+    const query = templateQuery({
+      domain: "example.test",
+      host: "mail",
+      groupId: "sending,dmarc",
+    })
+    expect(query).toBe("domain=example.test&host=mail&groupId=sending%2Cdmarc")
+    const url = new URL(
+      applyUrl("https://dns.example", query, await signature(query))
+    )
+    expect(url.pathname).toBe(
+      `/v2/domainTemplates/providers/${PROVIDER_ID}/services/${SERVICE_ID}/apply`
+    )
+    expect(url.search.slice(1).split("&sig=")[0]).toBe(query)
+    expect(url.searchParams.get("key")).toBe("_dck1")
+    expect(
+      createVerify("RSA-SHA256")
+        .update(query)
+        .verify(publicKey, url.searchParams.get("sig")!, "base64")
+    ).toBe(true)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  test("any other installation asks opensend.cc to sign, and says so when it cannot", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ sig: "c2ln", key: "_dck1" }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+    expect(await signature("domain=example.test")).toEqual({
+      sig: "c2ln",
+      key: "_dck1",
+    })
+    expect(fetch.mock.calls[0][0]).toBe(
+      "https://opensend.cc/api/domain-connect/sign"
+    )
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).toEqual({
+      query: "domain=example.test",
+    })
+    await expect(signature("domain=example.test")).rejects.toThrow(
+      "unavailable right now"
+    )
+  })
+  test("the template uses exactly the variables and groups we send", () => {
+    expect(template.providerId).toBe(PROVIDER_ID)
+    expect(template.serviceId).toBe(SERVICE_ID)
+    expect(template.syncPubKeyDomain).toBeTruthy()
+    const used = new Set(JSON.stringify(template.records).match(/%[a-z0-9]+%/g))
+    const params = templateParams(domain(true), "example.test")
+    const sent = new Set(
+      Object.keys(params)
+        .filter((name) => !["domain", "host", "groupId"].includes(name))
+        .map((name) => `%${name}%`)
+    )
+    expect([...used].sort()).toEqual([...sent].sort())
+    expect(new Set(template.records.map((r) => r.groupId))).toEqual(
+      new Set(["sending", "dmarc", "receiving"])
+    )
+  })
+  test("only the team's admins get an apply URL, for a provider that applies the template", async () => {
+    const f = await fixture()
+    await expect(
+      f.owner.client.action(api.ses.domainConnect.apply, { id: f.domain })
+    ).rejects.toThrow("isn't available")
+    await f.t.run((ctx) =>
+      ctx.db.patch("domains", f.domain, {
+        records: domain().records,
+        domainConnect: {
+          zone: "example.test",
+          providerName: "Cloudflare",
+          urlSyncUX: "https://dash.cloudflare.com/domainconnect",
+        },
+      })
+    )
+    await expect(
+      f.outsider.client.action(api.ses.domainConnect.apply, { id: f.domain })
+    ).rejects.toThrow("permission")
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ sig: "c2ln", key: "_dck1" })
+    )
+    const url = new URL(
+      await f.owner.client.action(api.ses.domainConnect.apply, {
+        id: f.domain,
+      })
+    )
+    expect(url.origin).toBe("https://dash.cloudflare.com")
+    expect(url.searchParams.get("dkim1")).toBe("t1")
+    expect(url.searchParams.get("sig")).toBe("c2ln")
   })
 })

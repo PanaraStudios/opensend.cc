@@ -8,9 +8,7 @@ The open-source Opensend application with built-in Amazon SES setup.
 
 Authentication, teams, SSO and OAuth use Convex. Installation onboarding and domains
 now use persistent Convex state and AWS SES. Other dashboard features still use
-the demo store while their backend milestones are implemented. The standalone
-`packages/ses` package has been retired; its implementation lessons and regression
-scenarios are preserved in [the archive](docs/legacy-ses/README.md).
+the demo store while their backend milestones are implemented.
 
 The marketing website is maintained separately in the private
 `PanaraStudios/opensend-website` repository. Its pages, sponsor checkout, Stripe
@@ -36,7 +34,7 @@ pnpm test
 pnpm build
 ```
 
-See [SES onboarding](docs/ses-onboarding.md) and the [remaining milestones](docs/parity-backlog.md).
+See [SES onboarding](docs/ses-onboarding.md).
 
 ## Deployment boundary
 

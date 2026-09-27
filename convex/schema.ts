@@ -4,6 +4,7 @@ import {
   adoptionValue,
   setupStepValue,
   dnsProviderValue,
+  domainConnectValue,
 } from "./ses/contracts"
 import {
   domainOperationValue,
@@ -67,7 +68,7 @@ export default defineSchema({
     dnsProvider: v.optional(dnsProviderValue),
     dnsProviderCheckedAt: v.optional(v.number()),
     dnsProviderRequestedAt: v.optional(v.number()),
-    dnsWriteClaimedAt: v.optional(v.number()),
+    domainConnect: v.optional(domainConnectValue),
     tenantId: v.optional(v.id("sesTenants")),
     tenantAssociated: v.optional(v.boolean()),
     adoption: v.optional(adoptionValue),
@@ -94,10 +95,16 @@ export default defineSchema({
     verifiedAt: v.optional(v.number()),
     configurationSet: v.optional(v.string()),
     checkedAt: v.optional(v.number()),
+    /* When the next automatic status check is due, and how many have run
+       since the last operation. Unset once the domain is verified or the
+       checks run out. */
+    nextCheckAt: v.optional(v.number()),
+    checkAttempt: v.optional(v.number()),
     error: v.optional(v.string()),
     operation: domainOperationValue,
   })
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
+    .index("by_nextCheckAt", ["nextCheckAt"])
     .index("by_organizationId_and_deleted_and_name", [
       "organizationId",
       "deleted",
