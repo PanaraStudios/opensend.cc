@@ -44,7 +44,8 @@
       "groupId": "sending",
       "type": "SPFM",
       "host": "%mailfrom%",
-      "spfRules": "include:amazonses.com"
+      "spfRules": "include:amazonses.com",
+      "ttl": 300
     },
     {
       "groupId": "dmarc",
