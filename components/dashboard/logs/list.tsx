@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
+import { usePaginatedQuery } from "convex/react"
+import { endOfDay, startOfDay } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
 import { Badge } from "@/components/ui/badge"
-import { toast } from "@/components/ui/toast"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DocsButton,
   EmptyState,
@@ -13,7 +15,8 @@ import {
   ListToolbar,
   PageHeader,
   ResourceTable,
-  usePagination,
+  useDebouncedValue,
+  useLoadedPagination,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
@@ -22,15 +25,18 @@ import {
   LogRow,
   LogsDocsSheet,
 } from "@/components/dashboard/logs/shared"
-import { defaultEmailRange, inDateRange } from "@/lib/dashboard/email-range"
+import { useWorkspace } from "@/components/auth/workspace"
+import { api } from "@/convex/_generated/api"
+import { defaultEmailRange } from "@/lib/dashboard/email-range"
 import {
   LOG_SOURCES,
   LOG_STATUS_CLASSES,
   logSourceLabel,
-  logStatusClass,
+  type LogStatusClass,
 } from "@/lib/dashboard/logs"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import type { LogSource } from "@/lib/dashboard/types"
+import { useStartExport } from "@/lib/exports/use-exports"
+import { asLog } from "@/lib/logs/use-logs"
 
 const STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
@@ -43,37 +49,61 @@ const SOURCE_ITEMS: readonly SelectOption[] = [
 ]
 
 export function LogsView() {
-  const { state, addExport } = useDashboard()
+  const { activeTeamId } = useWorkspace()
+  const startExport = useStartExport()
   const emailFilter = useSearchParams().get("email")
+  /* The real clock, read once: the presets and the default range use it. */
+  const [now] = React.useState(() => Date.now())
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [userAgent, setUserAgent] = React.useState("all")
   const [source, setSource] = React.useState("all")
   /* Arriving from an email shows its whole history, however old. */
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
-    emailFilter ? undefined : defaultEmailRange()
+    emailFilter ? undefined : defaultEmailRange(now)
   )
   const [docsOpen, setDocsOpen] = React.useState(false)
+  const search = useDebouncedValue(query)
 
+  const filters = {
+    statusClass: status === "all" ? undefined : (status as LogStatusClass),
+    source: source === "all" ? undefined : (source as LogSource),
+    userAgent: userAgent === "all" ? undefined : userAgent,
+    emailId: emailFilter ?? undefined,
+    search: search.trim() || undefined,
+    from: range?.from ? startOfDay(range.from).getTime() : undefined,
+    to: range?.from ? endOfDay(range.to ?? range.from).getTime() : undefined,
+  }
+  const {
+    results,
+    status: loading,
+    loadMore,
+  } = usePaginatedQuery(
+    api.logs.list,
+    activeTeamId ? { organizationId: activeTeamId, ...filters } : "skip",
+    { initialNumItems: 40 }
+  )
+  const rows = React.useMemo(() => results.map(asLog), [results])
+  const { pageRows, pagination } = useLoadedPagination(rows, { status: loading, loadMore })
+  const unfiltered =
+    !query &&
+    !emailFilter &&
+    status === "all" &&
+    userAgent === "all" &&
+    source === "all"
+
+  /* The agents seen so far; the selected one stays listed when filtered. */
   const userAgentItems: SelectOption[] = [
     { value: "all", label: "All user agents" },
-    ...[...new Set(state.logs.map((log) => log.userAgent))]
+    ...[
+      ...new Set([
+        ...rows.map((log) => log.userAgent),
+        ...(userAgent === "all" ? [] : [userAgent]),
+      ]),
+    ]
       .sort()
       .map((value) => ({ value, label: value })),
   ]
-
-  const needle = searchNeedle(query)
-  const rows = state.logs.filter((log) => {
-    if (emailFilter && log.emailId !== emailFilter) return false
-    if (status !== "all" && logStatusClass(log.status) !== status) return false
-    if (userAgent !== "all" && log.userAgent !== userAgent) return false
-    if (source !== "all" && log.source !== source) return false
-    if (!matchesNeedle(needle, `${log.method} ${log.path} ${log.status}`)) {
-      return false
-    }
-    return inDateRange(log.createdAt, range)
-  })
-  const { pageRows, pagination } = usePagination(rows)
 
   return (
     <>
@@ -86,6 +116,7 @@ export function LogsView() {
         placeholder="Search logs…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: status,
@@ -106,21 +137,20 @@ export function LogsView() {
             "aria-label": "Filter by source",
           },
         ]}
-        onExport={() => {
-          addExport("Logs", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={() => void startExport("logs", filters)}
       >
         {emailFilter ? (
           <Badge variant="secondary">email {emailFilter}</Badge>
         ) : null}
       </ListToolbar>
-      {rows.length === 0 ? (
+      {loading === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={LogIcon}
-          title={state.logs.length === 0 ? "No logs yet" : "No logs found"}
+          title={unfiltered ? "No logs yet" : "No logs found"}
           description={
-            state.logs.length === 0
+            unfiltered
               ? "Start sending emails to see every request land here."
               : "No requests match these filters."
           }

@@ -1,4 +1,4 @@
-import type { ApiLog, LogSource, SentEmail } from "./types"
+import type { ApiLog, LogSource } from "./types"
 
 export const DASHBOARD_USER_AGENT = "Opensend Dashboard"
 
@@ -42,71 +42,15 @@ export function normalizeLog(log: ApiLog): ApiLog {
   }
 }
 
-const ERROR_NAMES: Record<number, [name: string, message: string]> = {
-  401: ["missing_api_key", "Missing API key in the authorization header."],
-  403: ["invalid_api_key", "API key is not allowed to use this resource."],
-  404: ["not_found", "The requested resource was not found."],
-  422: ["validation_error", "The request body failed validation."],
-  429: ["rate_limit_exceeded", "Too many requests. Slow down and retry."],
-  500: ["internal_server_error", "An unexpected error occurred."],
-}
-
-/** Bodies are derived from the log, not stored, so the persisted state stays
-    small. `null` means the request or response carried no body. */
-export function logResponseBody(log: ApiLog): object | null {
-  if (log.status >= 400) {
-    const [name, message] = ERROR_NAMES[log.status] ?? ERROR_NAMES[500]
-    return { statusCode: log.status, name, message }
+/** A stored request or response body for display: JSON when it parses,
+    else the text as sent (a body cut to the stored size never parses). */
+export function storedBody(text: string | undefined): unknown {
+  if (text === undefined) return null
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
   }
-  if (log.method === "DELETE") return { deleted: true }
-  if (log.method === "GET" && !log.path.slice(1).includes("/")) {
-    return { object: "list", data: [] }
-  }
-  return { id: log.emailId ?? log.id.replace(/^log_/, "") }
-}
-
-export function logRequestBody(
-  log: ApiLog,
-  email: SentEmail | undefined
-): object | null {
-  if (log.method === "GET" || log.method === "DELETE") return null
-  if (!email || log.path !== "/emails") return {}
-  return {
-    from: email.from,
-    to: [email.to],
-    cc: [],
-    bcc: [],
-    replyTo: [],
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  }
-}
-
-const REDACTED = "[redacted]"
-
-export function logRequestHeaders(
-  log: ApiLog,
-  requestBody: object | null
-): [name: string, value: string][] {
-  const headers: [string, string][] = [
-    ["accept", "*/*"],
-    ["accept-encoding", "gzip, br"],
-    ["authorization", REDACTED],
-  ]
-  if (requestBody) {
-    headers.push(
-      ["content-length", String(JSON.stringify(requestBody).length)],
-      ["content-type", "application/json"]
-    )
-  }
-  headers.push(
-    ["host", REDACTED],
-    ["user-agent", log.userAgent],
-    ["x-forwarded-for", REDACTED],
-    ["x-forwarded-proto", REDACTED]
-  )
-  return headers
 }
 
 export type JsonTokenKind = "key" | "string" | "literal" | "punct"

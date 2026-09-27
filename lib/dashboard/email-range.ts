@@ -29,8 +29,10 @@ export type RollingPreset = keyof typeof ROLLING_DAYS
 export type NamedRangePreset = (typeof RANGE_PRESETS)[number]["value"]
 export type RangePreset = NamedRangePreset | "all"
 
-export function defaultEmailRange(): DateRange {
-  return rangeFromPreset("15d")
+/** The last 15 days. `now` defaults to the demo clock; screens on real
+    data pass the real one. */
+export function defaultEmailRange(now?: number): DateRange {
+  return rangeFromPreset("15d", now)
 }
 
 function lastDays(current: Date, days: number): DateRange {
@@ -110,9 +112,10 @@ export function pickerPresets(allowAllTime: boolean) {
 }
 
 export function rangeAfterCalendarClear(
-  allowAllTime: boolean
+  allowAllTime: boolean,
+  now?: number
 ): DateRange | undefined {
-  return allowAllTime ? undefined : defaultEmailRange()
+  return allowAllTime ? undefined : defaultEmailRange(now)
 }
 
 /** The range's first and last millisecond, whole days; none for all time. */

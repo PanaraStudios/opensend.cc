@@ -16,6 +16,7 @@ import type { MutationCtx } from "./_generated/server"
 import { snapshotValue } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
+import { retireApiKeys } from "./apiKeys"
 const role = v.union(v.literal("admin"), v.literal("member"))
 /** A team is deleted only once it has no domains; its tenants go with it. */
 async function retireTeam(ctx: MutationCtx, organizationId: string) {
@@ -30,6 +31,7 @@ async function retireTeam(ctx: MutationCtx, organizationId: string) {
       "Remove this team's sending domains before deleting the team"
     )
   await removeTeamTenants(ctx, organizationId)
+  await retireApiKeys(ctx, organizationId)
 }
 export const snapshot = query({
   args: {},

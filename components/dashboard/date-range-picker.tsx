@@ -155,7 +155,7 @@ export function DateRangePicker({
               today={today}
               onSelect={(next) => {
                 if (!next?.from) {
-                  onRangeChange(rangeAfterCalendarClear(allowAllTime))
+                  onRangeChange(rangeAfterCalendarClear(allowAllTime, now))
                   return
                 }
                 onRangeChange(next)

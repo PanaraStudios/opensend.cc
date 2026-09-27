@@ -16,5 +16,13 @@ crons.interval(
   internal.webhooks.cleanup,
   {}
 )
+crons.interval("request log retention", { hours: 1 }, internal.logs.prune, {})
+crons.interval(
+  "idempotency key expiry",
+  { hours: 1 },
+  internal.api.state.expireIdempotency,
+  {}
+)
+crons.interval("export expiry", { hours: 1 }, internal.exports.expire, {})
 
 export default crons

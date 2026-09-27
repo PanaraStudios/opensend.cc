@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import {
   Table,
@@ -61,6 +62,7 @@ import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
+import { useExports } from "@/lib/exports/use-exports"
 import type { Team, TeamMember } from "@/lib/dashboard/types"
 
 const SMTP_PORT_ITEMS = [
@@ -827,6 +829,9 @@ export function SettingsUnsubscribe() {
 
 export function SettingsExports() {
   const { state } = useDashboard()
+  const exports = useExports()
+  /* Lists not yet on the server still export into the demo store. */
+  const rows = [...(exports ?? []), ...state.exports]
 
   return (
     <>
@@ -834,7 +839,9 @@ export function SettingsExports() {
         title="Exports"
         description="Exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
       />
-      {state.exports.length === 0 ? (
+      {exports === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={DownloadIcon}
           title="You haven't performed any exports yet"
@@ -852,7 +859,7 @@ export function SettingsExports() {
             </>
           }
         >
-          {state.exports.map((item) => (
+          {rows.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="font-medium">{item.resource}</TableCell>
               <TableCell>

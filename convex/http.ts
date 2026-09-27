@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server"
+import { registerApiRoutes } from "./api/http"
 import { registerAuthRoutes } from "./authHttp"
 import { registerOAuthRoutes } from "./oauthHttp"
 import { registerSesRoutes } from "./ses/http"
@@ -9,4 +10,5 @@ const http = httpRouter()
 registerSesRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)
+registerApiRoutes(http)
 export default http

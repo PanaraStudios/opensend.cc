@@ -1,4 +1,4 @@
-import { v, ConvexError } from "convex/values"
+import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -259,6 +259,61 @@ export async function start(
     domainId: domain._id,
   })
 }
+/** Adds a domain for a team and starts provisioning it. The dashboard and
+    the REST API both create domains through here. */
+export async function createDomain(
+  ctx: MutationCtx,
+  organizationId: string,
+  args: {
+    name: string
+    region: Doc<"domains">["region"]
+    customReturnPath: string
+  }
+) {
+  const name = normalizeDomainName(args.name)
+  const customReturnPath = args.customReturnPath.trim().toLowerCase()
+  const error =
+    validateDomainName(name, []) || validateDnsLabel(customReturnPath)
+  if (error || `${customReturnPath}.${name}`.length > 253)
+    throw new ConvexError(error ?? "Return-Path is too long")
+  const region = await findRegion(ctx, args.region)
+  if (!region || region.phase !== "ready")
+    throw new ConvexError(
+      "Provision this AWS region in installation settings first"
+    )
+  const existing = await ctx.db
+    .query("domains")
+    .withIndex("by_name_and_region_and_deleted", (q) =>
+      q.eq("name", name).eq("region", args.region).eq("deleted", false)
+    )
+    .unique()
+  if (existing) {
+    throw new ConvexError("That domain is already reserved in this region")
+  }
+  const id = await ctx.db.insert("domains", {
+    organizationId,
+    region: args.region,
+    name,
+    customReturnPath,
+    status: "pending",
+    phase: "pending",
+    deleted: false,
+    sending: true,
+    tls: "opportunistic",
+    // Shown at once; the DKIM records join them when SES issues its keys.
+    records: mailRecords({ name, region: args.region, customReturnPath }),
+    sesVerified: false,
+    dkimVerified: false,
+    mailFromVerified: false,
+    operation: "provision",
+  })
+  await emitDomain(ctx, id, "domain.created")
+  await start(ctx, (await ctx.db.get("domains", id))!, "provision")
+  const installation = await findInstallation(ctx)
+  if (installation && !installation.completedAt)
+    await completeInstallation(ctx, organizationId)
+  return id
+}
 export const create = mutation({
   args: {
     organizationId: v.string(),
@@ -267,50 +322,9 @@ export const create = mutation({
     customReturnPath: v.string(),
   },
   returns: v.id("domains"),
-  handler: async (ctx, args) => {
-    await requireTeam(ctx, args.organizationId, "write")
-    const name = normalizeDomainName(args.name)
-    const customReturnPath = args.customReturnPath.trim().toLowerCase()
-    const error =
-      validateDomainName(name, []) || validateDnsLabel(customReturnPath)
-    if (error || `${customReturnPath}.${name}`.length > 253)
-      throw new ConvexError(error ?? "Return-Path is too long")
-    const region = await findRegion(ctx, args.region)
-    if (!region || region.phase !== "ready")
-      throw new ConvexError(
-        "Provision this AWS region in installation settings first"
-      )
-    const existing = await ctx.db
-      .query("domains")
-      .withIndex("by_name_and_region_and_deleted", (q) =>
-        q.eq("name", name).eq("region", args.region).eq("deleted", false)
-      )
-      .unique()
-    if (existing) {
-      throw new ConvexError("That domain is already reserved in this region")
-    }
-    const id = await ctx.db.insert("domains", {
-      ...args,
-      name,
-      customReturnPath,
-      status: "pending",
-      phase: "pending",
-      deleted: false,
-      sending: true,
-      tls: "opportunistic",
-      // Shown at once; the DKIM records join them when SES issues its keys.
-      records: mailRecords({ name, region: args.region, customReturnPath }),
-      sesVerified: false,
-      dkimVerified: false,
-      mailFromVerified: false,
-      operation: "provision",
-    })
-    await emitDomain(ctx, id, "domain.created")
-    await start(ctx, (await ctx.db.get("domains", id))!, "provision")
-    const installation = await findInstallation(ctx)
-    if (installation && !installation.completedAt)
-      await completeInstallation(ctx, args.organizationId)
-    return id
+  handler: async (ctx, { organizationId, ...args }) => {
+    await requireTeam(ctx, organizationId, "write")
+    return createDomain(ctx, organizationId, args)
   },
 })
 export const refresh = mutation({
@@ -326,70 +340,80 @@ export const refresh = mutation({
 /** "Check DNS records". A failed operation is retried. Otherwise the status is
     read now, without re-running the AWS setup, and automatic checks restart.
     Returns whether a status check started, rather than an operation. */
+export async function verifyDomain(ctx: MutationCtx, domain: Doc<"domains">) {
+  if (domain.phase === "failed") {
+    await start(ctx, domain, retryOperation(domain))
+    return false
+  }
+  if (!checkable(domain))
+    throw new ConvexError("A domain operation is already running")
+  await limitDomainCheck(ctx, domain._id)
+  await dispatchCheck(ctx, domain, 0)
+  return true
+}
 export const verify = mutation({
   args: { id: v.id("domains") },
   returns: v.boolean(),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, "write")
-    if (domain.phase === "failed") {
-      await start(ctx, domain, retryOperation(domain))
-      return false
-    }
-    if (!checkable(domain))
-      throw new ConvexError("A domain operation is already running")
-    await limitDomainCheck(ctx, id)
-    await dispatchCheck(ctx, domain, 0)
-    return true
+    return verifyDomain(ctx, domain)
   },
 })
+export const domainChanges = v.object({
+  sending: v.optional(v.boolean()),
+  receiving: v.optional(v.boolean()),
+  tls: v.optional(tlsValue),
+})
+export async function updateDomain(
+  ctx: MutationCtx,
+  domain: Doc<"domains">,
+  args: Infer<typeof domainChanges>
+) {
+  // A refresh or TLS change that failed left the provisioned domain intact,
+  // so its settings stay editable; an unfinished provision or removal does not.
+  if (!provisioned(domain))
+    throw new ConvexError("Finish provisioning this domain first")
+  const tls = args.tls && args.tls !== domain.tls ? args.tls : undefined
+  const receiving =
+    args.receiving !== undefined &&
+    args.receiving !== (domain.receiving ?? false)
+      ? args.receiving
+      : undefined
+  const sending =
+    args.sending !== undefined && args.sending !== domain.sending
+      ? args.sending
+      : undefined
+  if (sending === undefined && tls === undefined && receiving === undefined)
+    return
+  await ctx.db.patch("domains", domain._id, {
+    ...(sending !== undefined ? { sending } : {}),
+    ...(tls ? { pendingTls: tls } : {}),
+    ...(receiving !== undefined ? { receiving } : {}),
+  })
+  await emitDomain(ctx, domain._id, "domain.updated")
+  // Receiving changes which records we publish, so it needs the full refresh
+  // that rebuilds and rechecks DNS; that refresh also settles a pending TLS
+  // change, keeping a combined update to a single operation.
+  if (tls || receiving !== undefined)
+    await start(ctx, domain, receiving === undefined ? "settings" : "refresh")
+  await logHistory(
+    ctx,
+    domain._id,
+    receiving === undefined
+      ? "Settings updated"
+      : receiving
+        ? "Inbound receiving enabled"
+        : "Inbound receiving disabled"
+  )
+}
 export const update = mutation({
-  args: {
-    id: v.id("domains"),
-    sending: v.optional(v.boolean()),
-    receiving: v.optional(v.boolean()),
-    tls: v.optional(tlsValue),
-  },
+  args: { id: v.id("domains"), ...domainChanges.fields },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const domain = await findActiveDomain(ctx, args.id)
+  handler: async (ctx, { id, ...changes }) => {
+    const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, "write")
-    // A refresh or TLS change that failed left the provisioned domain intact,
-    // so its settings stay editable; an unfinished provision or removal does not.
-    if (!provisioned(domain))
-      throw new ConvexError("Finish provisioning this domain first")
-    const tls = args.tls && args.tls !== domain.tls ? args.tls : undefined
-    const receiving =
-      args.receiving !== undefined &&
-      args.receiving !== (domain.receiving ?? false)
-        ? args.receiving
-        : undefined
-    const sending =
-      args.sending !== undefined && args.sending !== domain.sending
-        ? args.sending
-        : undefined
-    if (sending === undefined && tls === undefined && receiving === undefined)
-      return null
-    await ctx.db.patch("domains", domain._id, {
-      ...(sending !== undefined ? { sending } : {}),
-      ...(tls ? { pendingTls: tls } : {}),
-      ...(receiving !== undefined ? { receiving } : {}),
-    })
-    await emitDomain(ctx, domain._id, "domain.updated")
-    // Receiving changes which records we publish, so it needs the full refresh
-    // that rebuilds and rechecks DNS; that refresh also settles a pending TLS
-    // change, keeping a combined update to a single operation.
-    if (tls || receiving !== undefined)
-      await start(ctx, domain, receiving === undefined ? "settings" : "refresh")
-    await logHistory(
-      ctx,
-      domain._id,
-      receiving === undefined
-        ? "Settings updated"
-        : receiving
-          ? "Inbound receiving enabled"
-          : "Inbound receiving disabled"
-    )
+    await updateDomain(ctx, domain, changes)
     return null
   },
 })

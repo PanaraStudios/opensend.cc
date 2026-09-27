@@ -162,8 +162,8 @@ export type ApiKey = {
   domainId: string | null
   createdAt: number
   lastUsedAt: number | null
-  /** Member who created the key. Optional: keys stored before this field
-      existed simply show no creator. */
+  /** Who created the key: a member's name, or the API key or OAuth
+      application that created it through the API. */
   createdBy?: string | null
 }
 
@@ -509,9 +509,4 @@ export type DashboardState = {
   logs: ApiLog[]
   exports: ExportJob[]
   settings: Settings
-}
-
-export type CreateApiKeyResult = {
-  key: ApiKey
-  token: string
 }

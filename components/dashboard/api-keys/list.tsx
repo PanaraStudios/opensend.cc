@@ -30,17 +30,22 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  usePagination,
+  useDebouncedValue,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
-import { ALL_PERMISSIONS, filterApiKeys } from "@/lib/dashboard/api-keys"
+import { Skeleton } from "@/components/ui/skeleton"
+import { usePaginatedQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
+import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
 import { permissionLabel } from "@/lib/dashboard/format"
-import { searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
-import type { ApiKey } from "@/lib/dashboard/types"
+import { useStartExport } from "@/lib/exports/use-exports"
+import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 
 export function ApiKeysView() {
-  const { state, createApiKey, updateApiKey, deleteApiKey, addExport } =
-    useDashboard()
+  const { organizationId, createApiKey, updateApiKey, deleteApiKey } =
+    useApiKeyCommands()
+  const startExport = useStartExport()
   const [query, setQuery] = React.useState("")
   const [permission, setPermission] = React.useState(ALL_PERMISSIONS)
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -49,11 +54,26 @@ export function ApiKeysView() {
   const [deleting, setDeleting] = React.useState<ApiKey | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
 
-  const rows = filterApiKeys(state.apiKeys, {
-    needle: searchNeedle(query),
-    permission,
-  })
-  const { pageRows, pagination } = usePagination(rows)
+  const search = useDebouncedValue(query)
+  const filters = {
+    search: search.trim() || undefined,
+    permission:
+      permission === ALL_PERMISSIONS
+        ? undefined
+        : (permission as ApiKeyPermission),
+  }
+  const {
+    results,
+    status: loading,
+    loadMore,
+  } = usePaginatedQuery(
+    api.apiKeys.list,
+    organizationId ? { organizationId, ...filters } : "skip",
+    { initialNumItems: 40 }
+  )
+  const rows = React.useMemo(() => results.map(asApiKey), [results])
+  const { pageRows, pagination } = useLoadedPagination(rows, { status: loading, loadMore })
+  const unfiltered = !query && permission === ALL_PERMISSIONS
 
   return (
     <>
@@ -76,24 +96,21 @@ export function ApiKeysView() {
             "aria-label": "Filter by permission",
           },
         ]}
-        onExport={() => {
-          addExport("API keys", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={() => void startExport("api-keys", filters)}
       />
-      {rows.length === 0 ? (
+      {loading === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={ApiKeyIcon}
-          title={
-            state.apiKeys.length === 0 ? "No API keys" : "No API keys found"
-          }
+          title={unfiltered ? "No API keys" : "No API keys found"}
           description={
-            state.apiKeys.length === 0
+            unfiltered
               ? "Create a key to send through the REST API or SMTP."
               : "No keys match these filters."
           }
         >
-          {state.apiKeys.length === 0 ? (
+          {unfiltered ? (
             <Button onClick={() => setAdding(true)}>
               <PlusIcon data-icon="inline-start" />
               Create API key
@@ -173,8 +190,8 @@ export function ApiKeysView() {
         onOpenChange={setAdding}
         title="Add API Key"
         submitLabel="Add"
-        onSubmit={(values) => {
-          const created = createApiKey(values)
+        onSubmit={async (values) => {
+          const created = await createApiKey(values)
           setToken(created.token)
           toast.add({ type: "success", title: "API key created" })
         }}
@@ -187,8 +204,8 @@ export function ApiKeysView() {
         title="Edit API Key"
         submitLabel="Save"
         apiKey={editing}
-        onSubmit={(values) => {
-          if (editing) updateApiKey(editing.id, values)
+        onSubmit={async (values) => {
+          if (editing) await updateApiKey(editing.id, values)
           toast.add({ type: "success", title: "API key updated" })
         }}
       />
@@ -204,8 +221,8 @@ export function ApiKeysView() {
         onOpenChange={(next) => {
           if (!next) setDeleting(null)
         }}
-        onConfirm={() => {
-          if (deleting) deleteApiKey(deleting.id)
+        onConfirm={async () => {
+          if (deleting) await deleteApiKey(deleting.id)
           toast.add({ type: "success", title: "API key removed" })
         }}
       />

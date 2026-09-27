@@ -590,7 +590,8 @@ export function usePagination<T>(rows: readonly T[]) {
 }
 
 /** `usePagination` over rows a paginated query has loaded so far: paging
-    past them loads more. Spread `pagination` into `ListPagination`. */
+    past them loads more, and a filtered page that came back short keeps
+    loading. Spread `pagination` into `ListPagination`. */
 export function useLoadedPagination<T>(
   rows: readonly T[],
   query: {
@@ -599,7 +600,13 @@ export function useLoadedPagination<T>(
   }
 ) {
   const { pageRows, pagination } = usePagination(rows)
+  const { page, pageSize } = pagination
   const canLoad = query.status === "CanLoadMore"
+  const { loadMore } = query
+  React.useEffect(() => {
+    if (canLoad && rows.length < (page + 1) * pageSize)
+      loadMore((page + 1) * pageSize - rows.length)
+  }, [canLoad, rows.length, page, pageSize, loadMore])
   return {
     pageRows,
     pagination: {
@@ -1089,7 +1096,7 @@ export function JsonSection({
   value,
 }: {
   title: string
-  value: object
+  value: unknown
 }) {
   const source = React.useMemo(() => JSON.stringify(value, null, 2), [value])
   const tokens = React.useMemo(() => tokenizeJson(source), [source])

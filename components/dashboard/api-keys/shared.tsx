@@ -38,6 +38,8 @@ import {
   ALL_PERMISSIONS,
   API_KEY_PERMISSIONS,
 } from "@/lib/dashboard/api-keys"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import { maskToken, permissionLabel } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { ApiKey, ApiKeyPermission, Domain } from "@/lib/dashboard/types"
@@ -132,7 +134,7 @@ export function ApiKeyFormDialog({
   title: string
   submitLabel: string
   apiKey?: ApiKey | null
-  onSubmit: (values: ApiKeyFormValues) => void
+  onSubmit: (values: ApiKeyFormValues) => Promise<void>
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -159,7 +161,7 @@ function ApiKeyForm({
   title: string
   submitLabel: string
   apiKey: ApiKey | null
-  onSubmit: (values: ApiKeyFormValues) => void
+  onSubmit: (values: ApiKeyFormValues) => Promise<void>
   onOpenChange: (open: boolean) => void
 }) {
   const { state } = useDashboard()
@@ -171,20 +173,29 @@ function ApiKeyForm({
     apiKey?.domainId ?? null
   )
   const [error, setError] = React.useState<string | null>(null)
+  const [pending, setPending] = React.useState(false)
   const sendingOnly = permission === "sending_access"
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     if (!name.trim()) {
       setError("Enter a name")
       return
     }
-    onSubmit({
-      name: name.trim().slice(0, 50),
-      permission,
-      domainId: sendingOnly ? domainId : null,
-    })
-    onOpenChange(false)
+    setPending(true)
+    try {
+      await onSubmit({
+        name: name.trim().slice(0, 50),
+        permission,
+        domainId: sendingOnly ? domainId : null,
+      })
+      onOpenChange(false)
+    } catch (e) {
+      toast.add({ type: "error", title: actionError(e) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
