@@ -15,7 +15,6 @@ import {
   type Team,
   type TeamMember,
 } from "./types"
-import { normalizeWebhook } from "./webhooks"
 
 export const SEED_TEAM_ID = "team_opensend"
 export const ROOT_VERSION = 3 as const
@@ -83,14 +82,6 @@ function migrateWorkspace(workspace: DashboardState): DashboardState {
       workspace.automationRuns ??
       SEED_STATE.automationRuns.filter((run) =>
         workspace.automations.some((item) => item.id === run.automationId)
-      ),
-    webhooks: workspace.webhooks.map(normalizeWebhook),
-    /* A workspace saved before deliveries were kept gets the seeded history
-       of whichever seeded webhooks it still has. */
-    webhookDeliveries:
-      workspace.webhookDeliveries ??
-      SEED_STATE.webhookDeliveries.filter((delivery) =>
-        workspace.webhooks.some((item) => item.id === delivery.webhookId)
       ),
   }
 }
@@ -215,8 +206,6 @@ export function emptyWorkspace(
     automations: [],
     automationEvents: [],
     automationRuns: [],
-    webhooks: [],
-    webhookDeliveries: [],
     logs: [],
     exports: [],
     settings: {

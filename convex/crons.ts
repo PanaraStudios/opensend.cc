@@ -10,4 +10,11 @@ crons.interval(
   {}
 )
 
+crons.interval(
+  "webhook and event retention",
+  { hours: 1 },
+  internal.webhooks.cleanup,
+  {}
+)
+
 export default crons

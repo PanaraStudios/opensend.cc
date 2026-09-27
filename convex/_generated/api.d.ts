@@ -52,9 +52,12 @@ import type * as sso from "../sso.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_events from "../tables/events.js";
 import type * as tables_ses from "../tables/ses.js";
+import type * as tables_webhooks from "../tables/webhooks.js";
 import type * as teams from "../teams.js";
 import type * as tenants from "../tenants.js";
 import type * as testHelpers_snsFixture from "../testHelpers/snsFixture.js";
+import type * as webhookDelivery from "../webhookDelivery.js";
+import type * as webhooks from "../webhooks.js";
 
 import type {
   ApiFromModules,
@@ -107,9 +110,12 @@ declare const fullApi: ApiFromModules<{
   "tables/domains": typeof tables_domains;
   "tables/events": typeof tables_events;
   "tables/ses": typeof tables_ses;
+  "tables/webhooks": typeof tables_webhooks;
   teams: typeof teams;
   tenants: typeof tenants;
   "testHelpers/snsFixture": typeof testHelpers_snsFixture;
+  webhookDelivery: typeof webhookDelivery;
+  webhooks: typeof webhooks;
 }>;
 
 /**

@@ -589,6 +589,38 @@ export function usePagination<T>(rows: readonly T[]) {
   }
 }
 
+/** `usePagination` over a `usePaginatedQuery` result: stepping or growing
+    past the rows loaded so far loads more of them. Spread `pagination` into
+    `ListPagination`. */
+export function useLoadedPagination<T>(
+  rows: readonly T[],
+  status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted",
+  loadMore: (numItems: number) => void
+) {
+  const { pageRows, pagination } = usePagination(rows)
+  return {
+    pageRows,
+    pagination: {
+      ...pagination,
+      hasMore: status !== "Exhausted",
+      loading: status === "LoadingMore",
+      onPageChange(page: number) {
+        if (
+          (page + 1) * pagination.pageSize > rows.length &&
+          status === "CanLoadMore"
+        )
+          loadMore(pagination.pageSize)
+        pagination.onPageChange(page)
+      },
+      onPageSizeChange(size: number) {
+        pagination.onPageSizeChange(size)
+        if (size > rows.length && status === "CanLoadMore")
+          loadMore(size - rows.length)
+      },
+    },
+  }
+}
+
 /** Footer for a paged list: position, page size, and the two step buttons. */
 export function ListPagination({
   page,

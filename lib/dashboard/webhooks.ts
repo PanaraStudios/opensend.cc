@@ -1,7 +1,7 @@
+import { isPublicHostname } from "../net/public-host"
 import { isHttpsUrl, pluralize } from "./format"
 import {
   WEBHOOK_EVENTS,
-  type Webhook,
   type WebhookDelivery,
   type WebhookEvent,
 } from "./types"
@@ -33,14 +33,28 @@ export function webhookEventsLabel(events: readonly WebhookEvent[]): string {
   return pluralize(events.length, "event")
 }
 
+/** Endpoints are posted to from the server, so they must be public HTTPS
+    hosts; the addresses they resolve to are checked again on every send. */
+export function webhookEndpointError(value: string): string | null {
+  const endpoint = value.trim()
+  if (!isHttpsUrl(endpoint)) return "Enter an https:// endpoint URL"
+  if (endpoint.length > 2048) return "Use an endpoint URL under 2048 characters"
+  const url = new URL(endpoint)
+  if (url.username || url.password) return "Remove the credentials from the URL"
+  if (!isPublicHostname(url.hostname))
+    return "Use a public hostname, not an IP address or local name"
+  return null
+}
+
 export function webhookFormError(
   endpoint: string,
   events: readonly WebhookEvent[]
 ): { endpoint?: string; events?: string } | null {
-  if (!isHttpsUrl(endpoint)) {
-    return { endpoint: "Enter an https:// endpoint URL" }
-  }
+  const problem = webhookEndpointError(endpoint)
+  if (problem) return { endpoint: problem }
   if (events.length === 0) return { events: "Select at least one event" }
+  if (events.some((event) => !WEBHOOK_EVENTS.includes(event)))
+    return { events: "Select events from the list" }
   return null
 }
 
@@ -49,44 +63,4 @@ export function isDeliveryFailed(
   delivery: Pick<WebhookDelivery, "status">
 ): boolean {
   return delivery.status < 200 || delivery.status >= 300
-}
-
-/** Newest first. */
-export function webhookDeliveries(
-  deliveries: readonly WebhookDelivery[],
-  webhookId: string
-): WebhookDelivery[] {
-  return deliveries
-    .filter((delivery) => delivery.webhookId === webhookId)
-    .sort((a, b) => b.createdAt - a.createdAt)
-}
-
-/** Sending it again: a new attempt at the same payload, which this demo
-    workspace always lands. */
-export function replayedDelivery(
-  delivery: WebhookDelivery,
-  id: string,
-  now: number
-): WebhookDelivery {
-  return {
-    ...delivery,
-    id,
-    status: 200,
-    attempts: delivery.attempts + 1,
-    durationMs: 184,
-    createdAt: now,
-    response: "OK",
-  }
-}
-
-/** Backfill for records persisted when only the secret's tail was kept. The
-    original is gone, so a stand-in ending in the same four characters is
-    derived from the id: stable across parses, and rotatable like any other. */
-export function normalizeWebhook(
-  item: Webhook & { signingSecretLast4?: string }
-): Webhook {
-  if (item.signingSecret) return item
-  const { signingSecretLast4 = "", ...rest } = item
-  const body = item.id.replace(/[^a-z0-9]/gi, "").padEnd(32, "0")
-  return { ...rest, signingSecret: `whsec_${body}${signingSecretLast4}` }
 }

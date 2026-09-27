@@ -43,13 +43,14 @@ import {
   MoreMenu,
   type SelectOption,
 } from "@/components/dashboard/primitives"
-import { useDashboard } from "@/lib/dashboard/store"
+import { actionError } from "@/lib/action-error"
 import type { Webhook, WebhookEvent } from "@/lib/dashboard/types"
 import {
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
   webhookFormError,
 } from "@/lib/dashboard/webhooks"
+import { useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 
 export const WebhookIcon = LucideWebhookIcon
 
@@ -114,7 +115,8 @@ type WebhookFormProps = {
   onOpenChange: (open: boolean) => void
   /** The webhook being edited. Without one, the form adds a new webhook. */
   webhook?: Webhook | null
-  onSubmit: (values: WebhookFormValues) => void
+  /** The dialog stays open, showing the error, if this throws. */
+  onSubmit: (values: WebhookFormValues) => Promise<unknown>
 }
 
 /** One form for adding and editing. The dialog mounts it only while open, so
@@ -137,6 +139,7 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
   )
   const [error, setError] =
     React.useState<ReturnType<typeof webhookFormError>>(null)
+  const [pending, setPending] = React.useState(false)
 
   function toggle(targets: readonly WebhookEvent[], checked: boolean) {
     setEvents((current) =>
@@ -147,15 +150,26 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     const problem = webhookFormError(endpoint, events)
     if (problem) {
       setError(problem)
       return
     }
-    onSubmit({ endpoint: endpoint.trim(), events: sortWebhookEvents(events) })
-    onOpenChange(false)
+    setPending(true)
+    try {
+      await onSubmit({
+        endpoint: endpoint.trim(),
+        events: sortWebhookEvents(events),
+      })
+      onOpenChange(false)
+    } catch (e) {
+      setError({ endpoint: actionError(e) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -231,7 +245,9 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit">{webhook ? "Save" : "Add"}</Button>
+          <Button type="submit" disabled={pending}>
+            {webhook ? "Save" : "Add"}
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>
@@ -251,7 +267,8 @@ export function WebhookMenu({
   /** Replaces the plain delete, for a page that has to leave first. */
   onDelete?: () => void
 }) {
-  const { updateWebhook, deleteWebhook, rotateWebhookSecret } = useDashboard()
+  const { updateWebhook, deleteWebhook, rotateWebhookSecret } =
+    useWebhookCommands()
   const [editing, setEditing] = React.useState(false)
   const [rotating, setRotating] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
@@ -273,12 +290,18 @@ export function WebhookMenu({
             Edit webhook
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => {
-              updateWebhook(webhook.id, { enabled: !webhook.enabled })
-              toast.add({
-                type: "success",
-                title: webhook.enabled ? "Webhook disabled" : "Webhook enabled",
-              })
+            onClick={async () => {
+              try {
+                await updateWebhook(webhook.id, { enabled: !webhook.enabled })
+                toast.add({
+                  type: "success",
+                  title: webhook.enabled
+                    ? "Webhook disabled"
+                    : "Webhook enabled",
+                })
+              } catch (e) {
+                toast.add({ type: "error", title: actionError(e) })
+              }
             }}
           >
             {webhook.enabled ? <CirclePauseIcon /> : <CirclePlayIcon />}
@@ -303,8 +326,8 @@ export function WebhookMenu({
         open={editing}
         onOpenChange={setEditing}
         webhook={webhook}
-        onSubmit={(values) => {
-          updateWebhook(webhook.id, values)
+        onSubmit={async (values) => {
+          await updateWebhook(webhook.id, values)
           toast.add({ type: "success", title: "Webhook updated" })
         }}
       />
@@ -312,10 +335,10 @@ export function WebhookMenu({
         open={rotating}
         onOpenChange={setRotating}
         title="Rotate signing secret?"
-        description="Payloads are signed with the new secret from now on. Anything still verifying with the old one starts rejecting them."
+        description="Payloads are signed with the new secret from now on. The old one keeps signing them too for 24 hours, so you have a day to switch."
         confirmLabel="Rotate"
-        onConfirm={() => {
-          rotateWebhookSecret(webhook.id)
+        onConfirm={async () => {
+          await rotateWebhookSecret(webhook.id)
           toast.add({ type: "success", title: "Secret rotated" })
         }}
       />
@@ -324,9 +347,9 @@ export function WebhookMenu({
         onOpenChange={setDeleting}
         title="Delete webhook?"
         description="Events stop going to this endpoint right away, and its delivery history is removed."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (onDelete) onDelete()
-          else deleteWebhook(webhook.id)
+          else await deleteWebhook(webhook.id)
           toast.add({ type: "success", title: "Webhook deleted" })
         }}
       />

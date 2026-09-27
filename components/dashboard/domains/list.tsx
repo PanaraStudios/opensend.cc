@@ -36,7 +36,7 @@ import {
   IconCell,
   ListToolbar,
   ListPagination,
-  usePagination,
+  useLoadedPagination,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -260,7 +260,7 @@ export function DomainsView() {
   )
   const rows = React.useMemo(() => results.map(asDomain), [results])
   const check = useDomainCheck(rows)
-  const { pageRows, pagination } = usePagination(rows)
+  const { pageRows, pagination } = useLoadedPagination(rows, loading, loadMore)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
@@ -396,25 +396,7 @@ export function DomainsView() {
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination
-            {...pagination}
-            noun="domain"
-            hasMore={loading !== "Exhausted"}
-            loading={loading === "LoadingMore"}
-            onPageChange={(page) => {
-              if (
-                (page + 1) * pagination.pageSize > rows.length &&
-                loading === "CanLoadMore"
-              )
-                loadMore(pagination.pageSize)
-              pagination.onPageChange(page)
-            }}
-            onPageSizeChange={(size) => {
-              pagination.onPageSizeChange(size)
-              if (size > rows.length && loading === "CanLoadMore")
-                loadMore(size - rows.length)
-            }}
-          />
+          <ListPagination {...pagination} noun="domain" />
         </>
       )}
       <AddDomainDialog open={addOpen} onOpenChange={setAddOpen} />

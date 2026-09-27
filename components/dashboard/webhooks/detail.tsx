@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { useParams } from "next/navigation"
+import { usePaginatedQuery, useQuery } from "convex/react"
 
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
   DetailHeader,
@@ -21,7 +23,7 @@ import {
   Th,
   ToolbarFilters,
   useDeleteRecord,
-  usePagination,
+  useLoadedPagination,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
@@ -30,13 +32,14 @@ import {
   WebhooksDocsSheet,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
-import { useDashboard } from "@/lib/dashboard/store"
+import { api } from "@/convex/_generated/api"
+import type { WebhookEvent } from "@/lib/dashboard/types"
+import { sortWebhookEvents, webhookEventsLabel } from "@/lib/dashboard/webhooks"
 import {
-  isDeliveryFailed,
-  sortWebhookEvents,
-  webhookDeliveries,
-  webhookEventsLabel,
-} from "@/lib/dashboard/webhooks"
+  asWebhook,
+  asWebhookDelivery,
+  useWebhookCommands,
+} from "@/lib/webhooks/use-webhooks"
 
 const DELIVERY_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
@@ -46,25 +49,37 @@ const DELIVERY_STATUS_ITEMS: readonly SelectOption[] = [
 
 export function WebhookDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, deleteWebhook } = useDashboard()
+  const { deleteWebhook } = useWebhookCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/webhooks")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [status, setStatus] = React.useState("all")
   const [eventType, setEventType] = React.useState("all")
-  const webhook = state.webhooks.find((item) => item.id === id)
-
-  const deliveries = React.useMemo(
-    () => webhookDeliveries(state.webhookDeliveries, id),
-    [state.webhookDeliveries, id]
+  const result = useQuery(api.webhooks.get, { id })
+  const signingSecret = useQuery(api.webhooks.signingSecret, { id })
+  const webhook = React.useMemo(
+    () => result && asWebhook(result.webhook, signingSecret ?? ""),
+    [result, signingSecret]
   )
-  const rows = deliveries.filter(
-    (item) =>
-      (status === "all" || isDeliveryFailed(item) === (status === "failed")) &&
-      (eventType === "all" || item.event === eventType)
+  const {
+    results,
+    status: loading,
+    loadMore,
+  } = usePaginatedQuery(
+    api.webhooks.deliveries,
+    result
+      ? {
+          webhookId: result.webhook._id,
+          ...(status !== "all" ? { failed: status === "failed" } : {}),
+          ...(eventType !== "all" ? { event: eventType } : {}),
+        }
+      : "skip",
+    { initialNumItems: 40 }
   )
-  const { pageRows, pagination } = usePagination(rows)
+  const rows = React.useMemo(() => results.map(asWebhookDelivery), [results])
+  const { pageRows, pagination } = useLoadedPagination(rows, loading, loadMore)
 
-  if (!webhook) {
+  if (result === undefined) return <Skeleton className="h-64 w-full" />
+  if (!result || !webhook) {
     if (leaving) return null
     return (
       <NotFoundState icon={WebhookIcon} noun="webhook" backHref="/webhooks" />
@@ -98,27 +113,26 @@ export function WebhookDetail() {
           },
           {
             label: "Deliveries",
-            value: `${deliveries.length} sent, ${deliveries.filter(isDeliveryFailed).length} failed`,
+            value: `${result.deliveries} sent, ${result.failed} failed`,
           },
           {
             label: "Last delivery",
-            value: (
-              <RelativeTime
-                at={deliveries[0]?.createdAt ?? null}
-                fallback="Never"
-              />
-            ),
+            value: <RelativeTime at={result.lastDeliveryAt} fallback="Never" />,
           },
           { label: "Created", value: <RelativeTime at={webhook.createdAt} /> },
         ]}
       />
       <DetailSection title="Signing secret" className="max-w-xl">
         {/* Keyed so a rotated secret comes back hidden. */}
-        <SecretField
-          key={webhook.signingSecret}
-          label="Signing secret"
-          value={webhook.signingSecret}
-        />
+        {signingSecret ? (
+          <SecretField
+            key={signingSecret}
+            label="Signing secret"
+            value={signingSecret}
+          />
+        ) : (
+          <Skeleton className="h-9 w-full" />
+        )}
       </DetailSection>
       <DetailSection title="Events">
         <ul className="flex flex-wrap gap-1.5">
@@ -149,9 +163,9 @@ export function WebhookDetail() {
                   { value: "all", label: "All events" },
                   /* What was delivered, not what is subscribed to now: past
                      deliveries outlive a change of subscriptions. */
-                  ...sortWebhookEvents(
-                    deliveries.map((delivery) => delivery.event)
-                  ).map((event) => ({ value: event, label: event })),
+                  ...sortWebhookEvents(result.delivered as WebhookEvent[]).map(
+                    (event) => ({ value: event, label: event })
+                  ),
                 ],
                 "aria-label": "Filter by event",
               },
@@ -159,16 +173,18 @@ export function WebhookDetail() {
           />
         }
       >
-        {rows.length === 0 ? (
+        {loading === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : rows.length === 0 ? (
           <EmptyState
             icon={WebhookIcon}
             title={
-              deliveries.length === 0
+              result.deliveries === 0
                 ? "No deliveries yet"
                 : "No deliveries found"
             }
             description={
-              deliveries.length === 0
+              result.deliveries === 0
                 ? "Events sent to this endpoint show up here."
                 : "Nothing matches this status and event."
             }

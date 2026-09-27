@@ -1,14 +1,12 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { WEBHOOK_EVENTS, type Webhook, type WebhookDelivery } from "./types"
+import { WEBHOOK_EVENTS, type WebhookDelivery } from "./types"
 import {
   isDeliveryFailed,
-  normalizeWebhook,
-  replayedDelivery,
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
-  webhookDeliveries,
+  webhookEndpointError,
   webhookEventsLabel,
   webhookFormError,
 } from "./webhooks"
@@ -61,6 +59,22 @@ describe("webhookFormError", () => {
       null
     )
   })
+
+  it("refuses endpoints that are not public hosts", () => {
+    for (const endpoint of [
+      "https://127.0.0.1/hook",
+      "https://0x7f.1/hook",
+      "https://[::1]/hook",
+      "https://localhost/hook",
+      "https://api.localhost/hook",
+      "https://metadata.google.internal/computeMetadata",
+      "https://printer.local/hook",
+      "https://intranet/hook",
+      "https://user:pass@example.com/hook",
+    ])
+      assert.ok(webhookEndpointError(endpoint), endpoint)
+    assert.equal(webhookEndpointError("https://hooks.example.com:8443/x"), null)
+  })
 })
 
 describe("deliveries", () => {
@@ -68,48 +82,5 @@ describe("deliveries", () => {
     assert.equal(isDeliveryFailed(delivery({ status: 204 })), false)
     assert.equal(isDeliveryFailed(delivery({ status: 500 })), true)
     assert.equal(isDeliveryFailed(delivery({ status: 0 })), true)
-  })
-
-  it("lists one webhook's deliveries newest first", () => {
-    const rows = webhookDeliveries(
-      [
-        delivery({ id: "a", createdAt: 1 }),
-        delivery({ id: "b", createdAt: 3 }),
-        delivery({ id: "c", webhookId: "wh_2", createdAt: 2 }),
-      ],
-      "wh_1"
-    )
-    assert.deepEqual(
-      rows.map((row) => row.id),
-      ["b", "a"]
-    )
-  })
-
-  it("replays as a new, successful attempt at the same payload", () => {
-    const failed = delivery({ status: 500, response: "Internal Server Error" })
-    const next = replayedDelivery(failed, "whd_2", 9)
-    assert.deepEqual(
-      [next.id, next.status, next.attempts, next.createdAt],
-      ["whd_2", 200, 2, 9]
-    )
-    assert.equal(next.payload, failed.payload)
-  })
-})
-
-describe("normalizeWebhook", () => {
-  it("derives a stable secret for a record that only kept the tail", () => {
-    const old = {
-      id: "wh_prod",
-      endpoint: "https://example.com",
-      events: [],
-      enabled: true,
-      signingSecretLast4: "a91c",
-      createdAt: 1,
-    } as unknown as Webhook
-    const first = normalizeWebhook(old)
-    assert.match(first.signingSecret, /^whsec_.{32}a91c$/)
-    assert.deepEqual(normalizeWebhook(old), first)
-    assert.equal("signingSecretLast4" in first, false)
-    assert.equal(normalizeWebhook(first), first)
   })
 })
