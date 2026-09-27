@@ -18,8 +18,10 @@ import {
 import {
   adoptionValue,
   dnsProviderValue,
+  domainConnectValue,
   domainStatusValue,
   provisioned,
+  recordValue,
   regionValue,
   tenantMatches,
   tlsValue,
@@ -33,6 +35,8 @@ import {
   validateDnsLabel,
 } from "../lib/dashboard/domains"
 import { startWorkflow } from "./ses/workflows"
+import { mailRecords } from "./ses/records"
+import { limitDomainCheck } from "./ses/limits"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -143,6 +147,66 @@ export async function logHistory(
     a provision so its adoption review remains reachable. */
 export const retryOperation = (domain: Doc<"domains">) =>
   domain.phase === "failed" ? domain.operation : "refresh"
+/** The first time a domain reached each milestone; never restamped. */
+function milestones(
+  domain: Doc<"domains">,
+  changes: Partial<Pick<Doc<"domains">, "records" | "status">>,
+  now: number
+) {
+  return {
+    ...(!domain.dnsVerifiedAt &&
+    changes.records?.length &&
+    changes.records.every(
+      (record) => record.kind === "DMARC" || record.status === "verified"
+    )
+      ? { dnsVerifiedAt: now }
+      : {}),
+    ...(!domain.partiallyVerifiedAt && changes.status === "partially_verified"
+      ? { partiallyVerifiedAt: now }
+      : {}),
+    ...(!domain.verifiedAt && changes.status === "verified"
+      ? { verifiedAt: now }
+      : {}),
+  }
+}
+/* SES re-reads DNS for a new identity for 72 hours. Status checks follow it:
+   often while the records are likely being added, then hourly. */
+const CHECK_DELAYS = [30, 60, 120, 300, 600, 900, 1800].map((s) => s * 1000)
+const HOUR = 3600000
+/** How long before check number `attempt` runs, or null once the 72 hours
+    are spent. */
+export function checkDelay(attempt: number) {
+  if (attempt < CHECK_DELAYS.length) return CHECK_DELAYS[attempt]
+  const elapsed =
+    CHECK_DELAYS.reduce((sum, delay) => sum + delay, 0) +
+    (attempt - CHECK_DELAYS.length) * HOUR
+  return elapsed + HOUR <= 72 * HOUR ? HOUR : null
+}
+/** A dispatched check holds its slot this long, so a sweep never sends it
+    twice, and one lost to a crash runs again afterwards. */
+const CHECK_LEASE = 5 * 60000
+/** A domain a status check may read and write: provisioned, and not owned
+    by a running operation. */
+const checkable = (domain: Doc<"domains"> | null): domain is Doc<"domains"> =>
+  !!domain &&
+  !domain.deleted &&
+  domain.phase !== "running" &&
+  provisioned(domain)
+/** Starts a status check now, holding the domain's slot until it reports. */
+async function dispatchCheck(
+  ctx: MutationCtx,
+  domain: Doc<"domains">,
+  attempt: number
+) {
+  await ctx.db.patch("domains", domain._id, {
+    checkAttempt: attempt,
+    nextCheckAt: Date.now() + CHECK_LEASE,
+  })
+  await ctx.scheduler.runAfter(0, internal.ses.verify.run, {
+    domainId: domain._id,
+    attempt,
+  })
+}
 export async function start(
   ctx: MutationCtx,
   domain: Doc<"domains">,
@@ -154,6 +218,8 @@ export async function start(
     phase: "running",
     operation,
     error: undefined,
+    // The operation checks the domain itself; `finish` schedules what follows.
+    nextCheckAt: undefined,
     ...(operation === "remove" ? { sending: false } : {}),
   })
   await logHistory(ctx, domain._id, `${operation} requested`)
@@ -200,7 +266,8 @@ export const create = mutation({
       deleted: false,
       sending: true,
       tls: "opportunistic",
-      records: [],
+      // Shown at once; the DKIM records join them when SES issues its keys.
+      records: mailRecords({ name, region: args.region, customReturnPath }),
       sesVerified: false,
       dkimVerified: false,
       mailFromVerified: false,
@@ -220,6 +287,25 @@ export const refresh = mutation({
     const domain = await findActiveDomain(ctx, id)
     await requireTeam(ctx, domain.organizationId, true)
     await start(ctx, domain, retryOperation(domain))
+    return null
+  },
+})
+/** "Check DNS records". A failed operation is retried. Otherwise the status is
+    read now, without re-running the AWS setup, and automatic checks restart. */
+export const verify = mutation({
+  args: { id: v.id("domains") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const domain = await findActiveDomain(ctx, id)
+    await requireTeam(ctx, domain.organizationId, true)
+    if (domain.phase === "failed") {
+      await start(ctx, domain, retryOperation(domain))
+      return null
+    }
+    if (!checkable(domain))
+      throw new ConvexError("A domain operation is already running")
+    await limitDomainCheck(ctx, id)
+    await dispatchCheck(ctx, domain, 0)
     return null
   },
 })
@@ -302,6 +388,24 @@ export const workerContext = internalQuery({
     return { domain, region, tenant }
   },
 })
+/** A provision publishes its records the moment AWS issues them, so they show
+    while the rest of its paced AWS setup still runs; `finish` then replaces
+    them with the checked ones. */
+export const saveRecords = internalMutation({
+  args: { id: v.id("domains"), records: v.array(recordValue) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const domain = await ctx.db.get("domains", args.id)
+    if (
+      domain &&
+      !domain.deleted &&
+      domain.phase === "running" &&
+      domain.operation === "provision"
+    )
+      await ctx.db.patch("domains", args.id, { records: args.records })
+    return null
+  },
+})
 export const finish = internalMutation({
   args: {
     id: v.id("domains"),
@@ -327,34 +431,30 @@ export const finish = internalMutation({
     const domain = await ctx.db.get("domains", args.id)
     if (!domain) throw new ConvexError("Domain not found")
     const now = Date.now()
+    const phase = args.error ? "failed" : "ready"
+    /* Only a provision can fail with nothing standing behind it. A refresh,
+       a settings change or a removal that fails leaves the status its last
+       successful run proved, so one throttled call never stops sending. */
+    const status =
+      args.error && domain.operation === "provision"
+        ? "failed"
+        : (args.changes.status ?? domain.status)
+    const checking =
+      !args.changes.deleted &&
+      status !== "verified" &&
+      provisioned({ phase, operation: domain.operation })
     await ctx.db.patch("domains", args.id, {
       ...args.changes,
-      ...(!domain.dnsVerifiedAt &&
-      args.changes.records?.length &&
-      args.changes.records.every(
-        (record) => record.kind === "DMARC" || record.status === "verified"
-      )
-        ? { dnsVerifiedAt: now }
-        : {}),
-      ...(!domain.partiallyVerifiedAt &&
-      args.changes.status === "partially_verified"
-        ? { partiallyVerifiedAt: now }
-        : {}),
-      ...(!domain.verifiedAt && args.changes.status === "verified"
-        ? { verifiedAt: now }
-        : {}),
-      /* Only a provision can fail with nothing standing behind it. A refresh,
-         a settings change or a removal that fails leaves the status its last
-         successful run proved, so one throttled call never stops sending. */
-      ...(args.error && domain.operation === "provision"
-        ? { status: "failed" as const }
-        : {}),
+      ...milestones(domain, args.changes, now),
+      status,
       ...(!args.error && args.changes.tls ? { pendingTls: undefined } : {}),
-      phase: args.error ? "failed" : "ready",
+      phase,
       error: args.error,
       // Cleared by every run that does not raise it again, including a success.
       needsAdoptionReview: args.needsAdoptionReview,
       checkedAt: now,
+      nextCheckAt: checking ? now + checkDelay(0)! : undefined,
+      checkAttempt: 0,
     })
     // A removed domain is unreadable, so its history has nowhere left to show.
     if (args.changes.deleted)
@@ -371,6 +471,103 @@ export const finish = internalMutation({
           (domain.operation === "settings"
             ? "TLS policy updated"
             : "AWS and DNS state refreshed")
+      )
+    return null
+  },
+})
+
+/** Sends each domain whose automatic check is due to be checked. A sweep
+    stays well inside what the region's SES pacer can serve in a minute. */
+export const dispatchChecks = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const due = await ctx.db
+      .query("domains")
+      .withIndex("by_nextCheckAt", (q) =>
+        q.gte("nextCheckAt", 0).lte("nextCheckAt", Date.now())
+      )
+      .take(20)
+    for (const domain of due)
+      await dispatchCheck(ctx, domain, domain.checkAttempt ?? 0)
+    return null
+  },
+})
+/** A domain its team's admin may change. */
+export const writable = internalQuery({
+  args: { id: v.id("domains") },
+  returns: schema.doc("domains"),
+  handler: async (ctx, { id }) => {
+    const domain = await findActiveDomain(ctx, id)
+    await requireTeam(ctx, domain.organizationId, true)
+    return domain
+  },
+})
+/** The domain a status check reads, unless an operation owns it now. */
+export const checkTarget = internalQuery({
+  args: { id: v.id("domains") },
+  returns: v.union(v.null(), schema.doc("domains")),
+  handler: async (ctx, { id }) => {
+    const domain = await ctx.db.get("domains", id)
+    return checkable(domain) ? domain : null
+  },
+})
+export const saveCheck = internalMutation({
+  args: {
+    id: v.id("domains"),
+    attempt: v.number(),
+    /** The domain's `checkedAt` when the check read it. */
+    checkedAt: v.optional(v.number()),
+    result: v.union(
+      v.object({ error: v.string() }),
+      schema
+        .doc("domains")
+        .pick(
+          "records",
+          "sesVerified",
+          "dkimVerified",
+          "mailFromVerified",
+          "status"
+        )
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const domain = await ctx.db.get("domains", args.id)
+    // An operation or another check has written a newer state since.
+    if (!checkable(domain) || domain.checkedAt !== args.checkedAt) return null
+    const now = Date.now()
+    const status = "error" in args.result ? domain.status : args.result.status
+    const delay = status === "verified" ? null : checkDelay(args.attempt + 1)
+    const next = {
+      checkAttempt: args.attempt + 1,
+      nextCheckAt: delay === null ? undefined : now + delay,
+    }
+    if ("error" in args.result) {
+      // A failed read proves nothing, so the status stands until the next one.
+      await ctx.db.patch("domains", args.id, next)
+      await logHistory(
+        ctx,
+        args.id,
+        `Status check failed: ${args.result.error}`
+      )
+      return null
+    }
+    await ctx.db.patch("domains", args.id, {
+      ...args.result,
+      ...milestones(domain, args.result, now),
+      ...next,
+      checkedAt: now,
+    })
+    if (status !== domain.status)
+      await logHistory(
+        ctx,
+        args.id,
+        status === "verified"
+          ? "Domain verified"
+          : status === "partially_verified"
+            ? "Domain partially verified"
+            : "Waiting for DNS records"
       )
     return null
   },
@@ -461,6 +658,7 @@ export const saveDnsProvider = internalMutation({
     id: v.id("domains"),
     requestedAt: v.number(),
     provider: v.optional(dnsProviderValue),
+    domainConnect: v.optional(domainConnectValue),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -470,6 +668,7 @@ export const saveDnsProvider = internalMutation({
     if (domain.dnsProviderRequestedAt !== args.requestedAt) return null
     await ctx.db.patch("domains", args.id, {
       dnsProvider: args.provider,
+      domainConnect: args.domainConnect,
       dnsProviderCheckedAt: Date.now(),
     })
     return null

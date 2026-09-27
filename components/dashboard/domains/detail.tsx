@@ -33,8 +33,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
@@ -74,7 +72,6 @@ import {
   downloadTextFile,
 } from "@/components/dashboard/domains/shared"
 import {
-  canAutoConfigure,
   domainBanner,
   domainCsvFile,
   domainEventSteps,
@@ -87,12 +84,8 @@ import {
   type DomainBanner,
   type DomainEventStep,
 } from "@/lib/dashboard/domains"
-import { formatDateTime, pluralize } from "@/lib/dashboard/format"
-import {
-  asDomain,
-  useDomainCommands,
-  type DnsAutoConfigConflict,
-} from "@/lib/domains/use-domains"
+import { formatDateTime } from "@/lib/dashboard/format"
+import { asDomain, useDomainCommands } from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import type { Domain, TlsMode } from "@/lib/dashboard/types"
 const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
@@ -101,16 +94,6 @@ const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
   destructive: CircleAlertIcon,
   default: InfoIcon,
 }
-
-/** Optional permissions, on top of the sending policy: only an automatic DNS
-    setup in Route 53 needs them. */
-const ROUTE53_PERMISSIONS = [
-  "route53:ListHostedZonesByName",
-  "route53:ListResourceRecordSets",
-  "route53:ChangeResourceRecordSets",
-]
-
-const CLOUDFLARE_TOKEN_URL = "https://dash.cloudflare.com/profile/api-tokens"
 
 const EVENT_ICON: Record<DomainEventStep["type"], LucideIcon> = {
   added: DomainIcon,
@@ -249,182 +232,63 @@ function DomainEvents({ domain }: { domain: Domain }) {
   )
 }
 
-/** Writes the records for you at Cloudflare or Route 53. Cloudflare needs a
-    token for the one call; Route 53 rides on the connected AWS account. */
-function AutoConfigureDialog({
-  domain,
-  open,
-  onOpenChange,
-}: {
-  domain: Domain
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { autoConfigureDns } = useDomainCommands()
-  const cloudflare = domain.provider === "cloudflare"
-  const [token, setToken] = React.useState("")
+function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
+  const { canWrite, updateDomain, verifyDomain, autoConfigureUrl } =
+    useDomainCommands()
   const [pending, setPending] = React.useState(false)
-  const [error, setError] = React.useState("")
-  const [conflicts, setConflicts] = React.useState<DnsAutoConfigConflict[]>([])
+  const records = domainRecords(domain)
+  const sections = domainRecordSections(domain, records)
+  const locked = !canWrite || busy || pending
+  const auto = domain.autoConfigure
+  const blockedReason = auto
+    ? ""
+    : `Automatic setup isn't available for ${
+        domain.provider && domain.provider !== "other"
+          ? providerLabel(domain.provider)
+          : "your DNS provider"
+      }. Add the records there manually.`
 
-  /* The token lives no longer than the dialog does. */
-  function change(next: boolean) {
-    if (!next) {
-      setToken("")
-      setError("")
-      setConflicts([])
-    }
-    onOpenChange(next)
-  }
-
-  async function submit() {
-    if (pending) return
-    setPending(true)
-    setError("")
-    try {
-      const result = await autoConfigureDns(
-        domain.id,
-        cloudflare ? token.trim() : undefined
-      )
+  /* Domain Connect: the provider opens its own page with every record filled
+     in, and closes it once the user confirms. The window is opened before
+     any await, so browsers treat it as this click's popup. */
+  async function autoConfigure() {
+    if (!auto || locked) return
+    const popup = window.open(
+      "",
+      "domain-connect",
+      `popup,width=${auto.width ?? 750},height=${auto.height ?? 750}`
+    )
+    if (!popup) {
       toast.add({
-        type: "success",
-        title: `${pluralize(result.created, "record")} added`,
-        description: `${result.skipped} already in place`,
+        type: "error",
+        title: `Allow pop-ups to open ${auto.providerName}`,
       })
-      setToken("")
-      setConflicts(result.conflicts)
-      if (result.conflicts.length === 0) change(false)
-    } catch (e) {
-      setError(actionError(e))
+      return
+    }
+    popup.opener = null
+    setPending(true)
+    try {
+      popup.location.href = await autoConfigureUrl(domain.id)
+      const closed = window.setInterval(() => {
+        if (!popup.closed) return
+        window.clearInterval(closed)
+        // A check that was rate limited just runs on the automatic schedule.
+        void verifyDomain(domain.id).catch(() => {})
+      }, 1000)
+    } catch (error) {
+      popup.close()
+      toast.add({ type: "error", title: actionError(error) })
     } finally {
       setPending(false)
     }
   }
-
-  return (
-    <Dialog open={open} onOpenChange={change}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Auto configure DNS</DialogTitle>
-          <DialogDescription>
-            {cloudflare
-              ? `Opensend adds the records for ${domain.name} to its Cloudflare zone.`
-              : `Opensend adds the records for ${domain.name} to its Route 53 hosted zone, using the AWS account this installation is connected to.`}{" "}
-            A record that already exists is never overwritten.
-          </DialogDescription>
-        </DialogHeader>
-        {conflicts.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm">
-              These records hold another value already. Update them at{" "}
-              {providerLabel(domain.provider)} yourself.
-            </p>
-            <ul className="flex flex-col gap-1">
-              {conflicts.map((conflict) => (
-                <li
-                  key={`${conflict.type}-${conflict.name}`}
-                  className="text-sm text-muted-foreground"
-                >
-                  <MonoValue copyValue={conflict.name}>
-                    {conflict.name}
-                  </MonoValue>{" "}
-                  {conflict.type} — {conflict.reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : cloudflare ? (
-          <Field>
-            <FieldLabel htmlFor="cloudflare-token">
-              Cloudflare API token
-            </FieldLabel>
-            <Input
-              id="cloudflare-token"
-              type="password"
-              autoComplete="off"
-              disabled={pending}
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-            />
-            <FieldDescription>
-              <a href={CLOUDFLARE_TOKEN_URL} target="_blank" rel="noreferrer">
-                Create a token
-              </a>{" "}
-              with Zone → DNS → Edit. It is used for this one call and never
-              stored.
-            </FieldDescription>
-          </Field>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              Your AWS user needs these permissions, which are optional
-              everywhere else:
-            </p>
-            <ul className="flex flex-col gap-1">
-              {ROUTE53_PERMISSIONS.map((permission) => (
-                <li key={permission}>
-                  <MonoValue copyValue={permission}>{permission}</MonoValue>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>
-            {conflicts.length > 0 ? "Done" : "Cancel"}
-          </DialogClose>
-          {conflicts.length === 0 && (
-            <Button
-              disabled={pending || (cloudflare && token.trim() === "")}
-              onClick={() => void submit()}
-            >
-              Add records
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function DomainRecords({
-  domain,
-  busy,
-  installationAdmin,
-}: {
-  domain: Domain
-  busy: boolean
-  installationAdmin: boolean
-}) {
-  const { canWrite, updateDomain, verifyDomain } = useDomainCommands()
-  const [pending, setPending] = React.useState(false)
-  const [autoOpen, setAutoOpen] = React.useState(false)
-  const records = domainRecords(domain)
-  const sections = domainRecordSections(domain, records)
-  const canAuto = canAutoConfigure(domain.provider)
-  const locked = !canWrite || busy || pending
-  // Route 53 writes ride on the installation's AWS account, not the caller's.
-  const blockedReason = !canAuto
-    ? `Automatic DNS setup is available for Cloudflare and Route 53. Add the records at ${
-        domain.provider && domain.provider !== "other"
-          ? providerLabel(domain.provider)
-          : "your DNS provider"
-      } manually.`
-    : domain.provider === "route53" && !installationAdmin
-      ? "Ask an installation admin — Route 53 setup uses the connected AWS account."
-      : ""
 
   async function runVerification() {
     if (pending || busy) return
     setPending(true)
     try {
       await verifyDomain(domain.id)
-      toast.add({ type: "success", title: "DNS check queued" })
+      toast.add({ type: "success", title: "Checking DNS records" })
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })
     } finally {
@@ -436,7 +300,7 @@ function DomainRecords({
     <Button
       variant="outline"
       disabled={!!blockedReason || locked}
-      onClick={() => setAutoOpen(true)}
+      onClick={() => void autoConfigure()}
     >
       <ProviderMark provider={domain.provider} className="size-4 shrink-0" />
       Auto configure
@@ -534,15 +398,15 @@ function DomainRecords({
                 domainName={domain.name}
                 showPriority={section.showPriority}
               />
+            ) : section.id === "verification" && busy ? (
+              <p className="text-sm text-muted-foreground">
+                AWS is issuing the DKIM keys for this domain. They show here in
+                a few seconds.
+              </p>
             ) : null}
           </DomainSection>
         )
       })}
-      <AutoConfigureDialog
-        domain={domain}
-        open={autoOpen}
-        onOpenChange={setAutoOpen}
-      />
     </Surface>
   )
 }
@@ -753,11 +617,7 @@ export function DomainDetail() {
         </TabsList>
       </Tabs>
       {tab === "records" ? (
-        <DomainRecords
-          domain={domain}
-          busy={busy}
-          installationAdmin={!!installation?.admin}
-        />
+        <DomainRecords domain={domain} busy={busy} />
       ) : (
         <DomainConfiguration domain={domain} busy={busy} />
       )}

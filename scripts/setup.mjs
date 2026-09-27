@@ -76,6 +76,9 @@ for (const key of [
   "SES_ENCRYPTION_KEY",
   "SES_CALLBACK_ORIGIN",
   "ALLOW_LOCAL_OIDC",
+  "DOMAIN_CONNECT_KEY",
+  "DOMAIN_CONNECT_PRIVATE_KEY",
+  "DOMAIN_CONNECT_SIGNER",
 ])
   if (env[key])
     run("pnpm", ["exec", "convex", "env", "set", `${key}=${env[key]}`], {

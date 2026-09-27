@@ -16,7 +16,9 @@ function clientConfig(
   validateRegion(region)
   return {
     region,
-    maxAttempts: 1,
+    /* The SDK's standard retry mode (3 attempts, exponential backoff with full
+       jitter, longer for throttling) is AWS's recommended default:
+       https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html */
     requestHandler: { connectionTimeout: 5000, requestTimeout: 15000 },
     credentials:
       credentials.kind === "role"
@@ -37,13 +39,6 @@ function installationCredentials(installation: Doc<"installation">) {
         installation.wrappedEncryptionKey
       )
 }
-/** For AWS clients this module does not build, such as global Route 53. */
-export function connectionConfig(
-  installation: Doc<"installation">,
-  region: string
-) {
-  return clientConfig(region, installationCredentials(installation))
-}
 export function clients(
   region: string,
   credentials: Infer<typeof credentialsValue>,
@@ -60,7 +55,6 @@ export function clients(
     const stack = client.middlewareStack as SESv2Client["middlewareStack"]
     stack.add(
       (next, context) => async (args) => {
-        if (client === result.ses) await beforeSesCall?.()
         try {
           return await next(args)
         } catch (error) {
@@ -73,6 +67,21 @@ export function clients(
       { step: "initialize", name: "opensendOperation" }
     )
   }
+  // Placed inside the SDK's retry loop, so every attempt, retries included,
+  // waits its turn in the region's pacer.
+  if (beforeSesCall)
+    result.ses.middlewareStack.addRelativeTo(
+      <Args, Output>(next: (args: Args) => Promise<Output>) =>
+        async (args: Args) => {
+          await beforeSesCall()
+          return next(args)
+        },
+      {
+        relation: "after",
+        toMiddleware: "retryMiddleware",
+        name: "opensendPacer",
+      }
+    )
   return result
 }
 export function connectionClients(

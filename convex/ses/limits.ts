@@ -1,6 +1,7 @@
 import { RateLimiter } from "@convex-dev/rate-limiter"
 import { components } from "../_generated/api"
-import { internalMutation } from "../_generated/server"
+import { internalMutation, type MutationCtx } from "../_generated/server"
+import type { Id } from "../_generated/dataModel"
 import { v, ConvexError } from "convex/values"
 import { regionValue } from "./contracts"
 const limiter = new RateLimiter(components.rateLimiter, {
@@ -11,7 +12,19 @@ const limiter = new RateLimiter(components.rateLimiter, {
     capacity: 1,
     maxReserved: 30,
   },
+  // One manual status check per domain at a time, however often it is asked.
+  domainCheck: { kind: "token bucket", rate: 1, period: 10000, capacity: 1 },
 })
+export async function limitDomainCheck(
+  ctx: MutationCtx,
+  domainId: Id<"domains">
+) {
+  const result = await limiter.limit(ctx, "domainCheck", { key: domainId })
+  if (!result.ok)
+    throw new ConvexError(
+      `Checked just now. Try again in ${Math.ceil(result.retryAfter / 1000)} seconds.`
+    )
+}
 export const reserve = internalMutation({
   args: { region: regionValue },
   returns: v.number(),

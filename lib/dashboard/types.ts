@@ -111,6 +111,8 @@ export type Domain = {
   sending?: boolean
   trackingSubdomain?: string
   events?: DomainEvent[]
+  /** Set when the DNS provider can apply the records itself (Domain Connect). */
+  autoConfigure?: { providerName: string; width?: number; height?: number }
 }
 
 export type Contact = {

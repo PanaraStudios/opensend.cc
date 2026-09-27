@@ -3,7 +3,6 @@ import { describe, it } from "node:test"
 
 import { SEED_STATE } from "./data"
 import {
-  canAutoConfigure,
   deriveDomainStatus,
   dnsHost,
   domainBanner,
@@ -514,13 +513,9 @@ describe("domainCsvFile", () => {
 })
 
 describe("providers", () => {
-  it("names the detected provider and gates auto configuration", () => {
+  it("names the detected provider", () => {
     assert.equal(providerLabel("cloudflare"), "Cloudflare")
     assert.equal(providerLabel(undefined), "Not detected")
-    assert.equal(canAutoConfigure("cloudflare"), true)
-    assert.equal(canAutoConfigure("route53"), true)
-    assert.equal(canAutoConfigure("godaddy"), false)
-    assert.equal(canAutoConfigure(undefined), false)
   })
 })
 

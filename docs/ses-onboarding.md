@@ -115,34 +115,20 @@ Use an AWS role with these permissions, or a dedicated least-privilege IAM user.
 
 ### Optional: automatic DNS setup
 
-**Auto configure DNS** writes a domain's records at its DNS provider for you.
-It is never required — every record stays visible on the domain page for manual
-entry, and provisioning works without any of the grants below.
+**Auto configure** opens the domain's DNS provider in a new window with every
+record filled in, using [Domain Connect](https://github.com/Domain-Connect/spec).
+The user confirms the records there, and the window closes. Opensend never
+asks for a provider token, never calls a provider API, and needs no extra AWS
+permission. Once the window closes, Opensend checks the domain's status.
 
-| Resource scope                                | Actions                                                              |
-| --------------------------------------------- | -------------------------------------------------------------------- |
-| `*` (no resource-level scope)                 | `route53:ListHostedZonesByName`                                      |
-| `arn:aws:route53:::hostedzone/HOSTED_ZONE_ID` | `route53:ListResourceRecordSets`, `route53:ChangeResourceRecordSets` |
+The button is offered only when the domain's DNS provider supports Domain
+Connect and has onboarded the Opensend template. opensend.cc signs the request,
+so an installation needs no setup. See
+[`domain-connect/README.md`](../domain-connect/README.md).
+Otherwise every record stays on the domain page for manual entry.
 
-Add these only for domains whose DNS is hosted in the same AWS account. Route 53
-is a global service, so the grants are not regional. Without them the button
-reports the missing permissions and changes nothing.
-
-Only an installation admin can run automatic setup for a Route 53 domain. The
-write is signed with the installation's connected AWS account and can reach any
-hosted zone in it, so team membership alone is not enough authority.
-
-Cloudflare-hosted domains need no AWS permission, and any team admin can run
-them: Opensend asks for a Cloudflare API token scoped to **Zone → DNS → Edit**
-at the moment you press the button, so the caller supplies their own authority.
-The token is used for that one request and is never stored, logged, or echoed
-back.
-
-Automatic setup only ever adds records. A name that already answers with a
-different value, an existing SPF policy, or an apex already served by another
-mail provider is reported as a conflict and left untouched; an existing DMARC
-policy is left in place. Unrelated TXT values at a name Opensend writes to are
-preserved.
+The template adds a DMARC policy only when the domain has none, so an existing
+policy is never replaced.
 
 SNS subscription attribute operations authorize against the parent topic. The
 generated template scopes these grants to the installation’s regional topic.

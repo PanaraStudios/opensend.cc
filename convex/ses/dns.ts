@@ -1,74 +1,22 @@
 "use node"
 import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
-import type { Infer } from "convex/values"
-import { recordValue } from "./contracts"
-import { canonical, zoneCandidates } from "./dnsWriters"
-export type DnsRecord = Infer<typeof recordValue>
-export function identityRecords(
-  name: string,
-  region: string,
-  returnPath: string,
-  identity: GetEmailIdentityResponse,
-  receiving = false
-): DnsRecord[] {
-  const dkim = identity.DkimAttributes
-  if (!dkim?.SigningHostedZone || !dkim.Tokens?.length)
-    throw new Error(
-      "AWS did not return Easy DKIM tokens and a signing hosted zone"
-    )
-  const records: DnsRecord[] = dkim.Tokens.map((token) => ({
-    id: token,
-    kind: "DKIM",
-    type: "CNAME",
-    name: `${token}._domainkey.${name}`,
-    value: `${token}.${dkim.SigningHostedZone!.replace(/\.$/, "")}`,
-    ttl: "300",
-    status: "pending",
-  }))
-  records.push(
-    {
-      id: "mail-from-mx",
-      kind: "MX",
-      type: "MX",
-      name: `${returnPath}.${name}`,
-      value: `feedback-smtp.${region}.amazonses.com`,
-      priority: 10,
-      ttl: "300",
-      status: "pending",
-    },
-    {
-      id: "mail-from-spf",
-      kind: "SPF",
-      type: "TXT",
-      name: `${returnPath}.${name}`,
-      value: "v=spf1 include:amazonses.com ~all",
-      ttl: "300",
-      status: "pending",
-    },
-    // Recommended, never required: any existing policy stays authoritative.
-    {
-      id: "dmarc",
-      kind: "DMARC",
-      type: "TXT",
-      name: `_dmarc.${name}`,
-      value: "v=DMARC1; p=none;",
-      ttl: "300",
-      status: "pending",
-    }
-  )
-  if (receiving)
-    records.push({
-      id: "receiving-mx",
-      kind: "Receiving",
-      type: "MX",
-      name,
-      value: `inbound-smtp.${region}.amazonaws.com`,
-      priority: 10,
-      ttl: "300",
-      status: "pending",
-    })
-  return records
+import type { Doc } from "../_generated/dataModel"
+import { identityRecords, type DnsRecord } from "./records"
+export const canonical = (value: string) =>
+  value.trim().toLowerCase().replace(/\.$/, "")
+const isSpf = (value: string) => /^v=spf1(\s|$)/i.test(value)
+const isDmarc = (value: string) => /^v=dmarc1(\s|;|$)/i.test(value)
+/** An SPF policy that authorizes SES to send for its domain. */
+const includesSes = (spf: string) =>
+  spf.split(/\s+/).includes("include:amazonses.com")
+/** Parent zones to try, longest first. Bounded, and never a bare TLD. */
+export function zoneCandidates(name: string) {
+  const labels = canonical(name).split(".")
+  const candidates: string[] = []
+  for (let offset = 0; offset <= Math.min(labels.length - 2, 5); offset++)
+    candidates.push(labels.slice(offset).join("."))
+  return candidates
 }
 const dnsCode = (e: unknown) =>
   e && typeof e === "object" && "code" in e ? e.code : ""
@@ -95,14 +43,13 @@ export async function checkRecords(
         else if (record.kind === "DMARC")
           found = (await resolver.resolveTxt(record.name))
             .map((parts) => parts.join(""))
-            .some((value) => value.startsWith("v=DMARC1"))
+            .some(isDmarc)
         else {
           const spf = (await resolver.resolveTxt(record.name))
             .map((parts) => parts.join(""))
-            .filter((value) => value.startsWith("v=spf1 "))
-          found =
-            spf.length === 1 &&
-            spf[0].split(/\s+/).includes("include:amazonses.com")
+            .filter(isSpf)
+          // RFC 7208 allows one SPF policy per name; two make both invalid.
+          found = spf.length === 1 && includesSes(spf[0])
         }
         return { ...record, status: found ? "verified" : "pending" }
       } catch (e) {
@@ -117,6 +64,45 @@ export async function checkRecords(
       }
     })
   )
+}
+
+/** A domain's status, read from its SES identity and its live DNS. */
+export async function verificationState(
+  identity: GetEmailIdentityResponse,
+  domain: Pick<
+    Doc<"domains">,
+    "name" | "region" | "customReturnPath" | "receiving"
+  >
+) {
+  const records = await checkRecords(identityRecords(domain, identity))
+  const sesVerified = !!identity.VerifiedForSendingStatus
+  const dkimVerified =
+    identity.DkimAttributes?.Status === "SUCCESS" &&
+    !!identity.DkimAttributes.SigningEnabled
+  const mailFromVerified =
+    identity.MailFromAttributes?.MailFromDomainStatus === "SUCCESS" &&
+    identity.MailFromAttributes.MailFromDomain ===
+      `${domain.customReturnPath}.${domain.name}` &&
+    identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
+  /* DMARC is advisory, so it never holds a domain back from verified, and
+     a resolver that timed out proves nothing: only a record the resolver
+     positively did not find keeps a domain partially verified. */
+  const allVerified =
+    sesVerified &&
+    dkimVerified &&
+    mailFromVerified &&
+    records.every((r) => r.kind === "DMARC" || r.status !== "pending")
+  return {
+    records,
+    sesVerified,
+    dkimVerified,
+    mailFromVerified,
+    status: allVerified
+      ? ("verified" as const)
+      : sesVerified
+        ? ("partially_verified" as const)
+        : ("pending" as const),
+  }
 }
 
 /** Infer the DNS host from all authoritative nameservers, not the registrar. */

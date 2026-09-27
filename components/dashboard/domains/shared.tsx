@@ -232,7 +232,7 @@ const DOMAIN_DOCS = [
   },
   {
     title: "Verification",
-    body: "Add the DKIM and SPF records at your DNS provider, then click Check DNS records. Checks do not repeat automatically. DNS changes can take up to 72 hours to propagate.",
+    body: "Add the DKIM and SPF records at your DNS provider, then click Check DNS records. We also check them automatically for 72 hours, since DNS changes can take that long to propagate.",
   },
   {
     title: "Receiving",

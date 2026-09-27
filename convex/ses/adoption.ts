@@ -7,10 +7,10 @@ import {
 import { v, ConvexError } from "convex/values"
 import { action } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { controlPlanePacer } from "./pacing"
+import { pacedConnection } from "./pacing"
 import { resourceAssociation } from "./tenantProvider"
 import { teamTenantName } from "./contracts"
-import { connectionClients, awsError } from "./aws"
+import { awsError } from "./aws"
 
 export function identityFingerprint(identity: GetEmailIdentityResponse) {
   return createHash("sha256")
@@ -36,16 +36,8 @@ export const preview = action({
   returns: v.null(),
   handler: async (ctx, args) => {
     const domain = await ctx.runQuery(internal.domains.previewContext, args)
-    const installation = await ctx.runQuery(
-      internal.installation.connection,
-      {}
-    )
     try {
-      const { ses } = connectionClients(
-        installation,
-        domain.region,
-        controlPlanePacer(ctx, domain.region)
-      )
+      const { installation, ses } = await pacedConnection(ctx, domain.region)
       const identity = await ses.send(
         new GetEmailIdentityCommand({ EmailIdentity: domain.name })
       )
