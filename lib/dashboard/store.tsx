@@ -668,7 +668,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     [templateRows]
   )
   /* The audience is real as well. Demo screens that read it (broadcasts,
-     automations, the unsubscribe preview, the editor's merge tags) get
+     automations, the editor's merge tags) get
      every segment, topic and property, and the newest page of contacts. */
   const segments = useSegments()
   const topics = useTopics()

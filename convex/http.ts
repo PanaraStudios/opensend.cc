@@ -3,6 +3,7 @@ import { registerApiRoutes } from "./api/http"
 import { registerAuthRoutes } from "./authHttp"
 import { registerOAuthRoutes } from "./oauthHttp"
 import { registerSesRoutes } from "./ses/http"
+import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
 
 /* Each feature registers its own routes, so features can be built in
    parallel without editing the same lines here. */
@@ -11,4 +12,5 @@ registerSesRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)
 registerApiRoutes(http)
+registerUnsubscribeRoutes(http)
 export default http

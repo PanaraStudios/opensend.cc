@@ -7,6 +7,7 @@ import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
 import { sesTables } from "./tables/ses"
 import { templateTables } from "./tables/templates"
+import { unsubscribeTables } from "./tables/unsubscribe"
 import { webhookTables } from "./tables/webhooks"
 
 /* Each feature owns one file in ./tables, so features can be built in
@@ -21,4 +22,5 @@ export default defineSchema({
   ...apiTables,
   ...exportTables,
   ...automationEventTables,
+  ...unsubscribeTables,
 })

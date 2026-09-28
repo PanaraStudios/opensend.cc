@@ -173,28 +173,36 @@ export async function joinSegments(
   return changed
 }
 
+export const findTopicChoice = (
+  ctx: Ctx,
+  contactId: Id<"contacts">,
+  topicId: Id<"topics">
+) =>
+  ctx.db
+    .query("topicSubscriptions")
+    .withIndex("by_contactId_and_topicId", (q) =>
+      q.eq("contactId", contactId).eq("topicId", topicId)
+    )
+    .unique()
+
+/** Records the contact's explicit choice. Returns whether it changed. */
 export async function setTopicChoice(
   ctx: MutationCtx,
   contact: Doc<"contacts">,
   topicId: Id<"topics">,
   subscription: Doc<"topicSubscriptions">["subscription"]
 ) {
-  const row = await ctx.db
-    .query("topicSubscriptions")
-    .withIndex("by_contactId_and_topicId", (q) =>
-      q.eq("contactId", contact._id).eq("topicId", topicId)
-    )
-    .unique()
-  if (row) {
-    if (row.subscription !== subscription)
-      await ctx.db.patch("topicSubscriptions", row._id, { subscription })
-  } else
+  const row = await findTopicChoice(ctx, contact._id, topicId)
+  if (row?.subscription === subscription) return false
+  if (row) await ctx.db.patch("topicSubscriptions", row._id, { subscription })
+  else
     await ctx.db.insert("topicSubscriptions", {
       organizationId: contact.organizationId,
       topicId,
       contactId: contact._id,
       subscription,
     })
+  return true
 }
 
 /** Drops empty values: an empty property falls back to its default. */
