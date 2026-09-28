@@ -64,3 +64,12 @@ export function isDeliveryFailed(
 ): boolean {
   return delivery.status < 200 || delivery.status >= 300
 }
+
+/** As Svix (and so Resend) shows a message: failed only once no retry is
+    left; until then a failed attempt is still pending. */
+export function deliveryResult(
+  delivery: Pick<WebhookDelivery, "status" | "nextAttemptAt">
+): "Succeeded" | "Pending" | "Failed" {
+  if (!isDeliveryFailed(delivery)) return "Succeeded"
+  return delivery.nextAttemptAt === undefined ? "Failed" : "Pending"
+}

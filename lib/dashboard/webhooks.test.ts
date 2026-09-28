@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import { WEBHOOK_EVENTS, type WebhookDelivery } from "./types"
 import {
+  deliveryResult,
   isDeliveryFailed,
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
@@ -74,6 +75,18 @@ describe("webhookFormError", () => {
     ])
       assert.ok(webhookEndpointError(endpoint), endpoint)
     assert.equal(webhookEndpointError("https://hooks.example.com:8443/x"), null)
+  })
+})
+
+describe("deliveryResult", () => {
+  it("is pending while a retry is scheduled, failed once none is left", () => {
+    assert.equal(deliveryResult({ status: 200 }), "Succeeded")
+    assert.equal(
+      deliveryResult({ status: 500, nextAttemptAt: Date.now() + 5000 }),
+      "Pending"
+    )
+    assert.equal(deliveryResult({ status: 500 }), "Failed")
+    assert.equal(deliveryResult({ status: 0 }), "Failed")
   })
 })
 

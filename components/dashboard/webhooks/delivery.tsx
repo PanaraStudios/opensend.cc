@@ -23,7 +23,7 @@ import {
 import { WebhookIcon } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
 import { actionError } from "@/lib/action-error"
-import { isDeliveryFailed } from "@/lib/dashboard/webhooks"
+import { deliveryResult } from "@/lib/dashboard/webhooks"
 import {
   asWebhook,
   asWebhookDelivery,
@@ -100,7 +100,7 @@ export function WebhookDeliveryDetail() {
           },
           {
             label: "Result",
-            value: isDeliveryFailed(delivery) ? "Failed" : "Succeeded",
+            value: deliveryResult(delivery),
           },
           { label: "Sent", value: <RelativeTime at={delivery.createdAt} /> },
           { label: "Attempts", value: delivery.attempts },

@@ -415,6 +415,8 @@ export type WebhookDelivery = {
   status: number
   /** How many times it has been tried, the first included. */
   attempts: number
+  /** Set while another automatic attempt is scheduled. */
+  nextAttemptAt?: number
   durationMs: number
   createdAt: number
   payload: Record<string, unknown>

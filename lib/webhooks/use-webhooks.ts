@@ -33,6 +33,7 @@ export function asWebhookDelivery(
     event: row.event as WebhookEvent,
     status: row.status,
     attempts: row.attempts,
+    nextAttemptAt: row.nextAttemptAt,
     durationMs: row.durationMs,
     createdAt: row._creationTime,
     payload: row.payload,
