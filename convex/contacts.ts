@@ -1,7 +1,8 @@
-import { v, ConvexError } from "convex/values"
+import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
+  type PaginationOptions,
 } from "convex/server"
 import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
@@ -26,7 +27,7 @@ import {
 } from "./audience"
 import { topicSubscriptionValue } from "./tables/audience"
 import type { Doc, Id } from "./_generated/dataModel"
-import type { MutationCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 
 const contactWithSegments = schema
   .doc("contacts")
@@ -38,7 +39,7 @@ const inBatch = <T>(items: T[]) => {
   return [...new Set(items)]
 }
 
-const contactFilters = {
+const contactFilters = v.object({
   organizationId: v.string(),
   /** Part of the email or a name, as typed. */
   search: v.optional(v.string()),
@@ -46,100 +47,119 @@ const contactFilters = {
   segmentId: v.optional(v.id("segments")),
   from: v.optional(v.number()),
   to: v.optional(v.number()),
-}
+})
 
 /** Newest first. A search ranks by relevance instead; filters that its
     index cannot apply are applied to each page, so a page may come back
     short. */
+export async function contactPage(
+  ctx: QueryCtx,
+  args: Infer<typeof contactFilters> & { paginationOpts: PaginationOptions }
+) {
+  const { organizationId, unsubscribed, segmentId } = args
+  const from = args.from ?? 0
+  const to = args.to ?? Number.MAX_SAFE_INTEGER
+  const search = (args.search ?? "").trim().slice(0, 256)
+  const matches = matchesSearch(search)
+  // A segment deleted while filtered on just lists what is left of it.
+  const segment = segmentId && (await ctx.db.get("segments", segmentId))
+  if (segment && segment.organizationId !== organizationId)
+    throw new ConvexError("Segment not found")
+  /* The search index matches any word of the search; the list keeps
+       only contacts that contain all of it, as typed. */
+  const inRange = (contact: Doc<"contacts">) =>
+    contact.organizationId === organizationId &&
+    contact._creationTime >= from &&
+    contact._creationTime <= to &&
+    (unsubscribed === undefined || contact.unsubscribed === unsubscribed) &&
+    matches(
+      contact.email,
+      contact.firstName,
+      contact.lastName,
+      `${contact.firstName} ${contact.lastName}`
+    )
+
+  if (!search && segmentId) {
+    const members = await ctx.db
+      .query("segmentMembers")
+      .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
+      .order("desc")
+      .paginate(args.paginationOpts)
+    const page = []
+    for (const member of members.page) {
+      const contact = await ctx.db.get("contacts", member.contactId)
+      if (contact && inRange(contact)) page.push(contact)
+    }
+    return { ...members, page }
+  }
+  const contacts = search
+    ? await ctx.db
+        .query("contacts")
+        .withSearchIndex("search_search", (q) => {
+          const scoped = q
+            .search("search", search)
+            .eq("organizationId", organizationId)
+          return unsubscribed === undefined
+            ? scoped
+            : scoped.eq("unsubscribed", unsubscribed)
+        })
+        .paginate(args.paginationOpts)
+    : await (
+        unsubscribed === undefined
+          ? ctx.db
+              .query("contacts")
+              .withIndex("by_organizationId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .gte("_creationTime", from)
+                  .lte("_creationTime", to)
+              )
+          : ctx.db
+              .query("contacts")
+              .withIndex("by_organizationId_and_unsubscribed", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("unsubscribed", unsubscribed)
+                  .gte("_creationTime", from)
+                  .lte("_creationTime", to)
+              )
+      )
+        .order("desc")
+        .paginate(args.paginationOpts)
+  const page = []
+  for (const contact of contacts.page) {
+    if (!inRange(contact)) continue
+    if (
+      segmentId &&
+      !(await ctx.db
+        .query("segmentMembers")
+        .withIndex("by_contactId_and_segmentId", (q) =>
+          q.eq("contactId", contact._id).eq("segmentId", segmentId)
+        )
+        .first())
+    )
+      continue
+    page.push(contact)
+  }
+  return { ...contacts, page }
+}
 export const list = query({
-  args: { ...contactFilters, paginationOpts: paginationOptsValidator },
+  args: { ...contactFilters.fields, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(contactWithSegments),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const { organizationId, unsubscribed, segmentId } = args
-    const from = args.from ?? 0
-    const to = args.to ?? Number.MAX_SAFE_INTEGER
-    const search = (args.search ?? "").trim().slice(0, 256)
-    const matches = matchesSearch(search)
-    // A segment deleted while filtered on just lists what is left of it.
-    const segment = segmentId && (await ctx.db.get("segments", segmentId))
-    if (segment && segment.organizationId !== organizationId)
-      throw new ConvexError("Segment not found")
-    /* The search index matches any word of the search; the list keeps
-       only contacts that contain all of it, as typed. */
-    const inRange = (contact: Doc<"contacts">) =>
-      contact._creationTime >= from &&
-      contact._creationTime <= to &&
-      (unsubscribed === undefined || contact.unsubscribed === unsubscribed) &&
-      matches(
-        contact.email,
-        contact.firstName,
-        contact.lastName,
-        `${contact.firstName} ${contact.lastName}`
-      )
-
-    if (!search && segmentId) {
-      const members = await ctx.db
-        .query("segmentMembers")
-        .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
-        .order("desc")
-        .paginate(args.paginationOpts)
-      const page = []
-      for (const member of members.page) {
-        const contact = await ctx.db.get("contacts", member.contactId)
-        if (contact && inRange(contact))
-          page.push(await withSegments(ctx, contact))
-      }
-      return { ...members, page }
-    }
-    const contacts = search
-      ? await ctx.db
-          .query("contacts")
-          .withSearchIndex("search_search", (q) => {
-            const scoped = q
-              .search("search", search)
-              .eq("organizationId", organizationId)
-            return unsubscribed === undefined
-              ? scoped
-              : scoped.eq("unsubscribed", unsubscribed)
-          })
-          .paginate(args.paginationOpts)
-      : await (
-          unsubscribed === undefined
-            ? ctx.db
-                .query("contacts")
-                .withIndex("by_organizationId", (q) =>
-                  q
-                    .eq("organizationId", organizationId)
-                    .gte("_creationTime", from)
-                    .lte("_creationTime", to)
-                )
-            : ctx.db
-                .query("contacts")
-                .withIndex("by_organizationId_and_unsubscribed", (q) =>
-                  q
-                    .eq("organizationId", organizationId)
-                    .eq("unsubscribed", unsubscribed)
-                    .gte("_creationTime", from)
-                    .lte("_creationTime", to)
-                )
-        )
-          .order("desc")
-          .paginate(args.paginationOpts)
+    const result = await contactPage(ctx, args)
     const page = []
-    for (const contact of contacts.page) {
-      if (!inRange(contact)) continue
-      const row = await withSegments(ctx, contact)
-      if (!segmentId || row.segmentIds.includes(segmentId)) page.push(row)
-    }
-    return { ...contacts, page }
+    for (const contact of result.page)
+      page.push(await withSegments(ctx, contact))
+    return { ...result, page }
   },
 })
 
 /** How many contacts the list's filters match. A search is not counted,
     nor a segment together with other filters. */
 export const count = query({
-  args: contactFilters,
+  args: contactFilters.fields,
   returns: countValue,
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)

@@ -159,6 +159,10 @@ const created = (doc: { _creationTime: number }) => bucket(doc._creationTime)
 /** Every count, by what it counts. Keys follow each list's filters, so a
     filter narrows the count with key bounds instead of a scan. */
 export const counters = {
+  exports: new Counter<"exports", string>(components.exportCounts, {
+    namespace: team,
+    key: () => [],
+  }),
   contacts: new Counter<"contacts", string>(components.contactCounts, {
     namespace: team,
     key: (contact) => [contact.unsubscribed, created(contact)],
@@ -226,6 +230,7 @@ type Sync<T extends TableNames> = Pick<
 >
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
+  exports: [counters.exports],
   contacts: [counters.contacts],
   segments: [counters.segments],
   segmentMembers: [counters.segmentMembers],
@@ -239,6 +244,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   domains: [counters.domains],
 }
 export type CountedTable =
+  | "exports"
   | "contacts"
   | "segments"
   | "segmentMembers"

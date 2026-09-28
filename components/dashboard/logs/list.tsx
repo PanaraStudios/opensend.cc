@@ -35,7 +35,7 @@ import {
   type LogStatusClass,
 } from "@/lib/dashboard/logs"
 import type { LogSource } from "@/lib/dashboard/types"
-import { useStartExport } from "@/lib/exports/use-exports"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
 import { asLog } from "@/lib/logs/use-logs"
 
 const STATUS_ITEMS: readonly SelectOption[] = [
@@ -50,7 +50,6 @@ const SOURCE_ITEMS: readonly SelectOption[] = [
 
 export function LogsView() {
   const { activeTeamId } = useWorkspace()
-  const startExport = useStartExport()
   const emailFilter = useSearchParams().get("email")
   /* The real clock, read once: the presets and the default range use it. */
   const [now] = React.useState(() => Date.now())
@@ -74,6 +73,12 @@ export function LogsView() {
     from: range?.from ? startOfDay(range.from).getTime() : undefined,
     to: range?.from ? endOfDay(range.to ?? range.from).getTime() : undefined,
   }
+  const exporting = useExportDialog({
+    resource: "logs",
+    noun: "logs",
+    filters: { ...filters, search: query.trim() || undefined },
+    extra: emailFilter ? [{ label: "Email", value: emailFilter }] : [],
+  })
   const {
     rows,
     status: loading,
@@ -103,6 +108,7 @@ export function LogsView() {
       <PageHeader title="Logs">
         <DocsButton onClick={() => setDocsOpen(true)} />
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -130,7 +136,7 @@ export function LogsView() {
             "aria-label": "Filter by source",
           },
         ]}
-        onExport={() => void startExport("logs", filters)}
+        onExport={exporting.open}
       >
         {emailFilter ? (
           <Badge variant="secondary">email {emailFilter}</Badge>

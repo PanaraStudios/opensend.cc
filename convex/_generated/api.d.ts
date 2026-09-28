@@ -34,6 +34,7 @@ import type * as crons from "../crons.js";
 import type * as domains from "../domains.js";
 import type * as email_render from "../email/render.js";
 import type * as events from "../events.js";
+import type * as exportRows from "../exportRows.js";
 import type * as exportSources from "../exportSources.js";
 import type * as exports from "../exports.js";
 import type * as http from "../http.js";
@@ -130,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   domains: typeof domains;
   "email/render": typeof email_render;
   events: typeof events;
+  exportRows: typeof exportRows;
   exportSources: typeof exportSources;
   exports: typeof exports;
   http: typeof http;
@@ -238,5 +240,6 @@ export declare const components: {
   webhookCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"webhookCounts">;
   deliveryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"deliveryCounts">;
   domainCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"domainCounts">;
+  exportCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"exportCounts">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };

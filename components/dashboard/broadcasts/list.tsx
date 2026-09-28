@@ -1,5 +1,7 @@
 "use client"
 
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -93,6 +95,15 @@ export function BroadcastsView() {
   }
 
   const { pageRows, pagination } = usePagination(rows)
+  const exporting = useExportDialog({
+    resource: "broadcasts",
+    noun: "broadcasts",
+    filters: {},
+    onConfirm: () => {
+      addExport("Broadcasts", rows.length)
+      toast.add({ type: "success", title: "Export started" })
+    },
+  })
 
   return (
     <>
@@ -103,6 +114,7 @@ export function BroadcastsView() {
           Create broadcast
         </Button>
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -121,10 +133,7 @@ export function BroadcastsView() {
             "aria-label": "Filter by audience",
           },
         ]}
-        onExport={() => {
-          addExport("Broadcasts", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
       {rows.length === 0 ? (
         <EmptyState

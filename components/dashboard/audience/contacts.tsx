@@ -77,7 +77,7 @@ import {
 } from "@/lib/dashboard/contacts"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
 import {
   useAudienceCommands,
   useContactList,
@@ -550,7 +550,6 @@ function BulkEditDialog({
 }
 
 export function ContactsView() {
-  const { addExport } = useDashboard()
   const { deleteContacts } = useAudienceCommands()
   const segments = useSegments()
   const [query, setQuery] = React.useState("")
@@ -569,13 +568,19 @@ export function ContactsView() {
   )
 
   const search = useDebouncedValue(query)
-  const contacts = useContactList({
+  const filters = {
     search,
     ...(subscribed !== "all"
       ? { unsubscribed: subscribed === "unsubscribed" }
       : {}),
     ...(segment !== "all" ? { segmentId: segment as Id<"segments"> } : {}),
     ...rangeBounds(range),
+  }
+  const contacts = useContactList(filters)
+  const exporting = useExportDialog({
+    resource: "contacts",
+    noun: "contacts",
+    filters: { ...filters, search: query.trim() || undefined },
   })
   const { rows, pageRows, pagination } = contacts
 
@@ -624,6 +629,7 @@ export function ContactsView() {
         </>
       }
     >
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -645,10 +651,7 @@ export function ContactsView() {
             "aria-label": "Filter by segment",
           },
         ]}
-        onExport={() => {
-          addExport("Contacts", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
       <SelectionBar count={selected.length} onClear={() => setSelected([])}>
         <DropdownMenu>

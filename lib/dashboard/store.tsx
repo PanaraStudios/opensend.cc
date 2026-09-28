@@ -26,6 +26,8 @@ import {
   transitionBroadcast,
 } from "./broadcast"
 import { createId } from "./ids"
+import { exportFileName } from "./exports"
+import { slugify } from "./slug"
 import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -538,15 +540,17 @@ function cancelAutomationRun(id: string) {
 }
 
 function addExport(resource: string, rows: number) {
+  const createdAt = Date.now()
   mutate((current) => ({
     ...current,
     exports: [
       {
         id: createId("exp"),
         resource,
+        fileName: exportFileName(slugify(resource), createdAt),
         status: "ready",
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 7 * 86_400_000,
+        createdAt,
+        expiresAt: createdAt + 7 * 86_400_000,
         rows,
       },
       ...current.exports,

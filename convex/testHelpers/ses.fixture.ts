@@ -26,6 +26,7 @@ const COUNT_COMPONENTS = [
   "webhookCounts",
   "deliveryCounts",
   "domainCounts",
+  "exportCounts",
 ]
 const authModules = import.meta.glob("../betterAuth/**/*.ts")
 /** A connected us-east-1 installation on the current IAM policy revision: the

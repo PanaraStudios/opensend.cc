@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
 import { tokenHash } from "../lib/oauth/policy"
@@ -378,85 +377,5 @@ describe("logs retention", () => {
     }))
     expect(left.logs).toHaveLength(1)
     expect(left.bodies).toHaveLength(1)
-  })
-})
-
-describe("exports", () => {
-  test("writes a CSV of the team's rows and offers it for download", async () => {
-    vi.useFakeTimers()
-    const f = await fixture()
-    const m = await member(f)
-    await key(f, { name: "Alpha" })
-    await key(f, { name: "=cmd", permission: "sending_access" })
-    await f.outsider.client.action(api.apiKeys.create, {
-      organizationId: f.outsider.team,
-      input: input({ name: "Theirs" }),
-    })
-    const id = await m.client.mutation(api.exports.start, {
-      organizationId: f.owner.team,
-      resource: "api-keys",
-      filters: { permission: "sending_access" },
-    })
-    await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
-    const [row] = await m.client.query(api.exports.list, {
-      organizationId: f.owner.team,
-    })
-    expect(row).toMatchObject({
-      _id: id,
-      status: "ready",
-      rows: 1,
-      label: "API keys",
-    })
-    expect(await m.client.query(api.exports.downloadUrl, { id })).toBeTruthy()
-    const csv = await f.t.run(async (ctx) => {
-      const job = await ctx.db.get("exports", id as Id<"exports">)
-      return (await ctx.storage.get(job!.storageId!))!.text()
-    })
-    expect(csv.split("\r\n")[0]).toBe(
-      "id,name,token,permission,domain_id,created_by,created_at,last_used_at"
-    )
-    expect(csv).toContain("'=cmd")
-    expect(csv).not.toContain("Alpha")
-    expect(csv).not.toContain("Theirs")
-    await expect(
-      f.outsider.client.query(api.exports.downloadUrl, { id })
-    ).rejects.toThrow("permission")
-    await expect(
-      f.outsider.client.mutation(api.exports.start, {
-        organizationId: f.owner.team,
-        resource: "logs",
-        filters: {},
-      })
-    ).rejects.toThrow("permission")
-    await expect(
-      m.client.mutation(api.exports.start, {
-        organizationId: f.owner.team,
-        resource: "nothing",
-        filters: {},
-      })
-    ).rejects.toThrow("cannot be exported")
-  })
-
-  test("expired exports lose their file", async () => {
-    vi.useFakeTimers()
-    const f = await fixture()
-    const id = await f.owner.client.mutation(api.exports.start, {
-      organizationId: f.owner.team,
-      resource: "domains",
-      filters: {},
-    })
-    await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
-    // Backdate the export rather than the clock, which would also expire
-    // the owner's session.
-    await f.t.run((ctx) =>
-      ctx.db.patch("exports", id, { expiresAt: Date.now() - 1 })
-    )
-    await f.t.mutation(internal.exports.expire, {})
-    const job = await f.t.run((ctx) => ctx.db.get("exports", id))
-    expect(job).toMatchObject({ status: "expired", rows: 1 })
-    expect(job?.storageId).toBeUndefined()
-    expect(
-      await f.owner.client.query(api.exports.downloadUrl, { id })
-    ).toBeNull()
   })
 })

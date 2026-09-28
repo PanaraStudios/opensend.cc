@@ -8,7 +8,6 @@ import {
   XIcon,
   CircleCheckIcon,
   CircleXIcon,
-  DownloadIcon,
   LogOutIcon,
   ShieldIcon,
   UploadIcon,
@@ -37,11 +36,8 @@ import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
   EmptyState,
-  ExportStatusBadge,
   MoreMenu,
   OptionSelect,
-  PageHeader,
-  ResourceTable,
   SectionChrome,
   SettingsCard,
   Surface,
@@ -62,7 +58,6 @@ import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
-import { useExports } from "@/lib/exports/use-exports"
 import { useTopics } from "@/lib/audience/use-audience"
 import {
   useUnsubscribeCommands,
@@ -830,57 +825,4 @@ export function SettingsUnsubscribe() {
   )
 }
 
-export function SettingsExports() {
-  const { state } = useDashboard()
-  const exports = useExports()
-  /* Lists not yet on the server still export into the demo store. */
-  const rows = [...(exports ?? []), ...state.exports]
-
-  return (
-    <>
-      <PageHeader
-        title="Exports"
-        description="Exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
-      />
-      {exports === undefined ? (
-        <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={DownloadIcon}
-          title="You haven't performed any exports yet"
-          description="Once you execute an export, you'll be able to see them here."
-        />
-      ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Resource</Th>
-              <Th>Status</Th>
-              <Th>Rows</Th>
-              <Th>Created</Th>
-              <Th>Expires</Th>
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.resource}</TableCell>
-              <TableCell>
-                <ExportStatusBadge status={item.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {item.rows}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(item.createdAt)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(item.expiresAt)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
-      )}
-    </>
-  )
-}
+export { SettingsExports } from "./exports/list"

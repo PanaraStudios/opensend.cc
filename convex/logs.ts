@@ -33,6 +33,7 @@ type LogEntry = Pick<
   | "userAgent"
   | "source"
   | "apiKeyId"
+  | "oauthGrantId"
   | "emailId"
 > &
   Pick<Doc<"apiLogBodies">, "requestHeaders"> & {

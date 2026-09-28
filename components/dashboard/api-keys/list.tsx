@@ -39,13 +39,12 @@ import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
 import { permissionLabel } from "@/lib/dashboard/format"
-import { useStartExport } from "@/lib/exports/use-exports"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
 import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 
 export function ApiKeysView() {
   const { organizationId, createApiKey, updateApiKey, deleteApiKey } =
     useApiKeyCommands()
-  const startExport = useStartExport()
   const [query, setQuery] = React.useState("")
   const [permission, setPermission] = React.useState(ALL_PERMISSIONS)
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -62,6 +61,11 @@ export function ApiKeysView() {
         ? undefined
         : (permission as ApiKeyPermission),
   }
+  const exporting = useExportDialog({
+    resource: "api-keys",
+    noun: "API keys",
+    filters: { ...filters, search: query.trim() || undefined },
+  })
   const {
     rows,
     status: loading,
@@ -82,6 +86,7 @@ export function ApiKeysView() {
           Create API key
         </Button>
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -94,7 +99,7 @@ export function ApiKeysView() {
             "aria-label": "Filter by permission",
           },
         ]}
-        onExport={() => void startExport("api-keys", filters)}
+        onExport={exporting.open}
       />
       {loading === "LoadingFirstPage" || hasKeys === undefined ? (
         <Skeleton className="h-40 w-full" />

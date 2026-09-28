@@ -214,6 +214,7 @@ export const finish = internalMutation({
       ...log,
       source: "api",
       apiKeyId: caller.apiKeyId,
+      oauthGrantId: caller.oauthGrantId,
     })
     if (caller.apiKeyId && (await ctx.db.get("apiKeys", caller.apiKeyId)))
       await touchKey(ctx, caller.apiKeyId)

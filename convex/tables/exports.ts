@@ -7,7 +7,13 @@ export const exportStatusValue = v.union(
   v.literal("expired"),
   v.literal("failed")
 )
+/** One list filter as the export dialog confirmed it. */
+export const exportFilterLineValue = v.object({
+  label: v.string(),
+  value: v.string(),
+})
 
+/* Every write goes through convex/exportRows.ts. */
 export const exportTables = {
   exports: defineTable({
     organizationId: v.string(),
@@ -17,8 +23,15 @@ export const exportTables = {
     rows: v.number(),
     storageId: v.optional(v.id("_storage")),
     expiresAt: v.number(),
-    /** The list filters the export was started with. */
+    /** The list filters the export was started with, as the source reads
+        them. */
     filters: v.record(v.string(), v.string()),
+    /* Optional only for exports started before these were kept. */
+    /** `domains-1790557161016.csv`. */
+    fileName: v.optional(v.string()),
+    creatorEmail: v.optional(v.string()),
+    /** The filters as the dialog showed them; at most `SUMMARY_LINES`. */
+    summary: v.optional(v.array(exportFilterLineValue)),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_status_and_expiresAt", ["status", "expiresAt"]),

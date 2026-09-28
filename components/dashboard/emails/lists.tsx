@@ -1,5 +1,7 @@
 "use client"
 
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+
 import * as React from "react"
 import Link from "next/link"
 import type { DateRange } from "react-day-picker"
@@ -87,9 +89,19 @@ export function EmailsView() {
   })
 
   const { pageRows, pagination } = usePagination(rows)
+  const exporting = useExportDialog({
+    resource: "emails",
+    noun: "emails",
+    filters: {},
+    onConfirm: () => {
+      addExport("Emails", rows.length)
+      toast.add({ type: "success", title: "Export started" })
+    },
+  })
 
   return (
     <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -104,10 +116,7 @@ export function EmailsView() {
             "aria-label": "Filter by status",
           },
         ]}
-        onExport={() => {
-          addExport("Emails", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
       {rows.length === 0 ? (
         <EmptyState
@@ -193,6 +202,15 @@ export function ReceivingView() {
   })
 
   const { pageRows, pagination } = usePagination(rows)
+  const exporting = useExportDialog({
+    resource: "received",
+    noun: "received emails",
+    filters: {},
+    onConfirm: () => {
+      addExport("Received emails", rows.length)
+      toast.add({ type: "success", title: "Export started" })
+    },
+  })
 
   return (
     <EmailsChrome>
@@ -203,6 +221,7 @@ export function ReceivingView() {
             <span className="font-mono">inbound@{receivingDomain.name}</span>
           </p>
         ) : null}
+        {exporting.dialog}
         <ListToolbar
           query={query}
           onQueryChange={setQuery}
@@ -210,10 +229,7 @@ export function ReceivingView() {
           range={range}
           onRangeChange={setRange}
           now={now}
-          onExport={() => {
-            addExport("Received emails", rows.length)
-            toast.add({ type: "success", title: "Export started" })
-          }}
+          onExport={exporting.open}
         />
       </div>
       {rows.length === 0 ? (
@@ -316,6 +332,15 @@ export function SuppressionsView() {
   }
 
   const { pageRows, pagination } = usePagination(rows)
+  const exporting = useExportDialog({
+    resource: "suppressions",
+    noun: "suppressions",
+    filters: {},
+    onConfirm: () => {
+      addExport("Suppressions", rows.length)
+      toast.add({ type: "success", title: "Export started" })
+    },
+  })
 
   return (
     <EmailsChrome
@@ -326,6 +351,7 @@ export function SuppressionsView() {
         </Button>
       }
     >
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -340,10 +366,7 @@ export function SuppressionsView() {
             "aria-label": "Filter by origin",
           },
         ]}
-        onExport={() => {
-          addExport("Suppressions", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
       {rows.length === 0 ? (
         <EmptyState
