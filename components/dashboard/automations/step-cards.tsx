@@ -384,11 +384,13 @@ function SegmentBody({
   onChange: (step: AutomationStep) => void
 }) {
   const { activeTeamId } = useWorkspace()
+  const [segmentSearch, setSegmentSearch] = React.useState("")
   const rows = useQuery(
     api.segments.options,
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search: segmentSearch,
           selectedId: step.segmentId
             ? (step.segmentId as Id<"segments">)
             : undefined,
@@ -401,6 +403,7 @@ function SegmentBody({
   return (
     <CardSection label="Segment" htmlFor={id}>
       <OptionSelect
+        search={{ onChange: setSegmentSearch }}
         id={id}
         className="w-full"
         value={step.segmentId}
@@ -644,11 +647,13 @@ function SendEmailBody({
   onChange: (step: AutomationStep) => void
 }) {
   const { activeTeamId } = useWorkspace()
+  const [templateSearch, setTemplateSearch] = React.useState("")
   const rows = useQuery(
     api.templates.options,
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search: templateSearch,
           selectedId: step.templateId
             ? (step.templateId as Id<"templates">)
             : undefined,
@@ -693,6 +698,7 @@ function SendEmailBody({
   return (
     <>
       <OptionSelect
+        search={{ onChange: setTemplateSearch }}
         className="w-full"
         aria-label="Template"
         value={step.templateId}

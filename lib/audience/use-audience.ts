@@ -107,26 +107,28 @@ export function useContactSearch(search: string, enabled = true) {
   )
 }
 
-export function useSegmentOptions(selectedId?: string | null) {
+export function useSegmentOptions(selectedId?: string | null, search?: string) {
   const { activeTeamId } = useWorkspace()
   const rows = useQuery(
     api.segments.options,
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search,
           selectedId: selectedId ? (selectedId as Id<"segments">) : undefined,
         }
       : "skip"
   )
   return React.useMemo(() => rows?.map(asSegment), [rows])
 }
-export function useTopicOptions(selectedId?: string | null) {
+export function useTopicOptions(selectedId?: string | null, search?: string) {
   const { activeTeamId } = useWorkspace()
   const rows = useQuery(
     api.topics.options,
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search,
           selectedId: selectedId ? (selectedId as Id<"topics">) : undefined,
         }
       : "skip"

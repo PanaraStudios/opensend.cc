@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
@@ -93,6 +94,7 @@ import {
 import {
   Combobox,
   ComboboxContent,
+  ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
@@ -118,6 +120,7 @@ import {
   SelectGroup,
   SelectItem,
   SelectTrigger,
+  selectTriggerClassName,
   SelectValue,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -1685,6 +1688,146 @@ export type SelectOption = {
   dotClassName?: string
 }
 
+export type SelectSearch = {
+  onChange: (value: string) => void
+  placeholder?: string
+}
+
+/** The searchable popup shared by ordinary selects and the email paper. */
+export function SearchableSelect({
+  value,
+  defaultValue,
+  onChange,
+  items,
+  selectedItem,
+  search,
+  trigger,
+  name,
+  disabled,
+  align = "start",
+  contentClassName,
+}: {
+  value?: string
+  defaultValue?: string
+  onChange?: (value: string) => void
+  items: readonly SelectOption[]
+  selectedItem?: SelectOption
+  search: SelectSearch
+  trigger: (current: SelectOption | undefined) => React.ReactElement
+  name?: string
+  disabled?: boolean
+  align?: "start" | "center" | "end"
+  contentClassName?: string
+}) {
+  const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue)
+  const selectedValue = value ?? uncontrolledValue
+  const found =
+    items.find((item) => item.value === selectedValue) ??
+    (selectedItem?.value === selectedValue ? selectedItem : undefined)
+  const [remembered, setRemembered] = React.useState(found)
+  if (
+    found &&
+    (found.value !== remembered?.value ||
+      found.label !== remembered.label ||
+      found.dotClassName !== remembered.dotClassName)
+  ) {
+    setRemembered(found)
+  }
+  // Convex returns undefined between searches; keep the chosen label visible.
+  const current =
+    found ?? (remembered?.value === selectedValue ? remembered : undefined)
+  const choices =
+    current && !items.some((item) => item.value === current.value)
+      ? [...items, current]
+      : [...items]
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const settledSearch = useDebouncedValue(query)
+  const onSearch = search.onChange
+  React.useEffect(() => {
+    onSearch(settledSearch)
+  }, [onSearch, settledSearch])
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  return (
+    <Combobox
+      items={choices}
+      filter={null}
+      autoHighlight
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+      value={current ?? null}
+      onValueChange={(item: SelectOption | null) => {
+        if (!item) return
+        setRemembered(item)
+        setUncontrolledValue(item.value)
+        onChange?.(item.value)
+      }}
+      inputValue={query}
+      onInputValueChange={setQuery}
+      itemToStringLabel={(item: SelectOption) => item.label}
+      itemToStringValue={(item: SelectOption) => item.value}
+      isItemEqualToValue={(a: SelectOption, b: SelectOption) =>
+        a.value === b.value
+      }
+      name={name}
+      disabled={disabled}
+    >
+      <ComboboxPrimitive.Trigger
+        render={trigger(current)}
+        onKeyDown={(event) => {
+          if (
+            !open &&
+            event.key.length === 1 &&
+            event.key !== " " &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey
+          ) {
+            event.preventBaseUIHandler()
+            event.preventDefault()
+            setQuery(event.key)
+            setOpen(true)
+          }
+        }}
+      />
+      <ComboboxContent
+        align={align}
+        sideOffset={4}
+        initialFocus={inputRef}
+        className={contentClassName}
+      >
+        <ComboboxInput
+          ref={inputRef}
+          showTrigger={false}
+          placeholder={search.placeholder ?? "Search…"}
+          aria-label={search.placeholder ?? "Search"}
+        />
+        <ComboboxEmpty>No results found.</ComboboxEmpty>
+        <ComboboxList>
+          {(item: SelectOption) => (
+            <ComboboxItem key={item.value} value={item}>
+              {item.dotClassName ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    item.dotClassName
+                  )}
+                />
+              ) : null}
+              <span className="truncate">{item.label}</span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
 /** Single-value select driven by an options array. Renders the items once,
     for both the trigger value and the list. */
 export function OptionSelect({
@@ -1693,6 +1836,7 @@ export function OptionSelect({
   onChange,
   items,
   selectedItem,
+  search,
   id,
   name,
   size = "default",
@@ -1706,6 +1850,7 @@ export function OptionSelect({
   defaultValue?: string
   onChange?: (value: string) => void
   selectedItem?: SelectOption
+  search?: SelectSearch
   items: readonly SelectOption[]
   /** Shown while no item is chosen. */
   placeholder?: string
@@ -1717,6 +1862,44 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  if (search)
+    return (
+      <SearchableSelect
+        value={value}
+        defaultValue={defaultValue}
+        onChange={onChange}
+        items={items}
+        selectedItem={selectedItem}
+        search={search}
+        name={name}
+        disabled={disabled}
+        align={align}
+        trigger={(current) => (
+          <button
+            type="button"
+            id={id}
+            aria-label={ariaLabel}
+            data-slot="select-trigger"
+            data-size={size}
+            className={cn(selectTriggerClassName, className)}
+          >
+            <span data-slot="select-value" className="flex flex-1 text-left">
+              {current?.dotClassName ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    current.dotClassName
+                  )}
+                />
+              ) : null}
+              {current?.label ?? placeholder}
+            </span>
+            <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+          </button>
+        )}
+      />
+    )
   const choices =
     selectedItem && !items.some((item) => item.value === selectedItem.value)
       ? [...items, selectedItem]
@@ -1887,6 +2070,7 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
+  search?: SelectSearch
   selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
@@ -1929,6 +2113,7 @@ export function ToolbarFilters({
           onChange={filter.onChange}
           items={filter.items}
           selectedItem={filter.selectedItem}
+          search={filter.search}
           aria-label={filter["aria-label"]}
         />
       ))}

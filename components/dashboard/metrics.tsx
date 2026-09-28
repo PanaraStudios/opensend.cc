@@ -268,6 +268,7 @@ export function MetricsView() {
     [chosenRange, now]
   )
   const [domain, setDomain] = React.useState("all")
+  const [domainSearch, setDomainSearch] = React.useState("")
   const [event, setEvent] = React.useState("all")
   const status = isFilterableStatus(event) ? event : null
   const { loading, totals, days, domains } = useMetrics(range, domain, status)
@@ -277,6 +278,7 @@ export function MetricsView() {
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search: domainSearch,
           selectedId: domain === "all" ? undefined : (domain as Id<"domains">),
         }
       : "skip"
@@ -299,6 +301,7 @@ export function MetricsView() {
           allowAllTime={false}
           filters={[
             {
+              search: { onChange: setDomainSearch },
               value: domain,
               onChange: setDomain,
               items: domainItems,

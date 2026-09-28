@@ -1,6 +1,6 @@
 # Lane 7B handoff
 
-Base: `0b10d8d`; branch: `codex/lane-7b`.
+Base: `0b10d8d`; part 2 continues `a55de9c`; branch: `codex/lane-7b`.
 
 ## Delivered
 
@@ -18,9 +18,17 @@ Base: `0b10d8d`; branch: `codex/lane-7b`.
 - The installation sender's domain suggestions follow the same cap and selection
   rules, guarded by installation-admin access. They intentionally span teams.
 - `SuggestInput` debounces its existing input once in the shared component and
-  retains the current choice. `OptionSelect` and `PaperSelect` render the selected
-  choice in the menu as well as the trigger. Shared `Command`/`CommandItem` support
-  server-ranked results while keeping local filtering for static navigation.
+  retains the current choice. `OptionSelect`, `ToolbarFilters`, and `PaperSelect`
+  now accept optional server search, sharing one `SearchableSelect` implementation
+  with a 250 ms debounce and selected-label retention during query loading.
+  Their existing triggers and static-list behavior are preserved. Searchable
+  menus compose the existing Combobox input, content, list, items, and empty
+  state, following Base UI's [input-inside-popup pattern](https://base-ui.com/react/components/combobox#input-inside-popup).
+  Opening focuses search; typing on a closed trigger opens search; arrow keys,
+  Enter, and Escape use the Combobox keyboard behavior.
+- Shared `Command`/`CommandItem` support server-ranked results while keeping
+  local filtering for static navigation. Sender search extracts the domain from
+  a typed/pasted mailbox; its default sender remains independent of search.
 - Tenant cleanup uses Convex cursor pagination with `usePaginatedQuery`,
   `useLoadedPagination`, and the existing `ListPagination`. No menu has a pager,
   footer, or load-more row.
@@ -38,25 +46,21 @@ Base: `0b10d8d`; branch: `codex/lane-7b`.
 | Automation trigger/custom-event inputs | Shared debounce, server prefix search, selected-name lookup |
 | Automation condition/contact-update property inputs | Shared debounce, server property search; existing property prefix handled |
 | Installation account-email sender domain | Shared debounce, indexed search, selected-domain lookup, admin access |
-| Automation test-event contact | 20 suggestions and selected-ID lookup; search deferred below |
-| Automation add-to-segment | 20 suggestions and selected-ID lookup; search deferred below |
-| Automation send-email template | 20 suggestions and selected-ID lookup; existing template detail lookup retained; search deferred below |
-| Broadcast audience segment and subscription topic | 20 suggestions and selected-ID lookup; search deferred below |
-| Broadcast/template sender address | 20 domain suggestions; existing explicit sender stays visible; search deferred below |
-| API-key domain restriction | 20 suggestions; existing selected-domain lookup retained; search deferred below |
-| Metrics domain filter | 20 suggestions with selected-ID lookup, including removed domains; search deferred below |
-| Audience add/import/filter segment selects, contact segment checklist, bulk segment/topic choices | Existing full bounded definitions retained; no search input to reuse |
+| Automation test-event contact | Server search and selected-ID lookup |
+| Automation add-to-segment | Server search and selected-ID lookup |
+| Automation send-email template | Server search and selected-ID lookup; existing template detail lookup retained |
+| Broadcast audience segment and subscription topic | Server search and selected-ID lookup |
+| Broadcast/template sender address | Server domain search and selected-ID lookup via sender domain name; explicit sender stays visible |
+| API-key domain restriction | Server search and selected-ID lookup; existing selected-domain detail lookup retained |
+| Metrics domain filter | Server search and selected-ID lookup, including removed domains |
+| Audience add/import/filter segment selects, contact segment checklist, bulk segment/topic choices | Complete bounded definitions retained as instructed; no rows hidden by the picker cap |
 | Contact topic/property forms and property import mapping | Complete definitions retained so the picker cap cannot hide form fields |
-| Log user-agent filter | Existing 100-distinct-value index seeks and selected-string retention left intact; no search input to reuse |
+| Log user-agent filter | Unchanged: 100 distinct values via index seeks with selected-string retention; no server options-search endpoint |
 
-**Required UI deferrals:** `OptionSelect` wraps Base UI Select;
-`ToolbarFilters` uses `OptionSelect`; `PaperSelect` wraps a radio dropdown.
-None exposes a search input. Per the lane instruction, these have not been
-redesigned or given a new input. Their options endpoints are search-ready, but
-older unselected rows outside the first 20 remain unreachable from these menus
-until a searchable shared picker is approved. The audience checklists similarly
-have no reusable search input. This is a remaining product limitation, not a
-claim that all menus now support server search.
+All select-menu search deferrals from the first handoff are resolved. Each newly
+searchable picker passes its debounced search and current selection to the
+existing options query. No backend functions, tables, routes, or schema changes
+were needed in part 2, and no UI outside the approved searchable menus changed.
 
 `segments.definitions`, `topics.definitions`, and `contactProperties.definitions`
 preserve the existing complete definition reads for forms and the audience
@@ -81,7 +85,7 @@ than promising arbitrary substring matching across unbounded data. See the
 Ordinary prefix indexes avoid full-text term expansion limits for domain,
 email-address, and event-name lookups.
 
-New coverage: 15 Convex tests and 3 unit tests. Coverage includes caps,
+Part 1 coverage: 15 Convex tests and 3 unit tests. Coverage includes caps,
 newest-first ordering, search beyond the first twenty, selection lookup,
 selection during search, deleted and foreign selections, team permission denial,
 argument validation, member writes, domain eligibility, and cleanup pagination
@@ -89,7 +93,20 @@ beyond 25 records. Existing 100-result expectations were updated to 20. The SES
 cleanup assertion was updated through a small Python script, as required for
 existing test files that import Node builtins.
 
-Final verification: `pnpm typecheck`, `pnpm exec tsc --noEmit -p convex`, and
-`pnpm lint` passed with no warnings. `pnpm test`: 264/264 passed.
-`pnpm test:auth`: 546/546 passed across 34 files. An initial export-test failure
-passed both its targeted rerun and the final full suite without export changes.
+Part 2 adds two unit tests for sender-domain search normalization (raw domains,
+partial/full mailboxes, whitespace, and clearing). There is no existing component
+unit-test setup, so none was introduced. A temporary local browser fixture used
+the shared picker source with simulated async results, without a backend. It
+verified ordinary and paper triggers, input autofocus, closed-trigger typing,
+arrow navigation, Enter selection beyond the initial twenty, retained selected
+labels during loading and after clearing search, the empty state, Escape with
+focus restoration, and unchanged static Select menus. The fixture is outside
+the repository; no `tests/e2e/` files were changed or executed.
+
+Final part 2 verification: `pnpm typecheck`, `pnpm exec tsc --noEmit -p convex`,
+and `pnpm lint` passed with zero warnings. `pnpm test`: 266/266 passed.
+`pnpm test:auth`: 546/546 passed across 34 files. No live backend, AWS, or
+integrated e2e verification was performed.
+
+Commits: `a55de9c` (bounded server search), followed by the part 2 commit reported
+with this handoff (search inside the capped select menus).

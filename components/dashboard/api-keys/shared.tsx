@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
 import { KeyRoundIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -164,7 +165,7 @@ function ApiKeyForm({
   onSubmit: (values: ApiKeyFormValues) => Promise<void>
   onOpenChange: (open: boolean) => void
 }) {
-  const domains = useDomainOptions()
+  const [domainSearch, setDomainSearch] = React.useState("")
   const [name, setName] = React.useState(apiKey?.name ?? "")
   const [permission, setPermission] = React.useState<ApiKeyPermission>(
     apiKey?.permission ?? "full_access"
@@ -172,6 +173,10 @@ function ApiKeyForm({
   const [domainId, setDomainId] = React.useState<string | null>(
     apiKey?.domainId ?? null
   )
+  const domains = useDomainOptions({
+    search: domainSearch,
+    selectedId: domainId ? (domainId as Id<"domains">) : undefined,
+  })
   const selectedDomain = useDomain(domainId)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState(false)
@@ -249,6 +254,7 @@ function ApiKeyForm({
           <Field data-disabled={!sendingOnly}>
             <FieldLabel htmlFor="api-key-domain">Domain</FieldLabel>
             <OptionSelect
+              search={{ onChange: setDomainSearch }}
               id="api-key-domain"
               className="w-full"
               disabled={!sendingOnly}

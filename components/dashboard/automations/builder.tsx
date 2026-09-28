@@ -422,11 +422,13 @@ function TestEventForm({
     id: string
     email: string
   } | null>(null)
+  const [contactSearch, setContactSearch] = React.useState("")
   const rows = useQuery(
     api.contacts.options,
     activeTeamId
       ? {
           organizationId: activeTeamId,
+          search: contactSearch,
           selectedId: chosenContact?.id as Id<"contacts"> | undefined,
         }
       : "skip"
@@ -502,6 +504,7 @@ function TestEventForm({
           <Field>
             <FieldLabel htmlFor="test-contact">Contact</FieldLabel>
             <OptionSelect
+              search={{ onChange: setContactSearch }}
               id="test-contact"
               className="w-full"
               value={contactId}
