@@ -81,9 +81,11 @@ export function OAuthConsent() {
       </div>
     )
   if (!account.teams.length) return <AccountTeamAccess account={account} />
-  const admins = account.teams.filter((t) => t.role === "admin")
-  const teamItems = admins.map((team) => ({ value: team.id, label: team.name }))
-  const selected = admins.find((t) => t.id === teamId)
+  const teamItems = account.teams.map((team) => ({
+    value: team.id,
+    label: team.name,
+  }))
+  const selected = account.teams.find((t) => t.id === teamId)
   async function decide(accept: boolean) {
     setResponding(true)
     try {
@@ -153,11 +155,6 @@ export function OAuthConsent() {
           </Select>
         </Field>
       </FieldGroup>
-      {!admins.length && (
-        <p role="alert" className="text-sm text-muted-foreground">
-          Only team admins can authorize applications.
-        </p>
-      )}
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">Requested permissions</p>
         <ul className="list-inside list-disc text-sm">

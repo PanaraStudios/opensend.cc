@@ -41,7 +41,7 @@ export async function liveGrant(ctx: QueryCtx | MutationCtx, id: string) {
     !user?.emailVerified ||
     !teamId ||
     !(await ctx.db.get(teamId)) ||
-    member?.role !== "owner" ||
+    !member ||
     member.userId !== grant.userId ||
     member.organizationId !== grant.organizationId ||
     !client ||
@@ -225,11 +225,12 @@ export const decide = mutation({
       await ctx.db.patch(f._id, { used: true })
       return { query: f.query, grantId: null }
     }
+    // As on Resend, any member may connect an app: it acts like an API
+    // key, which members manage too. Only people and billing are admin-only.
     const { member } = await requireMember(
       ctx,
       args.sessionId,
-      args.organizationId,
-      true
+      args.organizationId
     )
     const client = await ctx.db
       .query("oauthClient")
@@ -372,7 +373,7 @@ export const list = query({
   handler: async (ctx, args) => {
     const { user } = await sessionUser(ctx, args.sessionId)
     if (args.organizationId !== undefined)
-      await requireMember(ctx, args.sessionId, args.organizationId, true)
+      await requireMember(ctx, args.sessionId, args.organizationId)
     const rows =
       args.organizationId !== undefined
         ? await ctx.db
@@ -402,7 +403,7 @@ export const disconnect = mutation({
     const { user } = await sessionUser(ctx, args.sessionId)
     const grant = await ctx.db.get(args.id)
     if (args.organizationId !== undefined) {
-      await requireMember(ctx, args.sessionId, args.organizationId, true)
+      await requireMember(ctx, args.sessionId, args.organizationId)
       if (!grant || grant.organizationId !== args.organizationId)
         throw new ConvexError("Authorization not found")
     } else if (!grant || grant.userId !== user._id)

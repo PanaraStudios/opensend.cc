@@ -357,12 +357,8 @@ function TeamMembers({ team }: { team: Team }) {
               })}
             </TableBody>
           </Table>
-        ) : admin ? (
-          <OAuthAppsList key={team.id} organizationId={team.id} />
         ) : (
-          <p className="p-6 text-sm text-muted-foreground">
-            Only team admins can view and manage authorized apps.
-          </p>
+          <OAuthAppsList key={team.id} organizationId={team.id} />
         )}
       </SettingsCard>
       <InviteMemberDialog open={inviting} onOpenChange={setInviting} />

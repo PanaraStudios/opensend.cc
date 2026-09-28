@@ -1,6 +1,6 @@
 # OAuth applications
 
-Opensend supports public and confidential registered applications. Each authorization belongs to one team and the verified admin who approved it. Application registration is public; registration does not create an Opensend account or bypass invitation-only account registration.
+Opensend supports public and confidential registered applications. Each authorization belongs to one team and the verified member who approved it. As on Resend, any team member may authorize an app (it acts like an API key, which members manage too); only inviting people, billing and deleting the team are admin-only. Application registration is public; registration does not create an Opensend account or bypass invitation-only account registration.
 
 ## Available APIs
 
@@ -41,7 +41,7 @@ Generate a random PKCE verifier (43–128 characters) and its base64url SHA-256 
 /oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=ENCODED_CALLBACK&scope=full_access&state=STATE&code_challenge=CHALLENGE&code_challenge_method=S256
 ```
 
-The user signs in, completes verification/MFA/required SSO, explicitly selects an admin team, and authorizes. Validate `state` when the browser returns. Errors and cancellation remain on the consent screen; they never redirect to an unvalidated callback. Consent expires after ten minutes and is bound to an HttpOnly browser cookie. Changing the dashboard team does not change consent's team.
+The user signs in, completes verification/MFA/required SSO, explicitly selects one of their teams, and authorizes. Validate `state` when the browser returns. Errors and cancellation remain on the consent screen; they never redirect to an unvalidated callback. Consent expires after ten minutes and is bound to an HttpOnly browser cookie. Changing the dashboard team does not change consent's team.
 
 Exchange the code within two minutes:
 
@@ -109,7 +109,7 @@ Maintenance invalidates existing authorizations. Reconnect after updating or rot
 
 ## Revocation and backend integration
 
-Profile shows the signed-in user's authorizations across teams. Settings → Team → Authorized apps shows all live authorizations for the selected team to its admins, including authorizations created by other admins. Both views share the same records and revocation controls. Disconnect takes effect immediately. Ordinary logout preserves integrations. Password reset, admin removal/demotion, user/team deletion, app maintenance, and SSO connection/policy changes invalidate access. Reconnecting creates a new grant ID, so old tokens cannot become valid again.
+Profile shows the signed-in user's authorizations across teams. Settings → Team → Authorized apps shows all live authorizations for the selected team to every member, including authorizations created by other members. Both views share the same records and revocation controls. Disconnect takes effect immediately. Ordinary logout preserves integrations. Password reset, removal from the team, user/team deletion, app maintenance, and SSO connection/policy changes invalidate access. Reconnecting creates a new grant ID, so old tokens cannot become valid again.
 
 `authorizeOAuth` in `convex/oauthHttp.ts` checks signature, expiration, separate issuer/audience, and live authorization, returning user, team, application, grant, and scopes. Product endpoints must also call `liveGrant` and check resource ownership **inside the mutation/query that reads or writes the resource**; REST routes built with `apiRoute` do this through `requireCaller` (`convex/api/caller.ts`). Never use the dashboard session helper for an OAuth token. The current grant API demonstrates this second check.
 
