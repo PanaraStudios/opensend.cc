@@ -73,21 +73,21 @@ export async function client(page: Page) {
   result.setAuth(token)
   return result
 }
+// Synthetic ciphertext deliberately cannot authenticate an AWS request.
+const connection = {
+  accountId: "123456789012",
+  credentialKind: "keys",
+  encryptedCredentials: "test-fixture-no-aws-access",
+  accessKeyLast4: "TEST",
+  defaultRegion: "us-east-1",
+  credentialRevision: 1,
+}
+
 export async function seedSesConnection(page: Page) {
   const status = await (await client(page)).query(api.installation.status)
-  // Synthetic ciphertext deliberately cannot authenticate an AWS request.
   importFixture(
     "installation",
-    {
-      ...status.installation!,
-      accountId: "123456789012",
-      credentialKind: "keys",
-      encryptedCredentials: "test-fixture-no-aws-access",
-      accessKeyLast4: "TEST",
-      defaultRegion: "us-east-1",
-      credentialRevision: 1,
-      setupStep: "callback",
-    },
+    { ...status.installation!, ...connection, setupStep: "callback" },
     true
   )
   importFixture("sesRegions", {
@@ -106,7 +106,21 @@ export async function seedSesConnection(page: Page) {
   })
 }
 
+/** Sets the callback directly: a provisioned installation keeps its origin,
+    so the product itself refuses to change it. */
+export async function seedCallbackOrigin(page: Page, callbackOrigin: string) {
+  const status = await (await client(page)).query(api.installation.status)
+  importFixture(
+    "installation",
+    { ...status.installation!, ...connection, callbackOrigin },
+    true
+  )
+}
+
 export async function seedTeamTenant(page: Page, organizationId: string) {
+  // A ready region implies the public HTTPS callback AWS needs; the local
+  // probe that preceded this one leaves a loopback origin behind.
+  await seedCallbackOrigin(page, "https://callback.opensend.test")
   const rows = await (
     await client(page)
   ).query(api.tenants.list, {

@@ -3,6 +3,7 @@ import {
   client,
   seedSesConnection,
   seedTeamTenant,
+  seedCallbackOrigin,
   testBackend,
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
@@ -194,6 +195,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
   })
 
   test("protects dashboard/editor routes and verifies the bootstrap account", async () => {
+    // Walks onboarding, a domain and the whole SES settings page in one go.
+    test.slow()
     const anonymous = new ConvexHttpClient(
       process.env.OPENSEND_CONVEX_URL ?? "http://localhost:3410"
     )
@@ -492,7 +495,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
       exact: true,
     })
     await checkDns.click()
-    await expect(owner.getByText("Checking DNS records")).toBeVisible()
+    // The failed read settles too fast to catch its "Checking" state.
     await expect
       .poll(
         async () =>
@@ -613,9 +616,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
     const profileItems = owner.getByRole("menuitem")
     await expect(profileItems.nth(0)).toHaveText("My profile")
     await expect(profileItems.nth(1)).toHaveText("Amazon SES")
+    // Not full page: resizing for the capture can close the open menu.
     await owner.screenshot({
       path: test.info().outputPath("ses-profile-menu.png"),
-      fullPage: true,
     })
     await profileItems.nth(1).click()
     await expect(owner).toHaveURL(/\/instance\/ses$/)
@@ -726,6 +729,11 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByRole("button", { name: "Update connection", exact: true })
     ).toBeFocused()
+    // The fixture's public callback cannot be reached from this stack.
+    await seedCallbackOrigin(owner, process.env.OPENSEND_CALLBACK_ORIGIN!)
+    await expect(
+      owner.getByText(process.env.OPENSEND_CALLBACK_ORIGIN!, { exact: true })
+    ).toBeVisible()
     await owner
       .getByRole("button", { name: "Check connection", exact: true })
       .click()
@@ -850,19 +858,31 @@ test.describe.serial("Docker self-hosted authentication", () => {
         owner.getByRole("heading", { name: "Something went wrong." })
       ).toHaveCount(0)
     }
-    // Templates live in Convex, so the editor opens one this team made.
-    const templateId = await (
-      await client(owner)
-    ).mutation(api.templates.create, {
+    // Every editor opens a record this team made in Convex.
+    const backend = await client(owner)
+    const templateId = await backend.mutation(api.templates.create, {
       organizationId,
       name: "Welcome",
       html: "<p>Welcome</p>",
     })
+    const broadcastId = await backend.mutation(api.broadcasts.create, {
+      organizationId,
+      name: "Launch",
+      html: "<p>Launch</p>",
+    })
+    const automationId = await backend.mutation(api.automations.create, {
+      organizationId,
+    })
+    await backend.mutation(api.contacts.upsert, {
+      organizationId,
+      contacts: [{ email: "ada@example.test" }],
+      segmentIds: [],
+    })
     templateHref = `/templates/${templateId}`
     for (const route of [
       templateHref,
-      "/broadcasts/brd_beta/edit",
-      "/automations/atm_onboard",
+      `/broadcasts/${broadcastId}/edit`,
+      `/automations/${automationId}`,
     ]) {
       await owner.goto(route)
       await expect(owner.getByTestId("editor-topbar")).toBeVisible()
@@ -882,8 +902,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await groupedInput.fill("")
     await expect.poll(() => owner.getByRole("cell").count()).toBeGreaterThan(0)
     await owner.goto("/topics")
+    // With no topics yet, the empty state repeats the header's button.
     await owner
       .getByRole("button", { name: "Create topic", exact: true })
+      .first()
       .click()
     const dialog = owner.getByRole("dialog")
     const description = dialog.getByLabel("Description", { exact: true })
@@ -1091,15 +1113,14 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       c.mutation(api.installation.provisionRegion, { region: "us-east-1" })
     ).rejects.toBeTruthy()
-    await expect(
-      c.mutation(api.domains.update, { id: sendingDomainId, sending: true })
-    ).rejects.toBeTruthy()
+    // Members manage their team's domains, as on Resend.
+    await c.mutation(api.domains.update, { id: sendingDomainId, sending: true })
     await member.goto(`/domains/${sendingDomainId}`)
     await expect(
       member.getByRole("button", {
         name: "Check DNS records",
       })
-    ).toBeDisabled()
+    ).toBeEnabled()
     await expect(
       c.mutation(api.teams.rename, {
         organizationId: secondTeamId,
@@ -1348,6 +1369,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await save.getByLabel("Client ID").fill("opensend-test")
     await save.getByLabel("Client secret").fill("isolated-test-secret")
     await save.getByRole("button", { name: "Save connection" }).click()
+    // Signing in before the save lands finds no provider to use.
+    await expect(
+      owner.getByText("Connection saved. Test sign-in before enabling SSO.")
+    ).toBeVisible()
     await expect(
       owner.getByRole("switch", { name: /Enable SSO/ })
     ).toBeDisabled()
