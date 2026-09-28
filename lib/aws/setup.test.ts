@@ -3,8 +3,7 @@ import { describe, it } from "node:test"
 import { POLICY_REVISION } from "@/convex/ses/contracts"
 import {
   buildAwsSetupTemplate,
-  buildAwsSetupPolicy,
-  buildAwsSendingPolicy,
+  buildAwsPolicy,
   buildAwsIamPolicy,
   cloudFormationConsoleUrl,
   awsSetupStackName,
@@ -14,40 +13,119 @@ const installationId = "abcdefghijkmnpqrstuvwxyz123456789"
 const accessKeyId = "AKIA1234567890123456"
 const secretAccessKey = "a".repeat(40)
 
-describe("AWS setup template", () => {
-  it("permits identity configuration-set attachment on both resource types", () => {
-    const policy = buildAwsSetupPolicy(installationId, ["us-east-1"])
-    const grants = policy.Statement.filter((s) =>
-      s.Action.includes("ses:PutEmailIdentityConfigurationSetAttributes")
-    )
-    assert.equal(grants.length, 2)
-    assert.ok(JSON.stringify(grants).includes("identity/*"))
-    assert.ok(
-      JSON.stringify(grants).includes(
-        `configuration-set/opensend-${installationId}-*`
-      )
-    )
-    assert.ok(grants.every((grant) => grant.Resource !== "*"))
-  })
-  it("exports a deployable IAM repair policy with tenant access in the connected account", () => {
-    const policy = buildAwsIamPolicy(
+describe("AWS policy", () => {
+  const prefix = `opensend-${installationId}`
+  const policy = buildAwsPolicy(installationId, ["eu-west-1", "us-east-1"])
+  const statement = (sid: string) =>
+    policy.Statement.find((s) => s.Sid === sid)!
+  const arns = (sid: string) => {
+    const resource = statement(sid).Resource
+    assert.notEqual(resource, "*")
+    return typeof resource === "string" ? [] : resource.map((r) => r["Fn::Sub"])
+  }
+  const inRegions = { "aws:RequestedRegion": ["eu-west-1", "us-east-1"] }
+
+  it("fits every offered region in one managed policy", () => {
+    const all = buildAwsIamPolicy(
       installationId,
-      ["us-east-1"],
+      ["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"],
       "123456789012"
     )
-    const source = JSON.stringify(policy)
-    assert.ok(!source.includes("Fn::Sub"))
-    assert.ok(!source.includes("${"))
-    const tenant = policy.Statement.find(
-      (statement) => statement.Sid === "ManageTeamTenants"
-    )!
-    assert.ok(tenant.Action.includes("ses:GetTenant"))
-    assert.deepEqual(tenant.Resource, [
-      `arn:aws:ses:us-east-1:123456789012:tenant/opensend-${installationId}-t-*`,
+    // IAM does not count whitespace toward the 6,144-character limit.
+    assert.ok(JSON.stringify(all).replace(/\s/g, "").length <= 6144)
+  })
+  it("limits every regional statement to the enabled regions", () => {
+    for (const s of policy.Statement) {
+      if (s.Sid === "VerifyAccount") continue
+      assert.deepEqual(s.Condition?.StringEquals?.["aws:RequestedRegion"], [
+        "eu-west-1",
+        "us-east-1",
+      ])
+    }
+    assert.ok(
+      policy.Statement.every((s) =>
+        s.Action.every((a) => !a.includes("*") && !a.startsWith("iam:"))
+      )
+    )
+  })
+  it("uses Resource * only where AWS has no resource ARN", () => {
+    assert.deepEqual(
+      policy.Statement.filter((s) => s.Resource === "*").map((s) => s.Sid),
+      ["VerifyAccount", "UseSesAccount", "CreateTaggedTeamTenants"]
+    )
+  })
+  it("scopes every resource to this installation, except domain identities", () => {
+    for (const s of policy.Statement) {
+      if (typeof s.Resource === "string") continue
+      for (const r of s.Resource) {
+        const value = r["Fn::Sub"]
+        if (!value.startsWith("arn:${AWS::Partition}:s3:::"))
+          assert.ok(value.includes(":*:${AWS::AccountId}:"))
+        if (!value.endsWith(":identity/*")) assert.ok(value.includes(prefix))
+      }
+    }
+  })
+  it("sends only through this installation's tenants and configuration sets", () => {
+    assert.deepEqual(statement("SendTeamEmail").Action, ["ses:SendEmail"])
+    assert.deepEqual(arns("SendTeamEmail"), [
+      "arn:${AWS::Partition}:ses:*:${AWS::AccountId}:identity/*",
+      `arn:\${AWS::Partition}:ses:*:\${AWS::AccountId}:configuration-set/${prefix}-*`,
     ])
+    assert.deepEqual(statement("SendTeamEmail").Condition, {
+      StringEquals: inRegions,
+      StringLike: { "ses:TenantName": `${prefix}-t-*` },
+    })
+  })
+  it("creates tenants only with this installation's ownership tags", () => {
+    assert.deepEqual(statement("CreateTaggedTeamTenants").Condition, {
+      StringEquals: {
+        ...inRegions,
+        "aws:RequestTag/opensend:installation": installationId,
+      },
+      StringLike: { "aws:RequestTag/opensend:team": "?*" },
+    })
+    assert.ok(statement("ManageTeamTenants").Action.includes("ses:GetTenant"))
+    assert.ok(
+      statement("ManageTeamTenants").Action.includes(
+        "ses:UpdateReputationEntityCustomerManagedStatus"
+      )
+    )
+  })
+  it("keeps the inbound drop box to reading and deleting mail", () => {
+    assert.deepEqual(arns("ManageInboundMailBucket"), [
+      `arn:\${AWS::Partition}:s3:::${prefix}-inbound*`,
+    ])
+    const actions = statement("ManageInboundMailBucket").Action
+    assert.ok(
+      actions.includes("s3:GetObject") && actions.includes("s3:DeleteObject")
+    )
+    assert.ok(!actions.includes("s3:PutObject"))
+    assert.deepEqual(
+      arns("ManageOpensendNotifications").map((a) => a.split(":").pop()),
+      [`${prefix}-events`, `${prefix}-inbound`]
+    )
+  })
+  it("no longer grants SES open/click tracking; Opensend tracks itself", () => {
+    assert.ok(
+      policy.Statement.every(
+        (s) => !s.Action.includes("ses:PutConfigurationSetTrackingOptions")
+      )
+    )
+  })
+  it("exports a paste-ready policy for the connected account", () => {
+    const source = JSON.stringify(
+      buildAwsIamPolicy(installationId, ["us-east-1"], "123456789012")
+    )
+    assert.ok(!source.includes("Fn::Sub") && !source.includes("${"))
+    assert.ok(
+      source.includes(`arn:aws:ses:*:123456789012:tenant/${prefix}-t-*`)
+    )
     assert.throws(() => buildAwsIamPolicy(installationId, ["us-east-1"], "*"))
   })
-  it("preselects the user and attaches only the generated policy, without creating secrets", () => {
+})
+
+describe("AWS setup template", () => {
+  it("creates the user with the one policy and no secrets", () => {
     const template = buildAwsSetupTemplate({
       installationId,
       regions: ["us-east-1"],
@@ -56,91 +134,33 @@ describe("AWS setup template", () => {
     assert.equal(template.Resources.OpensendUser.Type, "AWS::IAM::User")
     assert.deepEqual(
       template.Resources.OpensendUser.Properties.ManagedPolicyArns,
-      [{ Ref: "OpensendPolicy" }, { Ref: "OpensendSendingPolicy" }]
+      [{ Ref: "OpensendPolicy" }]
     )
-    for (const policy of [
-      template.Resources.OpensendPolicy,
-      template.Resources.OpensendSendingPolicy,
-    ]) {
-      assert.equal(policy.Type, "AWS::IAM::ManagedPolicy")
-      assert.equal(policy.DeletionPolicy, "Retain")
-    }
+    assert.equal(
+      template.Resources.OpensendPolicy.Type,
+      "AWS::IAM::ManagedPolicy"
+    )
+    assert.equal(template.Resources.OpensendPolicy.DeletionPolicy, "Retain")
+    assert.deepEqual(
+      template.Resources.OpensendPolicy.Properties.PolicyDocument,
+      buildAwsPolicy(installationId, ["us-east-1"])
+    )
     assert.equal(template.Resources.OpensendUser.DeletionPolicy, "Retain")
-    assert.deepEqual(template.Outputs.AwsAccountId.Value, {
-      Ref: "AWS::AccountId",
-    })
     const source = JSON.stringify(template)
     assert.ok(!source.includes("AWS::IAM::AccessKey"))
     assert.ok(!source.includes("LoginProfile"))
     assert.ok(!source.includes("AdministratorAccess"))
     assert.ok(!source.includes("SecretAccessKey"))
   })
-  it("limits infrastructure resources to this installation and selected regions", () => {
-    const policy = buildAwsSetupPolicy(installationId, [
-      "eu-west-1",
-      "us-east-1",
-      "eu-west-1",
-    ])
-    for (const statement of policy.Statement) {
-      assert.ok(
-        statement.Action.every(
-          (action) => !action.includes("*") && !action.startsWith("iam:")
-        )
-      )
-      if (typeof statement.Resource === "string") {
-        assert.equal(statement.Resource, "*")
-        assert.ok(
-          [
-            "VerifyAccount",
-            "ReadSesAccount",
-            "CreateTaggedTeamTenants",
-          ].includes(statement.Sid)
-        )
-        continue
-      }
-      assert.equal(statement.Resource.length, 2)
-      for (const arn of statement.Resource) {
-        assert.ok(arn["Fn::Sub"].includes("${AWS::AccountId}"))
-        assert.ok(!arn["Fn::Sub"].includes("ap-northeast-1"))
-        if (statement.Sid !== "ManageSendingDomains")
-          assert.ok(arn["Fn::Sub"].includes(installationId))
-      }
-    }
-    assert.deepEqual(
-      policy.Statement.find((s) => s.Sid === "ReadSesAccount")?.Condition
-        ?.StringEquals["aws:RequestedRegion"],
-      ["eu-west-1", "us-east-1"]
-    )
-  })
-  it("supports all offered regions within the IAM managed-policy size limit", () => {
-    for (const build of [buildAwsSetupPolicy, buildAwsSendingPolicy]) {
-      const policy = build(installationId, [
-        "us-east-1",
-        "eu-west-1",
-        "sa-east-1",
-        "ap-northeast-1",
-      ])
-      assert.ok(JSON.stringify(policy).replace(/\s/g, "").length < 6144)
-    }
-  })
-  it("limits tenant creation by region and ownership tags while keeping reads resource-scoped", () => {
-    const policy = buildAwsSetupPolicy(installationId, ["us-east-1"])
-    const create = policy.Statement.find(
-      (s) => s.Sid === "CreateTaggedTeamTenants"
-    )!
-    assert.deepEqual(create.Action, ["ses:CreateTenant"])
-    assert.equal(create.Resource, "*")
-    assert.deepEqual(create.Condition, {
-      StringEquals: {
-        "aws:RequestedRegion": ["us-east-1"],
-        "aws:RequestTag/opensend:installation": installationId,
-      },
-      StringLike: { "aws:RequestTag/opensend:team": "?*" },
+  it("names the permissions revision", () => {
+    const template = buildAwsSetupTemplate({
+      installationId,
+      regions: ["us-east-1"],
     })
-    const manage = policy.Statement.find((s) => s.Sid === "ManageTeamTenants")!
-    assert.ok(!manage.Action.includes("ses:CreateTenant"))
-    assert.ok(manage.Action.includes("ses:GetTenant"))
-    assert.notEqual(manage.Resource, "*")
+    assert.equal(POLICY_REVISION, 2)
+    assert.equal(template.Outputs.PolicyRevision.Value, String(POLICY_REVISION))
+    assert.ok(template.Description.includes(`revision ${POLICY_REVISION}`))
+    assert.ok(template.Description.length <= 1024)
   })
   it("rejects injection, unsupported regions, and invalid IAM names", () => {
     assert.throws(() =>
@@ -170,132 +190,6 @@ describe("AWS setup template", () => {
     assert.equal(
       new URL(cloudFormationConsoleUrl("eu-west-1")).hostname,
       "eu-west-1.console.aws.amazon.com"
-    )
-  })
-})
-describe("AWS sending policy", () => {
-  const prefix = `opensend-${installationId}`
-  const policy = buildAwsSendingPolicy(installationId, [
-    "eu-west-1",
-    "us-east-1",
-  ])
-  const statement = (sid: string) =>
-    policy.Statement.find((s) => s.Sid === sid)!
-  const arns = (sid: string) => {
-    const resource = statement(sid).Resource
-    assert.notEqual(resource, "*")
-    return typeof resource === "string" ? [] : resource.map((r) => r["Fn::Sub"])
-  }
-  it("adds one clearly named statement per feature", () => {
-    assert.deepEqual(
-      policy.Statement.map((s) => s.Sid),
-      [
-        "SendTeamEmail",
-        "ManageSuppressedDestinations",
-        "ConfigureTracking",
-        "PauseTeamSending",
-        "ManageInboundRules",
-        "ManageInboundMailBucket",
-        "ManageInboundNotifications",
-      ]
-    )
-    // Revision 1 statements stay as they were.
-    assert.ok(
-      buildAwsSetupPolicy(installationId, ["us-east-1"]).Statement.every(
-        (s) => !policy.Statement.some((next) => next.Sid === s.Sid)
-      )
-    )
-  })
-  it("sends only through this installation's tenants and configuration sets", () => {
-    assert.deepEqual(statement("SendTeamEmail").Action, ["ses:SendEmail"])
-    assert.deepEqual(arns("SendTeamEmail"), [
-      "arn:${AWS::Partition}:ses:eu-west-1:${AWS::AccountId}:identity/*",
-      "arn:${AWS::Partition}:ses:us-east-1:${AWS::AccountId}:identity/*",
-      `arn:\${AWS::Partition}:ses:eu-west-1:\${AWS::AccountId}:configuration-set/${prefix}-*`,
-      `arn:\${AWS::Partition}:ses:us-east-1:\${AWS::AccountId}:configuration-set/${prefix}-*`,
-    ])
-    assert.deepEqual(statement("SendTeamEmail").Condition, {
-      StringLike: { "ses:TenantName": `${prefix}-t-*` },
-    })
-  })
-  it("scopes tracking, tenant pausing and inbound resources to the installation prefix", () => {
-    assert.ok(
-      arns("ConfigureTracking").every((arn) =>
-        arn.endsWith(`:configuration-set/${prefix}-*`)
-      )
-    )
-    assert.deepEqual(statement("PauseTeamSending").Action, [
-      "ses:GetReputationEntity",
-      "ses:UpdateReputationEntityCustomerManagedStatus",
-    ])
-    assert.ok(
-      arns("PauseTeamSending").every((arn) =>
-        arn.endsWith(`:tenant/${prefix}-t-*`)
-      )
-    )
-    assert.deepEqual(arns("ManageInboundMailBucket"), [
-      `arn:\${AWS::Partition}:s3:::${prefix}-inbound*`,
-    ])
-    assert.ok(
-      statement("ManageInboundMailBucket").Action.every((a) =>
-        a.startsWith("s3:")
-      )
-    )
-    assert.ok(
-      !statement("ManageInboundMailBucket").Action.includes("s3:PutObject")
-    )
-    assert.ok(
-      arns("ManageInboundNotifications").every(
-        (arn) =>
-          arn.includes(":sns:") &&
-          arn.endsWith(`:\${AWS::AccountId}:${prefix}-inbound`)
-      )
-    )
-    assert.equal(arns("ManageInboundNotifications").length, 2)
-  })
-  it("uses Resource * only where AWS has no resource ARN, and only in the selected regions", () => {
-    const wildcards = policy.Statement.filter((s) => s.Resource === "*")
-    assert.deepEqual(
-      wildcards.map((s) => s.Sid),
-      ["ManageSuppressedDestinations", "ManageInboundRules"]
-    )
-    for (const s of [...wildcards, statement("ManageInboundMailBucket")])
-      assert.deepEqual(s.Condition, {
-        StringEquals: { "aws:RequestedRegion": ["eu-west-1", "us-east-1"] },
-      })
-    assert.ok(
-      policy.Statement.every((s) =>
-        s.Action.every((a) => !a.includes("*") && !a.startsWith("iam:"))
-      )
-    )
-  })
-  it("exports the sending policy for the connected account", () => {
-    const source = JSON.stringify(
-      buildAwsIamPolicy(
-        installationId,
-        ["us-east-1"],
-        "123456789012",
-        "sending"
-      )
-    )
-    assert.ok(!source.includes("${"))
-    assert.ok(source.includes(`arn:aws:s3:::${prefix}-inbound*`))
-    assert.ok(
-      source.includes(`arn:aws:ses:us-east-1:123456789012:tenant/${prefix}-t-*`)
-    )
-  })
-  it("names the permissions revision in the setup template", () => {
-    const template = buildAwsSetupTemplate({
-      installationId,
-      regions: ["us-east-1"],
-    })
-    assert.equal(POLICY_REVISION, 2)
-    assert.equal(template.Outputs.PolicyRevision.Value, String(POLICY_REVISION))
-    assert.ok(template.Description.includes(`revision ${POLICY_REVISION}`))
-    assert.ok(template.Description.length <= 1024)
-    assert.deepEqual(
-      template.Resources.OpensendSendingPolicy.Properties.PolicyDocument,
-      buildAwsSendingPolicy(installationId, ["us-east-1"])
     )
   })
 })

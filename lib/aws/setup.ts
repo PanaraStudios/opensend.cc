@@ -38,25 +38,17 @@ type Statement = {
   Condition?: Record<string, Record<string, string | string[]>>
 }
 type Policy = { Version: "2012-10-17"; Statement: Statement[] }
-const policies = { setup: buildAwsSetupPolicy, sending: buildAwsSendingPolicy }
-export type AwsPolicyKind = keyof typeof policies
-/** IAM caps a managed policy at 6,144 characters, so the permissions ship as
-    two policies: setup (revision 1) and sending/receiving (revision 2). */
-export const AWS_IAM_POLICY_FILES: Record<AwsPolicyKind, string> = {
-  setup: "opensend-iam-policy.json",
-  sending: "opensend-iam-sending-policy.json",
-}
+export const AWS_IAM_POLICY_FILE = "opensend-iam-policy.json"
 
-/** A ready-to-paste policy for repairing an existing IAM user's permissions. */
+/** The policy, ready to paste into IAM for the connected account. */
 export function buildAwsIamPolicy(
   installationId: string,
   regions: readonly Region[],
-  accountId: string,
-  kind: AwsPolicyKind = "setup"
+  accountId: string
 ) {
   if (!/^\d{12}$/.test(accountId))
     throw new Error("Use a 12-digit AWS account ID")
-  const policy = policies[kind](installationId, regions)
+  const policy = buildAwsPolicy(installationId, regions)
   return {
     ...policy,
     Statement: policy.Statement.map((statement) => ({
@@ -72,31 +64,35 @@ export function buildAwsIamPolicy(
     })),
   }
 }
-function policyScope(installationId: string, selected: readonly Region[]) {
-  const prefix = resourcePrefix(checkedInstallationId(installationId))
-  const regions = checkedRegions(selected)
-  return {
-    prefix,
-    regions,
-    resources: (service: string, suffix: string) =>
-      regions.map((region) =>
-        sub(
-          `arn:\${AWS::Partition}:${service}:${region}:\${AWS::AccountId}:${suffix}`
-        )
-      ),
-    inRegions: { StringEquals: { "aws:RequestedRegion": regions } },
-  }
-}
 
-/** Permissions for the actual provisioning/domain operations, not account administration. */
-export function buildAwsSetupPolicy(
+/** Everything Opensend does in AWS, as ONE managed policy so setup is a
+    single paste. IAM caps a managed policy at 6,144 characters, so ARNs name
+    any region and each statement's condition limits it to the enabled ones:
+    the same grants as listing every region, at a fraction of the size. */
+export function buildAwsPolicy(
   installationId: string,
   selected: readonly Region[]
 ): Policy {
-  const { prefix, regions, resources, inRegions } = policyScope(
-    installationId,
-    selected
-  )
+  const prefix = resourcePrefix(checkedInstallationId(installationId))
+  const regions = checkedRegions(selected)
+  const arn = (service: string, suffix: string) =>
+    sub(`arn:\${AWS::Partition}:${service}:*:\${AWS::AccountId}:${suffix}`)
+  const inRegions = { StringEquals: { "aws:RequestedRegion": regions } }
+  const scoped = (
+    Sid: string,
+    Action: string[],
+    Resource: Statement["Resource"]
+  ): Statement => ({
+    Sid,
+    Effect: "Allow",
+    Action,
+    Resource,
+    Condition: inRegions,
+  })
+  const tenantAssociations = [
+    "ses:CreateTenantResourceAssociation",
+    "ses:DeleteTenantResourceAssociation",
+  ]
   return {
     Version: "2012-10-17",
     Statement: [
@@ -106,17 +102,30 @@ export function buildAwsSetupPolicy(
         Action: ["sts:GetCallerIdentity"],
         Resource: "*",
       },
-      {
-        Sid: "ReadSesAccount",
-        Effect: "Allow",
-        Action: ["ses:GetAccount"],
-        Resource: "*",
-        Condition: inRegions,
-      },
-      {
-        Sid: "ManageSendingDomains",
-        Effect: "Allow",
-        Action: [
+      // These SES APIs have no resource ARN: the account, its suppression
+      // list and receipt rules.
+      scoped(
+        "UseSesAccount",
+        [
+          "ses:GetAccount",
+          "ses:GetSuppressedDestination",
+          "ses:ListSuppressedDestinations",
+          "ses:PutSuppressedDestination",
+          "ses:DeleteSuppressedDestination",
+          "ses:DescribeActiveReceiptRuleSet",
+          "ses:DescribeReceiptRuleSet",
+          "ses:DescribeReceiptRule",
+          "ses:CreateReceiptRuleSet",
+          "ses:SetActiveReceiptRuleSet",
+          "ses:CreateReceiptRule",
+          "ses:UpdateReceiptRule",
+          "ses:DeleteReceiptRule",
+        ],
+        "*"
+      ),
+      scoped(
+        "ManageSendingDomains",
+        [
           "ses:CreateEmailIdentity",
           "ses:GetEmailIdentity",
           "ses:DeleteEmailIdentity",
@@ -124,16 +133,14 @@ export function buildAwsSetupPolicy(
           "ses:PutEmailIdentityConfigurationSetAttributes",
           "ses:TagResource",
           "ses:UntagResource",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
+          ...tenantAssociations,
           "ses:ListResourceTenants",
         ],
-        Resource: resources("ses", "identity/*"),
-      },
-      {
-        Sid: "ManageOpensendConfigurationSets",
-        Effect: "Allow",
-        Action: [
+        [arn("ses", "identity/*")]
+      ),
+      scoped(
+        "ManageOpensendConfigurationSets",
+        [
           "ses:CreateConfigurationSet",
           "ses:GetConfigurationSet",
           "ses:DeleteConfigurationSet",
@@ -145,11 +152,24 @@ export function buildAwsSetupPolicy(
           "ses:GetConfigurationSetEventDestinations",
           "ses:CreateConfigurationSetEventDestination",
           "ses:UpdateConfigurationSetEventDestination",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
+          ...tenantAssociations,
           "ses:ListResourceTenants",
         ],
-        Resource: resources("ses", `configuration-set/${prefix}-*`),
+        [arn("ses", `configuration-set/${prefix}-*`)]
+      ),
+      {
+        Sid: "SendTeamEmail",
+        Effect: "Allow",
+        Action: ["ses:SendEmail"],
+        Resource: [
+          arn("ses", "identity/*"),
+          arn("ses", `configuration-set/${prefix}-*`),
+        ],
+        // A send without one of this installation's tenants is refused.
+        Condition: {
+          ...inRegions,
+          StringLike: { "ses:TenantName": `${prefix}-t-*` },
+        },
       },
       {
         Sid: "CreateTaggedTeamTenants",
@@ -164,24 +184,23 @@ export function buildAwsSetupPolicy(
           StringLike: { "aws:RequestTag/opensend:team": "?*" },
         },
       },
-      {
-        Sid: "ManageTeamTenants",
-        Effect: "Allow",
-        Action: [
+      scoped(
+        "ManageTeamTenants",
+        [
           "ses:GetTenant",
           "ses:DeleteTenant",
           "ses:TagResource",
           "ses:PutTenantSuppressionAttributes",
           "ses:ListTenantResources",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
+          ...tenantAssociations,
+          "ses:GetReputationEntity",
+          "ses:UpdateReputationEntityCustomerManagedStatus",
         ],
-        Resource: resources("ses", `tenant/${prefix}-t-*`),
-      },
-      {
-        Sid: "ManageOpensendNotifications",
-        Effect: "Allow",
-        Action: [
+        [arn("ses", `tenant/${prefix}-t-*`)]
+      ),
+      scoped(
+        "ManageOpensendNotifications",
+        [
           "sns:CreateTopic",
           "sns:GetTopicAttributes",
           "sns:ListTagsForResource",
@@ -193,13 +212,12 @@ export function buildAwsSetupPolicy(
           "sns:GetSubscriptionAttributes",
           "sns:SetSubscriptionAttributes",
         ],
-        // SNS subscription actions authorize against the parent topic, not a subscription ARN.
-        Resource: resources("sns", `${prefix}-events`),
-      },
-      {
-        Sid: "ManageOpensendDeadLetterQueue",
-        Effect: "Allow",
-        Action: [
+        // Subscription actions authorize against the parent topic.
+        [arn("sns", `${prefix}-events`), arn("sns", `${prefix}-inbound`)]
+      ),
+      scoped(
+        "ManageOpensendDeadLetterQueue",
+        [
           "sqs:CreateQueue",
           "sqs:GetQueueUrl",
           "sqs:GetQueueAttributes",
@@ -207,82 +225,13 @@ export function buildAwsSetupPolicy(
           "sqs:TagQueue",
           "sqs:SetQueueAttributes",
         ],
-        Resource: resources("sqs", `${prefix}-events-dlq`),
-      },
-    ],
-  }
-}
-
-/** What sending, suppression sync, tracking, tenant pausing and receiving
-    need. Added in policy revision 2. */
-export function buildAwsSendingPolicy(
-  installationId: string,
-  selected: readonly Region[]
-): Policy {
-  const { prefix, resources, inRegions } = policyScope(installationId, selected)
-  return {
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "SendTeamEmail",
-        Effect: "Allow",
-        Action: ["ses:SendEmail"],
-        Resource: [
-          ...resources("ses", "identity/*"),
-          ...resources("ses", `configuration-set/${prefix}-*`),
-        ],
-        // A send without one of this installation's tenants is refused.
-        Condition: { StringLike: { "ses:TenantName": `${prefix}-t-*` } },
-      },
-      {
-        Sid: "ManageSuppressedDestinations",
-        Effect: "Allow",
-        Action: [
-          "ses:GetSuppressedDestination",
-          "ses:ListSuppressedDestinations",
-          "ses:PutSuppressedDestination",
-          "ses:DeleteSuppressedDestination",
-        ],
-        // The account-level suppression list has no resource ARN.
-        Resource: "*",
-        Condition: inRegions,
-      },
-      {
-        Sid: "ConfigureTracking",
-        Effect: "Allow",
-        Action: ["ses:PutConfigurationSetTrackingOptions"],
-        Resource: resources("ses", `configuration-set/${prefix}-*`),
-      },
-      {
-        Sid: "PauseTeamSending",
-        Effect: "Allow",
-        Action: [
-          "ses:GetReputationEntity",
-          "ses:UpdateReputationEntityCustomerManagedStatus",
-        ],
-        Resource: resources("ses", `tenant/${prefix}-t-*`),
-      },
-      {
-        Sid: "ManageInboundRules",
-        Effect: "Allow",
-        Action: [
-          "ses:DescribeActiveReceiptRuleSet",
-          "ses:DescribeReceiptRuleSet",
-          "ses:DescribeReceiptRule",
-          "ses:CreateReceiptRuleSet",
-          "ses:SetActiveReceiptRuleSet",
-          "ses:CreateReceiptRule",
-          "ses:UpdateReceiptRule",
-          "ses:DeleteReceiptRule",
-        ],
-        // Receipt rules have no resource-level permissions.
-        Resource: "*",
-        Condition: inRegions,
-      },
-      {
-        Sid: "ManageInboundMailBucket",
-        Effect: "Allow",
-        Action: [
+        [arn("sqs", `${prefix}-events-dlq`)]
+      ),
+      // SES receiving drops mail here; Opensend copies it into Convex and
+      // deletes it. S3 ARNs carry no region or account.
+      scoped(
+        "ManageInboundMailBucket",
+        [
           "s3:CreateBucket",
           "s3:ListBucket",
           "s3:GetBucketPolicy",
@@ -296,27 +245,8 @@ export function buildAwsSendingPolicy(
           "s3:GetObject",
           "s3:DeleteObject",
         ],
-        // S3 ARNs carry no region or account; the pattern covers the objects too.
-        Resource: [sub(`arn:\${AWS::Partition}:s3:::${prefix}-inbound*`)],
-        Condition: inRegions,
-      },
-      {
-        Sid: "ManageInboundNotifications",
-        Effect: "Allow",
-        Action: [
-          "sns:CreateTopic",
-          "sns:GetTopicAttributes",
-          "sns:ListTagsForResource",
-          "sns:TagResource",
-          "sns:SetTopicAttributes",
-          "sns:ListSubscriptionsByTopic",
-          "sns:Subscribe",
-          "sns:ConfirmSubscription",
-          "sns:GetSubscriptionAttributes",
-          "sns:SetSubscriptionAttributes",
-        ],
-        Resource: resources("sns", `${prefix}-inbound`),
-      },
+        [sub(`arn:\${AWS::Partition}:s3:::${prefix}-inbound*`)]
+      ),
     ],
   }
 }
@@ -353,24 +283,8 @@ export function buildAwsSetupTemplate(input: {
         UpdateReplacePolicy: "Retain",
         Properties: {
           Description:
-            "Scoped permissions for Opensend setup and domain management",
-          PolicyDocument: buildAwsSetupPolicy(
-            input.installationId,
-            input.regions
-          ),
-        },
-      },
-      OpensendSendingPolicy: {
-        Type: "AWS::IAM::ManagedPolicy",
-        DeletionPolicy: "Retain",
-        UpdateReplacePolicy: "Retain",
-        Properties: {
-          Description:
-            "Scoped permissions for Opensend sending, suppression, tracking and receiving",
-          PolicyDocument: buildAwsSendingPolicy(
-            input.installationId,
-            input.regions
-          ),
+            "Scoped permissions for Opensend: SES domains, tenants, sending and receiving",
+          PolicyDocument: buildAwsPolicy(input.installationId, input.regions),
         },
       },
       OpensendUser: {
@@ -380,10 +294,7 @@ export function buildAwsSetupTemplate(input: {
         Properties: {
           UserName: { Ref: "UserName" },
           Tags: [{ Key: "opensend:installation", Value: input.installationId }],
-          ManagedPolicyArns: [
-            { Ref: "OpensendPolicy" },
-            { Ref: "OpensendSendingPolicy" },
-          ],
+          ManagedPolicyArns: [{ Ref: "OpensendPolicy" }],
         },
       },
     },

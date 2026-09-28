@@ -15,18 +15,16 @@ import {
 } from "@/components/ui/dialog"
 import { downloadTextFile } from "@/components/dashboard/domains/shared"
 import {
-  AWS_IAM_POLICY_FILES,
+  AWS_IAM_POLICY_FILE,
   buildAwsIamPolicy,
   IAM_USERS_URL,
-  type AwsPolicyKind,
 } from "@/lib/aws/setup"
 import type { Region } from "@/lib/dashboard/types"
 
 const canDownloadPolicy = (accountId: string) => /^\d{12}$/.test(accountId)
 
-/** Hands over the IAM policies the connection needs, named for the account and
-    regions they were generated for. IAM caps a policy's size, so one click
-    downloads both files: setup, then sending. */
+/** Hands over the one IAM policy the connection needs, generated for the
+    account and regions it will be attached in. */
 export function DownloadIamPolicyButton({
   installationId,
   accountId,
@@ -43,17 +41,16 @@ export function DownloadIamPolicyButton({
       type="button"
       variant={variant}
       disabled={!canDownloadPolicy(accountId)}
-      onClick={() => {
-        for (const kind of Object.keys(AWS_IAM_POLICY_FILES) as AwsPolicyKind[])
-          downloadTextFile(
-            AWS_IAM_POLICY_FILES[kind],
-            JSON.stringify(
-              buildAwsIamPolicy(installationId, regions, accountId, kind),
-              null,
-              2
-            ) + "\n"
-          )
-      }}
+      onClick={() =>
+        downloadTextFile(
+          AWS_IAM_POLICY_FILE,
+          JSON.stringify(
+            buildAwsIamPolicy(installationId, regions, accountId),
+            null,
+            2
+          ) + "\n"
+        )
+      }
     >
       <DownloadIcon data-icon="inline-start" />
       Download permissions
