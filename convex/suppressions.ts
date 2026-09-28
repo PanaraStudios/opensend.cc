@@ -1,7 +1,7 @@
-import { countValue, counters } from "./counts"
-import { matchesSearch, narrow, teamPage } from "./lists"
+import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
+import { filteredPage, matchesSearch } from "./lists"
+import { stream } from "convex-helpers/server/stream"
 import { SUPPRESSION_REASONS } from "./tables/emails"
-import { insertRow, patchRow, deleteRow } from "./counts"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -88,8 +88,10 @@ export const suppressionFilters = v.object({
   to: v.optional(v.number()),
 })
 
-/** Newest first; a search ranks by relevance and drops rows outside the
-    date range from each page, so a page may come back short. */
+// Suppressions are one address each: many fit in a scan.
+export const SUPPRESSION_SEARCH_BUDGET = { rows: 1024, bytes: 4 * 1024 * 1024 }
+
+/** Newest first; remaining filters narrow each bounded index page. */
 export async function suppressionPage(
   ctx: QueryCtx,
   args: Infer<typeof suppressionFilters> & {
@@ -101,45 +103,33 @@ export async function suppressionPage(
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
   const search = args.search?.trim().slice(0, 200)
-  if (
-    !search &&
-    args.reason === undefined &&
-    args.from === undefined &&
-    args.to === undefined
-  )
-    return teamPage(ctx, "suppressions", org, args.paginationOpts, () => true)
-  const rows = ctx.db.query("suppressions")
-  const result = search
-    ? await rows
-        .withSearchIndex("search_search", (q) => {
-          const scoped = q.search("search", search).eq("organizationId", org)
-          return args.reason ? scoped.eq("reason", args.reason) : scoped
-        })
-        .paginate(args.paginationOpts)
-    : await (
-        args.reason
-          ? rows.withIndex("by_organizationId_and_reason", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("reason", args.reason!)
-                .gte("_creationTime", from)
-                .lte("_creationTime", to)
-            )
-          : rows.withIndex("by_organizationId", (q) =>
-              q
-                .eq("organizationId", org)
-                .gte("_creationTime", from)
-                .lte("_creationTime", to)
-            )
-      )
-        .order("desc")
-        .paginate(args.paginationOpts)
-  return narrow(
-    result,
+  const suppressions = stream(ctx.db, schema).query("suppressions")
+  const rows = (
+    args.reason
+      ? suppressions.withIndex("by_organizationId_and_reason", (q) =>
+          q
+            .eq("organizationId", org)
+            .eq("reason", args.reason!)
+            .gte("_creationTime", from)
+            .lte("_creationTime", to)
+        )
+      : suppressions.withIndex("by_organizationId", (q) =>
+          q
+            .eq("organizationId", org)
+            .gte("_creationTime", from)
+            .lte("_creationTime", to)
+        )
+  ).order("desc")
+  const matches = matchesSearch(search)
+  return filteredPage(
+    rows,
+    args.paginationOpts,
     (row) =>
       row._creationTime >= from &&
       row._creationTime <= to &&
-      matchesSearch(search)(row.email)
+      matches(row.email),
+    SUPPRESSION_SEARCH_BUDGET,
+    search
   )
 }
 

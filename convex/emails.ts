@@ -1,5 +1,6 @@
 import { countValue, counters, deleteRow } from "./counts"
-import { matchesSearch, narrow, teamPage } from "./lists"
+import { filteredPage, matchesSearch } from "./lists"
+import { stream } from "convex-helpers/server/stream"
 import { EMAIL_STATUSES } from "./tables/emails"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -693,8 +694,10 @@ export const emailFilters = v.object({
   to: v.optional(v.number()),
 })
 
-/** Newest first. A search ranks by relevance and drops rows outside the
-    date range from each page, so a page may come back short. */
+// Email rows carry their HTML, so bytes bound the scan before rows do.
+export const EMAIL_SEARCH_BUDGET = { rows: 512, bytes: 8 * 1024 * 1024 }
+
+/** Newest first; remaining filters narrow each bounded index page. */
 export async function emailPage(
   ctx: QueryCtx,
   args: Infer<typeof emailFilters> & {
@@ -706,45 +709,33 @@ export async function emailPage(
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
   const search = args.search?.trim().slice(0, 200)
-  if (
-    !search &&
-    args.status === undefined &&
-    args.from === undefined &&
-    args.to === undefined
-  )
-    return teamPage(ctx, "emails", org, args.paginationOpts, () => true)
-  const rows = ctx.db.query("emails")
-  const result = search
-    ? await rows
-        .withSearchIndex("search_search", (q) => {
-          const scoped = q.search("search", search).eq("organizationId", org)
-          return args.status ? scoped.eq("status", args.status) : scoped
-        })
-        .paginate(args.paginationOpts)
-    : await (
-        args.status
-          ? rows.withIndex("by_organizationId_and_status", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("status", args.status!)
-                .gte("_creationTime", from)
-                .lte("_creationTime", to)
-            )
-          : rows.withIndex("by_organizationId", (q) =>
-              q
-                .eq("organizationId", org)
-                .gte("_creationTime", from)
-                .lte("_creationTime", to)
-            )
-      )
-        .order("desc")
-        .paginate(args.paginationOpts)
-  return narrow(
-    result,
+  const emails = stream(ctx.db, schema).query("emails")
+  const rows = (
+    args.status
+      ? emails.withIndex("by_organizationId_and_status", (q) =>
+          q
+            .eq("organizationId", org)
+            .eq("status", args.status!)
+            .gte("_creationTime", from)
+            .lte("_creationTime", to)
+        )
+      : emails.withIndex("by_organizationId", (q) =>
+          q
+            .eq("organizationId", org)
+            .gte("_creationTime", from)
+            .lte("_creationTime", to)
+        )
+  ).order("desc")
+  const matches = matchesSearch(search)
+  return filteredPage(
+    rows,
+    args.paginationOpts,
     (row) =>
       row._creationTime >= from &&
       row._creationTime <= to &&
-      matchesSearch(search)(row.from, ...row.to, row.subject)
+      matches(row.from, ...row.to, row.subject),
+    EMAIL_SEARCH_BUDGET,
+    search
   )
 }
 
@@ -842,11 +833,13 @@ export const timeline = query({
       .query("emailEvents")
       .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
       .paginate(paginationOpts)
-    return narrow(
-      page,
-      (event) =>
-        !insights || event.type === "opened" || event.type === "clicked"
-    )
+    return {
+      ...page,
+      page: page.page.filter(
+        (event) =>
+          !insights || event.type === "opened" || event.type === "clicked"
+      ),
+    }
   },
 })
 
