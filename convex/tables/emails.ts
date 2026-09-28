@@ -73,7 +73,7 @@ export const emailTables = {
     source: emailSourceValue,
     apiKeyId: v.optional(v.id("apiKeys")),
     apiLogId: v.optional(v.id("apiLogs")),
-    /** Set by broadcasts, which are still demo data. */
+    /** The broadcast that queued this recipient copy. */
     broadcastId: v.optional(v.string()),
     /* Each queued run of the sender carries the generation it was queued
        with; a reschedule, retry or throttle moves it on, so a stale run is

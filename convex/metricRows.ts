@@ -1,3 +1,4 @@
+import { broadcastMetric } from "./broadcastMetrics"
 import type { Infer } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx } from "./_generated/server"
@@ -24,6 +25,7 @@ export async function recordMetric(
   recipients = emailAddresses(email)
 ) {
   if (email.source === "system") return
+  await broadcastMetric(ctx, email, type)
   const domain = await ctx.db.get("domains", email.domainId)
   if (
     domain?.tenantId &&

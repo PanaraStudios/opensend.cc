@@ -26,7 +26,6 @@ const DEMO_RESOURCES = new Set([
   "Emails",
   "Received emails",
   "Suppressions",
-  "Broadcasts",
 ])
 
 export function SettingsExports() {

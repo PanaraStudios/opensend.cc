@@ -265,3 +265,64 @@ not accepted for SMTP. They record `source: smtp` API logs. Enablement is
 checked before idempotent replay and again in the queuing transaction. See
 [self-hosting](self-hosting.md#optional-smtp-submission-service) for TLS, limits,
 and deployment configuration.
+
+## Broadcasts
+
+All broadcast endpoints require `full_access` and share the dashboard's team
+permissions, pagination, logs and POST idempotency.
+
+| Endpoint | Response |
+| --- | --- |
+| `POST /broadcasts` | `{ "object": "broadcast", "id" }` |
+| `GET /broadcasts` | `{ "object": "list", "has_more", "data" }` |
+| `GET /broadcasts/{id}` | Broadcast metadata and `html` / `text` |
+| `PATCH /broadcasts/{id}` | `{ "object": "broadcast", "id" }` |
+| `POST /broadcasts/{id}/send` | `{ "object": "broadcast", "id" }` |
+| `POST /broadcasts/{id}/cancel` | `{ "object": "broadcast", "id" }` |
+| `POST /broadcasts/{id}/duplicate` | `{ "object": "broadcast", "id" }` for the new draft |
+| `DELETE /broadcasts/{id}` | `{ "object": "broadcast", "id", "deleted": true }` |
+
+Create accepts `from`, `subject`, `html` or `text`, `name`, `preview_text`,
+`reply_to` (one address or an array), `segment_id` (`audience_id` is an alias),
+`topic_id`, `send`, and `scheduled_at`. Omit the segment, or set it to null, to
+reach all contacts. `send: true` sends immediately or schedules when
+`scheduled_at` is supplied. Send accepts `scheduled_at` in the same ISO or
+natural-language format as emails, up to 30 days ahead. A scheduled broadcast
+can be sent immediately by calling send without a schedule.
+
+Drafts and canceled broadcasts can be edited. Other statuses allow a name change
+only. Unsent drafts, canceled drafts and scheduled broadcasts can be deleted;
+deleting a schedule cancels its delivery, matching
+[Resend's deletion rule](https://resend.com/docs/api-reference/broadcasts/delete-broadcast).
+Cancel works until audience resolution begins; messages already submitted to SES
+cannot be recalled. The existing UI calls in-flight work `queued` (shown as
+Sending). Completion is `sent` once all eligible recipient copies settle, or
+`failed` if fan-out or a recipient's send fails. Delivery/bounce outcomes continue
+updating the report after sending finishes.
+
+Recipients are resolved in bounded pages when the send starts, with a creation
+cutoff so newly added contacts do not extend an in-progress broadcast. Segment
+membership and subscription preferences are checked as each page is processed.
+Global opt-outs, topic opt-outs and team suppressions are excluded. Deleted
+segments/topics refuse sending instead of widening the audience. Preferences and
+removed targets are checked again before SES delivery. Each address receives at
+most one email per broadcast; durable cursor checkpoints and recipient records
+commit with the queued sends. Workflow journals rotate every 100 pages. All
+copies use the standard email workpool, SES region rate limiter, tenant and
+configuration set, tracking, events and webhooks (`data.broadcast_id`).
+
+Merge tags support `contact.first_name`, `contact.last_name`, `contact.email`,
+custom properties as `contact.<key>` or `contact.properties.<key>`, plus legacy
+`FIRST_NAME`, `LAST_NAME`, `EMAIL` and bare property keys. Property defaults and
+inline `|fallback` values are supported; HTML values are escaped.
+`OPENSEND_UNSUBSCRIBE_URL` (`RESEND_UNSUBSCRIBE_URL` alias) and RFC 8058 headers
+are generated for every recipient. One-click unsubscribes only the selected
+topic, when present. Unsubscribes through these signed links are attributed once
+to their broadcast; unrelated preference edits are not attributed to an old send.
+
+Reports count unique per-recipient milestones using aggregates. Broadcast
+recipient history and milestones remain after the ordinary 30-day email
+retention and are removed with the team. Test sends use the current editor
+export, one address and the normal email pipeline without changing the audience,
+status or report. Broadcast CSV exports use the same server filters and cursor
+pagination as the list.

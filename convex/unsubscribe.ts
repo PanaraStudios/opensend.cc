@@ -1,3 +1,4 @@
+import { insertRow } from "./counts"
 import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter"
@@ -130,6 +131,7 @@ export async function unsubscribeLinks(
   target: {
     organizationId: string
     contactId: Id<"contacts">
+    broadcastId?: Id<"broadcasts">
     topicId?: Id<"topics">
   }
 ) {
@@ -185,7 +187,7 @@ async function recipient(ctx: Ctx, token: string) {
   const topicId = target.topicId
     ? ctx.db.normalizeId("topics", target.topicId)
     : null
-  return { contact, topicId }
+  return { contact, topicId, broadcastId: target.broadcastId }
 }
 
 async function publicTopics(ctx: Ctx, organizationId: string) {
@@ -271,7 +273,7 @@ export const setTopic = mutation({
   args: { token: v.string(), topicId: v.string(), subscribed: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { contact } = await writableRecipient(ctx, args.token)
+    const { contact, broadcastId } = await writableRecipient(ctx, args.token)
     const topicId = ctx.db.normalizeId("topics", args.topicId)
     const topic = topicId && (await ctx.db.get("topics", topicId))
     if (
@@ -281,6 +283,8 @@ export const setTopic = mutation({
     )
       throw new ConvexError("Topic not found")
     await chooseTopic(ctx, contact, topic._id, args.subscribed)
+    if (!args.subscribed)
+      await attributeUnsubscribe(ctx, contact, broadcastId, topic._id)
     return null
   },
 })
@@ -290,8 +294,9 @@ export const setSubscribed = mutation({
   args: { token: v.string(), subscribed: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { contact } = await writableRecipient(ctx, args.token)
+    const { contact, broadcastId } = await writableRecipient(ctx, args.token)
     await updateContact(ctx, contact, { unsubscribed: !args.subscribed })
+    if (!args.subscribed) await attributeUnsubscribe(ctx, contact, broadcastId)
     return null
   },
 })
@@ -308,8 +313,9 @@ export const oneClick = internalMutation({
   handler: async (ctx, { token }) => {
     const found = await recipient(ctx, token)
     if (!found) return "invalid"
-    const { contact, topicId } = found
+    const { contact, topicId, broadcastId } = found
     if (await limited(ctx, contact)) return "limited"
+    await attributeUnsubscribe(ctx, contact, broadcastId, topicId ?? undefined)
     if (!topicId) {
       await updateContact(ctx, contact, { unsubscribed: true })
       return "done"
@@ -321,3 +327,41 @@ export const oneClick = internalMutation({
     return "done"
   },
 })
+
+async function attributeUnsubscribe(
+  ctx: MutationCtx,
+  contact: Doc<"contacts">,
+  value?: string,
+  topicId?: Id<"topics">
+) {
+  const id = value && ctx.db.normalizeId("broadcasts", value)
+  if (!id) return
+  const row = await ctx.db.get("broadcasts", id)
+  if (
+    !row ||
+    row.organizationId !== contact.organizationId ||
+    (topicId && row.topicId !== topicId)
+  )
+    return
+  const recipient = await ctx.db
+    .query("broadcastRecipients")
+    .withIndex("by_broadcastId_and_email", (q) =>
+      q.eq("broadcastId", id).eq("email", contact.email)
+    )
+    .unique()
+  if (!recipient || recipient.contactId !== contact._id) return
+  const existing = await ctx.db
+    .query("broadcastEvents")
+    .withIndex("by_emailId_and_type", (q) =>
+      q.eq("emailId", recipient.emailId).eq("type", "unsubscribed")
+    )
+    .unique()
+  if (!existing)
+    await insertRow(ctx, "broadcastEvents", {
+      organizationId: row.organizationId,
+      broadcastId: id,
+      emailId: recipient.emailId,
+      email: recipient.email,
+      type: "unsubscribed",
+    })
+}

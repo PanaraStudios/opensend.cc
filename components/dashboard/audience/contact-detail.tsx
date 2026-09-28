@@ -1,4 +1,5 @@
 "use client"
+import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -221,7 +222,7 @@ function ContactPage({
   contact: Contact
   onDelete: (remove: () => void) => void
 }) {
-  /* Broadcasts and replies are still demo data, matched by address. */
+  /* Replies are still demo data, matched by address. */
   const { state } = useDashboard()
   const { updateContact, deleteContacts, setContactTopic } =
     useAudienceCommands()
@@ -239,18 +240,8 @@ function ContactPage({
   const received = state.received
     .filter((email) => email.from.toLowerCase().includes(contact.email))
     .sort((a, b) => b.createdAt - a.createdAt)
-  const broadcasts = state.broadcasts
-    .filter((broadcast) => {
-      if (broadcast.status !== "sent") return false
-      if (
-        broadcast.segmentId &&
-        !contact.segmentIds.includes(broadcast.segmentId)
-      ) {
-        return false
-      }
-      return true
-    })
-    .sort((a, b) => (b.sentAt ?? b.createdAt) - (a.sentAt ?? a.createdAt))
+  const broadcastList = useContactBroadcasts(contact.email)
+  const broadcasts = broadcastList.pageRows
 
   return (
     <>
@@ -399,7 +390,8 @@ function ContactPage({
           </div>
         </TabsContent>
         <TabsContent value="history">
-          {sends.status === "LoadingFirstPage" ? (
+          {sends.status === "LoadingFirstPage" ||
+          broadcastList.status === "LoadingFirstPage" ? (
             <Skeleton className="h-40 w-full" />
           ) : emails.length === 0 &&
             received.length === 0 &&
@@ -456,6 +448,10 @@ function ContactPage({
                       </ItemContent>
                     </Item>
                   ))}
+                  <ListPagination
+                    {...broadcastList.pagination}
+                    noun="broadcast"
+                  />
                 </HistorySection>
               ) : null}
               {received.length > 0 ? (

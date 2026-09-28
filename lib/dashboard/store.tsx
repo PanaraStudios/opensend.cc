@@ -10,12 +10,6 @@ import {
   type ReactNode,
 } from "react"
 
-import {
-  emailFrom,
-  broadcastRecipients,
-  emptyBroadcastStats,
-  transitionBroadcast,
-} from "./broadcast"
 import { createId } from "./ids"
 import { exportFileName } from "./exports"
 import { slugify } from "./slug"
@@ -43,15 +37,7 @@ import {
   serializeRoot,
   type DashboardRoot,
 } from "./teams"
-import type {
-  Broadcast,
-  BroadcastStatus,
-  DashboardState,
-  MemberRole,
-  SentEmail,
-  Team,
-  TeamMember,
-} from "./types"
+import type { DashboardState, MemberRole, Team, TeamMember } from "./types"
 
 let storageKey = "opensend.demo.uninitialized"
 const CHANGE_EVENT = "opensend-dashboard"
@@ -159,140 +145,6 @@ function addReceived(input: {
   }))
 }
 
-function addBroadcast(input: {
-  name: string
-  subject: string
-  preview: string
-  segmentId: string | null
-  topicId: string | null
-}) {
-  const id = createId("brd")
-  mutate((current) => ({
-    ...current,
-    broadcasts: [
-      {
-        id,
-        name: input.name.trim(),
-        subject: input.subject.trim(),
-        preview: input.preview.trim(),
-        html: "",
-        status: "draft",
-        segmentId: input.segmentId,
-        topicId: input.topicId,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        scheduledAt: null,
-        sentAt: null,
-        stats: emptyBroadcastStats(),
-      },
-      ...current.broadcasts,
-    ],
-  }))
-  return { id }
-}
-
-function updateBroadcast(
-  id: string,
-  patch: Partial<
-    Pick<
-      Broadcast,
-      | "name"
-      | "subject"
-      | "preview"
-      | "html"
-      | "content"
-      | "from"
-      | "replyTo"
-      | "segmentId"
-      | "topicId"
-    >
-  >
-) {
-  mutate((current) => ({
-    ...current,
-    broadcasts: current.broadcasts.map((item) =>
-      item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item
-    ),
-  }))
-}
-
-function setBroadcastStatus(
-  id: string,
-  status: BroadcastStatus,
-  scheduledAt: number | null = null
-) {
-  mutate((current) => {
-    const item = current.broadcasts.find((row) => row.id === id)
-    if (!item) return current
-    const now = Date.now()
-    const recipients =
-      status === "sent" ? broadcastRecipients(current.contacts, item) : []
-    const next = transitionBroadcast(item, status, {
-      now,
-      recipients: recipients.length,
-      scheduledAt,
-    })
-    if (next === item) return current
-    const from = emailFrom(item, current.domains)
-    const sent: SentEmail[] = recipients.map((contact) => ({
-      id: createId("em"),
-      from,
-      to: contact.email,
-      subject: item.subject,
-      status: "delivered",
-      createdAt: now,
-      scheduledAt: null,
-      html: item.html,
-      text: item.preview,
-      broadcastId: item.id,
-      events: [
-        { id: createId("evt"), type: "sent", at: now },
-        { id: createId("evt"), type: "delivered", at: now },
-      ],
-    }))
-    return {
-      ...current,
-      broadcasts: current.broadcasts.map((row) => (row.id === id ? next : row)),
-      emails: [...sent, ...current.emails],
-    }
-  })
-}
-
-function duplicateBroadcast(id: string): { id: string } | null {
-  const source = activeWorkspace(rootFromRaw(readRaw())).broadcasts.find(
-    (item) => item.id === id
-  )
-  if (!source) return null
-  const nextId = createId("brd")
-  mutate((current) => {
-    return {
-      ...current,
-      broadcasts: [
-        {
-          ...source,
-          id: nextId,
-          name: `${source.name || "Untitled"} copy`,
-          status: "draft",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          scheduledAt: null,
-          sentAt: null,
-          stats: emptyBroadcastStats(),
-        },
-        ...current.broadcasts,
-      ],
-    }
-  })
-  return { id: nextId }
-}
-
-function deleteBroadcast(id: string) {
-  mutate((current) => ({
-    ...current,
-    broadcasts: current.broadcasts.filter((item) => item.id !== id),
-  }))
-}
-
 function addExport(resource: string, rows: number) {
   const createdAt = Date.now()
   mutate((current) => ({
@@ -318,11 +170,6 @@ function resetDemo() {
 
 const actions = {
   addReceived,
-  addBroadcast,
-  updateBroadcast,
-  duplicateBroadcast,
-  setBroadcastStatus,
-  deleteBroadcast,
   addExport,
   resetDemo,
 }
@@ -511,12 +358,15 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         emails,
         suppressions: [],
         automationEvents,
+        broadcasts: [],
         automations: [],
         automationRuns: [],
         logs: [],
         // Real exports list on their own; only exports of demo lists stay.
         exports: demo.exports.filter(
-          (item) => !SEED_STATE.exports.some((seed) => seed.id === item.id)
+          (item) =>
+            item.resource !== "Broadcasts" &&
+            !SEED_STATE.exports.some((seed) => seed.id === item.id)
         ),
         members,
         settings: {

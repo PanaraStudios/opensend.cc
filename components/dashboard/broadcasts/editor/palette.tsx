@@ -27,7 +27,9 @@ import {
   formatVariable,
   type EmailVariable,
 } from "@/lib/dashboard/email-variables"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useTeamList, ListPagination } from "@/components/dashboard/primitives"
+import { api } from "@/convex/_generated/api"
+import { asProperty } from "@/lib/audience/use-audience"
 import { cn } from "@/lib/utils"
 
 /* The floating insert rail. Each button opens a flyout of rows, and a row
@@ -130,10 +132,15 @@ function VariableRows({
 }: {
   onInsert: (variable: EmailVariable) => void
 }) {
-  const { state } = useDashboard()
+  const properties = useTeamList(
+    api.contactProperties.list,
+    api.contactProperties.count,
+    {},
+    asProperty
+  )
   const variables = React.useMemo(
-    () => availableVariables(state.properties),
-    [state.properties]
+    () => availableVariables(properties.pageRows),
+    [properties.pageRows]
   )
   const groups = [
     {
@@ -172,6 +179,11 @@ function VariableRows({
           </React.Fragment>
         )
       )}
+      <ListPagination
+        {...properties.pagination}
+        noun="property"
+        plural="properties"
+      />
       <Separator className="my-1" />
       <Button
         variant="ghost"

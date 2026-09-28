@@ -1,3 +1,4 @@
+import { broadcastRecipientProblem } from "./broadcastMetrics"
 import { prepareTracking } from "./tracking"
 import { retirement } from "./teamLifecycle"
 import { countValue, counters, deleteRow } from "./counts"
@@ -172,6 +173,22 @@ async function bindingFor(
   }
 }
 
+/** Reused by broadcasts before a schedule or fan-out is accepted. */
+export async function validateSender(
+  ctx: MutationCtx,
+  organizationId: string,
+  from: string
+) {
+  const mailbox = parseMailbox(from)
+  if (!mailbox) throw invalid("Invalid from address")
+  const domain = await sendingDomain(
+    ctx,
+    organizationId,
+    senderDomainOf(mailbox)
+  )
+  await bindingFor(ctx, domain)
+}
+
 /**
  * Validates and records one email, then queues it (or schedules it).
  * Every send path comes through here. Errors are Resend's: a REST route
@@ -182,6 +199,7 @@ export async function createEmail(
   input: NewEmail,
   meta: {
     organizationId: string
+    broadcastId?: Id<"broadcasts">
     source: Infer<typeof emailSourceValue>
     apiKeyId?: Id<"apiKeys">
     /** A sending key limited to one domain. */
@@ -311,6 +329,7 @@ export async function createEmail(
       ...(input.tags.length ? { tags: input.tags } : {}),
       ...(templateId ? { templateId } : {}),
       source: meta.source,
+      ...(meta.broadcastId ? { broadcastId: meta.broadcastId } : {}),
       ...(meta.apiKeyId ? { apiKeyId: meta.apiKeyId } : {}),
       generation: 0,
       attempts: 0,
@@ -474,6 +493,23 @@ export const claim = internalMutation({
       (await retirement(ctx, email.organizationId))
     )
       return null
+    const broadcastProblem = await broadcastRecipientProblem(ctx, email)
+    if (broadcastProblem === "audience") {
+      await fail(ctx, email, "The broadcast audience was removed")
+      return null
+    }
+    if (broadcastProblem === "unsubscribed") {
+      await settle(ctx, email, "suppressed", {
+        suppressed: email.to.map((value) => addressKey(parseMailbox(value)!)),
+      })
+      await emitEmail(ctx, id, "email.suppressed", {
+        suppressed: {
+          message: "The contact is no longer subscribed to this broadcast.",
+          type: "Unsubscribed",
+        },
+      })
+      return null
+    }
     const domain = await ctx.db.get("domains", email.domainId)
     const system = email.organizationId === SYSTEM_SCOPE
     if (

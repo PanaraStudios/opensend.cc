@@ -10,6 +10,10 @@ import { retirement } from "./teamLifecycle"
 
 /** Parents with unscoped children are erased only after their children. */
 export const TEAM_TABLES = [
+  "broadcastEvents",
+  "broadcastRecipients",
+  "broadcastDrafts",
+  "broadcasts",
   "automations",
   "automationRuns",
   "automationRunSteps",

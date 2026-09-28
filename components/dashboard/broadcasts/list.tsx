@@ -39,7 +39,7 @@ import {
   PageHeader,
   ResourceTable,
   Th,
-  usePagination,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
   broadcastAsTemplateInput,
@@ -47,21 +47,31 @@ import {
   isBroadcastDraftLike,
 } from "@/lib/dashboard/broadcast"
 import { formatDateTime } from "@/lib/dashboard/format"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
+import { actionError } from "@/lib/action-error"
+import {
+  asBroadcast,
+  useBroadcastCommands,
+} from "@/lib/broadcasts/use-broadcasts"
 import { useDashboard } from "@/lib/dashboard/store"
-import type { Broadcast } from "@/lib/dashboard/types"
+import type { Broadcast, BroadcastStatus } from "@/lib/dashboard/types"
+import { useSegmentList } from "@/lib/audience/use-audience"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 export function BroadcastsView() {
   const router = useRouter()
+  const { state } = useDashboard()
+  const segments = useSegmentList("")
   const {
-    state,
     addBroadcast,
     updateBroadcast,
     duplicateBroadcast,
     deleteBroadcast,
-    addExport,
-  } = useDashboard()
+    readBroadcast,
+  } = useBroadcastCommands()
+  const reportError = (error: unknown) =>
+    toast.add({ type: "error", title: actionError(error) })
   const saveAsTemplate = useSaveAsTemplate()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
@@ -70,39 +80,45 @@ export function BroadcastsView() {
   const [renaming, setRenaming] = React.useState<Broadcast | null>(null)
   const [deleting, setDeleting] = React.useState<Broadcast | null>(null)
 
-  const needle = searchNeedle(query)
-  const rows = state.broadcasts.filter((item) => {
-    if (!matchesNeedle(needle, item.name, item.subject)) return false
-    if (status !== "all" && item.status !== status) return false
-    if (audience === "everyone") return item.segmentId === null
-    return audience === "all" || item.segmentId === audience
-  })
+  const filters = {
+    search: query,
+    status: status === "all" ? undefined : (status as BroadcastStatus),
+    audience: audience === "all" ? undefined : audience,
+  }
+  const list = useTeamList(
+    api.broadcasts.list,
+    api.broadcasts.count,
+    filters,
+    asBroadcast
+  )
+  const { rows, pageRows, pagination } = list
 
-  function createBroadcast() {
-    const created = addBroadcast({
-      name: "Untitled",
-      subject: "",
-      preview: "",
-      segmentId: null,
-      topicId: null,
-    })
-    toast.add({ type: "success", title: "Draft created" })
-    router.push(`/broadcasts/${created.id}/edit`)
+  async function createBroadcast() {
+    try {
+      const created = await addBroadcast({
+        name: "Untitled",
+        subject: "",
+        preview: "",
+        segmentId: null,
+        topicId: null,
+      })
+      toast.add({ type: "success", title: "Draft created" })
+      router.push(`/broadcasts/${created.id}/edit`)
+    } catch (error) {
+      reportError(error)
+    }
   }
 
   function cloneAsTemplate(item: Broadcast) {
-    void saveAsTemplate(broadcastAsTemplateInput(item))
+    void readBroadcast(item.id)
+      .then((full) => saveAsTemplate(broadcastAsTemplateInput(full)))
+      .catch(reportError)
   }
 
-  const { pageRows, pagination } = usePagination(rows)
   const exporting = useExportDialog({
     resource: "broadcasts",
     noun: "broadcasts",
-    filters: {},
-    onConfirm: () => {
-      addExport("Broadcasts", rows.length)
-      toast.add({ type: "success", title: "Export started" })
-    },
+    filters,
   })
 
   return (
@@ -129,13 +145,19 @@ export function BroadcastsView() {
           {
             value: audience,
             onChange: setAudience,
-            items: audienceFilterItems(state.segments),
+            items: audienceFilterItems(segments.pageRows),
+            selectedItem: audienceFilterItems(state.segments).find(
+              (item) => item.value === audience
+            ),
+            footer: <ListPagination {...segments.pagination} noun="segment" />,
             "aria-label": "Filter by audience",
           },
         ]}
         onExport={exporting.open}
       />
-      {rows.length === 0 ? (
+      {list.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={MegaphoneIcon}
           title="No broadcasts"
@@ -205,11 +227,14 @@ export function BroadcastsView() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
-                          duplicateBroadcast(item.id)
-                          toast.add({
-                            type: "success",
-                            title: "Broadcast duplicated",
-                          })
+                          void duplicateBroadcast(item.id)
+                            .then(() =>
+                              toast.add({
+                                type: "success",
+                                title: "Broadcast duplicated",
+                              })
+                            )
+                            .catch(reportError)
                         }}
                       >
                         <CopyIcon />
@@ -243,8 +268,12 @@ export function BroadcastsView() {
         }}
         name={renaming?.name ?? ""}
         onRename={(name) => {
-          if (renaming) updateBroadcast(renaming.id, { name })
-          toast.add({ type: "success", title: "Broadcast renamed" })
+          if (renaming)
+            void updateBroadcast(renaming.id, { name })
+              .then(() =>
+                toast.add({ type: "success", title: "Broadcast renamed" })
+              )
+              .catch(reportError)
         }}
       />
       <ConfirmDialog
@@ -255,8 +284,12 @@ export function BroadcastsView() {
         title={`Delete ${deleting?.name || "Untitled"}?`}
         description="This removes the broadcast from the workspace."
         onConfirm={() => {
-          if (deleting) deleteBroadcast(deleting.id)
-          toast.add({ type: "success", title: "Broadcast deleted" })
+          if (deleting)
+            void deleteBroadcast(deleting.id)
+              .then(() =>
+                toast.add({ type: "success", title: "Broadcast deleted" })
+              )
+              .catch(reportError)
         }}
       />
     </>

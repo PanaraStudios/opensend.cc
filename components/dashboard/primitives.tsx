@@ -1692,6 +1692,7 @@ export function OptionSelect({
   onChange,
   items,
   selectedItem,
+  footer,
   id,
   name,
   size = "default",
@@ -1704,6 +1705,7 @@ export function OptionSelect({
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
+  footer?: React.ReactNode
   selectedItem?: SelectOption
   items: readonly SelectOption[]
   /** Shown while no item is chosen. */
@@ -1758,6 +1760,7 @@ export function OptionSelect({
             </SelectItem>
           ))}
         </SelectGroup>
+        {footer}
       </SelectContent>
     </Select>
   )
@@ -1881,6 +1884,8 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
+  footer?: React.ReactNode
+  selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1921,6 +1926,8 @@ export function ToolbarFilters({
           value={filter.value}
           onChange={filter.onChange}
           items={filter.items}
+          selectedItem={filter.selectedItem}
+          footer={filter.footer}
           aria-label={filter["aria-label"]}
         />
       ))}

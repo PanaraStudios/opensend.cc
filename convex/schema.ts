@@ -1,3 +1,4 @@
+import { broadcastTables } from "./tables/broadcasts"
 import { automationTables } from "./tables/automations"
 import { defineSchema } from "convex/server"
 import { audienceTables } from "./tables/audience"
@@ -19,6 +20,7 @@ import { webhookTables } from "./tables/webhooks"
 /* Each feature owns one file in ./tables, so features can be built in
    parallel without editing the same lines here. */
 export default defineSchema({
+  ...broadcastTables,
   ...automationTables,
   ...sesTables,
   ...smtpTables,
