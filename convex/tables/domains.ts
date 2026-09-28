@@ -64,6 +64,13 @@ export const domainTables = {
     operation: domainOperationValue,
   })
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
+    .index("by_deleted_and_status_and_sending_and_name", [
+      "deleted",
+      "status",
+      "sending",
+      "name",
+    ])
+    .index("by_organizationId_and_name", ["organizationId", "name"])
     .index("by_nextCheckAt", ["nextCheckAt"])
     // Whether any domain in a region still receives mail.
     .index("by_region_and_deleted_and_receiving", [

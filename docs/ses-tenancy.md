@@ -147,7 +147,8 @@ recipients with their own timestamps. Both use the shared transactional count
 writers. `/metrics` keeps its existing date/domain/event filters, counts email
 creation-day cohorts in local calendar days, and counts delivery/open/click
 milestones cumulatively even after a complaint. Exact status filters still count
-current email status. The domain picker and breakdown are server-paginated.
+current email status. The domain picker searches up to 100 matching names. The compact breakdown shows
+up to 100 domains; selecting a domain reads it directly, including older domains.
 Metrics expire with the existing 30-day email retention; long ranges may therefore
 contain days with no retained records. The upgrade runner `migrations:backfillCounts`
 includes the new domain counter, timeline backfill and raw SES event projection;

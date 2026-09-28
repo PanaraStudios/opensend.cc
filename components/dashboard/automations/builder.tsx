@@ -59,10 +59,9 @@ import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
 import {
   AutomationStatusBadge,
   ConfirmDialog,
-  OptionSelect,
+  SuggestInput,
   useDeleteRecord,
   useAutosaveDraft,
-  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
   insertStep,
@@ -80,7 +79,8 @@ import {
 import { api } from "@/convex/_generated/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { actionError } from "@/lib/action-error"
-import { asContact } from "@/lib/audience/use-audience"
+import { useWorkspace } from "@/components/auth/workspace"
+import { useQuery } from "convex/react"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import {
   useAutomation,
@@ -416,12 +416,16 @@ function TestEventForm({
 }) {
   const { runAutomation } = useAutomationCommands()
   const event = useAutomationEvent(automation.trigger)
-  const { pageRows: contacts, pagination } = useTeamList(
-    api.contacts.list,
-    api.contacts.count,
-    {},
-    asContact
+  const { activeTeamId } = useWorkspace()
+  const [search, setSearch] = React.useState("")
+  const rows = useQuery(
+    api.contacts.options,
+    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
   )
+  const contacts = (rows ?? []).map((row) => ({
+    id: row._id,
+    email: row.email,
+  }))
   const [chosenContact, setChosenContact] = React.useState<{
     id: string
     email: string
@@ -492,7 +496,7 @@ function TestEventForm({
         <FieldGroup className="py-4">
           <Field>
             <FieldLabel htmlFor="test-contact">Contact</FieldLabel>
-            <OptionSelect
+            <SuggestInput
               id="test-contact"
               className="w-full"
               value={contactId}
@@ -502,8 +506,9 @@ function TestEventForm({
                   : undefined
               }
               onChange={setContactId}
-              pagination={{ ...pagination, noun: "contact" }}
-              items={contacts.map((contact) => ({
+              onSearch={setSearch}
+              allowCreate={false}
+              options={contacts.map((contact) => ({
                 value: contact.id,
                 label: contact.email,
               }))}

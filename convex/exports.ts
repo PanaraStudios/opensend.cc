@@ -4,6 +4,7 @@ import {
   paginationResultValidator,
 } from "convex/server"
 import {
+  env,
   internalAction,
   internalMutation,
   internalQuery,
@@ -12,13 +13,14 @@ import {
 } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
-import { requireTeam, sessionId } from "./access"
+import { findInstallation, requireTeam, sessionId } from "./access"
 import schema from "./schema"
 import { countValue, counters } from "./counts"
 import { teamPage } from "./lists"
 import { EXPORT_SOURCES } from "./exportSources"
 import { deleteExport, insertExport, patchExport } from "./exportRows"
 import { exportFilterLineValue } from "./tables/exports"
+import { sendSystemEmail } from "./systemEmail"
 import { csvLine } from "../lib/dashboard/csv"
 import { AUTO_DOWNLOAD_ROWS, exportFileName } from "../lib/dashboard/exports"
 
@@ -36,7 +38,14 @@ const TEXT = 500
 
 export const exportView = schema
   .doc("exports")
-  .omit("storageId", "filters", "fileName", "creatorEmail", "summary")
+  .omit(
+    "storageId",
+    "filters",
+    "fileName",
+    "creatorEmail",
+    "summary",
+    "notificationEmailId"
+  )
   .extend({
     fileName: v.string(),
     creatorEmail: v.string(),
@@ -283,14 +292,32 @@ export const finish = internalMutation({
     return null
   },
 })
-/** Emails a completed long export's creator a link to it, as Resend does.
-    TODO(sending lane): send it through the installation sender once that
-    exists: to `creatorEmail`, linking `/settings/exports/{id}`. Until then
-    the export waits in Settings → Exports, and the dashboard says so. */
-export const emailCreator = internalAction({
+/** The authenticated details page keeps admin-only download enforcement. */
+export const emailCreator = internalMutation({
   args: { id: v.id("exports") },
   returns: v.null(),
-  handler: async () => null,
+  handler: async (ctx, { id }) => {
+    const row = await ctx.db.get("exports", id)
+    if (
+      !row ||
+      row.status !== "ready" ||
+      row.rows <= AUTO_DOWNLOAD_ROWS ||
+      row.expiresAt <= Date.now() ||
+      !row.creatorEmail ||
+      row.notificationEmailId ||
+      !(await findInstallation(ctx))?.systemSender
+    )
+      return null
+    const url = new URL(`/settings/exports/${id}`, env.SITE_URL).href
+    const email = await sendSystemEmail(ctx, {
+      to: row.creatorEmail,
+      subject: "Your export is ready",
+      text: `Your export is ready to download.\n\nDownload your data: ${url}\n\nOnly team admins can download the data. This export is available for 7 days after creation.\n`,
+      category: "export",
+    })
+    if (email) await patchExport(ctx, id, { notificationEmailId: email })
+    return null
+  },
 })
 
 /** Deletes the files of exports past their expiry, then the rows once

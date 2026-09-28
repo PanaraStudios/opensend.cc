@@ -406,3 +406,23 @@ export const purge = internalMutation({
     return null
   },
 })
+
+export const options = query({
+  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  returns: v.array(schema.doc("contacts").pick("_id", "email")),
+  handler: async (ctx, { organizationId, search }) => {
+    await requireTeam(ctx, organizationId)
+    const prefix = search?.trim().toLowerCase() ?? ""
+    return (
+      await ctx.db
+        .query("contacts")
+        .withIndex("by_organizationId_and_email", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .gte("email", prefix)
+            .lt("email", prefix + "\uffff")
+        )
+        .take(100)
+    ).map(({ _id, email }) => ({ _id, email }))
+  },
+})

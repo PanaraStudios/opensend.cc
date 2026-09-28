@@ -5,7 +5,11 @@ import type { FunctionReturnType } from "convex/server"
 import { PauseIcon, PlayIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { useClock } from "@/lib/time/use-clock"
-import { percent } from "@/lib/dashboard/format"
+import {
+  percent,
+  tenantStatusLabel,
+  TENANT_STATUS_TONE,
+} from "@/lib/dashboard/format"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -73,11 +77,12 @@ export function TenantReputation() {
               <TableCell>
                 <Badge
                   variant={
-                    enabled(row.tenant.sendingStatus) ? "success" : "warning"
+                    TENANT_STATUS_TONE[row.tenant.sendingStatus ?? "UNKNOWN"] ??
+                    "warning"
                   }
                   dot
                 >
-                  {row.tenant.sendingStatus ?? "UNKNOWN"}
+                  {tenantStatusLabel(row.tenant.sendingStatus)}
                 </Badge>
               </TableCell>
               <TableCell className="tabular-nums">{row.volume}</TableCell>

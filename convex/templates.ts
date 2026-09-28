@@ -303,10 +303,19 @@ export const hasAny = query({
 /** The team's newest templates, without their bodies: for pickers on other
     screens, which re-render on every autosave. */
 export const options = query({
-  args: { organizationId: v.string() },
+  args: { organizationId: v.string(), search: v.optional(v.string()) },
   returns: v.array(schema.doc("templates")),
-  handler: async (ctx, { organizationId }) => {
+  handler: async (ctx, { organizationId, search }) => {
     await requireTeam(ctx, organizationId)
+    if (search?.trim())
+      return ctx.db
+        .query("templates")
+        .withSearchIndex("search_searchText", (q) =>
+          q
+            .search("searchText", search.trim())
+            .eq("organizationId", organizationId)
+        )
+        .take(100)
     return ctx.db
       .query("templates")
       .withIndex("by_organizationId", (q) =>

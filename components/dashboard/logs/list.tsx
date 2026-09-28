@@ -90,12 +90,16 @@ export function LogsView() {
     activeTeamId ? { organizationId: activeTeamId } : "skip"
   )
 
-  /* The agents seen so far; the selected one stays listed when filtered. */
+  const agents = useQuery(
+    api.logs.userAgents,
+    activeTeamId ? { organizationId: activeTeamId } : "skip"
+  )
+
   const userAgentItems: SelectOption[] = [
     { value: "all", label: "All user agents" },
     ...[
       ...new Set([
-        ...rows.map((log) => log.userAgent),
+        ...(agents ?? []),
         ...(userAgent === "all" ? [] : [userAgent]),
       ]),
     ]

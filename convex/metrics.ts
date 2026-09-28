@@ -3,7 +3,7 @@ import {
   paginationResultValidator,
 } from "convex/server"
 import { v, ConvexError, type Infer } from "convex/values"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import { query, type QueryCtx } from "./_generated/server"
 import { requireTeam } from "./access"
 import { countValue, counters } from "./counts"
@@ -128,15 +128,38 @@ const domainFilters = {
   from: v.optional(v.number()),
   to: v.optional(v.number()),
 }
+const domainSummary = v.object({
+  id: v.id("domains"),
+  name: v.string(),
+  counts: metricsCountValue,
+})
+
+async function summarizeDomains(
+  ctx: QueryCtx,
+  domains: Doc<"domains">[],
+  range: Infer<typeof span>
+) {
+  const rows = await Promise.all(
+    domains.map(async (domain) => ({
+      id: domain._id,
+      name: domain.name,
+      counts: (
+        await countsFor(
+          ctx,
+          { organizationId: domain.organizationId, domainId: domain._id },
+          [range]
+        )
+      )[0],
+    }))
+  )
+  return rows.filter(
+    (row) => row.counts.sent > 0 || (row.counts.status.scheduled ?? 0) > 0
+  )
+}
+
 export const domains = query({
   args: { ...domainFilters, paginationOpts: paginationOptsValidator },
-  returns: paginationResultValidator(
-    v.object({
-      id: v.id("domains"),
-      name: v.string(),
-      counts: metricsCountValue,
-    })
-  ),
+  returns: paginationResultValidator(domainSummary),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     const range = {
@@ -150,26 +173,10 @@ export const domains = query({
         q.eq("organizationId", args.organizationId)
       )
       .paginate(args.paginationOpts)
-    const rows = await Promise.all(
-      page.page.map(async (domain) => ({
-        id: domain._id,
-        name: domain.name,
-        counts: (
-          await countsFor(
-            ctx,
-            { organizationId: args.organizationId, domainId: domain._id },
-            [range]
-          )
-        )[0],
-      }))
-    )
+    const rows = await summarizeDomains(ctx, page.page, range)
     return {
       ...page,
-      page: rows.filter(
-        (row) =>
-          (row.counts.sent > 0 || (row.counts.status.scheduled ?? 0) > 0) &&
-          (!args.domainId || args.domainId === row.id)
-      ),
+      page: rows.filter((row) => !args.domainId || args.domainId === row.id),
     }
   },
 })
@@ -180,5 +187,57 @@ export const domainCount = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     return { total: null }
+  },
+})
+
+/** Bounded name suggestions, including removed domains with historical mail. */
+export const domainOptions = query({
+  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  returns: v.array(v.object({ value: v.id("domains"), label: v.string() })),
+  handler: async (ctx, { organizationId, search }) => {
+    await requireTeam(ctx, organizationId)
+    const prefix = search?.trim().toLowerCase() ?? ""
+    return (
+      await ctx.db
+        .query("domains")
+        .withIndex("by_organizationId_and_name", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .gte("name", prefix)
+            .lt("name", prefix + "\uffff")
+        )
+        .take(100)
+    ).map((row) => ({ value: row._id, label: row.name }))
+  },
+})
+
+/** The chart's compact breakdown; the selected domain is read directly so
+    it remains available beyond the initial 100 domain summaries. */
+export const breakdown = query({
+  args: domainFilters,
+  returns: v.array(domainSummary),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const range = {
+      from: args.from ?? 0,
+      to: args.to ?? (Math.floor(Date.now() / 900000) + 1) * 900000 - 1,
+    }
+    if (args.from !== undefined) checkSpans([range])
+    const selected = args.domainId
+      ? await ctx.db.get("domains", args.domainId)
+      : null
+    if (selected && selected.organizationId !== args.organizationId)
+      throw new ConvexError("Domain not found")
+    const domains = args.domainId
+      ? selected
+        ? [selected]
+        : []
+      : await ctx.db
+          .query("domains")
+          .withIndex("by_organizationId_and_name", (q) =>
+            q.eq("organizationId", args.organizationId)
+          )
+          .take(100)
+    return summarizeDomains(ctx, domains, range)
   },
 })
