@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -13,6 +14,7 @@ import { filteredPage, matchesSearch } from "./lists"
 import {
   BATCH,
   CLEANUP_BATCH,
+  LIMITS,
   deleteContact,
   emitContact,
   joinSegments,
@@ -49,6 +51,13 @@ const contactFilters = v.object({
   to: v.optional(v.number()),
 })
 
+// Scan 1024 contacts; each kept row reserves 500 bounded membership reads at 1 KiB each.
+export const CONTACT_SEARCH_BUDGET = {
+  rows: 1024,
+  bytes: 8 * 1024 * 1024,
+  bytesPerMatch: LIMITS.segments * 1024,
+}
+
 /** Newest first; substring search filters each bounded index page. */
 export async function contactPage(
   ctx: QueryCtx,
@@ -75,16 +84,12 @@ export async function contactPage(
       `${contact.firstName} ${contact.lastName}`
     )
 
-  if (segmentId) {
-    const members = await filteredPage(
-      ctx.db
-        .query("segmentMembers")
-        .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
-        .order("desc"),
-      args.paginationOpts,
-      () => true,
-      search
-    )
+  if (segmentId && !search?.trim()) {
+    const members = await ctx.db
+      .query("segmentMembers")
+      .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
+      .order("desc")
+      .paginate(args.paginationOpts)
     const page = []
     for (const member of members.page) {
       const contact = await ctx.db.get("contacts", member.contactId)
@@ -94,7 +99,7 @@ export async function contactPage(
   }
   return filteredPage(
     (unsubscribed === undefined
-      ? ctx.db
+      ? stream(ctx.db, schema)
           .query("contacts")
           .withIndex("by_organizationId", (q) =>
             q
@@ -102,7 +107,7 @@ export async function contactPage(
               .gte("_creationTime", from)
               .lte("_creationTime", to)
           )
-      : ctx.db
+      : stream(ctx.db, schema)
           .query("contacts")
           .withIndex("by_organizationId_and_unsubscribed", (q) =>
             q
@@ -113,7 +118,16 @@ export async function contactPage(
           )
     ).order("desc"),
     args.paginationOpts,
-    inRange,
+    async (contact) =>
+      inRange(contact) &&
+      (!segmentId ||
+        !!(await ctx.db
+          .query("segmentMembers")
+          .withIndex("by_contactId_and_segmentId", (q) =>
+            q.eq("contactId", contact._id).eq("segmentId", segmentId)
+          )
+          .first())),
+    CONTACT_SEARCH_BUDGET,
     search
   )
 }

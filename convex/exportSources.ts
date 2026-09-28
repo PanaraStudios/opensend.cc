@@ -1,3 +1,4 @@
+import { SEGMENT_SEARCH_BUDGET } from "./segments"
 import type { PaginationOptions } from "convex/server"
 import type { QueryCtx } from "./_generated/server"
 import { components } from "./_generated/api"
@@ -256,6 +257,7 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
         organizationId,
         paginationOpts,
         (segment) => matches(segment.name),
+        SEGMENT_SEARCH_BUDGET,
         filters.search
       )
       const sizes = await counters.segmentMembers.totals(

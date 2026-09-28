@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -86,6 +87,9 @@ export const logFilters = v.object({
 })
 export type LogFilters = Infer<typeof logFilters>
 
+// 1024 small summaries, no hydration; 4 MiB leaves 12 MiB for overhead.
+export const LOG_SEARCH_BUDGET = { rows: 1024, bytes: 4 * 1024 * 1024 }
+
 /** Newest first; remaining filters narrow each bounded index page. */
 export async function logPage(
   ctx: QueryCtx,
@@ -95,7 +99,7 @@ export async function logPage(
   }
 ) {
   const org = args.organizationId
-  const logs = ctx.db.query("apiLogs")
+  const logs = stream(ctx.db, schema).query("apiLogs")
   const search = args.search
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
@@ -164,6 +168,7 @@ export async function logPage(
       (!args.emailId || log.emailId === args.emailId) &&
       (!args.apiKeyId || log.apiKeyId === args.apiKeyId) &&
       matches(log.summary),
+    LOG_SEARCH_BUDGET,
     search
   )
 }

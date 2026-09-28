@@ -6,6 +6,16 @@ import type {
   PaginationResult,
 } from "convex/server"
 import { api } from "./_generated/api"
+import {
+  QueryStream,
+  stream,
+  type IndexBounds,
+  type IndexKey,
+} from "convex-helpers/server/stream"
+import schema from "./schema"
+import { CONTACT_SEARCH_BUDGET } from "./contacts"
+import { TEMPLATE_SEARCH_BUDGET } from "./templates"
+import { LOG_SEARCH_BUDGET } from "./logs"
 import { filteredPage, matchesSearch } from "./lists"
 import { insertRow } from "./counts"
 import { insertAutomationEvent } from "./automationEventRows"
@@ -14,7 +24,10 @@ import { knownTotal } from "../lib/dashboard/pagination"
 
 const firstPage = { cursor: null, numItems: 40 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 async function allPages<T>(
   read: (opts: PaginationOptions) => Promise<PaginationResult<T>>
@@ -24,7 +37,7 @@ async function allPages<T>(
   const seen = new Set<string>()
   for (let i = 0; i < 2000; i++) {
     const result = await read({ ...firstPage, cursor })
-    expect(result.page.length).toBeLessThanOrEqual(16)
+    expect(result.page.length).toBeLessThanOrEqual(1024)
     rows.push(...result.page)
     if (result.isDone) return rows
     expect(seen.has(result.continueCursor)).toBe(false)
@@ -45,37 +58,67 @@ test("whole-query matching includes interior, punctuation, Unicode and long subs
   expect(matchesSearch(`${long}z`)(`${long}y`)).toBe(false)
 })
 
-test("one bounded scan preserves empty-page continuation and reactive split metadata", async () => {
-  const result: PaginationResult<string> = {
-    page: ["unrelated"],
-    isDone: false,
-    continueCursor: "next",
-    splitCursor: "middle",
-    pageStatus: "SplitRequired",
+// Deterministic indexed source; the production stream paginator owns cursors and splits.
+class TestStream extends QueryStream<string> {
+  constructor(private values: [string, IndexKey, number][]) {
+    super()
   }
-  const paginate = vi.fn(async () => result)
-  const opts = {
-    numItems: 10000,
-    cursor: "start",
-    endCursor: "end",
-    id: 7,
-    maximumRowsRead: 10000,
-    maximumBytesRead: 100000000,
+  native = vi.fn<
+    (opts: PaginationOptions) => Promise<PaginationResult<string>>
+  >(async () => ({
+    page: this.values.map(([row]) => row),
+    isDone: true,
+    continueCursor: "native-end",
+  }))
+  inner() {
+    return { paginate: this.native }
   }
-  expect(
-    await filteredPage(
-      { paginate },
-      opts,
-      (row) => matchesSearch("missing")(row),
-      "missing"
+  async *iterWithKeys(): AsyncGenerator<[string, IndexKey, number], undefined> {
+    yield* this.values
+  }
+  narrow(bounds: IndexBounds): TestStream {
+    return new TestStream(
+      this.values.filter(([, [key]]) => {
+        const n = key as number
+        const lower = bounds.lowerBound[0] as number | undefined
+        const upper = bounds.upperBound[0] as number | undefined
+        return (
+          (lower === undefined ||
+            (bounds.lowerBoundInclusive ? n >= lower : n > lower)) &&
+          (upper === undefined ||
+            (bounds.upperBoundInclusive ? n <= upper : n < upper))
+        )
+      })
     )
-  ).toEqual({ ...result, page: [] })
-  expect(paginate).toHaveBeenCalledExactlyOnceWith({
-    ...opts,
-    numItems: 16,
-    maximumRowsRead: 16,
-    maximumBytesRead: 1024 * 1024,
-  })
+  }
+  getOrder() {
+    return "asc" as const
+  }
+  getIndexFields() {
+    return ["key"]
+  }
+  getEqualityIndexFilter() {
+    return []
+  }
+}
+const source = (count: number, bytes = 100) =>
+  new TestStream(
+    Array.from({ length: count }, (_, i) => [`row${i}`, [i], bytes])
+  )
+
+test("empty pages preserve continuation and split metadata instead of declaring exhaustion", async () => {
+  const rows = source(1200)
+  const result = await filteredPage(
+    rows,
+    firstPage,
+    () => false,
+    LOG_SEARCH_BUDGET,
+    "missing"
+  )
+  expect(result.page).toEqual([])
+  expect(result.isDone).toBe(false)
+  expect(result.pageStatus).toBe("SplitRequired")
+  expect(result.splitCursor).toBeTruthy()
   expect(
     knownTotal({
       loaded: 0,
@@ -85,33 +128,112 @@ test("one bounded scan preserves empty-page continuation and reactive split meta
       pageSize: 40,
     })
   ).toBeNull()
+  const next = await filteredPage(
+    rows,
+    { ...firstPage, cursor: result.continueCursor },
+    () => false,
+    LOG_SEARCH_BUDGET,
+    "missing"
+  )
+  expect(next.isDone).toBe(true)
 })
 
 test("scan bounds respect stricter callers, cannot be disabled, and leave non-search options intact", async () => {
-  const paginate = vi.fn<
-    (opts: PaginationOptions) => Promise<PaginationResult<string>>
-  >(async () => ({
-    page: [],
-    isDone: true,
-    continueCursor: "end",
-  }))
-  const opts = { ...firstPage, maximumRowsRead: 3, maximumBytesRead: 100 }
-  await filteredPage({ paginate }, opts, () => true, "x")
-  expect(paginate).toHaveBeenLastCalledWith({ ...opts, numItems: 16 })
-  await filteredPage(
-    { paginate },
-    { ...firstPage, maximumRowsRead: 0, maximumBytesRead: 0 },
-    () => true,
-    "x"
-  )
-  expect(paginate).toHaveBeenLastCalledWith({
+  const rows = source(100)
+  const opts = {
     ...firstPage,
-    numItems: 16,
-    maximumRowsRead: 1,
-    maximumBytesRead: 1,
-  })
-  await filteredPage({ paginate }, firstPage, () => true, "  ")
-  expect(paginate.mock.calls.at(-1)?.[0]).toBe(firstPage)
+    numItems: 1,
+    maximumRowsRead: 3,
+    maximumBytesRead: 10000,
+  }
+  expect(
+    (await filteredPage(rows, opts, () => true, LOG_SEARCH_BUDGET, "row")).page
+  ).toHaveLength(3)
+  expect(
+    (
+      await filteredPage(
+        rows,
+        { ...firstPage, maximumBytesRead: 150 },
+        () => true,
+        LOG_SEARCH_BUDGET,
+        "row"
+      )
+    ).page
+  ).toHaveLength(2)
+  expect(
+    (
+      await filteredPage(
+        rows,
+        { ...firstPage, maximumRowsRead: 0, maximumBytesRead: 0 },
+        () => true,
+        LOG_SEARCH_BUDGET,
+        "row"
+      )
+    ).page
+  ).toHaveLength(1)
+  const nonFinite = await filteredPage(
+    source(1200),
+    {
+      ...firstPage,
+      maximumRowsRead: NaN,
+      maximumBytesRead: Infinity,
+    },
+    () => false,
+    LOG_SEARCH_BUDGET,
+    "missing"
+  )
+  expect(nonFinite.isDone).toBe(false)
+  expect(nonFinite.pageStatus).toBe("SplitRequired")
+  await filteredPage(rows, firstPage, () => true, LOG_SEARCH_BUDGET, "  ")
+  expect(rows.native).toHaveBeenCalledExactlyOnceWith(firstPage)
+  expect(rows.native.mock.calls[0][0]).toBe(firstPage)
+})
+
+test("hydration reservations bound dense matches even when endCursor overrides numItems", async () => {
+  const rows = source(100)
+  const end = await filteredPage(
+    rows,
+    firstPage,
+    () => true,
+    LOG_SEARCH_BUDGET,
+    "row"
+  )
+  const opts = { ...firstPage, numItems: 1, endCursor: end.continueCursor }
+  const result = await filteredPage(
+    rows,
+    opts,
+    () => true,
+    CONTACT_SEARCH_BUDGET,
+    "row"
+  )
+  expect(result.page).toHaveLength(
+    Math.ceil(
+      CONTACT_SEARCH_BUDGET.bytes / (CONTACT_SEARCH_BUDGET.bytesPerMatch + 100)
+    )
+  )
+  expect(result.isDone).toBe(false)
+  expect(result.pageStatus).toBe("SplitRequired")
+  expect(result.splitCursor).toBeTruthy()
+  const left = await filteredPage(
+    rows,
+    { ...opts, endCursor: result.splitCursor },
+    () => true,
+    CONTACT_SEARCH_BUDGET,
+    "row"
+  )
+  const right = await filteredPage(
+    rows,
+    { ...opts, cursor: result.splitCursor!, endCursor: result.continueCursor },
+    () => true,
+    CONTACT_SEARCH_BUDGET,
+    "row"
+  )
+  expect([...left.page, ...right.page]).toEqual(result.page)
+  // Repeated splits/continuations must never lose or repeat a kept row.
+  const loaded = await allPages((paginationOpts) =>
+    filteredPage(rows, paginationOpts, () => true, CONTACT_SEARCH_BUDGET, "row")
+  )
+  expect(loaded).toEqual(Array.from({ length: 100 }, (_, i) => `row${i}`))
 })
 
 test("120 distinct contact prefixes are complete, even after an empty page", async () => {
@@ -161,7 +283,7 @@ test("120 distinct contact prefixes are complete, even after an empty page", asy
       search,
       paginationOpts,
     })
-  const initial = await read("contact09", firstPage)
+  const initial = await read("contact09", { ...firstPage, maximumRowsRead: 16 })
   expect(initial.page).toEqual([])
   expect(initial.isDone).toBe(false)
   const rows = await allPages((opts) => read("contact09", opts))
@@ -589,4 +711,169 @@ test("key permission and template status filters still intersect substring searc
     })
   )
   expect(templates.map((template) => template.status)).toEqual(["published"])
+})
+
+test("rare contact among 10000 rows takes ten bounded scans and hydrates only the match", async () => {
+  const f = await fixture()
+  await f.t.run(async (ctx) => {
+    for (let i = 0; i < 10000; i++)
+      await ctx.db.insert("contacts", {
+        organizationId: f.owner.team,
+        email: `${i === 0 ? "rare" : "ordinary"}${i}@example.test`,
+        firstName: "",
+        lastName: "",
+        unsubscribed: false,
+        properties: {},
+        search: "",
+        updatedAt: 0,
+      })
+  })
+  const audience = await import("./audience")
+  const hydrate = vi.spyOn(audience, "withSegments")
+  let requests = 0
+  const rows = await allPages((paginationOpts) => {
+    requests++
+    return f.owner.client.query(api.contacts.list, {
+      organizationId: f.owner.team,
+      search: "rare",
+      paginationOpts: { ...paginationOpts, numItems: 1 },
+    })
+  })
+  expect(rows.map((row) => row.email)).toEqual(["rare0@example.test"])
+  expect(requests).toBe(10)
+  expect(hydrate).toHaveBeenCalledTimes(1)
+}, 20000)
+
+test("dense contact matches keep every membership while bounding hydration to 17 contacts", async () => {
+  const f = await fixture()
+  const { getDocumentSize } = await import("convex/values")
+  const { LIMITS } = await import("./audience")
+  await f.t.run(async (ctx) => {
+    const segments = []
+    for (let i = 0; i < LIMITS.segments; i++)
+      segments.push(
+        await ctx.db.insert("segments", {
+          organizationId: f.owner.team,
+          name: `Segment ${i}`,
+        })
+      )
+    for (let i = 0; i < 24; i++) {
+      const contactId = await ctx.db.insert("contacts", {
+        organizationId: f.owner.team,
+        email: `dense${i}@example.test`,
+        firstName: "",
+        lastName: "",
+        unsubscribed: false,
+        properties: {},
+        search: "",
+        updatedAt: 0,
+      })
+      for (const segmentId of segments)
+        await ctx.db.insert("segmentMembers", {
+          organizationId: f.owner.team,
+          contactId,
+          segmentId,
+        })
+    }
+    expect(
+      getDocumentSize((await ctx.db.query("segmentMembers").first())!)
+    ).toBeLessThan(1024)
+  })
+  await expect(
+    f.owner.client.mutation(api.segments.create, {
+      organizationId: f.owner.team,
+      name: "One too many",
+    })
+  ).rejects.toThrow("up to 500 segments")
+  const first = await f.owner.client.query(api.contacts.list, {
+    organizationId: f.owner.team,
+    search: "dense",
+    paginationOpts: { ...firstPage, numItems: 10000 },
+  })
+  expect(first.page).toHaveLength(17)
+  expect(
+    first.page.every((row) => row.segmentIds.length === LIMITS.segments)
+  ).toBe(true)
+  const rows = await allPages((paginationOpts) =>
+    f.owner.client.query(api.contacts.list, {
+      organizationId: f.owner.team,
+      search: "dense",
+      paginationOpts,
+    })
+  )
+  expect(rows).toHaveLength(24)
+  expect(new Set(rows.map((row) => row._id)).size).toBe(24)
+  expect(rows.every((row) => row.segmentIds.length === LIMITS.segments)).toBe(
+    true
+  )
+}, 20000)
+
+test("large source documents stop at the byte budget before the row budget", async () => {
+  const f = await fixture()
+  for (let batch = 0; batch < 2; batch++)
+    await f.t.run(async (ctx) => {
+      for (let i = batch * 20; i < (batch + 1) * 20; i++)
+        await ctx.db.insert("contacts", {
+          organizationId: f.owner.team,
+          email: `large${i}@example.test`,
+          firstName: "",
+          lastName: "",
+          unsubscribed: false,
+          properties: { historical: "x".repeat(500000) },
+          search: "",
+          updatedAt: 0,
+        })
+    })
+  const result = await f.t.run((ctx) =>
+    filteredPage(
+      stream(ctx.db, schema)
+        .query("contacts")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", f.owner.team)
+        )
+        .order("desc"),
+      firstPage,
+      () => true,
+      LOG_SEARCH_BUDGET,
+      "large"
+    )
+  )
+  expect(result.page).toHaveLength(9)
+  expect(result.isDone).toBe(false)
+  expect(result.pageStatus).toBe("SplitRequired")
+})
+
+test("templates scan 512 nonmatches but reserve draft bytes only for matches", async () => {
+  const rows = source(600)
+  let inspected = 0
+  const empty = await filteredPage(
+    rows,
+    firstPage,
+    () => {
+      inspected++
+      return false
+    },
+    TEMPLATE_SEARCH_BUDGET,
+    "missing"
+  )
+  expect(inspected).toBe(512)
+  expect(empty.page).toEqual([])
+  expect(empty.isDone).toBe(false)
+  const dense = await filteredPage(
+    rows,
+    firstPage,
+    () => true,
+    TEMPLATE_SEARCH_BUDGET,
+    "row"
+  )
+  expect(dense.page).toHaveLength(8)
+  expect(dense.pageStatus).toBe("SplitRequired")
+  const continuation = await filteredPage(
+    rows,
+    { ...firstPage, cursor: dense.continueCursor },
+    () => true,
+    TEMPLATE_SEARCH_BUDGET,
+    "row"
+  )
+  expect(continuation.page[0]).toBe("row8")
 })

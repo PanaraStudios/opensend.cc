@@ -44,6 +44,13 @@ const segmentFilters = {
   search: v.optional(v.string()),
 }
 
+// 256 segments; reserve 128 KiB per aggregate total (tree + root + up to 17 children).
+export const SEGMENT_SEARCH_BUDGET = {
+  rows: 256,
+  bytes: 4 * 1024 * 1024,
+  bytesPerMatch: 128 * 1024,
+}
+
 /** The team's segments, newest first, a page at a time. */
 export const list = query({
   args: { ...segmentFilters, paginationOpts: paginationOptsValidator },
@@ -57,6 +64,7 @@ export const list = query({
       args.organizationId,
       args.paginationOpts,
       (segment) => matches(segment.name),
+      SEGMENT_SEARCH_BUDGET,
       args.search
     )
     return { ...result, page: await withSizes(ctx, result.page) }

@@ -32,6 +32,9 @@ const topicFilters = {
   search: v.optional(v.string()),
 }
 
+// 512 topic rows, no hydration; the 4 MiB byte ceiling also covers large descriptions.
+export const TOPIC_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
 /** The team's topics, newest first, a page at a time. */
 export const list = query({
   args: { ...topicFilters, paginationOpts: paginationOptsValidator },
@@ -45,6 +48,7 @@ export const list = query({
       args.organizationId,
       args.paginationOpts,
       (topic) => matches(topic.name, topic.description),
+      TOPIC_SEARCH_BUDGET,
       args.search
     )
   },

@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -182,6 +183,13 @@ export const keyFilters = v.object({
   /** Matches the name and the visible token prefix. */
   search: v.optional(v.string()),
 })
+// 512 keys + at most 512 tiny usage rows; well below 32k documents / 4096 ranges.
+export const KEY_SEARCH_BUDGET = {
+  rows: 512,
+  bytes: 4 * 1024 * 1024,
+  bytesPerMatch: 1024,
+}
+
 /** Newest first; substring search filters each bounded index page. */
 export async function keyPage(
   ctx: QueryCtx,
@@ -192,7 +200,7 @@ export async function keyPage(
 ) {
   const org = args.organizationId
   const search = args.search
-  const keys = ctx.db.query("apiKeys")
+  const keys = stream(ctx.db, schema).query("apiKeys")
   const rows = args.permission
     ? keys
         .withIndex("by_organizationId_and_permission", (q) =>
@@ -207,6 +215,7 @@ export async function keyPage(
     rows,
     args.paginationOpts,
     (key) => matches(key.name, key.tokenPrefix),
+    KEY_SEARCH_BUDGET,
     search
   )
   return {

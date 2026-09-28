@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -183,6 +184,13 @@ const templateFilters = {
   status: v.optional(templateStatusValue),
 }
 
+// Scan 512 metadata rows; reserve one maximum-size (1 MiB) draft per match.
+export const TEMPLATE_SEARCH_BUDGET = {
+  rows: 512,
+  bytes: 8 * 1024 * 1024,
+  bytesPerMatch: 1024 * 1024,
+}
+
 export const list = query({
   args: { ...templateFilters, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(listItem),
@@ -190,7 +198,7 @@ export const list = query({
     await requireTeam(ctx, args.organizationId)
     const search = args.search
     const matches = matchesSearch(search)
-    const templates = ctx.db.query("templates")
+    const templates = stream(ctx.db, schema).query("templates")
     const rows = args.status
       ? templates
           .withIndex("by_organizationId_and_status", (q) =>
@@ -208,6 +216,7 @@ export const list = query({
       rows,
       args.paginationOpts,
       (row) => matches(row.name, row.alias),
+      TEMPLATE_SEARCH_BUDGET,
       search
     )
     // The cards draw each email, so the page carries the draft markup.

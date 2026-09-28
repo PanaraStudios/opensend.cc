@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, convexToJson, type Value } from "convex/values"
 import {
   paginationOptsValidator,
@@ -203,6 +204,9 @@ async function writableEvent(ctx: MutationCtx, id: Id<"automationEvents">) {
   return event
 }
 
+// 512 definitions, no hydration; schema keys are already in the scanned document.
+export const EVENT_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
 /** Newest first; substring search filters each bounded index page. */
 export const list = query({
   args: {
@@ -215,7 +219,7 @@ export const list = query({
     await requireTeam(ctx, args.organizationId)
     const matches = matchesSearch(args.search)
     return filteredPage(
-      ctx.db
+      stream(ctx.db, schema)
         .query("automationEvents")
         .withIndex("by_organizationId", (q) =>
           q.eq("organizationId", args.organizationId)
@@ -223,6 +227,7 @@ export const list = query({
         .order("desc"),
       args.paginationOpts,
       (row) => matches(row.searchText, ...row.schema.map((field) => field.key)),
+      EVENT_SEARCH_BUDGET,
       args.search
     )
   },
