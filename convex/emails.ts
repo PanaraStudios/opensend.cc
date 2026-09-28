@@ -222,7 +222,11 @@ export async function createEmail(
   }
   if (!from) throw missing("from")
   if (!subject?.trim()) throw missing("subject")
-  if (!input.to.length) throw missing("to")
+  if (
+    !input.to.length &&
+    !(meta.source === "smtp" && (input.cc.length || input.bcc.length))
+  )
+    throw missing("to")
   if (!html && !text) throw invalid("Missing `html` or `text` field.")
   const [sender] = mailboxes("from", [from])
   const to = mailboxes("to", input.to)

@@ -38,6 +38,7 @@ type Env = {
   readonly SES_CALLBACK_ORIGIN: string | undefined;
   readonly SES_ENCRYPTION_KEY: string | undefined;
   readonly SITE_URL: string;
+  readonly SMTP_HOST: string | undefined;
   readonly SSO_ENCRYPTION_KEY: string;
 };
 

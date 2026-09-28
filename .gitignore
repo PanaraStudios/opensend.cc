@@ -48,3 +48,5 @@ next-env.d.ts
 # Browser tests may contain test-only credentials and verification links.
 /test-results/
 /playwright-report/
+
+/docker/smtp/certs/

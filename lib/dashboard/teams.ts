@@ -212,10 +212,6 @@ export function emptyWorkspace(
       ...SEED_STATE.settings,
       teamName: name,
       teamSlug: slug,
-      smtp: {
-        ...SEED_STATE.settings.smtp,
-        enabled: false,
-      },
     },
   }
 }

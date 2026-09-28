@@ -57,6 +57,7 @@ import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
 import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
+import { useSmtp } from "@/lib/smtp/use-smtp"
 import { useDashboard } from "@/lib/dashboard/store"
 import { useTopics } from "@/lib/audience/use-audience"
 import {
@@ -533,13 +534,8 @@ export function SettingsTeam() {
 }
 
 export function SettingsSmtp() {
-  const { state, updateSettings } = useDashboard()
-  const smtp = state.settings.smtp
-  const updateSmtp = (patch: Partial<typeof smtp>) =>
-    updateSettings((current) => ({
-      ...current,
-      smtp: { ...current.smtp, ...patch },
-    }))
+  const { smtp, updateSmtp } = useSmtp()
+  if (smtp === undefined) return <Skeleton className="h-64 w-full" />
 
   return (
     <>
@@ -560,7 +556,11 @@ export function SettingsSmtp() {
           <Switch
             id="smtp-enabled"
             checked={smtp.enabled}
-            onCheckedChange={(checked) => updateSmtp({ enabled: checked })}
+            onCheckedChange={(checked) =>
+              updateSmtp({ enabled: checked }).catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
+            }
           />
         </Field>
         <Field>
@@ -573,7 +573,11 @@ export function SettingsSmtp() {
             id="smtp-port"
             className="w-full"
             value={String(smtp.port)}
-            onChange={(next) => updateSmtp({ port: Number(next) as 465 | 587 })}
+            onChange={(next) =>
+              updateSmtp({ port: Number(next) as 465 | 587 }).catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
+            }
             items={SMTP_PORT_ITEMS}
           />
         </Field>

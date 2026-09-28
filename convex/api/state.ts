@@ -1,3 +1,4 @@
+import { smtpSettings } from "../smtp"
 import { v } from "convex/values"
 import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
 import { components, internal } from "../_generated/api"
@@ -67,6 +68,7 @@ export const begin = internalMutation({
       })
     ),
     permission: v.union(v.literal("full_access"), v.literal("sending")),
+    smtp: v.optional(v.boolean()),
     idempotency: v.optional(
       v.object({ key: v.string(), requestHash: v.string() })
     ),
@@ -150,6 +152,12 @@ export const begin = internalMutation({
           "The domain this API key sends from was removed, so it can no longer send email."
         )
     }
+    if (args.smtp) {
+      if (!caller.apiKeyId)
+        return fail(403, "invalid_api_key", "SMTP requires an API key")
+      if (!(await smtpSettings(ctx, caller.organizationId))?.enabled)
+        return fail(403, "smtp_disabled", "SMTP is disabled for this team")
+    }
     if (!args.idempotency) return { kind: "ok" as const, caller, rate }
     const { key, requestHash } = args.idempotency
     const now = Date.now()
@@ -195,6 +203,7 @@ export const finish = internalMutation({
   args: {
     caller: callerValue,
     log: v.object({
+      source: v.optional(v.literal("smtp")),
       method: httpMethodValue,
       path: v.string(),
       status: v.number(),
@@ -213,14 +222,14 @@ export const finish = internalMutation({
   handler: async (ctx, { caller, log, idempotencyId }) => {
     const logId = await writeLog(ctx, caller.organizationId, {
       ...log,
-      source: "api",
+      source: log.source ?? "api",
       apiKeyId: caller.apiKeyId,
       oauthGrantId: caller.oauthGrantId,
     })
     if (
       log.emailId &&
       log.method === "POST" &&
-      log.path === "/emails" &&
+      (log.path === "/emails" || log.path === "/smtp/emails") &&
       log.status < 300
     ) {
       const id = ctx.db.normalizeId("emails", log.emailId)

@@ -16,3 +16,6 @@ test-results
 playwright-report
 tests
 playwright.config.ts
+
+docker/smtp/certs
+docker/smtp/*.test.mjs
