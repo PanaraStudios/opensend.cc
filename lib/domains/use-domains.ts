@@ -112,21 +112,24 @@ export function useDomainCheck(domains: Domain[]) {
 
 /** Bounded options for the existing dropdowns and command search. */
 export function useDomainOptions(
-  filters: { search?: string; status?: Doc<"domains">["status"] } = {},
+  filters: {
+    search?: string
+    status?: Doc<"domains">["status"]
+    selectedId?: Id<"domains">
+  } = {},
   enabled = true
 ) {
   const { activeTeamId } = useWorkspace()
   const page = useQuery(
-    api.domains.list,
+    api.domains.options,
     activeTeamId && enabled
       ? {
           organizationId: activeTeamId,
           ...filters,
-          paginationOpts: { numItems: 100, cursor: null },
         }
       : "skip"
   )
-  return React.useMemo(() => page?.page.map(asDomain) ?? [], [page])
+  return React.useMemo(() => page?.map(asDomain) ?? [], [page])
 }
 export function useDomain(id: string | null | undefined) {
   const row = useQuery(api.domains.get, id ? { id } : "skip")

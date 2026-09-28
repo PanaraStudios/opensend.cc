@@ -1,3 +1,4 @@
+import { includeSelected, matchingOptions } from "../lib/dashboard/options"
 import type { MutationCtx } from "./_generated/server"
 import type { Doc } from "./_generated/dataModel"
 import { v, ConvexError } from "convex/values"
@@ -11,7 +12,7 @@ import { requireTeam } from "./access"
 import schema from "./schema"
 import { LIMITS, listProperties } from "./audience"
 import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
-import { matchesSearch, teamPage } from "./lists"
+import { matchesSearch, teamPage, selectedOption } from "./lists"
 import { propertyTypeValue } from "./tables/audience"
 import {
   normalizePropertyKey,
@@ -62,7 +63,7 @@ export const count = query({
 })
 
 /** Every custom property of the team, newest first, for pickers. */
-export const options = query({
+export const definitions = query({
   args: { organizationId: v.string() },
   returns: v.array(schema.doc("contactProperties")),
   handler: async (ctx, { organizationId }) => {
@@ -70,6 +71,33 @@ export const options = query({
     return (await listProperties(ctx, organizationId)).sort(
       (a, b) => b._creationTime - a._creationTime
     )
+  },
+})
+
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("contactProperties")),
+  },
+  returns: v.array(schema.doc("contactProperties")),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = (await listProperties(ctx, organizationId)).sort(
+      (a, b) => b._creationTime - a._creationTime
+    )
+    const selected = await selectedOption(
+      ctx,
+      "contactProperties",
+      organizationId,
+      selectedId
+    )
+    const choices = includeSelected(
+      matchingOptions(rows, search, (row) => [row.key, row.name]),
+      selected && !selected.deleting ? selected : null,
+      (row) => row._id
+    )
+    return choices
   },
 })
 

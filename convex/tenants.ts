@@ -1,3 +1,7 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import {
@@ -119,16 +123,17 @@ export const retry = mutation({
   },
 })
 export const cleanup = query({
-  args: {},
-  returns: v.array(schema.doc("sesTenants")),
-  handler: async (ctx) => {
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(schema.doc("sesTenants")),
+  handler: async (ctx, { paginationOpts }) => {
     await requireInstallationAdmin(ctx)
     return ctx.db
       .query("sesTenants")
       .withIndex("by_operation_and_deleted_and_phase", (q) =>
         q.eq("operation", "remove").eq("deleted", false).eq("phase", "failed")
       )
-      .take(25)
+      .order("desc")
+      .paginate(paginationOpts)
   },
 })
 export const retryCleanup = mutation({

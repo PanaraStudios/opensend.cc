@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
 import { useParams } from "next/navigation"
 import {
   ChartLineIcon,
@@ -417,18 +418,23 @@ function TestEventForm({
   const { runAutomation } = useAutomationCommands()
   const event = useAutomationEvent(automation.trigger)
   const { activeTeamId } = useWorkspace()
+  const [chosenContact, setChosenContact] = React.useState<{
+    id: string
+    email: string
+  } | null>(null)
   const rows = useQuery(
     api.contacts.options,
-    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          selectedId: chosenContact?.id as Id<"contacts"> | undefined,
+        }
+      : "skip"
   )
   const contacts = (rows ?? []).map((row) => ({
     id: row._id,
     email: row.email,
   }))
-  const [chosenContact, setChosenContact] = React.useState<{
-    id: string
-    email: string
-  } | null>(null)
   if (!chosenContact && contacts[0]) setChosenContact(contacts[0])
   const contactId = chosenContact?.id ?? ""
   const setContactId = (id: string) => {

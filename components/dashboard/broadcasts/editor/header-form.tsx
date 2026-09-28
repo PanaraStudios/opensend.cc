@@ -17,7 +17,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useSegments, useTopics } from "@/lib/audience/use-audience"
+import { useSegmentOptions, useTopicOptions } from "@/lib/audience/use-audience"
 import { useDraft } from "@/components/dashboard/primitives"
 import { useDomainOptions } from "@/lib/domains/use-domains"
 import { emailFrom, fromAddresses } from "@/lib/dashboard/broadcast"
@@ -61,7 +61,11 @@ function PaperSelect({
   testId: string
   label: string
 }) {
-  const current = items.find((item) => item.value === value) ?? selectedItem
+  const choices =
+    selectedItem && !items.some((item) => item.value === selectedItem.value)
+      ? [...items, selectedItem]
+      : items
+  const current = choices.find((item) => item.value === value)
 
   return (
     <DropdownMenu>
@@ -87,7 +91,7 @@ function PaperSelect({
           value={value}
           onValueChange={(next) => onValueChange(String(next))}
         >
-          {items.map((item) => (
+          {choices.map((item) => (
             <DropdownMenuRadioItem
               key={item.value}
               value={item.value}
@@ -196,8 +200,8 @@ export function BroadcastSendFields({
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
 }) {
-  const segments = useSegments() ?? []
-  const topics = useTopics() ?? []
+  const segments = useSegmentOptions(item.segmentId) ?? []
+  const topics = useTopicOptions(item.topicId) ?? []
   const commands = useBroadcastCommands()
   const updateBroadcast = (
     id: string,

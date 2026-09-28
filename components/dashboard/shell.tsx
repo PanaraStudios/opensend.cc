@@ -212,6 +212,7 @@ function CommandMenu({
                 {emails.map((email) => (
                   <CommandItem
                     key={email.id}
+                    serverResult
                     value={`email ${email.subject} ${email.to}`}
                     onSelect={() => go(`/emails/${email.id}`)}
                   >
@@ -223,6 +224,7 @@ function CommandMenu({
                 {domains.map((domain) => (
                   <CommandItem
                     key={domain.id}
+                    serverResult
                     value={`domain ${domain.name}`}
                     onSelect={() => go(`/domains/${domain.id}`)}
                   >
@@ -234,6 +236,7 @@ function CommandMenu({
                 {contacts.map((contact) => (
                   <CommandItem
                     key={contact.id}
+                    serverResult
                     value={`contact ${contact.email} ${contact.firstName} ${contact.lastName}`}
                     onSelect={() => go(`/contacts/${contact.id}`)}
                   >

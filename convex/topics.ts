@@ -1,3 +1,4 @@
+import { includeSelected, matchingOptions } from "../lib/dashboard/options"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -9,7 +10,12 @@ import { requireTeam } from "./access"
 import schema from "./schema"
 import { CLEANUP_BATCH, LIMITS, requireRoom } from "./audience"
 import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
-import { matchesSearch, teamPage } from "./lists"
+import {
+  matchesSearch,
+  teamPage,
+  selectedOption,
+  configurationRows,
+} from "./lists"
 import { topicDefaultValue, topicVisibilityValue } from "./tables/audience"
 import type { MutationCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -65,18 +71,42 @@ export const count = query({
 })
 
 /** Every topic of the team, newest first, for pickers. */
-export const options = query({
+export const definitions = query({
   args: { organizationId: v.string() },
   returns: v.array(schema.doc("topics")),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId)
-    return ctx.db
-      .query("topics")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .order("desc")
-      .take(LIMITS.topics)
+    return configurationRows(ctx, "topics", organizationId, LIMITS.topics)
+  },
+})
+
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("topics")),
+  },
+  returns: v.array(schema.doc("topics")),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = await configurationRows(
+      ctx,
+      "topics",
+      organizationId,
+      LIMITS.topics
+    )
+    const selected = await selectedOption(
+      ctx,
+      "topics",
+      organizationId,
+      selectedId
+    )
+    const choices = includeSelected(
+      matchingOptions(rows, search, (row) => [row.name, row.description]),
+      selected,
+      (row) => row._id
+    )
+    return choices
   },
 })
 

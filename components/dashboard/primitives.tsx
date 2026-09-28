@@ -1717,6 +1717,10 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  const choices =
+    selectedItem && !items.some((item) => item.value === selectedItem.value)
+      ? [...items, selectedItem]
+      : items
   return (
     <Select
       value={value}
@@ -1724,11 +1728,7 @@ export function OptionSelect({
       onValueChange={(next) => {
         if (next && onChange) onChange(next)
       }}
-      items={
-        selectedItem && !items.some((item) => item.value === selectedItem.value)
-          ? [...items, selectedItem]
-          : [...items]
-      }
+      items={[...choices]}
       name={name}
       disabled={disabled}
     >
@@ -1742,7 +1742,7 @@ export function OptionSelect({
       </SelectTrigger>
       <SelectContent align={align} alignItemWithTrigger={false}>
         <SelectGroup>
-          {items.map((item) => (
+          {choices.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.dotClassName ? (
                 <span
@@ -1810,12 +1810,19 @@ export function SuggestInput({
     setQuery(label)
   }
 
+  const settledSearch = useDebouncedValue(query === label ? "" : query)
+  React.useEffect(() => {
+    onSearch?.(settledSearch)
+  }, [onSearch, settledSearch])
+
   const items = React.useMemo<Suggestion[]>(() => {
     const text = query.trim()
     const needle = text === label ? "" : text.toLowerCase()
     const choices = options.map((option) =>
       typeof option === "string" ? { value: option, label: option } : option
     )
+    if (value && !choices.some((option) => option.value === value))
+      choices.push({ value, label })
     const matches = choices
       .filter(
         (option) => onSearch || option.label.toLowerCase().includes(needle)
@@ -1826,7 +1833,7 @@ export function SuggestInput({
       !choices.some((option) => option.label === text)
       ? [...matches, { value: text, label: text, create: true }]
       : matches
-  }, [options, query, label, allowCreate, onSearch])
+  }, [options, query, label, value, allowCreate, onSearch])
 
   return (
     <Combobox
@@ -1839,13 +1846,11 @@ export function SuggestInput({
       itemToStringLabel={(item: Suggestion) => item.label}
       onInputValueChange={(next) => {
         setQuery(next)
-        onSearch?.(next === label ? "" : next)
       }}
       onOpenChange={(open) => {
         /* Closed without a pick, what was typed is dropped. */
         if (!open) {
           setQuery(label)
-          onSearch?.("")
         }
       }}
       onValueChange={(item: Suggestion | null) => {

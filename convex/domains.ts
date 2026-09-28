@@ -1,3 +1,5 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { selectedOption } from "./lists"
 import { trackingTarget } from "./ses/contracts"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -106,6 +108,88 @@ export const list = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     return domainPage(ctx, args)
+  },
+})
+/** Shared by live-domain pickers and historical metrics suggestions. */
+export async function domainOptionRows(
+  ctx: QueryCtx,
+  args: {
+    organizationId: string
+    search?: string
+    selectedId?: Id<"domains">
+    status?: Doc<"domains">["status"]
+    historical?: boolean
+  }
+) {
+  const prefix = args.search?.trim().toLowerCase() ?? ""
+  const domains = ctx.db.query("domains")
+  const rows = prefix
+    ? args.historical
+      ? await domains
+          .withIndex("by_organizationId_and_name", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .gte("name", prefix)
+              .lt("name", prefix + "\uffff")
+          )
+          .take(OPTION_LIMIT)
+      : (
+          await domainPage(ctx, {
+            ...args,
+            paginationOpts: { cursor: null, numItems: OPTION_LIMIT },
+          })
+        ).page
+    : args.historical
+      ? await domains
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+      : args.status
+        ? await domains
+            .withIndex("by_organizationId_and_deleted_and_status", (q) =>
+              q
+                .eq("organizationId", args.organizationId)
+                .eq("deleted", false)
+                .eq("status", args.status!)
+            )
+            .order("desc")
+            .take(OPTION_LIMIT)
+        : await domains
+            .withIndex("by_organizationId_and_deleted", (q) =>
+              q.eq("organizationId", args.organizationId).eq("deleted", false)
+            )
+            .order("desc")
+            .take(OPTION_LIMIT)
+  const selected = await selectedOption(
+    ctx,
+    "domains",
+    args.organizationId,
+    args.selectedId
+  )
+  return includeSelected(
+    rows,
+    selected &&
+      (args.historical ||
+        (!selected.deleted &&
+          (!args.status || selected.status === args.status)))
+      ? selected
+      : null,
+    (row) => row._id
+  )
+}
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    status: v.optional(domainStatusValue),
+    selectedId: v.optional(v.id("domains")),
+  },
+  returns: v.array(schema.doc("domains")),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "read")
+    return domainOptionRows(ctx, args)
   },
 })
 export const count = query({

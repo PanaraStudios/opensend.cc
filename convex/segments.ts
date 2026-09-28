@@ -1,3 +1,4 @@
+import { includeSelected, matchingOptions } from "../lib/dashboard/options"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -9,7 +10,12 @@ import { requireTeam } from "./access"
 import schema from "./schema"
 import { CLEANUP_BATCH, LIMITS, requireRoom } from "./audience"
 import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
-import { matchesSearch, teamPage } from "./lists"
+import {
+  matchesSearch,
+  teamPage,
+  selectedOption,
+  configurationRows,
+} from "./lists"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -83,19 +89,48 @@ export const count = query({
 
 /** Every segment of the team, newest first, for pickers; the per-team
     limit keeps it one read. */
-export const options = query({
+export const definitions = query({
   args: { organizationId: v.string() },
   returns: v.array(segmentValue),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId)
-    const segments = await ctx.db
-      .query("segments")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .order("desc")
-      .take(LIMITS.segments)
+    const segments = await configurationRows(
+      ctx,
+      "segments",
+      organizationId,
+      LIMITS.segments
+    )
     return withSizes(ctx, segments)
+  },
+})
+
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("segments")),
+  },
+  returns: v.array(segmentValue),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = await configurationRows(
+      ctx,
+      "segments",
+      organizationId,
+      LIMITS.segments
+    )
+    const selected = await selectedOption(
+      ctx,
+      "segments",
+      organizationId,
+      selectedId
+    )
+    const choices = includeSelected(
+      matchingOptions(rows, search, (row) => [row.name]),
+      selected,
+      (row) => row._id
+    )
+    return withSizes(ctx, choices)
   },
 })
 

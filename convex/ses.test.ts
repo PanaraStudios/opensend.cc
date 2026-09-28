@@ -1554,7 +1554,7 @@ describe("native SES team tenants", () => {
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).not.toContain("DeleteTenantCommand")
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
-    expect(await f.owner.client.query(api.tenants.cleanup)).toHaveLength(1)
+    expect((await f.owner.client.query(api.tenants.cleanup, { paginationOpts: { cursor: null, numItems: 20 } })).page).toHaveLength(1)
     await expect(
       f.outsider.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     ).rejects.toThrow("installation administrator")

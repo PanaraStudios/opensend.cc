@@ -1,3 +1,4 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { v, ConvexError } from "convex/values"
 import {
   internalMutation,
@@ -174,23 +175,43 @@ export const setSender = mutation({
 
 /** Installation scope deliberately includes domains owned by any team. */
 export const domains = query({
-  args: { search: v.optional(v.string()) },
+  args: {
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("domains")),
+  },
   returns: v.array(schema.doc("domains").pick("_id", "name", "region")),
-  handler: async (ctx, { search }) => {
+  handler: async (ctx, { search, selectedId }) => {
     await requireInstallationAdmin(ctx)
     const prefix = search?.trim().toLowerCase() ?? ""
-    return (
-      await ctx.db
-        .query("domains")
-        .withIndex("by_deleted_and_status_and_sending_and_name", (q) =>
-          q
-            .eq("deleted", false)
-            .eq("status", "verified")
-            .eq("sending", true)
-            .gte("name", prefix)
-            .lt("name", prefix + "\uffff")
-        )
-        .take(100)
+    const rows = prefix
+      ? await ctx.db
+          .query("domains")
+          .withIndex("by_deleted_and_status_and_sending_and_name", (q) =>
+            q
+              .eq("deleted", false)
+              .eq("status", "verified")
+              .eq("sending", true)
+              .gte("name", prefix)
+              .lt("name", prefix + "\uffff")
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("domains")
+          .withIndex("by_deleted_and_status_and_sending", (q) =>
+            q.eq("deleted", false).eq("status", "verified").eq("sending", true)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+    const selected = selectedId ? await ctx.db.get("domains", selectedId) : null
+    return includeSelected(
+      rows,
+      selected &&
+        !selected.deleted &&
+        selected.status === "verified" &&
+        selected.sending
+        ? selected
+        : null,
+      (row) => row._id
     ).map(({ _id, name, region }) => ({ _id, name, region }))
   },
 })

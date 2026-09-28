@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -273,7 +274,12 @@ export function MetricsView() {
   const { activeTeamId } = useWorkspace()
   const options = useQuery(
     api.metrics.domainOptions,
-    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          selectedId: domain === "all" ? undefined : (domain as Id<"domains">),
+        }
+      : "skip"
   )
   const domainItems: SelectOption[] = [
     { value: "all", label: "All domains" },
