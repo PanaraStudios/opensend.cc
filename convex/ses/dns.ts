@@ -1,8 +1,7 @@
 "use node"
 import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
-import type { Doc } from "../_generated/dataModel"
-import { identityRecords, type DnsRecord } from "./records"
+import { identityRecords, type DnsRecord, type RecordDomain } from "./records"
 export const canonical = (value: string) =>
   value.trim().toLowerCase().replace(/\.$/, "")
 const isSpf = (value: string) => /^v=spf1(\s|$)/i.test(value)
@@ -149,10 +148,7 @@ export async function authoritativeLookups(
 /** A domain's status, read from its SES identity and its live DNS. */
 export async function verificationState(
   identity: GetEmailIdentityResponse,
-  domain: Pick<
-    Doc<"domains">,
-    "name" | "region" | "customReturnPath" | "receiving"
-  >
+  domain: RecordDomain
 ) {
   const recursive = lookups(3000)
   const authoritative = await authoritativeLookups(domain.name, recursive)

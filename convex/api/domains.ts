@@ -12,6 +12,7 @@ import {
   createDomain,
   domainChanges,
   start,
+  trackingFields,
   updateDomain,
   verifyDomain,
 } from "../domains"
@@ -29,6 +30,7 @@ import { cursorPage, listArgs } from "./paging"
 import {
   apiRoute,
   apiTime,
+  booleanField,
   enumField,
   listParams,
   objectBody,
@@ -88,6 +90,7 @@ export const create = internalMutation({
     name: v.string(),
     region: v.optional(regionValue),
     customReturnPath: v.string(),
+    ...trackingFields,
   },
   returns: schema.doc("domains"),
   handler: async (ctx, { caller, region, ...args }) => {
@@ -134,8 +137,11 @@ function summary(domain: Doc<"domains">) {
     status: domain.status,
     created_at: apiTime(domain._creationTime),
     region: domain.region,
-    open_tracking: false,
-    click_tracking: false,
+    open_tracking: domain.openTracking ?? false,
+    click_tracking: domain.clickTracking ?? false,
+    ...(domain.trackingSubdomain
+      ? { tracking_subdomain: domain.trackingSubdomain }
+      : {}),
     capabilities: {
       sending: capability(domain.sending),
       receiving: capability(domain.receiving ?? false),
@@ -170,19 +176,19 @@ function capabilities(body: Record<string, unknown>) {
     ...(receiving ? { receiving: receiving === "enabled" } : {}),
   }
 }
-/** Tracking is not implemented; a request to turn it on is refused rather
-    than silently ignored. */
-function refuseTracking(body: Record<string, unknown>) {
-  if (body.open_tracking === true || body.click_tracking === true)
-    throw apiError(
-      422,
-      "validation_error",
-      "Open and click tracking are not available on this server."
-    )
+/** `open_tracking`, `click_tracking` and `tracking_subdomain` of a body. */
+function tracking(body: Record<string, unknown>) {
+  const openTracking = booleanField(body, "open_tracking")
+  const clickTracking = booleanField(body, "click_tracking")
+  const trackingSubdomain = stringField(body, "tracking_subdomain")
+  return {
+    ...(openTracking === undefined ? {} : { openTracking }),
+    ...(clickTracking === undefined ? {} : { clickTracking }),
+    ...(trackingSubdomain === undefined ? {} : { trackingSubdomain }),
+  }
 }
 
-/** `/domains`, as Resend documents it. Ids are Convex ids, not UUIDs;
-    `open_tracking`/`click_tracking` are always false. */
+/** `/domains`, as Resend documents it. Ids are Convex ids, not UUIDs. */
 export function registerDomainRoutes(http: HttpRouter) {
   const changed = (id: Id<"domains"> | null) => {
     if (!id) throw notFound("Domain")
@@ -212,7 +218,6 @@ export function registerDomainRoutes(http: HttpRouter) {
     permission: "full_access",
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
-      refuseTracking(input)
       /* A new domain always starts sending with opportunistic TLS and no
          receiving; other settings wait until it is provisioned. */
       const wanted = capabilities(input)
@@ -232,6 +237,7 @@ export function registerDomainRoutes(http: HttpRouter) {
         region: enumField(input, "region", regions),
         customReturnPath:
           stringField(input, "custom_return_path") ?? DEFAULT_RETURN_PATH,
+        ...tracking(input),
       })
       return { body: detail(domain) }
     },
@@ -255,7 +261,6 @@ export function registerDomainRoutes(http: HttpRouter) {
     permission: "full_access",
     handler: async (ctx, { caller, params, body }) => {
       const input = objectBody(body)
-      refuseTracking(input)
       const tls = enumField(input, "tls", ["opportunistic", "enforced"])
       return changed(
         await ctx.runMutation(internal.api.domains.change, {
@@ -263,7 +268,11 @@ export function registerDomainRoutes(http: HttpRouter) {
           id: params.id,
           action: {
             kind: "update",
-            changes: { ...capabilities(input), ...(tls ? { tls } : {}) },
+            changes: {
+              ...capabilities(input),
+              ...tracking(input),
+              ...(tls ? { tls } : {}),
+            },
           },
         })
       )

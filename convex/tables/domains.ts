@@ -33,6 +33,15 @@ export const domainTables = {
     deleted: v.boolean(),
     sending: v.boolean(),
     receiving: v.optional(v.boolean()),
+    /** The receipt rule set holding this domain's receipt rule, from just
+        before the rule is created until it is deleted. */
+    receiptRuleSet: v.optional(v.string()),
+    /* What the team asked for. SES tracks through the subdomain only once
+       its CNAME is verified, so links never point at a host that does not
+       resolve yet. */
+    trackingSubdomain: v.optional(v.string()),
+    openTracking: v.optional(v.boolean()),
+    clickTracking: v.optional(v.boolean()),
     tls: tlsValue,
     pendingTls: v.optional(tlsValue),
     records: v.array(recordValue),
@@ -56,6 +65,12 @@ export const domainTables = {
   })
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
     .index("by_nextCheckAt", ["nextCheckAt"])
+    // Whether any domain in a region still receives mail.
+    .index("by_region_and_deleted_and_receiving", [
+      "region",
+      "deleted",
+      "receiving",
+    ])
     // The REST API lists newest first, like Resend.
     .index("by_organizationId_and_deleted", ["organizationId", "deleted"])
     .index("by_organizationId_and_deleted_and_name", [

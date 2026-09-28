@@ -1,5 +1,11 @@
 "use node"
 import { X509Certificate, verify } from "node:crypto"
+import {
+  ConfirmSubscriptionCommand,
+  GetSubscriptionAttributesCommand,
+  type SNSClient,
+} from "@aws-sdk/client-sns"
+import { limitedBody } from "./web"
 
 export type SnsMessage = Record<string, string> & {
   Type: "Notification" | "SubscriptionConfirmation"
@@ -91,4 +97,58 @@ export function verifySignature(message: SnsMessage, pem: string) {
     )
   )
     throw new Error("Invalid SNS signature")
+}
+
+/* SNS signs with a few long-lived certificates, so a warm instance reuses the
+   ones that already verified a signature instead of fetching one per event.
+   Validity is still checked on every message. */
+const certificates = new Map<string, string>()
+async function certificate(url: string) {
+  const response = await fetch(url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) throw new Error("Unable to fetch SNS certificate")
+  return limitedBody(response, 32768)
+}
+/** Throws unless SNS signed the message. Call it only for a topic of ours,
+    so a foreign envelope never makes us fetch anything. */
+export async function verifySns(message: SnsMessage) {
+  const url = certificateUrl(message)
+  const cached = certificates.get(url)
+  const pem = cached ?? (await certificate(url))
+  verifySignature(message, pem)
+  if (!cached) {
+    if (certificates.size >= 16) certificates.clear()
+    certificates.set(url, pem)
+  }
+}
+/** Confirms a verified SubscriptionConfirmation through the API, never by
+    following its SubscribeURL, and checks the subscription is the one we
+    asked for. Returns its ARN. */
+export async function confirmSubscription(
+  sns: SNSClient,
+  message: SnsMessage,
+  endpoint: string
+) {
+  const confirmed = await sns.send(
+    new ConfirmSubscriptionCommand({
+      TopicArn: message.TopicArn,
+      Token: message.Token,
+      AuthenticateOnUnsubscribe: "true",
+    })
+  )
+  const attributes = await sns.send(
+    new GetSubscriptionAttributesCommand({
+      SubscriptionArn: confirmed.SubscriptionArn,
+    })
+  )
+  if (
+    !confirmed.SubscriptionArn ||
+    attributes.Attributes?.Endpoint !== endpoint ||
+    attributes.Attributes?.TopicArn !== message.TopicArn ||
+    attributes.Attributes?.PendingConfirmation === "true"
+  )
+    throw new Error("Unexpected SNS subscription")
+  return confirmed.SubscriptionArn
 }

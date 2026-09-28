@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { patchRow } from "./counts"
+import { mockInboundAws } from "./testHelpers/inboundAws.fixture"
 import type { Doc } from "./_generated/dataModel"
 import {
   encryptCredentials,
@@ -1935,6 +1936,8 @@ async function receivingFixture() {
   await f.t.run((ctx) =>
     patchRow(ctx, "domains", f.domain, { operation: "refresh" })
   )
+  // Turning receiving on sets up the region's inbound mail first.
+  mockInboundAws(f.installation)
   return f
 }
 /** Publish everything SES asks for, plus the optional inbound MX and DMARC. */

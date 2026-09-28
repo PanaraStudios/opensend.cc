@@ -349,6 +349,20 @@ export function stringField(
     )
   return value
 }
+export function booleanField(
+  body: Record<string, unknown>,
+  name: string
+): boolean | undefined {
+  const value = body[name]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "boolean")
+    throw apiError(
+      422,
+      "validation_error",
+      `The \`${name}\` field must be a boolean.`
+    )
+  return value
+}
 export function enumField<T extends string>(
   body: Record<string, unknown>,
   name: string,

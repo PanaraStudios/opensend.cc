@@ -1,6 +1,7 @@
 import {
   dmarcRecord as serverDmarcRecord,
   receivingRecord as serverReceivingRecord,
+  trackingRecord as serverTrackingRecord,
 } from "../../convex/ses/records"
 import { isDomainName, pluralize } from "./format"
 import type {
@@ -14,6 +15,7 @@ import type {
 } from "./types"
 
 export const DEFAULT_RETURN_PATH = "send"
+export const DEFAULT_TRACKING_SUBDOMAIN = "links"
 /* "Auto" is what providers show for an inherited TTL; a zone file needs a
    number, and 300s is the usual default. */
 const ZONE_TTL = 300
@@ -116,18 +118,6 @@ export function sendingEnabled(domain: Domain): boolean {
   return domain.sending !== false
 }
 
-function trackingRecord(domain: Domain): DnsRecord {
-  return {
-    id: `${domain.id}_tracking`,
-    kind: "Tracking",
-    type: "CNAME",
-    name: `${domain.trackingSubdomain}.${domain.name}`,
-    value: `r.${domain.region}.awstrack.me`,
-    ttl: "Auto",
-    status: "not_started",
-  }
-}
-
 /** A record the switches ask for before the server has stored it: the
     server's own values, not yet started. */
 const unstarted = (domain: Domain, record: DnsRecord): DnsRecord => ({
@@ -136,6 +126,16 @@ const unstarted = (domain: Domain, record: DnsRecord): DnsRecord => ({
   ttl: "Auto",
   status: "not_started",
 })
+
+function trackingRecord(domain: Domain): DnsRecord {
+  return unstarted(
+    domain,
+    serverTrackingRecord(
+      `${domain.trackingSubdomain}.${domain.name}`,
+      domain.region
+    )
+  )
+}
 
 function receivingRecord(domain: Domain): DnsRecord {
   return unstarted(domain, serverReceivingRecord(domain.name, domain.region))

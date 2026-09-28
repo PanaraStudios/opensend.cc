@@ -16,8 +16,9 @@ export function asDomain(row: Doc<"domains">): Domain {
     provider: row.dnsProvider,
     status: row.status,
     createdAt: row._creationTime,
-    openTracking: false,
-    clickTracking: false,
+    openTracking: row.openTracking ?? false,
+    clickTracking: row.clickTracking ?? false,
+    trackingSubdomain: row.trackingSubdomain,
     tls: row.tls,
     customReturnPath: row.customReturnPath,
     receiving: row.receiving ?? false,
@@ -70,7 +71,17 @@ export function useDomainCommands() {
     deleteDomain: (id: string) => remove({ id: id as Id<"domains"> }),
     updateDomain: (
       id: string,
-      patch: { tls?: Domain["tls"]; sending?: boolean; receiving?: boolean }
+      patch: Partial<
+        Pick<
+          Domain,
+          | "tls"
+          | "sending"
+          | "receiving"
+          | "trackingSubdomain"
+          | "openTracking"
+          | "clickTracking"
+        >
+      >
     ) => update({ id: id as Id<"domains">, ...patch }),
     /** The DNS provider's own page, with every record filled in. */
     autoConfigureUrl: (id: string) => applyUrl({ id: id as Id<"domains"> }),

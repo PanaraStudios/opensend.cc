@@ -1,12 +1,18 @@
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
 import type { Infer } from "convex/values"
 import type { Doc } from "../_generated/dataModel"
-import { recordValue } from "./contracts"
+import { recordValue, trackingTarget } from "./contracts"
 export type DnsRecord = Infer<typeof recordValue>
 /** The domain fields its DNS records are derived from. */
-type RecordDomain = Pick<
+export type RecordDomain = Pick<
   Doc<"domains">,
-  "name" | "region" | "customReturnPath" | "receiving"
+  | "name"
+  | "region"
+  | "customReturnPath"
+  | "receiving"
+  | "trackingSubdomain"
+  | "openTracking"
+  | "clickTracking"
 >
 // Recommended, never required: any existing policy stays authoritative.
 export const dmarcRecord = (name: string): DnsRecord => ({
@@ -25,6 +31,23 @@ export const receivingRecord = (name: string, region: string): DnsRecord => ({
   name,
   value: `inbound-smtp.${region}.amazonaws.com`,
   priority: 10,
+  ttl: "300",
+  status: "pending",
+})
+/** The tracking host while a subdomain is set and some tracking is on, as
+    the dashboard's `trackingEnabled` reads it. */
+export const trackingHost = (domain: RecordDomain) =>
+  domain.trackingSubdomain && (domain.openTracking || domain.clickTracking)
+    ? `${domain.trackingSubdomain}.${domain.name}`
+    : null
+/** SES's HTTP redirect option: the subdomain points at SES's tracking host.
+    https://docs.aws.amazon.com/ses/latest/dg/configure-custom-open-click-domains.html */
+export const trackingRecord = (name: string, region: string): DnsRecord => ({
+  id: "tracking",
+  kind: "Tracking",
+  type: "CNAME",
+  name,
+  value: trackingTarget(region),
   ttl: "300",
   status: "pending",
 })
@@ -54,6 +77,9 @@ export function mailRecords(domain: RecordDomain): DnsRecord[] {
     },
     dmarcRecord(domain.name),
     ...(domain.receiving ? [receivingRecord(domain.name, domain.region)] : []),
+    ...(trackingHost(domain)
+      ? [trackingRecord(trackingHost(domain)!, domain.region)]
+      : []),
   ]
 }
 /** Every record the domain needs: SES's Easy DKIM CNAMEs, then the rest. */
