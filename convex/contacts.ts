@@ -379,7 +379,8 @@ export const setTopic = mutation({
   handler: async (ctx, args) => {
     const contact = await writableContact(ctx, args.id)
     await teamRow(ctx, "topics", contact.organizationId, args.topicId)
-    await setTopicChoice(ctx, contact, args.topicId, args.subscription)
+    if (await setTopicChoice(ctx, contact, args.topicId, args.subscription))
+      await emitContact(ctx, "contact.updated", contact)
     return null
   },
 })

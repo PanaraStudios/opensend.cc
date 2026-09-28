@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as api_audience from "../api/audience.js";
 import type * as api_caller from "../api/caller.js";
 import type * as api_domains from "../api/domains.js";
 import type * as api_emails from "../api/emails.js";
@@ -19,6 +20,7 @@ import type * as api_logs from "../api/logs.js";
 import type * as api_paging from "../api/paging.js";
 import type * as api_route from "../api/route.js";
 import type * as api_state from "../api/state.js";
+import type * as api_templates from "../api/templates.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as audience from "../audience.js";
 import type * as auth from "../auth.js";
@@ -99,6 +101,7 @@ import type * as teams from "../teams.js";
 import type * as templates from "../templates.js";
 import type * as tenants from "../tenants.js";
 import type * as testHelpers_snsFixture from "../testHelpers/snsFixture.js";
+import type * as testEmails from "../testEmails.js";
 import type * as topics from "../topics.js";
 import type * as unsubscribe from "../unsubscribe.js";
 import type * as unsubscribeHttp from "../unsubscribeHttp.js";
@@ -113,6 +116,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  "api/audience": typeof api_audience;
   "api/caller": typeof api_caller;
   "api/domains": typeof api_domains;
   "api/emails": typeof api_emails;
@@ -123,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   "api/paging": typeof api_paging;
   "api/route": typeof api_route;
   "api/state": typeof api_state;
+  "api/templates": typeof api_templates;
   apiKeys: typeof apiKeys;
   audience: typeof audience;
   auth: typeof auth;
@@ -203,6 +208,7 @@ declare const fullApi: ApiFromModules<{
   templates: typeof templates;
   tenants: typeof tenants;
   "testHelpers/snsFixture": typeof testHelpers_snsFixture;
+  testEmails: typeof testEmails;
   topics: typeof topics;
   unsubscribe: typeof unsubscribe;
   unsubscribeHttp: typeof unsubscribeHttp;

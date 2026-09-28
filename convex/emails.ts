@@ -199,7 +199,7 @@ export async function createEmail(
     )
     if (!template)
       throw apiError(404, "not_found", "Template not found or not published")
-    const values: Record<string, string | number> = {}
+    const values: Record<string, string | number> = Object.create(null)
     for (const { key, value } of input.template.variables) {
       const problem = templateVariableError(key, value)
       if (problem) throw invalid(problem)
@@ -218,7 +218,10 @@ export async function createEmail(
     text = rendered.text
     from ??= template.from
     subject ??= rendered.subject
-    if (!replyTo.length && template.replyTo) replyTo = [template.replyTo]
+    if (!replyTo.length)
+      replyTo =
+        template.replyToAddresses ??
+        (template.replyTo ? [template.replyTo] : [])
   }
   if (!from) throw missing("from")
   if (!subject?.trim()) throw missing("subject")
@@ -308,7 +311,7 @@ export async function createEmail(
     },
     {
       ...(html ? { html } : {}),
-      ...(text ? { text } : {}),
+      ...(text !== undefined ? { text } : {}),
       ...(input.headers.length ? { headers: input.headers } : {}),
       ...(input.attachments.length ? { attachments: input.attachments } : {}),
     },

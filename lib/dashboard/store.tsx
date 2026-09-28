@@ -28,7 +28,6 @@ import {
 import { createId } from "./ids"
 import { exportFileName } from "./exports"
 import { slugify } from "./slug"
-import { DASHBOARD_USER_AGENT } from "./logs"
 import { useMutation, useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asDomain } from "@/lib/domains/use-domains"
@@ -60,7 +59,6 @@ import type {
   BroadcastStatus,
   Contact,
   DashboardState,
-  EmailStatus,
   MemberRole,
   Segment,
   SentEmail,
@@ -150,58 +148,6 @@ function mutate(mutator: (current: DashboardState) => DashboardState) {
       },
     }
   })
-}
-
-function sendEmail(input: {
-  from: string
-  to: string
-  subject: string
-  text: string
-  /** Rendered body. Defaults to the text wrapped in a paragraph. */
-  html?: string
-  scheduledAt?: number | null
-}) {
-  const scheduled = input.scheduledAt ?? null
-  const status: EmailStatus = scheduled ? "scheduled" : "sent"
-  const email: SentEmail = {
-    id: createId("em"),
-    from: input.from.trim(),
-    to: input.to.trim().toLowerCase(),
-    subject: input.subject.trim(),
-    status,
-    createdAt: Date.now(),
-    scheduledAt: scheduled,
-    html: input.html?.trim() || `<p>${input.text.trim()}</p>`,
-    text: input.text.trim(),
-    broadcastId: null,
-    events: [
-      {
-        id: createId("evt"),
-        type: status,
-        at: Date.now(),
-      },
-    ],
-  }
-  mutate((current) => ({
-    ...current,
-    emails: [email, ...current.emails],
-    logs: [
-      {
-        id: createId("log"),
-        method: "POST",
-        path: "/emails",
-        status: 200,
-        createdAt: Date.now(),
-        durationMs: 64,
-        emailId: email.id,
-        userAgent: DASHBOARD_USER_AGENT,
-        source: "dashboard",
-        apiKeyId: null,
-      },
-      ...current.logs,
-    ],
-  }))
-  return email
 }
 
 function addReceived(input: {
@@ -535,7 +481,6 @@ function resetDemo() {
 }
 
 const actions = {
-  sendEmail,
   addReceived,
   addBroadcast,
   updateBroadcast,

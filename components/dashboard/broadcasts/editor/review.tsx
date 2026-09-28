@@ -1,6 +1,11 @@
 "use client"
 
 import * as React from "react"
+import { useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { useWorkspace } from "@/components/auth/workspace"
+import { actionError } from "@/lib/action-error"
 import { useRouter } from "next/navigation"
 import {
   CircleCheckIcon,
@@ -128,14 +133,18 @@ export function TestEmailDialog({
   onOpenChange,
   item,
   exportHtml,
+  templateId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: EmailDraft
+  templateId?: string
   /** The email as it stands right now, exported if it has to be. */
   exportHtml: () => Promise<string | null>
 }) {
-  const { state, you, sendEmail } = useDashboard()
+  const { state, you } = useDashboard()
+  const { activeTeamId } = useWorkspace()
+  const sendEmail = useMutation(api.testEmails.send)
   const [value, setValue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   return (
@@ -155,20 +164,27 @@ export function TestEmailDialog({
               setError("Enter a valid email address")
               return
             }
-            void exportHtml().then((html) => {
-              /* The export failed and said so; there is nothing to send. */
-              if (html === null) return
-              sendEmail({
-                from: emailFrom(item, state.domains),
-                to,
-                subject: `[Test] ${item.subject || item.name || "Untitled"}`,
-                text: item.preview || "Test send from the email editor.",
-                html,
+            void exportHtml()
+              .then(async (html) => {
+                /* The export failed and said so; there is nothing to send. */
+                if (html === null) return
+                if (!activeTeamId) throw new Error("Create a team first")
+                await sendEmail({
+                  organizationId: activeTeamId,
+                  templateId: templateId as Id<"templates"> | undefined,
+                  from: emailFrom(item, state.domains),
+                  to,
+                  subject: `[Test] ${item.subject || item.name || "Untitled"}`,
+                  html,
+                })
+                toast.add({
+                  type: "success",
+                  title: `Test email sent to ${to}`,
+                })
+                onOpenChange(false)
+                setValue("")
               })
-              toast.add({ type: "success", title: `Test email sent to ${to}` })
-              onOpenChange(false)
-              setValue("")
-            })
+              .catch((error) => setError(actionError(error)))
           }}
         >
           <DialogHeader>
