@@ -154,10 +154,8 @@ export async function unsubscribeLinks(
 const linksValue = v.object({
   pageUrl: v.string(),
   oneClickUrl: v.string(),
-  headers: v.object({
-    "List-Unsubscribe": v.string(),
-    "List-Unsubscribe-Post": v.string(),
-  }),
+  // Header names contain "-", which object validators can't name.
+  headers: v.record(v.string(), v.string()),
   variables: v.record(v.string(), v.string()),
 })
 /** `unsubscribeLinks` for senders running in actions. */
