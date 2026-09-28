@@ -9,6 +9,7 @@ import {
 import { components } from "./_generated/api"
 import type { Doc } from "./_generated/dataModel"
 import { findInstallation } from "./access"
+import { retirement } from "./teamLifecycle"
 import { trackingHost } from "./ses/records"
 import { trackingTarget } from "./ses/contracts"
 import { projectEngagement } from "./ses/projection"
@@ -114,6 +115,7 @@ export const hit = internalMutation({
     const email = await ctx.db.get("emails", id)
     if (
       !email ||
+      (await retirement(ctx, email.organizationId)) ||
       email.source === "system" ||
       ["scheduled", "canceled", "suppressed"].includes(email.status) ||
       (email.sentAt === undefined && !email.attempts)

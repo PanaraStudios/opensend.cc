@@ -21,6 +21,7 @@ import { EXPORT_SOURCES } from "./exportSources"
 import { deleteExport, insertExport, patchExport } from "./exportRows"
 import { exportFilterLineValue } from "./tables/exports"
 import { sendSystemEmail } from "./systemEmail"
+import { retirement } from "./teamLifecycle"
 import { csvLine } from "../lib/dashboard/csv"
 import { AUTO_DOWNLOAD_ROWS, exportFileName } from "../lib/dashboard/exports"
 
@@ -175,7 +176,10 @@ export const downloadUrl = query({
 export const job = internalQuery({
   args: { id: v.id("exports") },
   returns: v.union(v.null(), schema.doc("exports")),
-  handler: (ctx, { id }) => ctx.db.get("exports", id),
+  handler: async (ctx, { id }) => {
+    const row = await ctx.db.get("exports", id)
+    return row && !(await retirement(ctx, row.organizationId)) ? row : null
+  },
 })
 /** The file's header row, read once so every batch keeps to it. */
 export const header = internalQuery({
@@ -259,8 +263,8 @@ export const run = internalAction({
         new Blob(lines, { type: "text/csv;charset=utf-8" })
       )
       await ctx.runMutation(internal.exports.finish, { id, storageId, rows })
-    } catch (e) {
-      console.error(e)
+    } catch {
+      console.error("Export could not be completed")
       await ctx.runMutation(internal.exports.finish, { id })
     }
     return null
@@ -276,7 +280,11 @@ export const finish = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, storageId, rows = 0 }) => {
     const row = await ctx.db.get("exports", id)
-    if (!row || row.status !== "processing") {
+    if (
+      !row ||
+      row.status !== "processing" ||
+      (await retirement(ctx, row.organizationId))
+    ) {
       // Expired or gone while it ran: the file has no one to go to.
       if (storageId) await ctx.storage.delete(storageId)
       return null
@@ -300,6 +308,7 @@ export const emailCreator = internalMutation({
     const row = await ctx.db.get("exports", id)
     if (
       !row ||
+      (await retirement(ctx, row.organizationId)) ||
       row.status !== "ready" ||
       row.rows <= AUTO_DOWNLOAD_ROWS ||
       row.expiresAt <= Date.now() ||
@@ -342,14 +351,14 @@ export const expire = internalMutation({
         })
         due.push(row._id)
       }
-    for (const row of await ctx.db
+    const expired = await ctx.db
       .query("exports")
       .withIndex("by_status_and_expiresAt", (q) =>
         q.eq("status", "expired").lte("expiresAt", now - EXPIRED_KEPT)
       )
-      .take(100))
-      await deleteExport(ctx, row._id)
-    if (due.length >= 100)
+      .take(100)
+    for (const row of expired) await deleteExport(ctx, row._id)
+    if (due.length >= 100 || expired.length === 100)
       await ctx.scheduler.runAfter(0, internal.exports.expire, {})
     return null
   },

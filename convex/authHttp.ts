@@ -3,9 +3,14 @@ import { env, httpAction } from "./_generated/server"
 import { components } from "./_generated/api"
 import { createAuth } from "./auth"
 import { loadProvider } from "./oidc"
+import { BodyTooLarge, limitedBody } from "./ses/web"
 
 const handler = httpAction(async (ctx, request) => {
   try {
+    if (request.method === "POST")
+      request = new Request(request, {
+        body: await limitedBody(request, 1_048_576),
+      })
     const url = new URL(request.url)
     let providerId: string | undefined
     const callback = url.pathname.match(
@@ -72,7 +77,12 @@ const handler = httpAction(async (ctx, request) => {
       return response
     }
     return await auth.handler(request)
-  } catch {
+  } catch (error) {
+    if (error instanceof BodyTooLarge)
+      return Response.json(
+        { message: "The request body is too large." },
+        { status: 413 }
+      )
     if (new URL(request.url).pathname.includes("/oauth2/callback/"))
       return Response.redirect(`${env.SITE_URL}/login?error=oidc`, 302)
     return Response.json(

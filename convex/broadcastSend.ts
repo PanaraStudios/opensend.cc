@@ -166,7 +166,11 @@ export const completed = internalMutation({
   returns: v.null(),
   handler: async (ctx, { context, result, workflowId }): Promise<null> => {
     const row = await ctx.db.get("broadcasts", context.id)
-    if (!row || row.workflowId !== workflowId) {
+    if (
+      !row ||
+      row.workflowId !== workflowId ||
+      (await retirement(ctx, row.organizationId))
+    ) {
       await cleanup(ctx, components.workflow, workflowId)
       return null
     }

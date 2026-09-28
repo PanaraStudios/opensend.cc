@@ -164,6 +164,8 @@ async function inlineHtml(
     if (!file.contentId || !file.contentType.startsWith("image/")) continue
     const cid = `cid:${file.contentId}`
     if (!result.includes(cid)) continue
+    // Leave room for metadata and JSON below Convex's 20 MiB HTTP limit.
+    if (file.size > 6 * 1024 * 1024) return { html, html_format: "cid" }
     const blob = await ctx.storage.get(file.storageId)
     if (!blob) continue
     const bytes = new Uint8Array(await blob.arrayBuffer())
@@ -175,7 +177,7 @@ async function inlineHtml(
     const escaped = cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     const pattern = new RegExp(`${escaped}(?=["'\\s>]|$)`, "g")
     const occurrences = [...result.matchAll(pattern)].length
-    if (result.length + occurrences * uri.length > 100 * 1024 * 1024)
+    if (result.length + occurrences * uri.length > 8 * 1024 * 1024)
       return { html, html_format: "cid" }
     result = result.replace(pattern, () => uri)
   }

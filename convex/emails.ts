@@ -437,7 +437,11 @@ export const release = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, generation }) => {
     const email = await ctx.db.get("emails", id)
-    if (email?.status !== "scheduled" || email.generation !== generation)
+    if (
+      email?.status !== "scheduled" ||
+      email.generation !== generation ||
+      (await retirement(ctx, email.organizationId))
+    )
       return null
     await patchEmail(ctx, id, { status: "queued", scheduledJob: undefined })
     await enqueue(ctx, id, generation, 0)
@@ -649,7 +653,12 @@ async function recordOutcome(
   }
 ) {
   const email = await ctx.db.get("emails", args.id)
-  if (!email || email.generation !== args.generation) return
+  if (
+    !email ||
+    email.generation !== args.generation ||
+    (await retirement(ctx, email.organizationId))
+  )
+    return
   const engaged = email.status === "opened" || email.status === "clicked"
   if (email.status !== "queued" && email.sentAt === undefined && !engaged)
     return

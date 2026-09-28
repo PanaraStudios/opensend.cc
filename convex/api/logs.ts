@@ -7,6 +7,7 @@ import schema from "../schema"
 import { callerValue, notFound, requireCaller } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import { apiRoute, apiTime, listParams } from "./route"
+import { responseForLog } from "../logs"
 import { storedBody } from "../../lib/dashboard/logs"
 
 export const list = internalQuery({
@@ -58,7 +59,19 @@ export const get = internalQuery({
       .query("apiLogBodies")
       .withIndex("by_logId", (q) => q.eq("logId", log._id))
       .unique()
-    return { log, body }
+    return {
+      log,
+      body: body
+        ? {
+            ...body,
+            responseBody: responseForLog(
+              log.path,
+              log.method,
+              body.responseBody
+            ),
+          }
+        : null,
+    }
   },
 })
 

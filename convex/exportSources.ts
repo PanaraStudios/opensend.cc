@@ -162,10 +162,9 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
           recordsStatus(domain, ["MX", "SPF"]),
           `${domain.customReturnPath}.${domain.name}`,
           domain.dnsProvider ? providerLabel(domain.dnsProvider) : "",
-          // Content is always stored; tracking is not built yet.
           "false",
-          "false",
-          "false",
+          String(!!domain.openTracking),
+          String(!!domain.clickTracking),
           domain.region,
         ]),
       }

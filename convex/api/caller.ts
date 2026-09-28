@@ -36,8 +36,25 @@ export async function requireCaller(
   caller: Caller,
   permission: "full_access" | "sending" = "full_access"
 ) {
+  const key = caller.apiKeyId
+    ? await ctx.db.get("apiKeys", caller.apiKeyId)
+    : null
+  if (
+    key &&
+    (key.permission !== caller.permission || key.domainId !== caller.domainId)
+  )
+    throw apiError(403, "invalid_api_key", "API key is invalid")
+  if (key?.domainId) {
+    const domain = await ctx.db.get("domains", key.domainId)
+    if (
+      !domain ||
+      domain.deleted ||
+      domain.organizationId !== key.organizationId
+    )
+      throw apiError(403, "invalid_api_key", "API key is invalid")
+  }
   const live = caller.apiKeyId
-    ? (await ctx.db.get("apiKeys", caller.apiKeyId))?.organizationId
+    ? key?.organizationId
     : caller.oauthGrantId
       ? (
           await ctx.runQuery(components.betterAuth.oauth.checkGrant, {

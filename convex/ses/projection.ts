@@ -6,6 +6,7 @@ import { acceptEmail, emailEventData, tagSafe } from "../emails"
 import { insertEmailEvent, patchEmail } from "../emailRows"
 import { recordMetric, emailAddresses } from "../metricRows"
 import { emitEvent } from "../events"
+import { retirement } from "../teamLifecycle"
 
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -74,7 +75,12 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
     .unique()
   if (tagged && byMessage && tagged._id !== byMessage._id) return
   const email = tagged ?? byMessage
-  if (!email || (email.messageId && email.messageId !== messageId)) return
+  if (
+    !email ||
+    (email.messageId && email.messageId !== messageId) ||
+    (await retirement(ctx, email.organizationId))
+  )
+    return
   if (["scheduled", "canceled", "suppressed"].includes(email.status)) return
   if (
     !email.messageId &&

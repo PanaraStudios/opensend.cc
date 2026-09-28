@@ -148,7 +148,11 @@ export const begin = internalMutation({
           )
     if (caller.domainId) {
       const domain = await ctx.db.get("domains", caller.domainId)
-      if (!domain || domain.deleted)
+      if (
+        !domain ||
+        domain.deleted ||
+        domain.organizationId !== caller.organizationId
+      )
         return fail(
           403,
           "restricted_api_key",
