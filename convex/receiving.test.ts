@@ -109,7 +109,7 @@ async function receivingWorld() {
     async (name) =>
       name.startsWith("links.")
         ? zone.tracking
-          ? ["r.us-east-1.awstrack.me"]
+          ? ["api.opensend.test"]
           : []
         : ["provider-token.regional.dkim.amazonses.com"]
   )
@@ -216,6 +216,24 @@ describe("inbound mail setup", () => {
       (c) => c.name === "CreateBucketCommand"
     )!
     expect(create.input).toEqual({ Bucket: bucket })
+    expect(
+      f.aws.state.calls.find(
+        (c) => c.name === "PutBucketLifecycleConfigurationCommand"
+      )?.input
+    ).toEqual({
+      Bucket: bucket,
+      ExpectedBucketOwner: "123456789012",
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            ID: "opensend-transient-inbound",
+            Status: "Enabled",
+            Filter: { Prefix: "" },
+            Expiration: { Days: 1 },
+          },
+        ],
+      },
+    })
     // SES may write only through this installation's receipt rules.
     const grant = JSON.parse(f.aws.state.bucketPolicy!).Statement[0]
     expect(grant).toMatchObject({
@@ -472,7 +490,7 @@ describe("receiving regions and names", () => {
 })
 
 describe("open and click tracking", () => {
-  test("the tracking CNAME is published, checked, and only then applied to the configuration set", async () => {
+  test("the tracking CNAME points to the installation and SES never tracks engagement", async () => {
     const f = await receivingWorld()
     const m = await member(f)
     await m.client.mutation(api.domains.update, {
@@ -496,7 +514,7 @@ describe("open and click tracking", () => {
       kind: "Tracking",
       type: "CNAME",
       name: "links.mail.example.test",
-      value: "r.us-east-1.awstrack.me",
+      value: "api.opensend.test",
       ttl: "300",
       status: "pending",
     })
@@ -524,23 +542,18 @@ describe("open and click tracking", () => {
     )
     expect(domain).toMatchObject({ status: "verified", phase: "ready" })
     expect(
-      f.ses.find((c) => c.name === "PutConfigurationSetTrackingOptionsCommand")
-        ?.input
-    ).toEqual({
-      ConfigurationSetName: `${resourcePrefix(f.installation)}-${f.domain.slice(-12)}`,
-      CustomRedirectDomain: "links.mail.example.test",
-      HttpsPolicy: "OPTIONAL",
-    })
-    expect(destinations().at(-1)).toEqual(
-      expect.arrayContaining(["OPEN", "CLICK", "DELIVERY"])
-    )
+      f.ses.some((c) => c.name === "PutConfigurationSetTrackingOptionsCommand")
+    ).toBe(false)
+    expect(destinations().at(-1)).toContain("DELIVERY")
+    expect(destinations().at(-1)).not.toContain("OPEN")
+    expect(destinations().at(-1)).not.toContain("CLICK")
     // Turning clicks off stops rewriting links; opens stay tracked.
     await f.owner.client.mutation(api.domains.update, {
       id: f.domain,
       clickTracking: false,
     })
     await f.settle()
-    expect(destinations().at(-1)).toContain("OPEN")
+    expect(destinations().at(-1)).not.toContain("OPEN")
     expect(destinations().at(-1)).not.toContain("CLICK")
   })
 
@@ -643,26 +656,16 @@ describe("inbound SNS notifications", () => {
     return { ...f, inbound, fetcher, stored, receive }
   }
 
-  test("a signed notification is stored once, for the team whose domain received it", async () => {
+  test("a signed notification with an unowned object prefix is acknowledged without ingestion", async () => {
     const f = await inboundWorld()
     await f.receive(INBOUND_NOTIFICATION)
     await f.receive(INBOUND_NOTIFICATION)
-    const rows = await f.stored()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({
-      organizationId: f.owner.team,
-      domainId: f.domain,
-      region: "us-east-1",
-      topicArn: INBOUND_TOPIC_ARN,
-      messageId: INBOUND_NOTIFICATION.MessageId,
-      sesMessageId: "ses-message-0001",
-      bucket: INBOUND_BUCKET,
-      objectKey: "domain/ses-message-0001",
-      notification: INBOUND_NOTIFICATION.Message,
-    })
+    // This static signed fixture names "domain/", not the team's real id.
+    // Authentic SNS does not authorize reading some other domain's object.
+    expect(await f.stored()).toEqual([])
     // No domain of ours receives for this recipient.
     await f.receive(INBOUND_UNROUTED)
-    expect(await f.stored()).toHaveLength(1)
+    expect(await f.stored()).toHaveLength(0)
   })
 
   test("forged, foreign and unrouted envelopes never enter the database", async () => {
@@ -695,7 +698,7 @@ describe("inbound SNS notifications", () => {
       body: JSON.stringify(INBOUND_NOTIFICATION),
     })
     expect(accepted.status).toBe(204)
-    expect(await f.stored()).toHaveLength(1)
+    expect(await f.stored()).toHaveLength(0)
   })
 
   test("the subscription is confirmed through the API only for our endpoint", async () => {

@@ -132,7 +132,9 @@ function trackingRecord(domain: Domain): DnsRecord {
     domain,
     serverTrackingRecord(
       `${domain.trackingSubdomain}.${domain.name}`,
-      domain.region
+      domain.trackingTarget ??
+        domain.records.find((r) => r.kind === "Tracking")?.value ??
+        ""
     )
   )
 }

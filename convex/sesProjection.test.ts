@@ -1,3 +1,4 @@
+import { projectEngagement } from "./ses/projection"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import { runToCompletion } from "@convex-dev/migrations"
@@ -171,12 +172,6 @@ const cases = [
   ],
   ["Reject", "failed", { reason: "Bad content" }],
   ["Rendering Failure", "failed", { errorMessage: "Missing variable" }],
-  ["Open", "opened", { ipAddress: "1.2.3.4", userAgent: "test" }],
-  [
-    "Click",
-    "clicked",
-    { ipAddress: "1.2.3.4", userAgent: "test", link: "https://example.com" },
-  ],
 ] as const
 
 describe("SES projection", () => {
@@ -208,12 +203,6 @@ describe("SES projection", () => {
           subType: "General",
           message: "550 No such user",
         })
-      if (kind === "Click")
-        expect(matching[0].data.click).toMatchObject({
-          link: "https://example.com",
-          ipAddress: "1.2.3.4",
-          userAgent: "test",
-        })
       if (status === "failed")
         expect(matching[0].data.failed).toHaveProperty("reason")
       const timeline = await f.owner.client.query(api.emails.timeline, {
@@ -231,7 +220,13 @@ describe("SES projection", () => {
   test("out-of-order events never regress status and preserve each recipient outcome", async () => {
     const f = await setup()
     const id = await f.makeEmail()
-    await f.ingest(id, "Click", { link: "https://example.com" })
+    await f.t.run(async (ctx) =>
+      projectEngagement(ctx, (await ctx.db.get("emails", id))!, "clicked", {
+        link: "https://example.com",
+        ipAddress: "",
+        userAgent: "",
+      })
+    )
     await f.ingest(id, "DeliveryDelay", {
       delayedRecipients: [{ emailAddress: "a@example.com" }],
       timestamp: new Date(Date.now() - 5000).toISOString(),
@@ -242,12 +237,24 @@ describe("SES projection", () => {
       bounceType: "Permanent",
       bouncedRecipients: [{ emailAddress: "a@example.com" }],
     })
-    await f.ingest(id, "Open")
+    await f.t.run(async (ctx) =>
+      projectEngagement(ctx, (await ctx.db.get("emails", id))!, "opened", {
+        link: "",
+        ipAddress: "",
+        userAgent: "",
+      })
+    )
     expect((await f.row(id)).status).toBe("bounced")
     await f.ingest(id, "Complaint", {
       complainedRecipients: [{ emailAddress: "b@example.com" }],
     })
-    await f.ingest(id, "Click")
+    await f.t.run(async (ctx) =>
+      projectEngagement(ctx, (await ctx.db.get("emails", id))!, "clicked", {
+        link: "https://example.com",
+        ipAddress: "",
+        userAgent: "",
+      })
+    )
     expect((await f.row(id)).status).toBe("complained")
     const timeline = await f.owner.client.query(api.emails.timeline, {
       id,

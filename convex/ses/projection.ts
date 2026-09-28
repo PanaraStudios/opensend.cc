@@ -26,8 +26,6 @@ const TYPES = {
   DELIVERYDELAY: ["delivery_delayed", "deliveryDelay"],
   REJECT: ["failed", "reject"],
   RENDERINGFAILURE: ["failed", "failure"],
-  OPEN: ["opened", "open"],
-  CLICK: ["clicked", "click"],
 } as const
 
 // Delivery evidence supersedes pre-delivery failures. Recipient feedback
@@ -169,18 +167,6 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
           reason: "complained",
         })
   }
-  if (status === "opened" || status === "clicked") {
-    await recordMetric(ctx, current, "delivered", at, recipients)
-    if (status === "clicked") {
-      await recordMetric(ctx, current, "opened", at, recipients)
-      extra.click = {
-        ipAddress: string(detail.ipAddress),
-        link: string(detail.link),
-        timestamp: new Date(at).toISOString(),
-        userAgent: string(detail.userAgent),
-      }
-    }
-  }
   if (status === "failed")
     extra.failed = {
       reason:
@@ -242,3 +228,35 @@ export const project = internalMutation({
     return null
   },
 })
+
+/** Each first-party HTTP hit gets its own timeline and webhook entry;
+    milestone metrics remain unique through the shared writer. */
+export async function projectEngagement(
+  ctx: MutationCtx,
+  email: Doc<"emails">,
+  status: "opened" | "clicked",
+  detail: { link: string; ipAddress: string; userAgent: string }
+) {
+  const at = Date.now()
+  const recipients = emailAddresses(email)
+  await recordMetric(ctx, email, "delivered", at, recipients)
+  if (status === "clicked")
+    await recordMetric(ctx, email, "opened", at, recipients)
+  if (RANK[status] > RANK[email.status])
+    await patchEmail(ctx, email._id, {
+      status,
+      error: undefined,
+      expiresAt: email.expiresAt ?? at + 30 * 86_400_000,
+    })
+  await insertEmailEvent(ctx, email._id, status, at, {
+    recipients,
+    details: detail,
+  })
+  if (email.source !== "system")
+    await emitEvent(ctx, email.organizationId, `email.${status}`, {
+      ...emailEventData(email),
+      ...(status === "clicked"
+        ? { click: { ...detail, timestamp: new Date(at).toISOString() } }
+        : {}),
+    })
+}

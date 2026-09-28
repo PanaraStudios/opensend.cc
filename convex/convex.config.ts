@@ -25,6 +25,7 @@ app.use(betterAuth)
 app.use(workflow)
 app.use(rateLimiter)
 // Separate pools so a webhook backlog never delays outgoing mail.
+app.use(workpool, { name: "inboundPool" })
 app.use(workpool, { name: "sendPool" })
 app.use(workpool, { name: "webhookPool" })
 // One aggregate per count, as its README asks; convex/counts.ts owns them.

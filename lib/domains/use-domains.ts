@@ -19,6 +19,7 @@ export function asDomain(row: Doc<"domains">): Domain {
     openTracking: row.openTracking ?? false,
     clickTracking: row.clickTracking ?? false,
     trackingSubdomain: row.trackingSubdomain,
+    trackingTarget: row.trackingTarget,
     tls: row.tls,
     customReturnPath: row.customReturnPath,
     receiving: row.receiving ?? false,

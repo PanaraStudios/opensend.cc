@@ -1,4 +1,5 @@
 "use node"
+import { trackingTarget } from "./contracts"
 import { v, ConvexError } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -20,7 +21,7 @@ import {
 } from "./aws"
 import { identityFingerprint } from "./adoption"
 import { verificationState } from "./dns"
-import { identityRecords, trackingHost, type DnsRecord } from "./records"
+import { identityRecords } from "./records"
 import { ensureSubscription, ensureTopic } from "./topics"
 import {
   CreateQueueCommand,
@@ -46,10 +47,8 @@ import {
   PutConfigurationSetSuppressionOptionsCommand,
   DeleteEmailIdentityCommand,
   DeleteConfigurationSetCommand,
-  PutConfigurationSetTrackingOptionsCommand,
   type SESv2Client,
 } from "@aws-sdk/client-sesv2"
-import type { Doc } from "../_generated/dataModel"
 import { removeReceiptRule, syncReceiptRule } from "./inbound"
 
 const tlsPolicyValue = (tls: "enforced" | "opportunistic") =>
@@ -67,33 +66,11 @@ function applyTlsPolicy(
   )
 }
 
-/** Open and click tracking as SES applies it: only through the tracking
-    subdomain, and only once its CNAME is verified, so a tracked link never
-    points at a host that does not resolve yet. */
-export function trackingState(domain: Doc<"domains">, records: DnsRecord[]) {
-  const host = trackingHost(domain)
-  const verified =
-    !!host &&
-    records.some(
-      (r) => r.kind === "Tracking" && r.name === host && r.status === "verified"
-    )
-  return {
-    host: verified ? host : null,
-    open: verified && !!domain.openTracking,
-    click: verified && !!domain.clickTracking,
-  }
-}
-/** The configuration set's event destination, with OPEN and CLICK only
-    while that kind of tracking applies, then the redirect domain. The
-    installation cannot create CloudFront or ACM, which SES's HTTPS option
-    needs, so tracked links use SES's HTTP option ("OPTIONAL"). A redirect
-    domain once set is left in place, as Resend never removes one: without
-    OPEN or CLICK nothing is rewritten through it. */
-async function applyTracking(
+/** Always remove SES engagement event types, including on existing sets. */
+async function applyEventDestination(
   ses: SESv2Client,
   configName: string,
   topicArn: string | undefined,
-  tracking: ReturnType<typeof trackingState>,
   created = false
 ) {
   const destinations = created
@@ -122,21 +99,11 @@ async function applyTracking(
           "DELIVERY",
           "RENDERING_FAILURE",
           "DELIVERY_DELAY",
-          ...(tracking.open ? (["OPEN"] as const) : []),
-          ...(tracking.click ? (["CLICK"] as const) : []),
         ],
         SnsDestination: { TopicArn: topicArn },
       },
     })
   )
-  if (tracking.host)
-    await ses.send(
-      new PutConfigurationSetTrackingOptionsCommand({
-        ConfigurationSetName: configName,
-        CustomRedirectDomain: tracking.host,
-        HttpsPolicy: "OPTIONAL",
-      })
-    )
 }
 
 export const region = internalAction({
@@ -313,14 +280,7 @@ export const domain = internalAction({
         await resourceAssociation(ses, tenant.TenantName, configArn)
         const tls = domain.pendingTls ?? domain.tls
         await applyTlsPolicy(ses, configName, tls)
-        // Also run when a tracking CNAME is newly verified.
-        if (domain.trackingSubdomain)
-          await applyTracking(
-            ses,
-            configName,
-            region.topicArn,
-            trackingState(domain, domain.records)
-          )
+        await applyEventDestination(ses, configName, region.topicArn)
         await ctx.runMutation(internal.domains.finish, {
           id: domainId,
           changes: { tls },
@@ -342,7 +302,13 @@ export const domain = internalAction({
         identity.DkimAttributes.SigningHostedZone &&
         domain.operation === "provision"
       )
-        discoveredRecords = identityRecords(domain, identity)
+        discoveredRecords = identityRecords(
+          {
+            ...domain,
+            trackingTarget: trackingTarget(installation.callbackOrigin),
+          },
+          identity
+        )
       // Checked early so a foreign association fails before anything changes.
       const identityAssociated =
         identity && tenant && domain.operation !== "remove"
@@ -484,7 +450,13 @@ export const domain = internalAction({
             created.DkimAttributes?.Tokens?.length &&
             created.DkimAttributes.SigningHostedZone
           ) {
-            discoveredRecords = identityRecords(domain, created)
+            discoveredRecords = identityRecords(
+              {
+                ...domain,
+                trackingTarget: trackingTarget(installation.callbackOrigin),
+              },
+              created
+            )
             await ctx.runMutation(internal.domains.saveRecords, {
               id: domainId,
               records: discoveredRecords,
@@ -495,7 +467,13 @@ export const domain = internalAction({
           )
           assertOwned(identity.Tags, installation._id, domainId)
         }
-        discoveredRecords = identityRecords(domain, identity)
+        discoveredRecords = identityRecords(
+          {
+            ...domain,
+            trackingTarget: trackingTarget(installation.callbackOrigin),
+          },
+          identity
+        )
         if (!createdConfig)
           await ses.send(
             new PutConfigurationSetSuppressionOptionsCommand({
@@ -538,18 +516,17 @@ export const domain = internalAction({
         identity = await ses.send(
           new GetEmailIdentityCommand({ EmailIdentity: domain.name })
         )
-      const state = await verificationState(identity, domain)
-      /* A provision always writes the event destination; a refresh only
-         for a domain that has tracking settings, since it may have rebuilt
-         the tracking record. */
-      if (domain.operation === "provision" || domain.trackingSubdomain)
-        await applyTracking(
-          ses,
-          configName,
-          region.topicArn,
-          trackingState(domain, state.records),
-          createdConfig
-        )
+      const state = await verificationState(
+        identity,
+        domain,
+        installation.callbackOrigin
+      )
+      await applyEventDestination(
+        ses,
+        configName,
+        region.topicArn,
+        createdConfig
+      )
       const receiptRuleSet = await syncReceiptRule(
         ctx,
         sesClassic,
@@ -561,6 +538,7 @@ export const domain = internalAction({
         id: domainId,
         changes: {
           ...state,
+          trackingTarget: trackingTarget(installation.callbackOrigin),
           tls: tlsPolicy,
           configurationSet: configName,
           tenantAssociated: true,

@@ -36,10 +36,11 @@ export const domainTables = {
     /** The receipt rule set holding this domain's receipt rule, from just
         before the rule is created until it is deleted. */
     receiptRuleSet: v.optional(v.string()),
-    /* What the team asked for. SES tracks through the subdomain only once
+    /* What the team asked for. Opensend tracks through the subdomain only once
        its CNAME is verified, so links never point at a host that does not
        resolve yet. */
     trackingSubdomain: v.optional(v.string()),
+    trackingTarget: v.optional(v.string()),
     openTracking: v.optional(v.boolean()),
     clickTracking: v.optional(v.boolean()),
     tls: tlsValue,

@@ -1,3 +1,4 @@
+import { trackingTarget } from "./ses/contracts"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -360,6 +361,9 @@ export async function createDomain(
   if (existing) {
     throw new ConvexError("That domain is already reserved in this region")
   }
+  const installation = await findInstallation(ctx)
+  if (!installation) throw new ConvexError("Installation not found")
+  const target = trackingTarget(installation.callbackOrigin)
   const id = await insertRow(ctx, "domains", {
     organizationId,
     region: args.region,
@@ -371,8 +375,10 @@ export async function createDomain(
     sending: true,
     tls: "opportunistic",
     ...tracking,
+    trackingTarget: target,
     // Shown at once; the DKIM records join them when SES issues its keys.
     records: mailRecords({
+      trackingTarget: target,
       name,
       region: args.region,
       customReturnPath,
@@ -385,9 +391,7 @@ export async function createDomain(
   })
   await emitDomain(ctx, id, "domain.created")
   await start(ctx, (await ctx.db.get("domains", id))!, "provision")
-  const installation = await findInstallation(ctx)
-  if (installation && !installation.completedAt)
-    await completeInstallation(ctx, organizationId)
+  if (!installation.completedAt) await completeInstallation(ctx, organizationId)
   return id
 }
 export const create = mutation({
@@ -478,7 +482,14 @@ export async function updateDomain(
     ...(sending !== undefined ? { sending } : {}),
     ...(tls ? { pendingTls: tls } : {}),
     ...(receiving !== undefined ? { receiving } : {}),
-    ...(trackingChanged ? tracking : {}),
+    ...(trackingChanged
+      ? {
+          ...tracking,
+          trackingTarget: trackingTarget(
+            (await findInstallation(ctx))!.callbackOrigin
+          ),
+        }
+      : {}),
   })
   await emitDomain(ctx, domain._id, "domain.updated")
   // Receiving and tracking change which records we publish, so they need
@@ -579,6 +590,7 @@ export const finish = internalMutation({
       .pick(
         "records",
         "configurationSet",
+        "trackingTarget",
         "sesVerified",
         "dkimVerified",
         "mailFromVerified",
@@ -747,20 +759,9 @@ export const saveCheck = internalMutation({
             : "Waiting for DNS records"
       )
     }
-    // SES starts tracking through the subdomain once its CNAME resolves.
-    if (
-      !trackingVerified(domain.records) &&
-      trackingVerified(args.result.records)
-    )
-      await start(ctx, domain, "settings")
     return null
   },
 })
-const trackingVerified = (records: Doc<"domains">["records"]) =>
-  records.some(
-    (record) => record.kind === "Tracking" && record.status === "verified"
-  )
-
 export const previewContext = internalQuery({
   args: { id: v.id("domains") },
   returns: schema.doc("domains"),

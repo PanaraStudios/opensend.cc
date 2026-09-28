@@ -1,4 +1,5 @@
 "use node"
+import { trackingTarget } from "./contracts"
 import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
 import { identityRecords, type DnsRecord, type RecordDomain } from "./records"
@@ -148,12 +149,16 @@ export async function authoritativeLookups(
 /** A domain's status, read from its SES identity and its live DNS. */
 export async function verificationState(
   identity: GetEmailIdentityResponse,
-  domain: RecordDomain
+  domain: RecordDomain,
+  callbackOrigin: string
 ) {
   const recursive = lookups(3000)
   const authoritative = await authoritativeLookups(domain.name, recursive)
   const records = await checkRecords(
-    identityRecords(domain, identity),
+    identityRecords(
+      { ...domain, trackingTarget: trackingTarget(callbackOrigin) },
+      identity
+    ),
     authoritative ? [authoritative, recursive] : [recursive]
   )
   const sesVerified = !!identity.VerifiedForSendingStatus

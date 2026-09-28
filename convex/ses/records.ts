@@ -1,7 +1,7 @@
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
 import type { Infer } from "convex/values"
 import type { Doc } from "../_generated/dataModel"
-import { recordValue, trackingTarget } from "./contracts"
+import { recordValue } from "./contracts"
 export type DnsRecord = Infer<typeof recordValue>
 /** The domain fields its DNS records are derived from. */
 export type RecordDomain = Pick<
@@ -13,6 +13,7 @@ export type RecordDomain = Pick<
   | "trackingSubdomain"
   | "openTracking"
   | "clickTracking"
+  | "trackingTarget"
 >
 // Recommended, never required: any existing policy stays authoritative.
 export const dmarcRecord = (name: string): DnsRecord => ({
@@ -40,14 +41,12 @@ export const trackingHost = (domain: RecordDomain) =>
   domain.trackingSubdomain && (domain.openTracking || domain.clickTracking)
     ? `${domain.trackingSubdomain}.${domain.name}`
     : null
-/** SES's HTTP redirect option: the subdomain points at SES's tracking host.
-    https://docs.aws.amazon.com/ses/latest/dg/configure-custom-open-click-domains.html */
-export const trackingRecord = (name: string, region: string): DnsRecord => ({
+export const trackingRecord = (name: string, target: string): DnsRecord => ({
   id: "tracking",
   kind: "Tracking",
   type: "CNAME",
   name,
-  value: trackingTarget(region),
+  value: target,
   ttl: "300",
   status: "pending",
 })
@@ -77,8 +76,8 @@ export function mailRecords(domain: RecordDomain): DnsRecord[] {
     },
     dmarcRecord(domain.name),
     ...(domain.receiving ? [receivingRecord(domain.name, domain.region)] : []),
-    ...(trackingHost(domain)
-      ? [trackingRecord(trackingHost(domain)!, domain.region)]
+    ...(trackingHost(domain) && domain.trackingTarget
+      ? [trackingRecord(trackingHost(domain)!, domain.trackingTarget!)]
       : []),
   ]
 }

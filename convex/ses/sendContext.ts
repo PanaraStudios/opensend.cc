@@ -46,7 +46,19 @@ export const get = internalQuery({
       !domain.configurationSet ||
       !domain.sending ||
       !provisioned(domain) ||
-      domain.status !== "verified"
+      (domain.status !== "verified" &&
+        !(
+          domain.status === "partially_verified" &&
+          domain.sesVerified &&
+          domain.dkimVerified &&
+          domain.mailFromVerified &&
+          domain.records.every(
+            (r) =>
+              r.kind === "Tracking" ||
+              r.kind === "DMARC" ||
+              r.status !== "pending"
+          )
+        ))
     )
       throw new ConvexError("Domain is not ready to send")
     const region = await findRegion(ctx, domain.region)

@@ -261,3 +261,156 @@ errors. Inspect Emails and API Logs (`source: smtp`, `/smtp/auth` and
 list but does not provide SMTP server debug logs; Opensend's API logs expose the
 submission bridge, not the SMTP wire conversation. Credentials are redacted and
 the gateway never logs AUTH or message content.
+
+## Opensend tracking
+
+Opensend rewrites HTML links and serves its own open pixel; SES only sends the
+message. There is no CloudFront, ACM, or SES open/click tracking dependency. In the
+existing domain Configure dialog, turn on open and/or click tracking. The Tracking
+CNAME now points at the hostname of `installation.callbackOrigin`, the public
+HTTPS Convex HTTP origin already confirmed through SNS. Publish that CNAME and
+verify the domain. Until the CNAME verifies, mail uses the installation origin.
+An otherwise send-ready domain can send while only its tracking CNAME is pending.
+
+HTML `a`/`area` HTTP(S) links are tracked. Plain text, `mailto:`, fragments,
+unsubscribe routes, URLs in `List-Unsubscribe`, `rel="unsubscribe"`, and
+`ses:no-track` links are left alone. The parser preserves other markup and
+attributes. Resend documents [HTML rewriting and a transparent GIF](https://resend.com/docs/dashboard/domains/tracking);
+its documentation does not specify a per-link opt-out or plain-text click
+rewriting. Opensend leaves plain text unchanged and additionally honors AWS's
+[documented `ses:no-track` attribute](https://docs.aws.amazon.com/ses/latest/dg/faqs-metrics.html)
+for compatibility.
+
+Tracking tokens use the same HMAC implementation and `BETTER_AUTH_SECRET` as
+unsubscribe links, with a separate signing context. Tokens contain only email ID
+and link index. Redirects resolve from a private per-email URL map, never a URL
+supplied by the HTTP request. Each message is capped at 1,000 tracked links and
+128 KiB of destination URLs; exceeding either fails the send before SES is called.
+System account mail is not tracked. Tracking maps expire with the existing
+30-day email content retention, after which these endpoints return 404. Rotating
+the signing secret also invalidates previously sent links.
+
+Every accepted GET hit adds one event, including repeat opens/clicks, following
+Resend's [event-per-occurrence model](https://resend.com/blog/webhooks). The shared
+projection keeps unique email milestone metrics, status precedence and webhook
+outbox writes atomic. Click payloads follow
+[Resend's click fields](https://resend.com/docs/webhooks/emails/clicked); open
+payloads use its [message fields](https://resend.com/docs/webhooks/emails/opened).
+Multi-recipient messages share a token and are measured at message level.
+Prefetching/scanning clients can produce events. Both endpoints disable caching
+and limit each email to 120 hits/minute (excess hits return 429 without an event).
+
+### TLS and routing for custom tracking hosts
+
+A CNAME alone does not configure TLS or route the request. Custom tracking hosts
+must terminate HTTPS on your infrastructure and forward `/t/*` to the **Convex
+HTTP site on port 3211**, not the Next.js dashboard or Convex API port 3210. Also
+serve `/t/*` on the installation callback origin for fallback links. Preserve the
+path and query, disable caching, and overwrite `X-Real-IP` with the client IP;
+Opensend uses that trusted proxy header in click webhooks.
+
+For Caddy, restrict [on-demand TLS](https://caddyserver.com/docs/automatic-https#on-demand-tls)
+with the provided ask endpoint. For example, merge these rules into your existing
+Caddyfile (replace the host and internal upstream with your deployment's values):
+
+```caddyfile
+{
+    on_demand_tls {
+        ask http://convex:3211/t/ask
+    }
+}
+
+api.opensend.example {
+    reverse_proxy convex:3211 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+
+https:// {
+    tls {
+        on_demand
+    }
+    handle /t/* {
+        reverse_proxy convex:3211 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+    handle {
+        respond 404
+    }
+}
+```
+
+Caddy supplies `?domain=<hostname>` to `/t/ask`. It returns 200 only for a current,
+verified tracking CNAME belonging to a live domain with tracking enabled and
+pointing to this installation; other names return 403. DNS verification happens
+before Caddy requests the certificate. Ports 80/443 must reach Caddy and the
+hostname's CAA policy must allow its configured issuer. Configure TLS and routing
+before verifying the CNAME, since verification immediately enables that hostname
+for new sends. Keep old hostname proxy/certificate configuration explicitly if
+you change a tracking subdomain: the ask allowlist covers current names only.
+
+With Cloudflare Tunnel, add the tracking hostname as another published hostname
+(or ingress `hostname` entry), forwarding to `http://convex:3211`, and provision
+Cloudflare edge TLS for that hostname. Merely pointing DNS at the installation
+hostname does not add an ingress rule. Follow Cloudflare's
+[tunnel DNS routing](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/)
+instructions. Verify the required installation-host CNAME while it is DNS-only;
+Cloudflare proxying/flattening hides CNAME answers, and a later Opensend DNS check
+can mark it pending and return new sends to the installation origin. If you use
+the tunnel's UUID CNAME directly instead, that is not the installation-host CNAME
+Opensend verifies; use the fallback origin or a DNS-visible proxy setup for
+persistent custom-host verification. Have a trusted proxy overwrite `X-Real-IP`
+from Cloudflare's authenticated client-IP header, rather than accepting a header
+from an arbitrary public client.
+
+When upgrading from SES tracking, refresh each domain to replace its event
+destination and Tracking DNS target, then verify the new CNAME. Do this before
+sending tracked mail, to prevent old SES configuration from wrapping links a
+second time. SES `OPEN`/`CLICK` notifications are no longer projected.
+`ses:PutConfigurationSetTrackingOptions` remains in IAM policy revision 2 for
+compatibility but is unused and can be removed in a future policy revision.
+No IAM revision changed in this update.
+
+## Receiving: transient S3 drop box
+
+SES receives into the existing regional bucket under `<domainId>/<sesMessageId>`
+and sends a signed SNS notification containing the object location. S3 remains
+necessary: the [SNS body action](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-action-sns.html)
+bounces messages above 150 KB, whereas the
+[S3 action](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-action-s3.html)
+supports a default maximum of 40 MB including headers. Opensend does not use the
+SNS body action and does not silently truncate mail.
+
+A dedicated Convex workpool immediately downloads each accepted notification's
+object with `ExpectedBucketOwner`, bounds both declared and streamed size to
+40 MiB (41,943,040 bytes), stores the MIME file in Convex file storage, commits its
+`storageId`/`size`/`storedAt` on `inboundMessages`, then deletes the S3 object.
+SES enforces its own size limit before delivery; the application cap is an
+additional ingestion limit. Over-cap objects are marked `rejected` with
+`transferError`, never parsed, and left for lifecycle expiration. This happens
+after SES acceptance and does not generate a new SMTP bounce.
+
+SNS message IDs and bucket/object keys deduplicate deliveries. Failed transfers
+retry up to 12 attempts with exponential backoff starting at one second (about
+34 minutes of backoff total). A delete failure retries only deletion once the
+storage ID is committed. Failures leave the source object available for retry.
+Exhausted jobs retain `transferError`; an operator can replay
+`ses/inboundMessages:retry` with `{ "id": "<inboundMessages id>" }` before S3
+expiration. A repeated SNS delivery can also requeue an exhausted transfer.
+
+Bucket provisioning installs an enabled `opensend-transient-inbound` lifecycle
+rule with `Expiration.Days: 1`, retaining unrelated rules. This is a recovery
+ceiling, not an exact 24-hour deletion timer: S3 expiration is asynchronous and
+[day calculations round to midnight UTC](https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-expire-general-considerations.html).
+Normal delivery removes objects immediately after storage. Re-provision existing
+inbound regions to install the rule. Keep these dedicated drop-box buckets
+unversioned; object version retention is not managed by this rule. There is no
+bucket reconciler for notifications that never arrive, so monitor SNS delivery
+failures and `transferError` before the recovery window closes.
+
+Wave 5B starts from `inboundMessages.storageId` (even if S3 deletion is still being
+retried), reading raw `message/rfc822` from Convex storage. MIME parsing, the
+Receiving list, received-email webhooks, and durable received-mail retention are
+left for that wave. Back up Convex file storage with the database; S3 is not the
+mail archive.
