@@ -743,13 +743,14 @@ export function useLoadedPagination<T>(
     stable: a module-level function). `lead` rows, kept stable too, go
     before the server's (built-in entries, say) and count with them. Every
     Convex-backed list uses this, then spreads `pagination` into
-    `ListPagination`. */
+    `ListPagination`. Optional `tail` rows follow once the server list ends. */
 export function usePagedList<Query extends PaginatedQueryReference, Row>(
   list: Query,
   count: CountQuery<Query>,
   args: PaginatedQueryArgs<Query> | "skip",
   map: (item: PaginatedQueryItem<Query>) => Row,
-  lead: readonly Row[] = NO_ROWS
+  lead: readonly Row[] = NO_ROWS,
+  tail: readonly Row[] = NO_ROWS
 ) {
   const query = usePaginatedQuery(list, args, {
     initialNumItems: PAGE_SIZES[0],
@@ -759,11 +760,17 @@ export function usePagedList<Query extends PaginatedQueryReference, Row>(
     args === "skip" ? "skip" : args
   ) as { total: number | null } | undefined
   const rows = React.useMemo(
-    () => [...lead, ...query.results.map((item) => map(item))],
-    [lead, query.results, map]
+    () => [
+      ...lead,
+      ...query.results.map((item) => map(item)),
+      ...(query.status === "Exhausted" ? tail : []),
+    ],
+    [lead, tail, query.results, query.status, map]
   )
   const total =
-    counted?.total == null ? null : { total: counted.total + lead.length }
+    counted?.total == null
+      ? null
+      : { total: counted.total + lead.length + tail.length }
   return { ...query, rows, ...useLoadedPagination(rows, query, total) }
 }
 const NO_ROWS: readonly never[] = []
@@ -782,7 +789,8 @@ export function useTeamList<Query extends PaginatedQueryReference, Row>(
   count: CountQuery<Query>,
   filters: Omit<PaginatedQueryArgs<Query>, "organizationId"> | "skip",
   map: (item: PaginatedQueryItem<Query>) => Row,
-  lead?: readonly Row[]
+  lead?: readonly Row[],
+  tail?: readonly Row[]
 ) {
   const { activeTeamId } = useWorkspace()
   return usePagedList(
@@ -795,7 +803,8 @@ export function useTeamList<Query extends PaginatedQueryReference, Row>(
         } as unknown as PaginatedQueryArgs<Query>)
       : "skip",
     map,
-    lead
+    lead,
+    tail
   )
 }
 

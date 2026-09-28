@@ -1,9 +1,7 @@
 "use client"
-import * as React from "react"
 import {
   useConvex,
   useMutation,
-  usePaginatedQuery,
   useQuery,
   type ConvexReactClient,
 } from "convex/react"
@@ -14,6 +12,7 @@ import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import { exportOutcome, type ExportFilterLine } from "@/lib/dashboard/exports"
+import { useTeamList } from "@/components/dashboard/primitives"
 import type { ExportJob } from "@/lib/dashboard/types"
 
 type ExportRow = NonNullable<FunctionReturnType<typeof api.exports.get>>
@@ -121,7 +120,10 @@ export function useStartExport() {
       } else {
         try {
           await download(convex, id, row!.fileName)
-          toast.add({ type: "success", title: "Export downloaded successfully." })
+          toast.add({
+            type: "success",
+            title: "Export downloaded successfully.",
+          })
         } catch (e) {
           toast.add({ type: "error", title: actionError(e) })
         }
@@ -133,19 +135,18 @@ export function useStartExport() {
   }
 }
 
+const asExportJob = (row: ExportRow): ExportJob => asExport(row)
+
 /** The team's server exports, newest first, a page at a time. */
-export function useExportList() {
-  const { activeTeamId } = useWorkspace()
-  const query = usePaginatedQuery(
+export function useExportList(tail: readonly ExportJob[] = []) {
+  return useTeamList(
     api.exports.list,
-    activeTeamId ? { organizationId: activeTeamId } : "skip",
-    { initialNumItems: 40 }
+    api.exports.count,
+    {},
+    asExportJob,
+    undefined,
+    tail
   )
-  const rows = React.useMemo(
-    () => query.results.map(asExport),
-    [query.results]
-  )
-  return { ...query, rows }
 }
 
 /** One export for its page: undefined while loading, null if not found. */

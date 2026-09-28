@@ -1,5 +1,7 @@
 "use client"
 
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -240,6 +242,15 @@ export function DomainsView() {
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const search = useDebouncedValue(query)
 
+  const exporting = useExportDialog({
+    resource: "domains",
+    noun: "domains",
+    filters: {
+      search: query.trim() || undefined,
+      status: status === "all" ? undefined : status,
+      region: region === "all" ? undefined : region,
+    },
+  })
   const domains = usePagedList(
     api.domains.list,
     api.domains.count,
@@ -278,7 +289,9 @@ export function DomainsView() {
         </Button>
         <DocsButton onClick={() => setDocsOpen(true)} />
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
+        onExport={exporting.open}
         query={query}
         onQueryChange={setQuery}
         placeholder="Search domain prefix…"

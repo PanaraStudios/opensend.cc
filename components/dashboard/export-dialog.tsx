@@ -103,31 +103,39 @@ export function useExportDialog({
   noun,
   filters,
   extra = [],
+  onConfirm,
 }: {
   resource: string
   /** Lower-case plural, for the title: "Export API keys". */
   noun: string
   filters: Record<string, string | number | boolean | undefined>
   extra?: readonly ExportFilterLine[]
+  onConfirm?: () => void
 }) {
   const start = useStartExport()
-  const [summary, setSummary] = React.useState<ExportFilterLine[] | null>(
-    null
-  )
+  const [confirmed, setConfirmed] = React.useState<{
+    summary: ExportFilterLine[]
+    filters: typeof filters
+  } | null>(null)
   const onOpenChange = (open: boolean) => {
-    if (!open) setSummary(null)
+    if (!open) setConfirmed(null)
   }
   return {
-    open: (lines: ExportFilterLine[]) => setSummary([...lines, ...extra]),
+    open: (lines: ExportFilterLine[]) =>
+      setConfirmed({ summary: [...lines, ...extra], filters: { ...filters } }),
     dialog: (
-      <Dialog open={summary !== null} onOpenChange={onOpenChange}>
+      <Dialog open={confirmed !== null} onOpenChange={onOpenChange}>
         {/* Mounted per opening, so no error or pending state carries over. */}
-        {summary ? (
+        {confirmed ? (
           <ExportDialogForm
             noun={noun}
-            summary={summary}
+            summary={confirmed.summary}
             onOpenChange={onOpenChange}
-            onConfirm={() => start(resource, filters, summary)}
+            onConfirm={async () =>
+              onConfirm
+                ? onConfirm()
+                : start(resource, confirmed.filters, confirmed.summary)
+            }
           />
         ) : null}
       </Dialog>

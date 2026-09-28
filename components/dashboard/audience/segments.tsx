@@ -53,7 +53,7 @@ import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
 import {
   asSegment,
   useAudienceCommands,
@@ -136,12 +136,16 @@ function AddSegmentDialog({
 }
 
 export function SegmentsView() {
-  const { addExport } = useDashboard()
   const { deleteSegment } = useAudienceCommands()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
+  const exporting = useExportDialog({
+    resource: "segments",
+    noun: "segments",
+    filters: { search: query.trim() || undefined },
+  })
   const segments = useSegmentList(useDebouncedValue(query))
   const { rows, pageRows, pagination } = segments
 
@@ -157,14 +161,12 @@ export function SegmentsView() {
         </>
       }
     >
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search segments…"
-        onExport={() => {
-          addExport("Segments", pagination.total ?? rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
       {segments.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
