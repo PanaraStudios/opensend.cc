@@ -1,5 +1,7 @@
 # REST API
 
+Machine-readable contract: [OpenAPI 3.1](../openapi/opensend.yaml); compatibility audit: [Resend parity](resend-parity.md).
+
 The API follows [Resend's API reference](https://resend.com/docs/api-reference) so existing Resend clients work with a changed base URL. It is served from the Convex site URL (the dashboard shows it as `https://api.opensend.cc`).
 
 ## Authentication
