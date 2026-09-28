@@ -77,6 +77,10 @@ export function templateVariableDefaults(
   )
 }
 
+/** What `templateAliasError` says of a taken alias; the server says the
+    same, so the alias dialog reads alike either way. */
+export const TEMPLATE_ALIAS_TAKEN = "Another template already uses this alias"
+
 /** Why an alias cannot be used, or null when it can. */
 export function templateAliasError(
   alias: string,
@@ -87,7 +91,7 @@ export function templateAliasError(
     return "Use lowercase letters, numbers, dashes and underscores"
   }
   if (others.some((item) => item.alias === alias)) {
-    return "Another template already uses this alias"
+    return TEMPLATE_ALIAS_TAKEN
   }
   return null
 }

@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
-import { CopyIcon, DownloadIcon, KeyRoundIcon, ShieldIcon } from "lucide-react"
+import { KeyRoundIcon, ShieldIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
@@ -20,15 +20,7 @@ import {
   MonoValue,
   RelativeTime,
   EmptyState,
-  copyToClipboard,
 } from "@/components/dashboard/primitives"
-import { downloadTextFile } from "@/components/dashboard/domains/shared"
-import { POLICY_REVISION } from "@/convex/ses/contracts"
-import {
-  AWS_SETUP_FILENAME,
-  awsSetupStackName,
-  awsSetupTemplateFile,
-} from "@/lib/aws/setup"
 import { AwsConnectionForm } from "@/components/ses/connection-form"
 import { DownloadIamPolicyButton } from "@/components/ses/credentials-help"
 import { SesRegions } from "@/components/ses/regions"
@@ -37,7 +29,6 @@ import { TenantCleanup } from "@/components/onboarding/team-ses-status"
 export function SettingsSes() {
   const status = useQuery(api.installation.status)
   const check = useAction(api.installationActions.checkEnvironment)
-  const checkPermissions = useAction(api.installationActions.checkPermissions)
   const [editing, setEditing] = React.useState(false)
   if (!status) return <Skeleton className="h-64 max-w-3xl" />
   if (!status.admin)
@@ -51,90 +42,11 @@ export function SettingsSes() {
   const installation = status.installation
   const connected = !!installation?.accountId
   const callbackOrigin = installation?.callbackOrigin
-  const regions = status.regions.map((region) => region.region)
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
       <p className="text-sm text-muted-foreground">
         Manage the AWS connection used by all teams.
       </p>
-      {/* No recorded revision is the original setup-only policy. */}
-      {installation?.accountId &&
-        (installation.policyRevision ?? 1) < POLICY_REVISION && (
-          <SettingsCard
-            title="AWS permissions"
-            description="Sending and receiving mail need new AWS permissions. Teams can’t send until you add them."
-            actions={
-              <Badge variant="warning" dot>
-                Update needed
-              </Badge>
-            }
-            footer={
-              <AsyncForm
-                submitLabel="Check permissions"
-                success="Permissions are up to date"
-                onSubmit={() => checkPermissions({})}
-              />
-            }
-          >
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium">
-                Used the Opensend setup file
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Download the new setup file. In CloudFormation, open your
-                Opensend stack, choose <strong>Update</strong>, then{" "}
-                <strong>Replace existing template</strong> and upload it. Keep
-                the other settings.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    downloadTextFile(
-                      AWS_SETUP_FILENAME,
-                      awsSetupTemplateFile({
-                        installationId: installation._id,
-                        regions,
-                      })
-                    )
-                  }
-                >
-                  <DownloadIcon data-icon="inline-start" />
-                  Download setup file
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() =>
-                    void copyToClipboard(
-                      awsSetupStackName(installation._id),
-                      "Stack name"
-                    )
-                  }
-                >
-                  <CopyIcon data-icon="inline-start" />
-                  Copy stack name
-                </Button>
-              </div>
-            </section>
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium">
-                Added permissions yourself
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Create a policy from this file in IAM and attach it to your
-                Opensend user.
-              </p>
-              <DownloadIamPolicyButton
-                installationId={installation._id}
-                accountId={installation.accountId}
-                regions={regions}
-                kind="sending"
-              />
-            </section>
-          </SettingsCard>
-        )}
       <SettingsCard
         title="AWS connection"
         actions={
@@ -153,7 +65,7 @@ export function SettingsSes() {
                 variant="ghost"
                 installationId={installation._id}
                 accountId={installation.accountId}
-                regions={regions}
+                regions={status.regions.map((region) => region.region)}
               />
             )}
           </div>

@@ -140,11 +140,13 @@ by Opensend, not by the policy.
 The setup file names its revision in its description and in the
 `PolicyRevision` stack output. An installation with no recorded revision is on
 revision 1, which cannot send: every send path stops with "Ask your
-administrator to update AWS permissions". When the installation is behind,
-`/instance/ses` shows the installation administrator an **AWS permissions**
-card. Download the new setup file and update the existing stack with
-**Replace existing template**, or create a policy from the sending permissions
-file and attach it to the Opensend user. Then choose **Check permissions**.
+administrator to update AWS permissions". To upgrade, the installation
+administrator either updates the existing stack with the new setup file
+(**Replace existing template**), or chooses **Download permissions** on
+`/instance/ses`, which downloads both policy files (setup and sending), creates
+a policy from each and attaches them to the Opensend user. Then choose
+**Update connection**: connecting runs the permissions check and records the
+revision.
 
 The check runs two harmless calls in every enabled region with the
 installation's credentials. A `SendEmail` from `probe@permission-check.invalid`

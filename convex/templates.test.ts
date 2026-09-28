@@ -71,6 +71,20 @@ async function joinOwnerTeam(f: Awaited<ReturnType<typeof templates>>) {
 }
 
 describe("templates", () => {
+  test("hasAny says whether the team has a template, for its members only", async () => {
+    const f = await templates()
+    const hasAny = () =>
+      f.owner.client.query(api.templates.hasAny, { organizationId: f.team })
+    expect(await hasAny()).toBe(false)
+    const id = await f.create("Welcome")
+    expect(await hasAny()).toBe(true)
+    await expect(
+      f.outsider.client.query(api.templates.hasAny, { organizationId: f.team })
+    ).rejects.toThrow("permission")
+    await f.act("remove", id)
+    expect(await hasAny()).toBe(false)
+  })
+
   test("another team's member is refused, and a plain member can write", async () => {
     const f = await templates()
     const id = await f.create("Welcome")

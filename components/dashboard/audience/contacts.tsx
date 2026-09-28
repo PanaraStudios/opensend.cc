@@ -333,11 +333,7 @@ function ImportCsvDialog({
       toast.add({
         type: "success",
         title: "Import finished",
-        description: `${result.created} created, ${result.updated} updated.${
-          result.skipped > 0
-            ? ` ${pluralize(result.skipped, "row")} skipped: ${result.errors[0]}`
-            : ""
-        }`,
+        description: `${result.created} created, ${result.updated} updated.`,
       })
       reset()
       onOpenChange(false)
@@ -584,23 +580,17 @@ export function ContactsView() {
   })
   const rows = contacts.rows
   const { pageRows, pagination } = useLoadedPagination(rows, contacts)
-  const unfiltered =
-    !query && subscribed === "all" && segment === "all" && !range?.from
 
+  const visibleIds = rows.map((contact) => contact.id)
   /* Bulk actions only ever touch rows the current filters still show. */
-  const visibleSet = new Set(rows.map((contact) => contact.id))
+  const visibleSet = new Set(visibleIds)
   const selected = selection.filter((id) => visibleSet.has(id))
   const selectedSet = new Set(selected)
-  const pageIds = pageRows.map((contact) => contact.id)
   const allVisibleSelected =
-    pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id))
+    visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
 
   function toggleAll(checked: boolean) {
-    setSelected((current) =>
-      checked
-        ? [...new Set([...current, ...pageIds])]
-        : current.filter((id) => !pageIds.includes(id))
-    )
+    setSelected(checked ? visibleIds : [])
   }
 
   function toggleOne(id: string, checked: boolean) {
@@ -695,19 +685,13 @@ export function ContactsView() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
-          title={unfiltered ? "No contacts" : "No contacts found"}
-          description={
-            unfiltered
-              ? "Add a contact or import a CSV to start building your audience."
-              : "No contacts match these filters."
-          }
+          title="No contacts"
+          description="Add a contact or import a CSV to start building your audience."
         >
-          {unfiltered ? (
-            <Button onClick={() => setManualOpen(true)}>
-              <PlusIcon data-icon="inline-start" />
-              Add Contacts
-            </Button>
-          ) : null}
+          <Button onClick={() => setManualOpen(true)}>
+            <PlusIcon data-icon="inline-start" />
+            Add Contacts
+          </Button>
         </EmptyState>
       ) : (
         <>

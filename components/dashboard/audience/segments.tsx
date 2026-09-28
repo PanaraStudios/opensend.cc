@@ -42,7 +42,7 @@ import {
   Th,
   useDebouncedValue,
   useDeleteRecord,
-  useDraft,
+  useAutosaveDraft,
   useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import {
@@ -280,11 +280,11 @@ function SegmentPage({
   const [pendingDelete, setPendingDelete] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const search = useDebouncedValue(query)
-  const name = useDraft(segment.name, (next) => {
-    updateSegment(segment.id, next).catch((caught) =>
-      toast.add({ type: "error", title: actionError(caught) })
-    )
+  /* A cleared field waits for a name instead of saving a blank one. */
+  const name = useAutosaveDraft(segment.name, async (next) => {
+    if (next.trim()) await updateSegment(segment.id, next)
   })
+  const title = name.draft.trim() || segment.name
   const candidates = useContactList({ search })
   const { pageRows, pagination } = useLoadedPagination(
     candidates.rows,
@@ -296,7 +296,7 @@ function SegmentPage({
       <DetailHeader
         backHref="/segments"
         backLabel="Segments"
-        title={segment.name}
+        title={title}
         icon={LayersIcon}
         description={`${pluralize(segment.count, "contact")} · Created ${formatDate(segment.createdAt)}`}
         actions={
@@ -309,7 +309,7 @@ function SegmentPage({
       <Surface className="max-w-lg">
         <Field>
           <FieldLabel htmlFor="segment-rename">Name</FieldLabel>
-          <Input id="segment-rename" {...name} />
+          <Input id="segment-rename" {...name.props} />
           <FieldDescription>
             Only your team sees this name. It is not shown on unsubscribe pages.
           </FieldDescription>
@@ -392,7 +392,7 @@ function SegmentPage({
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
-        title={`Delete ${segment.name}?`}
+        title={`Delete ${title}?`}
         description="Contacts remain in the workspace. They are only removed from this segment."
         onConfirm={() => {
           onDelete(() => void deleteSegment(segment.id))

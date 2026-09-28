@@ -36,8 +36,8 @@ import {
   ResourceTable,
   Surface,
   Th,
+  useAutosaveDraft,
   useDeleteRecord,
-  useDraft,
 } from "@/components/dashboard/primitives"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -53,7 +53,7 @@ import {
   useTopics,
 } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
-import type { Contact, ContactProperty } from "@/lib/dashboard/types"
+import type { Contact } from "@/lib/dashboard/types"
 
 /** Reports a failed save; the stored value then shows again. */
 const reportError = (caught: unknown) =>
@@ -177,36 +177,34 @@ function SegmentMembership({
   )
 }
 
-function TextField({
-  id,
-  label,
+/** An input that saves as you type; see `useAutosaveDraft`. */
+function AutosaveInput({
   value,
-  onCommit,
-  type,
-  placeholder,
-}: {
-  id: string
-  label: string
+  onSave,
+  ...props
+}: Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "onBlur"> & {
   value: string
-  onCommit: (next: string) => void
-  type?: string
-  placeholder?: string
+  onSave: (next: string) => Promise<unknown>
 }) {
-  const draft = useDraft(value, onCommit)
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input id={id} type={type} placeholder={placeholder} {...draft} />
-    </Field>
-  )
+  const draft = useAutosaveDraft(value, onSave)
+  return <Input {...props} {...draft.props} />
 }
 
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const stored = useQuery(api.contacts.get, { id })
+  const segments = useSegments()
+  const topics = useTopics()
+  const properties = useProperties()
   const { leaving, deleteAndLeave } = useDeleteRecord("/contacts")
 
-  if (stored === undefined) return <Skeleton className="h-64 w-full" />
+  if (
+    stored === undefined ||
+    segments === undefined ||
+    topics === undefined ||
+    properties === undefined
+  )
+    return <Skeleton className="h-64 w-full" />
   if (!stored) {
     if (leaving) return null
     return <NotFoundState icon={UserIcon} noun="contact" backHref="/contacts" />
@@ -228,10 +226,10 @@ function ContactPage({
   const topics = useTopics() ?? []
   const properties = useProperties() ?? []
   const [pendingDelete, setPendingDelete] = React.useState(false)
+  const save = (patch: Parameters<typeof updateContact>[1]) =>
+    updateContact(contact.id, patch)
   const update = (patch: Parameters<typeof updateContact>[1]) =>
-    updateContact(contact.id, patch).catch(reportError)
-  const setProperty = (property: ContactProperty, value: string) =>
-    update({ properties: { [property.key]: value } })
+    save(patch).catch(reportError)
 
   const emails = state.emails
     .filter((email) => email.to === contact.email)
@@ -277,18 +275,22 @@ function ContactPage({
             <Surface>
               <h2 className="text-sm font-medium">Profile</h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  id="first"
-                  label="First name"
-                  value={contact.firstName}
-                  onCommit={(firstName) => update({ firstName })}
-                />
-                <TextField
-                  id="last"
-                  label="Last name"
-                  value={contact.lastName}
-                  onCommit={(lastName) => update({ lastName })}
-                />
+                <Field>
+                  <FieldLabel htmlFor="first">First name</FieldLabel>
+                  <AutosaveInput
+                    id="first"
+                    value={contact.firstName}
+                    onSave={(firstName) => save({ firstName })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="last">Last name</FieldLabel>
+                  <AutosaveInput
+                    id="last"
+                    value={contact.lastName}
+                    onSave={(lastName) => save({ lastName })}
+                  />
+                </Field>
               </div>
               <Field orientation="horizontal">
                 <FieldLabel htmlFor="subscribed">
@@ -311,15 +313,20 @@ function ContactPage({
               {properties.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {properties.map((property) => (
-                    <TextField
-                      key={property.id}
-                      id={`prop-${property.key}`}
-                      label={property.name}
-                      type={property.type === "number" ? "number" : "text"}
-                      value={contact.properties[property.key] ?? ""}
-                      placeholder={property.fallbackValue}
-                      onCommit={(value) => setProperty(property, value)}
-                    />
+                    <Field key={property.id}>
+                      <FieldLabel htmlFor={`prop-${property.key}`}>
+                        {property.name}
+                      </FieldLabel>
+                      <AutosaveInput
+                        id={`prop-${property.key}`}
+                        type={property.type === "number" ? "number" : "text"}
+                        value={contact.properties[property.key] ?? ""}
+                        placeholder={property.fallbackValue}
+                        onSave={(value) =>
+                          save({ properties: { [property.key]: value } })
+                        }
+                      />
+                    </Field>
                   ))}
                 </div>
               ) : null}

@@ -189,7 +189,7 @@ describe("signing", () => {
         id: "msg_loFOjxBNrRLzqYUf",
         timestamp: 1731705121,
         body: '{"event_type":"ping","data":{"success":true}}',
-        secrets: ["whsec_plJ3nmyCDGBKInavdOK15jsl"],
+        secret: "whsec_plJ3nmyCDGBKInavdOK15jsl",
       })
     ).toBe("v1,rAvfW3dJ/X/qxhsaXPOyyCGmRKsaKWcsNccKXlIktD0=")
   })
@@ -219,12 +219,12 @@ describe("signing", () => {
         id: headers["svix-id"],
         timestamp: Number(headers["svix-timestamp"]),
         body: init.body as string,
-        secrets: [secret!],
+        secret: secret!,
       })
     )
   })
 
-  test("a rotated-out secret keeps signing for 24 hours", async () => {
+  test("rotating replaces the secret at once", async () => {
     const f = await setup()
     const id = await createWebhook(f.owner)
     const before = await f.owner.client.query(api.webhooks.signingSecret, {
@@ -243,21 +243,19 @@ describe("signing", () => {
           id: delivery._id,
           attempt: 0,
         })
-      )?.secrets
-    ).toEqual([after, before])
+      )?.secret
+    ).toBe(after)
     await attempt(f, delivery._id, 0)
-    expect(sentHeaders(0)["svix-signature"].split(" ")).toHaveLength(2)
-    vi.setSystemTime(Date.now() + 24 * 3600000 + 1)
-    await deliver(f)
-    const [next] = await deliveriesOf(f, id)
-    expect(
-      (
-        await f.t.mutation(internal.webhooks.claimAttempt, {
-          id: next._id,
-          attempt: 0,
-        })
-      )?.secrets
-    ).toEqual([after])
+    const headers = sentHeaders(0)
+    const [, init] = fetcher.mock.calls[0] as [URL, RequestInit]
+    expect(headers["svix-signature"]).toBe(
+      await webhookSignature({
+        id: headers["svix-id"],
+        timestamp: Number(headers["svix-timestamp"]),
+        body: init.body as string,
+        secret: after!,
+      })
+    )
   })
 })
 

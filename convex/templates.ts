@@ -15,6 +15,7 @@ import {
   MAX_TEMPLATE_VARIABLES,
   publishedAtAfterEdit,
   renamedTemplateAlias,
+  TEMPLATE_ALIAS_TAKEN,
   templateAliasBase,
   templateAliasError,
   templateVariableDefaults,
@@ -128,7 +129,7 @@ async function aliasesNear(
 /** Past a thousand numbered namesakes the helper may land on a taken alias. */
 async function checkFree(ctx: QueryCtx, organizationId: string, alias: string) {
   if (await aliasOwner(ctx, organizationId, alias))
-    throw new ConvexError("Another template already uses this alias")
+    throw new ConvexError(TEMPLATE_ALIAS_TAKEN)
 }
 
 async function insertTemplate(
@@ -209,6 +210,23 @@ export const list = query({
         }))
       ),
     }
+  },
+})
+
+/** Whether the team has any template at all, whatever the list's filters:
+    the list says "No templates yet" only when it has none. */
+export const hasAny = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    const first = await ctx.db
+      .query("templates")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .first()
+    return first !== null
   },
 })
 

@@ -188,6 +188,23 @@ export const list = query({
   },
 })
 
+/** Whether the team has any request logged, whatever the list's filters:
+    the list says "No logs yet" only when it has none. */
+export const hasAny = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    const first = await ctx.db
+      .query("apiLogs")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .first()
+    return first !== null
+  },
+})
+
 export const get = query({
   args: { id: v.string() },
   returns: v.union(

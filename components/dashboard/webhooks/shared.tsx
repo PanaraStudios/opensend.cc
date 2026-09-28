@@ -335,7 +335,7 @@ export function WebhookMenu({
         open={rotating}
         onOpenChange={setRotating}
         title="Rotate signing secret?"
-        description="Payloads are signed with the new secret from now on. The old one keeps signing them too for 24 hours, so you have a day to switch."
+        description="Payloads are signed with the new secret from now on. Anything still verifying with the old one starts rejecting them."
         confirmLabel="Rotate"
         onConfirm={async () => {
           await rotateWebhookSecret(webhook.id)

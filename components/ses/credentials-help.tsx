@@ -24,19 +24,18 @@ import type { Region } from "@/lib/dashboard/types"
 
 const canDownloadPolicy = (accountId: string) => /^\d{12}$/.test(accountId)
 
-/** Hands over one of the IAM policies the connection needs, named for the
-    account and regions it was generated for. */
+/** Hands over the IAM policies the connection needs, named for the account and
+    regions they were generated for. IAM caps a policy's size, so one click
+    downloads both files: setup, then sending. */
 export function DownloadIamPolicyButton({
   installationId,
   accountId,
   regions,
-  kind = "setup",
   variant = "outline",
 }: {
   installationId: string
   accountId: string
   regions: Region[]
-  kind?: AwsPolicyKind
   variant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   return (
@@ -44,21 +43,20 @@ export function DownloadIamPolicyButton({
       type="button"
       variant={variant}
       disabled={!canDownloadPolicy(accountId)}
-      onClick={() =>
-        downloadTextFile(
-          AWS_IAM_POLICY_FILES[kind],
-          JSON.stringify(
-            buildAwsIamPolicy(installationId, regions, accountId, kind),
-            null,
-            2
-          ) + "\n"
-        )
-      }
+      onClick={() => {
+        for (const kind of Object.keys(AWS_IAM_POLICY_FILES) as AwsPolicyKind[])
+          downloadTextFile(
+            AWS_IAM_POLICY_FILES[kind],
+            JSON.stringify(
+              buildAwsIamPolicy(installationId, regions, accountId, kind),
+              null,
+              2
+            ) + "\n"
+          )
+      }}
     >
       <DownloadIcon data-icon="inline-start" />
-      {kind === "setup"
-        ? "Download permissions"
-        : "Download sending permissions"}
+      Download permissions
     </Button>
   )
 }
@@ -111,24 +109,16 @@ export function AwsCredentialsHelp({
             </h3>
             <p className="text-sm text-muted-foreground">
               If you used Opensend’s AWS setup file, permissions are already
-              attached. Otherwise, download both policies below. For each, go to
-              IAM → Policies → Create policy, select JSON and paste the file’s
-              contents. Save the policy, then attach it to your user under
-              Permissions → Add permissions → Attach policies directly.
+              attached. Otherwise, download the policy below. In IAM → Policies
+              → Create policy, select JSON and paste the file’s contents. Save
+              the policy, then attach it to your user under Permissions → Add
+              permissions → Attach policies directly.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <DownloadIamPolicyButton
-                installationId={installationId}
-                accountId={accountId}
-                regions={regions}
-              />
-              <DownloadIamPolicyButton
-                installationId={installationId}
-                accountId={accountId}
-                regions={regions}
-                kind="sending"
-              />
-            </div>
+            <DownloadIamPolicyButton
+              installationId={installationId}
+              accountId={accountId}
+              regions={regions}
+            />
             <p className="text-xs text-muted-foreground">
               {canDownload
                 ? `For account ${accountId} and regions ${regions.join(", ")}. Download again if you change the regions.`
