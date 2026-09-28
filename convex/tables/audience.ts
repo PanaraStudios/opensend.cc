@@ -54,12 +54,15 @@ export const audienceTables = {
     /** Set while its values are stripped from every contact. The key stays
         reserved until that finishes, so a new property never loses values. */
     deleting: v.optional(v.boolean()),
-  }).index("by_organizationId_and_key", ["organizationId", "key"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_key", ["organizationId", "key"]),
   segments: defineTable({
     organizationId: v.string(),
     name: v.string(),
-    /** Kept in the same mutation as every membership write. */
-    memberCount: v.number(),
+    /** Deprecated: sizes come from the segment member counts. Cleared by
+        `migrations:backfillCounts`; drop once every install has run it. */
+    memberCount: v.optional(v.number()),
   }).index("by_organizationId", ["organizationId"]),
   segmentMembers: defineTable({
     organizationId: v.string(),

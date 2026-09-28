@@ -33,11 +33,13 @@ import {
   DocsButton,
   EmailStatusBadge,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   OptionSelect,
   ResourceTable,
   Th,
+  usePagination,
 } from "@/components/dashboard/primitives"
 import {
   CircleMinusIcon,
@@ -83,6 +85,8 @@ export function EmailsView() {
     return inDateRange(email.createdAt, range)
   })
 
+  const { pageRows, pagination } = usePagination(rows)
+
   return (
     <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
       <ListToolbar
@@ -111,58 +115,61 @@ export function EmailsView() {
           description="Send a message with POST /emails from the API and it appears here with its delivery events."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>To</Th>
-              <Th>Status</Th>
-              <Th>Sent</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((email) => (
-            <TableRow key={email.id}>
-              <TableCell>
-                <div className="flex flex-col gap-0.5">
-                  <Link
-                    href={`/emails/${email.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {email.to}
-                  </Link>
-                  <span className="text-xs text-muted-foreground">
-                    {email.subject}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell>
-                <EmailStatusBadge status={email.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(email.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/emails/${email.id}`} />}
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>To</Th>
+                <Th>Status</Th>
+                <Th>Sent</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((email) => (
+              <TableRow key={email.id}>
+                <TableCell>
+                  <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={`/emails/${email.id}`}
+                      className="font-medium hover:underline"
                     >
-                      <EyeIcon />
-                      View email
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      render={<Link href={`/logs?email=${email.id}`} />}
-                    >
-                      <ScrollTextIcon />
-                      View log
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+                      {email.to}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {email.subject}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <EmailStatusBadge status={email.status} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(email.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/emails/${email.id}`} />}
+                      >
+                        <EyeIcon />
+                        View email
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        render={<Link href={`/logs?email=${email.id}`} />}
+                      >
+                        <ScrollTextIcon />
+                        View log
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="email" />
+        </>
       )}
       <EmailsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </EmailsChrome>
@@ -182,6 +189,8 @@ export function ReceivingView() {
     if (!emailMatches(needle, email)) return false
     return inDateRange(email.createdAt, range)
   })
+
+  const { pageRows, pagination } = usePagination(rows)
 
   return (
     <EmailsChrome>
@@ -211,52 +220,55 @@ export function ReceivingView() {
           description="Enable receiving on a verified domain, then send a message to that address."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>From</Th>
-              <Th>To</Th>
-              <Th>Received</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((email) => (
-            <TableRow key={email.id}>
-              <TableCell>
-                <div className="flex flex-col gap-0.5">
-                  <Link
-                    href={`/emails/receiving/${email.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {email.from}
-                  </Link>
-                  <span className="text-xs text-muted-foreground">
-                    {email.subject}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {email.to}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(email.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/emails/receiving/${email.id}`} />}
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>From</Th>
+                <Th>To</Th>
+                <Th>Received</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((email) => (
+              <TableRow key={email.id}>
+                <TableCell>
+                  <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={`/emails/receiving/${email.id}`}
+                      className="font-medium hover:underline"
                     >
-                      <EyeIcon />
-                      View email
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+                      {email.from}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {email.subject}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {email.to}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(email.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/emails/receiving/${email.id}`} />}
+                      >
+                        <EyeIcon />
+                        View email
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="email" />
+        </>
       )}
     </EmailsChrome>
   )
@@ -300,6 +312,8 @@ export function SuppressionsView() {
     setOpen(false)
   }
 
+  const { pageRows, pagination } = usePagination(rows)
+
   return (
     <EmailsChrome
       actions={
@@ -335,43 +349,46 @@ export function SuppressionsView() {
           description="Bounces and complaints will appear here. You can also add an address by hand."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Email</Th>
-              <Th>Origin</Th>
-              <Th>Added</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.email}</TableCell>
-              <TableCell>
-                <Badge variant="secondary">
-                  {suppressionReasonLabel(item.reason)}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(item.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPending(item.id)}
-                    >
-                      <CircleMinusIcon />
-                      Remove
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Email</Th>
+                <Th>Origin</Th>
+                <Th>Added</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="font-medium">{item.email}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {suppressionReasonLabel(item.reason)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(item.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPending(item.id)}
+                      >
+                        <CircleMinusIcon />
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="suppression" />
+        </>
       )}
 
       <Dialog

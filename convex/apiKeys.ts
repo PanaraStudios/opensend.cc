@@ -17,13 +17,21 @@ import type { Doc, Id } from "./_generated/dataModel"
 import { requireTeam, sessionId } from "./access"
 import schema from "./schema"
 import { apiKeyPermissionValue } from "./tables/api"
+import {
+  countValue,
+  counters,
+  deleteRow,
+  insertRow,
+  literals,
+  patchRow,
+} from "./counts"
+import { matchesSearch, narrow } from "./lists"
+import { logCount } from "./logs"
 import { createToken, tokenParts } from "../lib/dashboard/ids"
 import { tokenHash } from "../lib/oauth/policy"
 
 /** `lastUsedAt` is written at most this often per key. */
 const USAGE_INTERVAL = 60_000
-/** "Total uses" counts retained requests up to this many. */
-const REQUEST_COUNT_CAP = 1000
 
 export const keyInput = v.object({
   name: v.string(),
@@ -111,7 +119,7 @@ export async function insertKey(
   createdBy: Doc<"apiKeys">["createdBy"]
 ) {
   const settled = await settle(ctx, organizationId, input)
-  return ctx.db.insert("apiKeys", {
+  return insertRow(ctx, "apiKeys", {
     organizationId,
     ...settled,
     ...minted,
@@ -134,7 +142,7 @@ export async function patchKey(
     },
     key.domainId
   )
-  await ctx.db.patch("apiKeys", key._id, {
+  await patchRow(ctx, "apiKeys", key._id, {
     ...next,
     search: `${next.name} ${key.tokenPrefix}`,
   })
@@ -145,7 +153,7 @@ export async function deleteKey(ctx: MutationCtx, key: Doc<"apiKeys">) {
     .withIndex("by_apiKeyId", (q) => q.eq("apiKeyId", key._id))
     .unique()
   if (usage) await ctx.db.delete("apiKeyUsage", usage._id)
-  await ctx.db.delete("apiKeys", key._id)
+  await deleteRow(ctx, "apiKeys", key._id)
 }
 /** A deleted team's keys stop working with it. */
 export async function retireApiKeys(ctx: MutationCtx, organizationId: string) {
@@ -199,12 +207,28 @@ export async function keyPage(
       : keys
           .withIndex("by_organizationId", (q) => q.eq("organizationId", org))
           .order("desc")
-  const result = await rows.paginate(args.paginationOpts)
+  const matches = matchesSearch(search)
+  const result = narrow(await rows.paginate(args.paginationOpts), (key) =>
+    matches(key.name, key.tokenPrefix)
+  )
   return {
     ...result,
     page: await Promise.all(result.page.map((key) => viewKey(ctx, key))),
   }
 }
+export const count = query({
+  args: { organizationId: v.string(), ...keyFilters.fields },
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.apiKeys.total(ctx, args.organizationId, [
+        { is: args.permission, among: literals(apiKeyPermissionValue) },
+      ]),
+    }
+  },
+})
 export const list = query({
   args: {
     organizationId: v.string(),
@@ -239,9 +263,8 @@ export const get = query({
     v.null(),
     v.object({
       key: keyView,
-      /** Requests still in the logs, counted up to a cap. */
+      /** Requests still in the logs. */
       requests: v.number(),
-      moreRequests: v.boolean(),
     })
   ),
   handler: async (ctx, { id }) => {
@@ -249,16 +272,13 @@ export const get = query({
     const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
     if (!key) return null
     await requireTeam(ctx, key.organizationId)
-    const logs = await ctx.db
-      .query("apiLogs")
-      .withIndex("by_organizationId_and_apiKeyId", (q) =>
-        q.eq("organizationId", key.organizationId).eq("apiKeyId", key._id)
-      )
-      .take(REQUEST_COUNT_CAP + 1)
     return {
       key: await viewKey(ctx, key),
-      requests: Math.min(logs.length, REQUEST_COUNT_CAP),
-      moreRequests: logs.length > REQUEST_COUNT_CAP,
+      requests:
+        (await logCount(ctx, {
+          organizationId: key.organizationId,
+          apiKeyId: key._id,
+        })) ?? 0,
     }
   },
 })

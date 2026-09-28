@@ -17,6 +17,15 @@ import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
+import {
+  BOOLEANS,
+  countValue,
+  counters,
+  deleteRow,
+  insertRow,
+  patchRow,
+} from "./counts"
+import { matchesSearch, teamPage } from "./lists"
 import { createWebhookSecret } from "../lib/dashboard/ids"
 import {
   isDeliveryFailed,
@@ -120,26 +129,6 @@ async function subscribe(
     })
 }
 
-const findStats = (ctx: QueryCtx | MutationCtx, webhookId: Id<"webhooks">) =>
-  ctx.db
-    .query("webhookStats")
-    .withIndex("by_webhookId", (q) => q.eq("webhookId", webhookId))
-    .unique()
-
-async function count(
-  ctx: MutationCtx,
-  webhookId: Id<"webhooks">,
-  change: { deliveries: number; failed: number }
-) {
-  if (!change.deliveries && !change.failed) return
-  const stats = await findStats(ctx, webhookId)
-  if (stats)
-    await ctx.db.patch("webhookStats", stats._id, {
-      deliveries: stats.deliveries + change.deliveries,
-      failed: stats.failed + change.failed,
-    })
-}
-
 async function enqueueAttempt(
   ctx: MutationCtx,
   id: Id<"webhookDeliveries">,
@@ -171,7 +160,7 @@ async function send(
     | "replay"
   >
 ) {
-  const id = await ctx.db.insert("webhookDeliveries", {
+  const id = await insertRow(ctx, "webhookDeliveries", {
     ...message,
     status: 0,
     failed: true,
@@ -180,24 +169,65 @@ async function send(
     response: "",
     nextAttemptAt: Date.now(),
   })
-  await count(ctx, message.webhookId, { deliveries: 1, failed: 1 })
   await enqueueAttempt(ctx, id, 0)
   return id
 }
 
+const webhookFilters = {
+  organizationId: v.string(),
+  /** Part of the endpoint or of an event name, as typed. */
+  search: v.optional(v.string()),
+  enabled: v.optional(v.boolean()),
+}
+
+/** The team's webhooks, newest first, a page at a time. */
 export const list = query({
+  args: { ...webhookFilters, paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(webhookValue),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const matches = matchesSearch(args.search)
+    const result = await teamPage(
+      ctx,
+      "webhooks",
+      args.organizationId,
+      args.paginationOpts,
+      (webhook) =>
+        (args.enabled === undefined || webhook.enabled === args.enabled) &&
+        matches(webhook.endpoint, ...webhook.events)
+    )
+    return { ...result, page: result.page.map(shown) }
+  },
+})
+
+export const count = query({
+  args: webhookFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.webhooks.total(ctx, args.organizationId, [
+        { is: args.enabled, among: BOOLEANS },
+      ]),
+    }
+  },
+})
+
+/** Whether the team has any webhook at all, whatever the list's filters:
+    the list says "No webhooks yet" only when it has none. */
+export const hasAny = query({
   args: { organizationId: v.string() },
-  returns: v.array(webhookValue),
+  returns: v.boolean(),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId)
-    const rows = await ctx.db
+    const first = await ctx.db
       .query("webhooks")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", organizationId)
       )
-      .order("desc")
-      .take(WEBHOOK_LIMIT)
-    return rows.map(shown)
+      .first()
+    return first !== null
   },
 })
 
@@ -217,7 +247,12 @@ export const get = query({
   handler: async (ctx, { id }) => {
     const webhook = await readWebhook(ctx, id)
     if (!webhook) return null
-    const stats = await findStats(ctx, webhook._id)
+    const [deliveries, failed] = await Promise.all([
+      counters.webhookDeliveries.total(ctx, webhook._id),
+      counters.webhookDeliveries.total(ctx, webhook._id, [
+        { is: true, among: BOOLEANS },
+      ]),
+    ])
     const last = await ctx.db
       .query("webhookDeliveries")
       .withIndex("by_webhookId", (q) => q.eq("webhookId", webhook._id))
@@ -236,8 +271,8 @@ export const get = query({
         delivered.push(event)
     return {
       webhook: shown(webhook),
-      deliveries: stats?.deliveries ?? 0,
-      failed: stats?.failed ?? 0,
+      deliveries: deliveries ?? 0,
+      failed: failed ?? 0,
       lastDeliveryAt: last?._creationTime ?? null,
       delivered,
     }
@@ -254,13 +289,30 @@ export const signingSecret = query({
   },
 })
 
-export const deliveries = query({
-  args: {
-    webhookId: v.id("webhooks"),
-    paginationOpts: paginationOptsValidator,
-    failed: v.optional(v.boolean()),
-    event: v.optional(v.string()),
+const deliveryFilters = {
+  webhookId: v.id("webhooks"),
+  failed: v.optional(v.boolean()),
+  event: v.optional(v.string()),
+}
+
+export const deliveryCount = query({
+  args: deliveryFilters,
+  returns: countValue,
+  handler: async (ctx, { webhookId, failed, event }) => {
+    const webhook = await ctx.db.get("webhooks", webhookId)
+    if (!webhook) return { total: 0 }
+    await requireTeam(ctx, webhook.organizationId)
+    return {
+      total: await counters.webhookDeliveries.total(ctx, webhookId, [
+        { is: failed, among: BOOLEANS },
+        { is: event, among: WEBHOOK_EVENTS },
+      ]),
+    }
   },
+})
+
+export const deliveries = query({
+  args: { ...deliveryFilters, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(schema.doc("webhookDeliveries")),
   handler: async (ctx, args) => {
     const webhook = await ctx.db.get("webhooks", args.webhookId)
@@ -357,12 +409,7 @@ export const insert = internalMutation({
       enabled: true,
       secret: args.secret,
     }
-    const id = await ctx.db.insert("webhooks", webhook)
-    await ctx.db.insert("webhookStats", {
-      webhookId: id,
-      deliveries: 0,
-      failed: 0,
-    })
+    const id = await insertRow(ctx, "webhooks", webhook)
     await subscribe(ctx, { ...webhook, _id: id }, events)
     return id
   },
@@ -385,7 +432,7 @@ export const saveSecret = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, secret }) => {
     await writableWebhook(ctx, id)
-    await ctx.db.patch("webhooks", id, { secret })
+    await patchRow(ctx, "webhooks", id, { secret })
     return null
   },
 })
@@ -405,7 +452,7 @@ export const update = mutation({
       args.events ?? webhook.events
     )
     const enabled = args.enabled ?? webhook.enabled
-    await ctx.db.patch("webhooks", webhook._id, {
+    await patchRow(ctx, "webhooks", webhook._id, {
       endpoint,
       events,
       enabled,
@@ -424,9 +471,7 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const webhook = await writableWebhook(ctx, id)
     await subscribe(ctx, webhook, [])
-    const stats = await findStats(ctx, id)
-    if (stats) await ctx.db.delete("webhookStats", stats._id)
-    await ctx.db.delete("webhooks", id)
+    await deleteRow(ctx, "webhooks", id)
     await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
       webhookId: id,
     })
@@ -442,7 +487,7 @@ export const purgeDeliveries = internalMutation({
       .query("webhookDeliveries")
       .withIndex("by_webhookId", (q) => q.eq("webhookId", webhookId))
       .take(BATCH)
-    for (const row of rows) await ctx.db.delete("webhookDeliveries", row._id)
+    for (const row of rows) await deleteRow(ctx, "webhookDeliveries", row._id)
     if (rows.length === BATCH)
       await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
         webhookId,
@@ -528,7 +573,7 @@ export const claimAttempt = internalMutation({
     if (!delivery || delivery.attempts !== args.attempt) return null
     const webhook = await ctx.db.get("webhooks", delivery.webhookId)
     if (!webhook?.enabled) {
-      await ctx.db.patch("webhookDeliveries", delivery._id, {
+      await patchRow(ctx, "webhookDeliveries", delivery._id, {
         nextAttemptAt: undefined,
       })
       return null
@@ -578,7 +623,7 @@ async function record(
     !!webhook?.enabled &&
     !disable &&
     attempts < RETRY_DELAYS.length
-  await ctx.db.patch("webhookDeliveries", delivery._id, {
+  await patchRow(ctx, "webhookDeliveries", delivery._id, {
     status: args.status,
     failed,
     attempts,
@@ -587,21 +632,17 @@ async function record(
     nextAttemptAt: retry ? now + RETRY_DELAYS[attempts] : undefined,
   })
   if (!webhook) return
-  await count(ctx, webhook._id, {
-    deliveries: 0,
-    failed: Number(failed) - Number(delivery.failed),
-  })
   if (retry) await enqueueAttempt(ctx, delivery._id, attempts)
   // Only a change of health touches the webhook itself.
   const failingSince = failed ? (webhook.failingSince ?? now) : undefined
   if (disable) {
-    await ctx.db.patch("webhooks", webhook._id, {
+    await patchRow(ctx, "webhooks", webhook._id, {
       enabled: false,
       failingSince: undefined,
     })
     await subscribe(ctx, { ...webhook, enabled: false }, webhook.events)
   } else if (failingSince !== webhook.failingSince)
-    await ctx.db.patch("webhooks", webhook._id, { failingSince })
+    await patchRow(ctx, "webhooks", webhook._id, { failingSince })
 }
 
 export const recordAttempt = internalMutation({
@@ -641,20 +682,8 @@ export const cleanup = internalMutation({
       .query("webhookDeliveries")
       .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
       .take(BATCH)
-    const removed = new Map<
-      Id<"webhooks">,
-      { deliveries: number; failed: number }
-    >()
-    for (const row of deliveries) {
-      await ctx.db.delete("webhookDeliveries", row._id)
-      const total = removed.get(row.webhookId) ?? { deliveries: 0, failed: 0 }
-      removed.set(row.webhookId, {
-        deliveries: total.deliveries - 1,
-        failed: total.failed - Number(row.failed),
-      })
-    }
-    for (const [webhookId, change] of removed)
-      await count(ctx, webhookId, change)
+    for (const row of deliveries)
+      await deleteRow(ctx, "webhookDeliveries", row._id)
     const events = await ctx.db
       .query("events")
       .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))

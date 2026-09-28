@@ -7,7 +7,8 @@ import { FileCodeIcon, LayoutGridIcon, PlusIcon, Rows3Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
+import type { FunctionReturnType } from "convex/server"
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -16,16 +17,15 @@ import {
   DocsButton,
   EmptyState,
   ListPagination,
-  useLoadedPagination,
   ListToolbar,
   MonoValue,
-  PAGE_SIZES,
   PageHeader,
   RelativeTime,
   ResourceTable,
   TemplateStatusBadge,
   Th,
   useDebouncedValue,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
   TEMPLATE_STATUS_ITEMS,
@@ -40,6 +40,11 @@ import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
 import { asTemplate, useTemplateCommands } from "@/lib/templates/use-templates"
 
 type TemplatesLayout = "grid" | "table"
+
+/** List rows carry their draft markup for the thumbnails. */
+const asListedTemplate = (
+  row: FunctionReturnType<typeof api.templates.list>["page"][number]
+) => asTemplate(row, row)
 
 const LAYOUT_ITEMS = [
   { value: "grid" as const, label: "Grid view", icon: LayoutGridIcon },
@@ -86,28 +91,19 @@ export function TemplatesView() {
   const search = useDebouncedValue(query)
 
   const {
-    results,
+    rows,
     status: loading,
-    loadMore,
-  } = usePaginatedQuery(
+    pageRows,
+    pagination,
+  } = useTeamList(
     api.templates.list,
-    organizationId
-      ? {
-          organizationId,
-          search,
-          ...(status !== "all" ? { status: status as TemplateStatus } : {}),
-        }
-      : "skip",
-    { initialNumItems: PAGE_SIZES[0] }
+    api.templates.count,
+    {
+      search,
+      ...(status !== "all" ? { status: status as TemplateStatus } : {}),
+    },
+    asListedTemplate
   )
-  const rows = React.useMemo(
-    () => results.map((row) => asTemplate(row, row)),
-    [results]
-  )
-  const { pageRows, pagination } = useLoadedPagination(rows, {
-    status: loading,
-    loadMore,
-  })
   const hasTemplates = useQuery(
     api.templates.hasAny,
     organizationId ? { organizationId } : "skip"

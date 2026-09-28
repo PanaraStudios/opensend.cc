@@ -1,9 +1,15 @@
 import { v, ConvexError } from "convex/values"
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import schema from "./schema"
 import { LIMITS, listProperties } from "./audience"
+import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
+import { matchesSearch, teamPage } from "./lists"
 import { propertyTypeValue } from "./tables/audience"
 import {
   normalizePropertyKey,
@@ -13,8 +19,43 @@ import {
 /** Contacts a stripping pass rewrites before handing on to the next. */
 const STRIP_BATCH = 200
 
-/** Every custom property of the team, newest first. */
+const propertyFilters = {
+  organizationId: v.string(),
+  search: v.optional(v.string()),
+}
+
+/** The team's custom properties, newest first, a page at a time. */
 export const list = query({
+  args: { ...propertyFilters, paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(schema.doc("contactProperties")),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const matches = matchesSearch(args.search)
+    return teamPage(
+      ctx,
+      "contactProperties",
+      args.organizationId,
+      args.paginationOpts,
+      // One being deleted is already gone for the team.
+      (property) => !property.deleting && matches(property.name, property.key)
+    )
+  },
+})
+
+export const count = query({
+  args: propertyFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.contactProperties.total(ctx, args.organizationId),
+    }
+  },
+})
+
+/** Every custom property of the team, newest first, for pickers. */
+export const options = query({
   args: { organizationId: v.string() },
   returns: v.array(schema.doc("contactProperties")),
   handler: async (ctx, { organizationId }) => {
@@ -63,7 +104,7 @@ export const create = mutation({
       !Number.isFinite(Number(fallbackValue))
     )
       throw new ConvexError("The fallback must be a number")
-    return ctx.db.insert("contactProperties", {
+    return insertRow(ctx, "contactProperties", {
       organizationId: args.organizationId,
       key,
       name,
@@ -84,7 +125,7 @@ export const remove = mutation({
     if (!property || property.deleting)
       throw new ConvexError("Property not found")
     await requireTeam(ctx, property.organizationId, "write")
-    await ctx.db.patch("contactProperties", id, { deleting: true })
+    await patchRow(ctx, "contactProperties", id, { deleting: true })
     await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
       id,
       cursor: null,
@@ -112,9 +153,9 @@ export const strip = internalMutation({
       if (!(property.key in contact.properties)) continue
       const { [property.key]: _removed, ...properties } = contact.properties
       void _removed
-      await ctx.db.patch("contacts", contact._id, { properties })
+      await patchRow(ctx, "contacts", contact._id, { properties })
     }
-    if (isDone) await ctx.db.delete("contactProperties", id)
+    if (isDone) await deleteRow(ctx, "contactProperties", id)
     else
       await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
         id,

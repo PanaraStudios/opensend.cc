@@ -31,11 +31,13 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   RadioCards,
   ResourceTable,
   Th,
+  useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
@@ -43,8 +45,7 @@ import {
 } from "@/components/dashboard/audience/shared"
 import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useAudienceCommands, useTopics } from "@/lib/audience/use-audience"
+import { useAudienceCommands, useTopicList } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
 import type {
@@ -324,17 +325,13 @@ function EditTopicDialog({
 
 export function TopicsView() {
   const { deleteTopic } = useAudienceCommands()
-  const topics = useTopics()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Topic | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-
-  const needle = searchNeedle(query)
-  const rows = (topics ?? []).filter((topic) =>
-    matchesNeedle(needle, topic.name, topic.description)
-  )
+  const topics = useTopicList(useDebouncedValue(query))
+  const { rows, pageRows, pagination } = topics
 
   return (
     <AudienceChrome
@@ -353,7 +350,7 @@ export function TopicsView() {
         onQueryChange={setQuery}
         placeholder="Search topics…"
       />
-      {topics === undefined ? (
+      {topics.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
@@ -367,57 +364,60 @@ export function TopicsView() {
           </Button>
         </EmptyState>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Description</Th>
-              <Th>Default</Th>
-              <Th>Visibility</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((topic) => (
-            <TableRow key={topic.id}>
-              <TableCell className="font-medium">{topic.name}</TableCell>
-              <TableCell className="max-w-xs truncate text-muted-foreground">
-                {topic.description || "—"}
-              </TableCell>
-              <TableCell>
-                <Badge variant="secondary">
-                  {topic.defaultSubscription === "opt_out"
-                    ? "Opt-out"
-                    : "Opt-in"}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground capitalize">
-                {topic.visibility}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(topic.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setEditing(topic)}>
-                      <PencilIcon />
-                      Edit Topic
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPendingDelete(topic.id)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Description</Th>
+                <Th>Default</Th>
+                <Th>Visibility</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((topic) => (
+              <TableRow key={topic.id}>
+                <TableCell className="font-medium">{topic.name}</TableCell>
+                <TableCell className="max-w-xs truncate text-muted-foreground">
+                  {topic.description || "—"}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {topic.defaultSubscription === "opt_out"
+                      ? "Opt-out"
+                      : "Opt-in"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground capitalize">
+                  {topic.visibility}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(topic.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => setEditing(topic)}>
+                        <PencilIcon />
+                        Edit Topic
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPendingDelete(topic.id)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="topic" />
+        </>
       )}
       <AddTopicDialog open={open} onOpenChange={setOpen} />
       <EditTopicDialog

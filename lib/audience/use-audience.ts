@@ -2,7 +2,6 @@
 import * as React from "react"
 import {
   useMutation,
-  usePaginatedQuery,
   useQuery,
   type OptionalRestArgsOrSkip,
 } from "convex/react"
@@ -14,6 +13,7 @@ import type {
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
+import { useTeamList } from "@/components/dashboard/primitives"
 import type { ContactInput } from "@/lib/dashboard/contacts"
 import type {
   Contact,
@@ -42,7 +42,7 @@ export function asContact(row: ContactRow | ContactDetailRow): Contact {
   }
 }
 export const asSegment = (
-  row: Doc<"segments">
+  row: FunctionReturnType<typeof api.segments.options>[number]
 ): Segment & { count: number } => ({
   id: row._id,
   name: row.name,
@@ -77,25 +77,17 @@ function useTeamQuery<
       : ["skip"]) as OptionalRestArgsOrSkip<Q>)
   )
 }
-type ContactFilters = Omit<
-  FunctionArgs<typeof api.contacts.list>,
-  "organizationId" | "paginationOpts"
->
 /** The team's contacts, newest first, a page at a time. */
-export function useContactList(filters: ContactFilters) {
-  const { activeTeamId } = useWorkspace()
-  const query = usePaginatedQuery(
-    api.contacts.list,
-    activeTeamId ? { organizationId: activeTeamId, ...filters } : "skip",
-    { initialNumItems: 40 }
-  )
-  const rows = React.useMemo(
-    () => query.results.map(asContact),
-    [query.results]
-  )
-  return { ...query, rows }
-}
-
+export const useContactList = (
+  filters: Omit<
+    FunctionArgs<typeof api.contacts.list>,
+    "organizationId" | "paginationOpts"
+  >
+) => useTeamList(api.contacts.list, api.contacts.count, filters, asContact)
+export const useSegmentList = (search: string) =>
+  useTeamList(api.segments.list, api.segments.count, { search }, asSegment)
+export const useTopicList = (search: string) =>
+  useTeamList(api.topics.list, api.topics.count, { search }, asTopic)
 /** How many contacts a picker shows. The command menu used to list every
     contact; this keeps a team's usual handful whole while bounding the read. */
 const CONTACT_SEARCH_LIMIT = 20
@@ -117,17 +109,18 @@ export function useContactSearch(search: string, enabled = true) {
   return React.useMemo(() => page?.page.map(asContact) ?? [], [page])
 }
 
-/* Each whole list (capped per team), or undefined while loading. */
+/* Each whole list (capped per team), for pickers, or undefined while
+   loading. The list screens page theirs. */
 export function useSegments() {
-  const rows = useTeamQuery(api.segments.list)
+  const rows = useTeamQuery(api.segments.options)
   return React.useMemo(() => rows?.map(asSegment), [rows])
 }
 export function useTopics() {
-  const rows = useTeamQuery(api.topics.list)
+  const rows = useTeamQuery(api.topics.options)
   return React.useMemo(() => rows?.map(asTopic), [rows])
 }
 export function useProperties() {
-  const rows = useTeamQuery(api.contactProperties.list)
+  const rows = useTeamQuery(api.contactProperties.options)
   return React.useMemo(() => rows?.map(asProperty), [rows])
 }
 

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useParams } from "next/navigation"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -23,7 +23,7 @@ import {
   Th,
   ToolbarFilters,
   useDeleteRecord,
-  useLoadedPagination,
+  usePagedList,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
@@ -61,11 +61,13 @@ export function WebhookDetail() {
     [result, signingSecret]
   )
   const {
-    results,
+    rows,
     status: loading,
-    loadMore,
-  } = usePaginatedQuery(
+    pageRows,
+    pagination,
+  } = usePagedList(
     api.webhooks.deliveries,
+    api.webhooks.deliveryCount,
     result
       ? {
           webhookId: result.webhook._id,
@@ -73,13 +75,8 @@ export function WebhookDetail() {
           ...(eventType !== "all" ? { event: eventType } : {}),
         }
       : "skip",
-    { initialNumItems: 40 }
+    asWebhookDelivery
   )
-  const rows = React.useMemo(() => results.map(asWebhookDelivery), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, {
-    status: loading,
-    loadMore,
-  })
 
   if (result === undefined || signingSecret === undefined)
     return <Skeleton className="h-64 w-full" />
