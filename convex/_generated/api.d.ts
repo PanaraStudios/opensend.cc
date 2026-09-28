@@ -303,10 +303,6 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  broadcastEventCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastEventCounts">;
-  broadcastHistoryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastHistoryCounts">;
-  broadcastRecipientCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastRecipientCounts">;
-  broadcastCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastCounts">;
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
@@ -338,5 +334,9 @@ export declare const components: {
   automationRunCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationRunCounts">;
   automationStepCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationStepCounts">;
   receivedEmailCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"receivedEmailCounts">;
+  broadcastCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastCounts">;
+  broadcastRecipientCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastRecipientCounts">;
+  broadcastHistoryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastHistoryCounts">;
+  broadcastEventCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastEventCounts">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };
