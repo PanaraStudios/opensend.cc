@@ -63,7 +63,8 @@ import {
   useBroadcast,
   useBroadcastCommands,
 } from "@/lib/broadcasts/use-broadcasts"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useDomainByName } from "@/lib/domains/use-domains"
+import { useSegments, useTopics } from "@/lib/audience/use-audience"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
@@ -141,14 +142,11 @@ function StatsTable({
 }
 
 function BroadcastReport({ item }: { item: Broadcast }) {
-  const { state } = useDashboard()
   const [hideTracking, setHideTracking] = React.useState(false)
   const [tab, setTab] = React.useState<BroadcastEventTab>("unsubscribed")
   const stats = item.stats
   const sender = item.from && parseMailbox(item.from)
-  const domain = sender
-    ? state.domains.find((row) => row.name === senderDomainOf(sender))
-    : undefined
+  const domain = useDomainByName(sender ? senderDomainOf(sender) : undefined)
   const trackingOff = Boolean(
     domain && (!domain.openTracking || !domain.clickTracking)
   )
@@ -276,7 +274,8 @@ function BroadcastReport({ item }: { item: Broadcast }) {
 export function BroadcastDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state } = useDashboard()
+  const segments = useSegments() ?? []
+  const topics = useTopics() ?? []
   const {
     updateBroadcast,
     duplicateBroadcast,
@@ -314,8 +313,8 @@ export function BroadcastDetail() {
 
   const broadcast = item
   const { canSend, canCancel } = broadcastActions(broadcast.status)
-  const topic = state.topics.find((row) => row.id === broadcast.topicId)
-  const audience = audienceLabel(broadcast.segmentId, state.segments)
+  const topic = topics.find((row) => row.id === broadcast.topicId)
+  const audience = audienceLabel(broadcast.segmentId, segments)
 
   function cloneAsTemplate() {
     void saveAsTemplate(broadcastAsTemplateInput(broadcast))

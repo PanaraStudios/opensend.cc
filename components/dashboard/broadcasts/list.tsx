@@ -54,15 +54,13 @@ import {
   asBroadcast,
   useBroadcastCommands,
 } from "@/lib/broadcasts/use-broadcasts"
-import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast, BroadcastStatus } from "@/lib/dashboard/types"
-import { useSegmentList } from "@/lib/audience/use-audience"
+import { useSegments } from "@/lib/audience/use-audience"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 export function BroadcastsView() {
   const router = useRouter()
-  const { state } = useDashboard()
-  const segments = useSegmentList("")
+  const segments = useSegments() ?? []
   const {
     addBroadcast,
     updateBroadcast,
@@ -145,8 +143,8 @@ export function BroadcastsView() {
           {
             value: audience,
             onChange: setAudience,
-            items: audienceFilterItems(segments.pageRows),
-            selectedItem: audienceFilterItems(state.segments).find(
+            items: audienceFilterItems(segments),
+            selectedItem: audienceFilterItems(segments).find(
               (item) => item.value === audience
             ),
             "aria-label": "Filter by audience",

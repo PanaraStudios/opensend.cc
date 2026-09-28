@@ -1,6 +1,6 @@
 "use client"
 import { createContext, useContext, useEffect } from "react"
-import { useQuery, useMutation, useConvexAuth } from "convex/react"
+import { useQuery, useMutation, useAction, useConvexAuth } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import { authClient, authResult } from "@/lib/auth/client"
@@ -13,6 +13,8 @@ import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
 import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import type { MemberRole, Team } from "@/lib/dashboard/types"
+
 export type Workspace = NonNullable<
   FunctionReturnType<typeof api.teams.snapshot>
 >
@@ -21,6 +23,57 @@ export function useWorkspace() {
   const value = useContext(Context)
   if (!value) throw new Error("Account data is not available")
   return value
+}
+export function useTeams(): Team[] {
+  return useWorkspace().teams.map((team) => ({ ...team, removable: true }))
+}
+export function useActiveTeam(): Team {
+  const { activeTeamId } = useWorkspace()
+  return (
+    useTeams().find((team) => team.id === activeTeamId) ?? {
+      id: "",
+      name: "Account",
+      slug: "",
+      role: "member",
+      joinedAt: 0,
+      members: 0,
+      removable: false,
+    }
+  )
+}
+export function useTeamCommands() {
+  const { activeTeamId } = useWorkspace()
+  const create = useMutation(api.teams.create)
+  const switchTeam = useMutation(api.teams.switchTeam)
+  const rename = useMutation(api.teams.rename)
+  const remove = useMutation(api.teams.remove)
+  const invite = useMutation(api.teams.invite)
+  const changeMember = useMutation(api.teams.changeMember)
+  const upload = useAction(api.teams.uploadAvatar)
+  const avatar = useMutation(api.teams.removeAvatar)
+  return {
+    switchTeam: (id: string) => switchTeam({ organizationId: id }),
+    createTeam: (name: string) => create({ name }),
+    renameTeam: (id: string, name: string) =>
+      rename({ organizationId: id, name }),
+    deleteTeam: (id: string, leave = false) =>
+      remove({ organizationId: id, leave }),
+    inviteMember: (input: { email: string; role: MemberRole }) =>
+      invite({ ...input, organizationId: activeTeamId ?? "" }),
+    updateMemberRole: (id: string, role: MemberRole) =>
+      changeMember({ organizationId: activeTeamId ?? "", memberId: id, role }),
+    removeMember: (id: string) =>
+      changeMember({ organizationId: activeTeamId ?? "", memberId: id }),
+    setTeamAvatar: async (id: string, data: string | undefined) => {
+      if (!data) return avatar({ organizationId: id })
+      const blob = await (await fetch(data)).blob()
+      return upload({
+        organizationId: id,
+        bytes: await blob.arrayBuffer(),
+        contentType: blob.type,
+      })
+    },
+  }
 }
 /** Mirrors `requireTeam` in convex/access.ts: any member writes the product;
     only admins manage the team itself. */

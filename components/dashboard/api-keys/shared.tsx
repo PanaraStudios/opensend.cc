@@ -41,7 +41,7 @@ import {
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import { maskToken, permissionLabel } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useDomain, useDomainOptions } from "@/lib/domains/use-domains"
 import type { ApiKey, ApiKeyPermission, Domain } from "@/lib/dashboard/types"
 
 export const ApiKeyIcon = KeyRoundIcon
@@ -164,7 +164,7 @@ function ApiKeyForm({
   onSubmit: (values: ApiKeyFormValues) => Promise<void>
   onOpenChange: (open: boolean) => void
 }) {
-  const { state } = useDashboard()
+  const domains = useDomainOptions()
   const [name, setName] = React.useState(apiKey?.name ?? "")
   const [permission, setPermission] = React.useState<ApiKeyPermission>(
     apiKey?.permission ?? "full_access"
@@ -172,6 +172,7 @@ function ApiKeyForm({
   const [domainId, setDomainId] = React.useState<string | null>(
     apiKey?.domainId ?? null
   )
+  const selectedDomain = useDomain(domainId)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState(false)
   const sendingOnly = permission === "sending_access"
@@ -255,7 +256,15 @@ function ApiKeyForm({
               onChange={(next) =>
                 setDomainId(next === ALL_DOMAINS ? null : next)
               }
-              items={domainItems(state.domains)}
+              items={domainItems(domains)}
+              selectedItem={
+                sendingOnly && selectedDomain
+                  ? {
+                      value: selectedDomain.id,
+                      label: selectedDomain.name,
+                    }
+                  : undefined
+              }
             />
             <FieldDescription>
               Only sending access can be restricted to a single domain.

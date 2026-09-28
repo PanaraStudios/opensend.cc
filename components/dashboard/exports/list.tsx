@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { DownloadIcon } from "lucide-react"
 import { useTeamRole } from "@/components/auth/workspace"
@@ -17,22 +16,14 @@ import {
 } from "@/components/dashboard/primitives"
 import { ExportDownload } from "./shared"
 import { useExportList } from "@/lib/exports/use-exports"
-import { useDashboard } from "@/lib/dashboard/store"
 import { exportFileName } from "@/lib/dashboard/exports"
 import { slugify } from "@/lib/dashboard/slug"
 import { useClock } from "@/lib/time/use-clock"
 
-const DEMO_RESOURCES = new Set(["Emails", "Suppressions"])
-
 export function SettingsExports() {
-  const { state } = useDashboard()
   const { isAdmin } = useTeamRole()
   const now = useClock()
-  const demo = React.useMemo(
-    () => state.exports.filter((row) => DEMO_RESOURCES.has(row.resource)),
-    [state.exports]
-  )
-  const exports = useExportList(demo)
+  const exports = useExportList()
   const { rows, pageRows, pagination } = exports
   return (
     <>
@@ -66,7 +57,6 @@ export function SettingsExports() {
             }
           >
             {pageRows.map((row) => {
-              const local = demo.some((item) => item.id === row.id)
               const item = {
                 ...row,
                 fileName:
@@ -80,16 +70,12 @@ export function SettingsExports() {
               return (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">
-                    {local ? (
-                      item.fileName
-                    ) : (
-                      <Link
-                        href={`/settings/exports/${item.id}`}
-                        className="hover:underline"
-                      >
-                        {item.fileName}
-                      </Link>
-                    )}
+                    <Link
+                      href={`/settings/exports/${item.id}`}
+                      className="hover:underline"
+                    >
+                      {item.fileName}
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <ExportStatusBadge status={item.status} />
@@ -98,7 +84,7 @@ export function SettingsExports() {
                     <RelativeTime at={item.expiresAt} />
                   </TableCell>
                   <TableCell>
-                    <ExportDownload job={item} iconOnly demo={local} />
+                    <ExportDownload job={item} iconOnly />
                   </TableCell>
                 </TableRow>
               )

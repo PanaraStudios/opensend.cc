@@ -51,7 +51,7 @@ import {
   useAutomationCommands,
 } from "@/lib/automations/use-automations"
 import { sentenceCase } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useStepContext } from "@/lib/automations/use-automations"
 import type { Automation, AutomationRun } from "@/lib/dashboard/types"
 
 /* How the automation is doing: its runs and its numbers on the left, and on
@@ -132,7 +132,7 @@ function StepFacts({
 }
 
 export function Observability({ automation }: { automation: Automation }) {
-  const { state } = useDashboard()
+  const context = useStepContext(automation.steps)
   const { organizationId, cancelAutomationRun } = useAutomationCommands()
   const now = useClock()
   const [tab, setTab] = React.useState("runs")
@@ -327,7 +327,7 @@ export function Observability({ automation }: { automation: Automation }) {
             <WorkflowCard
               icon={STEP_ICONS[step.type]}
               title={stepTitle(step)}
-              summary={stepSummary(step, state)}
+              summary={context ? stepSummary(step, context) : null}
             >
               <StepFacts
                 stepKey={step.key}

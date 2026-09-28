@@ -3,7 +3,6 @@
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
 
-import { LogoMark } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,8 +27,10 @@ import {
 } from "@/components/dashboard/primitives"
 import { isEmail, normalizeEmail, pluralize } from "@/lib/dashboard/format"
 import { teamSafePath } from "@/lib/dashboard/nav"
-import { useDashboard } from "@/lib/dashboard/store"
-import { SEED_TEAM_ID } from "@/lib/dashboard/teams"
+import { useTeamCommands, useWorkspace } from "@/components/auth/workspace"
+import { useDomainOptions } from "@/lib/domains/use-domains"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
 import type { MemberRole, Team } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 import { actionError } from "@/lib/action-error"
@@ -47,8 +48,7 @@ const ROLE_OPTIONS = [
   },
 ] as const
 
-/** A team's mark: its uploaded image, else our logo for the seeded team and
-    the first letter of the name for any other. */
+/** A team's uploaded image, or the first letter of its name. */
 export function TeamGlyph({
   team,
   className,
@@ -67,8 +67,6 @@ export function TeamGlyph({
       {team.avatar ? (
         // eslint-disable-next-line @next/next/no-img-element -- a data URL
         <img src={team.avatar} alt="" className="size-full object-cover" />
-      ) : team.id === SEED_TEAM_ID ? (
-        <LogoMark className="size-[57%]" />
       ) : (
         (name[0]?.toUpperCase() ?? "?")
       )}
@@ -92,7 +90,8 @@ export function InviteMemberDialog({
 }
 
 function InviteMemberForm({ onClose }: { onClose: () => void }) {
-  const { state, inviteMember } = useDashboard()
+  const { members } = useWorkspace()
+  const { inviteMember } = useTeamCommands()
   const [email, setEmail] = React.useState("")
   const [role, setRole] = React.useState<MemberRole>("member")
   const [pending, setPending] = React.useState(false)
@@ -108,7 +107,7 @@ function InviteMemberForm({ onClose }: { onClose: () => void }) {
             setError("Enter a valid email address")
             return
           }
-          if (state.members.some((member) => member.email === address)) {
+          if (members.some((member) => member.email === address)) {
             setError("That person is already on the team")
             return
           }
@@ -183,8 +182,13 @@ export function DeleteTeamDialog({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { state, activeTeamId, deleteTeam } = useDashboard()
+  const { activeTeamId } = useWorkspace()
+  const { deleteTeam } = useTeamCommands()
   const active = team?.id === activeTeamId
+  const domains = useDomainOptions({}, !!team && active && !leaving)
+  const args = team && active && !leaving ? { organizationId: team.id } : "skip"
+  const domainCount = useQuery(api.domains.count, args)?.total ?? 0
+  const keyCount = useQuery(api.apiKeys.count, args)?.total ?? 0
   const shared = leaving && (team?.members ?? 0) > 1
   const onOpenChange = (open: boolean) => {
     if (!open) onClose()
@@ -234,22 +238,20 @@ export function DeleteTeamDialog({
       onConfirm={remove}
     >
       {/* Only the open team's contents are at hand. */}
-      {!leaving && active && state.domains.length + state.apiKeys.length > 0 ? (
+      {!leaving && active && domainCount + keyCount > 0 ? (
         <ul className="flex flex-col gap-1 rounded-lg border border-border p-3 text-sm">
-          {state.domains.length > 0 ? (
+          {domainCount > 0 ? (
             <li>
               <span className="font-medium">
-                {pluralize(state.domains.length, "domain")}
+                {pluralize(domainCount, "domain")}
               </span>
               <span className="block truncate text-muted-foreground">
-                {state.domains.map((domain) => domain.name).join(", ")}
+                {domains.map((domain) => domain.name).join(", ")}
               </span>
             </li>
           ) : null}
-          {state.apiKeys.length > 0 ? (
-            <li className="font-medium">
-              {pluralize(state.apiKeys.length, "API key")}
-            </li>
+          {keyCount > 0 ? (
+            <li className="font-medium">{pluralize(keyCount, "API key")}</li>
           ) : null}
         </ul>
       ) : null}

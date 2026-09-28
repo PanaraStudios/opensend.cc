@@ -127,6 +127,23 @@ export const count = query({
     }
   },
 })
+export const byName = query({
+  args: { organizationId: v.string(), name: v.string() },
+  returns: v.union(v.null(), schema.doc("domains")),
+  handler: async (ctx, { organizationId, name }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const domain = await ctx.db
+      .query("domains")
+      .withIndex("by_organizationId_and_deleted_and_name", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("deleted", false)
+          .eq("name", normalizeDomainName(name))
+      )
+      .first()
+    return domain
+  },
+})
 export const get = query({
   args: { id: v.string() },
   returns: v.union(

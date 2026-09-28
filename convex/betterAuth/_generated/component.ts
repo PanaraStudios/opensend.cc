@@ -4209,6 +4209,36 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      invitations: FunctionReference<
+        "query",
+        "internal",
+        {
+          organizationId: string;
+          sessionId: string;
+          paginationOpts: {
+            cursor: string | null;
+            numItems: number;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+          };
+        },
+        {
+          page: Array<{
+            id: string;
+            email: string;
+            role: "admin" | "member";
+            expiresAt: number;
+            status: string;
+          }>;
+          isDone: boolean;
+          continueCursor: string;
+          splitCursor?: string | null;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+        },
+        Name
+      >;
       invite: FunctionReference<
         "mutation",
         "internal",
@@ -4219,6 +4249,72 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           sessionId: string;
         },
         { email: string; id: string },
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          sessionId: string;
+          paginationOpts: {
+            cursor: string | null;
+            numItems: number;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+          };
+        },
+        {
+          page: Array<{
+            id: string;
+            name: string;
+            slug: string;
+            role: "admin" | "member";
+            joinedAt: number;
+            members: number;
+            avatar?: string;
+            ssoRequired: boolean;
+            ssoConfigured: boolean;
+          }>;
+          isDone: boolean;
+          continueCursor: string;
+          splitCursor?: string | null;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+        },
+        Name
+      >;
+      members: FunctionReference<
+        "query",
+        "internal",
+        {
+          sessionId: string;
+          organizationId: string;
+          paginationOpts: {
+            cursor: string | null;
+            numItems: number;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+          };
+        },
+        {
+          page: Array<{
+            id: string;
+            name: string;
+            email: string;
+            role: "admin" | "member";
+            status: "active" | "invited";
+            joinedAt: number;
+            you: boolean;
+            mfa: boolean;
+          }>;
+          isDone: boolean;
+          continueCursor: string;
+          splitCursor?: string | null;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+        },
         Name
       >;
       purgeOrganization: FunctionReference<

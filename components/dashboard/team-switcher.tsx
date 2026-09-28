@@ -43,7 +43,12 @@ import {
 } from "@/components/dashboard/team-dialogs"
 import { slugify } from "@/lib/dashboard/slug"
 import { teamSafePath } from "@/lib/dashboard/nav"
-import { useDashboard } from "@/lib/dashboard/store"
+import {
+  useActiveTeam,
+  useTeams,
+  useTeamCommands,
+  useWorkspace,
+} from "@/components/auth/workspace"
 import { cn } from "@/lib/utils"
 
 function CreateTeamDialog({
@@ -55,7 +60,7 @@ function CreateTeamDialog({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { createTeam } = useDashboard()
+  const { createTeam } = useTeamCommands()
   const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
@@ -144,7 +149,10 @@ export function TeamSwitcher() {
   const router = useRouter()
   const pathname = usePathname()
   const { isMobile } = useSidebar()
-  const { teams, activeTeamId, activeTeam: active, switchTeam } = useDashboard()
+  const teams = useTeams()
+  const { activeTeamId } = useWorkspace()
+  const active = useActiveTeam()
+  const { switchTeam } = useTeamCommands()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [inviteOpen, setInviteOpen] = React.useState(false)
 

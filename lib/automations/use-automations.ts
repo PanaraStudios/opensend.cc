@@ -7,7 +7,37 @@ import type {
   Automation,
   AutomationRun,
   AutomationRunStep,
+  AutomationStep,
 } from "@/lib/dashboard/types"
+
+import { flattenSteps } from "@/lib/dashboard/automation"
+
+export function useStepContext(steps: AutomationStep[]) {
+  const { activeTeamId } = useWorkspace()
+  const flat = flattenSteps(steps)
+  return useQuery(
+    api.automations.stepContext,
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          templateIds: [
+            ...new Set(
+              flat.flatMap((step) =>
+                step.type === "send_email" ? [step.templateId] : []
+              )
+            ),
+          ],
+          segmentIds: [
+            ...new Set(
+              flat.flatMap((step) =>
+                step.type === "add_to_segment" ? [step.segmentId] : []
+              )
+            ),
+          ],
+        }
+      : "skip"
+  )
+}
 
 export function asAutomation(row: Doc<"automations">): Automation {
   return {

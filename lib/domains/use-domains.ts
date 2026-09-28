@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { useAction, useMutation } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
@@ -108,4 +108,35 @@ export function useDomainCheck(domains: Domain[]) {
     // operation instead, which reports through the domain's phase.
     if (await verifyDomain(id)) waiting.current.add(id)
   }
+}
+
+/** Bounded options for the existing dropdowns and command search. */
+export function useDomainOptions(
+  filters: { search?: string; status?: Doc<"domains">["status"] } = {},
+  enabled = true
+) {
+  const { activeTeamId } = useWorkspace()
+  const page = useQuery(
+    api.domains.list,
+    activeTeamId && enabled
+      ? {
+          organizationId: activeTeamId,
+          ...filters,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  return React.useMemo(() => page?.page.map(asDomain) ?? [], [page])
+}
+export function useDomain(id: string | null | undefined) {
+  const row = useQuery(api.domains.get, id ? { id } : "skip")
+  return row ? asDomain(row.domain) : row
+}
+export function useDomainByName(name: string | undefined) {
+  const { activeTeamId } = useWorkspace()
+  const row = useQuery(
+    api.domains.byName,
+    activeTeamId && name ? { organizationId: activeTeamId, name } : "skip"
+  )
+  return row ? asDomain(row) : row
 }

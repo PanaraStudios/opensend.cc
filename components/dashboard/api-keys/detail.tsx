@@ -40,18 +40,18 @@ import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
 import { permissionLabel, pluralize } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useDomain } from "@/lib/domains/use-domains"
 import { asLog } from "@/lib/logs/use-logs"
 
 export function ApiKeyDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state } = useDashboard()
   const { updateApiKey, deleteApiKey } = useApiKeyCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/api-keys")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
   const found = useQuery(api.apiKeys.get, { id })
+  const domain = useDomain(found?.key.domainId)
   const recent = useTeamList(
     api.logs.list,
     api.logs.count,
@@ -107,7 +107,7 @@ export function ApiKeyDetail() {
           { label: "Permission", value: permissionLabel(apiKey.permission) },
           {
             label: "Domain",
-            value: apiKeyDomainLabel(state.domains, apiKey),
+            value: apiKeyDomainLabel(domain ? [domain] : [], apiKey),
           },
           {
             label: "Total uses",

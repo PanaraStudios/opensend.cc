@@ -182,7 +182,7 @@ export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
 }
 
 export function broadcastEventRows(
-  state: DashboardState,
+  state: Pick<DashboardState, "emails" | "contacts">,
   item: Broadcast,
   tab: BroadcastEventTab
 ): { email: string }[] {
