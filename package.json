@@ -90,6 +90,7 @@
     "@playwright/test": "1.63.0",
     "@shadcn/lint": "^0.1.0",
     "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "3.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

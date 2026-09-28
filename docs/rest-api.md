@@ -31,6 +31,8 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 | `POST /domains`, `GET /domains`, `GET /domains/{id}`, `PATCH /domains/{id}`, `POST /domains/{id}/verify`, `DELETE /domains/{id}` | As Resend, backed by the same logic as the dashboard. |
 | `GET /logs`, `GET /logs/{id}` | As Resend. |
 | `POST /emails`, `POST /emails/batch` | Queues transactional mail through the team's SES tenant. Sending-access or full-access credentials. Returns `{ "id" }` or `{ "data": [{ "id" }] }`. |
+| `GET /emails/receiving`, `GET /emails/receiving/{id}` | Received metadata and content. Full access required. |
+| `GET /emails/receiving/{id}/attachments`, `GET /emails/receiving/{id}/attachments/{attachmentId}` | Paginated attachments and one attachment, with download URLs valid for one hour. Full access required. |
 | `GET /emails`, `GET /emails/{id}` | Sent-email metadata and, on retrieval, the HTML and plain text. Full access required. |
 | `PATCH /emails/{id}`, `POST /emails/{id}/cancel` | Reschedule with `scheduled_at`, or cancel a scheduled email. Full access required. Returns `{ "object": "email", "id" }`. |
 | `POST /events`, `GET /events`, `GET /events/{id}`, `PATCH /events/{id}`, `DELETE /events/{id}` | Custom event definitions, as Resend. `{id}` is the event's id or its name. Backed by the same rules as the dashboard's Events page. |
@@ -265,3 +267,43 @@ not accepted for SMTP. They record `source: smtp` API logs. Enablement is
 checked before idempotent replay and again in the queuing transaction. See
 [self-hosting](self-hosting.md#optional-smtp-submission-service) for TLS, limits,
 and deployment configuration.
+
+## Receiving email
+
+The [received-email API](https://resend.com/docs/api-reference/emails/retrieve-received-email)
+returns `object: "email"`, `id`, `created_at`, `from`, `to`, `cc`, `bcc`,
+`reply_to`, `subject`, `message_id`, `html`, `text`, `headers`, `attachments`,
+`received_for`, `authentication`, and `raw`. Lists omit bodies, headers,
+authentication and raw downloads. `received_for` comes from the `for` clauses
+of Received headers; authentication verdicts come from SES. Retrieval defaults
+to `html_format=data_uri` for inline images; `html_format=cid` preserves CID
+references. HTML that would exceed 100 MiB after inlining retains CID references.
+
+Attachment metadata uses `id`, `filename`, `size`, `content_type`,
+`content_disposition`, and `content_id`. The attachment list and retrieval add
+`download_url` and `expires_at`; retrieval also has `object: "attachment"`.
+Attachment lists use the usual `limit`, `after`, and `before` parameters.
+Downloads are signed for one hour and served without a redirect to permanent
+storage URLs. Retention or team deletion revokes them immediately.
+
+Stored MIME is parsed once after transfer to Convex storage. SNS retries and
+parser reruns do not duplicate received rows or `email.received` webhooks.
+The webhook follows [Resend's metadata-only payload](https://resend.com/docs/webhooks/emails/received):
+`email_id`, `created_at`, `from`, `to`, `cc`, `bcc`, `received_for`, `message_id`,
+`subject`, and attachment metadata (without size, bodies, headers or download URLs).
+Bounce and complaint copies are kept as ordinary inbound mail; no sender or
+subject heuristics discard messages.
+
+The installation accepts raw MIME up to 40 MiB, with at most 100 attachments,
+100 addresses per parsed address field, 512 distinct headers, 32 KiB of attachment
+metadata, 32 KiB of envelope
+metadata and 600 KiB of combined decoded HTML/text/headers. Messages that fail
+parsing or exceed decoded limits remain visible with the raw MIME available;
+their decoded body and attachments are empty. The parse reason is recorded for
+operators. Received emails, bodies, attachments and raw files expire after 30
+days; SNS deduplication tombstones remain. There is no attachment control in the
+existing dashboard; attachment downloads are available through this API.
+
+After deploying this version, the existing `migrations:backfillCounts` runner
+also schedules parsing for previously stored inbound messages and backfills
+received-email counts. No additional AWS permissions are required.

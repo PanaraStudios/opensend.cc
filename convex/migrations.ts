@@ -20,6 +20,17 @@ const backfill = <T extends CountedTable>(table: T) =>
 export const countAutomations = backfill("automations")
 export const countAutomationRuns = backfill("automationRuns")
 export const countAutomationRunSteps = backfill("automationRunSteps")
+export const countReceivedEmails = backfill("receivedEmails")
+export const parseStoredInbound = migrations.define({
+  table: "inboundMessages",
+  batchSize: 10,
+  migrateOne: async (ctx, row) => {
+    if (row.storageId && row.parsedAt === undefined)
+      await ctx.scheduler.runAfter(0, internal.receivedParse.parse, {
+        id: row._id,
+      })
+  },
+})
 export const countExports = backfill("exports")
 export const countEmails = backfill("emails")
 export const countEmailDomains = backfill("emails")
@@ -68,6 +79,8 @@ export const dropWebhookStats = migrations.define({
 })
 
 export const backfillCounts = migrations.runner([
+  internal.migrations.countReceivedEmails,
+  internal.migrations.parseStoredInbound,
   internal.migrations.countAutomations,
   internal.migrations.countAutomationRuns,
   internal.migrations.countAutomationRunSteps,

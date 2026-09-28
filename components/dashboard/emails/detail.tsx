@@ -55,7 +55,7 @@ import {
   type HtmlTokenKind,
 } from "@/lib/dashboard/highlight-html"
 import { actionError } from "@/lib/action-error"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useReceived } from "@/lib/received/use-received"
 import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
 import {
   useEmail,
@@ -374,8 +374,9 @@ export function EmailDetail() {
 
 export function ReceivedDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state } = useDashboard()
-  const email = state.received.find((item) => item.id === id)
+  const email = useReceived(id)
+
+  if (email === undefined) return <Skeleton className="h-64 w-full" />
 
   if (!email) {
     return (

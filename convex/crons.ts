@@ -33,4 +33,11 @@ crons.interval(
 
 crons.interval("sent email retention", { hours: 1 }, internal.emails.prune, {})
 
+crons.interval(
+  "received email retention",
+  { hours: 1 },
+  internal.received.prune,
+  {}
+)
+
 export default crons

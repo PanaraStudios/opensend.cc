@@ -21,7 +21,6 @@ import type {
   DomainStatus,
   EmailTemplate,
   ExportJob,
-  ReceivedEmail,
   Region,
   Segment,
   SentEmail,
@@ -622,27 +621,6 @@ const emails: SentEmail[] = [
   },
 ]
 
-const received: ReceivedEmail[] = [
-  {
-    id: "rcv_support",
-    from: "Ada Lovelace <ada@example.com>",
-    to: "hello@opensend.cc",
-    subject: "Re: Welcome to Opensend",
-    createdAt: hoursAgo(3),
-    html: "<p>Thanks, domain verified on our side too.</p>",
-    text: "Thanks, domain verified on our side too.",
-  },
-  {
-    id: "rcv_inbound",
-    from: "Postmaster <mailer-daemon@hopper.dev>",
-    to: "inbound@opensend.cc",
-    subject: "Automatic reply: out of office",
-    createdAt: hoursAgo(11),
-    html: "<p>Grace is away until Monday.</p>",
-    text: "Grace is away until Monday.",
-  },
-]
-
 const suppressions: Suppression[] = [
   {
     id: "sup_invalid",
@@ -1146,7 +1124,7 @@ export const SEED_STATE: DashboardState = {
   apiKeys,
   members,
   emails,
-  received,
+  received: [],
   suppressions,
   broadcasts,
   templates,

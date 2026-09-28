@@ -135,7 +135,6 @@ export const ingest = internalMutation({
         notification: args.message,
       })
       await enqueue(ctx, id)
-      // Wave 5B parses the Convex file once storageId is saved.
       return true
     }
     return false
@@ -156,7 +155,10 @@ export const stored = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, storageId, size }) => {
     const row = await ctx.db.get("inboundMessages", id)
-    if (!row) throw new Error("Inbound message is missing")
+    if (!row || (row.parsedAt !== undefined && !row.storageId)) {
+      await ctx.storage.delete(storageId)
+      return null
+    }
     if (row.storageId && row.storageId !== storageId)
       await ctx.storage.delete(storageId)
     else
@@ -166,6 +168,15 @@ export const stored = internalMutation({
         storedAt: Date.now(),
         transferError: undefined,
       })
+    if (row.parsedAt === undefined)
+      await pool.enqueueAction(
+        ctx,
+        internal.receivedParse.parse,
+        { id },
+        {
+          retry: { maxAttempts: 5, initialBackoffMs: 1000, base: 2 },
+        }
+      )
     return null
   },
 })
