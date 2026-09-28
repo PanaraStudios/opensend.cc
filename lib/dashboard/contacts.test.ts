@@ -6,7 +6,6 @@ import {
   isValidPropertyKey,
   normalizePropertyKey,
 } from "./contacts"
-import { SEED_STATE } from "./data"
 import { matchesNeedle, searchNeedle } from "./search"
 
 describe("normalizePropertyKey", () => {
@@ -21,7 +20,7 @@ describe("normalizePropertyKey", () => {
 
 describe("search helpers", () => {
   it("matches any field case-insensitively and matches all on empty", () => {
-    const contact = SEED_STATE.contacts[0]!
+    const contact = { email: "ada@example.com" }
     assert.equal(matchesNeedle("", contact.email), true)
     assert.equal(
       matchesNeedle(searchNeedle(contact.email.toUpperCase()), contact.email),

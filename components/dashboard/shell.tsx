@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { WorkspaceProvider } from "@/components/auth/workspace"
+import { WorkspaceProvider, useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
@@ -81,7 +81,7 @@ import {
   navItemActive,
 } from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
-import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
+import { useDomainOptions } from "@/lib/domains/use-domains"
 
 const APPEARANCE_OPTIONS = [
   { theme: "light", label: "Light", Icon: SunIcon },
@@ -137,11 +137,11 @@ function CommandMenu({
   installationAdmin: boolean
 }) {
   const router = useRouter()
-  const { state } = useDashboard()
   const [search, setSearch] = React.useState("")
   const settled = useDebouncedValue(search)
   const contacts = useContactSearch(settled, open)
   const emails = useEmailSearch(settled, open)
+  const domains = useDomainOptions({ search: settled }, open)
 
   function setOpen(next: boolean) {
     if (!next) setSearch("")
@@ -220,7 +220,7 @@ function CommandMenu({
                 ))}
               </CommandGroup>
               <CommandGroup heading="Domains">
-                {state.domains.map((domain) => (
+                {domains.map((domain) => (
                   <CommandItem
                     key={domain.id}
                     value={`domain ${domain.name}`}
@@ -260,7 +260,7 @@ function DashboardSidebar({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { you } = useDashboard()
+  const { user: you } = useWorkspace()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (
@@ -416,13 +416,7 @@ function DashboardSidebar({
               <SidebarMenuButton
                 size="icon"
                 tooltip="Docs"
-                render={
-                  <a
-                    href={DOCS_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                  />
-                }
+                render={<a href={DOCS_URL} target="_blank" rel="noreferrer" />}
               >
                 <BookOpenIcon />
                 <span className="sr-only">Docs</span>
@@ -457,7 +451,10 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (setupPending) return
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key?.toLowerCase() === "k") {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key?.toLowerCase() === "k"
+      ) {
         event.preventDefault()
         setSearchOpen((open) => !open)
       }
@@ -495,23 +492,19 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
-      <DashboardProvider>
-        <Toaster>
-          <DashboardChrome>{children}</DashboardChrome>
-        </Toaster>
-      </DashboardProvider>
+      <Toaster>
+        <DashboardChrome>{children}</DashboardChrome>
+      </Toaster>
     </WorkspaceProvider>
   )
 }
 
-/** The same workspace store and toasts without the sidebar, for full-screen
+/** The same workspace and toasts without the sidebar, for full-screen
     editors that own the whole viewport. */
 export function FullScreenShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
-      <DashboardProvider>
-        <Toaster>{children}</Toaster>
-      </DashboardProvider>
+      <Toaster>{children}</Toaster>
     </WorkspaceProvider>
   )
 }

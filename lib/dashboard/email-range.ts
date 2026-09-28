@@ -1,7 +1,6 @@
 import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
-import { DEMO_NOW } from "./data"
 import { formatDate } from "./format"
 
 export const RANGE_PRESETS = [
@@ -29,8 +28,7 @@ export type RollingPreset = keyof typeof ROLLING_DAYS
 export type NamedRangePreset = (typeof RANGE_PRESETS)[number]["value"]
 export type RangePreset = NamedRangePreset | "all"
 
-/** The last 15 days. `now` defaults to the demo clock; screens on real
-    data pass the real one. */
+/** The last 15 days, ending on the supplied clock or today. */
 export function defaultEmailRange(now?: number): DateRange {
   return rangeFromPreset("15d", now)
 }
@@ -53,7 +51,7 @@ export function rangeFromPreset(
 ): DateRange | undefined
 export function rangeFromPreset(
   preset: RangePreset,
-  now = DEMO_NOW
+  now = Date.now()
 ): DateRange | undefined {
   const current = new Date(now)
   switch (preset) {

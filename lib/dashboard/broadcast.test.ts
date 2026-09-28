@@ -16,9 +16,14 @@ import {
   canTransitionBroadcast,
   transitionBroadcast,
 } from "./broadcast"
-import { SEED_STATE as SEED } from "./data"
+import { CONTACTS, EMAILS, SEGMENTS } from "./audience.fixture"
 import { BROADCAST_FIXTURE } from "./broadcast.fixture"
-const SEED_STATE = { ...SEED, broadcasts: [BROADCAST_FIXTURE] }
+const FIXTURE = {
+  contacts: CONTACTS,
+  emails: EMAILS,
+  segments: SEGMENTS,
+  broadcasts: [BROADCAST_FIXTURE],
+}
 import { broadcastStatusLabel } from "./format"
 
 describe("BROADCAST_STATUS_ORDER", () => {
@@ -42,7 +47,7 @@ describe("broadcastStatusLabel", () => {
 
 describe("broadcastUpdatedAt", () => {
   it("falls back to sentAt then createdAt", () => {
-    const item = SEED_STATE.broadcasts[0]!
+    const item = FIXTURE.broadcasts[0]!
     assert.equal(
       broadcastUpdatedAt({ ...item, updatedAt: 0, sentAt: 42, createdAt: 1 }),
       42
@@ -62,36 +67,29 @@ describe("broadcastUpdatedAt", () => {
 describe("audienceLabel", () => {
   it("uses the segment name when present", () => {
     assert.equal(
-      audienceLabel("seg_newsletter", SEED_STATE.segments),
+      audienceLabel("seg_newsletter", FIXTURE.segments),
       "Newsletter"
     )
   })
 
   it("falls back for a missing segment", () => {
-    assert.equal(audienceLabel(null, SEED_STATE.segments), "All contacts")
-    assert.equal(
-      audienceLabel("seg_missing", SEED_STATE.segments),
-      "All contacts"
-    )
+    assert.equal(audienceLabel(null, FIXTURE.segments), "All contacts")
+    assert.equal(audienceLabel("seg_missing", FIXTURE.segments), "All contacts")
   })
 })
 
 describe("broadcastEventRows", () => {
   it("scopes unsubscribed rows to recipients of this send", () => {
-    const launch = SEED_STATE.broadcasts.find(
-      (item) => item.id === "brd_launch"
-    )!
-    const rows = broadcastEventRows(SEED_STATE, launch, "unsubscribed")
+    const launch = FIXTURE.broadcasts.find((item) => item.id === "brd_launch")!
+    const rows = broadcastEventRows(FIXTURE, launch, "unsubscribed")
     assert.deepEqual(rows, [])
   })
 
   it("does not list a globally unsubscribed contact who was not a recipient", () => {
-    const launch = SEED_STATE.broadcasts.find(
-      (item) => item.id === "brd_launch"
-    )!
+    const launch = FIXTURE.broadcasts.find((item) => item.id === "brd_launch")!
     const state = {
-      ...SEED_STATE,
-      contacts: SEED_STATE.contacts.map((contact) =>
+      ...FIXTURE,
+      contacts: FIXTURE.contacts.map((contact) =>
         contact.email === "alan@bletchley.uk"
           ? { ...contact, unsubscribed: true }
           : contact
@@ -105,12 +103,10 @@ describe("broadcastEventRows", () => {
   })
 
   it("includes an unsubscribed recipient of this broadcast", () => {
-    const launch = SEED_STATE.broadcasts.find(
-      (item) => item.id === "brd_launch"
-    )!
+    const launch = FIXTURE.broadcasts.find((item) => item.id === "brd_launch")!
     const state = {
-      ...SEED_STATE,
-      contacts: SEED_STATE.contacts.map((contact) =>
+      ...FIXTURE,
+      contacts: FIXTURE.contacts.map((contact) =>
         contact.email === "margaret@hamilton.space"
           ? { ...contact, unsubscribed: true }
           : contact
@@ -121,10 +117,8 @@ describe("broadcastEventRows", () => {
   })
 
   it("lists bounced recipients for this broadcast", () => {
-    const launch = SEED_STATE.broadcasts.find(
-      (item) => item.id === "brd_launch"
-    )!
-    const rows = broadcastEventRows(SEED_STATE, launch, "bounced")
+    const launch = FIXTURE.broadcasts.find((item) => item.id === "brd_launch")!
+    const rows = broadcastEventRows(FIXTURE, launch, "bounced")
     assert.deepEqual(rows, [{ email: "gone@example.invalid" }])
   })
 })
@@ -156,7 +150,7 @@ describe("broadcastActions", () => {
 })
 
 describe("transitionBroadcast", () => {
-  const item = { ...SEED_STATE.broadcasts[0]!, status: "draft" as const }
+  const item = { ...FIXTURE.broadcasts[0]!, status: "draft" as const }
 
   it("stamps sentAt and seeds delivery stats on send", () => {
     const next = transitionBroadcast(
@@ -189,7 +183,7 @@ describe("transitionBroadcast", () => {
 
 describe("canTransitionBroadcast", () => {
   it("refuses illegal transitions and schedules without a time", () => {
-    const sent = { ...SEED_STATE.broadcasts[0]!, status: "sent" as const }
+    const sent = { ...FIXTURE.broadcasts[0]!, status: "sent" as const }
     assert.equal(canTransitionBroadcast("sent", "sent"), false)
     assert.equal(canTransitionBroadcast("draft", "scheduled"), false)
     assert.equal(canTransitionBroadcast("draft", "scheduled", 1), true)
@@ -259,7 +253,7 @@ describe("fromAddresses", () => {
 })
 
 describe("broadcastRecipients", () => {
-  const contacts = SEED_STATE.contacts
+  const contacts = FIXTURE.contacts
 
   it("reaches everyone subscribed when there is no segment", () => {
     const all = broadcastRecipients(contacts, { segmentId: null })
@@ -270,7 +264,7 @@ describe("broadcastRecipients", () => {
   })
 
   it("narrows to the segment and still skips the unsubscribed", () => {
-    const segmentId = SEED_STATE.segments[0]!.id
+    const segmentId = FIXTURE.segments[0]!.id
     const some = broadcastRecipients(contacts, { segmentId })
     assert.ok(some.every((contact) => contact.segmentIds.includes(segmentId)))
     assert.ok(some.every((contact) => !contact.unsubscribed))

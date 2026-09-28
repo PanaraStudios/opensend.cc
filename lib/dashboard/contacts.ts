@@ -116,3 +116,10 @@ export function mergeContactFields(
     properties: { ...existing.properties, ...(input.properties ?? {}) },
   }
 }
+
+export const DEFAULT_CONTACT_PROPERTIES = [
+  { key: "email", name: "Email", type: "string" },
+  { key: "first_name", name: "First name", type: "string" },
+  { key: "last_name", name: "Last name", type: "string" },
+  { key: "unsubscribed", name: "Unsubscribed", type: "boolean" },
+] as const

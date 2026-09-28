@@ -500,3 +500,41 @@ export const usesEvent = query({
       .first())
   },
 })
+
+export const stepContext = query({
+  args: {
+    organizationId: v.string(),
+    templateIds: v.array(v.string()),
+    segmentIds: v.array(v.string()),
+  },
+  returns: v.object({
+    templates: v.array(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        status: v.union(v.literal("draft"), v.literal("published")),
+      })
+    ),
+    segments: v.array(v.object({ id: v.string(), name: v.string() })),
+  }),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "read")
+    if (args.templateIds.length + args.segmentIds.length > 100)
+      throw new ConvexError("Too many step references")
+    const templates = []
+    for (const value of new Set(args.templateIds)) {
+      const id = ctx.db.normalizeId("templates", value)
+      const row = id ? await ctx.db.get("templates", id) : null
+      if (row && row.organizationId === args.organizationId)
+        templates.push({ id: row._id, name: row.name, status: row.status })
+    }
+    const segments = []
+    for (const value of new Set(args.segmentIds)) {
+      const id = ctx.db.normalizeId("segments", value)
+      const row = id ? await ctx.db.get("segments", id) : null
+      if (row && row.organizationId === args.organizationId)
+        segments.push({ id: row._id, name: row.name })
+    }
+    return { templates, segments }
+  },
+})

@@ -138,15 +138,8 @@ export function useStartExport() {
 const asExportJob = (row: ExportRow): ExportJob => asExport(row)
 
 /** The team's server exports, newest first, a page at a time. */
-export function useExportList(tail: readonly ExportJob[] = []) {
-  return useTeamList(
-    api.exports.list,
-    api.exports.count,
-    {},
-    asExportJob,
-    undefined,
-    tail
-  )
+export function useExportList() {
+  return useTeamList(api.exports.list, api.exports.count, {}, asExportJob)
 }
 
 /** One export for its page: undefined while loading, null if not found. */

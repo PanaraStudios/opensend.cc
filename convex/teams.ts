@@ -1,3 +1,7 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { env } from "./_generated/server"
 import { mutation, query, action } from "./_generated/server"
 import { components, internal } from "./_generated/api"
@@ -13,7 +17,12 @@ import {
   findRegion,
 } from "./access"
 import type { MutationCtx } from "./_generated/server"
-import { snapshotValue } from "./betterAuth/teams"
+import {
+  snapshotValue,
+  teamValue,
+  memberValue,
+  invitationValue,
+} from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
 import { retirement } from "./teamLifecycle"
@@ -248,6 +257,39 @@ export const removeAvatar = mutation({
   handler: async (ctx, args) => {
     await requireSetupComplete(ctx)
     return ctx.runMutation(components.betterAuth.teams.setAvatar, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    })
+  },
+})
+
+export const list = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(teamValue),
+  handler: async (ctx, args) =>
+    ctx.runQuery(components.betterAuth.teams.list, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    }),
+})
+export const members = query({
+  args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(memberValue),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "read")
+    return ctx.runQuery(components.betterAuth.teams.members, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    })
+  },
+})
+
+export const invitations = query({
+  args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(invitationValue),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "admin")
+    return ctx.runQuery(components.betterAuth.teams.invitations, {
       ...args,
       sessionId: await sessionId(ctx),
     })

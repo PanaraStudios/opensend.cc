@@ -10,11 +10,9 @@ import type { ExportJob } from "@/lib/dashboard/types"
 export function ExportDownload({
   job,
   iconOnly = false,
-  demo = false,
 }: {
   job: ExportJob
   iconOnly?: boolean
-  demo?: boolean
 }) {
   const { isAdmin } = useTeamRole()
   const download = useDownloadExport()
@@ -24,14 +22,8 @@ export function ExportDownload({
       variant={iconOnly ? "ghost" : "default"}
       size={iconOnly ? "icon" : "default"}
       aria-label="Download CSV"
-      disabled={!isAdmin || demo || job.status !== "ready" || pending}
-      title={
-        !isAdmin
-          ? "Only team admins can download exports."
-          : demo
-            ? "This export has no downloadable file yet."
-            : undefined
-      }
+      disabled={!isAdmin || job.status !== "ready" || pending}
+      title={!isAdmin ? "Only team admins can download exports." : undefined}
       onClick={async () => {
         setPending(true)
         try {

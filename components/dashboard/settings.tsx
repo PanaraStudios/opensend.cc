@@ -35,6 +35,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
+  useLoadedPagination,
+  ListPagination,
   EmptyState,
   MoreMenu,
   OptionSelect,
@@ -48,17 +50,20 @@ import {
   InviteMemberDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
-import { useMutation, useAction } from "convex/react"
+import { useMutation, useAction, usePaginatedQuery } from "convex/react"
 import { authClient, authResult } from "@/lib/auth/client"
 import { api } from "@/convex/_generated/api"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useActiveTeam,
+  useTeamCommands,
+  useWorkspace,
+} from "@/components/auth/workspace"
 import { actionError } from "@/lib/action-error"
 import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
 import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useSmtp } from "@/lib/smtp/use-smtp"
-import { useDashboard } from "@/lib/dashboard/store"
 import { useTopics } from "@/lib/audience/use-audience"
 import {
   useUnsubscribeCommands,
@@ -87,7 +92,7 @@ function SettingsLead({ children }: { children: React.ReactNode }) {
 }
 
 function TeamOverview({ team }: { team: Team }) {
-  const { setTeamAvatar } = useDashboard()
+  const { setTeamAvatar } = useTeamCommands()
   const rename = useMutation(api.teams.rename)
   const [pending, setPending] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
@@ -225,7 +230,17 @@ const MEMBER_TABS = [
 ] as const
 
 function TeamMembers({ team }: { team: Team }) {
-  const { state, updateMemberRole, removeMember } = useDashboard()
+  const query = usePaginatedQuery(
+    api.teams.members,
+    { organizationId: team.id },
+    { initialNumItems: 20 }
+  )
+  const { pageRows: members, pagination } = useLoadedPagination(
+    query.results,
+    query,
+    { total: team.members }
+  )
+  const { updateMemberRole, removeMember } = useTeamCommands()
   const [tab, setTab] = React.useState<string>("members")
   const [inviting, setInviting] = React.useState(false)
   const [removing, setRemoving] = React.useState<TeamMember | null>(null)
@@ -255,108 +270,124 @@ function TeamMembers({ team }: { team: Team }) {
         }
       >
         {tab === "members" ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <Th>Email</Th>
-                <Th>Role</Th>
-                <Th>Enabled MFA</Th>
-                <Th className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {state.members.map((member) => {
-                const mfa = member.mfa
-                const promoted = member.role === "admin" ? "member" : "admin"
-                return (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="font-medium">
-                        {member.email}
-                        {member.you ? (
-                          <Badge variant="secondary" className="ml-2">
-                            You
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Joined on {formatDate(member.createdAt)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {roleLabel(member.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {mfa ? (
-                        <CircleCheckIcon
-                          aria-label="MFA enabled"
-                          className="size-4 text-success"
-                        />
-                      ) : (
-                        <CircleXIcon
-                          aria-label="MFA not enabled"
-                          className="size-4 text-muted-foreground"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {member.you ? (
-                        <MoreMenu>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              disabled={!team.removable}
-                              onClick={() => setLeaving(true)}
-                            >
-                              <LogOutIcon />
-                              Leave team
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </MoreMenu>
-                      ) : admin ? (
-                        <MoreMenu>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              disabled={changingRole}
-                              onClick={async () => {
-                                setChangingRole(true)
-                                try {
-                                  await updateMemberRole(member.id, promoted)
-                                  toast.add({
-                                    type: "success",
-                                    title: `Role changed to ${roleLabel(promoted)}`,
-                                  })
-                                } catch (error) {
-                                  toast.add({
-                                    type: "error",
-                                    title: actionError(error),
-                                  })
-                                } finally {
-                                  setChangingRole(false)
-                                }
-                              }}
-                            >
-                              <ShieldIcon />
-                              Change role to {roleLabel(promoted)}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setRemoving(member)}
-                            >
-                              <UserMinusIcon />
-                              Remove from team
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </MoreMenu>
-                      ) : null}
-                    </TableCell>
+          query.status === "LoadingFirstPage" ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <Th>Email</Th>
+                    <Th>Role</Th>
+                    <Th>Enabled MFA</Th>
+                    <Th className="w-10" />
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {members.map((member) => {
+                    const mfa = member.mfa
+                    const promoted =
+                      member.role === "admin" ? "member" : "admin"
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {member.email}
+                            {member.you ? (
+                              <Badge variant="secondary" className="ml-2">
+                                You
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Joined on {formatDate(member.joinedAt)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {roleLabel(member.role)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {mfa ? (
+                            <CircleCheckIcon
+                              aria-label="MFA enabled"
+                              className="size-4 text-success"
+                            />
+                          ) : (
+                            <CircleXIcon
+                              aria-label="MFA not enabled"
+                              className="size-4 text-muted-foreground"
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {member.you ? (
+                            <MoreMenu>
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={!team.removable}
+                                  onClick={() => setLeaving(true)}
+                                >
+                                  <LogOutIcon />
+                                  Leave team
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </MoreMenu>
+                          ) : admin ? (
+                            <MoreMenu>
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  disabled={changingRole}
+                                  onClick={async () => {
+                                    setChangingRole(true)
+                                    try {
+                                      await updateMemberRole(
+                                        member.id,
+                                        promoted
+                                      )
+                                      toast.add({
+                                        type: "success",
+                                        title: `Role changed to ${roleLabel(promoted)}`,
+                                      })
+                                    } catch (error) {
+                                      toast.add({
+                                        type: "error",
+                                        title: actionError(error),
+                                      })
+                                    } finally {
+                                      setChangingRole(false)
+                                    }
+                                  }}
+                                >
+                                  <ShieldIcon />
+                                  Change role to {roleLabel(promoted)}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() =>
+                                    setRemoving({
+                                      ...member,
+                                      createdAt: member.joinedAt,
+                                    })
+                                  }
+                                >
+                                  <UserMinusIcon />
+                                  Remove from team
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </MoreMenu>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+              <ListPagination {...pagination} noun="member" />
+            </>
+          )
         ) : (
           <OAuthAppsList key={team.id} organizationId={team.id} />
         )}
@@ -385,7 +416,15 @@ function TeamMembers({ team }: { team: Team }) {
 }
 
 function TeamInvitations({ team }: { team: Team }) {
-  const { invitations } = useWorkspace()
+  const query = usePaginatedQuery(
+    api.teams.invitations,
+    { organizationId: team.id },
+    { initialNumItems: 20 }
+  )
+  const { pageRows: invitations, pagination } = useLoadedPagination(
+    query.results,
+    query
+  )
   const invite = useMutation(api.teams.invite)
   const cancel = useMutation(api.teams.cancelInvitation)
   const [pending, setPending] = React.useState<string | null>(null)
@@ -413,61 +452,66 @@ function TeamInvitations({ team }: { team: Team }) {
   }
   return (
     <SettingsCard title="Invitations" flush>
-      {invitations.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <Th>Email</Th>
-              <Th>Role</Th>
-              <Th>Status</Th>
-              <Th>Expires</Th>
-              <Th className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((invitation) => (
-              <TableRow key={invitation.id}>
-                <TableCell className="font-medium">
-                  {invitation.email}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {roleLabel(invitation.role)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">
-                    {invitation.status === "expired" ? "Expired" : "Pending"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDate(invitation.expiresAt)}
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        disabled={pending !== null}
-                        onClick={() => update(invitation.id, true)}
-                      >
-                        <SendIcon />
-                        Resend invitation
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={pending !== null}
-                        variant="destructive"
-                        onClick={() => update(invitation.id, false)}
-                      >
-                        <XIcon />
-                        Cancel invitation
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
+      {query.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : query.results.length || query.status !== "Exhausted" ? (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <Th>Email</Th>
+                <Th>Role</Th>
+                <Th>Status</Th>
+                <Th>Expires</Th>
+                <Th className="w-10" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {invitations.map((invitation) => (
+                <TableRow key={invitation.id}>
+                  <TableCell className="font-medium">
+                    {invitation.email}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {roleLabel(invitation.role)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {invitation.status === "expired" ? "Expired" : "Pending"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(invitation.expiresAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          disabled={pending !== null}
+                          onClick={() => update(invitation.id, true)}
+                        >
+                          <SendIcon />
+                          Resend invitation
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={pending !== null}
+                          variant="destructive"
+                          onClick={() => update(invitation.id, false)}
+                        >
+                          <XIcon />
+                          Cancel invitation
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <ListPagination {...pagination} noun="invitation" />
+        </>
       ) : (
         <EmptyState
           size="sm"
@@ -481,7 +525,7 @@ function TeamInvitations({ team }: { team: Team }) {
 }
 
 export function SettingsTeam() {
-  const { activeTeam: team } = useDashboard()
+  const team = useActiveTeam()
   const [deleting, setDeleting] = React.useState(false)
 
   return (
@@ -594,7 +638,7 @@ export function SettingsSmtp() {
 }
 
 export function SettingsSso() {
-  const { activeTeam: team } = useDashboard()
+  const team = useActiveTeam()
   const { sso } = useWorkspace()
   const saveConnection = useAction(api.sso.save)
   const enforce = useMutation(api.sso.enforce)

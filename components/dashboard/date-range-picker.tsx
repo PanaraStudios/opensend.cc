@@ -13,7 +13,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { CheckIcon, ChevronDownIcon } from "lucide-react"
-import { DEMO_NOW } from "@/lib/dashboard/data"
+import { useClock } from "@/lib/time/use-clock"
 import {
   pickerPresets,
   rangeAfterCalendarClear,
@@ -76,20 +76,21 @@ const PRESET_BUTTON_SELECTED_CLASS = `${PRESET_BUTTON_CLASS} bg-muted text-foreg
 
 const PRESET_BUTTON_IDLE_CLASS = `${PRESET_BUTTON_CLASS} text-muted-foreground hover:bg-muted/60 hover:text-foreground`
 
-/** Presets count back from `now`: the demo's fixed clock unless a screen
-    showing real records passes the real one. */
+/** Presets count back from the shared browser clock unless supplied. */
 export function DateRangePicker({
   range,
   onRangeChange,
   allowAllTime = false,
-  now = DEMO_NOW,
+  now: suppliedNow,
 }: {
   range: DateRange | undefined
   onRangeChange: (range: DateRange | undefined) => void
   allowAllTime?: boolean
   now?: number
 }) {
-  const today = new Date(now)
+  const clock = useClock()
+  const now = suppliedNow ?? clock ?? undefined
+  const today = now === undefined ? undefined : new Date(now)
   const active = presetFromRange(range, now)
   const presets = pickerPresets(allowAllTime)
   const label = rangeLabel(range, allowAllTime, now)

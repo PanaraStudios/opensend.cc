@@ -41,7 +41,7 @@ import {
   UPDATABLE_CONTACT_FIELDS,
 } from "@/lib/dashboard/automation"
 import { formatVariable } from "@/lib/dashboard/email-variables"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useStepContext } from "@/lib/automations/use-automations"
 import { useTemplate, asTemplate } from "@/lib/templates/use-templates"
 import { asSegment } from "@/lib/audience/use-audience"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -221,15 +221,15 @@ export function StepCard({
   onChange: (step: AutomationStep) => void
   onRemove: () => void
 }) {
-  const { state } = useDashboard()
-  const tasks = stepTasks(step, state)
+  const context = useStepContext(automation.steps)
+  const tasks = context ? stepTasks(step, context) : []
 
   return (
     <WorkflowCard
       data-testid={`workflow-node-${step.key}`}
       icon={STEP_ICONS[step.type]}
       title={stepTitle(step)}
-      summary={selected ? null : stepSummary(step, state)}
+      summary={selected || !context ? null : stepSummary(step, context)}
       tone={tasks.length > 0 ? "warning" : undefined}
       onSelect={locked ? undefined : onSelect}
       actions={
@@ -379,8 +379,7 @@ function SegmentBody({
     activeTeamId ? { organizationId: activeTeamId } : "skip"
   )
   const segments = (rows ?? []).map(asSegment)
-  const { state } = useDashboard()
-  const selected = state.segments.find((item) => item.id === step.segmentId)
+  const selected = segments.find((item) => item.id === step.segmentId)
   const id = React.useId()
   return (
     <CardSection label="Segment" htmlFor={id}>

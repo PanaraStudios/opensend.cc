@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { isSameDay, subDays } from "date-fns"
 
-import { DEMO_NOW } from "./data"
+const FIXED_NOW = Date.parse("2026-09-13T12:00:00.000Z")
 import {
   ALL_TIME_PRESET,
   defaultEmailRange,
@@ -35,13 +35,13 @@ describe("rangeLabel", () => {
 })
 
 describe("rangeFromPreset", () => {
-  const now = new Date(DEMO_NOW)
+  const now = new Date(FIXED_NOW)
 
   for (const preset of Object.keys(ROLLING_DAYS) as RollingPreset[]) {
     const days = ROLLING_DAYS[preset]
 
-    it(`makes ${preset} an inclusive ${days}-day window ending on DEMO_NOW`, () => {
-      const range = rangeFromPreset(preset)
+    it(`makes ${preset} an inclusive ${days}-day window ending on FIXED_NOW`, () => {
+      const range = rangeFromPreset(preset, FIXED_NOW)
       assert.ok(range.from)
       assert.ok(range.to)
       assert.ok(isSameDay(range.to, now))
@@ -49,15 +49,15 @@ describe("rangeFromPreset", () => {
     })
   }
 
-  it("makes today a single-day window on DEMO_NOW", () => {
-    const range = rangeFromPreset("today")
+  it("makes today a single-day window on FIXED_NOW", () => {
+    const range = rangeFromPreset("today", FIXED_NOW)
     assert.ok(range.from)
     assert.ok(isSameDay(range.from, now))
     assert.ok(range.to && isSameDay(range.to, now))
   })
 
-  it("makes yesterday a single-day window before DEMO_NOW", () => {
-    const range = rangeFromPreset("yesterday")
+  it("makes yesterday a single-day window before FIXED_NOW", () => {
+    const range = rangeFromPreset("yesterday", FIXED_NOW)
     const yesterday = subDays(now, 1)
     assert.ok(range.from)
     assert.ok(isSameDay(range.from, yesterday))
@@ -72,7 +72,10 @@ describe("rangeFromPreset", () => {
 describe("presetFromRange", () => {
   for (const { value: preset } of RANGE_PRESETS) {
     it(`round-trips ${preset}`, () => {
-      assert.equal(presetFromRange(rangeFromPreset(preset)), preset)
+      assert.equal(
+        presetFromRange(rangeFromPreset(preset, FIXED_NOW), FIXED_NOW),
+        preset
+      )
     })
   }
 
@@ -106,4 +109,13 @@ describe("rangeAfterCalendarClear", () => {
   it("uses the all-time preset on Suppressions", () => {
     assert.equal(rangeAfterCalendarClear(true), undefined)
   })
+})
+
+it("defaults to the real clock when no clock is supplied", () => {
+  const before = Date.now()
+  const range = defaultEmailRange()
+  const after = Date.now()
+  assert.ok(
+    range.to && (isSameDay(range.to, before) || isSameDay(range.to, after))
+  )
 })

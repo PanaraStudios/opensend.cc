@@ -50,7 +50,7 @@ import {
   normalizePropertyKey,
   propertyKeyError,
 } from "@/lib/dashboard/contacts"
-import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/data"
+import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/contacts"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate } from "@/lib/dashboard/format"
 import {

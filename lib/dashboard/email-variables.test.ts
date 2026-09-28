@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { SEED_STATE } from "./data"
+import type { ContactProperty } from "./types"
 import {
   availableVariables,
   escapeHtml,
@@ -47,7 +47,14 @@ describe("hasUnsubscribeLink", () => {
 
 describe("availableVariables", () => {
   it("adds custom contact properties after the built-in ones, once each", () => {
-    const base = SEED_STATE.properties[0]!
+    const base: ContactProperty = {
+      id: "property",
+      key: "company",
+      name: "Company",
+      type: "string",
+      fallbackValue: "Acme",
+      createdAt: 1,
+    }
     const variables = availableVariables([
       { ...base, key: "plan", name: "Plan", fallbackValue: "free" },
       { ...base, key: "first_name", name: "Duplicate" },

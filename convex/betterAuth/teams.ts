@@ -1,12 +1,16 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { v, ConvexError } from "convex/values"
 import { mutation, query, action } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import { api } from "./_generated/api"
 import { requireMember, sessionUser } from "./policy"
 import { invalidate } from "./oauth"
 const role = v.union(v.literal("admin"), v.literal("member"))
-const teamValue = v.object({
+export const teamValue = v.object({
   id: v.string(),
   name: v.string(),
   slug: v.string(),
@@ -17,7 +21,7 @@ const teamValue = v.object({
   ssoRequired: v.boolean(),
   ssoConfigured: v.boolean(),
 })
-const memberValue = v.object({
+export const memberValue = v.object({
   id: v.string(),
   name: v.string(),
   email: v.string(),
@@ -27,6 +31,22 @@ const memberValue = v.object({
   you: v.boolean(),
   mfa: v.boolean(),
 })
+export const invitationValue = v.object({
+  id: v.string(),
+  email: v.string(),
+  role,
+  expiresAt: v.number(),
+  status: v.string(),
+})
+function invitationForRow(i: Doc<"invitation">) {
+  return {
+    id: i._id,
+    email: i.email,
+    role: i.role === "owner" ? ("admin" as const) : ("member" as const),
+    expiresAt: i.expiresAt,
+    status: i.expiresAt <= Date.now() ? "expired" : i.status,
+  }
+}
 export const snapshotValue = v.object({
   user: v.object({
     id: v.string(),
@@ -38,15 +58,7 @@ export const snapshotValue = v.object({
   teams: v.array(teamValue),
   activeTeamId: v.union(v.string(), v.null()),
   members: v.array(memberValue),
-  invitations: v.array(
-    v.object({
-      id: v.string(),
-      email: v.string(),
-      role,
-      expiresAt: v.number(),
-      status: v.string(),
-    })
-  ),
+  invitations: v.array(invitationValue),
   receivedInvitations: v.array(
     v.object({ id: v.string(), name: v.string(), expiresAt: v.number() })
   ),
@@ -60,6 +72,63 @@ export const snapshotValue = v.object({
     })
   ),
 })
+async function teamForMembership(
+  ctx: QueryCtx,
+  membership: Doc<"member">,
+  sessionId: string
+) {
+  const org = await ctx.db.get(
+    "organization",
+    membership.organizationId as Id<"organization">
+  )
+  if (!org) return null
+  const members = await ctx.db
+    .query("member")
+    .withIndex("organizationId", (q) => q.eq("organizationId", org._id))
+    .take(100)
+  const avatar = await ctx.db
+    .query("avatar")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", org._id))
+    .unique()
+  const sso = await ctx.db
+    .query("sso")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", org._id))
+    .unique()
+  const proof = await ctx.db
+    .query("ssoProof")
+    .withIndex("by_sessionId_and_organizationId", (q) =>
+      q.eq("sessionId", sessionId).eq("organizationId", org._id)
+    )
+    .unique()
+  return {
+    id: org._id,
+    name: org.name,
+    slug: org.slug,
+    role:
+      membership.role === "owner" ? ("admin" as const) : ("member" as const),
+    joinedAt: membership.createdAt,
+    members: members.length,
+    avatar: avatar
+      ? ((await ctx.storage.getUrl(avatar.storageId)) ?? undefined)
+      : undefined,
+    ssoRequired: !!sso?.enforced && proof?.revision !== sso.revision,
+    ssoConfigured: !!sso,
+  }
+}
+async function memberForRow(ctx: QueryCtx, m: Doc<"member">, userId: string) {
+  const person = await ctx.db.get("user", m.userId as Id<"user">)
+  if (!person) return null
+  return {
+    id: m._id,
+    name: person.name,
+    email: person.email,
+    role: m.role === "owner" ? ("admin" as const) : ("member" as const),
+    status: "active" as const,
+    joinedAt: m.createdAt,
+    you: person._id === userId,
+    mfa: !!person.twoFactorEnabled,
+  }
+}
 export const snapshot = query({
   args: { sessionId: v.string() },
   returns: snapshotValue,
@@ -71,45 +140,8 @@ export const snapshot = query({
       .take(50)
     const teams = []
     for (const membership of memberships) {
-      const org = await ctx.db.get(
-        "organization",
-        membership.organizationId as Id<"organization">
-      )
-      if (!org) continue
-      const members = await ctx.db
-        .query("member")
-        .withIndex("organizationId", (q) => q.eq("organizationId", org._id))
-        .take(100)
-      const avatar = await ctx.db
-        .query("avatar")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", org._id))
-        .unique()
-      const sso = await ctx.db
-        .query("sso")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", org._id))
-        .unique()
-      const proof = await ctx.db
-        .query("ssoProof")
-        .withIndex("by_sessionId_and_organizationId", (q) =>
-          q.eq("sessionId", sessionId).eq("organizationId", org._id)
-        )
-        .unique()
-      teams.push({
-        id: org._id,
-        name: org.name,
-        slug: org.slug,
-        role:
-          membership.role === "owner"
-            ? ("admin" as const)
-            : ("member" as const),
-        joinedAt: membership.createdAt,
-        members: members.length,
-        avatar: avatar
-          ? ((await ctx.storage.getUrl(avatar.storageId)) ?? undefined)
-          : undefined,
-        ssoRequired: !!sso?.enforced && proof?.revision !== sso.revision,
-        ssoConfigured: !!sso,
-      })
+      const team = await teamForMembership(ctx, membership, sessionId)
+      if (team) teams.push(team)
     }
     const active =
       teams.find((t) => t.id === session.activeOrganizationId) ?? teams[0]
@@ -122,33 +154,15 @@ export const snapshot = query({
         .query("member")
         .withIndex("organizationId", (q) => q.eq("organizationId", active.id))
         .take(100)) {
-        const person = await ctx.db.get("user", m.userId as Id<"user">)
-        if (person)
-          members.push({
-            id: m._id,
-            name: person.name,
-            email: person.email,
-            role: m.role === "owner" ? ("admin" as const) : ("member" as const),
-            status: "active" as const,
-            joinedAt: m.createdAt,
-            you: person._id === user._id,
-            mfa: !!person.twoFactorEnabled,
-          })
+        const member = await memberForRow(ctx, m, user._id)
+        if (member) members.push(member)
       }
       if (active.role === "admin") {
         for (const i of await ctx.db
           .query("invitation")
           .withIndex("organizationId", (q) => q.eq("organizationId", active.id))
           .take(100)) {
-          if (i.status === "pending")
-            invitations.push({
-              id: i._id,
-              email: i.email,
-              role:
-                i.role === "owner" ? ("admin" as const) : ("member" as const),
-              expiresAt: i.expiresAt,
-              status: i.expiresAt <= Date.now() ? "expired" : i.status,
-            })
+          if (i.status === "pending") invitations.push(invitationForRow(i))
         }
         const c = await ctx.db
           .query("sso")
@@ -683,5 +697,70 @@ export const setAvatar = mutation({
         storageId: args.storageId,
       })
     return null
+  },
+})
+
+export const list = query({
+  args: { sessionId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(teamValue),
+  handler: async (ctx, args) => {
+    const { user } = await sessionUser(ctx, args.sessionId)
+    const page = await ctx.db
+      .query("member")
+      .withIndex("userId", (q) => q.eq("userId", user._id))
+      .paginate(args.paginationOpts)
+    const teams = await Promise.all(
+      page.page.map((row) => teamForMembership(ctx, row, args.sessionId))
+    )
+    return { ...page, page: teams.flatMap((row) => (row ? [row] : [])) }
+  },
+})
+export const members = query({
+  args: {
+    sessionId: v.string(),
+    organizationId: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(memberValue),
+  handler: async (ctx, args) => {
+    const { user } = await requireMember(
+      ctx,
+      args.sessionId,
+      args.organizationId
+    )
+    const page = await ctx.db
+      .query("member")
+      .withIndex("organizationId", (q) =>
+        q.eq("organizationId", args.organizationId)
+      )
+      .paginate(args.paginationOpts)
+    const members = await Promise.all(
+      page.page.map((row) => memberForRow(ctx, row, user._id))
+    )
+    return { ...page, page: members.flatMap((row) => (row ? [row] : [])) }
+  },
+})
+
+export const invitations = query({
+  args: {
+    sessionId: v.string(),
+    organizationId: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(invitationValue),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.sessionId, args.organizationId, true)
+    const page = await ctx.db
+      .query("invitation")
+      .withIndex("organizationId", (q) =>
+        q.eq("organizationId", args.organizationId)
+      )
+      .paginate(args.paginationOpts)
+    return {
+      ...page,
+      page: page.page
+        .filter((row) => row.status === "pending")
+        .map(invitationForRow),
+    }
   },
 })

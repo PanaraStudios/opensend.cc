@@ -4,7 +4,6 @@ import * as React from "react"
 import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
 import { actionError } from "@/lib/action-error"
 import { useRouter } from "next/navigation"
 import {
@@ -37,7 +36,9 @@ import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
 import { isEmail, pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useDomainOptions } from "@/lib/domains/use-domains"
+import { useSegments } from "@/lib/audience/use-audience"
+import { useWorkspace } from "@/components/auth/workspace"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
@@ -139,8 +140,8 @@ export function TestEmailDialog({
   /** The email as it stands right now, exported if it has to be. */
   exportHtml: () => Promise<string | null>
 }) {
-  const { state, you } = useDashboard()
-  const { activeTeamId } = useWorkspace()
+  const domains = useDomainOptions({ status: "verified" })
+  const { user: you, activeTeamId } = useWorkspace()
   const sendEmail = useMutation(api.testEmails.send)
   const [value, setValue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
@@ -169,7 +170,7 @@ export function TestEmailDialog({
                 await sendEmail({
                   organizationId: activeTeamId,
                   templateId: templateId as Id<"templates"> | undefined,
-                  from: item.from || emailFrom(item, state.domains),
+                  from: item.from || emailFrom(item, domains),
                   to,
                   subject: `[Test] ${item.subject || item.name || "Untitled"}`,
                   html,
@@ -360,7 +361,8 @@ function ReviewBody({
   flush: () => Promise<boolean>
 }) {
   const router = useRouter()
-  const { state } = useDashboard()
+  const domains = useDomainOptions({ status: "verified" })
+  const segments = useSegments() ?? []
   const { sendBroadcast, updateBroadcast } = useBroadcastCommands()
   const { activeTeamId } = useWorkspace()
   const review = useAction(api.broadcasts.review)
@@ -391,9 +393,9 @@ function ReviewBody({
     html,
     empty,
     sendAt,
-    from: item.from || emailFrom(item, state.domains),
-    verified: state.domains.some((domain) => domain.status === "verified"),
-    audience: audienceLabel(item.segmentId, state.segments),
+    from: item.from || emailFrom(item, domains),
+    verified: domains.some((domain) => domain.status === "verified"),
+    audience: audienceLabel(item.segmentId, segments),
     recipients: recipients ?? 0,
   })
   const blocked = checks.some((check) => check.level === "error")
@@ -433,7 +435,7 @@ function ReviewBody({
                  "now", not a schedule in the past. */
                 const later = sendAt !== null && sendAt > Date.now()
                 await updateBroadcast(item.id, {
-                  from: item.from || emailFrom(item, state.domains),
+                  from: item.from || emailFrom(item, domains),
                 })
                 await sendBroadcast(item.id, later ? sendAt : undefined)
                 toast.add({

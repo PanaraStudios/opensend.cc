@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { SEED_STATE } from "./data"
 import {
   deriveDomainStatus,
   dnsHost,
@@ -318,14 +317,6 @@ describe("reconcileDomain", () => {
       normalized.events?.map((event) => event.type),
       ["added"]
     )
-  })
-})
-
-describe("seeded domains", () => {
-  it("are already reconciled, so parsing a workspace changes nothing", () => {
-    for (const seeded of SEED_STATE.domains) {
-      assert.deepEqual(normalizeDomain(seeded), seeded, seeded.name)
-    }
   })
 })
 

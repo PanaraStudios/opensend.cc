@@ -17,13 +17,9 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useSegmentList, useTopicList } from "@/lib/audience/use-audience"
-import {
-  useDraft,
-  useTeamList,
-} from "@/components/dashboard/primitives"
-import { api } from "@/convex/_generated/api"
-import { asDomain } from "@/lib/domains/use-domains"
+import { useSegments, useTopics } from "@/lib/audience/use-audience"
+import { useDraft } from "@/components/dashboard/primitives"
+import { useDomainOptions } from "@/lib/domains/use-domains"
 import { emailFrom, fromAddresses } from "@/lib/dashboard/broadcast"
 import {
   formatScheduleHint,
@@ -34,7 +30,6 @@ import {
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
-import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
@@ -201,9 +196,8 @@ export function BroadcastSendFields({
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
 }) {
-  const { state } = useDashboard()
-  const segments = useSegmentList("")
-  const topics = useTopicList("")
+  const segments = useSegments() ?? []
+  const topics = useTopics() ?? []
   const commands = useBroadcastCommands()
   const updateBroadcast = (
     id: string,
@@ -218,7 +212,7 @@ export function BroadcastSendFields({
         <span className={LABEL}>To</span>
         <PaperSelect
           selectedItem={
-            state.segments
+            segments
               .filter((row) => row.id === item.segmentId)
               .map((row) => ({ value: row.id, label: row.name }))[0]
           }
@@ -233,7 +227,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "everyone", label: "All contacts" },
-            ...segments.pageRows.map((segment) => ({
+            ...segments.map((segment) => ({
               value: segment.id,
               label: segment.name,
             })),
@@ -244,7 +238,7 @@ export function BroadcastSendFields({
         <span className={LABEL}>Subscribe to</span>
         <PaperSelect
           selectedItem={
-            state.topics
+            topics
               .filter((row) => row.id === item.topicId)
               .map((row) => ({ value: row.id, label: row.name }))[0]
           }
@@ -259,7 +253,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "none", label: "No topic" },
-            ...topics.pageRows.map((topic) => ({
+            ...topics.map((topic) => ({
               value: topic.id,
               label: topic.name,
             })),
@@ -289,22 +283,14 @@ export function EmailHeaderForm({
   onChange: (patch: EmailHeaderPatch) => void
   children?: React.ReactNode
 }) {
-  const { state } = useDashboard()
   const [showReplyTo, setShowReplyTo] = React.useState(
     Boolean(item.replyTo?.trim())
   )
   const [showPreview, setShowPreview] = React.useState(
     Boolean(item.preview.trim())
   )
-  const domains = useTeamList(
-    api.domains.list,
-    api.domains.count,
-    { status: "verified" },
-    asDomain
-  )
-  const from =
-    item.from ||
-    emailFrom(item, domains.rows.length ? domains.rows : state.domains)
+  const domains = useDomainOptions({ status: "verified" })
+  const from = item.from || emailFrom(item, domains)
   const subject = useDraft(item.subject, (value) =>
     onChange({ subject: value })
   )
@@ -330,7 +316,7 @@ export function EmailHeaderForm({
           placeholder="Select a sender"
           value={from}
           onValueChange={(next) => onChange({ from: next })}
-          items={fromAddresses(domains.pageRows).map((address) => ({
+          items={fromAddresses(domains).map((address) => ({
             value: address,
             label: address,
           }))}
