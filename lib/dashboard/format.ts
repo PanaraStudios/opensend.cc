@@ -296,7 +296,7 @@ export function percent(part: number, total: number, digits = 0): string {
 
 /** 2xx reads as fine, 3xx as a nudge, anything else as a failure. */
 export function httpStatusTone(status: number): BadgeTone {
-  if (status >= 400) return "destructive"
-  if (status >= 300) return "warning"
-  return "success"
+  if (status >= 200 && status < 300) return "success"
+  if (status >= 300 && status < 400) return "warning"
+  return "destructive"
 }
