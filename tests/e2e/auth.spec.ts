@@ -7,6 +7,7 @@ import {
   testBackend,
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
+import { broadcastReceivedTests } from "./broadcast-received-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -924,6 +925,13 @@ test.describe.serial("Docker self-hosted authentication", () => {
     owner.off("pageerror", record)
     expect(errors).toEqual([])
   })
+
+  broadcastReceivedTests(() => ({
+    owner,
+    organizationId,
+    sendingDomainId,
+    ownerEmail,
+  }))
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
     await owner.goto("/settings/team")
