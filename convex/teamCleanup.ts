@@ -1,3 +1,4 @@
+import { deleteReceived } from "./received"
 import { v } from "convex/values"
 import type { OrderedQuery } from "convex/server"
 import { cancel, cleanup, type WorkflowId } from "@convex-dev/workflow"
@@ -39,12 +40,15 @@ export const TEAM_TABLES = [
   "exports",
   "unsubscribePages",
   "smtpSettings",
+  "receivedEmails",
   "inboundMessages",
   "domains",
   "sesTenants",
 ] as const
 
 export const CHILD_TABLES = [
+  "receivedContents",
+  "receivedAttachments",
   "emailContents",
   "emailEvents",
   "apiKeyUsage",
@@ -125,6 +129,17 @@ export const purge = internalMutation({
       await next(table + 1)
       return null
     }
+    if (name === "receivedEmails") {
+      const email = await ctx.db.get(
+        "receivedEmails",
+        row._id as Id<"receivedEmails">
+      )
+      if (email) await deleteReceived(ctx, email)
+      await next()
+      return null
+    }
+    if (name === "inboundMessages" && "storageId" in row && row.storageId)
+      await ctx.storage.delete(row.storageId)
     let pending = false
     if (name === "emails") {
       const id = row._id as Id<"emails">

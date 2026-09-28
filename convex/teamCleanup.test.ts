@@ -36,6 +36,8 @@ test("retirement erases every product table and child, preserving other teams an
     ])
     const make = async (table: TableNames): Promise<string> => {
       if (ids.has(table)) return ids.get(table)!
+      if ((table as string) === "_storage")
+        return ctx.storage.store(new Blob(["stored MIME"]))
       const id = await ctx.db.insert(
         table,
         (await value(

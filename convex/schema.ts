@@ -1,3 +1,4 @@
+import { receivedTables } from "./tables/received"
 import { automationTables } from "./tables/automations"
 import { defineSchema } from "convex/server"
 import { audienceTables } from "./tables/audience"
@@ -35,4 +36,5 @@ export default defineSchema({
   ...automationEventTables,
   ...unsubscribeTables,
   ...receivingTables,
+  ...receivedTables,
 })

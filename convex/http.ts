@@ -1,3 +1,4 @@
+import { registerReceivedDownloadRoutes } from "./receivedDownloads"
 import { registerTrackingRoutes } from "./trackingHttp"
 import { registerSmtpRoutes } from "./smtpHttp"
 import { httpRouter } from "convex/server"
@@ -16,5 +17,6 @@ registerSesRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)
 registerApiRoutes(http)
+registerReceivedDownloadRoutes(http)
 registerUnsubscribeRoutes(http)
 export default http

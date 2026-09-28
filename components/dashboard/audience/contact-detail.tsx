@@ -45,6 +45,7 @@ import { api } from "@/convex/_generated/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { contactTopicStatus } from "@/lib/dashboard/contacts"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
+import { useReceivedList } from "@/lib/received/use-received"
 import { useDashboard } from "@/lib/dashboard/store"
 import {
   asContact,
@@ -221,7 +222,7 @@ function ContactPage({
   contact: Contact
   onDelete: (remove: () => void) => void
 }) {
-  /* Broadcasts and replies are still demo data, matched by address. */
+  /* Broadcasts are still demo data, matched by segment. */
   const { state } = useDashboard()
   const { updateContact, deleteContacts, setContactTopic } =
     useAudienceCommands()
@@ -236,9 +237,8 @@ function ContactPage({
   const sends = useRecipientEmails(contact.email)
   const emails = sends.rows
   const { pageRows: emailRows, pagination: emailPagination } = sends
-  const received = state.received
-    .filter((email) => email.from.toLowerCase().includes(contact.email))
-    .sort((a, b) => b.createdAt - a.createdAt)
+  const replies = useReceivedList({ address: contact.email })
+  const received = replies.rows
   const broadcasts = state.broadcasts
     .filter((broadcast) => {
       if (broadcast.status !== "sent") return false
@@ -399,7 +399,8 @@ function ContactPage({
           </div>
         </TabsContent>
         <TabsContent value="history">
-          {sends.status === "LoadingFirstPage" ? (
+          {sends.status === "LoadingFirstPage" ||
+          replies.status === "LoadingFirstPage" ? (
             <Skeleton className="h-40 w-full" />
           ) : emails.length === 0 &&
             received.length === 0 &&
@@ -460,7 +461,7 @@ function ContactPage({
               ) : null}
               {received.length > 0 ? (
                 <HistorySection title="Received">
-                  {received.map((email) => (
+                  {replies.pageRows.map((email) => (
                     <Item
                       key={email.id}
                       size="sm"
@@ -478,6 +479,9 @@ function ContactPage({
                     </Item>
                   ))}
                 </HistorySection>
+              ) : null}
+              {received.length > 0 || replies.pagination.hasMore ? (
+                <ListPagination {...replies.pagination} noun="email" />
               ) : null}
             </div>
           )}

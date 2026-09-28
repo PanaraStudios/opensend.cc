@@ -163,6 +163,13 @@ const created = (doc: { _creationTime: number }) => bucket(doc._creationTime)
 /** Every count, by what it counts. Keys follow each list's filters, so a
     filter narrows the count with key bounds instead of a scan. */
 export const counters = {
+  receivedEmails: new Counter<"receivedEmails", string>(
+    components.receivedEmailCounts,
+    {
+      namespace: team,
+      key: (row) => [bucket(row.receivedAt)],
+    }
+  ),
   emailDomains: new Counter<"emails", string>(components.emailDomainCounts, {
     namespace: (row) => JSON.stringify([row.organizationId, row.domainId]),
     key: (row) => [row.status, created(row)],
@@ -312,6 +319,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   automationRuns: [counters.automationRuns],
   automationRunSteps: [counters.automationRunSteps],
   exports: [counters.exports],
+  receivedEmails: [counters.receivedEmails],
   emails: [counters.emails, counters.emailDomains],
   recipientMetrics: [counters.reputation],
   emailMetrics: [counters.emailMetrics, counters.domainMetrics],
@@ -331,6 +339,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   domains: [counters.domains],
 }
 export type CountedTable =
+  | "receivedEmails"
   | "automations"
   | "automationRuns"
   | "automationRunSteps"

@@ -1,3 +1,4 @@
+import { receivedPage } from "./received"
 import { SEGMENT_SEARCH_BUDGET } from "./segments"
 import type { PaginationOptions } from "convex/server"
 import type { QueryCtx } from "./_generated/server"
@@ -92,6 +93,40 @@ function recordsStatus(
 /** Every exportable resource. A feature makes its list exportable by adding
     an entry here; the export job and Settings → Exports need no change. */
 export const EXPORT_SOURCES: Record<string, ExportSource> = {
+  received: {
+    columns: [
+      "id",
+      "created_at",
+      "from",
+      "to",
+      "cc",
+      "bcc",
+      "subject",
+      "message_id",
+    ],
+    page: async (ctx, organizationId, filters, paginationOpts) => {
+      const result = await receivedPage(ctx, {
+        organizationId,
+        paginationOpts,
+        search: filters.search,
+        from: time(filters.from),
+        to: time(filters.to),
+      })
+      return {
+        ...result,
+        rows: result.page.map((row) => [
+          row._id,
+          csvTime(row.receivedAt),
+          row.from,
+          row.to.join(", "),
+          row.cc.join(", "),
+          row.bcc.join(", "),
+          row.subject,
+          row.messageId,
+        ]),
+      }
+    },
+  },
   domains: {
     columns: [
       "id",

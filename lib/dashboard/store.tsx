@@ -136,29 +136,6 @@ function mutate(mutator: (current: DashboardState) => DashboardState) {
   })
 }
 
-function addReceived(input: {
-  from: string
-  to: string
-  subject: string
-  text: string
-}) {
-  mutate((current) => ({
-    ...current,
-    received: [
-      {
-        id: createId("rcv"),
-        from: input.from.trim(),
-        to: input.to.trim().toLowerCase(),
-        subject: input.subject.trim(),
-        createdAt: Date.now(),
-        html: `<p>${input.text.trim()}</p>`,
-        text: input.text.trim(),
-      },
-      ...current.received,
-    ],
-  }))
-}
-
 function addBroadcast(input: {
   name: string
   subject: string
@@ -317,7 +294,6 @@ function resetDemo() {
 }
 
 const actions = {
-  addReceived,
   addBroadcast,
   updateBroadcast,
   duplicateBroadcast,
@@ -509,6 +485,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         properties: properties ?? [],
         apiKeys,
         emails,
+        received: [],
         suppressions: [],
         automationEvents,
         automations: [],
@@ -516,7 +493,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         logs: [],
         // Real exports list on their own; only exports of demo lists stay.
         exports: demo.exports.filter(
-          (item) => !SEED_STATE.exports.some((seed) => seed.id === item.id)
+          (item) =>
+            item.resource !== "Received emails" &&
+            !SEED_STATE.exports.some((seed) => seed.id === item.id)
         ),
         members,
         settings: {

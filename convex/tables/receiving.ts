@@ -48,6 +48,7 @@ export const receivingTables = {
     storageId: v.optional(v.id("_storage")),
     size: v.optional(v.number()),
     storedAt: v.optional(v.number()),
+    parsedAt: v.optional(v.number()),
     deletedFromS3At: v.optional(v.number()),
     rejected: v.optional(v.boolean()),
     transferError: v.optional(v.string()),

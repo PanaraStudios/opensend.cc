@@ -43,7 +43,6 @@ import {
   ResourceTable,
   Th,
   useDebouncedValue,
-  usePagination,
 } from "@/components/dashboard/primitives"
 import {
   CircleMinusIcon,
@@ -60,8 +59,6 @@ import {
   REASON_ITEMS,
   STATUS_ITEMS,
   defaultEmailRange,
-  emailMatches,
-  inDateRange,
   isFilterableStatus,
   isSuppressionReason,
 } from "@/components/dashboard/emails/shared"
@@ -72,8 +69,10 @@ import {
 } from "@/lib/dashboard/format"
 import { actionError } from "@/lib/action-error"
 import { rangeBounds } from "@/lib/dashboard/email-range"
-import { searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import {
+  useReceivedList,
+  useReceivingDomain,
+} from "@/lib/received/use-received"
 import { useClock } from "@/lib/time/use-clock"
 import type { SuppressionReason } from "@/lib/dashboard/types"
 import {
@@ -197,29 +196,20 @@ export function EmailsView() {
 }
 
 export function ReceivingView() {
-  const { state, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
   const now = useClock() ?? undefined
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
-  const receivingDomain = state.domains.find((domain) => domain.receiving)
-
-  const needle = searchNeedle(query)
-  const rows = state.received.filter((email) => {
-    if (!emailMatches(needle, email)) return false
-    return inDateRange(email.createdAt, range)
-  })
-
-  const { pageRows, pagination } = usePagination(rows)
+  const receivingDomain = useReceivingDomain()
+  const search = useDebouncedValue(query)
+  const filters = { search: search.trim() || undefined, ...rangeBounds(range) }
+  const received = useReceivedList(filters)
+  const { rows, pageRows, pagination } = received
   const exporting = useExportDialog({
     resource: "received",
     noun: "received emails",
-    filters: {},
-    onConfirm: () => {
-      addExport("Received emails", rows.length)
-      toast.add({ type: "success", title: "Export started" })
-    },
+    filters,
   })
 
   return (
@@ -242,7 +232,9 @@ export function ReceivingView() {
           onExport={exporting.open}
         />
       </div>
-      {rows.length === 0 ? (
+      {received.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={InboxIcon}
           title="No received emails"
