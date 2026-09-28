@@ -44,7 +44,8 @@ export const list = query({
       "topics",
       args.organizationId,
       args.paginationOpts,
-      (topic) => matches(topic.name, topic.description)
+      (topic) => matches(topic.name, topic.description),
+      args.search
     )
   },
 })

@@ -37,7 +37,8 @@ export const list = query({
       args.organizationId,
       args.paginationOpts,
       // One being deleted is already gone for the team.
-      (property) => !property.deleting && matches(property.name, property.key)
+      (property) => !property.deleting && matches(property.name, property.key),
+      args.search
     )
   },
 })

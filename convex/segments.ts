@@ -56,7 +56,8 @@ export const list = query({
       "segments",
       args.organizationId,
       args.paginationOpts,
-      (segment) => matches(segment.name)
+      (segment) => matches(segment.name),
+      args.search
     )
     return { ...result, page: await withSizes(ctx, result.page) }
   },

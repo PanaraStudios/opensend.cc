@@ -25,7 +25,7 @@ import {
   literals,
   patchRow,
 } from "./counts"
-import { matchesSearch, narrow } from "./lists"
+import { filteredPage, matchesSearch } from "./lists"
 import { logCount } from "./logs"
 import { createToken, tokenParts } from "../lib/dashboard/ids"
 import { tokenHash } from "../lib/oauth/policy"
@@ -182,7 +182,7 @@ export const keyFilters = v.object({
   /** Matches the name and the visible token prefix. */
   search: v.optional(v.string()),
 })
-/** Newest first, or best match first for a search. */
+/** Newest first; substring search filters each bounded index page. */
 export async function keyPage(
   ctx: QueryCtx,
   args: Infer<typeof keyFilters> & {
@@ -191,25 +191,23 @@ export async function keyPage(
   }
 ) {
   const org = args.organizationId
-  const search = args.search?.trim().slice(0, 100)
+  const search = args.search
   const keys = ctx.db.query("apiKeys")
-  const rows = search
-    ? keys.withSearchIndex("search_keys", (q) => {
-        const s = q.search("search", search).eq("organizationId", org)
-        return args.permission ? s.eq("permission", args.permission) : s
-      })
-    : args.permission
-      ? keys
-          .withIndex("by_organizationId_and_permission", (q) =>
-            q.eq("organizationId", org).eq("permission", args.permission!)
-          )
-          .order("desc")
-      : keys
-          .withIndex("by_organizationId", (q) => q.eq("organizationId", org))
-          .order("desc")
+  const rows = args.permission
+    ? keys
+        .withIndex("by_organizationId_and_permission", (q) =>
+          q.eq("organizationId", org).eq("permission", args.permission!)
+        )
+        .order("desc")
+    : keys
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", org))
+        .order("desc")
   const matches = matchesSearch(search)
-  const result = narrow(await rows.paginate(args.paginationOpts), (key) =>
-    matches(key.name, key.tokenPrefix)
+  const result = await filteredPage(
+    rows,
+    args.paginationOpts,
+    (key) => matches(key.name, key.tokenPrefix),
+    search
   )
   return {
     ...result,

@@ -194,7 +194,8 @@ export const list = query({
       args.paginationOpts,
       (webhook) =>
         (args.enabled === undefined || webhook.enabled === args.enabled) &&
-        matches(webhook.endpoint, ...webhook.events)
+        matches(webhook.endpoint, ...webhook.events),
+      args.search
     )
     return { ...result, page: result.page.map(shown) }
   },

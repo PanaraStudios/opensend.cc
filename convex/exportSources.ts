@@ -255,7 +255,8 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
         "segments",
         organizationId,
         paginationOpts,
-        (segment) => matches(segment.name)
+        (segment) => matches(segment.name),
+        filters.search
       )
       const sizes = await counters.segmentMembers.totals(
         ctx,
