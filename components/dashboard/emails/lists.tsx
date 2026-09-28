@@ -65,6 +65,7 @@ import {
 } from "@/lib/dashboard/format"
 import { searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
+import { useClock } from "@/lib/time/use-clock"
 import type { SuppressionReason } from "@/lib/dashboard/types"
 
 export function EmailsView() {
@@ -172,8 +173,9 @@ export function EmailsView() {
 export function ReceivingView() {
   const { state, addExport } = useDashboard()
   const [query, setQuery] = React.useState("")
-  const [range, setRange] = React.useState<DateRange | undefined>(
-    defaultEmailRange
+  const now = useClock() ?? undefined
+  const [range, setRange] = React.useState<DateRange | undefined>(() =>
+    defaultEmailRange(Date.now())
   )
   const receivingDomain = state.domains.find((domain) => domain.receiving)
 
@@ -198,6 +200,7 @@ export function ReceivingView() {
           placeholder="Search received…"
           range={range}
           onRangeChange={setRange}
+          now={now}
           onExport={() => {
             addExport("Received emails", rows.length)
             toast.add({ type: "success", title: "Export started" })
