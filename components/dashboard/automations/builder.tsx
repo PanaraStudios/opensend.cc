@@ -61,6 +61,8 @@ import {
   ConfirmDialog,
   OptionSelect,
   useDeleteRecord,
+  useAutosaveDraft,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
   insertStep,
@@ -75,7 +77,15 @@ import {
   TRIGGER_KEY,
   type AutomationTask,
 } from "@/lib/dashboard/automation"
-import { useDashboard, useStoreHydrated } from "@/lib/dashboard/store"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
+import { actionError } from "@/lib/action-error"
+import { asContact } from "@/lib/audience/use-audience"
+import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
+import {
+  useAutomation,
+  useAutomationCommands,
+} from "@/lib/automations/use-automations"
 import type {
   Automation,
   AutomationStep,
@@ -134,12 +144,10 @@ function AddStep({ onAdd }: { onAdd: (type: AutomationStepType) => void }) {
 
 export function AutomationBuilder() {
   const { id } = useParams<{ id: string }>()
-  const { state } = useDashboard()
-  const hydrated = useStoreHydrated()
+  const automation = useAutomation(id)
   const { leaving, deleteAndLeave } = useDeleteRecord("/automations")
-  const automation = state.automations.find((item) => item.id === id)
 
-  if (!hydrated) return null
+  if (automation === undefined) return <Skeleton className="h-64 w-full" />
   if (!automation) {
     if (leaving) return null
     return (
@@ -160,13 +168,24 @@ export function AutomationBuilder() {
 }
 
 function BuilderScreen({
-  automation,
+  automation: stored,
   deleteAndLeave,
 }: {
   automation: Automation
   deleteAndLeave: (remove: () => void) => void
 }) {
-  const { state, updateAutomation, deleteAutomation } = useDashboard()
+  const { updateAutomation, deleteAutomation } = useAutomationCommands()
+  const saved = JSON.stringify({ trigger: stored.trigger, steps: stored.steps })
+  const autosave = useAutosaveDraft(saved, (next) =>
+    updateAutomation(stored.id, JSON.parse(next))
+  )
+  const automation: Automation = { ...stored, ...JSON.parse(autosave.draft) }
+  const change = (
+    patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
+  ) =>
+    autosave.setDraft(
+      JSON.stringify({ ...JSON.parse(autosave.draft), ...patch })
+    )
   const toggle = useToggleAutomation()
   const [view, setView] = React.useState<BuilderView>("editor")
   /* The card showing its settings: the trigger, or a step by key. A blank
@@ -180,8 +199,7 @@ function BuilderScreen({
   const [removing, setRemoving] = React.useState<AutomationStep | null>(null)
 
   const enabled = automation.status === "enabled"
-  const setSteps = (steps: AutomationStep[]) =>
-    updateAutomation(automation.id, { steps })
+  const setSteps = (steps: AutomationStep[]) => change({ steps })
   const select = (key: string) =>
     setSelected((current) => (current === key ? null : key))
 
@@ -192,13 +210,20 @@ function BuilderScreen({
         listHref="/automations"
         listLabel="Automations"
         name={automation.name}
-        onRename={(name) => updateAutomation(automation.id, { name })}
+        onRename={(name) => {
+          void updateAutomation(automation.id, { name }).catch((error) =>
+            toast.add({ type: "error", title: actionError(error) })
+          )
+        }}
         badge={<AutomationStatusBadge status={automation.status} />}
       >
         <AutomationMenu
           automation={automation}
           inDetail
-          onDelete={() => deleteAndLeave(() => deleteAutomation(automation.id))}
+          onDelete={async () => {
+            await deleteAutomation(automation.id)
+            deleteAndLeave(() => {})
+          }}
         >
           <DropdownMenuItem
             data-testid="automation-test"
@@ -221,10 +246,15 @@ function BuilderScreen({
           size="sm"
           variant={enabled ? "outline" : "default"}
           data-testid="automation-toggle"
-          onClick={() => {
-            const left = toggle(automation)
-            setTasks(left.length > 0 ? left : null)
-            if (left.length === 0 && !enabled) setSelected(null)
+          onClick={async () => {
+            try {
+              if (!(await autosave.flush())) return
+              const left = await toggle(automation)
+              setTasks(left.length > 0 ? left : null)
+              if (left.length === 0 && !enabled) setSelected(null)
+            } catch (error) {
+              toast.add({ type: "error", title: actionError(error) })
+            }
           }}
         >
           {enabled ? "Stop" : "Start"}
@@ -285,7 +315,7 @@ function BuilderScreen({
                   locked={enabled}
                   onSelect={() => select(TRIGGER_KEY)}
                   onChange={(trigger) => {
-                    updateAutomation(automation.id, { trigger })
+                    change({ trigger })
                     setSelected(null)
                   }}
                 />
@@ -296,18 +326,10 @@ function BuilderScreen({
                   : (slot) => (
                       <AddStep
                         onAdd={(type) => {
-                          const step = newStep(
-                            type,
-                            automation.steps,
-                            /* Steps its runs still name keep their keys. */
-                            state.automationRuns
-                              .filter(
-                                (run) => run.automationId === automation.id
-                              )
-                              .flatMap((run) =>
-                                run.steps.map((done) => done.key)
-                              )
-                          )
+                          const step = {
+                            ...newStep(type, automation.steps),
+                            key: crypto.randomUUID(),
+                          }
                           setSteps(insertStep(automation.steps, slot, step))
                           setSelected(step.key)
                         }}
@@ -392,20 +414,39 @@ function TestEventForm({
   automation: Automation
   onDone: () => void
 }) {
-  const { state, runAutomation } = useDashboard()
-  const event = state.automationEvents.find(
-    (item) => item.name === automation.trigger
+  const { runAutomation } = useAutomationCommands()
+  const event = useAutomationEvent(automation.trigger)
+  const { pageRows: contacts, pagination } = useTeamList(
+    api.contacts.list,
+    api.contacts.count,
+    {},
+    asContact
   )
-  const [contactId, setContactId] = React.useState(state.contacts[0]?.id ?? "")
+  const [chosenContact, setChosenContact] = React.useState<{
+    id: string
+    email: string
+  } | null>(null)
+  if (!chosenContact && contacts[0]) setChosenContact(contacts[0])
+  const contactId = chosenContact?.id ?? ""
+  const setContactId = (id: string) => {
+    const contact = contacts.find((item) => item.id === id)
+    if (contact) setChosenContact(contact)
+  }
   const [payload, setPayload] = React.useState(() =>
-    JSON.stringify(samplePayload(event), null, 2)
+    JSON.stringify(samplePayload(event ?? undefined), null, 2)
   )
   const [error, setError] = React.useState<string | null>(null)
+  const [sampled, setSampled] = React.useState(event?.id)
+  const [edited, setEdited] = React.useState(false)
+  if (event && event.id !== sampled) {
+    setSampled(event.id)
+    if (!edited) setPayload(JSON.stringify(samplePayload(event), null, 2))
+  }
 
   return (
     <DialogContent className="sm:max-w-md">
       <form
-        onSubmit={(submitted) => {
+        onSubmit={async (submitted) => {
           submitted.preventDefault()
           let parsed: unknown
           try {
@@ -423,19 +464,19 @@ function TestEventForm({
             return
           }
           const body = parsed as Record<string, unknown>
-          const [problem] = payloadErrors(event, body)
+          const [problem] = payloadErrors(event ?? undefined, body)
           if (problem) {
             setError(`Rejected with 422: ${problem}`)
             return
           }
-          if (
-            !runAutomation(automation.id, {
-              contact: state.contacts.find((item) => item.id === contactId),
-              segments: state.segments,
-              payload: body,
-            })
-          ) {
+          if (!contactId) {
             setError("Choose a contact")
+            return
+          }
+          try {
+            await runAutomation(automation.id, contactId, body)
+          } catch (error) {
+            setError(actionError(error))
             return
           }
           toast.add({ type: "success", title: "Event sent" })
@@ -455,8 +496,14 @@ function TestEventForm({
               id="test-contact"
               className="w-full"
               value={contactId}
+              selectedItem={
+                chosenContact
+                  ? { value: chosenContact.id, label: chosenContact.email }
+                  : undefined
+              }
               onChange={setContactId}
-              items={state.contacts.map((contact) => ({
+              pagination={{ ...pagination, noun: "contact" }}
+              items={contacts.map((contact) => ({
                 value: contact.id,
                 label: contact.email,
               }))}
@@ -470,6 +517,7 @@ function TestEventForm({
               rows={6}
               className="font-mono text-[13px]"
               onChange={(changed) => {
+                setEdited(true)
                 setPayload(changed.target.value)
                 setError(null)
               }}

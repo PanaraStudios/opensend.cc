@@ -586,7 +586,7 @@ function resolveField(scope: RuleScope, field: string): unknown {
 
 /** A step's value: what a reference such as `event.plan` points at, or the
     text itself when it is not one, or points at nothing. */
-function resolveValue(scope: RuleScope, value: string): unknown {
+export function resolveValue(scope: RuleScope, value: string): unknown {
   if (!/^(event|contact)\./.test(value.trim())) return value
   return resolveField(scope, value) ?? value
 }

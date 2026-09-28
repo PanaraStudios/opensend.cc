@@ -27,6 +27,7 @@ export const emailSourceValue = v.union(
   v.literal("api"),
   v.literal("smtp"),
   v.literal("dashboard"),
+  v.literal("automation"),
   v.literal("system")
 )
 export const tagValue = v.object({ name: v.string(), value: v.string() })

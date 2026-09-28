@@ -315,14 +315,17 @@ export function useAutosaveDraft(
   }
   const latest = React.useRef({ draft, value, commit })
   React.useEffect(() => {
+    latest.current.draft = draft
     latest.current.value = value
     latest.current.commit = commit
   })
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const sent = React.useRef<string | null>(null)
+  const pending = React.useRef<Promise<boolean> | null>(null)
 
-  const flush = React.useCallback((onlyIfWaiting = false) => {
-    if (onlyIfWaiting && timer.current === null) return
+  const flush = React.useCallback((onlyIfWaiting = false): Promise<boolean> => {
+    if (onlyIfWaiting && timer.current === null)
+      return pending.current ?? Promise.resolve(true)
     if (timer.current !== null) clearTimeout(timer.current)
     timer.current = null
     const { draft: next, value: stored, commit: save } = latest.current
@@ -330,41 +333,61 @@ export function useAutosaveDraft(
       if (timer.current === null && latest.current.draft === next)
         setEditing(false)
     }
-    if (next === stored || next === sent.current) return settle()
+    if (next === sent.current) return pending.current ?? Promise.resolve(true)
+    if (next === stored) {
+      settle()
+      return pending.current ?? Promise.resolve(true)
+    }
     sent.current = next
     const done = () => {
-      if (sent.current === next) sent.current = null
+      if (sent.current === next) {
+        sent.current = null
+        pending.current = null
+      }
     }
-    save(next).then(
+    const promise = save(next).then(
       () => {
         done()
         settle()
+        return true
       },
       (caught: unknown) => {
         done()
         toast.add({ type: "error", title: actionError(caught) })
-        if (timer.current !== null || latest.current.draft !== next) return
+        if (timer.current !== null || latest.current.draft !== next)
+          return false
         latest.current.draft = latest.current.value
         setDraft(latest.current.value)
         setEditing(false)
+        return false
       }
     )
+    pending.current = promise
+    return promise
   }, [])
-  React.useEffect(() => () => flush(true), [flush])
+  React.useEffect(
+    () => () => {
+      void flush(true)
+    },
+    [flush]
+  )
 
+  const change = (next: string) => {
+    latest.current.draft = next
+    setDraft(next)
+    setEditing(true)
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = setTimeout(flush, delay)
+  }
   return {
     draft,
+    setDraft: change,
+    flush,
     props: {
       value: draft,
       onChange: (
         event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-      ) => {
-        latest.current.draft = event.target.value
-        setDraft(event.target.value)
-        setEditing(true)
-        if (timer.current !== null) clearTimeout(timer.current)
-        timer.current = setTimeout(flush, delay)
-      },
+      ) => change(event.target.value),
       onBlur: () => flush(true),
     },
   }
@@ -1668,6 +1691,8 @@ export function OptionSelect({
   defaultValue,
   onChange,
   items,
+  pagination,
+  selectedItem,
   id,
   name,
   size = "default",
@@ -1681,8 +1706,10 @@ export function OptionSelect({
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
+  selectedItem?: SelectOption
   items: readonly SelectOption[]
   footer?: React.ReactNode
+  pagination?: React.ComponentProps<typeof ListPagination>
   /** Shown while no item is chosen. */
   placeholder?: string
   id?: string
@@ -1700,7 +1727,11 @@ export function OptionSelect({
       onValueChange={(next) => {
         if (next && onChange) onChange(next)
       }}
-      items={[...items]}
+      items={
+        selectedItem && !items.some((item) => item.value === selectedItem.value)
+          ? [...items, selectedItem]
+          : [...items]
+      }
       name={name}
       disabled={disabled}
     >
@@ -1712,7 +1743,14 @@ export function OptionSelect({
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent align={align} alignItemWithTrigger={false} footer={footer}>
+      <SelectContent
+        align={align}
+        alignItemWithTrigger={false}
+        footer={
+          footer ??
+          (pagination ? <ListPagination {...pagination} /> : undefined)
+        }
+      >
         <SelectGroup>
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
@@ -1731,6 +1769,7 @@ export function OptionSelect({
             </SelectItem>
           ))}
         </SelectGroup>
+        {pagination ? <ListPagination {...pagination} /> : null}
       </SelectContent>
     </Select>
   )
@@ -1745,6 +1784,8 @@ export function SuggestInput({
   value,
   onChange,
   options,
+  pagination,
+  onSearch,
   placeholder,
   createLabel = "Create",
   className,
@@ -1753,6 +1794,8 @@ export function SuggestInput({
   value: string
   onChange: (value: string) => void
   options: readonly string[]
+  pagination?: React.ComponentProps<typeof ListPagination>
+  onSearch?: (value: string) => void
   placeholder?: string
   createLabel?: string
   className?: string
@@ -1787,10 +1830,16 @@ export function SuggestInput({
       value={null}
       inputValue={query}
       itemToStringLabel={(item: Suggestion) => item.value}
-      onInputValueChange={setQuery}
+      onInputValueChange={(next) => {
+        setQuery(next)
+        onSearch?.(next === value ? "" : next)
+      }}
       onOpenChange={(open) => {
         /* Closed without a pick, what was typed is dropped. */
-        if (!open) setQuery(value)
+        if (!open) {
+          setQuery(value)
+          onSearch?.("")
+        }
       }}
       onValueChange={(item: Suggestion | null) => {
         if (item) onChange(item.value)
@@ -1817,6 +1866,7 @@ export function SuggestInput({
             </ComboboxItem>
           )}
         </ComboboxList>
+        {pagination ? <ListPagination {...pagination} /> : null}
       </ComboboxContent>
     </Combobox>
   )

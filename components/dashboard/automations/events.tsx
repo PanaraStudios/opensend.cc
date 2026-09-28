@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { usePaginatedQuery } from "convex/react"
+import { usePaginatedQuery, useQuery } from "convex/react"
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -51,18 +51,13 @@ import {
   AutomationsDocsSheet,
   EventIcon,
 } from "@/components/dashboard/automations/shared"
-import {
-  eventListeners,
-  eventNameError,
-  schemaError,
-} from "@/lib/dashboard/automation"
+import { eventNameError, schemaError } from "@/lib/dashboard/automation"
 import { api } from "@/convex/_generated/api"
 import { actionError } from "@/lib/action-error"
 import {
   asAutomationEvent,
   useAutomationEventCommands,
 } from "@/lib/automation-events/use-automation-events"
-import { useDashboard } from "@/lib/dashboard/store"
 import {
   AUTOMATION_EVENT_FIELD_TYPES,
   type AutomationEvent,
@@ -75,7 +70,6 @@ const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
 }))
 
 export function AutomationEventsView() {
-  const { state } = useDashboard()
   const { organizationId, deleteAutomationEvent } = useAutomationEventCommands()
   const [query, setQuery] = React.useState("")
   const [docsOpen, setDocsOpen] = React.useState(false)
@@ -85,6 +79,12 @@ export function AutomationEventsView() {
   )
   const [deleting, setDeleting] = React.useState<AutomationEvent | null>(null)
 
+  const deletingUsed = useQuery(
+    api.automations.usesEvent,
+    organizationId && deleting
+      ? { organizationId, name: deleting.name }
+      : "skip"
+  )
   const search = useDebouncedValue(query)
   const events = usePaginatedQuery(
     api.automationEvents.list,
@@ -193,8 +193,7 @@ export function AutomationEventsView() {
         }}
         title="Delete event?"
         description={
-          deleting &&
-          eventListeners(state.automations, deleting.name).length > 0
+          deleting && deletingUsed
             ? "Automations still use this event. They keep its name, and its payload is no longer checked."
             : "Its payload is no longer checked when your app sends it."
         }
@@ -235,8 +234,11 @@ function EventForm({
   event: AutomationEvent | null
   onClose: () => void
 }) {
-  const { state } = useDashboard()
-  const { saveAutomationEvent } = useAutomationEventCommands()
+  const { organizationId, saveAutomationEvent } = useAutomationEventCommands()
+  const eventUsed = useQuery(
+    api.automations.usesEvent,
+    organizationId && event ? { organizationId, name: event.name } : "skip"
+  )
   const saving = React.useRef(false)
   const [name, setName] = React.useState(event?.name ?? "")
   const [schema, setSchema] = React.useState(event?.schema ?? [])
@@ -301,10 +303,7 @@ function EventForm({
               className="font-mono"
               placeholder="e.g. user.created"
               /* Automations find the event by its name. */
-              disabled={
-                event !== null &&
-                eventListeners(state.automations, event.name).length > 0
-              }
+              disabled={event !== null && eventUsed !== false}
               onChange={(changed) => {
                 setName(changed.target.value)
                 setError(null)

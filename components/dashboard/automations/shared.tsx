@@ -37,12 +37,10 @@ import {
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { automationStatusLabel } from "@/lib/dashboard/format"
-import {
-  automationTasks,
-  type AutomationTask,
-} from "@/lib/dashboard/automation"
+import type { AutomationTask } from "@/lib/dashboard/automation"
 import { AUTOMATION_TABS } from "@/lib/dashboard/nav"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useAutomationCommands } from "@/lib/automations/use-automations"
+import { actionError } from "@/lib/action-error"
 import type { Automation, AutomationRunStep } from "@/lib/dashboard/types"
 
 export const AutomationIcon = WorkflowIcon
@@ -126,10 +124,10 @@ export function AutomationsDocsSheet(props: {
 /** Starts the automation, or says what is left to do first. Stopping always
     works. Returns the tasks that blocked a start, for the caller to show. */
 export function useToggleAutomation() {
-  const { state, setAutomationStatus } = useDashboard()
-  return (automation: Automation): AutomationTask[] => {
+  const { setAutomationStatus } = useAutomationCommands()
+  return async (automation: Automation): Promise<AutomationTask[]> => {
     if (automation.status === "enabled") {
-      setAutomationStatus(automation.id, "disabled")
+      await setAutomationStatus(automation.id, "disabled")
       toast.add({
         type: "success",
         title: "Automation stopped",
@@ -137,9 +135,8 @@ export function useToggleAutomation() {
       })
       return []
     }
-    const tasks = automationTasks(automation, state)
+    const tasks = await setAutomationStatus(automation.id, "enabled")
     if (tasks.length > 0) return tasks
-    setAutomationStatus(automation.id, "enabled")
     toast.add({ type: "success", title: "Automation started" })
     return []
   }
@@ -154,13 +151,13 @@ export function AutomationMenu({
   automation: Automation
   inDetail?: boolean
   /** Replaces the plain delete, for a page that has to leave first. */
-  onDelete?: () => void
+  onDelete?: () => void | Promise<void>
   /** Items only that page has, listed first. */
   children?: React.ReactNode
 }) {
   const router = useRouter()
   const { updateAutomation, duplicateAutomation, deleteAutomation } =
-    useDashboard()
+    useAutomationCommands()
   const toggle = useToggleAutomation()
   const [renaming, setRenaming] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
@@ -188,11 +185,14 @@ export function AutomationMenu({
             </>
           )}
           <DropdownMenuItem
-            onClick={() => {
-              const copy = duplicateAutomation(automation.id)
-              if (!copy) return
-              toast.add({ type: "success", title: "Automation duplicated" })
-              router.push(`/automations/${copy.id}`)
+            onClick={async () => {
+              try {
+                const copy = await duplicateAutomation(automation.id)
+                toast.add({ type: "success", title: "Automation duplicated" })
+                router.push(`/automations/${copy.id}`)
+              } catch (error) {
+                toast.add({ type: "error", title: actionError(error) })
+              }
             }}
           >
             <CopyIcon />
@@ -200,13 +200,18 @@ export function AutomationMenu({
           </DropdownMenuItem>
           {inDetail ? null : (
             <DropdownMenuItem
-              onClick={() => {
-                if (toggle(automation).length === 0) return
-                toast.add({
-                  type: "error",
-                  title: "Not ready to start",
-                  description: "Open the automation to see what is left to do.",
-                })
+              onClick={async () => {
+                try {
+                  if ((await toggle(automation)).length === 0) return
+                  toast.add({
+                    type: "error",
+                    title: "Not ready to start",
+                    description:
+                      "Open the automation to see what is left to do.",
+                  })
+                } catch (error) {
+                  toast.add({ type: "error", title: actionError(error) })
+                }
               }}
             >
               {enabled ? <CirclePauseIcon /> : <CirclePlayIcon />}
@@ -230,8 +235,8 @@ export function AutomationMenu({
         label="Name"
         value={automation.name}
         validate={(value) => (value ? null : "Enter a name")}
-        onSubmit={(value) => {
-          updateAutomation(automation.id, { name: value })
+        onSubmit={async (value) => {
+          await updateAutomation(automation.id, { name: value })
           toast.add({ type: "success", title: "Automation renamed" })
         }}
       />
@@ -240,9 +245,9 @@ export function AutomationMenu({
         onOpenChange={setDeleting}
         title="Delete automation?"
         description="Runs in flight stop, and the run history is removed."
-        onConfirm={() => {
-          if (onDelete) onDelete()
-          else deleteAutomation(automation.id)
+        onConfirm={async () => {
+          if (onDelete) await onDelete()
+          else await deleteAutomation(automation.id)
           toast.add({ type: "success", title: "Automation deleted" })
         }}
       />

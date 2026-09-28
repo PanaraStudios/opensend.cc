@@ -17,7 +17,8 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  usePagination,
+  useTeamList,
+  useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import {
   AUTOMATION_STATUS_ITEMS,
@@ -26,44 +27,59 @@ import {
   AutomationsChrome,
   AutomationsDocsSheet,
 } from "@/components/dashboard/automations/shared"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
+import {
+  asListedAutomation,
+  useAutomationCommands,
+} from "@/lib/automations/use-automations"
 
 export function AutomationsView() {
   const router = useRouter()
-  const { state, addAutomation } = useDashboard()
+  const { organizationId, addAutomation } = useAutomationCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [docsOpen, setDocsOpen] = React.useState(false)
 
-  /* Counted once, not once per row per keystroke of the search. */
-  const runCounts = React.useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const run of state.automationRuns) {
-      counts.set(run.automationId, (counts.get(run.automationId) ?? 0) + 1)
-    }
-    return counts
-  }, [state.automationRuns])
-
-  const needle = searchNeedle(query)
-  const rows = state.automations.filter(
-    (item) =>
-      matchesNeedle(needle, item.name, item.trigger) &&
-      (status === "all" || item.status === status)
+  const search = useDebouncedValue(query)
+  const {
+    rows,
+    pageRows,
+    pagination,
+    status: loading,
+  } = useTeamList(
+    api.automations.list,
+    api.automations.count,
+    {
+      search,
+      ...(status === "all" ? {} : { status: status as "enabled" | "disabled" }),
+    },
+    asListedAutomation
+  )
+  const total = useQuery(
+    api.automations.count,
+    organizationId ? { organizationId } : "skip"
   )
 
   const createButton = (
     /* No form: a new automation is blank, and is set up in the editor. */
     <Button
       data-testid="automation-create"
-      onClick={() => router.push(`/automations/${addAutomation().id}`)}
+      onClick={() => {
+        void addAutomation()
+          .then((item) => router.push(`/automations/${item.id}`))
+          .catch((error) =>
+            toast.add({ type: "error", title: actionError(error) })
+          )
+      }}
     >
       <PlusIcon data-icon="inline-start" />
       Create automation
     </Button>
   )
-
-  const { pageRows, pagination } = usePagination(rows)
 
   return (
     <>
@@ -88,7 +104,9 @@ export function AutomationsView() {
           },
         ]}
       />
-      {state.automations.length === 0 ? (
+      {loading === "LoadingFirstPage" ? (
+        <Skeleton className="h-64 w-full" />
+      ) : total?.total === 0 ? (
         <EmptyState
           icon={AutomationIcon}
           title="No automations yet"
@@ -131,7 +149,7 @@ export function AutomationsView() {
                   <AutomationStatusBadge status={item.status} />
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {runCounts.get(item.id) ?? 0}
+                  {item.runs}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <RelativeTime at={item.createdAt} />

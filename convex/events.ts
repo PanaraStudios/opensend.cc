@@ -13,7 +13,10 @@ type Consumer = FunctionReference<
 /* Each consumer is an internal mutation taking the event id; a feature
    subscribes by adding its handler here. They run in their own transactions,
    so one failing consumer never loses the event for the others. */
-const CONSUMERS: Consumer[] = [internal.webhooks.deliverEvent]
+const CONSUMERS: Consumer[] = [
+  internal.webhooks.deliverEvent,
+  internal.automationRuntime.consume,
+]
 
 /** Record an event in the caller's transaction and hand it to every
     consumer. Scheduling is transactional: if the caller rolls back, no
