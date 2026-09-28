@@ -260,7 +260,12 @@ function RateCard({
 export function MetricsView() {
   const now = useClock()
   const [chosenRange, setRange] = React.useState<DateRange>()
-  const range = chosenRange ?? defaultEmailRange(now ?? 0)
+  // One object per choice: a fresh default each render re-subscribes the
+  // metrics queries every render.
+  const range = React.useMemo(
+    () => chosenRange ?? defaultEmailRange(now ?? 0),
+    [chosenRange, now]
+  )
   const [domain, setDomain] = React.useState("all")
   const [event, setEvent] = React.useState("all")
   const status = isFilterableStatus(event) ? event : null

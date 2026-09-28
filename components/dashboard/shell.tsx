@@ -457,7 +457,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (setupPending) return
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if ((event.metaKey || event.ctrlKey) && event.key?.toLowerCase() === "k") {
         event.preventDefault()
         setSearchOpen((open) => !open)
       }
