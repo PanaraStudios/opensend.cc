@@ -218,7 +218,9 @@ export const inboundRuleSetName = (installationId: string) =>
 /** One receipt rule per domain, named like its configuration set. */
 export const receiptRuleName = (installationId: string, domainId: string) =>
   `${resourcePrefix(installationId)}-${domainId.slice(-12)}`
-/** Tracking always returns to this self-hosted installation. */
+/** Tracking always returns to this self-hosted installation, through a CNAME
+    to the callback's hostname: AWS needs it public and HTTPS, and a CNAME
+    cannot carry a port or a path. */
 export function trackingTarget(callbackOrigin: string) {
   const url = new URL(callbackOrigin)
   if (
@@ -230,6 +232,8 @@ export function trackingTarget(callbackOrigin: string) {
     url.search ||
     url.hash
   )
-    throw new Error("Tracking requires a public HTTPS callback origin")
+    throw new ConvexError(
+      "Configure a public HTTPS callback, without a port or path, before provisioning AWS"
+    )
   return url.hostname
 }

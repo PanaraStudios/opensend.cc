@@ -23,6 +23,7 @@ import {
   regionValue,
   setupStepValue,
   tenantProvisioned,
+  trackingTarget,
 } from "./ses/contracts"
 import { limitPermissionCheck } from "./ses/limits"
 import { internal } from "./_generated/api"
@@ -310,10 +311,7 @@ export const provisionRegion = mutation({
     await requireInstallationAdmin(ctx)
     const installation = await findInstallation(ctx)
     if (!installation?.accountId) throw new ConvexError("Connect AWS first")
-    if (!installation.callbackOrigin.startsWith("https://"))
-      throw new ConvexError(
-        "Configure a public HTTPS callback before provisioning AWS"
-      )
+    trackingTarget(installation.callbackOrigin)
     const region = await findRegion(ctx, args.region)
     if (!region) throw new ConvexError("Enable this region first")
     if (region.phase === "running") return null

@@ -243,6 +243,23 @@ describe("installation and domain authorization", () => {
         customReturnPath: "a.b",
       })
     ).rejects.toThrow("one label")
+    // Tracking CNAMEs point at the callback's hostname, which carries no port.
+    await f.t.run((ctx) =>
+      ctx.db.patch("installation", f.installation, {
+        callbackOrigin: "https://api.opensend.test:8443",
+      })
+    )
+    await expect(
+      f.owner.client.mutation(api.domains.create, {
+        ...input,
+        name: "new.test",
+      })
+    ).rejects.toThrow("without a port or path")
+    await expect(
+      f.owner.client.mutation(api.installation.provisionRegion, {
+        region: "us-east-1",
+      })
+    ).rejects.toThrow("without a port or path")
   })
   test("removal disables sending atomically and retains a tombstone", async () => {
     vi.useFakeTimers()
@@ -1518,9 +1535,7 @@ describe("native SES team tenants", () => {
     })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).toContain("DeleteTenantCommand")
-    expect(
-      await f.t.query(internal.tenants.get, { id: f.tenant })
-    ).toBeNull()
+    expect(await f.t.query(internal.tenants.get, { id: f.tenant })).toBeNull()
   })
   test("unexpected tenant resources stop cleanup and remain intact until an administrator retries", async () => {
     vi.useFakeTimers()
@@ -1546,9 +1561,7 @@ describe("native SES team tenants", () => {
     f.aws.associations.clear()
     await f.owner.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
-    expect(
-      await f.t.query(internal.tenants.get, { id: f.tenant })
-    ).toBeNull()
+    expect(await f.t.query(internal.tenants.get, { id: f.tenant })).toBeNull()
   })
   test("stale lifecycle workers cannot overwrite a newer removal operation", async () => {
     const f = await awsFixture()
