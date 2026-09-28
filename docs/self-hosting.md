@@ -208,6 +208,21 @@ The backfill runs in the background in batches and is safe to run again: it resu
 
 The substring-search fix needs no backfill: stored fields and indexes are unchanged. Reload open dashboard lists after deploying it so pagination starts with fresh cursors. Searches now scan bounded index pages and keep totals unknown until the range is exhausted; selective searches may take more requests. See [search pagination](search-pagination.md) for the engine limits, read budgets and regression coverage.
 
+## Removing Opensend from AWS
+
+`pnpm aws:cleanup` lists everything Opensend installations created in an AWS
+account: SES tenants, domains, configuration sets and receipt rules, SNS topics,
+the SQS dead-letter queue, inbound S3 buckets, the setup CloudFormation stack,
+and the IAM user and policy. It matches Opensend's `opensend-<installation id>`
+names and `opensend:installation` tags only, and changes nothing until you add
+`--delete`. Use `--keep=<id>` to spare the installation you still run, or
+`--only=<id>` to remove one. Run it with an administrator's credentials
+(`AWS_PROFILE`, or the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` environment
+variables), not Opensend's own key, which cannot see or delete most of this.
+A domain Opensend adopted from an existing SES setup carries the same tag and is
+deleted with the rest, so review the list first. DNS records at your DNS
+provider are not touched.
+
 ## Verification
 
 ```sh
