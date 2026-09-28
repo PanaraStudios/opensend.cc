@@ -128,6 +128,20 @@ describe("automation reference lookups", () => {
   })
 })
 
+/* The component pages with convex-helpers' paginator, which knows a list
+   has ended only after reading past it: a full last page still reports more,
+   and the page after it is empty and done. */
+async function endOf(
+  next: (
+    cursor: string
+  ) => Promise<{ page: unknown[]; isDone: boolean; continueCursor: string }>,
+  from: { isDone: boolean; continueCursor: string }
+) {
+  if (from.isDone) return true
+  const last = await next(from.continueCursor)
+  return last.isDone && last.page.length === 0
+}
+
 describe("workspace cursor lists", () => {
   test("pages the signed-in account's teams without exposing another account's teams", async () => {
     const f = await setup()
@@ -139,7 +153,15 @@ describe("workspace cursor lists", () => {
     })
     expect(first.page).toHaveLength(1)
     expect(first.isDone).toBe(false)
-    expect(second.isDone).toBe(true)
+    expect(
+      await endOf(
+        (cursor) =>
+          f.member.client.query(api.teams.list, {
+            paginationOpts: { numItems: 1, cursor },
+          }),
+        second
+      )
+    ).toBe(true)
     expect(
       new Set([...first.page, ...second.page].map((row) => row.id))
     ).toEqual(new Set([f.owner.team, f.member.team]))
@@ -170,7 +192,16 @@ describe("workspace cursor lists", () => {
       you: true,
       mfa: false,
     })
-    expect(second.isDone).toBe(true)
+    expect(
+      await endOf(
+        (cursor) =>
+          f.member.client.query(api.teams.members, {
+            ...args,
+            paginationOpts: { numItems: 1, cursor },
+          }),
+        second
+      )
+    ).toBe(true)
   })
 })
 
@@ -219,7 +250,16 @@ test("invitation pages preserve expired labels, skip canceled rows and require a
     paginationOpts: { numItems: 1, cursor: expired.continueCursor },
   })
   expect(pending.page[0]?.status).toBe("pending")
-  expect(pending.isDone).toBe(true)
+  expect(
+    await endOf(
+      (cursor) =>
+        f.owner.client.query(api.teams.invitations, {
+          ...args,
+          paginationOpts: { numItems: 1, cursor },
+        }),
+      pending
+    )
+  ).toBe(true)
 })
 
 test("domain name lookup skips tombstones and accepts the same live name in multiple regions", async () => {

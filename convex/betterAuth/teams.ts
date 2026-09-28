@@ -7,6 +7,8 @@ import { mutation, query, action } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 import { api } from "./_generated/api"
+import { paginator } from "convex-helpers/server/pagination"
+import schema from "./schema"
 import { requireMember, sessionUser } from "./policy"
 import { invalidate } from "./oauth"
 const role = v.union(v.literal("admin"), v.literal("member"))
@@ -700,12 +702,14 @@ export const setAvatar = mutation({
   },
 })
 
+/* Components cannot use the built-in paginate(); convex-helpers' paginator
+   pages by index range instead, as Convex's component docs recommend. */
 export const list = query({
   args: { sessionId: v.string(), paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(teamValue),
   handler: async (ctx, args) => {
     const { user } = await sessionUser(ctx, args.sessionId)
-    const page = await ctx.db
+    const page = await paginator(ctx.db, schema)
       .query("member")
       .withIndex("userId", (q) => q.eq("userId", user._id))
       .paginate(args.paginationOpts)
@@ -728,7 +732,7 @@ export const members = query({
       args.sessionId,
       args.organizationId
     )
-    const page = await ctx.db
+    const page = await paginator(ctx.db, schema)
       .query("member")
       .withIndex("organizationId", (q) =>
         q.eq("organizationId", args.organizationId)
@@ -750,7 +754,7 @@ export const invitations = query({
   returns: paginationResultValidator(invitationValue),
   handler: async (ctx, args) => {
     await requireMember(ctx, args.sessionId, args.organizationId, true)
-    const page = await ctx.db
+    const page = await paginator(ctx.db, schema)
       .query("invitation")
       .withIndex("organizationId", (q) =>
         q.eq("organizationId", args.organizationId)
