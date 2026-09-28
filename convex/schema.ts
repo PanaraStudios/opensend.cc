@@ -1,5 +1,6 @@
 import { defineSchema } from "convex/server"
 import { audienceTables } from "./tables/audience"
+import { automationEventTables } from "./tables/automationEvents"
 import { apiTables } from "./tables/api"
 import { domainTables } from "./tables/domains"
 import { eventTables } from "./tables/events"
@@ -19,4 +20,5 @@ export default defineSchema({
   ...webhookTables,
   ...apiTables,
   ...exportTables,
+  ...automationEventTables,
 })
