@@ -21,6 +21,7 @@ export const exportTables = {
     resource: v.string(),
     status: exportStatusValue,
     rows: v.number(),
+    error: v.optional(v.string()),
     notificationEmailId: v.optional(v.id("emails")),
     storageId: v.optional(v.id("_storage")),
     expiresAt: v.number(),

@@ -10,7 +10,7 @@ import { authEmailContent, logAuthEmail } from "./authEmail"
 import { SYSTEM_SCOPE, createEmail, errorMessage } from "./emails"
 import { parseMailbox, senderDomainOf } from "../lib/dashboard/email-send"
 
-import { internal } from "./_generated/api"
+import { components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import schema from "./schema"
 
@@ -21,7 +21,7 @@ const kindValue = v.union(
   v.literal("invite")
 )
 
-/** Sends one account email through the system sender, or logs it when
+/** Sends one account email through the system sender, or logs it for the bootstrap account when
     none is set. Its row is scoped to no team, so no Emails screen lists
     it, and its body is dropped once it is sent. */
 export const send = internalMutation({
@@ -30,8 +30,18 @@ export const send = internalMutation({
   handler: async (ctx, email) => {
     const sender = (await findInstallation(ctx))?.systemSender
     if (!sender) {
-      logAuthEmail(email)
-      return null
+      if (
+        await ctx.runQuery(components.betterAuth.policy.bootstrapRecipient, {
+          email: email.to,
+        })
+      ) {
+        logAuthEmail(email)
+        return null
+      }
+      console.warn("Account email withheld: no system sender")
+      throw new ConvexError(
+        "Account email isn't set up yet. Ask your administrator to choose a sender in Amazon SES settings."
+      )
     }
     const content = authEmailContent(email)
     try {

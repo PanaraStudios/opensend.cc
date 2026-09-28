@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import type { FunctionArgs } from "convex/server"
-import { api, internal } from "./_generated/api"
+import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { renderTemplate, TEMPLATE_BODY_LIMIT } from "./templates"
 import { fixture } from "./testHelpers/ses.fixture"
@@ -58,7 +58,8 @@ async function templates() {
 }
 
 async function joinOwnerTeam(f: Awaited<ReturnType<typeof templates>>) {
-  await f.owner.client.mutation(api.teams.invite, {
+  await f.t.mutation(components.betterAuth.teams.invite, {
+    sessionId: f.owner.session._id,
     organizationId: f.team,
     email: f.outsider.user.email,
     role: "member",

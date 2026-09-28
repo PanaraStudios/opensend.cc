@@ -7,7 +7,7 @@ import {
 } from "better-auth/plugins/generic-oauth"
 import { convex } from "@convex-dev/better-auth/plugins"
 import authConfig from "./auth.config"
-import { logAuthEmail, type AuthEmail } from "./authEmail"
+import type { AuthEmail } from "./authEmail"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { jwt } from "better-auth/plugins/jwt"
 
@@ -15,7 +15,9 @@ import { jwt } from "better-auth/plugins/jwt"
     the runtime passes a `sendEmail` that can reach the system sender. */
 export function createAuthOptions(
   providers: GenericOAuthConfig[] = [],
-  sendEmail: (email: AuthEmail) => void | Promise<void> = logAuthEmail
+  sendEmail: (email: AuthEmail) => void | Promise<void> = () => {
+    throw new Error("Account email requires the runtime mailer")
+  }
 ) {
   return {
     appName: "Opensend",

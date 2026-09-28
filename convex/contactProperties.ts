@@ -143,15 +143,18 @@ export async function createProperty(
   const taken = await ctx.db
     .query("contactProperties")
     .withIndex("by_organizationId_and_key", (q) =>
-      q.eq("organizationId", args.organizationId)
+      q.eq("organizationId", args.organizationId).eq("key", key)
     )
-    .take(LIMITS.properties * 2)
+    .take(1)
   const error = propertyKeyError(
     key,
     taken.map((row) => row.key)
   )
   if (error) throw new ConvexError(error)
-  if (taken.filter((row) => !row.deleting).length >= LIMITS.properties)
+  if (
+    ((await counters.contactProperties.total(ctx, args.organizationId)) ?? 0) >=
+    LIMITS.properties
+  )
     throw new ConvexError(
       `A team can have up to ${LIMITS.properties} properties`
     )

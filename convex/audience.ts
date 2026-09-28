@@ -40,15 +40,25 @@ export async function teamRow<T extends "contacts" | "segments" | "topics">(
 }
 const NOUN = { contacts: "Contact", segments: "Segment", topics: "Topic" }
 
-export const listProperties = async (ctx: Ctx, organizationId: string) =>
-  (
-    await ctx.db
-      .query("contactProperties")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .take(LIMITS.properties * 2)
-  ).filter((property) => !property.deleting)
+export const listProperties = async (ctx: Ctx, organizationId: string) => {
+  // Legacy active rows have no flag; newer callers may explicitly store false.
+  const groups = await Promise.all(
+    [undefined, false].map((deleting) =>
+      ctx.db
+        .query("contactProperties")
+        .withIndex("by_organizationId_and_deleting", (q) =>
+          q.eq("organizationId", organizationId).eq("deleting", deleting)
+        )
+        .take(LIMITS.properties + 1)
+    )
+  )
+  const properties = groups.flat()
+  if (properties.length > LIMITS.properties)
+    throw new ConvexError(
+      "Too many active contact properties. Remove unused properties before continuing."
+    )
+  return properties
+}
 
 export const contactSegmentIds = async (ctx: Ctx, contactId: Id<"contacts">) =>
   (

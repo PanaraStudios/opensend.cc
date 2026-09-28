@@ -148,3 +148,18 @@ export const authorizeTeam = query({
     return null
   },
 })
+
+/** Called only across the component boundary by the installation mailer. */
+export const bootstrapRecipient = query({
+  args: { email: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { email }) => {
+    const bootstrap = await ctx.db
+      .query("bootstrap")
+      .withIndex("by_key", (q) => q.eq("key", "initial-account"))
+      .unique()
+    const id = bootstrap && ctx.db.normalizeId("user", bootstrap.userId)
+    const user = id ? await ctx.db.get("user", id) : null
+    return !!user && user.email.toLowerCase() === email.trim().toLowerCase()
+  },
+})

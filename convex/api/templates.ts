@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { toPlainText } from "@react-email/render"
@@ -145,20 +146,27 @@ export const create = internalMutation({
   args: { caller: callerValue, body: v.string() },
   returns: v.id("templates"),
   handler: async (ctx, { caller, body }) => {
-    await requireCaller(ctx, caller)
-    const input = inputFields(body, true)
-    const id = await insertTemplate(ctx, caller.organizationId, {
-      ...input,
-      name: input.name!,
-      html: input.html!,
-      subject: input.subject ?? "",
-      preview: "",
-    })
-    if (input.alias !== undefined)
-      await updateTemplate(ctx, (await ctx.db.get("templates", id))!, {
-        alias: input.alias,
-      })
-    return id
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const input = inputFields(body, true)
+        const id = await insertTemplate(ctx, caller.organizationId, {
+          ...input,
+          name: input.name!,
+          html: input.html!,
+          subject: input.subject ?? "",
+          preview: "",
+        })
+        if (input.alias !== undefined)
+          await updateTemplate(ctx, (await ctx.db.get("templates", id))!, {
+            alias: input.alias,
+          })
+        return id
+      },
+      (id) => ({ body: { object: "template", id } })
+    )
   },
 })
 export const change = internalMutation({
@@ -175,13 +183,20 @@ export const change = internalMutation({
   },
   returns: v.id("templates"),
   handler: async (ctx, { caller, id, kind, body }) => {
-    await requireCaller(ctx, caller)
-    const row = await own(ctx, caller.organizationId, id)
-    if (kind === "update") await updateTemplate(ctx, row, inputFields(body))
-    if (kind === "remove") await removeTemplate(ctx, row)
-    if (kind === "publish") await publishTemplate(ctx, row)
-    if (kind === "duplicate") return duplicateTemplate(ctx, row)
-    return row._id
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const row = await own(ctx, caller.organizationId, id)
+        if (kind === "update") await updateTemplate(ctx, row, inputFields(body))
+        if (kind === "remove") await removeTemplate(ctx, row)
+        if (kind === "publish") await publishTemplate(ctx, row)
+        if (kind === "duplicate") return duplicateTemplate(ctx, row)
+        return row._id
+      },
+      (id) => ({ body: { object: "template", id } })
+    )
   },
 })
 function summary(row: Doc<"templates">) {

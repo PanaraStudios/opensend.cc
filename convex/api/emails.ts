@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import {
@@ -49,24 +50,34 @@ export const send = internalMutation({
   args: {
     caller: callerValue,
     emails: v.array(newEmailValue),
+    batch: v.optional(v.boolean()),
     source: v.optional(v.literal("smtp")),
   },
   returns: v.array(v.id("emails")),
-  handler: async (ctx, { caller, emails, source }) => {
-    await requireCaller(ctx, caller, "sending")
-    if (source === "smtp") await requireSmtp(ctx, caller)
-    const ids: Id<"emails">[] = []
-    // One transaction: a batch with any invalid email sends none of them.
-    for (const email of emails)
-      ids.push(
-        await createEmail(ctx, email, {
-          organizationId: caller.organizationId,
-          source: source ?? "api",
-          apiKeyId: caller.apiKeyId,
-          onlyDomain: caller.domainId,
-        })
-      )
-    return ids
+  handler: async (ctx, { caller, emails, source, batch }) => {
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller, "sending")
+        if (source === "smtp") await requireSmtp(ctx, caller)
+        const ids: Id<"emails">[] = []
+        // One transaction: a batch with any invalid email sends none of them.
+        for (const email of emails)
+          ids.push(
+            await createEmail(ctx, email, {
+              organizationId: caller.organizationId,
+              source: source ?? "api",
+              apiKeyId: caller.apiKeyId,
+              onlyDomain: caller.domainId,
+            })
+          )
+        return ids
+      },
+      (ids) => ({
+        body: batch ? { data: ids.map((id) => ({ id })) } : { id: ids[0] },
+      })
+    )
   },
 })
 
@@ -131,12 +142,22 @@ export const change = internalMutation({
   },
   returns: v.union(v.null(), v.id("emails")),
   handler: async (ctx, { caller, id, action }) => {
-    await requireCaller(ctx, caller)
-    const email = await own(ctx, caller, id)
-    if (!email) return null
-    if (action.kind === "cancel") await cancelEmail(ctx, email)
-    else await rescheduleEmail(ctx, email, action.at)
-    return email._id
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const email = await own(ctx, caller, id)
+        if (!email) return null
+        if (action.kind === "cancel") await cancelEmail(ctx, email)
+        else await rescheduleEmail(ctx, email, action.at)
+        return email._id
+      },
+      (id) => {
+        if (!id) throw notFound("Email")
+        return { body: { object: "email", id } }
+      }
+    )
   },
 })
 
@@ -322,7 +343,8 @@ async function sendParsed(
   ctx: ActionCtx,
   caller: Caller,
   parsed: ReturnType<typeof parseEmail>[],
-  source?: "smtp"
+  source?: "smtp",
+  batch = false
 ) {
   const stored: Id<"_storage">[] = []
   try {
@@ -342,6 +364,7 @@ async function sendParsed(
       caller,
       emails,
       source,
+      batch,
     })
   } catch (e) {
     for (const id of stored) await ctx.storage.delete(id)
@@ -419,7 +442,9 @@ export function registerEmailRoutes(http: HttpRouter) {
       const ids = await sendParsed(
         ctx,
         caller,
-        body.map((item) => parseEmail(item, now, true))
+        body.map((item) => parseEmail(item, now, true)),
+        undefined,
+        true
       )
       return { body: { data: ids.map((id) => ({ id })) } }
     },

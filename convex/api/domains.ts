@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import {
@@ -94,13 +95,22 @@ export const create = internalMutation({
   },
   returns: schema.doc("domains"),
   handler: async (ctx, { caller, region, ...args }) => {
-    await requireCaller(ctx, caller)
-    const id = await createDomain(ctx, caller.organizationId, {
-      ...args,
-      region:
-        region ?? (await findInstallation(ctx))?.defaultRegion ?? "us-east-1",
-    })
-    return (await ctx.db.get("domains", id))!
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const id = await createDomain(ctx, caller.organizationId, {
+          ...args,
+          region:
+            region ??
+            (await findInstallation(ctx))?.defaultRegion ??
+            "us-east-1",
+        })
+        return (await ctx.db.get("domains", id))!
+      },
+      (row) => ({ body: detail(row) })
+    )
   },
 })
 export const change = internalMutation({
@@ -115,14 +125,24 @@ export const change = internalMutation({
   },
   returns: v.union(v.null(), v.id("domains")),
   handler: async (ctx, { caller, id, action }) => {
-    await requireCaller(ctx, caller)
-    const domain = await own(ctx, caller, id)
-    if (!domain) return null
-    if (action.kind === "update")
-      await updateDomain(ctx, domain, action.changes)
-    else if (action.kind === "verify") await verifyDomain(ctx, domain)
-    else await start(ctx, domain, "remove")
-    return domain._id
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const domain = await own(ctx, caller, id)
+        if (!domain) return null
+        if (action.kind === "update")
+          await updateDomain(ctx, domain, action.changes)
+        else if (action.kind === "verify") await verifyDomain(ctx, domain)
+        else await start(ctx, domain, "remove")
+        return domain._id
+      },
+      (id) => {
+        if (!id) throw notFound("Domain")
+        return { body: { object: "domain", id } }
+      }
+    )
   },
 })
 

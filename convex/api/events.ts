@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import {
@@ -82,8 +83,15 @@ export const create = internalMutation({
   args: { caller: callerValue, name: v.string(), schema: eventSchemaValue },
   returns: v.id("automationEvents"),
   handler: async (ctx, { caller, ...input }) => {
-    await requireCaller(ctx, caller)
-    return defineEvent(ctx, caller.organizationId, input)
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        return defineEvent(ctx, caller.organizationId, input)
+      },
+      (id) => ({ status: 201, body: { object: "event", id } })
+    )
   },
 })
 export const change = internalMutation({
@@ -118,29 +126,36 @@ export const send = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { caller, event, contact, payload }) => {
-    await requireCaller(ctx, caller)
-    const org = caller.organizationId
-    if ("id" in contact) {
-      const id = ctx.db.normalizeId("contacts", contact.id)
-      const row = id ? await ctx.db.get("contacts", id) : null
-      if (row?.organizationId !== org) throw notFound("Contact")
-      await receiveEvent(ctx, org, { name: event, contact: row, payload })
-      return null
-    }
-    const email = normalizeEmail(contact.email)
-    const row = await ctx.db
-      .query("contacts")
-      .withIndex("by_organizationId_and_email", (q) =>
-        q.eq("organizationId", org).eq("email", email)
-      )
-      .unique()
-    await receiveEvent(ctx, org, {
-      name: event,
-      contact: row,
-      email,
-      payload,
-    })
-    return null
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const org = caller.organizationId
+        if ("id" in contact) {
+          const id = ctx.db.normalizeId("contacts", contact.id)
+          const row = id ? await ctx.db.get("contacts", id) : null
+          if (row?.organizationId !== org) throw notFound("Contact")
+          await receiveEvent(ctx, org, { name: event, contact: row, payload })
+          return null
+        }
+        const email = normalizeEmail(contact.email)
+        const row = await ctx.db
+          .query("contacts")
+          .withIndex("by_organizationId_and_email", (q) =>
+            q.eq("organizationId", org).eq("email", email)
+          )
+          .unique()
+        await receiveEvent(ctx, org, {
+          name: event,
+          contact: row,
+          email,
+          payload,
+        })
+        return null
+      },
+      () => ({ status: 202, body: { object: "event", event: event.trim() } })
+    )
   },
 })
 

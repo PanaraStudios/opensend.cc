@@ -8,6 +8,7 @@ import { apiKeyPermissionValue } from "../tables/api"
     reduced to the same shape. */
 export const callerValue = v.object({
   organizationId: v.string(),
+  idempotencyId: v.optional(v.id("apiIdempotency")),
   permission: apiKeyPermissionValue,
   /** A sending key limited to one domain. */
   domainId: v.optional(v.id("domains")),

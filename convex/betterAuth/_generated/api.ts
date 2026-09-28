@@ -15,6 +15,7 @@ import type * as oauth from "../oauth.js";
 import type * as oauthClients from "../oauthClients.js";
 import type * as oauthSchema from "../oauthSchema.js";
 import type * as policy from "../policy.js";
+import type * as retention from "../retention.js";
 import type * as sso from "../sso.js";
 import type * as teams from "../teams.js";
 
@@ -33,6 +34,7 @@ const fullApi: ApiFromModules<{
   oauthClients: typeof oauthClients;
   oauthSchema: typeof oauthSchema;
   policy: typeof policy;
+  retention: typeof retention;
   sso: typeof sso;
   teams: typeof teams;
 }> = anyApi as any;

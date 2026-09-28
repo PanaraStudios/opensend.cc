@@ -892,7 +892,7 @@ describe("installation sender", () => {
 
     await f.t.mutation(internal.installationAdmin.setSystemSender, {})
     await f.t.mutation(internal.systemEmail.send, {
-      to: "new@example.com",
+      to: f.owner.user.email,
       kind: "reset",
       url: "https://opensend.test/reset?token=t",
     })

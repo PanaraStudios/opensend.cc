@@ -181,6 +181,7 @@ export const completed = internalMutation({
     )
       await patchRow(ctx, "broadcasts", row._id, {
         status: "failed",
+        settledAt: Date.now(),
         error: result.kind === "failed" ? result.error : "Broadcast canceled",
         updatedAt: Date.now(),
       })

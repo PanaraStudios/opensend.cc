@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { toPlainText } from "@react-email/render"
@@ -141,22 +142,29 @@ export const create = internalMutation({
   args: { caller: callerValue, body: v.string() },
   returns: v.id("broadcasts"),
   handler: async (ctx, { caller, body }): Promise<Doc<"broadcasts">["_id"]> => {
-    await requireCaller(ctx, caller)
-    const input = objectBody(JSON.parse(body))
-    if (input.send !== undefined && typeof input.send !== "boolean")
-      throw invalid("Invalid `send` field.")
-    const id = await insertBroadcast(
+    return idempotent(
       ctx,
-      caller.organizationId,
-      inputFields(ctx, input, true)
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const input = objectBody(JSON.parse(body))
+        if (input.send !== undefined && typeof input.send !== "boolean")
+          throw invalid("Invalid `send` field.")
+        const id = await insertBroadcast(
+          ctx,
+          caller.organizationId,
+          inputFields(ctx, input, true)
+        )
+        if (input.send)
+          await sendBroadcast(
+            ctx,
+            (await ctx.db.get("broadcasts", id))!,
+            scheduled(input)
+          )
+        return id
+      },
+      (id) => ({ body: { object: "broadcast", id } })
     )
-    if (input.send)
-      await sendBroadcast(
-        ctx,
-        (await ctx.db.get("broadcasts", id))!,
-        scheduled(input)
-      )
-    return id
   },
 })
 export const change = internalMutation({
@@ -177,16 +185,23 @@ export const change = internalMutation({
     ctx,
     { caller, id, kind, body }
   ): Promise<Doc<"broadcasts">["_id"]> => {
-    await requireCaller(ctx, caller)
-    const row = await own(ctx, caller.organizationId, id)
-    const input = objectBody(JSON.parse(body))
-    if (kind === "update")
-      await updateBroadcast(ctx, row, inputFields(ctx, input))
-    if (kind === "remove") await removeBroadcast(ctx, row)
-    if (kind === "send") await sendBroadcast(ctx, row, scheduled(input))
-    if (kind === "cancel") await cancelBroadcast(ctx, row)
-    if (kind === "duplicate") return duplicateBroadcast(ctx, row)
-    return row._id
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const row = await own(ctx, caller.organizationId, id)
+        const input = objectBody(JSON.parse(body))
+        if (kind === "update")
+          await updateBroadcast(ctx, row, inputFields(ctx, input))
+        if (kind === "remove") await removeBroadcast(ctx, row)
+        if (kind === "send") await sendBroadcast(ctx, row, scheduled(input))
+        if (kind === "cancel") await cancelBroadcast(ctx, row)
+        if (kind === "duplicate") return duplicateBroadcast(ctx, row)
+        return row._id
+      },
+      (id) => ({ body: { object: "broadcast", id } })
+    )
   },
 })
 function summary(row: Doc<"broadcasts">) {

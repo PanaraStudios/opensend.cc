@@ -341,7 +341,7 @@ describe("automations", () => {
       ).total
     ).toBe(1)
   })
-  test("durable delay resumes after the deadline and survives workflow restart without duplicate effects", async () => {
+  test("durable delay resumes once and cleans its workflow journal after completion", async () => {
     const f = await setup()
     const id = await f.create([update, delay, { ...update, key: "after" }])
     const runId = await testRun(f, id)
@@ -351,8 +351,10 @@ describe("automations", () => {
     const workflowId = (await run(f, runId))!.workflowId as WorkflowId
     await tick(f, 62_000)
     expect((await run(f, runId))?.status).toBe("completed")
-    await f.t.run((ctx) => restart(ctx, components.workflow, workflowId))
-    await tick(f)
+    expect((await run(f, runId))?.workflowId).toBeUndefined()
+    await expect(
+      f.t.run((ctx) => restart(ctx, components.workflow, workflowId))
+    ).rejects.toThrow("Workflow not found")
     expect(await steps(f, runId)).toHaveLength(4)
     const metrics = await f.member.client.query(api.automations.metrics, {
       organizationId: f.organizationId,

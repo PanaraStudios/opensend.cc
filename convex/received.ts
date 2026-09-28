@@ -226,7 +226,10 @@ export const complete = internalMutation({
         content_id: metadata.content_id,
       })
     }
-    await ctx.db.patch("inboundMessages", args.id, { parsedAt: Date.now() })
+    await ctx.db.patch("inboundMessages", args.id, {
+      parsedAt: Date.now(),
+      notification: "",
+    })
     await emitEvent(ctx, inbound.organizationId, "email.received", {
       email_id: id,
       created_at: new Date(inbound._creationTime).toISOString(),

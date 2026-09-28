@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
 import type * as api_broadcasts from "../api/broadcasts.js";
 import type * as api_caller from "../api/caller.js";
@@ -16,6 +17,7 @@ import type * as api_domains from "../api/domains.js";
 import type * as api_emails from "../api/emails.js";
 import type * as api_events from "../api/events.js";
 import type * as api_http from "../api/http.js";
+import type * as api_idempotency from "../api/idempotency.js";
 import type * as api_keys from "../api/keys.js";
 import type * as api_logs from "../api/logs.js";
 import type * as api_paging from "../api/paging.js";
@@ -38,6 +40,7 @@ import type * as automations from "../automations.js";
 import type * as broadcastMetrics from "../broadcastMetrics.js";
 import type * as broadcastSend from "../broadcastSend.js";
 import type * as broadcasts from "../broadcasts.js";
+import type * as contactImports from "../contactImports.js";
 import type * as contactProperties from "../contactProperties.js";
 import type * as contacts from "../contacts.js";
 import type * as counts from "../counts.js";
@@ -70,6 +73,7 @@ import type * as publicHttp from "../publicHttp.js";
 import type * as received from "../received.js";
 import type * as receivedDownloads from "../receivedDownloads.js";
 import type * as receivedParse from "../receivedParse.js";
+import type * as retention from "../retention.js";
 import type * as segments from "../segments.js";
 import type * as ses_adoption from "../ses/adoption.js";
 import type * as ses_aws from "../ses/aws.js";
@@ -146,6 +150,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;
   "api/broadcasts": typeof api_broadcasts;
   "api/caller": typeof api_caller;
@@ -153,6 +158,7 @@ declare const fullApi: ApiFromModules<{
   "api/emails": typeof api_emails;
   "api/events": typeof api_events;
   "api/http": typeof api_http;
+  "api/idempotency": typeof api_idempotency;
   "api/keys": typeof api_keys;
   "api/logs": typeof api_logs;
   "api/paging": typeof api_paging;
@@ -175,6 +181,7 @@ declare const fullApi: ApiFromModules<{
   broadcastMetrics: typeof broadcastMetrics;
   broadcastSend: typeof broadcastSend;
   broadcasts: typeof broadcasts;
+  contactImports: typeof contactImports;
   contactProperties: typeof contactProperties;
   contacts: typeof contacts;
   counts: typeof counts;
@@ -207,6 +214,7 @@ declare const fullApi: ApiFromModules<{
   received: typeof received;
   receivedDownloads: typeof receivedDownloads;
   receivedParse: typeof receivedParse;
+  retention: typeof retention;
   segments: typeof segments;
   "ses/adoption": typeof ses_adoption;
   "ses/aws": typeof ses_aws;

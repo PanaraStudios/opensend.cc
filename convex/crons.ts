@@ -40,4 +40,19 @@ crons.interval(
   {}
 )
 
+for (const name of [
+  "ses",
+  "inbound",
+  "broadcasts",
+  "automations",
+  "auth",
+  "imports",
+] as const)
+  crons.interval(
+    `${name} history retention`,
+    { hours: 1 },
+    internal.retention[name],
+    {}
+  )
+
 export default crons

@@ -17,7 +17,9 @@ export default defineSchema({
     scopes: v.array(v.string()),
     expiresAt: v.number(),
     used: v.boolean(),
-  }).index("by_token", ["token"]),
+  })
+    .index("by_token", ["token"])
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true }),
   oauthGrant: defineTable({
     clientId: v.string(),
     userId: v.string(),
@@ -30,14 +32,22 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_organizationId", ["organizationId"]),
-  oauthUse: defineTable({ key: v.string(), grantId: v.string() })
+  oauthUse: defineTable({
+    key: v.string(),
+    grantId: v.string(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true })
     .index("by_key", ["key"])
     .index("by_grantId", ["grantId"]),
   oauthRate: defineTable({
     key: v.string(),
     start: v.number(),
+    expiresAt: v.optional(v.number()),
     count: v.number(),
-  }).index("by_key", ["key"]),
+  })
+    .index("by_key", ["key"])
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true }),
   member: tables.member.index("by_organizationId_and_userId", [
     "organizationId",
     "userId",

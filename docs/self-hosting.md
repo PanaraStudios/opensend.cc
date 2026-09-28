@@ -21,7 +21,7 @@ The first account is the installation administrator: only it can change the AWS 
 pnpm backend run installationAdmin:transfer '{"email":"new-admin@example.com"}'
 ```
 
-Auth emails currently use a console transport. View them in the Convex dashboard at http://localhost:6791, or use the helper below. Each message is one JSON log entry with recipient, subject, content, and actionLink. These logs contain sign-in and recovery links; restrict log access. SMTP is not configured.
+Before an account sender is configured, only the installation’s first administrator receives account links through Convex function logs. View them in the Convex dashboard at http://localhost:6791, or use the helper below. Each bootstrap message is one JSON entry with recipient, subject, content, and actionLink; restrict log access. Other users need a sender configured in Amazon SES settings.
 
 ```sh
 pnpm backend logs --history 50
@@ -142,8 +142,11 @@ Clear the sender to restore the bootstrap console fallback:
 pnpm backend run installationAdmin:setSystemSender '{}'
 ```
 
-Without a configured sender, account emails, including action links, appear in
-Convex function logs so initial setup works. With a sender configured, failures
+Without a configured sender, account links appear in Convex function logs only
+when addressed to the first administrator recorded at bootstrap. Other account
+mail is withheld with a readable setup error; its log contains no address or link.
+Better Auth preserves its generic password-reset response to avoid account
+enumeration; team invitation mutations surface the setup error. With a sender configured, failures
 log only the reason and never fall back to logging the secret link. The sender
 must remain verified and enabled; changing or removing its domain can stop
 account email.
@@ -179,6 +182,55 @@ The Logs user-agent filter seeks distinct values in the team's retained log inde
 independently of the loaded page or current filters. It offers the first 100 values
 in lexical order; duplicate requests consume no extra slots. No separate backfill
 job is needed, and options disappear when their last retained log is deleted.
+
+## Recovering an account
+
+An operator with the deployment admin key can recover an existing account even
+when the account sender is unavailable:
+
+```sh
+pnpm backend run accountRecovery:resetPassword '{"email":"admin@example.com"}'
+```
+
+The command returns a one-time Better Auth password-reset link in CLI output
+only; it neither emails nor logs the link. Open it to choose a new password within
+one hour. It uses Better Auth's normal reset token, revokes existing sessions and
+invalidates OAuth grants on reset. Unknown accounts fail without logging the
+email address. Keep the returned link private. This does not bypass MFA or SSO.
+
+## Background processing and retention
+
+CSV imports enqueue durable jobs of up to 100 contacts each. Each transaction
+processes at most 100 contacts and 500 contact/segment combinations; rows with
+invalid contact fields are skipped. The existing dialog remains pending until
+its jobs finish. Accepted jobs continue if the browser disconnects. Completed
+job metadata is kept seven days; retrying a CSV merges contacts by email.
+
+Exports encode each query page into a byte chunk and assemble the bounded chunks
+for Convex file storage. The maximum is 200,000 rows and 16 MiB of UTF-8 CSV,
+including headers. Exceeding either limit fails the export without publishing a
+partial file and records a readable `error` on the export row. Narrow the date
+range or filters and retry. The existing UI shows its unchanged failed state.
+Metrics queries accept at most 31 daily buckets spanning 31 days (plus one hour
+for DST), covering all existing date presets. Longer ranges are rejected.
+
+Hourly, byte-bounded jobs prune raw SES events after 30 days; processed inbound
+notifications are cleared immediately and deduplication rows expire seven days
+after parsing. Unprocessed inbound messages remain available for retries.
+Broadcast recipient/event histories expire 30 days after settlement. Totals are
+snapshotted immediately before pruning, preserving delivery and engagement
+updates received during the retention window, and the broadcast and totals remain
+indefinitely. Automation workflow journals are cleaned on completion; finished
+run/step histories expire after 30 days.
+
+Auth cleanup removes pending OAuth flows after one hour, expired Better Auth
+verification records (including pending SSO state), rate rows after their windows,
+replay markers after their guarded token expires, and SSO proofs after the session
+expires or is deleted. Legacy replay markers are checked against the original
+token before removal. Expiry indexes on `oauthFlow`, `oauthRate`, and `oauthUse`
+are staged for background backfill; this release deliberately uses bounded
+creation-index scans until a later deployment promotes those indexes. The existing
+Better Auth verification expiry index is reused, never duplicated.
 
 ## Backups and recovery
 

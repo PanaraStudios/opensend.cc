@@ -1,3 +1,5 @@
+import { stream } from "convex-helpers/server/stream"
+import schema from "../schema"
 import { retirement } from "../teamLifecycle"
 import { smtpSettings } from "../smtp"
 import { v } from "convex/values"
@@ -247,10 +249,13 @@ export const finish = internalMutation({
     }
     if (caller.apiKeyId && (await ctx.db.get("apiKeys", caller.apiKeyId)))
       await touchKey(ctx, caller.apiKeyId)
-    if (idempotencyId && (await ctx.db.get("apiIdempotency", idempotencyId))) {
+    const reservation = idempotencyId
+      ? await ctx.db.get("apiIdempotency", idempotencyId)
+      : null
+    if (idempotencyId && reservation && !reservation.response) {
       if (log.status >= 500)
         await ctx.db.delete("apiIdempotency", idempotencyId)
-      else
+      else if (log.status >= 400 || log.path === "/smtp/auth")
         await ctx.db.patch("apiIdempotency", idempotencyId, {
           response: { status: log.status, body: log.responseBody ?? "" },
         })
@@ -264,12 +269,17 @@ export const expireIdempotency = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const rows = await ctx.db
+    const page = await stream(ctx.db, schema)
       .query("apiIdempotency")
       .withIndex("by_expiresAt", (q) => q.lte("expiresAt", Date.now()))
-      .take(500)
-    for (const row of rows) await ctx.db.delete("apiIdempotency", row._id)
-    if (rows.length === 500)
+      .paginate({
+        cursor: null,
+        numItems: 100,
+        maximumRowsRead: 100,
+        maximumBytesRead: 2 * 1024 * 1024,
+      })
+    for (const row of page.page) await ctx.db.delete("apiIdempotency", row._id)
+    if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.api.state.expireIdempotency, {})
     return null
   },

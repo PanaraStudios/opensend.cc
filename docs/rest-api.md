@@ -17,7 +17,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 | --- | --- |
 | Errors | `{ "statusCode", "name", "message" }` with Resend's names: `missing_api_key` (401), `restricted_api_key` (401), `invalid_api_key` (403), `invalid_permission` (403, OAuth scope), `not_found` (404), `validation_error` / `missing_required_field` (422), `invalid_idempotency_key` (400), `invalid_idempotent_request` and `concurrent_idempotent_requests` (409), `rate_limit_exceeded` (429), `application_error` (500). |
 | Rate limit | 10 requests per second per team, shared by all its keys. Every authenticated response carries `ratelimit-limit`, `ratelimit-remaining` and `ratelimit-reset`; a 429 adds `retry-after` (seconds). |
-| Idempotency | `Idempotency-Key` (1–256 characters) on any POST. The same key and body within 24 hours replays the first response; a different body is a 409. A server error releases the key. |
+| Idempotency | `Idempotency-Key` (1–256 characters) on any POST. The same key and body within 24 hours replays the first response; a different body is a 409. Concurrent requests receive `concurrent_idempotent_requests` (409). Resource creation and its wire response commit in the same transaction. A crash or logging failure after that commit cannot release the key. An uncommitted reservation can be retried after its 60-second lease; a stale worker is fenced before writing. |
 | Lists | `limit` (1–100, default 20) with `after` or `before` an id, newest first; responses are `{ "object": "list", "has_more", "data" }`. |
 | Bodies | JSON, up to 1 MB. |
 | CORS | None: the API is for servers, like Resend's. |
