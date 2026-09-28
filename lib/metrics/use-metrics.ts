@@ -1,21 +1,16 @@
 "use client"
 import * as React from "react"
-import { useQueries } from "convex/react"
+import { useQueries, useQuery } from "convex/react"
 import { eachDayOfInterval, startOfDay, endOfDay, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
-import { useTeamList } from "@/components/dashboard/primitives"
 import { emptyEmailCounts, eventCount } from "@/lib/dashboard/metrics"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { rate } from "@/lib/dashboard/format"
 import type { EmailStatus } from "@/lib/dashboard/types"
-
-const asDomain = (
-  row: FunctionReturnType<typeof api.metrics.domains>["page"][number]
-) => row
 
 export function useMetrics(
   range: DateRange,
@@ -70,17 +65,11 @@ export function useMetrics(
   const counts = chunks.every((chunk) => Array.isArray(chunk))
     ? (chunks as FunctionReturnType<typeof api.metrics.summary>[]).flat()
     : undefined
-  const domains = useTeamList(
-    api.metrics.domains,
-    api.metrics.domainCount,
-    { ...rangeBounds(range), domainId },
-    asDomain
-  )
-  const picker = useTeamList(
-    api.metrics.domains,
-    api.metrics.domainCount,
-    {},
-    asDomain
+  const domains = useQuery(
+    api.metrics.breakdown,
+    activeTeamId
+      ? { organizationId: activeTeamId, ...rangeBounds(range), domainId }
+      : "skip"
   )
   if (failure instanceof Error) throw failure
   const totals = {
@@ -109,5 +98,10 @@ export function useMetrics(
     bounceRate: rate(row.bounced, row.sent, 2),
     complainRate: rate(row.complained, row.sent, 2),
   }))
-  return { loading: counts === undefined, totals, days, domains, picker }
+  return {
+    loading: counts === undefined || domains === undefined,
+    totals,
+    days,
+    domains: domains ?? [],
+  }
 }

@@ -1,6 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { useWorkspace } from "@/components/auth/workspace"
 import { CircleHelpIcon } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 import {
@@ -39,7 +42,6 @@ import {
 } from "@/components/dashboard/emails/shared"
 import {
   PageHeader,
-  ListPagination,
   Surface,
   ToolbarFilters,
   emailStatusColor,
@@ -262,21 +264,17 @@ export function MetricsView() {
   const [domain, setDomain] = React.useState("all")
   const [event, setEvent] = React.useState("all")
   const status = isFilterableStatus(event) ? event : null
-  const {
-    loading,
-    totals,
-    days,
-    domains: domainList,
-    picker,
-  } = useMetrics(range, domain, status)
-  const domains = domainList.pageRows
-  const selected = picker.rows.find((row) => row.id === domain)
+  const { loading, totals, days, domains } = useMetrics(range, domain, status)
+  const { activeTeamId } = useWorkspace()
+  const [search, setSearch] = React.useState("")
+  const [selectedDomain, setSelectedDomain] = React.useState<SelectOption>()
+  const options = useQuery(
+    api.metrics.domainOptions,
+    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+  )
   const domainItems: SelectOption[] = [
     { value: "all", label: "All domains" },
-    ...picker.pageRows.map((row) => ({ value: row.id, label: row.name })),
-    ...(selected && !picker.pageRows.includes(selected)
-      ? [{ value: selected.id, label: selected.name }]
-      : []),
+    ...(options ?? []),
   ]
   if (now === null || loading) return <Skeleton className="h-64 w-full" />
   const bounceRate = percent(totals.bounced, totals.sent, 2)
@@ -293,9 +291,15 @@ export function MetricsView() {
           filters={[
             {
               value: domain,
-              onChange: setDomain,
+              onChange: (value) => {
+                setDomain(value)
+                setSelectedDomain(
+                  domainItems.find((item) => item.value === value)
+                )
+              },
+              onSearch: setSearch,
+              selectedItem: selectedDomain,
               items: domainItems,
-              footer: <ListPagination noun="domain" {...picker.pagination} />,
               "aria-label": "Domain",
             },
           ]}
@@ -344,7 +348,6 @@ export function MetricsView() {
             No emails in this range.
           </p>
         )}
-        <ListPagination noun="domain" {...domainList.pagination} />
       </Surface>
 
       <div className="grid items-stretch gap-3 lg:grid-cols-2">

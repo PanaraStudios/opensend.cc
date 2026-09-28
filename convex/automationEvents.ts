@@ -328,3 +328,23 @@ export const prune = internalMutation({
     return null
   },
 })
+
+export const options = query({
+  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  returns: v.array(v.string()),
+  handler: async (ctx, { organizationId, search }) => {
+    await requireTeam(ctx, organizationId)
+    const prefix = search?.trim() ?? ""
+    return (
+      await ctx.db
+        .query("automationEvents")
+        .withIndex("by_organizationId_and_name", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .gte("name", prefix)
+            .lt("name", prefix + "\uffff")
+        )
+        .take(100)
+    ).map((row) => row.name)
+  },
+})

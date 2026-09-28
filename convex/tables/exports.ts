@@ -21,6 +21,7 @@ export const exportTables = {
     resource: v.string(),
     status: exportStatusValue,
     rows: v.number(),
+    notificationEmailId: v.optional(v.id("emails")),
     storageId: v.optional(v.id("_storage")),
     expiresAt: v.number(),
     /** The list filters the export was started with, as the source reads

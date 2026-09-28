@@ -230,6 +230,32 @@ export const hasAny = query({
   },
 })
 
+/** Seek past each distinct agent, so duplicate requests and the loaded page
+    cannot crowd other agents out. At most 100 index reads per team. */
+export const userAgents = query({
+  args: { organizationId: v.string() },
+  returns: v.array(v.string()),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    const agents: string[] = []
+    let after: string | undefined
+    while (agents.length < 100) {
+      const next = await ctx.db
+        .query("apiLogs")
+        .withIndex("by_organizationId_and_userAgent", (q) =>
+          after === undefined
+            ? q.eq("organizationId", organizationId)
+            : q.eq("organizationId", organizationId).gt("userAgent", after)
+        )
+        .first()
+      if (!next) break
+      agents.push(next.userAgent)
+      after = next.userAgent
+    }
+    return agents
+  },
+})
+
 export const get = query({
   args: { id: v.string() },
   returns: v.union(

@@ -1691,7 +1691,6 @@ export function OptionSelect({
   defaultValue,
   onChange,
   items,
-  pagination,
   selectedItem,
   id,
   name,
@@ -1700,7 +1699,6 @@ export function OptionSelect({
   className,
   disabled,
   placeholder,
-  footer,
   "aria-label": ariaLabel,
 }: {
   value?: string
@@ -1708,8 +1706,6 @@ export function OptionSelect({
   onChange?: (value: string) => void
   selectedItem?: SelectOption
   items: readonly SelectOption[]
-  footer?: React.ReactNode
-  pagination?: React.ComponentProps<typeof ListPagination>
   /** Shown while no item is chosen. */
   placeholder?: string
   id?: string
@@ -1743,14 +1739,7 @@ export function OptionSelect({
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent
-        align={align}
-        alignItemWithTrigger={false}
-        footer={
-          footer ??
-          (pagination ? <ListPagination {...pagination} /> : undefined)
-        }
-      >
+      <SelectContent align={align} alignItemWithTrigger={false}>
         <SelectGroup>
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
@@ -1769,13 +1758,12 @@ export function OptionSelect({
             </SelectItem>
           ))}
         </SelectGroup>
-        {pagination ? <ListPagination {...pagination} /> : null}
       </SelectContent>
     </Select>
   )
 }
 
-type Suggestion = { value: string; create: boolean }
+type Suggestion = SelectOption & { create: boolean }
 
 /** A text value that is typed or picked: the known values are offered as it
     is typed, and one that is not among them can be added under `createLabel`.
@@ -1784,7 +1772,10 @@ export function SuggestInput({
   value,
   onChange,
   options,
-  pagination,
+  selectedItem,
+  allowCreate = true,
+  id,
+  disabled,
   onSearch,
   placeholder,
   createLabel = "Create",
@@ -1793,51 +1784,66 @@ export function SuggestInput({
 }: {
   value: string
   onChange: (value: string) => void
-  options: readonly string[]
-  pagination?: React.ComponentProps<typeof ListPagination>
+  options: readonly (string | SelectOption)[]
+  selectedItem?: SelectOption
+  allowCreate?: boolean
+  id?: string
+  disabled?: boolean
   onSearch?: (value: string) => void
   placeholder?: string
   createLabel?: string
   className?: string
   "aria-label"?: string
 }) {
-  const [query, setQuery] = React.useState(value)
-  /* The text follows the stored value whenever that changes: after a pick,
-     and when it is set from elsewhere. */
-  const [seen, setSeen] = React.useState(value)
-  if (seen !== value) {
-    setSeen(value)
-    setQuery(value)
+  const selected =
+    selectedItem ??
+    options.find((item) =>
+      typeof item === "string" ? item === value : item.value === value
+    )
+  const label =
+    typeof selected === "string" ? selected : (selected?.label ?? value)
+  const [query, setQuery] = React.useState(label)
+  const [seen, setSeen] = React.useState(label)
+  if (seen !== label) {
+    setSeen(label)
+    setQuery(label)
   }
 
   const items = React.useMemo<Suggestion[]>(() => {
     const text = query.trim()
-    /* The settled value in the field lists every option, not just itself. */
-    const needle = text === value ? "" : text.toLowerCase()
-    const matches = options
-      .filter((option) => option.toLowerCase().includes(needle))
-      .map((option) => ({ value: option, create: false }))
-    return text && !options.includes(text)
-      ? [...matches, { value: text, create: true }]
+    const needle = text === label ? "" : text.toLowerCase()
+    const choices = options.map((option) =>
+      typeof option === "string" ? { value: option, label: option } : option
+    )
+    const matches = choices
+      .filter(
+        (option) => onSearch || option.label.toLowerCase().includes(needle)
+      )
+      .map((option) => ({ ...option, create: false }))
+    return allowCreate &&
+      text &&
+      !choices.some((option) => option.label === text)
+      ? [...matches, { value: text, label: text, create: true }]
       : matches
-  }, [options, query, value])
+  }, [options, query, label, allowCreate, onSearch])
 
   return (
     <Combobox
       items={items}
+      disabled={disabled}
       filter={null}
       autoHighlight
       value={null}
       inputValue={query}
-      itemToStringLabel={(item: Suggestion) => item.value}
+      itemToStringLabel={(item: Suggestion) => item.label}
       onInputValueChange={(next) => {
         setQuery(next)
-        onSearch?.(next === value ? "" : next)
+        onSearch?.(next === label ? "" : next)
       }}
       onOpenChange={(open) => {
         /* Closed without a pick, what was typed is dropped. */
         if (!open) {
-          setQuery(value)
+          setQuery(label)
           onSearch?.("")
         }
       }}
@@ -1847,6 +1853,7 @@ export function SuggestInput({
     >
       <ComboboxInput
         className={cn("w-full", className)}
+        id={id}
         aria-label={ariaLabel}
         placeholder={placeholder}
         showTrigger={false}
@@ -1861,12 +1868,11 @@ export function SuggestInput({
             >
               {item.create ? <PlusIcon /> : null}
               <span className="min-w-0 flex-1 truncate">
-                {item.create ? `${createLabel} ${item.value}` : item.value}
+                {item.create ? `${createLabel} ${item.label}` : item.label}
               </span>
             </ComboboxItem>
           )}
         </ComboboxList>
-        {pagination ? <ListPagination {...pagination} /> : null}
       </ComboboxContent>
     </Combobox>
   )
@@ -1875,7 +1881,8 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
-  footer?: React.ReactNode
+  onSearch?: (value: string) => void
+  selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1908,18 +1915,30 @@ export function ToolbarFilters({
           now={now}
         />
       ) : null}
-      {filters.map((filter) => (
-        <OptionSelect
-          key={filter["aria-label"]}
-          size="sm"
-          align="end"
-          value={filter.value}
-          onChange={filter.onChange}
-          items={filter.items}
-          footer={filter.footer}
-          aria-label={filter["aria-label"]}
-        />
-      ))}
+      {filters.map((filter) =>
+        filter.onSearch ? (
+          <SuggestInput
+            key={filter["aria-label"]}
+            value={filter.value}
+            onChange={filter.onChange}
+            options={filter.items}
+            selectedItem={filter.selectedItem}
+            onSearch={filter.onSearch}
+            allowCreate={false}
+            aria-label={filter["aria-label"]}
+          />
+        ) : (
+          <OptionSelect
+            key={filter["aria-label"]}
+            size="sm"
+            align="end"
+            value={filter.value}
+            onChange={filter.onChange}
+            items={filter.items}
+            aria-label={filter["aria-label"]}
+          />
+        )
+      )}
     </>
   )
 }

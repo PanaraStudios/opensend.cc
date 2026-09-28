@@ -99,15 +99,19 @@ Use issuer `http://host.docker.internal:8080/realms/opensend`, client `opensend-
 ### Account email sender
 
 After verifying a sending domain and completing AWS setup, the installation
-operator can configure verification, password reset, change-email and invitation
-emails using the deployment admin key. This internal command has no dashboard UI:
+administrator can configure verification, password reset, change-email, invitation
+and export notification emails in **Instance → SES → Account email sender**.
+Choose a verified sending domain from any team, enter the from name and local
+part, then Save. Clear restores the account-email console fallback. Only the
+installation administrator can view or change these settings; team admins cannot.
+The CLI remains available with the deployment admin key:
 
 ```sh
 pnpm backend run installationAdmin:setSystemSender '{"from":"Opensend <no-reply@example.com>"}'
 ```
 
-The command requires a verified, sending-enabled domain and a current IAM policy
-with a ready SES tenant and region. Account mail uses that domain's team tenant
+The dashboard and CLI share validation: both require a verified, sending-enabled
+domain, a current IAM policy, and a ready SES tenant and region. Account mail uses that domain's team tenant
 and configuration set through the same send queue. It lives under a separate
 installation scope, is excluded from team lists, exports and webhooks, and loses
 its body (including the one-time link) when sending settles. The SES mapping tags
@@ -124,7 +128,7 @@ Without a configured sender, account emails, including action links, appear in
 Convex function logs so initial setup works. With a sender configured, failures
 log only the reason and never fall back to logging the secret link. The sender
 must remain verified and enabled; changing or removing its domain can stop
-account email. There is no super-admin settings screen for this yet.
+account email.
 
 ```sh
 docker compose --env-file .env.docker logs -f app convex
@@ -132,6 +136,31 @@ pnpm backend logs --history 100
 ```
 
 Convex owns persistent database and file storage in the `convex-data` volume. `docker compose down` preserves it. `docker compose down -v` deletes it and is not a routine shutdown command. Bootstrap auth emails are Convex function logs, not Next.js logs. Function console output is redacted from ordinary clients by the backend container.
+
+### Export notifications and bounded pickers
+
+Following [Resend's export behavior](https://resend.com/changelog/exports-general-availability),
+exports with more than 1,000 rows notify their creator by plain email when the
+installation sender is configured. The link goes to
+`SITE_URL/settings/exports/<id>`, never directly to file storage: team members can
+view the details, and only team admins can download. Notifications are queued
+once per export. Failed, expired and small exports send no notification. Without
+a sender, no notification is sent or logged; the existing completion toast directs
+the user to Settings → Exports. Files remain available for seven days from creation.
+
+Dropdowns have no page controls. Segments and custom properties use their existing
+team limits (500 and 100). Contacts, custom events and domains offer up to 100
+prefix matches; templates offer up to 100 search matches by name/alias. Search
+reads the whole team's index, so older options remain reachable beyond the initial
+100. The metrics chart's compact domain breakdown shows up to 100 domains in name
+order; searching and selecting a domain reads that domain directly. Headline
+metrics always cover the full selected scope. Tenant status badges use
+sentence-case labels and the existing success/warning tones.
+
+The Logs user-agent filter seeks distinct values in the team's retained log index,
+independently of the loaded page or current filters. It offers the first 100 values
+in lexical order; duplicate requests consume no extra slots. No separate backfill
+job is needed, and options disappear when their last retained log is deleted.
 
 ## Backups and recovery
 
@@ -216,7 +245,10 @@ preferred connection port; both listeners stay available to enabled teams.
 3. Set `SMTP_HOST=smtp.example.com` and `SMTP_CERT_DIR=/absolute/certificate/directory`
    in `.env.docker`. Also set **SMTP_HOST** in the Convex deployment environment
    to the same hostname so the existing settings tab displays it. It is an
-   installation setting, never a team-editable hostname.
+   installation setting, never a team-editable hostname. When unset or blank in
+   Convex, the dashboard uses the hostname of `SITE_URL` (without protocol, port,
+   or path). This fallback only supplies the displayed connection host; the SMTP
+   gateway still requires its hostname and a matching TLS certificate.
 4. After deploying backend code, start the opt-in profile:
 
    ```sh

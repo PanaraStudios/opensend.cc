@@ -28,7 +28,7 @@ export const settings = query({
     return {
       enabled: row?.enabled ?? false,
       port: row?.port ?? 465,
-      host: env.SMTP_HOST ?? "",
+      host: env.SMTP_HOST?.trim() || new URL(env.SITE_URL).hostname,
     }
   },
 })

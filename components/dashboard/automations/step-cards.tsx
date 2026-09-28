@@ -24,8 +24,6 @@ import {
   OptionSelect,
   SuggestInput,
   useDraft,
-  useTeamList,
-  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
@@ -48,7 +46,7 @@ import { useTemplate, asTemplate } from "@/lib/templates/use-templates"
 import { asSegment } from "@/lib/audience/use-audience"
 import { useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
-import { usePaginatedQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import {
   AUTOMATION_RULE_OPERATORS,
   type Automation,
@@ -108,27 +106,19 @@ function usePropertyOptions(
 ) {
   const { activeTeamId } = useWorkspace()
   const [search, setSearch] = React.useState("")
-  const page = usePaginatedQuery(
-    api.contactProperties.list,
-    activeTeamId
-      ? {
-          organizationId: activeTeamId,
-          search: search.replace(/^properties\./, ""),
-        }
-      : "skip",
-    { initialNumItems: 10 }
+  const properties = useQuery(
+    api.contactProperties.options,
+    activeTeamId ? { organizationId: activeTeamId } : "skip"
   )
-  const rows = React.useMemo(
-    () =>
-      [
-        ...builtin.filter((key) =>
-          key.toLowerCase().includes(search.toLowerCase())
-        ),
-        ...page.results.map((item) => `${prefix}${item.key}`),
-      ].filter((key) => !excluded.includes(key)),
-    [builtin, search, page.results, prefix, excluded]
+  const pageRows = [
+    ...builtin,
+    ...(properties ?? []).map((item) => `${prefix}${item.key}`),
+  ].filter(
+    (key) =>
+      !excluded.includes(key) &&
+      key.toLowerCase().includes(search.toLowerCase())
   )
-  return { ...useLoadedPagination(rows, page), setSearch }
+  return { pageRows, setSearch }
 }
 
 /** The event box: a defined event, or the name of a new one. */
@@ -139,18 +129,15 @@ function EventNameInput(props: {
 }) {
   const { activeTeamId } = useWorkspace()
   const [search, setSearch] = React.useState("")
-  const page = usePaginatedQuery(
-    api.automationEvents.list,
-    activeTeamId ? { organizationId: activeTeamId, search } : "skip",
-    { initialNumItems: 10 }
+  const options = useQuery(
+    api.automationEvents.options,
+    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
   )
-  const { pageRows, pagination } = useLoadedPagination(page.results, page)
   return (
     <SuggestInput
       {...props}
-      options={pageRows.map((item) => item.name)}
+      options={options ?? []}
       onSearch={setSearch}
-      pagination={{ ...pagination, noun: "event" }}
       placeholder="Type or select an event"
       createLabel="Create event"
       className="font-mono"
@@ -386,12 +373,12 @@ function SegmentBody({
   step: StepOf<"add_to_segment">
   onChange: (step: AutomationStep) => void
 }) {
-  const { pageRows: segments, pagination } = useTeamList(
-    api.segments.list,
-    api.segments.count,
-    {},
-    asSegment
+  const { activeTeamId } = useWorkspace()
+  const rows = useQuery(
+    api.segments.options,
+    activeTeamId ? { organizationId: activeTeamId } : "skip"
   )
+  const segments = (rows ?? []).map(asSegment)
   const { state } = useDashboard()
   const selected = state.segments.find((item) => item.id === step.segmentId)
   const id = React.useId()
@@ -406,7 +393,6 @@ function SegmentBody({
         }
         placeholder="Select a segment"
         onChange={(segmentId) => onChange({ ...step, segmentId })}
-        pagination={{ ...pagination, noun: "segment" }}
         items={segments.map((segment) => ({
           value: segment.id,
           label: segment.name,
@@ -583,11 +569,6 @@ function RuleForm({
         onChange={setProperty}
         options={properties}
         onSearch={scope === "contact" ? custom.setSearch : undefined}
-        pagination={
-          scope === "contact"
-            ? { ...custom.pagination, noun: "property", plural: "properties" }
-            : undefined
-        }
         placeholder="Property name"
         className="font-mono"
       />
@@ -646,11 +627,17 @@ function SendEmailBody({
   step: StepOf<"send_email">
   onChange: (step: AutomationStep) => void
 }) {
-  const {
-    pageRows: templates,
-    pagination,
-    status: loading,
-  } = useTeamList(api.templates.list, api.templates.count, {}, asTemplate)
+  const { activeTeamId } = useWorkspace()
+  const [search, setSearch] = React.useState("")
+  const rows = useQuery(
+    api.templates.options,
+    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+  )
+  const hasTemplates = useQuery(
+    api.templates.hasAny,
+    activeTeamId ? { organizationId: activeTeamId } : "skip"
+  )
+  const templates = (rows ?? []).map((row) => asTemplate(row))
   const references = [...useEventReferences(trigger), ...CONTACT_REFERENCES]
   const withBody = useTemplate(step.templateId || undefined)
   const picked = withBody ?? undefined
@@ -661,7 +648,7 @@ function SendEmailBody({
     onChange({ ...step, replyTo: value })
   )
 
-  if (templates.length === 0 && loading !== "LoadingFirstPage") {
+  if (hasTemplates === false) {
     return (
       <CardSection>
         <p className="text-sm font-medium">No templates yet</p>
@@ -683,7 +670,7 @@ function SendEmailBody({
 
   return (
     <>
-      <OptionSelect
+      <SuggestInput
         className="w-full"
         aria-label="Template"
         value={step.templateId}
@@ -702,8 +689,9 @@ function SendEmailBody({
         onChange={(templateId) =>
           onChange({ ...step, templateId, variables: {} })
         }
-        pagination={{ ...pagination, noun: "template" }}
-        items={templates.map((item) => ({
+        onSearch={setSearch}
+        allowCreate={false}
+        options={templates.map((item) => ({
           value: item.id,
           label:
             item.status === "published" ? item.name : `${item.name} (draft)`,
@@ -814,7 +802,7 @@ function UpdateContactBody({
           ))}
         </CardSection>
       ) : null}
-      {properties.length > 0 || custom.pagination.hasMore ? (
+      {properties.length > 0 ? (
         <CardSection label="Add field to update">
           <div className="flex gap-2">
             <OptionSelect
@@ -827,11 +815,6 @@ function UpdateContactBody({
                   ? { value: property, label: contactFieldLabel(property) }
                   : undefined
               }
-              pagination={{
-                ...custom.pagination,
-                noun: "property",
-                plural: "properties",
-              }}
               onChange={setProperty}
               items={properties.map((key) => ({
                 value: key,

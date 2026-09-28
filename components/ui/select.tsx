@@ -63,9 +63,9 @@ function SelectContent({
   align = "center",
   alignOffset = 0,
   alignItemWithTrigger = true,
-  footer,
   ...props
-}: SelectPrimitive.Popup.Props & { footer?: React.ReactNode } & Pick<
+}: SelectPrimitive.Popup.Props &
+  Pick<
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
@@ -91,7 +91,6 @@ function SelectContent({
           <SelectScrollUpButton />
           <SelectPrimitive.List>{children}</SelectPrimitive.List>
           <SelectScrollDownButton />
-          {footer}
         </SelectPrimitive.Popup>
       </SelectPrimitive.Positioner>
     </SelectPrimitive.Portal>

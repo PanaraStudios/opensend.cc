@@ -83,6 +83,7 @@ export const apiTables = {
     summary: v.string(),
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_userAgent", ["organizationId", "userAgent"])
     .index("by_organizationId_and_statusClass", [
       "organizationId",
       "statusClass",

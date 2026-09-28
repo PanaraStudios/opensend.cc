@@ -122,6 +122,10 @@ export function automationStatusLabel(status: AutomationStatus): string {
   return status === "enabled" ? "Enabled" : "Disabled"
 }
 
+export function tenantStatusLabel(status?: string): string {
+  return sentenceCase((status || "UNKNOWN").toLowerCase().replaceAll("_", " "))
+}
+
 export function suppressionReasonLabel(reason: SuppressionReason): string {
   switch (reason) {
     case "bounced":
@@ -274,6 +278,13 @@ export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
 export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {
   enabled: "success",
   disabled: "secondary",
+}
+
+export const TENANT_STATUS_TONE: Record<string, BadgeTone> = {
+  ENABLED: "success",
+  REINSTATED: "success",
+  DISABLED: "warning",
+  UNKNOWN: "warning",
 }
 
 export const AUTOMATION_RUN_STATUS_TONE: Record<
