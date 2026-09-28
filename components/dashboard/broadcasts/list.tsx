@@ -31,11 +31,13 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   PageHeader,
   ResourceTable,
   Th,
+  usePagination,
 } from "@/components/dashboard/primitives"
 import {
   broadcastAsTemplateInput,
@@ -90,6 +92,8 @@ export function BroadcastsView() {
     void saveAsTemplate(broadcastAsTemplateInput(item))
   }
 
+  const { pageRows, pagination } = usePagination(rows)
+
   return (
     <>
       <PageHeader title="Broadcasts">
@@ -134,90 +138,93 @@ export function BroadcastsView() {
           </Button>
         </EmptyState>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Status</Th>
-              <Th>Updated</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <div className="flex flex-col gap-0.5">
-                  <Link
-                    href={broadcastEditorHref(item)}
-                    className="font-medium hover:underline"
-                  >
-                    {item.name || "Untitled"}
-                  </Link>
-                  {item.subject ? (
-                    <span className="text-xs text-muted-foreground">
-                      {item.subject}
-                    </span>
-                  ) : null}
-                </div>
-              </TableCell>
-              <TableCell>
-                <BroadcastStatusBadge status={item.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(item.updatedAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={broadcastEditorHref(item)} />}
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Status</Th>
+                <Th>Updated</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={broadcastEditorHref(item)}
+                      className="font-medium hover:underline"
                     >
-                      {isBroadcastDraftLike(item.status) ? (
-                        <>
-                          <PencilIcon />
-                          Edit broadcast
-                        </>
-                      ) : (
-                        <>
-                          <EyeIcon />
-                          View broadcast
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setRenaming(item)}>
-                      <PencilIcon />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        duplicateBroadcast(item.id)
-                        toast.add({
-                          type: "success",
-                          title: "Broadcast duplicated",
-                        })
-                      }}
-                    >
-                      <CopyIcon />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => cloneAsTemplate(item)}>
-                      <LayoutTemplateIcon />
-                      Clone as template
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setDeleting(item)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+                      {item.name || "Untitled"}
+                    </Link>
+                    {item.subject ? (
+                      <span className="text-xs text-muted-foreground">
+                        {item.subject}
+                      </span>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <BroadcastStatusBadge status={item.status} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(item.updatedAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={broadcastEditorHref(item)} />}
+                      >
+                        {isBroadcastDraftLike(item.status) ? (
+                          <>
+                            <PencilIcon />
+                            Edit broadcast
+                          </>
+                        ) : (
+                          <>
+                            <EyeIcon />
+                            View broadcast
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setRenaming(item)}>
+                        <PencilIcon />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          duplicateBroadcast(item.id)
+                          toast.add({
+                            type: "success",
+                            title: "Broadcast duplicated",
+                          })
+                        }}
+                      >
+                        <CopyIcon />
+                        Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => cloneAsTemplate(item)}>
+                        <LayoutTemplateIcon />
+                        Clone as template
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleting(item)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="broadcast" />
+        </>
       )}
       <BroadcastsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <RenameBroadcastDialog

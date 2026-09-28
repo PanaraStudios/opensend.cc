@@ -10,7 +10,7 @@ import type {
   WebhookEvent,
 } from "@/lib/dashboard/types"
 
-type WebhookRow = FunctionReturnType<typeof api.webhooks.list>[number]
+type WebhookRow = FunctionReturnType<typeof api.webhooks.list>["page"][number]
 
 /** The secret is left out: only the webhook page reads it, on its own. */
 export function asWebhook(row: WebhookRow, signingSecret = ""): Webhook {

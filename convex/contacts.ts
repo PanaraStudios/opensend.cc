@@ -7,10 +7,11 @@ import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import schema from "./schema"
+import { BOOLEANS, countValue, counters } from "./counts"
+import { matchesSearch } from "./lists"
 import {
   BATCH,
   CLEANUP_BATCH,
-  SegmentCounts,
   deleteContact,
   emitContact,
   joinSegments,
@@ -37,19 +38,21 @@ const inBatch = <T>(items: T[]) => {
   return [...new Set(items)]
 }
 
+const contactFilters = {
+  organizationId: v.string(),
+  /** Part of the email or a name, as typed. */
+  search: v.optional(v.string()),
+  unsubscribed: v.optional(v.boolean()),
+  segmentId: v.optional(v.id("segments")),
+  from: v.optional(v.number()),
+  to: v.optional(v.number()),
+}
+
 /** Newest first. A search ranks by relevance instead; filters that its
     index cannot apply are applied to each page, so a page may come back
     short. */
 export const list = query({
-  args: {
-    organizationId: v.string(),
-    paginationOpts: paginationOptsValidator,
-    search: v.optional(v.string()),
-    unsubscribed: v.optional(v.boolean()),
-    segmentId: v.optional(v.id("segments")),
-    from: v.optional(v.number()),
-    to: v.optional(v.number()),
-  },
+  args: { ...contactFilters, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(contactWithSegments),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
@@ -57,14 +60,23 @@ export const list = query({
     const from = args.from ?? 0
     const to = args.to ?? Number.MAX_SAFE_INTEGER
     const search = (args.search ?? "").trim().slice(0, 256)
+    const matches = matchesSearch(search)
     // A segment deleted while filtered on just lists what is left of it.
     const segment = segmentId && (await ctx.db.get("segments", segmentId))
     if (segment && segment.organizationId !== organizationId)
       throw new ConvexError("Segment not found")
+    /* The search index matches any word of the search; the list keeps
+       only contacts that contain all of it, as typed. */
     const inRange = (contact: Doc<"contacts">) =>
       contact._creationTime >= from &&
       contact._creationTime <= to &&
-      (unsubscribed === undefined || contact.unsubscribed === unsubscribed)
+      (unsubscribed === undefined || contact.unsubscribed === unsubscribed) &&
+      matches(
+        contact.email,
+        contact.firstName,
+        contact.lastName,
+        `${contact.firstName} ${contact.lastName}`
+      )
 
     if (!search && segmentId) {
       const members = await ctx.db
@@ -121,6 +133,32 @@ export const list = query({
       if (!segmentId || row.segmentIds.includes(segmentId)) page.push(row)
     }
     return { ...contacts, page }
+  },
+})
+
+/** How many contacts the list's filters match. A search is not counted,
+    nor a segment together with other filters. */
+export const count = query({
+  args: contactFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    const range = { from: args.from, to: args.to }
+    if (!args.segmentId)
+      return {
+        total: await counters.contacts.total(
+          ctx,
+          args.organizationId,
+          [{ is: args.unsubscribed, among: BOOLEANS }],
+          range
+        ),
+      }
+    const segment = await ctx.db.get("segments", args.segmentId)
+    if (segment?.organizationId !== args.organizationId) return { total: 0 }
+    if (args.unsubscribed !== undefined || args.from || args.to)
+      return { total: null }
+    return { total: await counters.segmentMembers.total(ctx, segment._id) }
   },
 })
 
@@ -283,14 +321,9 @@ export const setSegment = mutation({
   handler: async (ctx, args) => {
     const contact = await writableContact(ctx, args.id)
     await teamRow(ctx, "segments", contact.organizationId, args.segmentId)
-    const counts = new SegmentCounts()
-    if (
-      await setMembership(ctx, counts, contact, args.segmentId, args.member)
-    ) {
-      await counts.flush(ctx)
+    if (await setMembership(ctx, contact, args.segmentId, args.member))
       // The contact's `segment_ids` changed.
       await emitContact(ctx, "contact.updated", contact)
-    }
     return null
   },
 })

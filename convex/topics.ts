@@ -1,9 +1,15 @@
 import { v, ConvexError } from "convex/values"
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import schema from "./schema"
 import { CLEANUP_BATCH, LIMITS, requireRoom } from "./audience"
+import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
+import { matchesSearch, teamPage } from "./lists"
 import { topicDefaultValue, topicVisibilityValue } from "./tables/audience"
 import type { MutationCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
@@ -21,8 +27,40 @@ function topicText(input: { name?: string; description?: string }) {
   }
 }
 
-/** Every topic of the team, newest first. */
+const topicFilters = {
+  organizationId: v.string(),
+  search: v.optional(v.string()),
+}
+
+/** The team's topics, newest first, a page at a time. */
 export const list = query({
+  args: { ...topicFilters, paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(schema.doc("topics")),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const matches = matchesSearch(args.search)
+    return teamPage(
+      ctx,
+      "topics",
+      args.organizationId,
+      args.paginationOpts,
+      (topic) => matches(topic.name, topic.description)
+    )
+  },
+})
+
+export const count = query({
+  args: topicFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return { total: await counters.topics.total(ctx, args.organizationId) }
+  },
+})
+
+/** Every topic of the team, newest first, for pickers. */
+export const options = query({
   args: { organizationId: v.string() },
   returns: v.array(schema.doc("topics")),
   handler: async (ctx, { organizationId }) => {
@@ -50,7 +88,7 @@ export const create = mutation({
     await requireTeam(ctx, args.organizationId, "write")
     const text = topicText(args)
     await requireRoom(ctx, "topics", args.organizationId)
-    return ctx.db.insert("topics", {
+    return insertRow(ctx, "topics", {
       ...args,
       name: text.name!,
       description: text.description ?? "",
@@ -77,7 +115,7 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, { id, visibility, ...text }) => {
     await writable(ctx, id)
-    await ctx.db.patch("topics", id, {
+    await patchRow(ctx, "topics", id, {
       ...topicText(text),
       ...(visibility ? { visibility } : {}),
     })
@@ -93,7 +131,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     await writable(ctx, id)
-    await ctx.db.delete("topics", id)
+    await deleteRow(ctx, "topics", id)
     await purgeChoices(ctx, id)
     return null
   },

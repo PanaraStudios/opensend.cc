@@ -63,6 +63,12 @@ Custom indexes and policy tables live in `schema.ts`, outside the generated file
 
 Webhooks are signed exactly as Svix signs them (`svix-id`, `svix-timestamp`, `svix-signature`), so Resend's and Svix's verification libraries work unchanged. Signing secrets are encrypted with `SSO_ENCRYPTION_KEY`; changing that key makes existing secrets unreadable, so rotate every webhook's secret afterwards. Failed deliveries are retried on Svix's schedule (immediately, 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, 10 h), and an endpoint that has failed for five days is disabled. Rotating a secret replaces it at once: every attempt after that, retries included, is signed with the new secret only. Endpoints must be public HTTPS hosts: every address a host resolves to is checked before each attempt, and redirects are not followed. Deliveries and outbox events are kept for 90 days.
 
+## Unsubscribe links
+
+Every recipient gets their own unsubscribe link. It carries the team, contact and (for a topic-scoped send) topic ids, never the address, and is signed with HMAC-SHA256 under `BETTER_AUTH_SECRET`. Links do not expire, so a link in an old email keeps working. Changing `BETTER_AUTH_SECRET` retires every link already sent.
+
+`{{{OPENSEND_UNSUBSCRIBE_URL}}}` opens the preference page at `SITE_URL/unsubscribe/<token>`, where the contact manages the team's public topics or unsubscribes from everything. Private topics never appear there. Messages also carry `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 2369, RFC 8058), so mailbox providers show their own unsubscribe button. That button posts to `<callback origin>/unsubscribe/<token>` on the Convex HTTP origin configured during installation, which must be public HTTPS. The post leaves the link's topic, or everything when the link has none. Opening that URL with GET never unsubscribes (link scanners fetch it); it redirects to the preference page. Each contact is limited to 30 changes a minute. Every change fires `contact.updated`.
+
 ## OIDC
 
 Each team can have one OIDC connection. An admin enters its issuer, client ID and client secret in Settings → SSO. Register the displayed callback URL with the identity provider. The secret is encrypted with `SSO_ENCRYPTION_KEY` and never returned by profile or team queries.
@@ -113,6 +119,15 @@ For data exports, `pnpm backend export --path backup.zip --include-file-storage`
 ## Upgrades
 
 Back up first. Pin the new image digests and compatible Better Auth/Convex versions on a branch. Regenerate the component schema and Convex types, run the checks below, and rehearse on a restored isolated volume. Apply schema additions compatibly before tightening validators. Re-run setup only after the rehearsal passes. Keep the previous images and backup for rollback; older binaries may not understand an upgraded database.
+
+After deploying a version that adds row counts (the "Page 1 – 3 of 120 contacts" in list footers), count the rows written before it:
+
+```sh
+pnpm backend run migrations:backfillCounts
+pnpm backend run --component migrations lib:getStatus --watch
+```
+
+The backfill runs in the background in batches and is safe to run again: it resumes where it stopped and never counts a row twice. Until it finishes, list totals and segment sizes can read low.
 
 ## Verification
 

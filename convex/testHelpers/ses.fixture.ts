@@ -2,13 +2,31 @@
 import { convexTest } from "convex-test"
 import workflowTest from "@convex-dev/workflow/test"
 import rateLimiterTest from "@convex-dev/rate-limiter/test"
+import aggregateTest from "@convex-dev/aggregate/test"
+import migrationsTest from "@convex-dev/migrations/test"
 import { POLICY_REVISION, teamTenantName } from "../ses/contracts"
+import { insertRow } from "../counts"
 import { encryptCredentials } from "../ses/crypto"
 import schema from "../schema"
 import authSchema from "../betterAuth/schema"
 import { components, internal } from "../_generated/api"
 
 const modules = import.meta.glob("../**/*.ts")
+/** The aggregates convex.config.ts mounts for convex/counts.ts. */
+const COUNT_COMPONENTS = [
+  "contactCounts",
+  "segmentCounts",
+  "segmentMemberCounts",
+  "topicCounts",
+  "propertyCounts",
+  "templateCounts",
+  "apiKeyCounts",
+  "apiLogCounts",
+  "apiKeyLogCounts",
+  "webhookCounts",
+  "deliveryCounts",
+  "domainCounts",
+]
 const authModules = import.meta.glob("../betterAuth/**/*.ts")
 /** A connected us-east-1 installation on the current IAM policy revision: the
     bootstrap admin ("owner") with a ready tenant and one domain, and a second
@@ -18,6 +36,8 @@ export async function fixture() {
   t.registerComponent("betterAuth", authSchema, authModules)
   workflowTest.register(t)
   rateLimiterTest.register(t)
+  for (const name of COUNT_COMPONENTS) aggregateTest.register(t, name)
+  migrationsTest.register(t)
   async function actor(name: string, bootstrap = false) {
     const user = await t.mutation(components.betterAuth.adapter.create, {
       input: {
@@ -110,7 +130,7 @@ export async function fixture() {
     })
   )
   const domain = await t.run((ctx) =>
-    ctx.db.insert("domains", {
+    insertRow(ctx, "domains", {
       organizationId: owner.team,
       tenantId: tenant,
       tenantAssociated: false,

@@ -26,6 +26,7 @@ import {
   useDraft,
 } from "@/components/dashboard/primitives"
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
+import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import {
   CONTACT_FIELDS,
   contactFieldLabel,
@@ -88,8 +89,7 @@ function CardSection({
 
 /** The payload fields of the trigger's event, as references. */
 function useEventReferences(trigger: string): string[] {
-  const { state } = useDashboard()
-  const event = state.automationEvents.find((item) => item.name === trigger)
+  const event = useAutomationEvent(trigger)
   return (event?.schema ?? []).map((field) => `event.${field.key}`)
 }
 
@@ -128,11 +128,8 @@ export function TriggerCard({
   onSelect: () => void
   onChange: (trigger: string) => void
 }) {
-  const { state } = useDashboard()
   const [editingEvent, setEditingEvent] = React.useState(false)
-  const event = state.automationEvents.find(
-    (item) => item.name === automation.trigger
-  )
+  const event = useAutomationEvent(automation.trigger)
 
   return (
     <WorkflowCard

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { usePaginatedQuery } from "convex/react"
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
@@ -32,13 +34,17 @@ import {
   DocsButton,
   EmptyState,
   IconCell,
+  ListPagination,
   ListToolbar,
   MonoValue,
   MoreMenu,
   OptionSelect,
+  PAGE_SIZES,
   RelativeTime,
   ResourceTable,
   Th,
+  useDebouncedValue,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import {
   AutomationsChrome,
@@ -50,7 +56,12 @@ import {
   eventNameError,
   schemaError,
 } from "@/lib/dashboard/automation"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
+import { api } from "@/convex/_generated/api"
+import { actionError } from "@/lib/action-error"
+import {
+  asAutomationEvent,
+  useAutomationEventCommands,
+} from "@/lib/automation-events/use-automation-events"
 import { useDashboard } from "@/lib/dashboard/store"
 import {
   AUTOMATION_EVENT_FIELD_TYPES,
@@ -64,7 +75,8 @@ const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
 }))
 
 export function AutomationEventsView() {
-  const { state, deleteAutomationEvent } = useDashboard()
+  const { state } = useDashboard()
+  const { organizationId, deleteAutomationEvent } = useAutomationEventCommands()
   const [query, setQuery] = React.useState("")
   const [docsOpen, setDocsOpen] = React.useState(false)
   /* The event in the form: one being edited, or "new". */
@@ -73,10 +85,17 @@ export function AutomationEventsView() {
   )
   const [deleting, setDeleting] = React.useState<AutomationEvent | null>(null)
 
-  const needle = searchNeedle(query)
-  const rows = state.automationEvents.filter((item) =>
-    matchesNeedle(needle, item.name, ...item.schema.map((field) => field.key))
+  const search = useDebouncedValue(query)
+  const events = usePaginatedQuery(
+    api.automationEvents.list,
+    organizationId ? { organizationId, search } : "skip",
+    { initialNumItems: PAGE_SIZES[0] }
   )
+  const rows = React.useMemo(
+    () => events.results.map(asAutomationEvent),
+    [events.results]
+  )
+  const { pageRows, pagination } = useLoadedPagination(rows, events)
 
   const addButton = (
     <Button onClick={() => setEditing("new")}>
@@ -100,7 +119,9 @@ export function AutomationEventsView() {
         onQueryChange={setQuery}
         placeholder="Search events…"
       />
-      {state.automationEvents.length === 0 ? (
+      {events.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 && !query ? (
         <EmptyState
           icon={EventIcon}
           title="No events yet"
@@ -115,45 +136,48 @@ export function AutomationEventsView() {
           description="Nothing matches this search."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <IconCell icon={EventIcon}>
-                  <MonoValue copyValue={item.name}>{item.name}</MonoValue>
-                </IconCell>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.createdAt} />
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setEditing(item)}>
-                      <PencilIcon />
-                      Edit event
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setDeleting(item)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <IconCell icon={EventIcon}>
+                    <MonoValue copyValue={item.name}>{item.name}</MonoValue>
+                  </IconCell>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <RelativeTime at={item.createdAt} />
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => setEditing(item)}>
+                        <PencilIcon />
+                        Edit event
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleting(item)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="event" />
+        </>
       )}
       <EventFormDialog
         event={editing === "new" ? null : editing}
@@ -174,8 +198,8 @@ export function AutomationEventsView() {
             ? "Automations still use this event. They keep its name, and its payload is no longer checked."
             : "Its payload is no longer checked when your app sends it."
         }
-        onConfirm={() => {
-          if (deleting) deleteAutomationEvent(deleting.id)
+        onConfirm={async () => {
+          if (deleting) await deleteAutomationEvent(deleting.id)
           toast.add({ type: "success", title: "Event deleted" })
         }}
       />
@@ -211,7 +235,9 @@ function EventForm({
   event: AutomationEvent | null
   onClose: () => void
 }) {
-  const { state, saveAutomationEvent } = useDashboard()
+  const { state } = useDashboard()
+  const { saveAutomationEvent } = useAutomationEventCommands()
+  const saving = React.useRef(false)
   const [name, setName] = React.useState(event?.name ?? "")
   const [schema, setSchema] = React.useState(event?.schema ?? [])
   const [error, setError] = React.useState<string | null>(null)
@@ -230,14 +256,11 @@ function EventForm({
   return (
     <DialogContent className="sm:max-w-md">
       <form
-        onSubmit={(submitted) => {
+        onSubmit={async (submitted) => {
           submitted.preventDefault()
-          const problem = eventNameError(
-            name,
-            state.automationEvents
-              .filter((item) => item.id !== event?.id)
-              .map((item) => item.name)
-          )
+          if (saving.current) return
+          /* The server also refuses a name another event has. */
+          const problem = eventNameError(name)
           if (problem) {
             setError(problem)
             return
@@ -247,7 +270,15 @@ function EventForm({
             setSchemaProblem(schemaProblem)
             return
           }
-          saveAutomationEvent({ id: event?.id, name, schema })
+          saving.current = true
+          try {
+            await saveAutomationEvent({ id: event?.id, name, schema })
+          } catch (failure) {
+            setError(actionError(failure))
+            return
+          } finally {
+            saving.current = false
+          }
           toast.add({
             type: "success",
             title: event ? "Event updated" : "Event added",

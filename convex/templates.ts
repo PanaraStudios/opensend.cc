@@ -9,6 +9,15 @@ import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
 import { renderEmail } from "./email/render"
+import {
+  countValue,
+  counters,
+  deleteRow,
+  insertRow,
+  literals,
+  patchRow,
+} from "./counts"
+import { matchesSearch, narrow } from "./lists"
 import { templateStatusValue } from "./tables/templates"
 import { UNSUBSCRIBE_VARIABLE_NAME } from "../lib/dashboard/email-variables"
 import {
@@ -144,7 +153,7 @@ async function insertTemplate(
     await aliasesNear(ctx, organizationId, name)
   )
   await checkFree(ctx, organizationId, alias)
-  const id = await ctx.db.insert("templates", {
+  const id = await insertRow(ctx, "templates", {
     organizationId,
     name,
     alias,
@@ -167,17 +176,20 @@ async function insertTemplate(
 
 const listItem = schema.doc("templates").extend({ html: v.string() })
 
+const templateFilters = {
+  organizationId: v.string(),
+  /** Part of the name or alias, as typed. */
+  search: v.optional(v.string()),
+  status: v.optional(templateStatusValue),
+}
+
 export const list = query({
-  args: {
-    organizationId: v.string(),
-    paginationOpts: paginationOptsValidator,
-    search: v.optional(v.string()),
-    status: v.optional(templateStatusValue),
-  },
+  args: { ...templateFilters, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(listItem),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     const search = (args.search ?? "").trim().slice(0, 200)
+    const matches = matchesSearch(search)
     const templates = ctx.db.query("templates")
     const rows = search
       ? templates.withSearchIndex("search_searchText", (q) => {
@@ -199,7 +211,9 @@ export const list = query({
               q.eq("organizationId", args.organizationId)
             )
             .order("desc")
-    const result = await rows.paginate(args.paginationOpts)
+    const result = narrow(await rows.paginate(args.paginationOpts), (row) =>
+      matches(row.name, row.alias)
+    )
     // The cards draw each email, so the page carries the draft markup.
     return {
       ...result,
@@ -209,6 +223,20 @@ export const list = query({
           html: (await findDraft(ctx, row._id))?.html ?? "",
         }))
       ),
+    }
+  },
+})
+
+export const count = query({
+  args: templateFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.templates.total(ctx, args.organizationId, [
+        { is: args.status, among: literals(templateStatusValue) },
+      ]),
     }
   },
 })
@@ -351,7 +379,7 @@ export const update = mutation({
     if (nextAlias !== template.alias && !aliasChanged)
       await checkFree(ctx, template.organizationId, nextAlias)
     const now = Date.now()
-    await ctx.db.patch("templates", id, {
+    await patchRow(ctx, "templates", id, {
       name: next.name,
       alias: nextAlias,
       subject: next.subject,
@@ -406,7 +434,7 @@ export const publish = mutation({
     const live = await findPublished(ctx, id)
     if (live) await ctx.db.replace("publishedTemplates", live._id, version)
     else await ctx.db.insert("publishedTemplates", version)
-    await ctx.db.patch("templates", id, {
+    await patchRow(ctx, "templates", id, {
       status: "published",
       updatedAt: now,
       publishedAt: now,
@@ -425,7 +453,7 @@ export const unpublish = mutation({
     const live = await findPublished(ctx, id)
     if (live) await ctx.db.delete("publishedTemplates", live._id)
     if (template.status === "published")
-      await ctx.db.patch("templates", id, {
+      await patchRow(ctx, "templates", id, {
         status: "draft",
         updatedAt: Date.now(),
       })
@@ -462,7 +490,7 @@ export const remove = mutation({
     if (draft) await ctx.db.delete("templateDrafts", draft._id)
     const live = await findPublished(ctx, id)
     if (live) await ctx.db.delete("publishedTemplates", live._id)
-    await ctx.db.delete("templates", id)
+    await deleteRow(ctx, "templates", id)
     return null
   },
 })
