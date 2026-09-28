@@ -397,10 +397,11 @@ if (!plan.length) {
   console.log("Nothing from Opensend found.")
   process.exit(0)
 }
-const byInstallation = Map.groupBy(plan, (item) => item.installation)
-for (const [installation, items] of byInstallation) {
+// Node 20 (AWS CloudShell) has no Map.groupBy.
+for (const installation of new Set(plan.map((item) => item.installation))) {
   console.log(`Installation ${installation}`)
-  for (const item of items) console.log(`  ${item.kind}: ${item.name}`)
+  for (const item of plan.filter((row) => row.installation === installation))
+    console.log(`  ${item.kind}: ${item.name}`)
 }
 if (!apply) {
   console.log(
