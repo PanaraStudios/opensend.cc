@@ -134,19 +134,13 @@ export function hardeningSearchTests(state: () => State) {
     await owner
       .getByRole("button", { name: new RegExp(format(from, "PPPP")) })
       .click()
-    await owner
-      .getByRole("button", { name: /^Today, / })
-      .or(owner.getByRole("button", { name: "Go to the Next Month" }))
-      .first()
-      .waitFor()
-    while (!(await owner.getByRole("button", { name: /^Today, / }).count()))
-      await owner.getByRole("button", { name: "Go to the Next Month" }).click()
-    await owner.getByRole("button", { name: /^Today, / }).click()
-    await owner.keyboard.press("Escape")
+    // An earlier start keeps today as the end: a range of 2–3 months.
     await expect(
       owner.getByRole("button", { name: /^Date range:/ })
     ).toContainText(format(from, "MMM d"))
     await expect(owner.getByRole("heading", { name: "Metrics" })).toBeVisible()
+    // Rates render once every metrics query for the range has answered.
+    await expect(owner.getByText(/^\d+(\.\d+)?%$/).first()).toBeVisible()
     await expect(owner.getByText("Something went wrong")).toHaveCount(0)
     await shot(owner, "metrics-long-range")
     owner.off("pageerror", record)
