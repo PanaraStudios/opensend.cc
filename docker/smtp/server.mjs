@@ -204,14 +204,14 @@ export function createSmtpServer({
     onAuth(auth, session, callback) {
       if (!session.secure) return callback(smtpError("TLS is required", 538))
       if (
-        auth.username !== "resend" ||
+        auth.username !== "opensend" ||
         !/^os_\S{1,512}$/.test(auth.password ?? "")
       )
         return callback(smtpError("Authentication failed", 535))
       request("/smtp/auth", auth.password, undefined, undefined, true).then(
         () => {
           tokens.set(session.id, auth.password)
-          callback(null, { user: "resend" })
+          callback(null, { user: "opensend" })
         },
         callback
       )

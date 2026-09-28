@@ -537,7 +537,7 @@ export function SettingsSmtp() {
     <>
       <SettingsLead>
         Send through the same API keys using any SMTP client. Username is
-        resend; the password is an Opensend API key.
+        opensend; the password is an Opensend API key.
       </SettingsLead>
       <Surface className="max-w-lg">
         <Field orientation="horizontal">
@@ -579,10 +579,7 @@ export function SettingsSmtp() {
         </Field>
         <Field>
           <FieldLabel>Username</FieldLabel>
-          <Input readOnly value="resend" />
-          <FieldDescription>
-            Matches the Resend SMTP contract so existing clients keep working.
-          </FieldDescription>
+          <Input readOnly value="opensend" />
         </Field>
         <Field>
           <FieldLabel>Password</FieldLabel>

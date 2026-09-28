@@ -79,7 +79,7 @@ async function fixture(t, { secure = false, maxMessageBytes } = {}) {
     port: server.server.address().port,
     secure,
     tls: { rejectUnauthorized: false },
-    auth: { user: "resend", pass: "os_good" },
+    auth: { user: "opensend", pass: "os_good" },
     connectionTimeout: 3000,
     greetingTimeout: 3000,
     socketTimeout: 3000,
@@ -140,8 +140,8 @@ test("AUTH before TLS is refused", async (t) => {
 test("wrong username and key are refused", async (t) => {
   const f = await fixture(t)
   for (const auth of [
-    { user: "opensend", pass: "os_good" },
-    { user: "resend", pass: "os_bad" },
+    { user: "resend", pass: "os_good" },
+    { user: "opensend", pass: "os_bad" },
   ])
     await assert.rejects(f.send({}, { auth }), { responseCode: 535 })
   assert.equal(f.calls.length, 1)
