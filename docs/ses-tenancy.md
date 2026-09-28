@@ -44,10 +44,20 @@ The internal `ses/sendContext:get` query derives both `TenantName` and
 teams, missing associations, disabled tenants and unavailable regions. There is
 no option to fall back to an untagged account-level send.
 
-Production sending is a later milestone. Every send path (HTTP API, dashboard,
-broadcast, automation and SMTP) must use this binding and supply `TenantName` to
-SES. Creating a tenant alone does not isolate messages sent without that field.
+The transactional Emails API and installation account sender use this binding.
+Every future send path (broadcast, automation and SMTP) must use the same binding
+and supply `TenantName` to SES. Creating a tenant alone does not isolate messages sent without that field.
 SES checks the referenced resource associations when a tenant is supplied.
+
+`emails:createEmail` validates and queues messages; `emailSend:deliver` claims a
+generation, submits through SES v2 Simple content (including supported headers
+and attachments), and records the result. `opensend_email` and `opensend_team`
+tags identify the email and sending team. The `messageId` is stored on acceptance.
+SES event projection can use `recordEmailStatus` / `insertEmailEvent` from
+`emailRows.ts`, `emailEventData` from `emails.ts`, and the internal
+`suppressions:record` mutation. These write helpers keep aggregate counters in
+the same transaction. Account mail has `source: "system"` and must never emit
+team webhooks or appear in a team's lists.
 
 ## Cleanup and recovery
 

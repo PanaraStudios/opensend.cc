@@ -28,6 +28,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
@@ -41,6 +42,7 @@ import {
   OptionSelect,
   ResourceTable,
   Th,
+  useDebouncedValue,
   usePagination,
 } from "@/components/dashboard/primitives"
 import {
@@ -60,6 +62,7 @@ import {
   defaultEmailRange,
   emailMatches,
   inDateRange,
+  isFilterableStatus,
   isSuppressionReason,
 } from "@/components/dashboard/emails/shared"
 import {
@@ -67,36 +70,40 @@ import {
   isEmail,
   suppressionReasonLabel,
 } from "@/lib/dashboard/format"
+import { actionError } from "@/lib/action-error"
+import { rangeBounds } from "@/lib/dashboard/email-range"
 import { searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import { useClock } from "@/lib/time/use-clock"
 import type { SuppressionReason } from "@/lib/dashboard/types"
+import {
+  useEmailCommands,
+  useEmailList,
+  useSuppressionList,
+} from "@/lib/emails/use-emails"
 
 export function EmailsView() {
-  const { state, addExport } = useDashboard()
+  const now = useClock() ?? undefined
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(
-    defaultEmailRange
+  const [range, setRange] = React.useState<DateRange | undefined>(() =>
+    defaultEmailRange(Date.now())
   )
   const [docsOpen, setDocsOpen] = React.useState(false)
+  const search = useDebouncedValue(query)
 
-  const needle = searchNeedle(query)
-  const rows = state.emails.filter((email) => {
-    if (!emailMatches(needle, email)) return false
-    if (status !== "all" && email.status !== status) return false
-    return inDateRange(email.createdAt, range)
-  })
-
-  const { pageRows, pagination } = usePagination(rows)
+  const filters = {
+    status: isFilterableStatus(status) ? status : undefined,
+    search: search.trim() || undefined,
+    ...rangeBounds(range),
+  }
+  const emails = useEmailList(filters)
+  const rows = emails.rows
+  const { pageRows, pagination } = emails
   const exporting = useExportDialog({
     resource: "emails",
     noun: "emails",
-    filters: {},
-    onConfirm: () => {
-      addExport("Emails", rows.length)
-      toast.add({ type: "success", title: "Export started" })
-    },
+    filters,
   })
 
   return (
@@ -108,6 +115,7 @@ export function EmailsView() {
         placeholder="Search emails…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: status,
@@ -118,7 +126,9 @@ export function EmailsView() {
         ]}
         onExport={exporting.open}
       />
-      {rows.length === 0 ? (
+      {emails.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={MailIcon}
           title="No emails"
@@ -294,11 +304,12 @@ export function ReceivingView() {
 }
 
 export function SuppressionsView() {
-  const { state, addSuppression, removeSuppression, addExport } = useDashboard()
+  const { addSuppression, removeSuppression } = useEmailCommands()
+  const now = useClock() ?? undefined
   const [query, setQuery] = React.useState("")
   const [origin, setOrigin] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(
-    defaultEmailRange
+  const [range, setRange] = React.useState<DateRange | undefined>(() =>
+    defaultEmailRange(Date.now())
   )
   const [open, setOpen] = React.useState(false)
   const [email, setEmail] = React.useState("")
@@ -306,12 +317,16 @@ export function SuppressionsView() {
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const needle = searchNeedle(query)
-  const rows = state.suppressions.filter((item) => {
-    if (!emailMatches(needle, { to: item.email })) return false
-    if (origin !== "all" && item.reason !== origin) return false
-    return inDateRange(item.createdAt, range)
-  })
+  const search = useDebouncedValue(query)
+
+  const filters = {
+    reason: isSuppressionReason(origin) ? origin : undefined,
+    search: search.trim() || undefined,
+    ...rangeBounds(range),
+  }
+  const suppressions = useSuppressionList(filters)
+  const rows = suppressions.rows
+  const { pageRows, pagination } = suppressions
 
   function reset() {
     setEmail("")
@@ -319,27 +334,27 @@ export function SuppressionsView() {
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!isEmail(email)) {
       setError("Enter a valid email")
       return
     }
-    addSuppression({ email, reason })
+    try {
+      await addSuppression({ email, reason })
+    } catch (e) {
+      setError(actionError(e))
+      return
+    }
     toast.add({ type: "success", title: "Address suppressed" })
     reset()
     setOpen(false)
   }
 
-  const { pageRows, pagination } = usePagination(rows)
   const exporting = useExportDialog({
     resource: "suppressions",
     noun: "suppressions",
-    filters: {},
-    onConfirm: () => {
-      addExport("Suppressions", rows.length)
-      toast.add({ type: "success", title: "Export started" })
-    },
+    filters,
   })
 
   return (
@@ -358,6 +373,7 @@ export function SuppressionsView() {
         placeholder="Search suppressions…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: origin,
@@ -368,7 +384,9 @@ export function SuppressionsView() {
         ]}
         onExport={exporting.open}
       />
-      {rows.length === 0 ? (
+      {suppressions.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={CircleSlashIcon}
           title="No suppressions"
@@ -487,8 +505,8 @@ export function SuppressionsView() {
         title="Remove suppression?"
         description="This address can receive mail again. Use only when you know the bounce or complaint is resolved."
         confirmLabel="Remove"
-        onConfirm={() => {
-          if (pending) removeSuppression(pending)
+        onConfirm={async () => {
+          if (pending) await removeSuppression(pending)
           toast.add({ type: "success", title: "Suppression removed" })
         }}
       />

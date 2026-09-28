@@ -163,6 +163,32 @@ export const counters = {
     namespace: team,
     key: () => [],
   }),
+  emails: new Counter<"emails", string>(components.emailCounts, {
+    namespace: team,
+    key: (email) => [email.status, created(email)],
+    where: (email) => email.source !== "system",
+  }),
+  suppressions: new Counter<"suppressions", string>(
+    components.suppressionCounts,
+    {
+      namespace: team,
+      key: (row) => [row.reason, created(row)],
+    }
+  ),
+  emailRecipients: new Counter<"emailRecipients", string>(
+    components.emailRecipientCounts,
+    {
+      namespace: (row) => JSON.stringify([row.organizationId, row.address]),
+      key: () => [],
+    }
+  ),
+  emailEvents: new Counter<"emailEvents", Id<"emails">>(
+    components.emailEventCounts,
+    {
+      namespace: (row) => row.emailId,
+      key: (row) => [row.type],
+    }
+  ),
   contacts: new Counter<"contacts", string>(components.contactCounts, {
     namespace: team,
     key: (contact) => [contact.unsubscribed, created(contact)],
@@ -231,6 +257,10 @@ type Sync<T extends TableNames> = Pick<
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   exports: [counters.exports],
+  emails: [counters.emails],
+  suppressions: [counters.suppressions],
+  emailRecipients: [counters.emailRecipients],
+  emailEvents: [counters.emailEvents],
   contacts: [counters.contacts],
   segments: [counters.segments],
   segmentMembers: [counters.segmentMembers],
@@ -245,6 +275,10 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
 }
 export type CountedTable =
   | "exports"
+  | "emails"
+  | "suppressions"
+  | "emailRecipients"
+  | "emailEvents"
   | "contacts"
   | "segments"
   | "segmentMembers"

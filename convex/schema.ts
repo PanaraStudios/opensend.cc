@@ -3,6 +3,7 @@ import { audienceTables } from "./tables/audience"
 import { automationEventTables } from "./tables/automationEvents"
 import { apiTables } from "./tables/api"
 import { domainTables } from "./tables/domains"
+import { emailTables } from "./tables/emails"
 import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
 import { receivingTables } from "./tables/receiving"
@@ -22,6 +23,7 @@ export default defineSchema({
   ...webhookTables,
   ...apiTables,
   ...exportTables,
+  ...emailTables,
   ...automationEventTables,
   ...unsubscribeTables,
   ...receivingTables,

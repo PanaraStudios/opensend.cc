@@ -17,6 +17,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
@@ -42,6 +43,7 @@ import {
   EmptyState,
   EventTrail,
   MetaStrip,
+  ListPagination,
   MoreMenu,
   NotFoundState,
   PanelTabs,
@@ -52,8 +54,15 @@ import {
   tokenizeHtml,
   type HtmlTokenKind,
 } from "@/lib/dashboard/highlight-html"
+import { actionError } from "@/lib/action-error"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
+import {
+  useEmail,
+  useEmailCommands,
+  useEmailEvents,
+} from "@/lib/emails/use-emails"
+import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 type TimelineEvent = {
@@ -127,17 +136,11 @@ function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
   )
 }
 
-const PREVIEW_HTML_CLASS =
-  "text-body text-foreground [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h1]:mb-2 [&_h1]:font-heading [&_h1]:text-h4 [&_h2]:mb-2 [&_h2]:font-heading [&_h2]:text-h4 [&_li]:mt-1 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_p+_p]:mt-3 [&_strong]:font-medium [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5"
-
 function EmailPreview({ subject, html }: { subject: string; html: string }) {
   return (
     <article>
       <h2 className="font-heading text-h4 text-foreground">{subject}</h2>
-      <div
-        className={`mt-3 ${PREVIEW_HTML_CLASS}`}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <EmailPreviewFrame html={html} title={subject} className="mt-3 h-96" />
     </article>
   )
 }
@@ -177,6 +180,7 @@ function EmailBodyTabs({
   text,
   events,
   showInsights = false,
+  emailId,
 }: {
   from: string
   to: string
@@ -185,11 +189,15 @@ function EmailBodyTabs({
   text: string
   events?: EmailEvent[]
   showInsights?: boolean
+  emailId?: string
 }) {
   const [tab, setTab] = React.useState("preview")
-  const insights = (events ?? []).filter(
-    (event) => event.type === "opened" || event.type === "clicked"
-  )
+  const insightPage = useEmailEvents(emailId, true)
+  const insights = emailId
+    ? insightPage.pageRows
+    : (events ?? []).filter(
+        (event) => event.type === "opened" || event.type === "clicked"
+      )
   const raw = `From: ${from}\nTo: ${to}\nSubject: ${subject}\n\n${text}`
   const tabs = [
     { value: "preview", label: "Preview" },
@@ -243,6 +251,10 @@ function EmailBodyTabs({
               ))}
             </ItemGroup>
           )}
+          {emailId &&
+          (insightPage.rows.length > 0 || insightPage.pagination.hasMore) ? (
+            <ListPagination {...insightPage.pagination} noun="event" />
+          ) : null}
         </TabsContent>
       ) : null}
     </PanelTabs>
@@ -252,15 +264,13 @@ function EmailBodyTabs({
 export function EmailDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, cancelEmail } = useDashboard()
+  const { cancelEmail } = useEmailCommands()
   const saveAsTemplate = useSaveAsTemplate()
-  const email = state.emails.find((item) => item.id === id)
-  const log = state.logs.find(
-    (item) =>
-      item.emailId === id && item.method === "POST" && item.path === "/emails"
-  )
+  const found = useEmail(id)
+  const timeline = useEmailEvents(found?.email.id)
 
-  if (!email) {
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
+  if (!found) {
     return (
       <NotFoundState
         icon={MailIcon}
@@ -271,6 +281,7 @@ export function EmailDetail() {
     )
   }
 
+  const { email, log } = found
   return (
     <div className="flex flex-col gap-6">
       <DetailHeader
@@ -297,9 +308,13 @@ export function EmailDetail() {
             {email.status === "scheduled" ? (
               <Button
                 variant="outline"
-                onClick={() => {
-                  cancelEmail(email.id)
-                  toast.add({ type: "success", title: "Send canceled" })
+                onClick={async () => {
+                  try {
+                    await cancelEmail(email.id)
+                    toast.add({ type: "success", title: "Send canceled" })
+                  } catch (e) {
+                    toast.add({ type: "error", title: actionError(e) })
+                  }
                 }}
               >
                 Cancel
@@ -340,14 +355,17 @@ export function EmailDetail() {
           </ItemContent>
         </Item>
       ) : null}
-      <EmailEventsRow events={email.events} />
+      <EmailEventsRow events={timeline.pageRows} />
+      {timeline.rows.length > 0 || timeline.pagination.hasMore ? (
+        <ListPagination {...timeline.pagination} noun="event" />
+      ) : null}
       <EmailBodyTabs
         from={email.from}
         to={email.to}
         subject={email.subject}
         html={email.html}
         text={email.text}
-        events={email.events}
+        emailId={email.id}
         showInsights
       />
     </div>
