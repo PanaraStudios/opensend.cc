@@ -15,10 +15,14 @@ export function serverAuth() {
     convexSiteUrl: required("CONVEX_INTERNAL_SITE_URL"),
   })
 }
+/** Convex as the server reaches it, signed out until `setAuth`. */
+export function serverConvex() {
+  return new ConvexHttpClient(required("CONVEX_INTERNAL_URL"))
+}
 export async function requireAccount() {
   const token = await serverAuth().getToken()
   if (!token) redirect("/login")
-  const client = new ConvexHttpClient(required("CONVEX_INTERNAL_URL"))
+  const client = serverConvex()
   client.setAuth(token)
   try {
     const account = await client.query(api.teams.snapshot, {})

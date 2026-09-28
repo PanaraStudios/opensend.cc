@@ -478,11 +478,6 @@ export type Settings = {
     issuer: string
     clientId: string
   }
-  unsubscribe: {
-    heading: string
-    body: string
-    brandName: string
-  }
   smtp: {
     enabled: boolean
     host: string
