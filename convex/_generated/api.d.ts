@@ -10,6 +10,7 @@
 
 import type * as access from "../access.js";
 import type * as api_audience from "../api/audience.js";
+import type * as api_broadcasts from "../api/broadcasts.js";
 import type * as api_caller from "../api/caller.js";
 import type * as api_domains from "../api/domains.js";
 import type * as api_emails from "../api/emails.js";
@@ -34,6 +35,9 @@ import type * as automationEventRows from "../automationEventRows.js";
 import type * as automationEvents from "../automationEvents.js";
 import type * as automationRuntime from "../automationRuntime.js";
 import type * as automations from "../automations.js";
+import type * as broadcastMetrics from "../broadcastMetrics.js";
+import type * as broadcastSend from "../broadcastSend.js";
+import type * as broadcasts from "../broadcasts.js";
 import type * as contactProperties from "../contactProperties.js";
 import type * as contacts from "../contacts.js";
 import type * as counts from "../counts.js";
@@ -105,6 +109,7 @@ import type * as tables_api from "../tables/api.js";
 import type * as tables_audience from "../tables/audience.js";
 import type * as tables_automationEvents from "../tables/automationEvents.js";
 import type * as tables_automations from "../tables/automations.js";
+import type * as tables_broadcasts from "../tables/broadcasts.js";
 import type * as tables_domains from "../tables/domains.js";
 import type * as tables_emails from "../tables/emails.js";
 import type * as tables_events from "../tables/events.js";
@@ -142,6 +147,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   "api/audience": typeof api_audience;
+  "api/broadcasts": typeof api_broadcasts;
   "api/caller": typeof api_caller;
   "api/domains": typeof api_domains;
   "api/emails": typeof api_emails;
@@ -166,6 +172,9 @@ declare const fullApi: ApiFromModules<{
   automationEvents: typeof automationEvents;
   automationRuntime: typeof automationRuntime;
   automations: typeof automations;
+  broadcastMetrics: typeof broadcastMetrics;
+  broadcastSend: typeof broadcastSend;
+  broadcasts: typeof broadcasts;
   contactProperties: typeof contactProperties;
   contacts: typeof contacts;
   counts: typeof counts;
@@ -237,6 +246,7 @@ declare const fullApi: ApiFromModules<{
   "tables/audience": typeof tables_audience;
   "tables/automationEvents": typeof tables_automationEvents;
   "tables/automations": typeof tables_automations;
+  "tables/broadcasts": typeof tables_broadcasts;
   "tables/domains": typeof tables_domains;
   "tables/emails": typeof tables_emails;
   "tables/events": typeof tables_events;
@@ -293,6 +303,10 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
+  broadcastEventCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastEventCounts">;
+  broadcastHistoryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastHistoryCounts">;
+  broadcastRecipientCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastRecipientCounts">;
+  broadcastCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastCounts">;
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;

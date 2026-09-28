@@ -31,6 +31,9 @@ export const parseStoredInbound = migrations.define({
       })
   },
 })
+export const countBroadcasts = backfill("broadcasts")
+export const countBroadcastRecipients = backfill("broadcastRecipients")
+export const countBroadcastEvents = backfill("broadcastEvents")
 export const countExports = backfill("exports")
 export const countEmails = backfill("emails")
 export const countEmailDomains = backfill("emails")
@@ -84,6 +87,9 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countAutomations,
   internal.migrations.countAutomationRuns,
   internal.migrations.countAutomationRunSteps,
+  internal.migrations.countBroadcasts,
+  internal.migrations.countBroadcastRecipients,
+  internal.migrations.countBroadcastEvents,
   internal.migrations.countExports,
   internal.migrations.countEmails,
   internal.migrations.countEmailDomains,

@@ -12,15 +12,13 @@ import {
   EmailEditorScreen,
 } from "@/components/dashboard/broadcasts/editor/screen"
 import { isBroadcastDraftLike } from "@/lib/dashboard/broadcast"
-import { useDashboard, useStoreHydrated } from "@/lib/dashboard/store"
+import { useBroadcast, useBroadcastSaver } from "@/lib/broadcasts/use-broadcasts"
 import type { Broadcast } from "@/lib/dashboard/types"
 
 export function BroadcastEditor() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state } = useDashboard()
-  const hydrated = useStoreHydrated()
-  const item = state.broadcasts.find((row) => row.id === id)
+  const item = useBroadcast(id)
   const report = Boolean(item) && !isBroadcastDraftLike(item!.status)
 
   React.useEffect(() => {
@@ -29,7 +27,7 @@ export function BroadcastEditor() {
 
   /* The editor copies the document into the engine when it mounts, so it
      waits for the saved one rather than starting from the seed. */
-  if (!hydrated) return null
+  if (item === undefined) return null
 
   if (!item) {
     return (
@@ -46,7 +44,7 @@ export function BroadcastEditor() {
 }
 
 function BroadcastScreen({ item }: { item: Broadcast }) {
-  const { updateBroadcast } = useDashboard()
+  const save = useBroadcastSaver(item)
   /* Kept out here: a chosen send time is not saved until the send, and the
      editor remounting on a new theme preset must not quietly turn a scheduled
      send into an immediate one. */
@@ -58,7 +56,7 @@ function BroadcastScreen({ item }: { item: Broadcast }) {
       listHref="/broadcasts"
       listLabel="Broadcasts"
       badge={<BroadcastStatusBadge status={item.status} />}
-      onChange={(patch) => updateBroadcast(item.id, patch)}
+      onChange={save}
       headerExtra={
         <BroadcastSendFields
           item={item}

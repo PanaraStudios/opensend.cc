@@ -17,7 +17,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useDraft } from "@/components/dashboard/primitives"
+import { useSegmentList, useTopicList } from "@/lib/audience/use-audience"
+import {
+  useDraft,
+  useTeamList,
+} from "@/components/dashboard/primitives"
+import { api } from "@/convex/_generated/api"
+import { asDomain } from "@/lib/domains/use-domains"
 import { emailFrom, fromAddresses } from "@/lib/dashboard/broadcast"
 import {
   formatScheduleHint,
@@ -25,6 +31,9 @@ import {
   timeZoneLabel,
   type ScheduleOption,
 } from "@/lib/dashboard/schedule"
+import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
@@ -47,7 +56,9 @@ function PaperSelect({
   placeholder,
   testId,
   label,
+  selectedItem,
 }: {
+  selectedItem?: { value: string; label: string }
   value: string
   onValueChange: (value: string) => void
   items: readonly { value: string; label: string }[]
@@ -55,7 +66,7 @@ function PaperSelect({
   testId: string
   label: string
 }) {
-  const current = items.find((item) => item.value === value)
+  const current = items.find((item) => item.value === value) ?? selectedItem
 
   return (
     <DropdownMenu>
@@ -190,12 +201,27 @@ export function BroadcastSendFields({
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
 }) {
-  const { state, updateBroadcast } = useDashboard()
+  const { state } = useDashboard()
+  const segments = useSegmentList("")
+  const topics = useTopicList("")
+  const commands = useBroadcastCommands()
+  const updateBroadcast = (
+    id: string,
+    patch: Parameters<typeof commands.updateBroadcast>[1]
+  ) =>
+    void commands
+      .updateBroadcast(id, patch)
+      .catch((error) => toast.add({ type: "error", title: actionError(error) }))
   return (
     <>
       <div className={ROW}>
         <span className={LABEL}>To</span>
         <PaperSelect
+          selectedItem={
+            state.segments
+              .filter((row) => row.id === item.segmentId)
+              .map((row) => ({ value: row.id, label: row.name }))[0]
+          }
           label="Audience"
           testId="header-audience"
           placeholder="Select a segment…"
@@ -207,7 +233,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "everyone", label: "All contacts" },
-            ...state.segments.map((segment) => ({
+            ...segments.pageRows.map((segment) => ({
               value: segment.id,
               label: segment.name,
             })),
@@ -217,6 +243,11 @@ export function BroadcastSendFields({
       <div className={ROW}>
         <span className={LABEL}>Subscribe to</span>
         <PaperSelect
+          selectedItem={
+            state.topics
+              .filter((row) => row.id === item.topicId)
+              .map((row) => ({ value: row.id, label: row.name }))[0]
+          }
           label="Topic"
           testId="header-topic"
           placeholder="Select a topic"
@@ -228,7 +259,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "none", label: "No topic" },
-            ...state.topics.map((topic) => ({
+            ...topics.pageRows.map((topic) => ({
               value: topic.id,
               label: topic.name,
             })),
@@ -265,7 +296,15 @@ export function EmailHeaderForm({
   const [showPreview, setShowPreview] = React.useState(
     Boolean(item.preview.trim())
   )
-  const from = emailFrom(item, state.domains)
+  const domains = useTeamList(
+    api.domains.list,
+    api.domains.count,
+    { status: "verified" },
+    asDomain
+  )
+  const from =
+    item.from ||
+    emailFrom(item, domains.rows.length ? domains.rows : state.domains)
   const subject = useDraft(item.subject, (value) =>
     onChange({ subject: value })
   )
@@ -285,12 +324,13 @@ export function EmailHeaderForm({
       <div className={ROW}>
         <span className={LABEL}>From</span>
         <PaperSelect
+          selectedItem={{ value: from, label: from }}
           label="From"
           testId="header-from"
           placeholder="Select a sender"
           value={from}
           onValueChange={(next) => onChange({ from: next })}
-          items={fromAddresses(state.domains).map((address) => ({
+          items={fromAddresses(domains.pageRows).map((address) => ({
             value: address,
             label: address,
           }))}

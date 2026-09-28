@@ -16,6 +16,10 @@ const modules = import.meta.glob("../**/*.ts")
 /** The aggregates convex.config.ts mounts for convex/counts.ts. */
 const COUNT_COMPONENTS = [
   "receivedEmailCounts",
+  "broadcastEventCounts",
+  "broadcastHistoryCounts",
+  "broadcastRecipientCounts",
+  "broadcastCounts",
   "reputationCounts",
   "domainMetricCounts",
   "emailMetricCounts",

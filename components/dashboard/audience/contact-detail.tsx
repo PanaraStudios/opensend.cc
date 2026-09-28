@@ -1,4 +1,5 @@
 "use client"
+import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -46,7 +47,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { contactTopicStatus } from "@/lib/dashboard/contacts"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
 import { useReceivedList } from "@/lib/received/use-received"
-import { useDashboard } from "@/lib/dashboard/store"
 import {
   asContact,
   useAudienceCommands,
@@ -222,8 +222,6 @@ function ContactPage({
   contact: Contact
   onDelete: (remove: () => void) => void
 }) {
-  /* Broadcasts are still demo data, matched by segment. */
-  const { state } = useDashboard()
   const { updateContact, deleteContacts, setContactTopic } =
     useAudienceCommands()
   const topics = useTopics() ?? []
@@ -239,18 +237,8 @@ function ContactPage({
   const { pageRows: emailRows, pagination: emailPagination } = sends
   const replies = useReceivedList({ address: contact.email })
   const received = replies.rows
-  const broadcasts = state.broadcasts
-    .filter((broadcast) => {
-      if (broadcast.status !== "sent") return false
-      if (
-        broadcast.segmentId &&
-        !contact.segmentIds.includes(broadcast.segmentId)
-      ) {
-        return false
-      }
-      return true
-    })
-    .sort((a, b) => (b.sentAt ?? b.createdAt) - (a.sentAt ?? a.createdAt))
+  const broadcastList = useContactBroadcasts(contact.email)
+  const broadcasts = broadcastList.pageRows
 
   return (
     <>
@@ -400,7 +388,8 @@ function ContactPage({
         </TabsContent>
         <TabsContent value="history">
           {sends.status === "LoadingFirstPage" ||
-          replies.status === "LoadingFirstPage" ? (
+          replies.status === "LoadingFirstPage" ||
+          broadcastList.status === "LoadingFirstPage" ? (
             <Skeleton className="h-40 w-full" />
           ) : emails.length === 0 &&
             received.length === 0 &&
@@ -457,6 +446,10 @@ function ContactPage({
                       </ItemContent>
                     </Item>
                   ))}
+                  <ListPagination
+                    {...broadcastList.pagination}
+                    noun="broadcast"
+                  />
                 </HistorySection>
               ) : null}
               {received.length > 0 ? (

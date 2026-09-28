@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import { SEED_STATE } from "./data"
+import { BROADCAST_FIXTURE } from "./broadcast.fixture"
 import { teamSafePath } from "./nav"
 import {
   createTeamInRoot,
@@ -41,7 +42,7 @@ describe("parseRoot", () => {
 
   it("backfills missing broadcast stats and updatedAt", () => {
     const workspace = seedRoot().workspaces[SEED_TEAM_ID]!
-    const broadcast = workspace.broadcasts[0]!
+    const broadcast = BROADCAST_FIXTURE
     const raw = JSON.stringify({
       version: 3,
       activeTeamId: SEED_TEAM_ID,

@@ -11,6 +11,7 @@ export type UnsubscribeTarget = {
   contactId: string
   /** Set for a topic-scoped send: one-click then leaves only this topic. */
   topicId?: string
+  broadcastId?: string
 }
 
 const CONTEXT = "opensend:unsubscribe:v1:"
@@ -19,6 +20,7 @@ export async function signUnsubscribeToken(
   secret: string
 ) {
   const parts = [target.organizationId, target.contactId, target.topicId ?? ""]
+  if (target.broadcastId) parts.push(target.broadcastId)
   if (parts.some((part) => part.includes(".")) || !parts[0] || !parts[1])
     throw new Error("Invalid unsubscribe target")
   const payload = parts.join(".")
@@ -32,11 +34,12 @@ export async function readUnsubscribeToken(
 ): Promise<UnsubscribeTarget | null> {
   const payload = await readToken(token, CONTEXT, secret)
   if (!payload) return null
-  const [organizationId, contactId, topicId] = payload.split(".")
+  const [organizationId, contactId, topicId, broadcastId] = payload.split(".")
   return {
     organizationId,
     contactId,
     ...(topicId ? { topicId } : {}),
+    ...(broadcastId ? { broadcastId } : {}),
   }
 }
 

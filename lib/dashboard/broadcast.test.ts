@@ -16,7 +16,9 @@ import {
   canTransitionBroadcast,
   transitionBroadcast,
 } from "./broadcast"
-import { SEED_STATE } from "./data"
+import { SEED_STATE as SEED } from "./data"
+import { BROADCAST_FIXTURE } from "./broadcast.fixture"
+const SEED_STATE = { ...SEED, broadcasts: [BROADCAST_FIXTURE] }
 import { broadcastStatusLabel } from "./format"
 
 describe("BROADCAST_STATUS_ORDER", () => {

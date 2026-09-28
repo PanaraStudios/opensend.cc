@@ -170,6 +170,31 @@ export const counters = {
       key: (row) => [bucket(row.receivedAt)],
     }
   ),
+  broadcasts: new Counter<"broadcasts", string>(components.broadcastCounts, {
+    namespace: team,
+    key: (row) => [row.status, row.segmentId ?? "everyone"],
+  }),
+  broadcastRecipients: new Counter<"broadcastRecipients", string>(
+    components.broadcastRecipientCounts,
+    {
+      namespace: (row) => row.broadcastId,
+      key: (row) => [row.settled, row.failed],
+    }
+  ),
+  broadcastHistory: new Counter<"broadcastRecipients", string>(
+    components.broadcastHistoryCounts,
+    {
+      namespace: (row) => JSON.stringify([row.organizationId, row.email]),
+      key: () => [],
+    }
+  ),
+  broadcastEvents: new Counter<"broadcastEvents", string>(
+    components.broadcastEventCounts,
+    {
+      namespace: (row) => row.broadcastId,
+      key: (row) => [row.type],
+    }
+  ),
   emailDomains: new Counter<"emails", string>(components.emailDomainCounts, {
     namespace: (row) => JSON.stringify([row.organizationId, row.domainId]),
     key: (row) => [row.status, created(row)],
@@ -315,6 +340,12 @@ type Sync<T extends TableNames> = Pick<
 >
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
+  broadcasts: [counters.broadcasts],
+  broadcastRecipients: [
+    counters.broadcastRecipients,
+    counters.broadcastHistory,
+  ],
+  broadcastEvents: [counters.broadcastEvents],
   automations: [counters.automations],
   automationRuns: [counters.automationRuns],
   automationRunSteps: [counters.automationRunSteps],
@@ -340,6 +371,9 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
 }
 export type CountedTable =
   | "receivedEmails"
+  | "broadcasts"
+  | "broadcastRecipients"
+  | "broadcastEvents"
   | "automations"
   | "automationRuns"
   | "automationRunSteps"

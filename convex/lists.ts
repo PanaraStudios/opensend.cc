@@ -111,6 +111,7 @@ export async function filteredPage<T extends NonNullable<unknown>>(
 }
 
 type TeamTable =
+  | "broadcasts"
   | "automations"
   | "exports"
   | "segments"

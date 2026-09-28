@@ -1,4 +1,3 @@
-import { emptyBroadcastStats } from "./broadcast"
 import { DEFAULT_RETURN_PATH } from "./domains"
 import { createId } from "./ids"
 import { exportFileName } from "./exports"
@@ -12,7 +11,6 @@ import type {
   Automation,
   AutomationEvent,
   AutomationRun,
-  Broadcast,
   Contact,
   ContactProperty,
   DashboardState,
@@ -636,96 +634,6 @@ const suppressions: Suppression[] = [
   },
 ]
 
-const broadcasts: Broadcast[] = [
-  {
-    id: "brd_launch",
-    name: "Launch week",
-    subject: "Launch week is live",
-    preview: "What shipped this week, and what is next.",
-    html: "<h1>Launch week</h1><p>What shipped this week, and what is next.</p>",
-    status: "sent",
-    segmentId: "seg_newsletter",
-    topicId: "top_product",
-    createdAt: daysAgo(4),
-    updatedAt: daysAgo(3),
-    scheduledAt: null,
-    sentAt: daysAgo(3),
-    stats: {
-      ...emptyBroadcastStats(),
-      recipients: 1280,
-      delivered: 1244,
-      opened: 612,
-      clicked: 188,
-      // the per-address tabs derive from the seeded emails below: one each
-      bounced: 1,
-      suppressed: 1,
-      complained: 1,
-    },
-  },
-  {
-    id: "brd_beta",
-    name: "Beta invite",
-    subject: "You’re in the next cohort",
-    preview: "A short note for testers.",
-    html: "<p>You’re in the next cohort.</p>",
-    status: "draft",
-    segmentId: "seg_beta",
-    topicId: "top_product",
-    createdAt: daysAgo(1),
-    updatedAt: daysAgo(1),
-    scheduledAt: null,
-    sentAt: null,
-    stats: emptyBroadcastStats(),
-  },
-  {
-    id: "brd_promo",
-    name: "September promo",
-    subject: "One week of Pro, on us",
-    preview: "A limited offer for opted-in contacts.",
-    html: "<p>One week of Pro, on us.</p>",
-    status: "scheduled",
-    segmentId: "seg_customers",
-    topicId: "top_promo",
-    createdAt: hoursAgo(8),
-    updatedAt: hoursAgo(8),
-    scheduledAt: DEMO_NOW + 2 * DAY,
-    sentAt: null,
-    stats: emptyBroadcastStats(),
-  },
-  {
-    id: "brd_digest",
-    name: "Weekly digest",
-    subject: "What we shipped this week",
-    preview: "A short recap for the newsletter list.",
-    html: "<p>What we shipped this week.</p>",
-    status: "queued",
-    segmentId: "seg_newsletter",
-    topicId: "top_product",
-    createdAt: hoursAgo(2),
-    updatedAt: hoursAgo(2),
-    scheduledAt: null,
-    sentAt: null,
-    stats: {
-      ...emptyBroadcastStats(),
-      recipients: 1280,
-    },
-  },
-  {
-    id: "brd_retry",
-    name: "Win-back",
-    subject: "Still want a seat?",
-    preview: "A follow-up that did not send.",
-    html: "<p>Still want a seat?</p>",
-    status: "failed",
-    segmentId: "seg_customers",
-    topicId: "top_promo",
-    createdAt: daysAgo(2),
-    updatedAt: daysAgo(2),
-    scheduledAt: null,
-    sentAt: null,
-    stats: emptyBroadcastStats(),
-  },
-]
 
 const templates: EmailTemplate[] = [
   {
@@ -1126,7 +1034,7 @@ export const SEED_STATE: DashboardState = {
   emails,
   received: [],
   suppressions,
-  broadcasts,
+  broadcasts: [],
   templates,
   automations,
   automationEvents,

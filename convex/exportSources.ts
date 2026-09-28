@@ -1,4 +1,6 @@
 import { receivedPage } from "./received"
+import { broadcastPage } from "./broadcasts"
+import { BROADCAST_STATUSES } from "./tables/broadcasts"
 import { SEGMENT_SEARCH_BUDGET } from "./segments"
 import type { PaginationOptions } from "convex/server"
 import type { QueryCtx } from "./_generated/server"
@@ -238,6 +240,44 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
           log.method,
           log.path,
           String(log.status),
+        ]),
+      }
+    },
+  },
+  broadcasts: {
+    columns: [
+      "id",
+      "name",
+      "segment_id",
+      "topic_id",
+      "from",
+      "subject",
+      "status",
+      "created_at",
+      "scheduled_at",
+      "sent_at",
+    ],
+    page: async (ctx, organizationId, filters, paginationOpts) => {
+      const result = await broadcastPage(ctx, {
+        organizationId,
+        paginationOpts,
+        search: filters.search,
+        status: oneOf(filters.status, BROADCAST_STATUSES),
+        audience: filters.audience,
+      })
+      return {
+        ...result,
+        rows: result.page.map((row) => [
+          row._id,
+          row.name,
+          row.segmentId ?? "",
+          row.topicId ?? "",
+          row.from ?? "",
+          row.subject,
+          row.status,
+          csvTime(row._creationTime),
+          csvTime(row.scheduledAt),
+          csvTime(row.sentAt),
         ]),
       }
     },

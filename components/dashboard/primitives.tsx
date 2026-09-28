@@ -1881,6 +1881,7 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
+  selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1921,6 +1922,7 @@ export function ToolbarFilters({
           value={filter.value}
           onChange={filter.onChange}
           items={filter.items}
+          selectedItem={filter.selectedItem}
           aria-label={filter["aria-label"]}
         />
       ))}

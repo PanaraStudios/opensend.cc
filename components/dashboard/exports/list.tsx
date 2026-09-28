@@ -22,7 +22,7 @@ import { exportFileName } from "@/lib/dashboard/exports"
 import { slugify } from "@/lib/dashboard/slug"
 import { useClock } from "@/lib/time/use-clock"
 
-const DEMO_RESOURCES = new Set(["Emails", "Suppressions", "Broadcasts"])
+const DEMO_RESOURCES = new Set(["Emails", "Suppressions"])
 
 export function SettingsExports() {
   const { state } = useDashboard()
