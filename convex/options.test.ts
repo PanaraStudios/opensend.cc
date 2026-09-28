@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import type { FunctionReference } from "convex/server"
-import { api } from "./_generated/api"
+import { api, components } from "./_generated/api"
 import { insertRow } from "./counts"
 import { fixture } from "./testHelpers/ses.fixture"
 
@@ -174,7 +174,8 @@ describe("bounded server picker suggestions", () => {
 
   test("a plain member can create and find a segment", async () => {
     const f = await fixture()
-    await f.owner.client.mutation(api.teams.invite, {
+    await f.t.mutation(components.betterAuth.teams.invite, {
+      sessionId: f.owner.session._id,
       organizationId: f.owner.team,
       email: f.outsider.user.email,
       role: "member",

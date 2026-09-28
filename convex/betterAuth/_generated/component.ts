@@ -240,9 +240,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 };
                 model: "oauthGrant";
               }
-            | { data: { grantId: string; key: string }; model: "oauthUse" }
             | {
-                data: { count: number; key: string; start: number };
+                data: { expiresAt?: number; grantId: string; key: string };
+                model: "oauthUse";
+              }
+            | {
+                data: {
+                  count: number;
+                  expiresAt?: number;
+                  key: string;
+                  start: number;
+                };
                 model: "oauthRate";
               }
             | { data: { key: string; userId: string }; model: "bootstrap" }
@@ -877,7 +885,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthUse";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -904,7 +912,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthRate";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1657,7 +1665,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthUse";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1684,7 +1692,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthRate";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -2707,10 +2715,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthUse";
-                update: { grantId?: string; key?: string };
+                update: { expiresAt?: number; grantId?: string; key?: string };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -2735,10 +2743,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthRate";
-                update: { count?: number; key?: string; start?: number };
+                update: {
+                  count?: number;
+                  expiresAt?: number;
+                  key?: string;
+                  start?: number;
+                };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -3668,10 +3681,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthUse";
-                update: { grantId?: string; key?: string };
+                update: { expiresAt?: number; grantId?: string; key?: string };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -3696,10 +3709,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthRate";
-                update: { count?: number; key?: string; start?: number };
+                update: {
+                  count?: number;
+                  expiresAt?: number;
+                  key?: string;
+                  start?: number;
+                };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -4116,7 +4134,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           cursor?: string | null;
-          table?: "oauthFlow" | "oauthRate" | "oauthUse" | "ssoProof" | "verification";
+          table?:
+            | "oauthFlow"
+            | "oauthRate"
+            | "oauthUse"
+            | "ssoProof"
+            | "verification";
         },
         null,
         Name
@@ -4233,28 +4256,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           organizationId: string;
-          sessionId: string;
           paginationOpts: {
             cursor: string | null;
-            numItems: number;
             endCursor?: string | null;
             id?: number;
             maximumBytesRead?: number;
             maximumRowsRead?: number;
+            numItems: number;
           };
+          sessionId: string;
         },
         {
+          continueCursor: string;
+          isDone: boolean;
           page: Array<{
-            id: string;
             email: string;
-            role: "admin" | "member";
             expiresAt: number;
+            id: string;
+            role: "admin" | "member";
             status: string;
           }>;
-          isDone: boolean;
-          continueCursor: string;
-          splitCursor?: string | null;
           pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
         },
         Name
       >;
@@ -4274,32 +4297,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         {
-          sessionId: string;
           paginationOpts: {
             cursor: string | null;
-            numItems: number;
             endCursor?: string | null;
             id?: number;
             maximumBytesRead?: number;
             maximumRowsRead?: number;
+            numItems: number;
           };
+          sessionId: string;
         },
         {
+          continueCursor: string;
+          isDone: boolean;
           page: Array<{
+            avatar?: string;
             id: string;
-            name: string;
-            slug: string;
-            role: "admin" | "member";
             joinedAt: number;
             members: number;
-            avatar?: string;
-            ssoRequired: boolean;
+            name: string;
+            role: "admin" | "member";
+            slug: string;
             ssoConfigured: boolean;
+            ssoRequired: boolean;
           }>;
-          isDone: boolean;
-          continueCursor: string;
-          splitCursor?: string | null;
           pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
         },
         Name
       >;
@@ -4307,32 +4330,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         {
-          sessionId: string;
           organizationId: string;
           paginationOpts: {
             cursor: string | null;
-            numItems: number;
             endCursor?: string | null;
             id?: number;
             maximumBytesRead?: number;
             maximumRowsRead?: number;
+            numItems: number;
           };
+          sessionId: string;
         },
         {
+          continueCursor: string;
+          isDone: boolean;
           page: Array<{
-            id: string;
-            name: string;
             email: string;
+            id: string;
+            joinedAt: number;
+            mfa: boolean;
+            name: string;
             role: "admin" | "member";
             status: "active" | "invited";
-            joinedAt: number;
             you: boolean;
-            mfa: boolean;
           }>;
-          isDone: boolean;
-          continueCursor: string;
-          splitCursor?: string | null;
           pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
         },
         Name
       >;

@@ -76,6 +76,7 @@ for (const key of [
   "SES_ENCRYPTION_KEY",
   "SES_CALLBACK_ORIGIN",
   "ALLOW_LOCAL_OIDC",
+  "LOG_AUTH_LINKS",
   "DOMAIN_CONNECT_KEY",
   "DOMAIN_CONNECT_PRIVATE_KEY",
   "DOMAIN_CONNECT_SIGNER",
@@ -96,5 +97,5 @@ if (process.env.OPENSEND_BACKEND_ONLY !== "1")
     "dashboard",
   ])
 console.log(
-  `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Auth links appear in Convex function logs.`
+  `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Its account links appear in Convex function logs until you choose an account sender.`
 )

@@ -13,6 +13,8 @@ const app = defineApp({
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),
     ALLOW_LOCAL_OIDC: v.optional(v.string()),
+    // Development and e2e only: log every account-email link while no sender is set.
+    LOG_AUTH_LINKS: v.optional(v.string()),
     SES_ENCRYPTION_KEY: v.optional(v.string()),
     SES_CALLBACK_ORIGIN: v.optional(v.string()),
     // Domain Connect signing; see domain-connect/README.md.

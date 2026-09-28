@@ -145,6 +145,9 @@ pnpm backend run installationAdmin:setSystemSender '{}'
 Without a configured sender, account links appear in Convex function logs only
 when addressed to the first administrator recorded at bootstrap. Other account
 mail is withheld with a readable setup error; its log contains no address or link.
+For local development and the e2e suite only, `pnpm backend env set
+LOG_AUTH_LINKS=true` logs every account's links while no sender is set (the e2e
+stack sets it). Never set it on a real installation.
 Better Auth preserves its generic password-reset response to avoid account
 enumeration; team invitation mutations surface the setup error. With a sender configured, failures
 log only the reason and never fall back to logging the secret link. The sender
@@ -294,7 +297,7 @@ pnpm test:e2e
 
 The HTML report is in `playwright-report/`. Failure traces, screenshots and test email logs are in `test-results/`; these directories are ignored by Git. Set `OPENSEND_KEEP_E2E=1` to preserve the test containers after a debugging run. The next run resets only that test project. The suite drives the UI and checks direct backend authorization, and also renders all existing dashboard sections under a real session.
 
-`test:auth` covers bootstrap concurrency, invitation restrictions, cross-team access, role escalation, last-admin safety, deletion, revoked sessions and SSO proofs. The production API smoke script covers verification, password reset, email change, MFA/backup codes, invitations, avatars and deletion. Run it only against a fresh disposable deployment:
+`test:auth` covers bootstrap concurrency, invitation restrictions, cross-team access, role escalation, last-admin safety, deletion, revoked sessions and SSO proofs. The production API smoke script covers verification, password reset, email change, MFA/backup codes, invitations, avatars and deletion. Run it only against a fresh disposable deployment with `LOG_AUTH_LINKS=true`, since it reads other accounts' links from the logs:
 
 ```sh
 pnpm backend logs --jsonl > /tmp/opensend-test-logs.jsonl

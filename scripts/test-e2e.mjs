@@ -57,6 +57,8 @@ const values = {
   // Exercise setup's Docker loopback normalization with a remapped host port.
   CONVEX_PUBLIC_SITE_URL: `http://localhost:${sitePort}`,
   ALLOW_LOCAL_OIDC: "true",
+  // The suite reads invitation, verification and reset links from the logs.
+  LOG_AUTH_LINKS: "true",
   ...(process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE
     ? { CONVEX_IMAGE: process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE }
     : {}),

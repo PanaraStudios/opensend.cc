@@ -1,6 +1,7 @@
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { v, ConvexError } from "convex/values"
 import {
+  env,
   internalMutation,
   mutation,
   query,
@@ -22,9 +23,10 @@ const kindValue = v.union(
   v.literal("invite")
 )
 
-/** Sends one account email through the system sender, or logs it for the bootstrap account when
-    none is set. Its row is scoped to no team, so no Emails screen lists
-    it, and its body is dropped once it is sent. */
+/** Sends one account email through the system sender, or logs it for the
+    bootstrap account (every account with `LOG_AUTH_LINKS`) when none is
+    set. Its row is scoped to no team, so no Emails screen lists it, and its
+    body is dropped once it is sent. */
 export const send = internalMutation({
   args: { to: v.string(), kind: kindValue, url: v.string() },
   returns: v.null(),
@@ -32,9 +34,10 @@ export const send = internalMutation({
     const sender = (await findInstallation(ctx))?.systemSender
     if (!sender) {
       if (
-        await ctx.runQuery(components.betterAuth.policy.bootstrapRecipient, {
+        env.LOG_AUTH_LINKS === "true" ||
+        (await ctx.runQuery(components.betterAuth.policy.bootstrapRecipient, {
           email: email.to,
-        })
+        }))
       ) {
         logAuthEmail(email)
         return null

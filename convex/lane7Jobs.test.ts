@@ -49,6 +49,18 @@ test.each(["verify", "reset", "change-email", "invite"] as const)(
   }
 )
 
+test("LOG_AUTH_LINKS logs every account's link for development and e2e", async () => {
+  vi.stubEnv("LOG_AUTH_LINKS", "true")
+  const f = await fixture()
+  const log = vi.spyOn(console, "log").mockImplementation(() => {})
+  await f.t.mutation(internal.systemEmail.send, {
+    to: f.outsider.user.email,
+    kind: "invite",
+    url: "https://opensend.test/invitation?id=i",
+  })
+  expect(JSON.stringify(log.mock.calls)).toContain("invitation?id=i")
+})
+
 test("a configured sender queues account email without logging its link", async () => {
   const f = await fixture()
   workpoolTest.register(f.t, "sendPool")
