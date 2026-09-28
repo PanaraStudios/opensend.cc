@@ -55,6 +55,17 @@ type State = {
   ownerEmail: string
 }
 
+/** A ConvexError's text travels in `data`; its message is only "Server Error". */
+async function refused(request: Promise<unknown>, pattern: RegExp) {
+  const error = await request.then(
+    () => null,
+    (reason: unknown) => reason
+  )
+  expect(error).toBeInstanceOf(Error)
+  const { message, data } = error as Error & { data?: unknown }
+  expect(`${message} ${typeof data === "string" ? data : ""}`).toMatch(pattern)
+}
+
 /** Register inside auth.spec's serial describe, once its owner/team/domain exist. */
 export function broadcastReceivedTests(state: () => State) {
   test("persists a visual broadcast, reviews, tests, schedules, cancels and settles recipient failures", async () => {
@@ -311,9 +322,10 @@ export function broadcastReceivedTests(state: () => State) {
               ?.row.name
         )
         .toBe("Lane 6B member draft")
-      await expect(
-        backend.mutation(api.broadcasts.update, { id, name: "x".repeat(1001) })
-      ).rejects.toThrow(/name/i)
+      await refused(
+        backend.mutation(api.broadcasts.update, { id, name: "x".repeat(1001) }),
+        /name/i
+      )
       setMembership(other._id, "member")
       expect(
         (
@@ -323,15 +335,18 @@ export function broadcastReceivedTests(state: () => State) {
           })
         ).page
       ).toEqual([])
-      await expect(
-        backend.query(api.broadcasts.get, { organizationId, id })
-      ).rejects.toThrow(/permission/i)
-      await expect(
-        backend.mutation(api.broadcasts.update, { id, name: "Intrusion" })
-      ).rejects.toThrow(/permission/i)
-      await expect(
-        backend.mutation(api.broadcasts.remove, { id })
-      ).rejects.toThrow(/permission/i)
+      await refused(
+        backend.query(api.broadcasts.get, { organizationId, id }),
+        /permission/i
+      )
+      await refused(
+        backend.mutation(api.broadcasts.update, { id, name: "Intrusion" }),
+        /permission/i
+      )
+      await refused(
+        backend.mutation(api.broadcasts.remove, { id }),
+        /permission/i
+      )
     } finally {
       setMembership(organizationId, "owner")
       testBackend(
@@ -440,13 +455,14 @@ export function broadcastReceivedTests(state: () => State) {
       changes: {},
       receiptRuleSet: "opensend-e2e-inbound",
     })
-    await expect(
+    await refused(
       backend.action(api.webhooks.create, {
         organizationId,
         endpoint: "https://host.docker.internal/received",
         events: ["email.received"],
-      })
-    ).rejects.toThrow(/public hostname/i)
+      }),
+      /public hostname/i
+    )
     // No local-host exception exists for webhooks. A reserved public-shaped
     // name allows checking the durable delivery without sending to a real host.
     const webhookId = await backend.action(api.webhooks.create, {
