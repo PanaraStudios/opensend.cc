@@ -242,5 +242,9 @@ export declare const components: {
   webhookCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"webhookCounts">;
   deliveryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"deliveryCounts">;
   domainCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"domainCounts">;
+  emailCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"emailCounts">;
+  suppressionCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"suppressionCounts">;
+  emailRecipientCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"emailRecipientCounts">;
+  emailEventCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"emailEventCounts">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };

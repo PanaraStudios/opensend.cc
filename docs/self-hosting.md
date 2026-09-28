@@ -96,12 +96,42 @@ Use issuer `http://host.docker.internal:8080/realms/opensend`, client `opensend-
 
 ## Logs and storage
 
+### Account email sender
+
+After verifying a sending domain and completing AWS setup, the installation
+operator can configure verification, password reset, change-email and invitation
+emails using the deployment admin key. This internal command has no dashboard UI:
+
+```sh
+pnpm backend run installationAdmin:setSystemSender '{"from":"Opensend <no-reply@example.com>"}'
+```
+
+The command requires a verified, sending-enabled domain and a current IAM policy
+with a ready SES tenant and region. Account mail uses that domain's team tenant
+and configuration set through the same send queue. It lives under a separate
+installation scope, is excluded from team lists, exports and webhooks, and loses
+its body (including the one-time link) when sending settles. The SES mapping tags
+still identify the actual sending team. Event processors must check `source`
+before publishing any account-email event to a team's webhooks.
+
+Clear the sender to restore the bootstrap console fallback:
+
+```sh
+pnpm backend run installationAdmin:setSystemSender '{}'
+```
+
+Without a configured sender, account emails, including action links, appear in
+Convex function logs so initial setup works. With a sender configured, failures
+log only the reason and never fall back to logging the secret link. The sender
+must remain verified and enabled; changing or removing its domain can stop
+account email. There is no super-admin settings screen for this yet.
+
 ```sh
 docker compose --env-file .env.docker logs -f app convex
 pnpm backend logs --history 100
 ```
 
-Convex owns persistent database and avatar storage in the `convex-data` volume. `docker compose down` preserves it. `docker compose down -v` deletes it and is not a routine shutdown command. Auth emails are Convex function logs, not Next.js logs. Function console output is redacted from ordinary clients by the backend container.
+Convex owns persistent database and file storage in the `convex-data` volume. `docker compose down` preserves it. `docker compose down -v` deletes it and is not a routine shutdown command. Bootstrap auth emails are Convex function logs, not Next.js logs. Function console output is redacted from ordinary clients by the backend container.
 
 ## Backups and recovery
 

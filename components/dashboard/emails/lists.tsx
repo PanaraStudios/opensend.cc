@@ -41,7 +41,6 @@ import {
   ResourceTable,
   Th,
   useDebouncedValue,
-  useLoadedPagination,
   usePagination,
 } from "@/components/dashboard/primitives"
 import {
@@ -100,7 +99,7 @@ export function EmailsView() {
   }
   const emails = useEmailList(filters)
   const rows = emails.rows
-  const { pageRows, pagination } = useLoadedPagination(rows, emails)
+  const { pageRows, pagination } = emails
 
   return (
     <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
@@ -313,7 +312,7 @@ export function SuppressionsView() {
   }
   const suppressions = useSuppressionList(filters)
   const rows = suppressions.rows
-  const { pageRows, pagination } = useLoadedPagination(rows, suppressions)
+  const { pageRows, pagination } = suppressions
 
   function reset() {
     setEmail("")
@@ -337,7 +336,6 @@ export function SuppressionsView() {
     reset()
     setOpen(false)
   }
-
 
   return (
     <EmailsChrome

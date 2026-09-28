@@ -39,7 +39,6 @@ import {
   Th,
   useAutosaveDraft,
   useDeleteRecord,
-  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -236,8 +235,7 @@ function ContactPage({
 
   const sends = useRecipientEmails(contact.email)
   const emails = sends.rows
-  const { pageRows: emailRows, pagination: emailPagination } =
-    useLoadedPagination(emails, sends)
+  const { pageRows: emailRows, pagination: emailPagination } = sends
   const received = state.received
     .filter((email) => email.from.toLowerCase().includes(contact.email))
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -435,7 +433,7 @@ function ContactPage({
                   ))}
                 </HistorySection>
               ) : null}
-              {emailPagination.pageCount > 1 || emailPagination.hasMore ? (
+              {emails.length > 0 || emailPagination.hasMore ? (
                 <ListPagination {...emailPagination} noun="email" />
               ) : null}
               {broadcasts.length > 0 ? (

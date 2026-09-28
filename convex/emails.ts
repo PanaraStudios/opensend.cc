@@ -1,3 +1,6 @@
+import { countValue, counters, deleteRow } from "./counts"
+import { matchesSearch, narrow, teamPage } from "./lists"
+import { EMAIL_STATUSES } from "./tables/emails"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -55,6 +58,7 @@ export const MAX_RECIPIENTS = 50
 export const MAX_SCHEDULE = 30 * 86_400_000
 /** Body and headers are stored in one document, under Convex's 1 MiB. */
 const CONTENT_LIMIT = 900_000
+const RETENTION = 30 * 86_400_000
 const MAX_TAGS = 48
 const MAX_HEADERS = 50
 /** Waits before each retry of a send SES throttled or that failed in
@@ -238,9 +242,6 @@ export async function createEmail(
       )
     if (OUR_TAGS.includes(tag.name))
       throw invalid(`The \`${tag.name}\` tag name is reserved.`)
-    // Webhook payloads key tags by name, and Convex keys cannot start so.
-    if (tag.name.startsWith("_"))
-      throw invalid("Tag names cannot start with an underscore.")
   }
   if (input.headers.length > MAX_HEADERS)
     throw invalid(`An email can have at most ${MAX_HEADERS} headers.`)
@@ -302,6 +303,7 @@ export async function createEmail(
       ...(meta.apiKeyId ? { apiKeyId: meta.apiKeyId } : {}),
       generation: 0,
       attempts: 0,
+      expiresAt: (scheduledAt ?? now) + RETENTION,
       search: searchWords(...to.map((m) => m.value), sender.value, subject),
     },
     {
@@ -386,7 +388,11 @@ async function settle(
   status: "sent" | "failed" | "suppressed",
   patch: Partial<Doc<"emails">> = {}
 ) {
-  await recordEmailStatus(ctx, email._id, status, { ...patch, claimed: false })
+  await recordEmailStatus(ctx, email._id, status, {
+    ...patch,
+    claimed: false,
+    expiresAt: Date.now() + RETENTION,
+  })
   if (email.organizationId === SYSTEM_SCOPE)
     await deleteEmailContent(ctx, email._id)
 }
@@ -497,22 +503,31 @@ export const claim = internalMutation({
       })
       return null
     }
-    /* SES's send rate counts recipients per second, per region. A message
-       with more recipients than a second allows takes the whole second. */
-    const region = await findRegion(ctx, binding.region)
-    const rate = Math.max(1, Math.floor(region?.quota.rate ?? 1))
-    const limit = await limiter.limit(ctx, "sesSend", {
-      key: binding.region,
-      count: Math.min(count, rate),
-      config: { kind: "token bucket", rate, period: SECOND, capacity: rate },
-    })
-    if (!limit.ok) {
-      await patchEmail(ctx, id, { generation: generation + 1 })
-      await enqueue(ctx, id, generation + 1, limit.retryAfter)
+    // Reserve the full recipient cost, even when it spans several seconds.
+    // A queued generation keeps its reservation and never charges twice.
+    let readyAt = email.rateReadyAt
+    if (readyAt === undefined) {
+      const region = await findRegion(ctx, binding.region)
+      const rate = Math.max(1, region?.quota.rate ?? 1)
+      const limit = await limiter.limit(ctx, "sesSend", {
+        key: binding.region,
+        count,
+        reserve: true,
+        config: { kind: "token bucket", rate, period: SECOND, capacity: rate },
+      })
+      readyAt = Date.now() + Math.ceil(limit.retryAfter ?? 0)
+    }
+    if (readyAt > Date.now()) {
+      await patchEmail(ctx, id, {
+        generation: generation + 1,
+        rateReadyAt: readyAt,
+      })
+      await enqueue(ctx, id, generation + 1, readyAt - Date.now())
       return null
     }
     await patchEmail(ctx, id, {
       claimed: true,
+      rateReadyAt: undefined,
       attempts: email.attempts + 1,
       ...(dropped.size ? { suppressed: [...dropped] } : {}),
     })
@@ -538,7 +553,7 @@ export const claim = internalMutation({
       tags: [
         ...(email.tags ?? []),
         { name: "opensend_email", value: tagSafe(id) },
-        { name: "opensend_team", value: tagSafe(email.organizationId) },
+        { name: "opensend_team", value: tagSafe(domain.organizationId) },
       ],
     }
   },
@@ -590,8 +605,8 @@ export const record = internalMutation({
   },
 })
 
-/** A run that threw or was canceled before recording counts as a failure
-    in transit, so the email is retried instead of stalling. */
+/** A crashed run may already have reached SES. Do not resend an ambiguous
+    delivery: SES SendEmail has no idempotency token. */
 export const deliverDone = internalMutation({
   args: vOnCompleteArgs(
     v.object({ id: v.id("emails"), generation: v.number() })
@@ -615,7 +630,7 @@ export const deliverDone = internalMutation({
           result.kind === "failed"
             ? "The send was interrupted"
             : "The send was canceled",
-        retryable: true,
+        retryable: false,
       },
     })
     return null
@@ -638,6 +653,7 @@ export async function cancelEmail(ctx: MutationCtx, email: Doc<"emails">) {
   await dropJob(ctx, email)
   await recordEmailStatus(ctx, email._id, "canceled", {
     generation: email.generation + 1,
+    expiresAt: Date.now() + RETENTION,
     scheduledJob: undefined,
   })
 }
@@ -656,6 +672,7 @@ export async function rescheduleEmail(
   await recordEmailStatus(ctx, email._id, "scheduled", {
     generation,
     scheduledAt: at,
+    expiresAt: at + RETENTION,
     scheduledJob: await ctx.scheduler.runAt(at, internal.emails.release, {
       id: email._id,
       generation,
@@ -685,6 +702,13 @@ export async function emailPage(
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
   const search = args.search?.trim().slice(0, 200)
+  if (
+    !search &&
+    args.status === undefined &&
+    args.from === undefined &&
+    args.to === undefined
+  )
+    return teamPage(ctx, "emails", org, args.paginationOpts, () => true)
   const rows = ctx.db.query("emails")
   const result = search
     ? await rows
@@ -711,13 +735,32 @@ export async function emailPage(
       )
         .order("desc")
         .paginate(args.paginationOpts)
-  return {
-    ...result,
-    page: result.page.filter(
-      (row) => row._creationTime >= from && row._creationTime <= to
-    ),
-  }
+  return narrow(
+    result,
+    (row) =>
+      row._creationTime >= from &&
+      row._creationTime <= to &&
+      matchesSearch(search)(row.from, ...row.to, row.subject)
+  )
 }
+
+export const count = query({
+  args: { organizationId: v.string(), ...emailFilters.fields },
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    return {
+      total: args.search?.trim()
+        ? null
+        : await counters.emails.total(
+            ctx,
+            args.organizationId,
+            [{ is: args.status, among: EMAIL_STATUSES }],
+            args
+          ),
+    }
+  },
+})
 
 export const list = query({
   args: {
@@ -760,8 +803,65 @@ export const byRecipient = query({
   },
 })
 
-/** A timeline is short: sent, delivered and a few opens or clicks. */
-const TIMELINE_LIMIT = 200
+export const byRecipientCount = query({
+  args: { organizationId: v.string(), address: v.string() },
+  returns: countValue,
+  handler: async (ctx, { organizationId, address }) => {
+    await requireTeam(ctx, organizationId)
+    return {
+      total: await counters.emailRecipients.total(
+        ctx,
+        JSON.stringify([organizationId, address.trim().toLowerCase()])
+      ),
+    }
+  },
+})
+
+async function readableEmail(ctx: QueryCtx, id: Id<"emails">) {
+  const email = await ctx.db.get("emails", id)
+  if (!email || email.source === "system")
+    throw new ConvexError("Email not found")
+  await requireTeam(ctx, email.organizationId)
+  return email
+}
+
+export const timeline = query({
+  args: {
+    id: v.id("emails"),
+    insights: v.optional(v.boolean()),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(schema.doc("emailEvents")),
+  handler: async (ctx, { id, insights, paginationOpts }) => {
+    await readableEmail(ctx, id)
+    const page = await ctx.db
+      .query("emailEvents")
+      .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
+      .paginate(paginationOpts)
+    return narrow(
+      page,
+      (event) =>
+        !insights || event.type === "opened" || event.type === "clicked"
+    )
+  },
+})
+
+export const timelineCount = query({
+  args: { id: v.id("emails"), insights: v.optional(v.boolean()) },
+  returns: countValue,
+  handler: async (ctx, { id, insights }) => {
+    await readableEmail(ctx, id)
+    const total = insights
+      ? (await counters.emailEvents.total(ctx, id, [
+          { is: "opened", among: EMAIL_STATUSES },
+        ]))! +
+        (await counters.emailEvents.total(ctx, id, [
+          { is: "clicked", among: EMAIL_STATUSES },
+        ]))!
+      : await counters.emailEvents.total(ctx, id)
+    return { total }
+  },
+})
 
 export const get = query({
   args: { id: v.string() },
@@ -771,7 +871,6 @@ export const get = query({
       email: schema.doc("emails"),
       html: v.string(),
       text: v.string(),
-      events: v.array(schema.doc("emailEvents")),
       /** The REST request that sent it. */
       log: v.union(
         v.null(),
@@ -788,25 +887,13 @@ export const get = query({
       .query("emailContents")
       .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
       .unique()
-    const events = await ctx.db
-      .query("emailEvents")
-      .withIndex("by_emailId_and_at", (q) => q.eq("emailId", email._id))
-      .take(TIMELINE_LIMIT)
-    // The send's request log; its other requests never name the email.
-    const logs = await ctx.db
-      .query("apiLogs")
-      .withIndex("by_organizationId_and_emailId", (q) =>
-        q.eq("organizationId", email.organizationId).eq("emailId", email._id)
-      )
-      .take(10)
-    const log = logs.find(
-      (row) => row.method === "POST" && row.path === "/emails"
-    )
+    const log = email.apiLogId
+      ? await ctx.db.get("apiLogs", email.apiLogId)
+      : null
     return {
       email,
       html: content?.html ?? "",
       text: content?.text ?? "",
-      events,
       log: log ? { _id: log._id, _creationTime: log._creationTime } : null,
     }
   },
@@ -828,6 +915,43 @@ export const cancel = mutation({
       if (message) throw new ConvexError(message)
       throw e
     }
+    return null
+  },
+})
+
+/** One expired email at a time, with bounded child cleanup. Pending sends
+    have their deadline extended so retention never removes active work. */
+export const prune = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const email = await ctx.db
+      .query("emails")
+      .withIndex("by_expiresAt", (q) =>
+        q.gt("expiresAt", 0).lte("expiresAt", Date.now())
+      )
+      .first()
+    if (!email) return null
+    if (email.status === "scheduled" || email.status === "queued") {
+      await patchEmail(ctx, email._id, { expiresAt: Date.now() + RETENTION })
+    } else {
+      const events = await ctx.db
+        .query("emailEvents")
+        .withIndex("by_emailId_and_at", (q) => q.eq("emailId", email._id))
+        .take(50)
+      for (const event of events) await deleteRow(ctx, "emailEvents", event._id)
+      if (events.length < 50) {
+        const recipients = await ctx.db
+          .query("emailRecipients")
+          .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+          .take(MAX_RECIPIENTS)
+        for (const recipient of recipients)
+          await deleteRow(ctx, "emailRecipients", recipient._id)
+        await deleteEmailContent(ctx, email._id)
+        await deleteRow(ctx, "emails", email._id)
+      }
+    }
+    await ctx.scheduler.runAfter(0, internal.emails.prune, {})
     return null
   },
 })

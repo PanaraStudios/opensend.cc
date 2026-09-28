@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import { api, components, internal } from "./_generated/api"
+import type { PaginationResult } from "convex/server"
 import type { Doc, Id } from "./_generated/dataModel"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { insertEmailEvent, patchEmail } from "./emailRows"
+import { patchRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
 
 beforeEach(() => {
@@ -131,8 +134,7 @@ const timeline = (f: Setup, id: Id<"emails">) =>
         .collect()
     ).map((event) => event.type)
   )
-const outbox = (f: Setup) =>
-  f.t.run((ctx) => ctx.db.query("events").collect())
+const outbox = (f: Setup) => f.t.run((ctx) => ctx.db.query("events").collect())
 const sends = (sent: Sent[]) =>
   sent.filter((call) => call.command === "SendEmailCommand")
 
@@ -213,9 +215,8 @@ describe("sending", () => {
     const id = await sendOne(f)
     const detail = await f.owner.client.query(api.emails.get, { id })
     expect(detail?.log).not.toBeNull()
-    const log = await f.t.run((ctx) =>
-      ctx.db.get("apiLogs", detail!.log!._id)
-    )
+    expect((await email(f, id)).apiLogId).toBe(detail!.log!._id)
+    const log = await f.t.run((ctx) => ctx.db.get("apiLogs", detail!.log!._id))
     expect(log).toMatchObject({ emailId: id, path: "/emails" })
     await deliver(f, id)
     const response = await request(f, `/emails/${id}`)
@@ -410,7 +411,7 @@ describe("sending", () => {
     })
   })
 
-  test("a run that crashes is retried, not lost", async () => {
+  test("a crashed run fails without risking a duplicate send", async () => {
     const f = await setup()
     const id = await sendOne(f)
     await f.t.mutation(internal.emails.deliverDone, {
@@ -419,8 +420,8 @@ describe("sending", () => {
       result: { kind: "failed", error: "boom" },
     })
     expect(await email(f, id)).toMatchObject({
-      status: "queued",
-      generation: 1,
+      status: "failed",
+      generation: 0,
       attempts: 1,
     })
   })
@@ -438,7 +439,14 @@ describe("attachments, batches and templates", () => {
       ],
     })
     await deliver(f, id)
-    const simple = (sends(sent)[0].input.Content as { Simple: any }).Simple
+    const simple = (
+      sends(sent)[0].input.Content as {
+        Simple: {
+          Attachments: { RawContent: Uint8Array }[]
+          Body: { Html: { Data: string } }
+        }
+      }
+    ).Simple
     expect(simple.Attachments).toHaveLength(2)
     expect(simple.Attachments[0]).toMatchObject({
       FileName: "invoice.pdf",
@@ -533,7 +541,14 @@ describe("attachments, batches and templates", () => {
       templateId: template,
     })
     await deliver(f, id)
-    const simple = (sends(sent)[0].input.Content as { Simple: any }).Simple
+    const simple = (
+      sends(sent)[0].input.Content as {
+        Simple: {
+          Attachments: { RawContent: Uint8Array }[]
+          Body: { Html: { Data: string } }
+        }
+      }
+    ).Simple
     expect(simple.Body.Html.Data).toBe("<p>Welcome, Ada (3)</p>")
   })
 })
@@ -739,16 +754,22 @@ describe("dashboard access", () => {
     expect(history.page.map((row) => row._id)).toEqual([first])
     const detail = await f.member.client.query(api.emails.get, { id: first })
     expect(detail).toMatchObject({ html: EMAIL.html, text: "Hi Ada" })
-    expect(detail!.events.map((event) => event.type)).toEqual(["queued"])
+    const trail = await f.member.client.query(api.emails.timeline, {
+      id: first,
+      paginationOpts: { numItems: 10, cursor: null },
+    })
+    expect(trail.page.map((event) => event.type)).toEqual(["queued"])
 
     const outsider = f.outsider.client
-    await expect(outsider.query(api.emails.list, {
-      ...team,
-      paginationOpts: { numItems: 10, cursor: null },
-    })).rejects.toThrow("permission")
     await expect(
-      outsider.query(api.emails.get, { id: first })
+      outsider.query(api.emails.list, {
+        ...team,
+        paginationOpts: { numItems: 10, cursor: null },
+      })
     ).rejects.toThrow("permission")
+    await expect(outsider.query(api.emails.get, { id: first })).rejects.toThrow(
+      "permission"
+    )
     await expect(
       outsider.mutation(api.emails.cancel, { id: first })
     ).rejects.toThrow("permission")
@@ -803,9 +824,7 @@ describe("dashboard access", () => {
         page
       )
     )
-    expect(suppressions.rows.map((row) => row[1])).toEqual([
-      "gone@example.com",
-    ])
+    expect(suppressions.rows.map((row) => row[1])).toEqual(["gone@example.com"])
   })
 })
 
@@ -852,6 +871,9 @@ describe("installation sender", () => {
       FromEmailAddress: '"Opensend" <no-reply@mail.example.test>',
       TenantName: f.tenantName,
       ConfigurationSetName: "opensend-team-cfg",
+      EmailTags: expect.arrayContaining([
+        { Name: "opensend_team", Value: f.owner.team },
+      ]),
     })
     // The one-time link leaves the database once the email is sent, and
     // nothing about it reached the log or a team's webhooks.
@@ -894,5 +916,299 @@ describe("installation sender", () => {
   })
 })
 
-// Keeps the Doc import meaningful for readers of the fixtures above.
-export type EmailRow = Doc<"emails">
+describe("sending regression coverage", () => {
+  test("reserves every recipient across seconds without double charging", async () => {
+    const f = await setup()
+    await f.t.run((ctx) =>
+      ctx.db.patch("sesRegions", f.region._id, {
+        quota: { ...f.region.quota, production: true, rate: 1 },
+      })
+    )
+    const calls = ses()
+    const many = await sendOne(f, { to: ["a@x.dev", "b@x.dev", "c@x.dev"] })
+    const one = await sendOne(f)
+    await deliver(f, many)
+    await deliver(f, one)
+    expect(sends(calls)).toHaveLength(0)
+    expect((await email(f, many)).rateReadyAt).toBe(Date.now() + 2000)
+    expect((await email(f, one)).rateReadyAt).toBe(Date.now() + 3000)
+    // An early duplicate run waits on the same reservation.
+    await deliver(f, many)
+    expect((await email(f, many)).rateReadyAt).toBe(Date.now() + 2000)
+    vi.setSystemTime(Date.now() + 2000)
+    await deliver(f, many)
+    expect(sends(calls)).toHaveLength(1)
+    vi.setSystemTime(Date.now() + 1000)
+    await deliver(f, one)
+    expect(sends(calls)).toHaveLength(2)
+  })
+
+  test("an unknown transport outcome and a permanent error without metadata do not retry", async () => {
+    const f = await setup()
+    for (const name of ["TimeoutError", "MessageRejected"]) {
+      ses(() => {
+        throw Object.assign(new Error("detail"), { name })
+      })
+      const id = await sendOne(f)
+      await deliver(f, id)
+      expect(await email(f, id)).toMatchObject({
+        status: "failed",
+        generation: 0,
+        attempts: 1,
+      })
+    }
+  })
+
+  test("a canceled generation cannot claim, including after a stale worker starts", async () => {
+    const f = await setup()
+    const calls = ses()
+    const id = await sendOne(f, { scheduled_at: "in 1 hour" })
+    await f.member.client.mutation(api.emails.cancel, { id })
+    await f.t.action(internal.emailSend.deliver, { id, generation: 0 })
+    expect(sends(calls)).toHaveLength(0)
+  })
+
+  test("does not inject unsubscribe headers; accepts Resend tag characters", async () => {
+    const f = await setup()
+    const calls = ses()
+    const id = await sendOne(f, {
+      tags: [{ name: "_category", value: "welcome-v1" }],
+    })
+    await deliver(f, id)
+    expect(
+      (sends(calls)[0].input.Content as { Simple: object }).Simple
+    ).not.toHaveProperty("Headers")
+    expect((await outbox(f))[0].data.tags).toEqual({ _category: "welcome-v1" })
+  })
+
+  test("malformed attachment padding and MIME metadata fail with 422", async () => {
+    const f = await setup()
+    for (const attachment of [
+      { filename: "a.txt", content: "a=" },
+      {
+        filename: "a.txt",
+        content: "YQ==",
+        content_type: "text/plain\r\nX: bad",
+      },
+      { filename: "a.txt", content: "YQ==", content_id: "bad id" },
+      { filename: "a.txt", content: "a".repeat(40 * 1024 * 1024 + 4) },
+    ]) {
+      const response = await post(f, { ...EMAIL, attachments: [attachment] })
+      expect(response.status).toBe(422)
+      expect((await response.json()).name).toBe("invalid_attachment")
+    }
+  })
+
+  test("counts follow sends, status changes, suppressions and recipient history", async () => {
+    const f = await setup()
+    const team = { organizationId: f.owner.team }
+    const id = await sendOne(f)
+    const count = (status?: "queued" | "sent") =>
+      f.member.client.query(api.emails.count, { ...team, status })
+    expect(await count()).toEqual({ total: 1 })
+    expect(await count("queued")).toEqual({ total: 1 })
+    ses()
+    await deliver(f, id)
+    expect(await count("queued")).toEqual({ total: 0 })
+    expect(await count("sent")).toEqual({ total: 1 })
+    expect(
+      await f.member.client.query(api.emails.byRecipientCount, {
+        ...team,
+        address: "ADA@example.com",
+      })
+    ).toEqual({ total: 1 })
+    const sid = await f.member.client.mutation(api.suppressions.add, {
+      ...team,
+      email: "a@x.dev",
+      reason: "manual",
+    })
+    expect(await f.member.client.query(api.suppressions.count, team)).toEqual({
+      total: 1,
+    })
+    await f.t.mutation(internal.suppressions.record, {
+      ...team,
+      email: "a@x.dev",
+      reason: "bounced",
+    })
+    expect(
+      await f.member.client.query(api.suppressions.count, {
+        ...team,
+        reason: "manual",
+      })
+    ).toEqual({ total: 0 })
+    await f.member.client.mutation(api.suppressions.remove, { id: sid })
+    expect(await f.member.client.query(api.suppressions.count, team)).toEqual({
+      total: 0,
+    })
+    await expect(
+      f.outsider.client.query(api.emails.count, team)
+    ).rejects.toThrow("permission")
+    await expect(
+      f.outsider.client.query(api.suppressions.count, team)
+    ).rejects.toThrow("permission")
+  })
+
+  test("search requires the whole query and exports use the same filter", async () => {
+    const f = await setup()
+    await sendOne(f, { subject: "Invoice ready" })
+    await sendOne(f, { subject: "Invoice overdue" })
+    const filters = {
+      organizationId: f.owner.team,
+      search: "invoice ready",
+      paginationOpts: { cursor: null, numItems: 40 },
+    }
+    expect(
+      (await f.member.client.query(api.emails.list, filters)).page.map(
+        (row) => row.subject
+      )
+    ).toEqual(["Invoice ready"])
+    const exported = await f.t.run((ctx) =>
+      EXPORT_SOURCES.emails.page(
+        ctx,
+        f.owner.team,
+        { search: filters.search },
+        filters.paginationOpts
+      )
+    )
+    expect(exported.rows).toHaveLength(1)
+  })
+
+  test("timeline and insights paginate past 200 events with scoped counts", async () => {
+    const f = await setup()
+    const id = await sendOne(f)
+    await f.t.run(async (ctx) => {
+      for (let i = 0; i < 205; i++)
+        await insertEmailEvent(
+          ctx,
+          id,
+          i % 2 ? "clicked" : "opened",
+          Date.now() + i
+        )
+    })
+    expect(
+      await f.member.client.query(api.emails.timelineCount, { id })
+    ).toEqual({ total: 206 })
+    expect(
+      await f.member.client.query(api.emails.timelineCount, {
+        id,
+        insights: true,
+      })
+    ).toEqual({ total: 205 })
+    let cursor: string | null = null
+    const seen = new Set<string>()
+    for (;;) {
+      const page: PaginationResult<Doc<"emailEvents">> =
+        await f.member.client.query(api.emails.timeline, {
+          id,
+          paginationOpts: { cursor, numItems: 40 },
+        })
+      for (const row of page.page) seen.add(row._id)
+      if (page.isDone) break
+      cursor = page.continueCursor
+    }
+    expect(seen.size).toBe(206)
+    await expect(
+      f.outsider.client.query(api.emails.timelineCount, { id })
+    ).rejects.toThrow("permission")
+  })
+
+  test("retention removes content, attachments and children without touching queued work", async () => {
+    const f = await setup()
+    const id = await sendOne(f, {
+      attachments: [{ filename: "a.txt", content: "YQ==" }],
+    })
+    const queued = await sendOne(f)
+    ses()
+    await deliver(f, id)
+    await f.t.run(async (ctx) => {
+      await patchEmail(ctx, id, { expiresAt: Date.now() - 1 })
+      await patchEmail(ctx, queued, { expiresAt: Date.now() - 1 })
+      for (let i = 0; i < 55; i++) await insertEmailEvent(ctx, id, "opened")
+    })
+    for (let i = 0; i < 4; i++) await f.t.mutation(internal.emails.prune, {})
+    expect(await f.t.run((ctx) => ctx.db.get("emails", id))).toBeNull()
+    expect((await email(f, queued)).status).toBe("queued")
+    expect(
+      await f.member.client.query(api.emails.count, {
+        organizationId: f.owner.team,
+      })
+    ).toEqual({ total: 1 })
+    const children = await f.t.run(async (ctx) => ({
+      events: await ctx.db
+        .query("emailEvents")
+        .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
+        .collect(),
+      recipients: await ctx.db
+        .query("emailRecipients")
+        .withIndex("by_emailId", (q) => q.eq("emailId", id))
+        .collect(),
+      content: await ctx.db
+        .query("emailContents")
+        .withIndex("by_emailId", (q) => q.eq("emailId", id))
+        .collect(),
+      files: await ctx.db.system.query("_storage").collect(),
+    }))
+    expect(children).toEqual({
+      events: [],
+      recipients: [],
+      content: [],
+      files: [],
+    })
+  })
+
+  test("system emails have no team counters or readable timeline", async () => {
+    const f = await setup()
+    await f.t.mutation(internal.installationAdmin.setSystemSender, {
+      from: "no-reply@mail.example.test",
+    })
+    await f.t.mutation(internal.systemEmail.send, {
+      to: "a@x.dev",
+      kind: "verify",
+      url: "https://opensend.test/verify?token=secret",
+    })
+    const [row] = await f.t.run((ctx) => ctx.db.query("emails").collect())
+    expect(
+      await f.owner.client.query(api.emails.count, {
+        organizationId: f.owner.team,
+      })
+    ).toEqual({ total: 0 })
+    await expect(
+      f.owner.client.query(api.emails.timeline, {
+        id: row._id,
+        paginationOpts: { numItems: 40, cursor: null },
+      })
+    ).rejects.toThrow("Email not found")
+    // A subsequently disabled sending capability refuses the worker too.
+    await f.t.run((ctx) =>
+      patchRow(ctx, "domains", f.domain, { sending: false })
+    )
+    const calls = ses()
+    await deliver(f, row._id)
+    expect(sends(calls)).toHaveLength(0)
+    expect((await email(f, row._id)).status).toBe("failed")
+  })
+})
+
+test("REST list cursors visit batch emails without loss", async () => {
+  const f = await setup()
+  const response = await post(f, [EMAIL, EMAIL, EMAIL], {}, "/emails/batch")
+  const batch = await response.json()
+  expect(response.status).toBe(200)
+  const first = await (await request(f, "/emails?limit=2")).json()
+  expect(first.data).toHaveLength(2)
+  expect(first.has_more).toBe(true)
+  const next = await (
+    await request(f, `/emails?limit=2&after=${first.data[1].id}`)
+  ).json()
+  expect(next.data).toHaveLength(1)
+  const ids = [...first.data, ...next.data].map((row: { id: string }) => row.id)
+  expect(new Set(ids)).toEqual(
+    new Set(batch.data.map((row: { id: string }) => row.id))
+  )
+  const back = await (
+    await request(f, `/emails?limit=2&before=${next.data[0].id}`)
+  ).json()
+  expect(back.data.map((row: { id: string }) => row.id)).toEqual(
+    first.data.map((row: { id: string }) => row.id)
+  )
+})

@@ -178,7 +178,16 @@ function decodeBase64(content: string) {
       "invalid_attachment",
       "Attachment `content` must be base64."
     )
-  const binary = atob(clean)
+  let binary: string
+  try {
+    binary = atob(clean)
+  } catch {
+    throw apiError(
+      422,
+      "invalid_attachment",
+      "Attachment `content` must be base64."
+    )
+  }
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
@@ -219,11 +228,27 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
         "Attachment must have a `filename`."
       )
     const contentId = stringField(fields, "content_id")
+    const contentType =
+      stringField(fields, "content_type") ?? attachmentContentType(filename)
+    if (!/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(contentType))
+      throw apiError(
+        422,
+        "invalid_attachment",
+        "Attachment `content_type` must be a MIME type."
+      )
+    if (
+      contentId !== undefined &&
+      (!contentId || contentId.length > 78 || /[\s<>]/.test(contentId))
+    )
+      throw apiError(
+        422,
+        "invalid_attachment",
+        "Attachment `content_id` is not valid."
+      )
     return {
       bytes: decodeBase64(content),
       filename,
-      contentType:
-        stringField(fields, "content_type") ?? attachmentContentType(filename),
+      contentType,
       ...(contentId ? { contentId } : {}),
     }
   })

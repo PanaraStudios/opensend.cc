@@ -1,9 +1,10 @@
+import { insertRow, patchRow } from "./counts"
 import type { WithoutSystemFields } from "convex/server"
 import type { MutationCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
-/* Every write to `emails` and its child tables goes through here, so a row
-   counter or other mirror can attach in one place. */
+/* Sending and SES event projection share these writes. Counted rows go
+   through the aggregate helpers in the same transaction. */
 
 type EmailStatus = Doc<"emails">["status"]
 
@@ -14,10 +15,10 @@ export async function insertEmail(
   content: Omit<WithoutSystemFields<Doc<"emailContents">>, "emailId">,
   recipients: readonly string[]
 ) {
-  const emailId = await ctx.db.insert("emails", row)
+  const emailId = await insertRow(ctx, "emails", row)
   await ctx.db.insert("emailContents", { ...content, emailId })
   for (const address of new Set(recipients))
-    await ctx.db.insert("emailRecipients", {
+    await insertRow(ctx, "emailRecipients", {
       organizationId: row.organizationId,
       emailId,
       address,
@@ -30,14 +31,14 @@ export const patchEmail = (
   ctx: MutationCtx,
   id: Id<"emails">,
   patch: Partial<WithoutSystemFields<Doc<"emails">>>
-) => ctx.db.patch("emails", id, patch)
+) => patchRow(ctx, "emails", id, patch)
 
 export const insertEmailEvent = (
   ctx: MutationCtx,
   emailId: Id<"emails">,
   type: EmailStatus,
   at = Date.now()
-) => ctx.db.insert("emailEvents", { emailId, type, at })
+) => insertRow(ctx, "emailEvents", { emailId, type, at })
 
 /** Moves an email to `status` and adds it to the timeline. SES event
     processing records delivered, bounced… through this. */

@@ -5,6 +5,7 @@ import { internalMutation } from "../_generated/server"
 import { apiKeyPermissionValue, httpMethodValue } from "../tables/api"
 import { callerValue, type Caller } from "./caller"
 import { touchKey } from "../apiKeys"
+import { patchEmail } from "../emailRows"
 import { writeLog } from "../logs"
 
 /** Resend's documented default: 10 requests per second per team, shared by
@@ -210,11 +211,22 @@ export const finish = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { caller, log, idempotencyId }) => {
-    await writeLog(ctx, caller.organizationId, {
+    const logId = await writeLog(ctx, caller.organizationId, {
       ...log,
       source: "api",
       apiKeyId: caller.apiKeyId,
     })
+    if (
+      log.emailId &&
+      log.method === "POST" &&
+      log.path === "/emails" &&
+      log.status < 300
+    ) {
+      const id = ctx.db.normalizeId("emails", log.emailId)
+      const email = id ? await ctx.db.get("emails", id) : null
+      if (email?.organizationId === caller.organizationId && !email.apiLogId)
+        await patchEmail(ctx, email._id, { apiLogId: logId })
+    }
     if (caller.apiKeyId && (await ctx.db.get("apiKeys", caller.apiKeyId)))
       await touchKey(ctx, caller.apiKeyId)
     if (idempotencyId && (await ctx.db.get("apiIdempotency", idempotencyId))) {

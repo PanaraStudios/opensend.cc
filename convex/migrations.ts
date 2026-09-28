@@ -15,6 +15,10 @@ const backfill = <T extends CountedTable>(table: T) =>
     migrateOne: (ctx, doc) => countRow(ctx, table, doc),
   })
 
+export const countEmails = backfill("emails")
+export const countSuppressions = backfill("suppressions")
+export const countEmailRecipients = backfill("emailRecipients")
+export const countEmailEvents = backfill("emailEvents")
 export const countContacts = backfill("contacts")
 export const countTopics = backfill("topics")
 export const countContactProperties = backfill("contactProperties")
@@ -41,6 +45,11 @@ export const dropWebhookStats = migrations.define({
 })
 
 export const backfillCounts = migrations.runner([
+  internal.migrations.countEmails,
+  internal.migrations.countSuppressions,
+  internal.migrations.countEmailRecipients,
+  internal.migrations.countEmailEvents,
+
   internal.migrations.countContacts,
   internal.migrations.countSegments,
   internal.migrations.countSegmentMembers,

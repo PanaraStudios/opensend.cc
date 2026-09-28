@@ -62,6 +62,7 @@ export const emailTables = {
     templateId: v.optional(v.string()),
     source: emailSourceValue,
     apiKeyId: v.optional(v.id("apiKeys")),
+    apiLogId: v.optional(v.id("apiLogs")),
     /** Set by broadcasts, which are still demo data. */
     broadcastId: v.optional(v.string()),
     /* Each queued run of the sender carries the generation it was queued
@@ -70,6 +71,8 @@ export const emailTables = {
     generation: v.number(),
     claimed: v.optional(v.boolean()),
     attempts: v.number(),
+    rateReadyAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
     /** Recipients dropped before sending because they are suppressed. */
     suppressed: v.optional(v.array(v.string())),
     /** The SES MessageId: how SES events find the email. */
@@ -82,6 +85,7 @@ export const emailTables = {
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_status", ["organizationId", "status"])
     .index("by_messageId", ["messageId"])
+    .index("by_expiresAt", ["expiresAt"])
     .searchIndex("search_search", {
       searchField: "search",
       filterFields: ["organizationId", "status"],

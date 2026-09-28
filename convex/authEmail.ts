@@ -50,13 +50,12 @@ export function logAuthEmail({ to, kind, url }: AuthEmail) {
 }
 
 /** Sends through the installation's system sender when one is set
-    (`installationAdmin:setSystemSender`); a context that cannot write logs
-    the email instead. */
+    (`installationAdmin:setSystemSender`); account email requires a writable context. */
 export async function sendAuthEmail(
   ctx: GenericCtx<DataModel>,
   email: AuthEmail
 ) {
   if ("runMutation" in ctx)
     await ctx.runMutation(internal.systemEmail.send, email)
-  else logAuthEmail(email)
+  else throw new Error("Account email requires a writable context")
 }

@@ -1,3 +1,7 @@
+import { countValue, counters } from "./counts"
+import { matchesSearch, narrow, teamPage } from "./lists"
+import { SUPPRESSION_REASONS } from "./tables/emails"
+import { insertRow, patchRow, deleteRow } from "./counts"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -49,10 +53,10 @@ export async function upsertSuppression(
   const existing = await findSuppression(ctx, organizationId, email)
   if (existing) {
     if (existing.reason !== reason)
-      await ctx.db.patch("suppressions", existing._id, { reason })
+      await patchRow(ctx, "suppressions", existing._id, { reason })
     return existing._id
   }
-  return ctx.db.insert("suppressions", {
+  return insertRow(ctx, "suppressions", {
     organizationId,
     email,
     reason,
@@ -61,7 +65,7 @@ export async function upsertSuppression(
 }
 
 export const deleteSuppression = (ctx: MutationCtx, id: Id<"suppressions">) =>
-  ctx.db.delete("suppressions", id)
+  deleteRow(ctx, "suppressions", id)
 
 /* ---------------------------------------------------------------- reads */
 
@@ -97,6 +101,13 @@ export async function suppressionPage(
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
   const search = args.search?.trim().slice(0, 200)
+  if (
+    !search &&
+    args.reason === undefined &&
+    args.from === undefined &&
+    args.to === undefined
+  )
+    return teamPage(ctx, "suppressions", org, args.paginationOpts, () => true)
   const rows = ctx.db.query("suppressions")
   const result = search
     ? await rows
@@ -123,13 +134,32 @@ export async function suppressionPage(
       )
         .order("desc")
         .paginate(args.paginationOpts)
-  return {
-    ...result,
-    page: result.page.filter(
-      (row) => row._creationTime >= from && row._creationTime <= to
-    ),
-  }
+  return narrow(
+    result,
+    (row) =>
+      row._creationTime >= from &&
+      row._creationTime <= to &&
+      matchesSearch(search)(row.email)
+  )
 }
+
+export const count = query({
+  args: { organizationId: v.string(), ...suppressionFilters.fields },
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    return {
+      total: args.search?.trim()
+        ? null
+        : await counters.suppressions.total(
+            ctx,
+            args.organizationId,
+            [{ is: args.reason, among: SUPPRESSION_REASONS }],
+            args
+          ),
+    }
+  },
+})
 
 export const list = query({
   args: {

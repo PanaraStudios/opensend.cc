@@ -23,7 +23,13 @@ export const narrow = <T>(
   keep: (row: T) => boolean
 ): PaginationResult<T> => ({ ...result, page: result.page.filter(keep) })
 
-type TeamTable = "segments" | "topics" | "contactProperties" | "webhooks"
+type TeamTable =
+  | "segments"
+  | "topics"
+  | "contactProperties"
+  | "webhooks"
+  | "emails"
+  | "suppressions"
 
 /** A team's rows, newest first, narrowed by `keep`. */
 export async function teamPage<T extends TeamTable>(

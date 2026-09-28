@@ -9,8 +9,8 @@ import { internal } from "./_generated/api"
 import { awsError, connectionClients, missing } from "./ses/aws"
 import { sesMailbox } from "../lib/dashboard/email-send"
 
-/** Throttling, a server-side failure or no answer at all: worth another
-    try later. SES's 4xx rejections (MessageRejected, an unverified
+/** Only throttling and explicit server failures can retry. An absent
+    response is ambiguous: SES may already have accepted the email. SES's 4xx rejections (MessageRejected, an unverified
     sender, a paused tenant…) are final. */
 function retryable(error: unknown) {
   if (error instanceof ConvexError) return false
@@ -18,7 +18,7 @@ function retryable(error: unknown) {
   const status = (error as { $metadata?: { httpStatusCode?: number } })
     ?.$metadata?.httpStatusCode
   if (/Throttl|TooManyRequests/.test(name)) return true
-  return status === undefined || status >= 500
+  return status !== undefined && status >= 500
 }
 
 /** One run of the sender: claim, send through the team's SES tenant,

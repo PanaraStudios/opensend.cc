@@ -1,6 +1,7 @@
 "use client"
 import * as React from "react"
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
+import { usePagedList, useTeamList } from "@/components/dashboard/primitives"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -12,10 +13,10 @@ import type {
 } from "@/lib/dashboard/types"
 
 /** A sent email in the dashboard's shape. `to` joins every recipient; the
-    body and timeline come only with the detail query. */
+    body comes with the detail query; timelines page independently. */
 export function asEmail(
   row: Doc<"emails">,
-  detail?: { html: string; text: string; events: Doc<"emailEvents">[] }
+  detail?: { html: string; text: string; events?: Doc<"emailEvents">[] }
 ): SentEmail {
   return {
     id: row._id,
@@ -45,22 +46,14 @@ export function asSuppression(row: Doc<"suppressions">): Suppression {
   }
 }
 
+const asEmailRow = (row: Doc<"emails">) => asEmail(row)
+
 type Range = { from?: number; to?: number }
 
 export function useEmailList(
   filters: Range & { status?: EmailStatus; search?: string }
 ) {
-  const { activeTeamId } = useWorkspace()
-  const query = usePaginatedQuery(
-    api.emails.list,
-    activeTeamId ? { organizationId: activeTeamId, ...filters } : "skip",
-    { initialNumItems: 40 }
-  )
-  const rows = React.useMemo(
-    () => query.results.map((row) => asEmail(row)),
-    [query.results]
-  )
-  return { ...query, rows }
+  return useTeamList(api.emails.list, api.emails.count, filters, asEmailRow)
 }
 
 /** How many emails the command menu lists. */
@@ -88,20 +81,15 @@ export function useEmailSearch(search: string, enabled = true) {
 
 /** Every email sent to one address, newest first. */
 export function useRecipientEmails(address: string) {
-  const { activeTeamId } = useWorkspace()
-  const query = usePaginatedQuery(
+  return useTeamList(
     api.emails.byRecipient,
-    activeTeamId ? { organizationId: activeTeamId, address } : "skip",
-    { initialNumItems: 40 }
+    api.emails.byRecipientCount,
+    { address },
+    asEmailRow
   )
-  const rows = React.useMemo(
-    () => query.results.map((row) => asEmail(row)),
-    [query.results]
-  )
-  return { ...query, rows }
 }
 
-/** One email with its body, timeline and the request that sent it;
+/** One email with its body and the request that sent it;
     undefined while loading, null when there is no such email. */
 export function useEmail(id: string | null | undefined) {
   const found = useQuery(api.emails.get, id ? { id } : "skip")
@@ -119,17 +107,12 @@ export function useEmail(id: string | null | undefined) {
 export function useSuppressionList(
   filters: Range & { reason?: SuppressionReason; search?: string }
 ) {
-  const { activeTeamId } = useWorkspace()
-  const query = usePaginatedQuery(
+  return useTeamList(
     api.suppressions.list,
-    activeTeamId ? { organizationId: activeTeamId, ...filters } : "skip",
-    { initialNumItems: 40 }
+    api.suppressions.count,
+    filters,
+    asSuppression
   )
-  const rows = React.useMemo(
-    () => query.results.map(asSuppression),
-    [query.results]
-  )
-  return { ...query, rows }
 }
 
 export function useEmailCommands() {
@@ -145,4 +128,19 @@ export function useEmailCommands() {
     },
     removeSuppression: (id: string) => remove({ id: id as Id<"suppressions"> }),
   }
+}
+
+const asEmailEvent = (row: Doc<"emailEvents">) => ({
+  id: row._id,
+  type: row.type,
+  at: row.at,
+})
+
+export function useEmailEvents(id: string | undefined, insights = false) {
+  return usePagedList(
+    api.emails.timeline,
+    api.emails.timelineCount,
+    id ? { id: id as Id<"emails">, insights } : "skip",
+    asEmailEvent
+  )
 }
