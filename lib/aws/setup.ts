@@ -93,6 +93,17 @@ export function buildAwsPolicy(
     "ses:CreateTenantResourceAssociation",
     "ses:DeleteTenantResourceAssociation",
   ]
+  /* A domain's ARN is just its name, so identity statements cannot be
+     narrowed by prefix. Tags do it instead: Opensend changes, sends from and
+     deletes only domains tagged with this installation, and may tag only a
+     domain no other installation has claimed (a new one, or one the admin
+     approved for adoption). */
+  const ownTag = "aws:ResourceTag/opensend:installation"
+  const domainTagKeys = {
+    "ForAllValues:StringEquals": {
+      "aws:TagKeys": ["opensend:installation", "opensend:domain"],
+    },
+  }
   return {
     Version: "2012-10-17",
     Statement: [
@@ -108,9 +119,6 @@ export function buildAwsPolicy(
         "UseSesAccount",
         [
           "ses:GetAccount",
-          "ses:GetSuppressedDestination",
-          "ses:ListSuppressedDestinations",
-          "ses:PutSuppressedDestination",
           "ses:DeleteSuppressedDestination",
           "ses:DescribeActiveReceiptRuleSet",
           "ses:DescribeReceiptRuleSet",
@@ -123,22 +131,43 @@ export function buildAwsPolicy(
         ],
         "*"
       ),
+      // Reading is how Opensend tells its own domains from anyone else's.
       scoped(
-        "ManageSendingDomains",
-        [
-          "ses:CreateEmailIdentity",
-          "ses:GetEmailIdentity",
+        "ReadDomains",
+        ["ses:GetEmailIdentity", "ses:ListResourceTenants"],
+        [arn("ses", "identity/*")]
+      ),
+      {
+        Sid: "ClaimDomains",
+        Effect: "Allow",
+        Action: ["ses:CreateEmailIdentity", "ses:TagResource"],
+        Resource: [arn("ses", "identity/*")],
+        Condition: {
+          StringEquals: {
+            ...inRegions.StringEquals,
+            "aws:RequestTag/opensend:installation": installationId,
+          },
+          StringEqualsIfExists: { [ownTag]: installationId },
+          ...domainTagKeys,
+        },
+      },
+      {
+        Sid: "ManageOwnDomains",
+        Effect: "Allow",
+        Action: [
           "ses:DeleteEmailIdentity",
           "ses:PutEmailIdentityMailFromAttributes",
           "ses:PutEmailIdentityConfigurationSetAttributes",
           "ses:PutEmailIdentityFeedbackAttributes",
-          "ses:TagResource",
           "ses:UntagResource",
           ...tenantAssociations,
-          "ses:ListResourceTenants",
         ],
-        [arn("ses", "identity/*")]
-      ),
+        Resource: [arn("ses", "identity/*")],
+        Condition: {
+          StringEquals: { ...inRegions.StringEquals, [ownTag]: installationId },
+          ...domainTagKeys,
+        },
+      },
       scoped(
         "ManageOpensendConfigurationSets",
         [
@@ -166,7 +195,9 @@ export function buildAwsPolicy(
           arn("ses", "identity/*"),
           arn("ses", `configuration-set/${prefix}-*`),
         ],
-        // A send without one of this installation's tenants is refused.
+        /* A send without one of this installation's tenants is refused, and
+           SES sends through a tenant only from domains associated with it,
+           which takes the ownership tag (ManageOwnDomains). */
         Condition: {
           ...inRegions,
           StringLike: { "ses:TenantName": `${prefix}-t-*` },
@@ -239,8 +270,6 @@ export function buildAwsPolicy(
           "s3:PutBucketPolicy",
           "s3:GetLifecycleConfiguration",
           "s3:PutLifecycleConfiguration",
-          "s3:GetEncryptionConfiguration",
-          "s3:PutEncryptionConfiguration",
           "s3:GetBucketTagging",
           "s3:PutBucketTagging",
           "s3:GetObject",

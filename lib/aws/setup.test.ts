@@ -76,6 +76,59 @@ describe("AWS policy", () => {
       StringLike: { "ses:TenantName": `${prefix}-t-*` },
     })
   })
+  it("changes and deletes only domains tagged with this installation", () => {
+    const own = statement("ManageOwnDomains")
+    assert.ok(own.Action.includes("ses:DeleteEmailIdentity"))
+    assert.ok(own.Action.includes("ses:PutEmailIdentityFeedbackAttributes"))
+    assert.equal(
+      own.Condition?.StringEquals["aws:ResourceTag/opensend:installation"],
+      installationId
+    )
+    // Reads stay open: they are how Opensend tells its domains apart.
+    assert.deepEqual(statement("ReadDomains").Action, [
+      "ses:GetEmailIdentity",
+      "ses:ListResourceTenants",
+    ])
+    assert.equal(
+      statement("ReadDomains").Condition?.StringEquals[
+        "aws:ResourceTag/opensend:installation"
+      ],
+      undefined
+    )
+  })
+  it("claims only unclaimed domains, and only with its own tags", () => {
+    const claim = statement("ClaimDomains")
+    assert.deepEqual(claim.Action, [
+      "ses:CreateEmailIdentity",
+      "ses:TagResource",
+    ])
+    assert.deepEqual(claim.Condition, {
+      StringEquals: {
+        ...inRegions,
+        "aws:RequestTag/opensend:installation": installationId,
+      },
+      StringEqualsIfExists: {
+        "aws:ResourceTag/opensend:installation": installationId,
+      },
+      "ForAllValues:StringEquals": {
+        "aws:TagKeys": ["opensend:installation", "opensend:domain"],
+      },
+    })
+  })
+  it("grants no action the code never calls", () => {
+    const all = buildAwsPolicy(installationId, ["us-east-1"]).Statement.flatMap(
+      (item) => item.Action
+    )
+    for (const unused of [
+      "ses:PutSuppressedDestination",
+      "ses:ListSuppressedDestinations",
+      "ses:GetSuppressedDestination",
+      "s3:PutEncryptionConfiguration",
+      "ses:PutEmailIdentityDkimAttributes",
+    ])
+      assert.ok(!all.includes(unused), unused)
+    assert.ok(!all.some((action) => action.includes("*")))
+  })
   it("creates tenants only with this installation's ownership tags", () => {
     assert.deepEqual(statement("CreateTaggedTeamTenants").Condition, {
       StringEquals: {
@@ -157,7 +210,7 @@ describe("AWS setup template", () => {
       installationId,
       regions: ["us-east-1"],
     })
-    assert.equal(POLICY_REVISION, 2)
+    assert.equal(POLICY_REVISION, 3)
     assert.equal(template.Outputs.PolicyRevision.Value, String(POLICY_REVISION))
     assert.ok(template.Description.includes(`revision ${POLICY_REVISION}`))
     assert.ok(template.Description.length <= 1024)

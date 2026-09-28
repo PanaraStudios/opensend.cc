@@ -418,9 +418,7 @@ When upgrading from SES tracking, refresh each domain to replace its event
 destination and Tracking DNS target, then verify the new CNAME. Do this before
 sending tracked mail, to prevent old SES configuration from wrapping links a
 second time. SES `OPEN`/`CLICK` notifications are no longer projected.
-`ses:PutConfigurationSetTrackingOptions` remains in IAM policy revision 2 for
-compatibility but is unused and can be removed in a future policy revision.
-No IAM revision changed in this update.
+IAM policy revision 3 no longer grants `ses:PutConfigurationSetTrackingOptions`.
 
 ## Receiving: transient S3 drop box
 

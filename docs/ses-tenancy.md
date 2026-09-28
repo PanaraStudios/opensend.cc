@@ -165,7 +165,7 @@ volume and excludes some feedback, while
 exposes status and reputation impact, not per-tenant rate counters. See
 [AWS reputation calculations](https://docs.aws.amazon.com/ses/latest/dg/reputationdashboardmessages.html).
 
-Pause/Resume uses the existing revision 2 tenant-scoped IAM grant and
+Pause/Resume uses the tenant-scoped IAM grant and
 `UpdateReputationEntityCustomerManagedStatus` (`DISABLED` / `ENABLED`), followed
 by `GetReputationEntity` to save the aggregate sending status. Resuming cannot
 clear an AWS restriction. Every control/read requires installation-admin access;
