@@ -340,6 +340,30 @@ describe("SES projection", () => {
     expect((await f.summary())[0]).toMatchObject({ sent: 1, delivered: 1 })
   })
 
+  test("a bounce stamped before our Sent time still follows Sent in the timeline", async () => {
+    const f = await setup()
+    const id = await f.makeEmail()
+    const sentAt = (await f.row(id)).sentAt!
+    await f.ingest(id, "Bounce", {
+      timestamp: new Date(sentAt - 50).toISOString(),
+      bounceType: "Permanent",
+      bounceSubType: "General",
+      bouncedRecipients: [{ emailAddress: "a@example.com" }],
+    })
+    const timeline = await f.t.run((ctx) =>
+      ctx.db
+        .query("emailEvents")
+        .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
+        .collect()
+    )
+    const types = timeline.map((event) => event.type)
+    expect(types.indexOf("sent")).toBeLessThan(types.indexOf("bounced"))
+    // SES's own time is kept with the event.
+    expect(
+      timeline.find((event) => event.type === "bounced")?.details
+    ).toMatchObject({ timestamp: new Date(sentAt - 50).toISOString() })
+  })
+
   test("MessageId fallback works and wrong team tags or recipients cannot poison a team", async () => {
     const f = await setup()
     const id = await f.makeEmail()

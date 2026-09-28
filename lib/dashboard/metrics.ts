@@ -52,18 +52,27 @@ export function senderDomain(from: string): string {
   return from.match(/@([^>\s]+)/)?.[1]?.toLowerCase() ?? "unknown"
 }
 
-/** `null` is every event. Delivered, opened, and clicked stay cumulative;
-    other statuses count exact matches. */
+/** How many emails reached `status` (`null` = sent). Lifecycle events count
+    every email that got there, even after it moved on (a delivered email was
+    also sent); end states count emails still in them. */
 export function eventCount(
   counts: EmailCounts,
   status: EmailStatus | null
 ): number {
   if (status === null) return counts.sent
-  if (status === "delivered" || status === "opened" || status === "clicked") {
-    return counts[status]
-  }
+  if (isEmailCounter(status)) return counts[status]
   return counts.status[status] ?? 0
 }
+const EMAIL_COUNTERS: readonly string[] = [
+  "sent",
+  "delivered",
+  "opened",
+  "clicked",
+  "bounced",
+  "complained",
+] satisfies EmailCounter[]
+const isEmailCounter = (status: string): status is EmailCounter =>
+  EMAIL_COUNTERS.includes(status)
 
 function tally(counts: EmailCounts, email: SentEmail) {
   if (email.status !== "scheduled") counts.sent += 1

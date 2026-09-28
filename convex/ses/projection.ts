@@ -133,6 +133,11 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
     return
   await acceptEmail(ctx, email, messageId, time(mail.timestamp, at))
   const current = (await ctx.db.get("emails", email._id))!
+  /* Sent is stamped on our clock when SES's response arrives, a little after
+     SES accepted the message; a fast bounce can carry an earlier SES time.
+     The timeline stays in lifecycle order; metrics and `details` keep SES's
+     own time. */
+  const eventAt = Math.max(at, current.sentAt ?? at)
   const extra: Record<string, unknown> = {}
   if (status === "bounced") {
     const bounceType = string(detail.bounceType)
@@ -182,7 +187,7 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
   // The sender owns the single sent entry and webhook, including the race
   // where SNS is the first evidence that SES accepted the message.
   if (status !== "sent") {
-    await insertEmailEvent(ctx, current._id, status, at, {
+    await insertEmailEvent(ctx, current._id, status, eventAt, {
       sesEventId: event._id,
       recipients,
       details: { ...detail, recipients: recipientData },

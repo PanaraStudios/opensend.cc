@@ -4,7 +4,12 @@ import { describe, it } from "node:test"
 import { SEED_STATE } from "./data"
 import { rangeFromPreset } from "./email-range"
 import { percent, rate } from "./format"
-import { eventCount, senderDomain, summarizeEmails } from "./metrics"
+import {
+  emptyEmailCounts,
+  eventCount,
+  senderDomain,
+  summarizeEmails,
+} from "./metrics"
 
 const RANGE = rangeFromPreset("15d")
 
@@ -52,6 +57,24 @@ describe("summarizeEmails", () => {
       all.days.reduce((total, day) => total + day.events, 0),
       eventCount(all.totals, "bounced")
     )
+  })
+
+  it("charts lifecycle events even after emails moved past them", () => {
+    // 3 sent: one delivered, one bounced, one delivered then complained.
+    const counts = {
+      ...emptyEmailCounts(),
+      sent: 3,
+      delivered: 2,
+      bounced: 1,
+      complained: 1,
+      status: { delivered: 1, bounced: 1, complained: 1, suppressed: 1 },
+    }
+    assert.equal(eventCount(counts, null), 3)
+    assert.equal(eventCount(counts, "sent"), 3)
+    assert.equal(eventCount(counts, "delivered"), 2)
+    assert.equal(eventCount(counts, "bounced"), 1)
+    assert.equal(eventCount(counts, "suppressed"), 1)
+    assert.equal(eventCount(counts, "failed"), 0)
   })
 
   it("counts a click as an open and a delivery", () => {
