@@ -27,42 +27,36 @@ import {
   DetailHeader,
   DocsButton,
   EmptyState,
+  ListPagination,
   MetaStrip,
   MoreMenu,
   NotFoundState,
   RelativeTime,
   ResourceTable,
   useDeleteRecord,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
 import { permissionLabel, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import { asLog } from "@/lib/logs/use-logs"
 
-/** Requests shown inline. The full history stays on the logs page. */
-const RECENT_REQUESTS = 10
-
 export function ApiKeyDetail() {
   const { id } = useParams<{ id: string }>()
   const { state } = useDashboard()
-  const { organizationId, updateApiKey, deleteApiKey } = useApiKeyCommands()
+  const { updateApiKey, deleteApiKey } = useApiKeyCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/api-keys")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
   const found = useQuery(api.apiKeys.get, { id })
-  const recent = useQuery(
+  const recent = useTeamList(
     api.logs.list,
-    organizationId && found
-      ? {
-          organizationId,
-          apiKeyId: id as Id<"apiKeys">,
-          paginationOpts: { numItems: RECENT_REQUESTS, cursor: null },
-        }
-      : "skip"
+    api.logs.count,
+    found ? { apiKeyId: found.key._id } : "skip",
+    asLog
   )
 
   if (found === undefined) return <Skeleton className="h-64 w-full" />
@@ -79,7 +73,6 @@ export function ApiKeyDetail() {
   }
 
   const apiKey = asApiKey(found.key)
-  const logs = recent?.page.map(asLog) ?? []
 
   return (
     <div className="flex flex-col gap-6">
@@ -131,20 +124,28 @@ export function ApiKeyDetail() {
       />
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Recent requests</h2>
-        {recent === undefined ? (
+        {recent.status === "LoadingFirstPage" ? (
           <Skeleton className="h-40 w-full" />
-        ) : logs.length === 0 ? (
+        ) : recent.rows.length === 0 ? (
           <EmptyState
             icon={LogIcon}
             title="No requests yet"
             description="Requests signed with this key show up here."
           />
         ) : (
-          <ResourceTable headers={LOG_TABLE_HEADERS}>
-            {logs.map((log) => (
-              <LogRow key={log.id} log={log} />
-            ))}
-          </ResourceTable>
+          <>
+            <ResourceTable headers={LOG_TABLE_HEADERS}>
+              {recent.pageRows.map((log) => (
+                <LogRow key={log.id} log={log} />
+              ))}
+            </ResourceTable>
+            <ListPagination
+              {...recent.pagination}
+              noun="request"
+              previousLabel="Newer"
+              nextLabel="Older"
+            />
+          </>
         )}
       </section>
       <ApiKeyFormDialog

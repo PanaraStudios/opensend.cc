@@ -114,6 +114,15 @@ For data exports, `pnpm backend export --path backup.zip --include-file-storage`
 
 Back up first. Pin the new image digests and compatible Better Auth/Convex versions on a branch. Regenerate the component schema and Convex types, run the checks below, and rehearse on a restored isolated volume. Apply schema additions compatibly before tightening validators. Re-run setup only after the rehearsal passes. Keep the previous images and backup for rollback; older binaries may not understand an upgraded database.
 
+After deploying a version that adds row counts (the "Page 1 – 3 of 120 contacts" in list footers), count the rows written before it:
+
+```sh
+pnpm backend run migrations:backfillCounts
+pnpm backend run --component migrations lib:getStatus --watch
+```
+
+The backfill runs in the background in batches and is safe to run again: it resumes where it stopped and never counts a row twice. Until it finishes, list totals and segment sizes can read low.
+
 ## Verification
 
 ```sh

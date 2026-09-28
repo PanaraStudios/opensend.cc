@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import { endOfDay, startOfDay } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
@@ -16,7 +16,7 @@ import {
   PageHeader,
   ResourceTable,
   useDebouncedValue,
-  useLoadedPagination,
+  useTeamList,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
@@ -75,19 +75,11 @@ export function LogsView() {
     to: range?.from ? endOfDay(range.to ?? range.from).getTime() : undefined,
   }
   const {
-    results,
+    rows,
     status: loading,
-    loadMore,
-  } = usePaginatedQuery(
-    api.logs.list,
-    activeTeamId ? { organizationId: activeTeamId, ...filters } : "skip",
-    { initialNumItems: 40 }
-  )
-  const rows = React.useMemo(() => results.map(asLog), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, {
-    status: loading,
-    loadMore,
-  })
+    pageRows,
+    pagination,
+  } = useTeamList(api.logs.list, api.logs.count, filters, asLog)
   const hasLogs = useQuery(
     api.logs.hasAny,
     activeTeamId ? { organizationId: activeTeamId } : "skip"

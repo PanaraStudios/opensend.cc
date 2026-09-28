@@ -12,10 +12,12 @@ import {
   DocsButton,
   EmptyState,
   IconCell,
+  ListPagination,
   ListToolbar,
   RelativeTime,
   ResourceTable,
   Th,
+  usePagination,
 } from "@/components/dashboard/primitives"
 import {
   AUTOMATION_STATUS_ITEMS,
@@ -61,6 +63,8 @@ export function AutomationsView() {
     </Button>
   )
 
+  const { pageRows, pagination } = usePagination(rows)
+
   return (
     <>
       <AutomationsChrome
@@ -99,44 +103,47 @@ export function AutomationsView() {
           description="Nothing matches this search and status."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Status</Th>
-              <Th>Runs</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <IconCell icon={AutomationIcon}>
-                  <Link
-                    href={`/automations/${item.id}`}
-                    className="truncate font-medium hover:underline"
-                  >
-                    {item.name}
-                  </Link>
-                </IconCell>
-              </TableCell>
-              <TableCell>
-                <AutomationStatusBadge status={item.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {runCounts.get(item.id) ?? 0}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.createdAt} />
-              </TableCell>
-              <TableCell>
-                <AutomationMenu automation={item} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Status</Th>
+                <Th>Runs</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <IconCell icon={AutomationIcon}>
+                    <Link
+                      href={`/automations/${item.id}`}
+                      className="truncate font-medium hover:underline"
+                    >
+                      {item.name}
+                    </Link>
+                  </IconCell>
+                </TableCell>
+                <TableCell>
+                  <AutomationStatusBadge status={item.status} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {runCounts.get(item.id) ?? 0}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <RelativeTime at={item.createdAt} />
+                </TableCell>
+                <TableCell>
+                  <AutomationMenu automation={item} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="automation" />
+        </>
       )}
       <AutomationsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>

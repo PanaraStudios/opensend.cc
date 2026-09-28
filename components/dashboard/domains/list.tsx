@@ -36,7 +36,7 @@ import {
   IconCell,
   ListToolbar,
   ListPagination,
-  useLoadedPagination,
+  usePagedList,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -60,7 +60,7 @@ import {
   validateDnsLabel,
   validateDomainName,
 } from "@/lib/dashboard/domains"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import type { FunctionArgs } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import {
@@ -240,8 +240,9 @@ export function DomainsView() {
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const search = useDebouncedValue(query)
 
-  const domains = usePaginatedQuery(
+  const domains = usePagedList(
     api.domains.list,
+    api.domains.count,
     organizationId
       ? {
           organizationId,
@@ -252,14 +253,10 @@ export function DomainsView() {
           ...(region !== "all" ? { region: region as Region } : {}),
         }
       : "skip",
-    { initialNumItems: 40 }
+    asDomain
   )
-  const rows = React.useMemo(
-    () => domains.results.map(asDomain),
-    [domains.results]
-  )
+  const { rows, pageRows, pagination } = domains
   const check = useDomainCheck(rows)
-  const { pageRows, pagination } = useLoadedPagination(rows, domains)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {

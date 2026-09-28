@@ -6,6 +6,7 @@ import type { WorkId } from "@convex-dev/workpool"
 import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
+import { counters } from "./counts"
 import { isPublicAddress, isPublicHostname } from "../lib/net/public-host"
 import { webhookSignature } from "../lib/webhooks/signing"
 
@@ -91,8 +92,9 @@ describe("webhook access", () => {
   test("a plain member manages webhooks; another team is refused", async () => {
     const f = await setup()
     const id = await createWebhook(f.member, undefined, undefined, f.owner.team)
-    const list = await f.member.client.query(api.webhooks.list, {
+    const { page: list } = await f.member.client.query(api.webhooks.list, {
       organizationId: f.owner.team,
+      paginationOpts: { numItems: 40, cursor: null },
     })
     expect(list).toHaveLength(1)
     expect(list[0]).not.toHaveProperty("secret")
@@ -108,7 +110,10 @@ describe("webhook access", () => {
 
     const outsider = f.outsider.client
     await expect(
-      outsider.query(api.webhooks.list, { organizationId: f.owner.team })
+      outsider.query(api.webhooks.list, {
+        organizationId: f.owner.team,
+        paginationOpts: { numItems: 40, cursor: null },
+      })
     ).rejects.toThrow("permission")
     await expect(outsider.query(api.webhooks.get, { id })).rejects.toThrow(
       "permission"
@@ -541,13 +546,15 @@ describe("retention", () => {
     expect(left).toHaveLength(1)
     expect(left[0].messageId).toBe(`msg_${fresh}`)
     expect(await f.t.run((ctx) => ctx.db.get("events", old))).toBeNull()
-    const stats = await f.t.run((ctx) =>
-      ctx.db
-        .query("webhookStats")
-        .withIndex("by_webhookId", (q) => q.eq("webhookId", id))
-        .unique()
-    )
-    expect(stats).toMatchObject({ deliveries: 1, failed: 1 })
+    // The page's totals drop with the deleted deliveries.
+    const counted = (failed?: boolean) =>
+      f.t.run((ctx) =>
+        counters.webhookDeliveries.total(ctx, id, [
+          { is: failed, among: [false, true] },
+        ])
+      )
+    expect(await counted()).toBe(1)
+    expect(await counted(true)).toBe(1)
   })
 })
 

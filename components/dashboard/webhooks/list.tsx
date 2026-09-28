@@ -13,12 +13,15 @@ import {
   DocsButton,
   EmptyState,
   IconCell,
+  ListPagination,
   ListToolbar,
   MonoLink,
   PageHeader,
   RelativeTime,
   ResourceTable,
   Th,
+  useDebouncedValue,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
   WEBHOOK_STATUS_ITEMS,
@@ -29,31 +32,29 @@ import {
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { webhookEventsLabel } from "@/lib/dashboard/webhooks"
 import { asWebhook, useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 
 export function WebhooksView() {
   const router = useRouter()
   const { organizationId, createWebhook } = useWebhookCommands()
-  const result = useQuery(
-    api.webhooks.list,
-    organizationId ? { organizationId } : "skip"
-  )
-  const webhooks = React.useMemo(
-    () => result?.map((row) => asWebhook(row)) ?? [],
-    [result]
-  )
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
-
-  const needle = searchNeedle(query)
-  const rows = webhooks.filter(
-    (item) =>
-      matchesNeedle(needle, item.endpoint, ...item.events) &&
-      (status === "all" || item.enabled === (status === "enabled"))
+  const webhooks = useTeamList(
+    api.webhooks.list,
+    api.webhooks.count,
+    {
+      search: useDebouncedValue(query),
+      ...(status !== "all" ? { enabled: status === "enabled" } : {}),
+    },
+    asWebhook
+  )
+  const { rows, pageRows, pagination } = webhooks
+  const hasAny = useQuery(
+    api.webhooks.hasAny,
+    organizationId ? { organizationId } : "skip"
   )
 
   const addButton = (
@@ -82,9 +83,9 @@ export function WebhooksView() {
           },
         ]}
       />
-      {result === undefined ? (
+      {webhooks.status === "LoadingFirstPage" || hasAny === undefined ? (
         <Skeleton className="h-40 w-full" />
-      ) : webhooks.length === 0 ? (
+      ) : !hasAny ? (
         <EmptyState
           icon={WebhookIcon}
           title="No webhooks yet"
@@ -99,41 +100,44 @@ export function WebhooksView() {
           description="Nothing matches this search and status."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Endpoint</Th>
-              <Th>Status</Th>
-              <Th>Listening for</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <IconCell icon={WebhookIcon}>
-                  <MonoLink href={`/webhooks/${item.id}`}>
-                    {item.endpoint}
-                  </MonoLink>
-                </IconCell>
-              </TableCell>
-              <TableCell>
-                <WebhookStatusBadge enabled={item.enabled} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {webhookEventsLabel(item.events)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.createdAt} />
-              </TableCell>
-              <TableCell>
-                <WebhookMenu webhook={item} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Endpoint</Th>
+                <Th>Status</Th>
+                <Th>Listening for</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <IconCell icon={WebhookIcon}>
+                    <MonoLink href={`/webhooks/${item.id}`}>
+                      {item.endpoint}
+                    </MonoLink>
+                  </IconCell>
+                </TableCell>
+                <TableCell>
+                  <WebhookStatusBadge enabled={item.enabled} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {webhookEventsLabel(item.events)}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <RelativeTime at={item.createdAt} />
+                </TableCell>
+                <TableCell>
+                  <WebhookMenu webhook={item} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="webhook" />
+        </>
       )}
       <WebhookFormDialog
         open={adding}

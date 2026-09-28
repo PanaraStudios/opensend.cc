@@ -5,6 +5,15 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
 import {
+  usePaginatedQuery,
+  useQuery,
+  type PaginatedQueryArgs,
+  type PaginatedQueryItem,
+  type PaginatedQueryReference,
+} from "convex/react"
+import type { FunctionReference } from "convex/server"
+import { useWorkspace } from "@/components/auth/workspace"
+import {
   ArrowLeftIcon,
   BookOpenIcon,
   CheckIcon,
@@ -150,7 +159,6 @@ import {
   formatDateTime,
   formatRelative,
   httpStatusTone,
-  pluralize,
   sentenceCase,
   statusLabel,
   TEMPLATE_STATUS_TONE,
@@ -159,6 +167,13 @@ import {
 } from "@/lib/dashboard/format"
 import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
+import {
+  PAGE_SIZES,
+  canGoNext,
+  lastLoadedPage,
+  pageLabel,
+  type Pager,
+} from "@/lib/dashboard/pagination"
 import type {
   AutomationRunStatus,
   AutomationStatus,
@@ -639,100 +654,171 @@ export function useDebouncedValue<T>(value: T, delay = 250) {
 
 /* ------------------------------------------------------------- pagination */
 
-export const PAGE_SIZES = [40, 80, 120] as const
+export { PAGE_SIZES }
 
-/** Client-side paging over an already filtered list. The page clamps, so a
-    filter that shrinks the list never strands the view past the last page. */
-export function usePagination<T>(rows: readonly T[]) {
+type PaginationState = Pager & {
+  /** A page is being fetched; the step buttons wait for it. */
+  loading: boolean
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+}
+
+/** Paging over `rows`, loaded whole or (with `source`) a server page at a
+    time: stepping past the loaded rows loads more, and a filtered page that
+    came back short keeps loading until it fills or the list runs out. The
+    page clamps to what loaded, so a filter that shrinks the list never
+    strands the view. Spread `pagination` into `ListPagination`. */
+function usePager<T>(
+  rows: readonly T[],
+  source: {
+    hasMore: boolean
+    loading: boolean
+    total: number | null
+    /** Set while more can load. */
+    loadMore?: (numItems: number) => void
+  }
+): { pageRows: T[]; pagination: PaginationState } {
   const [pageSize, setPageSize] = React.useState<number>(PAGE_SIZES[0])
   const [requested, setPage] = React.useState(0)
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
-  const page = Math.min(requested, pageCount - 1)
+  const loaded = rows.length
+  const page = Math.min(requested, lastLoadedPage({ loaded, pageSize }))
+  const { loadMore } = source
+  const fill = (page: number, size: number) => {
+    if (loadMore && (page + 1) * size > loaded)
+      loadMore((page + 1) * size - loaded)
+  }
+  React.useEffect(() => {
+    if (loadMore && (page + 1) * pageSize > loaded)
+      loadMore((page + 1) * pageSize - loaded)
+  }, [loadMore, loaded, page, pageSize])
   return {
     pageRows: rows.slice(page * pageSize, (page + 1) * pageSize),
     pagination: {
       page,
-      pageCount,
       pageSize,
-      total: rows.length,
-      onPageChange: setPage,
-      onPageSizeChange(next: number) {
-        setPageSize(next)
+      loaded,
+      total: source.total,
+      hasMore: source.hasMore,
+      loading: source.loading,
+      onPageChange(next: number) {
+        fill(next, pageSize)
+        setPage(next)
+      },
+      onPageSizeChange(size: number) {
+        fill(0, size)
+        setPageSize(size)
         setPage(0)
       },
     },
   }
 }
 
-/** `usePagination` over rows a paginated query has loaded so far: paging
-    past them loads more, and a filtered page that came back short keeps
-    loading. Spread `pagination` into `ListPagination`. */
+/** Paging over a list already loaded whole. */
+export const usePagination = <T,>(rows: readonly T[]) =>
+  usePager(rows, { hasMore: false, loading: false, total: rows.length })
+
+/** Paging over the rows a `usePaginatedQuery` has loaded so far. `total`
+    is the list's count query for the same filters, when it has one. */
 export function useLoadedPagination<T>(
   rows: readonly T[],
   query: {
     status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted"
     loadMore: (numItems: number) => void
-  }
+  },
+  total?: { total: number | null } | null
 ) {
-  const { pageRows, pagination } = usePagination(rows)
-  const { page, pageSize } = pagination
-  const canLoad = query.status === "CanLoadMore"
-  const { loadMore } = query
-  React.useEffect(() => {
-    if (canLoad && rows.length < (page + 1) * pageSize)
-      loadMore((page + 1) * pageSize - rows.length)
-  }, [canLoad, rows.length, page, pageSize, loadMore])
-  return {
-    pageRows,
-    pagination: {
-      ...pagination,
-      hasMore: query.status !== "Exhausted",
-      loading: query.status === "LoadingMore",
-      onPageChange(page: number) {
-        if (canLoad && (page + 1) * pagination.pageSize > rows.length)
-          query.loadMore(pagination.pageSize)
-        pagination.onPageChange(page)
-      },
-      onPageSizeChange(size: number) {
-        pagination.onPageSizeChange(size)
-        if (canLoad && size > rows.length) query.loadMore(size - rows.length)
-      },
-    },
-  }
+  return usePager(rows, {
+    hasMore: query.status !== "Exhausted",
+    loading: query.status === "LoadingMore",
+    total: total?.total ?? null,
+    loadMore: query.status === "CanLoadMore" ? query.loadMore : undefined,
+  })
+}
+
+/** A server list a page at a time, with its count query for the same
+    filters (`args` without `paginationOpts`), mapped by `map` (keep it
+    stable: a module-level function). `lead` rows, kept stable too, go
+    before the server's (built-in entries, say) and count with them. Every
+    Convex-backed list uses this, then spreads `pagination` into
+    `ListPagination`. */
+export function usePagedList<Query extends PaginatedQueryReference, Row>(
+  list: Query,
+  count: CountQuery<Query>,
+  args: PaginatedQueryArgs<Query> | "skip",
+  map: (item: PaginatedQueryItem<Query>) => Row,
+  lead: readonly Row[] = NO_ROWS
+) {
+  const query = usePaginatedQuery(list, args, {
+    initialNumItems: PAGE_SIZES[0],
+  })
+  const counted = useQuery(
+    count as FunctionReference<"query">,
+    args === "skip" ? "skip" : args
+  ) as { total: number | null } | undefined
+  const rows = React.useMemo(
+    () => [...lead, ...query.results.map((item) => map(item))],
+    [lead, query.results, map]
+  )
+  const total =
+    counted?.total == null ? null : { total: counted.total + lead.length }
+  return { ...query, rows, ...useLoadedPagination(rows, query, total) }
+}
+const NO_ROWS: readonly never[] = []
+/** A list's count query: its filters, without the page. */
+type CountQuery<Query extends PaginatedQueryReference> = FunctionReference<
+  "query",
+  "public",
+  PaginatedQueryArgs<Query>,
+  { total: number | null }
+>
+
+/** `usePagedList` for the active team: `filters` are the list's arguments
+    besides the team and the page. */
+export function useTeamList<Query extends PaginatedQueryReference, Row>(
+  list: Query,
+  count: CountQuery<Query>,
+  filters: Omit<PaginatedQueryArgs<Query>, "organizationId"> | "skip",
+  map: (item: PaginatedQueryItem<Query>) => Row,
+  lead?: readonly Row[]
+) {
+  const { activeTeamId } = useWorkspace()
+  return usePagedList(
+    list,
+    count,
+    activeTeamId && filters !== "skip"
+      ? ({
+          ...filters,
+          organizationId: activeTeamId,
+        } as unknown as PaginatedQueryArgs<Query>)
+      : "skip",
+    map,
+    lead
+  )
 }
 
 /** Footer for a paged list: position, page size, and the two step buttons. */
 export function ListPagination({
-  page,
-  pageCount,
-  pageSize,
-  total,
   noun,
   plural,
   onPageChange,
   onPageSizeChange,
   previousLabel = "Previous",
   nextLabel = "Next",
-  hasMore = false,
-  loading = false,
-}: Omit<ReturnType<typeof usePagination>["pagination"], "onPageChange"> & {
-  onPageChange: (page: number) => void
+  loading,
+  ...pager
+}: PaginationState & {
   noun: string
   /** For a noun that does not just take an "s". */
   plural?: string
   previousLabel?: string
   nextLabel?: string
-  hasMore?: boolean
-  loading?: boolean
 }) {
+  const { page, pageSize } = pager
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
-        <span>
-          Page {page + 1} of {pageCount}
-          {hasMore ? "+" : ""} · {pluralize(total, noun, plural)}
-          {hasMore ? "+" : ""}
-        </span>
+        <span>{pageLabel(pager, noun, plural)}</span>
+        <span aria-hidden>–</span>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -773,7 +859,7 @@ export function ListPagination({
         <Button
           variant="outline"
           size="sm"
-          disabled={loading || (page >= pageCount - 1 && !hasMore)}
+          disabled={loading || !canGoNext(pager)}
           onClick={() => onPageChange(page + 1)}
         >
           {nextLabel}

@@ -31,10 +31,10 @@ import {
   ResourceTable,
   Th,
   useDebouncedValue,
-  useLoadedPagination,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
@@ -63,19 +63,11 @@ export function ApiKeysView() {
         : (permission as ApiKeyPermission),
   }
   const {
-    results,
+    rows,
     status: loading,
-    loadMore,
-  } = usePaginatedQuery(
-    api.apiKeys.list,
-    organizationId ? { organizationId, ...filters } : "skip",
-    { initialNumItems: 40 }
-  )
-  const rows = React.useMemo(() => results.map(asApiKey), [results])
-  const { pageRows, pagination } = useLoadedPagination(rows, {
-    status: loading,
-    loadMore,
-  })
+    pageRows,
+    pagination,
+  } = useTeamList(api.apiKeys.list, api.apiKeys.count, filters, asApiKey)
   const hasKeys = useQuery(
     api.apiKeys.hasAny,
     organizationId ? { organizationId } : "skip"

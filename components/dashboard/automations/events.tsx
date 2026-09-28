@@ -32,6 +32,7 @@ import {
   DocsButton,
   EmptyState,
   IconCell,
+  ListPagination,
   ListToolbar,
   MonoValue,
   MoreMenu,
@@ -39,6 +40,7 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
+  usePagination,
 } from "@/components/dashboard/primitives"
 import {
   AutomationsChrome,
@@ -85,6 +87,8 @@ export function AutomationEventsView() {
     </Button>
   )
 
+  const { pageRows, pagination } = usePagination(rows)
+
   return (
     <>
       <AutomationsChrome
@@ -115,45 +119,48 @@ export function AutomationEventsView() {
           description="Nothing matches this search."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <IconCell icon={EventIcon}>
-                  <MonoValue copyValue={item.name}>{item.name}</MonoValue>
-                </IconCell>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.createdAt} />
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setEditing(item)}>
-                      <PencilIcon />
-                      Edit event
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setDeleting(item)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <IconCell icon={EventIcon}>
+                    <MonoValue copyValue={item.name}>{item.name}</MonoValue>
+                  </IconCell>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <RelativeTime at={item.createdAt} />
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => setEditing(item)}>
+                        <PencilIcon />
+                        Edit event
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleting(item)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="event" />
+        </>
       )}
       <EventFormDialog
         event={editing === "new" ? null : editing}

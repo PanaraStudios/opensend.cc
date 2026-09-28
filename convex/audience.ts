@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values"
 import { internal } from "./_generated/api"
 import { emitEvent } from "./events"
+import { deleteRow, insertRow, patchRow } from "./counts"
 import {
   contactEmailError,
   contactFieldsError,
@@ -106,28 +107,9 @@ export async function emitContact(
   )
 }
 
-/** Member-count changes, written once per segment when a batch ends. */
-export class SegmentCounts {
-  private deltas = new Map<Id<"segments">, number>()
-  add(segmentId: Id<"segments">, delta: number) {
-    this.deltas.set(segmentId, (this.deltas.get(segmentId) ?? 0) + delta)
-  }
-  async flush(ctx: MutationCtx) {
-    for (const [id, delta] of this.deltas) {
-      const segment = await ctx.db.get("segments", id)
-      if (segment && delta)
-        await ctx.db.patch("segments", id, {
-          memberCount: Math.max(0, segment.memberCount + delta),
-        })
-    }
-    this.deltas.clear()
-  }
-}
-
 /** Puts the contact in or out of the segment. Returns whether it changed. */
 export async function setMembership(
   ctx: MutationCtx,
-  counts: SegmentCounts,
   contact: Doc<"contacts">,
   segmentId: Id<"segments">,
   member: boolean
@@ -139,14 +121,13 @@ export async function setMembership(
     )
     .unique()
   if (!!row === member) return false
-  if (row) await ctx.db.delete("segmentMembers", row._id)
+  if (row) await deleteRow(ctx, "segmentMembers", row._id)
   else
-    await ctx.db.insert("segmentMembers", {
+    await insertRow(ctx, "segmentMembers", {
       organizationId: contact.organizationId,
       segmentId,
       contactId: contact._id,
     })
-  counts.add(segmentId, member ? 1 : -1)
   return true
 }
 
@@ -158,15 +139,13 @@ export async function joinSegments(
   segmentIds: Id<"segments">[],
   emit = true
 ) {
-  const counts = new SegmentCounts()
   const changed: Doc<"contacts">[] = []
   for (const contact of contacts) {
     let any = false
     for (const segmentId of segmentIds)
-      if (await setMembership(ctx, counts, contact, segmentId, true)) any = true
+      if (await setMembership(ctx, contact, segmentId, true)) any = true
     if (any) changed.push(contact)
   }
-  await counts.flush(ctx)
   if (emit)
     for (const contact of changed)
       await emitContact(ctx, "contact.updated", contact)
@@ -246,7 +225,7 @@ export async function upsertContact(
     unsubscribed: input.unsubscribed ?? false,
     properties: cleanProperties(input.properties ?? {}),
   }
-  const id = await ctx.db.insert("contacts", {
+  const id = await insertRow(ctx, "contacts", {
     organizationId,
     email,
     ...fields,
@@ -282,8 +261,7 @@ async function patchContact(
     search: searchText({ email: contact.email, ...fields }),
     updatedAt: now,
   }
-  await ctx.db.patch("contacts", contact._id, next)
-  return { ...contact, ...next }
+  return patchRow(ctx, "contacts", contact._id, next)
 }
 
 /** Changes the given fields. A property set to "" is cleared. */
@@ -318,7 +296,7 @@ export async function deleteContact(
   contact: Doc<"contacts">
 ) {
   const segmentIds = await contactSegmentIds(ctx, contact._id)
-  await ctx.db.delete("contacts", contact._id)
+  await deleteRow(ctx, "contacts", contact._id)
   await emitContact(
     ctx,
     "contact.deleted",
@@ -338,18 +316,13 @@ export async function purgeContactRows(
   contactId: Id<"contacts">,
   limit: number
 ) {
-  const counts = new SegmentCounts()
   const members = await ctx.db
     .query("segmentMembers")
     .withIndex("by_contactId_and_segmentId", (q) =>
       q.eq("contactId", contactId)
     )
     .take(limit)
-  for (const row of members) {
-    await ctx.db.delete("segmentMembers", row._id)
-    counts.add(row.segmentId, -1)
-  }
-  await counts.flush(ctx)
+  for (const row of members) await deleteRow(ctx, "segmentMembers", row._id)
   const choices = await ctx.db
     .query("topicSubscriptions")
     .withIndex("by_contactId_and_topicId", (q) => q.eq("contactId", contactId))
