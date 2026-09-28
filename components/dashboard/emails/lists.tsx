@@ -218,7 +218,7 @@ export function ReceivingView() {
         {receivingDomain ? (
           <p className="text-sm text-muted-foreground">
             Receiving on{" "}
-            <span className="font-mono">inbound@{receivingDomain.name}</span>
+            <span className="font-mono">*@{receivingDomain.name}</span>
           </p>
         ) : null}
         {exporting.dialog}
