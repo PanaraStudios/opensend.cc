@@ -1133,14 +1133,15 @@ export function SetupDetails({
 
 /* -------------------------------------------------------------- clipboard */
 
-export async function copyToClipboard(value: string, label = "Copy") {
+/** `label` names what is copied ("API key"), for the toast. */
+export async function copyToClipboard(value: string, label?: string) {
   await navigator.clipboard.writeText(value)
-  toast.add({ type: "success", title: `${label} copied` })
+  toast.add({ type: "success", title: label ? `${label} copied` : "Copied" })
 }
 
 export function CopyButton({
   value,
-  label = "Copy",
+  label,
 }: {
   value: string
   label?: string
@@ -1166,7 +1167,7 @@ export function CopyButton({
       type="button"
       variant="ghost"
       size="icon-xs"
-      aria-label={label}
+      aria-label={label ? `Copy ${label}` : "Copy"}
       onClick={() => void copy()}
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
