@@ -45,6 +45,14 @@ export const attachmentValue = v.object({
    view and the sender; its timeline; and one row per recipient address for
    a contact's history. At most 50 recipients and 50 tags, as SES allows. */
 export const emailTables = {
+  // At most 1000 URLs / 128 KiB, fixed at the first send attempt.
+  emailTracking: defineTable({
+    emailId: v.id("emails"),
+    origin: v.string(),
+    open: v.boolean(),
+    click: v.boolean(),
+    links: v.array(v.string()),
+  }).index("by_emailId", ["emailId"]),
   emails: defineTable({
     /** The team, or `SYSTEM_SCOPE` for account email no team lists. */
     organizationId: v.string(),

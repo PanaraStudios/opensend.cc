@@ -218,6 +218,18 @@ export const inboundRuleSetName = (installationId: string) =>
 /** One receipt rule per domain, named like its configuration set. */
 export const receiptRuleName = (installationId: string, domainId: string) =>
   `${resourcePrefix(installationId)}-${domainId.slice(-12)}`
-/** SES's open and click redirect host for a region:
-    https://docs.aws.amazon.com/general/latest/gr/ses.html#ses_tracking_domains */
-export const trackingTarget = (region: string) => `r.${region}.awstrack.me`
+/** Tracking always returns to this self-hosted installation. */
+export function trackingTarget(callbackOrigin: string) {
+  const url = new URL(callbackOrigin)
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  )
+    throw new Error("Tracking requires a public HTTPS callback origin")
+  return url.hostname
+}

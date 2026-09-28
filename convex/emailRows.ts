@@ -72,6 +72,11 @@ export async function deleteEmailContent(ctx: MutationCtx, id: Id<"emails">) {
     .query("emailContents")
     .withIndex("by_emailId", (q) => q.eq("emailId", id))
     .unique()
+  const tracking = await ctx.db
+    .query("emailTracking")
+    .withIndex("by_emailId", (q) => q.eq("emailId", id))
+    .unique()
+  if (tracking) await ctx.db.delete("emailTracking", tracking._id)
   if (!content) return
   for (const attachment of content.attachments ?? [])
     await ctx.storage.delete(attachment.storageId)

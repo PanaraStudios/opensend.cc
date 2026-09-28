@@ -5,6 +5,8 @@ import { internal } from "../_generated/api"
 import type { Doc } from "../_generated/dataModel"
 import {
   CreateBucketCommand,
+  GetBucketLifecycleConfigurationCommand,
+  PutBucketLifecycleConfigurationCommand,
   GetBucketPolicyCommand,
   GetBucketTaggingCommand,
   HeadBucketCommand,
@@ -110,6 +112,27 @@ async function ensureBucket(
           ArnLike: { "AWS:SourceArn": ruleArns(installation, region) },
         },
       }),
+    })
+  )
+  const lifecycle = await missing(() =>
+    s3.send(new GetBucketLifecycleConfigurationCommand(owner))
+  )
+  await s3.send(
+    new PutBucketLifecycleConfigurationCommand({
+      ...owner,
+      LifecycleConfiguration: {
+        Rules: [
+          ...(lifecycle?.Rules ?? []).filter(
+            (rule) => rule.ID !== "opensend-transient-inbound"
+          ),
+          {
+            ID: "opensend-transient-inbound",
+            Status: "Enabled",
+            Filter: { Prefix: "" },
+            Expiration: { Days: 1 },
+          },
+        ],
+      },
     })
   )
   return Bucket

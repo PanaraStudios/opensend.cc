@@ -24,7 +24,11 @@ export const run = internalAction({
         new GetEmailIdentityCommand({ EmailIdentity: domain.name })
       )
       assertOwned(identity.Tags, installation._id, domainId)
-      result = await verificationState(identity, domain)
+      result = await verificationState(
+        identity,
+        domain,
+        installation.callbackOrigin
+      )
     } catch (e) {
       result = { error: awsError(e) }
     }

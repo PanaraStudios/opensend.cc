@@ -110,6 +110,7 @@ export type Domain = {
   provider?: DnsProvider
   sending?: boolean
   trackingSubdomain?: string
+  trackingTarget?: string
   events?: DomainEvent[]
   /** Set when the DNS provider can apply the records itself (Domain Connect). */
   autoConfigure?: { providerName: string; width?: number; height?: number }

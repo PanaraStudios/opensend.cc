@@ -1,5 +1,27 @@
+import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
+import { components, internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
+import schema from "../schema"
 import { v } from "convex/values"
-import { internalMutation } from "../_generated/server"
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "../_generated/server"
+
+const pool = new Workpool(components.inboundPool, { maxParallelism: 4 })
+async function enqueue(ctx: MutationCtx, id: Id<"inboundMessages">) {
+  await pool.enqueueAction(
+    ctx,
+    internal.ses.inboundTransfer.transfer,
+    { id },
+    {
+      retry: { maxAttempts: 12, initialBackoffMs: 1000, base: 2 },
+      onComplete: internal.ses.inboundMessages.transferDone,
+      context: { id },
+    }
+  )
+}
 
 /* The only module that writes `inboundMessages`. */
 
@@ -66,10 +88,29 @@ export const ingest = internalMutation({
         q.eq("topicArn", args.topicArn).eq("messageId", args.messageId)
       )
       .unique()
-    if (existing) return false
+    if (existing) {
+      if (
+        existing.transferError &&
+        !existing.rejected &&
+        existing.deletedFromS3At === undefined
+      ) {
+        await ctx.db.patch("inboundMessages", existing._id, {
+          transferError: undefined,
+        })
+        await enqueue(ctx, existing._id)
+      }
+      return false
+    }
     const mail = receivedMail(args.message)
     // SES's setup test message and anything not stored in our bucket.
     if (!mail || mail.bucket !== inbound.bucket) return false
+    const objectExists = await ctx.db
+      .query("inboundMessages")
+      .withIndex("by_bucket_and_objectKey", (q) =>
+        q.eq("bucket", mail.bucket).eq("objectKey", mail.objectKey)
+      )
+      .first()
+    if (objectExists) return false
     for (const name of recipientDomains(mail.recipients).slice(0, 10)) {
       const domain = await ctx.db
         .query("domains")
@@ -77,8 +118,12 @@ export const ingest = internalMutation({
           q.eq("name", name).eq("region", inbound.region).eq("deleted", false)
         )
         .unique()
-      if (!domain?.receiving) continue
-      await ctx.db.insert("inboundMessages", {
+      if (
+        !domain?.receiving ||
+        mail.objectKey !== `${domain._id}/${mail.sesMessageId}`
+      )
+        continue
+      const id = await ctx.db.insert("inboundMessages", {
         organizationId: domain.organizationId,
         domainId: domain._id,
         region: inbound.region,
@@ -89,9 +134,82 @@ export const ingest = internalMutation({
         objectKey: mail.objectKey,
         notification: args.message,
       })
-      // Receiving (parse the S3 object, `email.received`) starts here.
+      await enqueue(ctx, id)
+      // Wave 5B parses the Convex file once storageId is saved.
       return true
     }
     return false
+  },
+})
+
+export const get = internalQuery({
+  args: { id: v.id("inboundMessages") },
+  returns: v.union(schema.doc("inboundMessages"), v.null()),
+  handler: (ctx, { id }) => ctx.db.get("inboundMessages", id),
+})
+export const stored = internalMutation({
+  args: {
+    id: v.id("inboundMessages"),
+    storageId: v.id("_storage"),
+    size: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { id, storageId, size }) => {
+    const row = await ctx.db.get("inboundMessages", id)
+    if (!row) throw new Error("Inbound message is missing")
+    if (row.storageId && row.storageId !== storageId)
+      await ctx.storage.delete(storageId)
+    else
+      await ctx.db.patch("inboundMessages", id, {
+        storageId,
+        size,
+        storedAt: Date.now(),
+        transferError: undefined,
+      })
+    return null
+  },
+})
+export const deleted = internalMutation({
+  args: { id: v.id("inboundMessages") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    await ctx.db.patch("inboundMessages", id, {
+      deletedFromS3At: Date.now(),
+      transferError: undefined,
+    })
+    return null
+  },
+})
+export const reject = internalMutation({
+  args: { id: v.id("inboundMessages") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    await ctx.db.patch("inboundMessages", id, {
+      rejected: true,
+      transferError: "Inbound message exceeds 40 MiB",
+    })
+    return null
+  },
+})
+export const transferDone = internalMutation({
+  args: vOnCompleteArgs(v.object({ id: v.id("inboundMessages") })),
+  returns: v.null(),
+  handler: async (ctx, { context, result }) => {
+    if (result.kind !== "success")
+      await ctx.db.patch("inboundMessages", context.id, {
+        transferError:
+          "Inbound transfer failed; retry before the S3 lifecycle expires the object",
+      })
+    return null
+  },
+})
+export const retry = internalMutation({
+  args: { id: v.id("inboundMessages") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const row = await ctx.db.get("inboundMessages", id)
+    if (row && !row.rejected && row.deletedFromS3At === undefined)
+      await enqueue(ctx, id)
+    return null
   },
 })

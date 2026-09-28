@@ -210,6 +210,7 @@ export async function missing<T>(read: () => Promise<T>): Promise<T | null> {
         "QueueDoesNotExist",
         "AWS.SimpleQueueService.NonExistentQueue",
         "NoSuchBucketPolicy",
+        "NoSuchLifecycleConfiguration",
         "NoSuchTagSet",
         "RuleSetDoesNotExistException",
         "RuleDoesNotExistException",

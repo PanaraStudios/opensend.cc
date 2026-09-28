@@ -1,3 +1,4 @@
+import { prepareTracking } from "./tracking"
 import { countValue, counters, deleteRow } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -554,7 +555,7 @@ export const claim = internalMutation({
       bcc,
       replyTo: email.replyTo ?? [],
       subject: email.subject,
-      html: content?.html,
+      html: await prepareTracking(ctx, email, domain, content),
       text: content?.text,
       headers: content?.headers ?? [],
       attachments: content?.attachments ?? [],
@@ -611,11 +612,13 @@ async function recordOutcome(
 ) {
   const email = await ctx.db.get("emails", args.id)
   if (!email || email.generation !== args.generation) return
-  if (email.status !== "queued" && email.sentAt === undefined) return
+  const engaged = email.status === "opened" || email.status === "clicked"
+  if (email.status !== "queued" && email.sentAt === undefined && !engaged)
+    return
   const { outcome } = args
   if (outcome.kind === "sent") {
     await acceptEmail(ctx, email, outcome.messageId, Date.now())
-  } else if (email.sentAt !== undefined) return
+  } else if (email.sentAt !== undefined || engaged) return
   else if (outcome.retryable && email.attempts <= RETRY_DELAYS.length) {
     const next = args.generation + 1
     await patchEmail(ctx, email._id, { generation: next, claimed: false })

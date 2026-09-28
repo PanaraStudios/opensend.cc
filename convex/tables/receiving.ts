@@ -45,7 +45,14 @@ export const receivingTables = {
     objectKey: v.string(),
     /** The SES notification JSON, verbatim. */
     notification: v.string(),
+    storageId: v.optional(v.id("_storage")),
+    size: v.optional(v.number()),
+    storedAt: v.optional(v.number()),
+    deletedFromS3At: v.optional(v.number()),
+    rejected: v.optional(v.boolean()),
+    transferError: v.optional(v.string()),
   })
+    .index("by_bucket_and_objectKey", ["bucket", "objectKey"])
     .index("by_topicArn_and_messageId", ["topicArn", "messageId"])
     .index("by_organizationId", ["organizationId"]),
 }

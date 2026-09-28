@@ -1,3 +1,4 @@
+import workpoolTest from "@convex-dev/workpool/test"
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test"
 import workflowTest from "@convex-dev/workflow/test"
@@ -46,6 +47,7 @@ const authModules = import.meta.glob("../betterAuth/**/*.ts")
 export async function fixture() {
   const t = convexTest(schema, modules)
   t.registerComponent("betterAuth", authSchema, authModules)
+  workpoolTest.register(t, "inboundPool")
   workflowTest.register(t)
   rateLimiterTest.register(t)
   for (const name of COUNT_COMPONENTS) aggregateTest.register(t, name)

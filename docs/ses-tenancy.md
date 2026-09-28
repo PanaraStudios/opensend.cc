@@ -135,9 +135,10 @@ SES transient bounces are final exhausted retries, so they are reported as
 bounced but do not automatically suppress the recipient. System email generates
 no team webhooks, metrics or suppressions.
 
-SES open/click events do not identify which address in a multi-recipient envelope
-engaged. Those events retain message-level recipients; no individual attribution
-is claimed. SES may also redact the complainant and report all recipients at that
+Opensend HTTP tracking tokens identify the email, not an individual address in a
+multi-recipient envelope. Engagement events retain message-level recipients; no
+individual attribution is claimed. SES OPEN/CLICK events are no longer consumed;
+see [self-hosted tracking](self-hosting.md#opensend-tracking). SES may also redact the complainant and report all recipients at that
 mailbox provider. The timeline retains exactly that provider detail. See the
 [AWS event field reference](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-retrieving-sns-contents.html).
 
