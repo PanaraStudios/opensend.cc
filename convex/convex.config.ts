@@ -39,5 +39,6 @@ app.use(aggregate, { name: "apiKeyLogCounts" })
 app.use(aggregate, { name: "webhookCounts" })
 app.use(aggregate, { name: "deliveryCounts" })
 app.use(aggregate, { name: "domainCounts" })
+app.use(aggregate, { name: "exportCounts" })
 app.use(migrations)
 export default app

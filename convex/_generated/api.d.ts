@@ -230,5 +230,6 @@ export declare const components: {
   webhookCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"webhookCounts">;
   deliveryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"deliveryCounts">;
   domainCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"domainCounts">;
+  exportCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"exportCounts">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };

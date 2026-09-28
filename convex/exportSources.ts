@@ -13,7 +13,8 @@ import { providerLabel } from "../lib/dashboard/domains"
 import { csvTime } from "../lib/dashboard/exports"
 import { maskToken } from "../lib/dashboard/format"
 import { LOG_SOURCES, LOG_STATUS_CLASSES } from "../lib/dashboard/logs"
-import { matchesNeedle, searchNeedle } from "../lib/dashboard/search"
+import { matchesSearch, teamPage } from "./lists"
+import { counters } from "./counts"
 
 type Page = { rows: string[][]; isDone: boolean; continueCursor: string }
 
@@ -77,8 +78,7 @@ function recordsStatus(
 ) {
   const records = domain.records.filter((record) => kinds.includes(record.kind))
   if (records.length === 0) return "not_started"
-  if (records.every((record) => record.status === "verified"))
-    return "verified"
+  if (records.every((record) => record.status === "verified")) return "verified"
   if (domain.status === "failed") return "failed"
   return records.some((record) => record.status === "temporary_failure")
     ? "temporary_failure"
@@ -160,8 +160,7 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
           maskToken(key.tokenPrefix, key.tokenLast4),
           key.permission,
           (key.domainId && (await domainName(key.domainId))) ?? "",
-          (key.createdBy.userId && (await creator(key.createdBy.userId))) ||
-            key.createdBy.name,
+          key.createdBy.userId ? await creator(key.createdBy.userId) : "",
         ])
       return { ...result, rows }
     },
@@ -250,25 +249,26 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
   segments: {
     columns: ["id", "created_at", "name", "contacts"],
     page: async (ctx, organizationId, filters, paginationOpts) => {
-      const result = await ctx.db
-        .query("segments")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId)
-        )
-        .order("desc")
-        .paginate(paginationOpts)
-      // The list searches in the browser; so does its export, per page.
-      const needle = searchNeedle(filters.search ?? "")
+      const matches = matchesSearch(filters.search)
+      const result = await teamPage(
+        ctx,
+        "segments",
+        organizationId,
+        paginationOpts,
+        (segment) => matches(segment.name)
+      )
+      const sizes = await counters.segmentMembers.totals(
+        ctx,
+        result.page.map((segment) => segment._id)
+      )
       return {
         ...result,
-        rows: result.page
-          .filter((segment) => matchesNeedle(needle, segment.name))
-          .map((segment) => [
-            segment._id,
-            csvTime(segment._creationTime),
-            segment.name,
-            String(segment.memberCount),
-          ]),
+        rows: result.page.map((segment, index) => [
+          segment._id,
+          csvTime(segment._creationTime),
+          segment.name,
+          String(sizes[index]),
+        ]),
       }
     },
   },

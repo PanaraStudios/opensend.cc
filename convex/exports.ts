@@ -14,6 +14,8 @@ import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import { requireTeam, sessionId } from "./access"
 import schema from "./schema"
+import { countValue, counters } from "./counts"
+import { teamPage } from "./lists"
 import { EXPORT_SOURCES } from "./exportSources"
 import { deleteExport, insertExport, patchExport } from "./exportRows"
 import { exportFilterLineValue } from "./tables/exports"
@@ -48,7 +50,7 @@ function view(row: Doc<"exports">) {
     _creationTime: row._creationTime,
     organizationId: row.organizationId,
     resource: row.resource,
-    status: row.status,
+    status: row.expiresAt <= Date.now() ? ("expired" as const) : row.status,
     rows: row.rows,
     expiresAt: row.expiresAt,
     fileName: row.fileName ?? exportFileName(row.resource, row._creationTime),
@@ -56,8 +58,6 @@ function view(row: Doc<"exports">) {
     summary: row.summary ?? [],
   }
 }
-
-const cut = (text: string) => text.slice(0, TEXT)
 
 /** Any member starts an export of a list with its current filters: `filters`
     as the list's source reads them, `summary` as the dialog confirmed them. */
@@ -76,6 +76,15 @@ export const start = mutation({
     const filters = Object.entries(args.filters)
     if (filters.length > FILTERS || args.summary.length > SUMMARY_LINES)
       throw new ConvexError("Too many filters")
+    if (
+      filters.some(
+        ([key, value]) => key.length > TEXT || value.length > TEXT
+      ) ||
+      args.summary.some(
+        (line) => line.label.length > TEXT || line.value.length > TEXT
+      )
+    )
+      throw new ConvexError("Export filters are too long")
     const creator = await ctx.runQuery(
       components.betterAuth.policy.checkSession,
       { sessionId: await sessionId(ctx) }
@@ -84,18 +93,13 @@ export const start = mutation({
     const id = await insertExport(ctx, {
       organizationId: args.organizationId,
       resource: args.resource,
-      filters: Object.fromEntries(
-        filters.map(([key, value]) => [key, cut(value)])
-      ),
+      filters: args.filters,
       status: "processing",
       rows: 0,
       expiresAt: now + EXPORT_TTL,
       fileName: exportFileName(args.resource, now),
       creatorEmail: creator.email,
-      summary: args.summary.map((line) => ({
-        label: cut(line.label),
-        value: cut(line.value),
-      })),
+      summary: args.summary,
     })
     await ctx.scheduler.runAfter(0, internal.exports.run, { id })
     return id
@@ -108,14 +112,23 @@ export const list = query({
   returns: paginationResultValidator(exportView),
   handler: async (ctx, { organizationId, paginationOpts }) => {
     await requireTeam(ctx, organizationId)
-    const result = await ctx.db
-      .query("exports")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .order("desc")
-      .paginate(paginationOpts)
+    const result = await teamPage(
+      ctx,
+      "exports",
+      organizationId,
+      paginationOpts,
+      () => true
+    )
     return { ...result, page: result.page.map(view) }
+  },
+})
+
+export const count = query({
+  args: { organizationId: v.string() },
+  returns: countValue,
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    return { total: await counters.exports.total(ctx, organizationId) }
   },
 })
 
@@ -140,7 +153,8 @@ export const downloadUrl = query({
     const row = await ctx.db.get("exports", id)
     if (!row) return null
     await requireTeam(ctx, row.organizationId, "admin")
-    if (row.status !== "ready" || !row.storageId) return null
+    if (row.status !== "ready" || row.expiresAt <= Date.now() || !row.storageId)
+      return null
     return ctx.storage.getUrl(row.storageId)
   },
 })
@@ -153,7 +167,10 @@ export const job = internalQuery({
 /** The file's header row, read once so every batch keeps to it. */
 export const header = internalQuery({
   args: { organizationId: v.string(), resource: v.string() },
-  returns: v.object({ columns: v.array(v.string()), extra: v.array(v.string()) }),
+  returns: v.object({
+    columns: v.array(v.string()),
+    extra: v.array(v.string()),
+  }),
   handler: async (ctx, { organizationId, resource }) => {
     const source = EXPORT_SOURCES[resource]
     return {
@@ -222,6 +239,7 @@ export const run = internalAction({
           lines.push(csvLine(cells))
         rows += Math.min(batch.rows.length, MAX_ROWS - rows)
         if (batch.isDone) break
+        if (rows >= MAX_ROWS) throw new Error("Export exceeds the row limit")
         cursor = batch.continueCursor
       }
       const storageId = await ctx.storage.store(
