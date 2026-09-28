@@ -4,6 +4,7 @@ import { httpAction, env } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
 import type { HttpRouter } from "convex/server"
 import { components } from "./_generated/api"
+import { BodyTooLarge, limitedBody } from "./ses/web"
 import { createAuth } from "./auth"
 import { oauthServer } from "./oauthProvider"
 import {
@@ -30,8 +31,13 @@ function browser(request: Request, flow: string) {
 async function fields(request: Request): Promise<Record<string, unknown>> {
   if (Number(request.headers.get("content-length")) > 16384)
     throw new Error("Request too large")
-  const text = await request.text()
-  if (text.length > 16384) throw new Error("Request too large")
+  let text: string
+  try {
+    text = await limitedBody(request, 16384)
+  } catch (error) {
+    if (error instanceof BodyTooLarge) throw new Error("Request too large")
+    throw error
+  }
   if (request.headers.get("content-type")?.includes("application/json")) {
     const value: unknown = JSON.parse(text)
     if (!value || typeof value !== "object" || Array.isArray(value))

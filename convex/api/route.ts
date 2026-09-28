@@ -102,7 +102,11 @@ function match(patterns: Pattern[], path: string) {
     const ok = pattern.segments.every((segment, i) => {
       if (!isParam(segment)) return segment === parts[i]
       if (!parts[i]) return false
-      params[segment.slice(1, -1)] = decodeURIComponent(parts[i])
+      try {
+        params[segment.slice(1, -1)] = decodeURIComponent(parts[i])
+      } catch {
+        return false
+      }
       return true
     })
     if (ok) return { options: pattern.options, params }
@@ -130,7 +134,7 @@ function failure(error: unknown): Failure {
     if (typeof error.data === "string")
       return { statusCode: 422, name: "validation_error", message: error.data }
   }
-  console.error(error)
+  console.error("API request failed")
   return {
     statusCode: 500,
     name: "application_error",
@@ -302,9 +306,9 @@ function dispatch(patterns: Pattern[]) {
           responseBody,
         },
       })
-    } catch (e) {
+    } catch {
       // A lost log line never fails the request it describes.
-      console.error(e)
+      console.error("API request log could not be saved")
     }
     return reply(status, responseBody, {
       "ratelimit-limit": String(API_RATE),

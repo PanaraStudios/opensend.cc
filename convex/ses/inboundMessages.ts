@@ -2,6 +2,7 @@ import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import schema from "../schema"
+import { retirement } from "../teamLifecycle"
 import { v } from "convex/values"
 import {
   internalMutation,
@@ -89,6 +90,7 @@ export const ingest = internalMutation({
       )
       .unique()
     if (existing) {
+      if (await retirement(ctx, existing.organizationId)) return false
       if (
         existing.transferError &&
         !existing.rejected &&
@@ -120,6 +122,7 @@ export const ingest = internalMutation({
         .unique()
       if (
         !domain?.receiving ||
+        (await retirement(ctx, domain.organizationId)) ||
         mail.objectKey !== `${domain._id}/${mail.sesMessageId}`
       )
         continue
@@ -144,7 +147,10 @@ export const ingest = internalMutation({
 export const get = internalQuery({
   args: { id: v.id("inboundMessages") },
   returns: v.union(schema.doc("inboundMessages"), v.null()),
-  handler: (ctx, { id }) => ctx.db.get("inboundMessages", id),
+  handler: async (ctx, { id }) => {
+    const row = await ctx.db.get("inboundMessages", id)
+    return row && !(await retirement(ctx, row.organizationId)) ? row : null
+  },
 })
 export const stored = internalMutation({
   args: {
@@ -155,7 +161,11 @@ export const stored = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, storageId, size }) => {
     const row = await ctx.db.get("inboundMessages", id)
-    if (!row || (row.parsedAt !== undefined && !row.storageId)) {
+    if (
+      !row ||
+      (await retirement(ctx, row.organizationId)) ||
+      (row.parsedAt !== undefined && !row.storageId)
+    ) {
       await ctx.storage.delete(storageId)
       return null
     }
@@ -184,6 +194,7 @@ export const deleted = internalMutation({
   args: { id: v.id("inboundMessages") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
+    if (!(await ctx.db.get("inboundMessages", id))) return null
     await ctx.db.patch("inboundMessages", id, {
       deletedFromS3At: Date.now(),
       transferError: undefined,
@@ -195,6 +206,7 @@ export const reject = internalMutation({
   args: { id: v.id("inboundMessages") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
+    if (!(await ctx.db.get("inboundMessages", id))) return null
     await ctx.db.patch("inboundMessages", id, {
       rejected: true,
       transferError: "Inbound message exceeds 40 MiB",
@@ -206,7 +218,10 @@ export const transferDone = internalMutation({
   args: vOnCompleteArgs(v.object({ id: v.id("inboundMessages") })),
   returns: v.null(),
   handler: async (ctx, { context, result }) => {
-    if (result.kind !== "success")
+    if (
+      result.kind !== "success" &&
+      (await ctx.db.get("inboundMessages", context.id))
+    )
       await ctx.db.patch("inboundMessages", context.id, {
         transferError:
           "Inbound transfer failed; retry before the S3 lifecycle expires the object",
@@ -219,7 +234,12 @@ export const retry = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const row = await ctx.db.get("inboundMessages", id)
-    if (row && !row.rejected && row.deletedFromS3At === undefined)
+    if (
+      row &&
+      !row.rejected &&
+      row.deletedFromS3At === undefined &&
+      !(await retirement(ctx, row.organizationId))
+    )
       await enqueue(ctx, id)
     return null
   },

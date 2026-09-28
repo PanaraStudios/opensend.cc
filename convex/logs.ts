@@ -24,6 +24,7 @@ import { filteredPage, matchesSearch } from "./lists"
 export const LOG_RETENTION = 30 * 86_400_000
 /** Bodies are stored up to this many characters, then cut and marked. */
 const BODY_LIMIT = 65_536
+const PRUNE_BATCH = 8
 
 type LogEntry = Pick<
   Doc<"apiLogs">,
@@ -47,6 +48,21 @@ const cut = (body: string | undefined) =>
     ? { body, cut: false }
     : { body: body.slice(0, BODY_LIMIT), cut: true }
 
+export function responseForLog(path: string, method: string, body?: string) {
+  if (path !== "/api-keys" || method !== "POST" || !body) return body
+  try {
+    const value: unknown = JSON.parse(body)
+    if (value && typeof value === "object" && !Array.isArray(value))
+      return JSON.stringify({
+        ...value,
+        ...("token" in value ? { token: "[redacted]" } : {}),
+      })
+  } catch {
+    // Legacy bodies may have been truncated in the middle of a secret.
+  }
+  return "[redacted]"
+}
+
 /** Records one request. The REST router calls this for every request it
     can attribute to a team; dashboard and SMTP sends use it with their own
     `source`. */
@@ -63,7 +79,7 @@ export async function writeLog(
     summary: `${row.method} ${row.path} ${row.status}`,
   })
   const request = cut(requestBody)
-  const response = cut(responseBody)
+  const response = cut(responseForLog(row.path, row.method, responseBody))
   await ctx.db.insert("apiLogBodies", {
     logId,
     requestHeaders,
@@ -281,7 +297,16 @@ export const get = query({
     const key = log.apiKeyId ? await ctx.db.get("apiKeys", log.apiKeyId) : null
     return {
       log,
-      body,
+      body: body
+        ? {
+            ...body,
+            responseBody: responseForLog(
+              log.path,
+              log.method,
+              body.responseBody
+            ),
+          }
+        : null,
       apiKey: key
         ? { _id: key._id, name: key.name, permission: key.permission }
         : null,
@@ -299,7 +324,7 @@ export const prune = internalMutation({
       .withIndex("by_creation_time", (q) =>
         q.lt("_creationTime", Date.now() - LOG_RETENTION)
       )
-      .take(200)
+      .take(PRUNE_BATCH)
     for (const log of old) {
       const body = await ctx.db
         .query("apiLogBodies")
@@ -308,7 +333,7 @@ export const prune = internalMutation({
       if (body) await ctx.db.delete("apiLogBodies", body._id)
       await deleteRow(ctx, "apiLogs", log._id)
     }
-    if (old.length === 200)
+    if (old.length === PRUNE_BATCH)
       await ctx.scheduler.runAfter(0, internal.logs.prune, {})
     return null
   },

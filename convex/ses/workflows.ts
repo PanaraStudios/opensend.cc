@@ -28,7 +28,7 @@ export const cleanup = internalMutation({
   args: {
     workflowId: vWorkflowId,
     result: vResultValidator,
-    context: v.any(),
+    context: v.null(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {

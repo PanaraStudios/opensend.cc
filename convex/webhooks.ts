@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import {
@@ -51,6 +52,11 @@ const RETENTION = 90 * DAY
 /** Bounds every read of a team's webhooks. */
 const WEBHOOK_LIMIT = 100
 const BATCH = 200
+const cleanupPage = {
+  cursor: null,
+  numItems: BATCH,
+  maximumBytesRead: 2 * 1024 * 1024,
+}
 
 const deliveryId = v.id("webhookDeliveries")
 const webhookValue = schema
@@ -489,12 +495,13 @@ export const purgeDeliveries = internalMutation({
   args: { webhookId: v.id("webhooks") },
   returns: v.null(),
   handler: async (ctx, { webhookId }) => {
-    const rows = await ctx.db
+    const rows = await stream(ctx.db, schema)
       .query("webhookDeliveries")
       .withIndex("by_webhookId", (q) => q.eq("webhookId", webhookId))
-      .take(BATCH)
-    for (const row of rows) await deleteRow(ctx, "webhookDeliveries", row._id)
-    if (rows.length === BATCH)
+      .paginate(cleanupPage)
+    for (const row of rows.page)
+      await deleteRow(ctx, "webhookDeliveries", row._id)
+    if (!rows.isDone)
       await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
         webhookId,
       })
@@ -531,7 +538,7 @@ export const deliverEvent = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const event = await ctx.db.get("events", id)
-    if (!event) return null
+    if (!event || (await retirement(ctx, event.organizationId))) return null
     const listeners = await ctx.db
       .query("webhookSubscriptions")
       .withIndex("by_organizationId_and_event_and_enabled", (q) =>
@@ -618,7 +625,12 @@ async function record(
 ) {
   const delivery = await ctx.db.get("webhookDeliveries", args.id)
   // Another run already recorded this attempt.
-  if (!delivery || delivery.attempts !== args.attempt) return
+  if (
+    !delivery ||
+    delivery.attempts !== args.attempt ||
+    (await retirement(ctx, delivery.organizationId))
+  )
+    return
   const webhook = await ctx.db.get("webhooks", delivery.webhookId)
   const now = Date.now()
   const failed = isDeliveryFailed(args)
@@ -689,18 +701,18 @@ export const cleanup = internalMutation({
   returns: v.null(),
   handler: async (ctx) => {
     const cutoff = Date.now() - RETENTION
-    const deliveries = await ctx.db
+    const deliveries = await stream(ctx.db, schema)
       .query("webhookDeliveries")
       .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
-      .take(BATCH)
-    for (const row of deliveries)
+      .paginate(cleanupPage)
+    for (const row of deliveries.page)
       await deleteRow(ctx, "webhookDeliveries", row._id)
-    const events = await ctx.db
+    const events = await stream(ctx.db, schema)
       .query("events")
       .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
-      .take(BATCH)
-    for (const row of events) await ctx.db.delete("events", row._id)
-    if (deliveries.length === BATCH || events.length === BATCH)
+      .paginate(cleanupPage)
+    for (const row of events.page) await ctx.db.delete("events", row._id)
+    if (!deliveries.isDone || !events.isDone)
       await ctx.scheduler.runAfter(0, internal.webhooks.cleanup, {})
     return null
   },
