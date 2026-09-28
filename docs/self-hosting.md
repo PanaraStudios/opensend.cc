@@ -46,7 +46,7 @@ pnpm dev
 pnpm backend dev --once
 ```
 
-`pnpm backend` reads credentials from `.env.docker`, explicitly selects the self-hosted backend and never selects a cloud deployment. Use `OPENSEND_ENV_FILE=/absolute/path/to/file` for another instance. `COMPOSE_PROJECT_NAME` selects an isolated Compose project; use different ports as well. Backend operations verify a live session and current membership; a valid but revoked JWT cannot authorize a request.
+`pnpm backend` reads credentials from `.env.docker`, explicitly selects the self-hosted backend and never selects a cloud deployment. For plain `convex` commands (such as `convex codegen`, which editor and agent tooling run), set `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` in `.env.local` as `.env.example` shows, following [Convex's self-hosting guide](https://docs.convex.dev/self-hosting). With both set, the CLI never creates or selects a cloud or Convex-managed deployment. Use `OPENSEND_ENV_FILE=/absolute/path/to/file` for another instance. `COMPOSE_PROJECT_NAME` selects an isolated Compose project; use different ports as well. Backend operations verify a live session and current membership; a valid but revoked JWT cannot authorize a request.
 
 The local component is `convex/betterAuth`. `convex/authOptions.ts` supplies the shared configuration to the runtime, adapter and schema generator. Regenerate after changing plugin schema options:
 
@@ -260,8 +260,9 @@ The smoke script creates `owner@example.test`; use fresh isolated volumes for a 
 
 The `smtp` Compose profile runs a separate Node process. It accepts authenticated
 submission on **465 (implicit TLS)** and **587 (STARTTLS required before AUTH)**.
-Username is `resend`; password is an Opensend `os_` API key with sending or full
-access. These match [Resend's SMTP credentials and TLS modes](https://resend.com/docs/send-with-smtp).
+Username is `opensend`; password is an Opensend `os_` API key with sending or full
+access. The TLS modes match [Resend's](https://resend.com/docs/send-with-smtp); a
+client moving from Resend changes its host, username and password.
 Sending-domain restrictions on keys apply. Each team starts disabled; any member
 can enable SMTP in **Settings → SMTP**. The port selector remembers that team's
 preferred connection port; both listeners stay available to enabled teams.

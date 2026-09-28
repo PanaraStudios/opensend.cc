@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, rmSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createServer } from "node:net"
 
@@ -57,4 +57,6 @@ export function removeTestInstance(envFile, project, compose) {
   if (volume.status === 0 && volume.stdout.trim() !== project)
     throw new Error("Refusing cleanup: Docker volume ownership changed")
   run("docker", [...compose, "down", "--volumes"])
+  // It holds that stack's admin key, which is useless once the stack is gone.
+  rmSync(envFile, { force: true })
 }
