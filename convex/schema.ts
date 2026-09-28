@@ -4,6 +4,7 @@ import { apiTables } from "./tables/api"
 import { domainTables } from "./tables/domains"
 import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
+import { receivingTables } from "./tables/receiving"
 import { sesTables } from "./tables/ses"
 import { templateTables } from "./tables/templates"
 import { webhookTables } from "./tables/webhooks"
@@ -19,4 +20,5 @@ export default defineSchema({
   ...webhookTables,
   ...apiTables,
   ...exportTables,
+  ...receivingTables,
 })

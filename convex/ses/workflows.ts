@@ -75,10 +75,44 @@ export const provisionRegion = workflow
     }
     return null
   })
+export const inboundRegion = workflow
+  .define({
+    args: { id: v.id("inboundRegions"), generation: v.number() },
+    returns: v.null(),
+  })
+  .handler(async (step, args): Promise<null> => {
+    try {
+      await step.runAction(internal.ses.inbound.region, args, {
+        retry: false,
+      })
+    } catch {
+      await step.runMutation(internal.ses.inboundRegions.finish, {
+        ...args,
+        changes: {},
+        error:
+          "Inbound mail setup stopped. Check AWS permissions and retry; existing owned resources will be reused.",
+      })
+    }
+    return null
+  })
 export const domainOperationWithTenant = workflow
   .define({ args: { domainId: v.id("domains") }, returns: v.null() })
   .handler(async (step, args): Promise<null> => {
     try {
+      // The domain's own step reports a region whose setup did not finish.
+      const inboundId = await step.runMutation(
+        internal.ses.inboundRegions.prepare,
+        args
+      )
+      if (inboundId)
+        for (let attempt = 0; attempt < 90; attempt++) {
+          const state = await step.runMutation(
+            internal.ses.inboundRegions.poll,
+            { id: inboundId }
+          )
+          if (state === "settled") break
+          await step.sleep(2000)
+        }
       const tenantId = await step.runMutation(
         internal.tenants.prepareDomain,
         args

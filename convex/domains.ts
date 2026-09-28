@@ -23,6 +23,7 @@ import {
   provisioned,
   recordValue,
   regionValue,
+  requireReceivingRegion,
   tenantMatches,
   tlsValue,
 } from "./ses/contracts"
@@ -38,6 +39,7 @@ import { startWorkflow } from "./ses/workflows"
 import { mailRecords } from "./ses/records"
 import { limitDomainCheck } from "./ses/limits"
 import { emitEvent } from "./events"
+import { cleanupIfUnused } from "./ses/inboundRegions"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -259,6 +261,39 @@ export async function start(
     domainId: domain._id,
   })
 }
+export const trackingFields = {
+  trackingSubdomain: v.optional(v.string()),
+  openTracking: v.optional(v.boolean()),
+  clickTracking: v.optional(v.boolean()),
+}
+type TrackingSettings = Partial<
+  Pick<Doc<"domains">, "trackingSubdomain" | "openTracking" | "clickTracking">
+>
+/** The requested tracking settings over the domain's own, validated. As in
+    Resend, a tracking subdomain can be changed but never removed. */
+function trackingSettings(
+  domain: Pick<Doc<"domains">, "name" | "customReturnPath"> & TrackingSettings,
+  changes: TrackingSettings
+) {
+  const trackingSubdomain =
+    changes.trackingSubdomain?.trim().toLowerCase() ?? domain.trackingSubdomain
+  if (trackingSubdomain !== undefined) {
+    const error = validateDnsLabel(trackingSubdomain)
+    if (error) throw new ConvexError(error)
+    // The Return-Path's MX and TXT records cannot share a name with a CNAME.
+    if (trackingSubdomain === domain.customReturnPath)
+      throw new ConvexError(
+        "Use a tracking subdomain other than the Return-Path"
+      )
+    if (`${trackingSubdomain}.${domain.name}`.length > 253)
+      throw new ConvexError("Tracking subdomain is too long")
+  }
+  return {
+    trackingSubdomain,
+    openTracking: changes.openTracking ?? domain.openTracking ?? false,
+    clickTracking: changes.clickTracking ?? domain.clickTracking ?? false,
+  }
+}
 /** Adds a domain for a team and starts provisioning it. The dashboard and
     the REST API both create domains through here. */
 export async function createDomain(
@@ -268,7 +303,7 @@ export async function createDomain(
     name: string
     region: Doc<"domains">["region"]
     customReturnPath: string
-  }
+  } & TrackingSettings
 ) {
   const name = normalizeDomainName(args.name)
   const customReturnPath = args.customReturnPath.trim().toLowerCase()
@@ -276,6 +311,7 @@ export async function createDomain(
     validateDomainName(name, []) || validateDnsLabel(customReturnPath)
   if (error || `${customReturnPath}.${name}`.length > 253)
     throw new ConvexError(error ?? "Return-Path is too long")
+  const tracking = trackingSettings({ name, customReturnPath }, args)
   const region = await findRegion(ctx, args.region)
   if (!region || region.phase !== "ready")
     throw new ConvexError(
@@ -300,8 +336,14 @@ export async function createDomain(
     deleted: false,
     sending: true,
     tls: "opportunistic",
+    ...tracking,
     // Shown at once; the DKIM records join them when SES issues its keys.
-    records: mailRecords({ name, region: args.region, customReturnPath }),
+    records: mailRecords({
+      name,
+      region: args.region,
+      customReturnPath,
+      ...tracking,
+    }),
     sesVerified: false,
     dkimVerified: false,
     mailFromVerified: false,
@@ -364,6 +406,7 @@ export const domainChanges = v.object({
   sending: v.optional(v.boolean()),
   receiving: v.optional(v.boolean()),
   tls: v.optional(tlsValue),
+  ...trackingFields,
 })
 export async function updateDomain(
   ctx: MutationCtx,
@@ -384,27 +427,42 @@ export async function updateDomain(
     args.sending !== undefined && args.sending !== domain.sending
       ? args.sending
       : undefined
-  if (sending === undefined && tls === undefined && receiving === undefined)
+  if (receiving) requireReceivingRegion(domain.region)
+  const tracking = trackingSettings(domain, args)
+  const trackingChanged =
+    tracking.trackingSubdomain !== domain.trackingSubdomain ||
+    tracking.openTracking !== (domain.openTracking ?? false) ||
+    tracking.clickTracking !== (domain.clickTracking ?? false)
+  if (
+    sending === undefined &&
+    tls === undefined &&
+    receiving === undefined &&
+    !trackingChanged
+  )
     return
   await ctx.db.patch("domains", domain._id, {
     ...(sending !== undefined ? { sending } : {}),
     ...(tls ? { pendingTls: tls } : {}),
     ...(receiving !== undefined ? { receiving } : {}),
+    ...(trackingChanged ? tracking : {}),
   })
   await emitDomain(ctx, domain._id, "domain.updated")
-  // Receiving changes which records we publish, so it needs the full refresh
-  // that rebuilds and rechecks DNS; that refresh also settles a pending TLS
-  // change, keeping a combined update to a single operation.
-  if (tls || receiving !== undefined)
-    await start(ctx, domain, receiving === undefined ? "settings" : "refresh")
+  // Receiving and tracking change which records we publish, so they need
+  // the full refresh that rebuilds and rechecks DNS; that refresh also
+  // settles a pending TLS change, keeping a combined update to a single
+  // operation.
+  const records = receiving !== undefined || trackingChanged
+  if (tls || records) await start(ctx, domain, records ? "refresh" : "settings")
   await logHistory(
     ctx,
     domain._id,
-    receiving === undefined
-      ? "Settings updated"
-      : receiving
+    receiving !== undefined
+      ? receiving
         ? "Inbound receiving enabled"
         : "Inbound receiving disabled"
+      : trackingChanged
+        ? "Tracking settings updated"
+        : "Settings updated"
   )
 }
 export const update = mutation({
@@ -433,6 +491,7 @@ export const workerContext = internalQuery({
     domain: schema.doc("domains"),
     region: schema.doc("sesRegions"),
     tenant: v.union(v.null(), schema.doc("sesTenants")),
+    inbound: v.union(v.null(), schema.doc("inboundRegions")),
   }),
   handler: async (ctx, { id }) => {
     const domain = await findActiveDomain(ctx, id)
@@ -444,7 +503,11 @@ export const workerContext = internalQuery({
       : null
     if (tenant && !tenantMatches(tenant, domain))
       throw new ConvexError("Domain tenant ownership does not match")
-    return { domain, region, tenant }
+    const inbound = await ctx.db
+      .query("inboundRegions")
+      .withIndex("by_region", (q) => q.eq("region", domain.region))
+      .unique()
+    return { domain, region, tenant, inbound }
   },
 })
 /** A provision publishes its records the moment AWS issues them, so they show
@@ -462,6 +525,15 @@ export const saveRecords = internalMutation({
       domain.operation === "provision"
     )
       await ctx.db.patch("domains", args.id, { records: args.records })
+    return null
+  },
+})
+/** Recorded just before the worker creates the domain's receipt rule. */
+export const saveReceiptRule = internalMutation({
+  args: { id: v.id("domains"), ruleSet: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch("domains", args.id, { receiptRuleSet: args.ruleSet })
     return null
   },
 })
@@ -484,6 +556,8 @@ export const finish = internalMutation({
       .partial(),
     error: v.optional(v.string()),
     needsAdoptionReview: v.optional(v.boolean()),
+    /** The rule set holding the domain's receipt rule; null once it has none. */
+    receiptRuleSet: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -514,7 +588,12 @@ export const finish = internalMutation({
       checkedAt: now,
       nextCheckAt: checking ? now + checkDelay(0)! : undefined,
       checkAttempt: 0,
+      ...(args.receiptRuleSet !== undefined
+        ? { receiptRuleSet: args.receiptRuleSet ?? undefined }
+        : {}),
     })
+    if (args.receiptRuleSet === null && domain.receiptRuleSet)
+      await cleanupIfUnused(ctx, domain.region)
     if (args.changes.deleted) await emitDomain(ctx, args.id, "domain.deleted")
     else if (status !== domain.status)
       await emitDomain(ctx, args.id, "domain.updated")
@@ -634,9 +713,19 @@ export const saveCheck = internalMutation({
             : "Waiting for DNS records"
       )
     }
+    // SES starts tracking through the subdomain once its CNAME resolves.
+    if (
+      !trackingVerified(domain.records) &&
+      trackingVerified(args.result.records)
+    )
+      await start(ctx, domain, "settings")
     return null
   },
 })
+const trackingVerified = (records: Doc<"domains">["records"]) =>
+  records.some(
+    (record) => record.kind === "Tracking" && record.status === "verified"
+  )
 
 export const previewContext = internalQuery({
   args: { id: v.id("domains") },

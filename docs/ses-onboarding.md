@@ -229,7 +229,41 @@ cannot delete their account while AWS is connected, preventing orphaned resource
 DNS resolution and SES verification are separate. DKIM values use AWS's exact
 `Tokens` and `SigningHostedZone`. Custom MAIL FROM uses `REJECT_MESSAGE` when MX
 verification fails. TLS policy changes are applied to the domain's configuration
-set. DNS integrations, HTTPS tracking, and receiving are later milestones.
+set. HTTPS tracking is a later milestone.
+
+## Receiving and tracking
+
+Turning receiving on for a domain first sets up its region's inbound mail, once
+per region: an S3 bucket `opensend-<installation>-inbound-<short region>`
+(tagged, SES may write only through this installation's receipt rules), the
+SNS topic `opensend-<installation>-inbound` subscribed to `/ses/inbound`, and
+a receipt rule set. SES allows one active rule set per region: Opensend adds its
+rules to the active one, and creates and activates its own only when none is
+active. It never activates a set while another is active. Each domain then gets
+one receipt rule (its name as the recipient) that stores mail in the bucket
+under `<domain id>/` and notifies the topic. Receiving is refused in regions
+where SES does not receive mail.
+
+When the region's last domain stops receiving, a rule set Opensend activated is
+deactivated again if it holds no rules. The bucket, its mail and the topic are
+kept: mail may not be processed yet, the IAM policy grants no deletion, and
+turning receiving on again reuses them.
+
+Inbound SNS notifications are verified and deduplicated like event ones, routed
+to the team whose domain matches a recipient, and stored verbatim in
+`inboundMessages` (`convex/ses/inboundMessages.ts`, `ingest`). Parsing the
+S3 object and emitting `email.received` start from that row. SNS retries a
+failed HTTPS delivery only briefly and the inbound topic has no dead-letter
+queue, so a reconciler can list the bucket (`s3:ListBucket`) for objects
+without a row.
+
+Open and click tracking uses a domain's tracking subdomain, published as a
+CNAME to SES's regional tracking host (`r.<region>.awstrack.me`). SES only
+tracks once that record is verified: then the configuration set gets the
+subdomain as its custom redirect domain and its event destination adds OPEN
+and/or CLICK. Links use SES's HTTP option (`HttpsPolicy: OPTIONAL`); HTTPS
+needs a CloudFront distribution and an ACM certificate, which the installation
+cannot create.
 
 ## Operational limits
 

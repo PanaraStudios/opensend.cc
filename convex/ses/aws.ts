@@ -8,6 +8,7 @@ import {
   SESClient,
   DescribeActiveReceiptRuleSetCommand,
 } from "@aws-sdk/client-ses"
+import { S3Client } from "@aws-sdk/client-s3"
 import { SNSClient } from "@aws-sdk/client-sns"
 import { SQSClient } from "@aws-sdk/client-sqs"
 import { STSClient } from "@aws-sdk/client-sts"
@@ -57,6 +58,7 @@ export function clients(
     ses: new SESv2Client(config),
     // Receipt rules exist only in the classic SES API.
     sesClassic: new SESClient(config),
+    s3: new S3Client(config),
     sns: new SNSClient(config),
     sqs: new SQSClient(config),
     sts: new STSClient(config),
@@ -79,19 +81,21 @@ export function clients(
   }
   // Placed inside the SDK's retry loop, so every attempt, retries included,
   // waits its turn in the region's pacer.
+  // Receipt rules share the region's SES management call budget.
   if (beforeSesCall)
-    result.ses.middlewareStack.addRelativeTo(
-      <Args, Output>(next: (args: Args) => Promise<Output>) =>
-        async (args: Args) => {
-          await beforeSesCall()
-          return next(args)
-        },
-      {
-        relation: "after",
-        toMiddleware: "retryMiddleware",
-        name: "opensendPacer",
-      }
-    )
+    for (const client of [result.ses, result.sesClassic])
+      (client.middlewareStack as SESv2Client["middlewareStack"]).addRelativeTo(
+        <Args, Output>(next: (args: Args) => Promise<Output>) =>
+          async (args: Args) => {
+            await beforeSesCall()
+            return next(args)
+          },
+        {
+          relation: "after",
+          toMiddleware: "retryMiddleware",
+          name: "opensendPacer",
+        }
+      )
   return result
 }
 export function connectionClients(
@@ -205,6 +209,10 @@ export async function missing<T>(read: () => Promise<T>): Promise<T | null> {
         "NotFoundException",
         "QueueDoesNotExist",
         "AWS.SimpleQueueService.NonExistentQueue",
+        "NoSuchBucketPolicy",
+        "NoSuchTagSet",
+        "RuleSetDoesNotExistException",
+        "RuleDoesNotExistException",
       ].includes(e.name)
     )
       return null
