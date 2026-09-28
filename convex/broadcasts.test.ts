@@ -282,8 +282,16 @@ test("segment, global opt-out, topic opt-out and suppression resolve server-side
   ).toBe(1)
   const id = await f.create({ segmentId, topicId })
   const recipients = await f.fanout(id)
-  expect(recipients.map((r) => r.email)).toEqual(["yes@example.com"])
-  expect((await f.stats(id)).recipients).toBe(1)
+  // As on Resend, a suppressed address gets a suppressed email, not a send.
+  expect(recipients.map((r) => r.email).sort()).toEqual([
+    "suppressed@example.com",
+    "yes@example.com",
+  ])
+  await f.t.action(internal.emailSend.deliver, {
+    id: recipients.find((r) => r.email === "suppressed@example.com")!.emailId,
+    generation: 0,
+  })
+  expect(await f.stats(id)).toMatchObject({ recipients: 2, suppressed: 1 })
 })
 test("an opt-in topic excludes implicit choices and includes explicit opt-ins", async () => {
   const f = await setup()

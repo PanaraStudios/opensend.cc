@@ -11,6 +11,7 @@ import {
 } from "./tables/received"
 import { MAX_INBOUND_BYTES } from "./ses/inboundTransfer"
 import { MAX_RECEIVED_ATTACHMENTS } from "./received"
+import { formatMailbox } from "../lib/dashboard/email-send"
 
 const addresses = (value: AddressObject | AddressObject[] | undefined) =>
   (Array.isArray(value) ? value : value ? [value] : []).flatMap((item) =>
@@ -76,7 +77,12 @@ export const parse = internalAction({
           : value
       }
       metadata = {
-        from: parsed.from?.text ?? metadata.from,
+        from: parsed.from?.value[0]?.address
+          ? formatMailbox({
+              name: parsed.from.value[0].name || undefined,
+              address: parsed.from.value[0].address,
+            })
+          : metadata.from,
         sender: addresses(parsed.from)[0]?.toLowerCase() ?? "",
         to: addresses(parsed.to),
         cc: addresses(parsed.cc),

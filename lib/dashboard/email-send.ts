@@ -20,6 +20,15 @@ export function parseMailbox(value: string): Mailbox | null {
   return name ? { name, address } : { address }
 }
 
+/** A mailbox for display: RFC 5322 needs no quotes around a name made of
+    atoms and spaces, so "Acme <a@b.c>" rather than "\"Acme\" <a@b.c>". */
+export function formatMailbox({ name, address }: Mailbox) {
+  if (!name) return address
+  return /^[\w!#$%&'*+\-/=?^`{|}~ ]+$/.test(name)
+    ? `${name} <${address}>`
+    : `"${name.replace(/["\\]/g, "\\$&")}" <${address}>`
+}
+
 /** The mailbox as SES takes it: a display name outside printable ASCII is
     MIME-encoded (RFC 2047), and a quoted one is escaped. */
 export function sesMailbox(value: string) {

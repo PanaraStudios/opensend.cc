@@ -217,10 +217,26 @@ export function useEmailEditor(
     editorRef.current = editor
     const frame = window.requestAnimationFrame(() => {
       settled.current = true
+      /* The document saves before its export, so a tab closed in between
+         leaves stale markup behind: re-export on open. An unchanged export
+         saves nothing, so opening a draft still doesn't edit it. */
       if (exportOnMount) requestExport(false)
+      else if (initialContent)
+        void composeReactEmail({
+          editor,
+          preview: previewRef.current || undefined,
+        })
+          .then((email) => {
+            if (modeRef.current !== "visual" || email.html === htmlRef.current)
+              return
+            htmlRef.current = email.html
+            setHtmlState(email.html)
+            return onSaveRef.current({ html: email.html })
+          })
+          .catch(() => {})
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [editor, exportOnMount, requestExport])
+  }, [editor, exportOnMount, initialContent, requestExport])
 
   /* The inbox preview is part of the export, so editing it owes a new one. */
   React.useEffect(() => {

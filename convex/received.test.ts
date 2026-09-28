@@ -147,7 +147,7 @@ test("plain MIME parses addresses, headers, date and body; lists omit bodies", a
     id: email._id,
   })
   expect(detail?.email).toMatchObject({
-    from: '"Ada" <ada@example.com>',
+    from: "Ada <ada@example.com>",
     sender: "ada@example.com",
     to: ["inbox@mail.example.test"],
     cc: ["cc@example.com"],
@@ -250,7 +250,7 @@ test("re-running a parser emits one received row and webhook", async () => {
   expect(events[0]).toMatchObject({
     type: "email.received",
     data: {
-      from: '"Ada" <ada@example.com>',
+      from: "Ada <ada@example.com>",
       received_for: ["forwarded@example.com"],
       message_id: "<inbound@example.com>",
     },

@@ -407,12 +407,16 @@ export const get = query({
     return { row, body: await draft(ctx, row._id) }
   },
 })
+/** The audience, a page at a time. The review counts who will get the
+    email; the send (`sending`) also takes suppressed addresses, which the
+    pipeline records as suppressed emails without sending, as Resend does. */
 export async function recipientPage(
   ctx: QueryCtx,
   row: Pick<Doc<"broadcasts">, "organizationId" | "segmentId" | "topicId">,
   cursor: string | null,
   before?: number,
-  size = 100
+  size = 100,
+  sending = false
 ) {
   const topic = await audience(ctx, row)
   const page = await ctx.db
@@ -423,11 +427,13 @@ export async function recipientPage(
         .lte("_creationTime", before ?? Number.MAX_SAFE_INTEGER)
     )
     .paginate({ numItems: size, cursor })
-  const suppressed = await suppressedAmong(
-    ctx,
-    row.organizationId,
-    page.page.map((c) => c.email)
-  )
+  const suppressed = sending
+    ? new Set<string>()
+    : await suppressedAmong(
+        ctx,
+        row.organizationId,
+        page.page.map((c) => c.email)
+      )
   const contacts = []
   for (const contact of page.page) {
     if (contact.unsubscribed || suppressed.has(contact.email)) continue

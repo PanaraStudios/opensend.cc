@@ -264,7 +264,9 @@ function BroadcastReport({ item }: { item: Broadcast }) {
               ))}
             </ResourceTable>
           )}
-          <ListPagination {...pagination} noun="recipient" />
+          {rows.length > 0 || pagination.hasMore ? (
+            <ListPagination {...pagination} noun="recipient" />
+          ) : null}
         </TabsContent>
       </PanelTabs>
     </>

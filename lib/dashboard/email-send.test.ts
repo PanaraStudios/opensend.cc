@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  formatMailbox,
   attachmentContentType,
   attachmentNameError,
   headerError,
@@ -46,6 +47,24 @@ describe("sesMailbox", () => {
     assert.equal(
       sesMailbox("Zoë <z@b.co>"),
       `=?UTF-8?B?${Buffer.from("Zoë").toString("base64")}?= <z@b.co>`
+    )
+  })
+})
+
+describe("formatMailbox", () => {
+  it("quotes a display name only when it needs it", () => {
+    assert.equal(formatMailbox({ address: "a@b.co" }), "a@b.co")
+    assert.equal(
+      formatMailbox({ name: "QA Sender", address: "qa@b.co" }),
+      "QA Sender <qa@b.co>"
+    )
+    assert.equal(
+      formatMailbox({ name: "Acme, Inc.", address: "hi@b.co" }),
+      '"Acme, Inc." <hi@b.co>'
+    )
+    assert.equal(
+      formatMailbox({ name: 'Say "hi"', address: "hi@b.co" }),
+      '"Say \\"hi\\"" <hi@b.co>'
     )
   })
 })

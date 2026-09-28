@@ -79,7 +79,8 @@ export const batch = internalMutation({
       row,
       row.cursor ?? null,
       row.audienceBefore,
-      10
+      10,
+      true
     )
     const properties = await listProperties(ctx, row.organizationId)
     for (const contact of page.page) {
