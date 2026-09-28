@@ -57,6 +57,28 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+  smtp:
+    image: ${SMTP_IMAGE:-opensend-smtp:local}
+    profiles: [smtp]
+    build:
+      context: .
+      dockerfile: docker/smtp/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 40s
+    ports:
+      - "${SMTP_TLS_PUBLIC_PORT:-465}:2465"
+      - "${SMTP_STARTTLS_PUBLIC_PORT:-587}:2587"
+    environment:
+      SMTP_CONVEX_SITE_URL: http://convex:3211
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_TLS_KEY_PATH: /certs/privkey.pem
+      SMTP_TLS_CERT_PATH: /certs/fullchain.pem
+      SMTP_MAX_MESSAGE_BYTES: ${SMTP_MAX_MESSAGE_BYTES:-41943040}
+    volumes:
+      - ${SMTP_CERT_DIR:-./docker/smtp/certs}:/certs:ro
+    depends_on:
+      convex:
+        condition: service_healthy
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]

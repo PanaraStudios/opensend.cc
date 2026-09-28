@@ -1,3 +1,4 @@
+import { registerSmtpRoutes } from "./smtpHttp"
 import { httpRouter } from "convex/server"
 import { registerApiRoutes } from "./api/http"
 import { registerAuthRoutes } from "./authHttp"
@@ -8,6 +9,7 @@ import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
 /* Each feature registers its own routes, so features can be built in
    parallel without editing the same lines here. */
 const http = httpRouter()
+registerSmtpRoutes(http)
 registerSesRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)

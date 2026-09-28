@@ -191,3 +191,71 @@ node scripts/auth-smoke.mjs
 ```
 
 The smoke script creates `owner@example.test`; use fresh isolated volumes for a full rerun. Never run it against a real instance. Keep the main local instance uninitialized until its actual owner signs up.
+
+## Optional SMTP submission service
+
+The `smtp` Compose profile runs a separate Node process. It accepts authenticated
+submission on **465 (implicit TLS)** and **587 (STARTTLS required before AUTH)**.
+Username is `resend`; password is an Opensend `os_` API key with sending or full
+access. These match [Resend's SMTP credentials and TLS modes](https://resend.com/docs/send-with-smtp).
+Sending-domain restrictions on keys apply. Each team starts disabled; any member
+can enable SMTP in **Settings → SMTP**. The port selector remembers that team's
+preferred connection port; both listeners stay available to enabled teams.
+
+1. Point an unproxied DNS A/AAAA record (for example `smtp.example.com`) to the
+   host. Open inbound TCP 465 and 587. This is a submission service, so no MX
+   record or inbound port 25 is needed. Keep your SES domain's DKIM, MAIL FROM
+   and SPF records configured; SES performs final delivery.
+2. Obtain a trusted TLS certificate for that hostname. Put `fullchain.pem` and
+   `privkey.pem` in a dedicated directory readable by container UID 1000. Keep
+   the private key restricted. If using Let's Encrypt symlinks, copy the resolved
+   files into this directory. It is mounted read-only. Restart the SMTP service
+   after certificate renewal; certificates are loaded at startup.
+3. Set `SMTP_HOST=smtp.example.com` and `SMTP_CERT_DIR=/absolute/certificate/directory`
+   in `.env.docker`. Also set **SMTP_HOST** in the Convex deployment environment
+   to the same hostname so the existing settings tab displays it. It is an
+   installation setting, never a team-editable hostname.
+4. After deploying backend code, start the opt-in profile:
+
+   ```sh
+   docker compose --env-file .env.docker --profile smtp up -d --build smtp
+   ```
+
+The process fails to start without a hostname, key or certificate. Docker maps
+public 465/587 to unprivileged container ports 2465/2587; `SMTP_TLS_PUBLIC_PORT`
+and `SMTP_STARTTLS_PUBLIC_PORT` can override the host mappings. For running
+without Docker, use `node docker/smtp/main.mjs` with `SMTP_HOST`,
+`SMTP_CONVEX_SITE_URL`, `SMTP_TLS_KEY_PATH`, and `SMTP_TLS_CERT_PATH`.
+`SMTP_TLS_PORT`/`SMTP_STARTTLS_PORT` default to 2465/2587 inside the process.
+The Convex site URL is its HTTP-action endpoint (3211), not its query endpoint
+(3210). Use HTTPS when the gateway and Convex are not on a private network.
+There is no deployment admin key or AWS credential in the gateway.
+
+Messages are parsed into the same sending pipeline as REST: verified sender,
+key domain restriction, team SES tenant/configuration set, suppression checks,
+attachments, durable queue and provider retries. SMTP envelope recipients are
+honored; recipients absent from To/Cc are Bcc. Body parts, Reply-To, inline
+attachments and custom headers are retained; transport/MIME headers are rebuilt.
+A Bcc-only envelope is supported. `Resend-Idempotency-Key` becomes the existing
+24-hour HTTP idempotency key. Supply it when retrying an uncertain submission.
+No undocumented SMTP tags header is interpreted; use the REST `tags` field when
+message tags are required.
+
+The maximum MIME DATA size is 40 MiB (including encoded attachments), matching
+[SES v2's message limit](https://docs.aws.amazon.com/ses/latest/dg/attachments.html).
+`SMTP_MAX_MESSAGE_BYTES` may lower, but never raise, it. Existing REST/Convex
+limits also apply: 50 recipients, 900,000 bytes of body plus custom headers,
+42 MiB of mapped JSON, and any deployment/proxy HTTP body cap. SES also enforces its final encoded message limit. Oversized DATA
+is drained without retaining excess bytes. At most 16 clients connect per listener.
+
+AUTH and submissions share REST's team-wide 10 requests/second limit across all
+keys. A successful AUTH consumes one request; reuse an authenticated connection
+for multiple messages. Disabling SMTP or revoking a key also rejects subsequent
+messages on an already authenticated connection. `250 Queued as …` means the
+message is durably queued, not delivered. Rate limiting and backend outages
+return temporary SMTP errors; invalid credentials or messages return permanent
+errors. Inspect Emails and API Logs (`source: smtp`, `/smtp/auth` and
+`/smtp/emails`) for attributable requests. Resend documents emails in its email
+list but does not provide SMTP server debug logs; Opensend's API logs expose the
+submission bridge, not the SMTP wire conversation. Credentials are redacted and
+the gateway never logs AUTH or message content.

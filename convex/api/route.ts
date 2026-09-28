@@ -32,6 +32,7 @@ export type ApiRouteOptions = {
   permission: "full_access" | "sending"
   /** Largest accepted request body, in bytes. Default 1 MB. */
   maxBody?: number
+  source?: "smtp"
   handler: (ctx: ActionCtx, request: ApiRequest) => Promise<ApiReply>
 }
 
@@ -240,6 +241,7 @@ function dispatch(patterns: Pattern[]) {
     const begun = await ctx.runMutation(internal.api.state.begin, {
       credential: auth.credential,
       permission: options.permission,
+      smtp: options.source === "smtp",
       idempotency:
         idempotencyKey && !problem
           ? {
@@ -283,6 +285,7 @@ function dispatch(patterns: Pattern[]) {
         idempotencyId:
           begun.kind === "ok" && !problem ? begun.idempotencyId : undefined,
         log: {
+          source: options.source,
           method: options.method,
           path: url.pathname,
           status,

@@ -25,6 +25,7 @@ export const suppressionReasonValue = v.union(
 )
 export const emailSourceValue = v.union(
   v.literal("api"),
+  v.literal("smtp"),
   v.literal("dashboard"),
   v.literal("system")
 )

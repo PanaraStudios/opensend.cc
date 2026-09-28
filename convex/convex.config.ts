@@ -9,6 +9,7 @@ import migrations from "@convex-dev/migrations/convex.config.js"
 const app = defineApp({
   env: {
     SITE_URL: v.string(),
+    SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),
     ALLOW_LOCAL_OIDC: v.optional(v.string()),

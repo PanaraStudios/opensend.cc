@@ -1163,10 +1163,5 @@ export const SEED_STATE: DashboardState = {
       issuer: "",
       clientId: "",
     },
-    smtp: {
-      enabled: true,
-      host: "smtp.opensend.cc",
-      port: 465,
-    },
   },
 }

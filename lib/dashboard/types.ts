@@ -480,11 +480,6 @@ export type Settings = {
     issuer: string
     clientId: string
   }
-  smtp: {
-    enabled: boolean
-    host: string
-    port: 465 | 587
-  }
 }
 
 export type DashboardState = {

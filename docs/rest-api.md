@@ -114,3 +114,15 @@ References: [send](https://resend.com/docs/api-reference/emails/send-email),
 ## Adding an endpoint
 
 Register it with `apiRoute` from `convex/api/route.ts` in the resource's own module and call its `register…Routes` from `convex/api/http.ts`. The comment on `apiRoute` describes the handler contract.
+
+### SMTP gateway bridge
+
+`POST /smtp/auth` (empty body) validates an `os_` sending/full-access bearer key
+and the team's SMTP enablement. `POST /smtp/emails` takes the same JSON fields
+as `POST /emails` and returns `{ "id": "…" }`. These endpoints are for the
+SMTP gateway and authenticate with the client's key, without an admin secret.
+They share REST rate limiting, domain restrictions and idempotency; OAuth is
+not accepted for SMTP. They record `source: smtp` API logs. Enablement is
+checked before idempotent replay and again in the queuing transaction. See
+[self-hosting](self-hosting.md#optional-smtp-submission-service) for TLS, limits,
+and deployment configuration.

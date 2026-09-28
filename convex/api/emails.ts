@@ -15,6 +15,7 @@ import {
   rescheduleEmail,
   type NewEmail,
 } from "../emails"
+import { requireSmtp } from "../smtp"
 import schema from "../schema"
 import {
   apiError,
@@ -35,7 +36,7 @@ const MAX_BATCH = 100
 const MAX_ATTACHMENTS = 40 * 1024 * 1024
 /** The attachments plus the rest of the JSON. Convex's own HTTP limit may
     be lower; see docs/rest-api.md. */
-const MAX_SEND_BODY = MAX_ATTACHMENTS + 2 * 1024 * 1024
+export const MAX_SEND_BODY = MAX_ATTACHMENTS + 2 * 1024 * 1024
 
 /** A team email the caller may see, or null. */
 async function own(ctx: QueryCtx, caller: Caller, id: string) {
@@ -45,17 +46,22 @@ async function own(ctx: QueryCtx, caller: Caller, id: string) {
 }
 
 export const send = internalMutation({
-  args: { caller: callerValue, emails: v.array(newEmailValue) },
+  args: {
+    caller: callerValue,
+    emails: v.array(newEmailValue),
+    source: v.optional(v.literal("smtp")),
+  },
   returns: v.array(v.id("emails")),
-  handler: async (ctx, { caller, emails }) => {
+  handler: async (ctx, { caller, emails, source }) => {
     await requireCaller(ctx, caller, "sending")
+    if (source === "smtp") await requireSmtp(ctx, caller)
     const ids: Id<"emails">[] = []
     // One transaction: a batch with any invalid email sends none of them.
     for (const email of emails)
       ids.push(
         await createEmail(ctx, email, {
           organizationId: caller.organizationId,
-          source: "api",
+          source: source ?? "api",
           apiKeyId: caller.apiKeyId,
           onlyDomain: caller.domainId,
         })
@@ -315,7 +321,8 @@ function parseEmail(item: unknown, now: number, batch: boolean) {
 async function sendParsed(
   ctx: ActionCtx,
   caller: Caller,
-  parsed: ReturnType<typeof parseEmail>[]
+  parsed: ReturnType<typeof parseEmail>[],
+  source?: "smtp"
 ) {
   const stored: Id<"_storage">[] = []
   try {
@@ -331,11 +338,30 @@ async function sendParsed(
       }
       emails.push({ ...input, attachments: files })
     }
-    return await ctx.runMutation(internal.api.emails.send, { caller, emails })
+    return await ctx.runMutation(internal.api.emails.send, {
+      caller,
+      emails,
+      source,
+    })
   } catch (e) {
     for (const id of stored) await ctx.storage.delete(id)
     throw e
   }
+}
+
+export async function sendEmailBody(
+  ctx: ActionCtx,
+  caller: Caller,
+  body: unknown,
+  source?: "smtp"
+) {
+  const [id] = await sendParsed(
+    ctx,
+    caller,
+    [parseEmail(body, Date.now(), false)],
+    source
+  )
+  return { body: { id }, emailId: id }
 }
 
 const all = (values: string[] | undefined) => values ?? []
@@ -377,10 +403,7 @@ export function registerEmailRoutes(http: HttpRouter) {
     permission: "sending",
     maxBody: MAX_SEND_BODY,
     handler: async (ctx, { caller, body }) => {
-      const [id] = await sendParsed(ctx, caller, [
-        parseEmail(body, Date.now(), false),
-      ])
-      return { body: { id }, emailId: id }
+      return sendEmailBody(ctx, caller, body)
     },
   })
   apiRoute(http, {

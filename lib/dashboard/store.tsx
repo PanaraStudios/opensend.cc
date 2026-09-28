@@ -64,7 +64,6 @@ import type {
   MemberRole,
   Segment,
   SentEmail,
-  Settings,
   Team,
   TeamMember,
 } from "./types"
@@ -518,18 +517,6 @@ function addExport(resource: string, rows: number) {
   }))
 }
 
-function updateSettings(
-  patch: Partial<Settings> | ((current: Settings) => Settings)
-) {
-  mutate((current) => ({
-    ...current,
-    settings:
-      typeof patch === "function"
-        ? patch(current.settings)
-        : { ...current.settings, ...patch },
-  }))
-}
-
 function resetDemo() {
   writeRoot(seedRoot())
 }
@@ -550,7 +537,6 @@ const actions = {
   runAutomation,
   cancelAutomationRun,
   addExport,
-  updateSettings,
   resetDemo,
 }
 
