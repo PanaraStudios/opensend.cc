@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { httpStatusTone, normalizeHref } from "./format"
+import { httpStatusLabel, httpStatusTone, normalizeHref } from "./format"
 
 describe("normalizeHref", () => {
   it("keeps web addresses, mail and phone links, anchors and merge tags", () => {
@@ -41,5 +41,10 @@ describe("httpStatusTone", () => {
     assert.equal(httpStatusTone(301), "warning")
     assert.equal(httpStatusTone(500), "destructive")
     assert.equal(httpStatusTone(0), "destructive")
+  })
+
+  it("labels a missing response in words", () => {
+    assert.equal(httpStatusLabel(0), "No response")
+    assert.equal(httpStatusLabel(502), "502")
   })
 })

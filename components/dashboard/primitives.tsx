@@ -149,6 +149,7 @@ import {
   exportStatusLabel,
   formatDateTime,
   formatRelative,
+  httpStatusLabel,
   httpStatusTone,
   pluralize,
   sentenceCase,
@@ -935,7 +936,7 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
 export function HttpStatusBadge({ status }: { status: number }) {
   return (
     <Badge variant={httpStatusTone(status)} dot>
-      {status}
+      {httpStatusLabel(status)}
     </Badge>
   )
 }

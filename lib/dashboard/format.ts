@@ -300,3 +300,8 @@ export function httpStatusTone(status: number): BadgeTone {
   if (status >= 300 && status < 400) return "warning"
   return "destructive"
 }
+
+/** 0 means the request never got an HTTP response (DNS, refused, timeout). */
+export function httpStatusLabel(status: number): string {
+  return status === 0 ? "No response" : String(status)
+}
