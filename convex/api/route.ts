@@ -4,6 +4,7 @@ import { httpAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { authorizeOAuth } from "../oauthHttp"
 import { BodyTooLarge, limitedBody } from "../ses/web"
+import { pgTimestamp } from "../../lib/dashboard/exports"
 import { tokenHash } from "../../lib/oauth/policy"
 import { apiError, type Caller } from "./caller"
 import { API_RATE } from "./state"
@@ -386,5 +387,4 @@ export function listParams(query: URLSearchParams) {
 }
 
 /** Resend's timestamp format: "2026-04-08 00:11:13.110000+00". */
-export const apiTime = (ms: number) =>
-  new Date(ms).toISOString().replace("T", " ").replace("Z", "000+00")
+export const apiTime = pgTimestamp

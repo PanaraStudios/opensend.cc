@@ -57,7 +57,7 @@ export type TemplateStatus = "draft" | "published"
 export type AutomationStatus = "enabled" | "disabled"
 export type PropertyType = "string" | "number"
 export type SuppressionReason = "bounced" | "complained" | "manual"
-export type ExportStatus = "processing" | "ready" | "expired"
+export type ExportStatus = "processing" | "ready" | "failed" | "expired"
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
 export const WEBHOOK_EVENTS = [
@@ -438,6 +438,8 @@ export type ApiLog = {
 export type ExportJob = {
   id: string
   resource: string
+  /** `contacts-1790557161016.csv`. */
+  fileName: string
   status: ExportStatus
   createdAt: number
   expiresAt: number

@@ -1,6 +1,7 @@
 import { emptyBroadcastStats } from "./broadcast"
 import { DEFAULT_RETURN_PATH } from "./domains"
 import { createId } from "./ids"
+import { exportFileName } from "./exports"
 import { defaultFromAddress } from "./format"
 import { DASHBOARD_USER_AGENT, LOG_USER_AGENTS } from "./logs"
 import { runStep } from "./automation"
@@ -1119,6 +1120,7 @@ const exportsSeed: ExportJob[] = [
   {
     id: "exp_contacts",
     resource: "Contacts",
+    fileName: exportFileName("contacts", daysAgo(2)),
     status: "ready",
     createdAt: daysAgo(2),
     expiresAt: daysAgo(2) + 7 * DAY,
@@ -1127,6 +1129,7 @@ const exportsSeed: ExportJob[] = [
   {
     id: "exp_emails",
     resource: "Emails",
+    fileName: exportFileName("emails", daysAgo(12)),
     status: "expired",
     createdAt: daysAgo(12),
     expiresAt: daysAgo(5),

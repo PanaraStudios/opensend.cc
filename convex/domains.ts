@@ -2,6 +2,7 @@ import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
+  type PaginationOptions,
 } from "convex/server"
 import {
   query,
@@ -41,53 +42,66 @@ import { emitEvent } from "./events"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
+export const domainFilters = v.object({
+  search: v.optional(v.string()),
+  status: v.optional(domainStatusValue),
+  region: v.optional(regionValue),
+})
+/** The team's live domains, by name, narrowed by the list's filters. */
+export function domainPage(
+  ctx: QueryCtx,
+  args: Infer<typeof domainFilters> & {
+    organizationId: string
+    paginationOpts: PaginationOptions
+  }
+) {
+  const prefix = (args.search ?? "").trim().toLowerCase().slice(0, 253)
+  const domains = ctx.db.query("domains")
+  /* Every index below is scoped the same way and ends on the name prefix;
+     only the filters between the two differ. */
+  const scope = <R>(q: {
+    eq(
+      field: "organizationId",
+      value: string
+    ): { eq(field: "deleted", value: boolean): R }
+  }) => q.eq("organizationId", args.organizationId).eq("deleted", false)
+  const named = <R>(q: {
+    gte(field: "name", value: string): { lt(field: "name", value: string): R }
+  }) => q.gte("name", prefix).lt("name", prefix + "\uffff")
+  const rows =
+    args.status && args.region
+      ? domains.withIndex(
+          "by_organizationId_and_deleted_and_status_and_region_and_name",
+          (q) =>
+            named(
+              scope(q).eq("status", args.status!).eq("region", args.region!)
+            )
+        )
+      : args.status
+        ? domains.withIndex(
+            "by_organizationId_and_deleted_and_status_and_name",
+            (q) => named(scope(q).eq("status", args.status!))
+          )
+        : args.region
+          ? domains.withIndex(
+              "by_organizationId_and_deleted_and_region_and_name",
+              (q) => named(scope(q).eq("region", args.region!))
+            )
+          : domains.withIndex("by_organizationId_and_deleted_and_name", (q) =>
+              named(scope(q))
+            )
+  return rows.paginate(args.paginationOpts)
+}
 export const list = query({
   args: {
     organizationId: v.string(),
     paginationOpts: paginationOptsValidator,
-    search: v.optional(v.string()),
-    status: v.optional(domainStatusValue),
-    region: v.optional(regionValue),
+    ...domainFilters.fields,
   },
   returns: paginationResultValidator(schema.doc("domains")),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const prefix = (args.search ?? "").trim().toLowerCase().slice(0, 253)
-    const domains = ctx.db.query("domains")
-    /* Every index below is scoped the same way and ends on the name prefix;
-       only the filters between the two differ. */
-    const scope = <R>(q: {
-      eq(
-        field: "organizationId",
-        value: string
-      ): { eq(field: "deleted", value: boolean): R }
-    }) => q.eq("organizationId", args.organizationId).eq("deleted", false)
-    const named = <R>(q: {
-      gte(field: "name", value: string): { lt(field: "name", value: string): R }
-    }) => q.gte("name", prefix).lt("name", prefix + "\uffff")
-    const rows =
-      args.status && args.region
-        ? domains.withIndex(
-            "by_organizationId_and_deleted_and_status_and_region_and_name",
-            (q) =>
-              named(
-                scope(q).eq("status", args.status!).eq("region", args.region!)
-              )
-          )
-        : args.status
-          ? domains.withIndex(
-              "by_organizationId_and_deleted_and_status_and_name",
-              (q) => named(scope(q).eq("status", args.status!))
-            )
-          : args.region
-            ? domains.withIndex(
-                "by_organizationId_and_deleted_and_region_and_name",
-                (q) => named(scope(q).eq("region", args.region!))
-              )
-            : domains.withIndex("by_organizationId_and_deleted_and_name", (q) =>
-                named(scope(q))
-              )
-    return rows.paginate(args.paginationOpts)
+    return domainPage(ctx, args)
   },
 })
 export const get = query({

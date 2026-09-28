@@ -25,6 +25,14 @@ export function formatDateTime(timestamp: number): string {
 
 /** Compact age, e.g. "18d ago". Falls back to the date past a year. */
 export function formatRelative(timestamp: number, now = Date.now()): string {
+  /* A minute ahead is clock skew, not the future. */
+  const ahead = Math.floor((timestamp - now) / 1000)
+  if (ahead >= 60) {
+    if (ahead < 3600) return `in ${Math.floor(ahead / 60)}m`
+    if (ahead < 86_400) return `in ${Math.floor(ahead / 3600)}h`
+    if (ahead < 365 * 86_400) return `in ${Math.floor(ahead / 86_400)}d`
+    return formatDate(timestamp)
+  }
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
   if (seconds < 60) return "just now"
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
@@ -130,7 +138,9 @@ export function exportStatusLabel(status: ExportStatus): string {
     case "processing":
       return "Processing"
     case "ready":
-      return "Ready"
+      return "Completed"
+    case "failed":
+      return "Failed"
     case "expired":
       return "Expired"
   }
@@ -280,6 +290,7 @@ export const AUTOMATION_RUN_STATUS_TONE: Record<
 export const EXPORT_STATUS_TONE: Record<ExportStatus, BadgeTone> = {
   processing: "warning",
   ready: "success",
+  failed: "destructive",
   expired: "secondary",
 }
 

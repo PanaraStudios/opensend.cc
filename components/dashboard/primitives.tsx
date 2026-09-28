@@ -158,6 +158,8 @@ import {
   templateStatusLabel,
   type BadgeTone,
 } from "@/lib/dashboard/format"
+import { rangeLabel } from "@/lib/dashboard/email-range"
+import { exportSummary, type ExportFilterLine } from "@/lib/dashboard/exports"
 import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
 import type {
@@ -1795,7 +1797,8 @@ export function ListToolbar({
   allowAllTime?: boolean
   now?: number
   filters?: readonly ToolbarFilter[]
-  onExport?: () => void
+  /** Gets the filters as the export dialog confirms them. */
+  onExport?: (summary: ExportFilterLine[]) => void
   children?: React.ReactNode
 }) {
   return (
@@ -1826,7 +1829,18 @@ export function ListToolbar({
           size="icon"
           aria-label="Export"
           className="ml-auto"
-          onClick={onExport}
+          onClick={() =>
+            onExport(
+              exportSummary({
+                search: query,
+                date: onRangeChange
+                  ? rangeLabel(range, allowAllTime, now)
+                  : undefined,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                filters,
+              })
+            )
+          }
         >
           <DownloadIcon />
         </Button>

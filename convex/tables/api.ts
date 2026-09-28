@@ -75,6 +75,8 @@ export const apiTables = {
     userAgent: v.string(),
     source: logSourceValue,
     apiKeyId: v.optional(v.id("apiKeys")),
+    /** Set instead of `apiKeyId` for a request signed with an OAuth token. */
+    oauthGrantId: v.optional(v.string()),
     /** Linked by the sending lane once emails are real. */
     emailId: v.optional(v.string()),
     /** "POST /emails 200", for the dashboard's search box. */
