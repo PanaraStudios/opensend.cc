@@ -63,9 +63,13 @@ export function broadcastReceivedTests(state: () => State) {
     const backend = await client(owner)
     await seedBroadcastSender(owner, sendingDomainId)
     await owner.goto(`/domains/${sendingDomainId}`)
-    await owner
-      .getByRole("switch", { name: "Enable Sending", exact: true })
-      .check()
+    // The switch follows the server, so it flips only once the save lands.
+    const sendingSwitch = owner.getByRole("switch", {
+      name: "Enable Sending",
+      exact: true,
+    })
+    if (!(await sendingSwitch.isChecked())) await sendingSwitch.click()
+    await expect(sendingSwitch).toBeChecked()
     await expect
       .poll(
         async () =>
@@ -408,9 +412,13 @@ export function broadcastReceivedTests(state: () => State) {
     await seedBroadcastSender(owner, sendingDomainId)
     await owner.goto(`/domains/${sendingDomainId}`)
     // Receiving lives under DNS records, not the Configuration tab.
-    await owner
-      .getByRole("switch", { name: "Enable Receiving", exact: true })
-      .check()
+    // The switch follows the server, so it flips only once the save lands.
+    const receivingSwitch = owner.getByRole("switch", {
+      name: "Enable Receiving",
+      exact: true,
+    })
+    if (!(await receivingSwitch.isChecked())) await receivingSwitch.click()
+    await expect(receivingSwitch).toBeChecked()
     await expect
       .poll(
         async () =>
