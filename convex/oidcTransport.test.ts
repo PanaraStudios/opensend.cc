@@ -58,6 +58,7 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
       return Response.json({
         id_token: idToken,
         access_token: "access",
+        refresh_token: "refresh",
         expires_in: 300,
         scope: "openid email",
       })
@@ -79,12 +80,15 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
   } as unknown as ActionCtx
   const { provider } = await loadProvider(ctx, f.owner.team)
   expect(provider.discoveryUrl).toBeUndefined()
-  expect(provider.tokenUrl).toBeUndefined()
+  expect(provider.tokenUrl).toBe(`${issuer}/token`)
   const tokens = await provider.getToken!({
     code: "code",
     codeVerifier: "verifier",
     redirectURI: "https://app.example/callback",
   })
+  // Dropped even when the provider sends one: without it, Better Auth never
+  // refreshes through its unpinned fetch.
+  expect(tokens).not.toHaveProperty("refreshToken")
   vi.mocked(getOAuthState).mockResolvedValue({
     opensendOrganizationId: f.owner.team,
     opensendRevision: "revision",

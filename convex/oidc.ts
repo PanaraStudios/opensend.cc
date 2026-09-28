@@ -68,9 +68,12 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const provider: GenericOAuthConfig = {
     providerId: organizationId,
     issuer: connection.issuer,
-    // Do not give Better Auth discovery/token URLs: its built-in fetches and
-    // refresh path do not pin DNS. SSO uses the custom code exchange below.
+    // No discovery URL: Better Auth's built-in fetches do not pin DNS. Its
+    // sign-in route still requires a token URL, which only its refresh path
+    // would call, and refresh needs a refresh token that `getToken` never
+    // returns. The code exchange itself is the pinned one below.
     authorizationUrl: authorizationUrl.href,
+    tokenUrl,
     clientId: connection.clientId,
     clientSecret,
     getToken: async ({ code, redirectURI, codeVerifier }) => {
