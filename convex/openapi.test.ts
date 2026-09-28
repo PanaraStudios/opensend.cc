@@ -1,0 +1,427 @@
+// @vitest-environment node
+import { resolve } from "node:path"
+import SwaggerParser from "@apidevtools/swagger-parser"
+import Ajv2020, { type AnySchema } from "ajv/dist/2020"
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest"
+import workpoolTest from "@convex-dev/workpool/test"
+import { SESv2Client } from "@aws-sdk/client-sesv2"
+import type { ApiRouteOptions } from "./api/route"
+import { api, components } from "./_generated/api"
+import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { patchRow } from "./counts"
+
+const registrations = vi.hoisted(
+  () => [] as Pick<ApiRouteOptions, "method" | "path" | "permission">[]
+)
+vi.mock("./api/route", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./api/route")>()
+  return {
+    ...actual,
+    apiRoute: (...args: Parameters<typeof actual.apiRoute>) => {
+      const { method, path, permission } = args[1]
+      registrations.push({ method, path, permission })
+      return actual.apiRoute(...args)
+    },
+  }
+})
+// Import the application entry, so registrations outside api/http.ts count too.
+import http from "./http"
+
+type Operation = {
+  operationId: string
+  "x-opensend-permission": string
+  requestBody?: { content: { "application/json": { schema: AnySchema } } }
+  responses: Record<
+    string,
+    { content: { "application/json": { schema: AnySchema } } }
+  >
+}
+type Contract = {
+  openapi: string
+  paths: Record<string, Record<string, Operation>>
+  components: { schemas: Record<string, AnySchema> }
+}
+let contract: Contract
+const ajv = new Ajv2020({
+  strict: false,
+  allErrors: true,
+  validateFormats: false,
+})
+const operations = (spec: Contract) =>
+  Object.entries(spec.paths)
+    .flatMap(([path, methods]) =>
+      Object.keys(methods).map((method) => `${method.toUpperCase()} ${path}`)
+    )
+    .sort()
+const validateBody = (schema: AnySchema, body: unknown) => {
+  const validate = ajv.compile(schema)
+  expect(validate(body), JSON.stringify(validate.errors, null, 2)).toBe(true)
+}
+async function response(
+  path: string,
+  method: string,
+  result: Response,
+  status = 200
+) {
+  expect(result.status).toBe(status)
+  const operation = contract.paths[path][method.toLowerCase()]
+  expect(operation.responses[String(status)]).toBeDefined()
+  const schema =
+    operation.responses[String(status)].content["application/json"].schema
+  const body = await result.json()
+  validateBody(schema, body)
+  return body
+}
+
+beforeAll(async () => {
+  // Validation includes OpenAPI 3.1's meta-schema and resolution of every local ref.
+  // No remote references are permitted: contract tests never need the network.
+  contract = (await SwaggerParser.validate(resolve("openapi/opensend.yaml"), {
+    resolve: { http: false },
+  })) as unknown as Contract
+})
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
+  vi.stubEnv("SITE_URL", "https://opensend.test")
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Unexpected network request in contract test")
+      )
+  )
+  vi.spyOn(SESv2Client.prototype, "send").mockRejectedValue(
+    new Error("Unexpected AWS request in contract test")
+  )
+})
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+async function setup() {
+  const f = await fixture()
+  workpoolTest.register(f.t, "sendPool")
+  workpoolTest.register(f.t, "webhookPool")
+  await storeTestCredentials(f)
+  await f.t.run(async (ctx) => {
+    await patchRow(ctx, "domains", f.domain, {
+      status: "verified",
+      tenantAssociated: true,
+      configurationSet: "opensend-team-cfg",
+    })
+    await ctx.db.patch("sesRegions", f.region._id, {
+      callbackConfirmed: true,
+      quota: { ...f.region.quota, production: true, rate: 10 },
+    })
+  })
+  const member = await f.actor("contract-member")
+  await f.t.mutation(components.betterAuth.adapter.create, {
+    input: {
+      model: "member",
+      data: {
+        organizationId: f.owner.team,
+        userId: member.user._id,
+        role: "member",
+        createdAt: Date.now(),
+      },
+    },
+  })
+  const { token } = await member.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: { name: "Contract", permission: "full_access", domainId: null },
+  })
+  const call = (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    bearer = token
+  ) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        "Content-Type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  }
+  return { ...f, call }
+}
+
+describe("OpenAPI contract", () => {
+  test("is OpenAPI 3.1 and exactly covers every registered REST method/path and permission", () => {
+    expect(contract.openapi).toBe("3.1.0")
+    expect(registrations.length).toBeGreaterThan(0)
+    const actual = registrations
+      .map(({ method, path }) => `${method} ${path}`)
+      .sort()
+    expect(new Set(actual).size).toBe(actual.length)
+    const legacy = ["GET /oauth/grants", "DELETE /oauth/grants/{id}"]
+    expect(operations(contract)).toEqual([...actual, ...legacy].sort())
+    const dispatchRoutes = new Set(
+      registrations.map(
+        ({ method, path }) =>
+          `${method} ${path.includes("{") ? `${path.slice(0, path.indexOf("{"))}*` : path}`
+      )
+    )
+    // Explicit exclusions make a newly registered direct HTTP API route fail
+    // this audit instead of disappearing behind a broad /oauth/* exception.
+    const protocols = [
+      "GET /.well-known/oauth-authorization-server",
+      "GET /.well-known/oauth-authorization-server/oauth",
+      "GET /api/auth/*",
+      "POST /api/auth/*",
+      "GET /oauth/authorize",
+      "GET /oauth/jwks",
+      "GET /oauth/flow",
+      "POST /oauth/flow",
+      "POST /oauth/register",
+      "POST /oauth/token",
+      "POST /oauth/revoke",
+      "POST /oauth/introspect",
+      "GET /receiving-files/*",
+      "GET /ses/health",
+      "POST /ses/events",
+      "POST /ses/inbound",
+      "GET /t/o/*",
+      "GET /t/c/*",
+      "GET /t/ask",
+      "GET /unsubscribe/*",
+      "POST /unsubscribe/*",
+    ]
+    const directRoutes = http
+      .getRoutes()
+      .map(([path, method]) => `${method} ${path}`)
+      .filter((route) => !dispatchRoutes.has(route))
+    expect(directRoutes.sort()).toEqual(
+      [...protocols, "GET /oauth/grants", "DELETE /oauth/grants/*"].sort()
+    )
+    for (const { path, method, permission } of registrations)
+      expect(
+        contract.paths[path][method.toLowerCase()]["x-opensend-permission"]
+      ).toBe(permission)
+    const ids = Object.values(contract.paths).flatMap((ops) =>
+      Object.values(ops).map((op) => op.operationId)
+    )
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test("all request/response schemas compile as JSON Schema 2020-12", () => {
+    for (const methods of Object.values(contract.paths))
+      for (const operation of Object.values(methods)) {
+        if (operation.requestBody)
+          ajv.compile(operation.requestBody.content["application/json"].schema)
+        for (const result of Object.values(operation.responses))
+          ajv.compile(result.content["application/json"].schema)
+      }
+  })
+
+  test("plain member sends an email and actual send/get/list bodies match the contract", async () => {
+    const f = await setup()
+    const input = {
+      from: "hi@mail.example.test",
+      to: "ada@example.com",
+      subject: "Contract",
+      html: "<p>Hello</p>",
+    }
+    validateBody(
+      contract.paths["/emails"].post.requestBody!.content["application/json"]
+        .schema,
+      input
+    )
+    const sent = await f.call("/emails", "POST", input)
+    expect(sent.headers.get("ratelimit-limit")).toBe("10")
+    expect(sent.headers.has("ratelimit-remaining")).toBe(true)
+    expect(sent.headers.has("ratelimit-reset")).toBe(true)
+    const { id } = await response("/emails", "POST", sent)
+    const detail = await response(
+      "/emails/{id}",
+      "GET",
+      await f.call(`/emails/${id}`)
+    )
+    expect(detail).toMatchObject({
+      object: "email",
+      id,
+      last_event: "queued",
+      scheduled_at: null,
+    })
+    await response("/emails", "GET", await f.call("/emails"))
+    expect(SESv2Client.prototype.send).not.toHaveBeenCalled()
+  })
+
+  test("a nonempty domain list and domain detail match actual nullable/optional fields", async () => {
+    const f = await setup()
+    const page = await response(
+      "/domains",
+      "GET",
+      await f.call("/domains?limit=1")
+    )
+    expect(page.data).toHaveLength(1)
+    expect(page.data[0].id).toBe(f.domain)
+    await response("/domains/{id}", "GET", await f.call(`/domains/${f.domain}`))
+  })
+
+  test("plain member creates a contact; retrieval preserves null names and typed properties", async () => {
+    const f = await setup()
+    await response(
+      "/contact-properties",
+      "POST",
+      await f.call("/contact-properties", "POST", {
+        key: "score",
+        type: "number",
+        fallback_value: 0,
+      })
+    )
+    const { id } = await response(
+      "/contacts",
+      "POST",
+      await f.call("/contacts", "POST", { email: "ada@example.com" })
+    )
+    const contact = await response(
+      "/contacts/{id}",
+      "GET",
+      await f.call(`/contacts/${id}`)
+    )
+    expect(contact).toMatchObject({
+      first_name: null,
+      last_name: null,
+      properties: { score: { value: 0, type: "number" } },
+    })
+    await response("/contacts", "GET", await f.call("/contacts"))
+  })
+
+  test("retrieves draft/published templates with scalar variable defaults and stable draft version", async () => {
+    const f = await setup()
+    const { id } = await response(
+      "/templates",
+      "POST",
+      await f.call("/templates", "POST", {
+        name: "Welcome",
+        html: "<p>{{{score}}}</p>",
+        reply_to: ["support@example.com"],
+        variables: [{ key: "score", type: "number", fallback_value: 0 }],
+      })
+    )
+    const draft = await response(
+      "/templates/{id}",
+      "GET",
+      await f.call(`/templates/${id}`)
+    )
+    expect(draft).toMatchObject({
+      status: "draft",
+      published_at: null,
+      variables: [{ key: "score", type: "number", fallback_value: 0 }],
+    })
+    await response(
+      "/templates/{id}/publish",
+      "POST",
+      await f.call(`/templates/${id}/publish`, "POST")
+    )
+    const published = await response(
+      "/templates/{id}",
+      "GET",
+      await f.call(`/templates/${id}`)
+    )
+    expect(published.current_version_id).toBe(draft.current_version_id)
+    expect(published.published_at).toEqual(expect.any(String))
+  })
+
+  test("team isolation refuses dashboard access with permission and REST resource access with 404", async () => {
+    const f = await setup()
+    await expect(
+      f.outsider.client.query(api.domains.list, {
+        organizationId: f.owner.team,
+        paginationOpts: { numItems: 10, cursor: null },
+      })
+    ).rejects.toThrow("permission")
+    const other = await f.outsider.client.action(api.apiKeys.create, {
+      organizationId: f.outsider.team,
+      input: { name: "Other", permission: "full_access", domainId: null },
+    })
+    const body = await response(
+      "/domains/{id}",
+      "GET",
+      await f.call(`/domains/${f.domain}`, "GET", undefined, other.token),
+      404
+    )
+    expect(body.name).toBe("not_found")
+  })
+
+  test("validates actual malformed and unsupported request errors against status-specific schemas", async () => {
+    const f = await setup()
+    const missing = await response(
+      "/contacts",
+      "POST",
+      await f.call("/contacts", "POST", {}),
+      422
+    )
+    expect(missing.name).toBe("missing_required_field")
+    const badPage = await response(
+      "/domains",
+      "GET",
+      await f.call("/domains?limit=0"),
+      422
+    )
+    expect(badPage.name).toBe("validation_error")
+    const unsupported = await response(
+      "/emails",
+      "POST",
+      await f.call("/emails", "POST", { topic_id: "unsupported" }),
+      422
+    )
+    expect(unsupported.name).toBe("validation_error")
+    await response("/domains", "GET", await f.t.fetch("/domains"), 401)
+    await response(
+      "/domains",
+      "GET",
+      await f.call("/domains", "GET", undefined, "os_invalid"),
+      403
+    )
+  })
+
+  test("legacy OAuth grant routes use their own error contract and refuse API keys", async () => {
+    const f = await setup()
+    const listed = await response(
+      "/oauth/grants",
+      "GET",
+      await f.call("/oauth/grants"),
+      400
+    )
+    expect(listed.error).toBe("invalid_request")
+    const revoked = await response(
+      "/oauth/grants/{id}",
+      "DELETE",
+      await f.call("/oauth/grants/unknown", "DELETE"),
+      400
+    )
+    expect(revoked.error).toBe("invalid_request")
+  })
+
+  test("response schemas reject missing required fields, wrong types and undocumented fields", () => {
+    const schema =
+      contract.paths["/contacts"].post.responses["200"].content[
+        "application/json"
+      ].schema
+    const validate = ajv.compile(schema)
+    expect(validate({ object: "contact" })).toBe(false)
+    expect(validate({ object: "contact", id: 123 })).toBe(false)
+    expect(
+      validate({ object: "contact", id: "opaque", unexpected: true })
+    ).toBe(false)
+    expect(validate({ object: "contact", id: "opaque" })).toBe(true)
+  })
+})
