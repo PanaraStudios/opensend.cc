@@ -30,6 +30,7 @@ export const automationTables = {
     automationId: v.id("automations"),
     name: v.string(),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_automationId", [
       "organizationId",
       "automationId",
@@ -70,6 +71,7 @@ export const automationTables = {
     waitingAt: v.optional(v.number()),
     deadline: v.optional(v.number()),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_automationId", [
       "organizationId",
       "automationId",
@@ -96,9 +98,11 @@ export const automationTables = {
     completedAt: v.optional(v.number()),
     output: v.optional(payloadValue),
     error: v.optional(v.string()),
-  }).index("by_organizationId_and_runId_and_key", [
-    "organizationId",
-    "runId",
-    "key",
-  ]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_runId_and_key", [
+      "organizationId",
+      "runId",
+      "key",
+    ]),
 }

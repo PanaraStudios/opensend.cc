@@ -1,3 +1,4 @@
+import { requireActiveTeam } from "./teamLifecycle"
 import { TableAggregate } from "@convex-dev/aggregate"
 import type { WithoutSystemFields } from "convex/server"
 import { v, type Value } from "convex/values"
@@ -358,6 +359,8 @@ export async function insertRow<T extends CountedTable>(
   table: T,
   value: WithoutSystemFields<Doc<T>>
 ): Promise<Id<T>> {
+  if ("organizationId" in value && typeof value.organizationId === "string")
+    await requireActiveTeam(ctx, value.organizationId)
   const id = await ctx.db.insert(table, value)
   const doc = (await ctx.db.get(table, id))!
   for (const counter of COUNTED[table]) await counter.insert(ctx, doc)

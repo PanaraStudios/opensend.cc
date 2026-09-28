@@ -43,5 +43,7 @@ export const automationEventTables = {
     email: v.optional(v.string()),
     /** Size-capped when received (MAX_PAYLOAD_BYTES). */
     payload: v.record(v.string(), v.any()),
-  }).index("by_organizationId_and_name", ["organizationId", "name"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_name", ["organizationId", "name"]),
 }

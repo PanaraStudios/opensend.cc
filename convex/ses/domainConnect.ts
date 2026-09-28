@@ -1,4 +1,5 @@
 "use node"
+import { publicFetch } from "../../lib/net/public-fetch"
 /* Domain Connect: the DNS provider opens its own page with our records
    filled in, and the user confirms them there. No provider API or token is
    involved. Spec: https://github.com/Domain-Connect/spec
@@ -33,8 +34,7 @@ function httpsUrl(value: unknown) {
     return undefined
   }
 }
-const get = (url: string) =>
-  fetch(url, { signal: AbortSignal.timeout(TIMEOUT), redirect: "error" })
+const get = (url: string) => publicFetch(url, { timeoutMs: TIMEOUT })
 
 /** The domain's DNS provider, when it speaks Domain Connect and applies our
     template. Undefined otherwise: the records are then added by hand. */
@@ -148,11 +148,11 @@ export async function signature(
       sig: createSign("RSA-SHA256").update(query).sign(privateKey, "base64"),
       key,
     }
-  const response = await fetch(env.DOMAIN_CONNECT_SIGNER ?? SIGNER, {
+  const response = await publicFetch(env.DOMAIN_CONNECT_SIGNER ?? SIGNER, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ query }),
-    signal: AbortSignal.timeout(TIMEOUT),
+    timeoutMs: TIMEOUT,
   }).catch(() => null)
   const body = (await response?.json().catch(() => null)) as {
     sig?: unknown

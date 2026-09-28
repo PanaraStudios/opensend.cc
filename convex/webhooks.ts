@@ -1,3 +1,4 @@
+import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -575,7 +576,12 @@ export const claimAttempt = internalMutation({
   ),
   handler: async (ctx, args) => {
     const delivery = await ctx.db.get("webhookDeliveries", args.id)
-    if (!delivery || delivery.attempts !== args.attempt) return null
+    if (
+      !delivery ||
+      delivery.attempts !== args.attempt ||
+      (await retirement(ctx, delivery.organizationId))
+    )
+      return null
     const webhook = await ctx.db.get("webhooks", delivery.webhookId)
     if (!webhook?.enabled) {
       await patchRow(ctx, "webhookDeliveries", delivery._id, {

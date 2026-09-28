@@ -21,7 +21,9 @@ export const metricsTables = {
     ),
     address: v.string(),
     at: v.number(),
-  }).index("by_emailId_and_type_and_address", ["emailId", "type", "address"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_emailId_and_type_and_address", ["emailId", "type", "address"]),
   // One milestone per email, not one count per open/click notification.
   emailMetrics: defineTable({
     organizationId: v.string(),
@@ -32,5 +34,7 @@ export const metricsTables = {
     createdAt: v.number(),
     at: v.number(),
     recipients: v.array(v.string()),
-  }).index("by_emailId_and_type", ["emailId", "type"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_emailId_and_type", ["emailId", "type"]),
 }

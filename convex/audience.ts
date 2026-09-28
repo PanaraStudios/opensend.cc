@@ -165,7 +165,7 @@ export const findTopicChoice = (
     .unique()
 
 /** Records the contact's explicit choice. Returns whether it changed. */
-export async function setTopicChoice(
+async function setTopicChoice(
   ctx: MutationCtx,
   contact: Doc<"contacts">,
   topicId: Id<"topics">,
@@ -184,6 +184,30 @@ export async function setTopicChoice(
   return true
 }
 
+/** One event per contact operation, including multi-topic updates. */
+export async function setTopicChoices(
+  ctx: MutationCtx,
+  contact: Doc<"contacts">,
+  choices: {
+    topicId: Id<"topics">
+    subscription: Doc<"topicSubscriptions">["subscription"]
+  }[]
+) {
+  let changed = false
+  for (const choice of choices) {
+    await teamRow(ctx, "topics", contact.organizationId, choice.topicId)
+    if (await setTopicChoice(ctx, contact, choice.topicId, choice.subscription))
+      changed = true
+  }
+  if (changed) {
+    const next = await patchRow(ctx, "contacts", contact._id, {
+      updatedAt: Date.now(),
+    })
+    await emitContact(ctx, "contact.updated", next)
+  }
+  return changed
+}
+
 /** Drops empty values: an empty property falls back to its default. */
 const cleanProperties = (properties: Record<string, string>) =>
   Object.fromEntries(Object.entries(properties).filter(([, value]) => value))
@@ -199,6 +223,7 @@ export async function upsertContact(
     properties: Pick<Doc<"contactProperties">, "key" | "type">[]
     segmentIds: Id<"segments">[]
     skipExisting?: boolean
+    emit?: boolean
   }
 ): Promise<{ id: Id<"contacts">; result: "created" | "updated" | "skipped" }> {
   const email = normalizeEmail(input.email)
@@ -223,7 +248,7 @@ export async function upsertContact(
       ? await patchContact(ctx, existing, fields, now)
       : existing
     const joined = await joinSegments(ctx, [contact], options.segmentIds, false)
-    if (changed || joined.length)
+    if (options.emit !== false && (changed || joined.length))
       await emitContact(ctx, "contact.updated", contact)
     return { id: existing._id, result: "updated" }
   }
@@ -242,7 +267,8 @@ export async function upsertContact(
   })
   const contact = (await ctx.db.get("contacts", id))!
   await joinSegments(ctx, [contact], options.segmentIds, false)
-  await emitContact(ctx, "contact.created", contact, options.segmentIds)
+  if (options.emit !== false)
+    await emitContact(ctx, "contact.created", contact, options.segmentIds)
   return { id, result: "created" }
 }
 

@@ -1,4 +1,5 @@
 "use node"
+import { publicFetch } from "../../lib/net/public-fetch"
 import { X509Certificate, verify } from "node:crypto"
 import {
   ConfirmSubscriptionCommand,
@@ -104,9 +105,9 @@ export function verifySignature(message: SnsMessage, pem: string) {
    Validity is still checked on every message. */
 const certificates = new Map<string, string>()
 async function certificate(url: string) {
-  const response = await fetch(url, {
-    redirect: "error",
-    signal: AbortSignal.timeout(10000),
+  const response = await publicFetch(url, {
+    timeoutMs: 10000,
+    maxBytes: 32768,
   })
   if (!response.ok) throw new Error("Unable to fetch SNS certificate")
   return limitedBody(response, 32768)

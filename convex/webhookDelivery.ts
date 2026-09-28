@@ -1,30 +1,15 @@
 "use node"
-import dns from "node:dns"
 import { v } from "convex/values"
 import { internalAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { limitedBody } from "./ses/web"
-import { isPublicAddress } from "../lib/net/public-host"
+import { publicFetch } from "../lib/net/public-fetch"
 import { webhookEndpointError } from "../lib/dashboard/webhooks"
 import { webhookHeaders } from "../lib/webhooks/signing"
 
 /** Svix waits 15 seconds for an answer. */
 const TIMEOUT = 15_000
 const RESPONSE_LIMIT = 4096
-
-/* Every address the host resolves to must be public, so a DNS name cannot
-   point the server at its own network. */
-async function assertPublicHost(hostname: string) {
-  const addresses = await dns.promises.lookup(hostname, {
-    all: true,
-    verbatim: true,
-  })
-  if (
-    addresses.length === 0 ||
-    addresses.some(({ address }) => !isPublicAddress(address))
-  )
-    throw new Error("The endpoint resolves to a private network address")
-}
 
 function failure(error: unknown) {
   if (error instanceof Error) {
@@ -47,9 +32,8 @@ async function post(target: {
   const problem = webhookEndpointError(target.endpoint)
   if (problem) throw new Error(problem)
   const url = new URL(target.endpoint)
-  await assertPublicHost(url.hostname)
   const body = JSON.stringify(target.payload)
-  const response = await fetch(url, {
+  const response = await publicFetch(url, {
     method: "POST",
     headers: await webhookHeaders({
       id: target.messageId,
@@ -60,8 +44,9 @@ async function post(target: {
     body,
     // Svix counts a redirect as a failure; following one could also lead
     // to a host that was never checked.
-    redirect: "manual",
-    signal: AbortSignal.timeout(TIMEOUT),
+    timeoutMs: TIMEOUT,
+    maxBytes: RESPONSE_LIMIT,
+    truncate: true,
   })
   return {
     status: response.status,

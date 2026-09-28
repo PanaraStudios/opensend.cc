@@ -63,6 +63,12 @@ Custom indexes and policy tables live in `schema.ts`, outside the generated file
 
 Webhooks are signed exactly as Svix signs them (`svix-id`, `svix-timestamp`, `svix-signature`), so Resend's and Svix's verification libraries work unchanged. Signing secrets are encrypted with `SSO_ENCRYPTION_KEY`; changing that key makes existing secrets unreadable, so rotate every webhook's secret afterwards. Failed deliveries are retried on Svix's schedule (immediately, 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, 10 h), and an endpoint that has failed for five days is disabled. Rotating a secret replaces it at once: every attempt after that, retries included, is signed with the new secret only. Endpoints must be public HTTPS hosts: every address a host resolves to is checked before each attempt, and redirects are not followed. Deliveries and outbox events are kept for 90 days.
 
+## Contacts and imports
+
+CSV imports do not emit per-contact webhooks, including when an import merges into an existing contact. Ordinary contact creation and edits still emit events. Resend explicitly excludes CSV imports from [`contact.created`](https://resend.com/docs/webhooks/event-types); Opensend treats the entire import as a silent bulk operation.
+
+Topic choices share one write helper across the dashboard (single and bulk), REST API, preference page and one-click unsubscribe. One operation emits one `contact.updated` per changed contact and advances `updated_at`; repeating the same choice emits nothing. Resend documents [contact updates](https://resend.com/docs/webhooks/contacts/updated) and [topic subscription updates](https://resend.com/docs/api-reference/contacts/update-contact-topics), but does not explicitly specify topic-only webhook behavior. Treating a topic change as a contact update is Opensend's consistency decision, rather than a separately verified Resend guarantee. Automation contact updates use the same audience helpers; the current automation builder has no topic-specific action.
+
 ## Unsubscribe links
 
 Every recipient gets their own unsubscribe link. It carries the team, contact and (for a topic-scoped send) topic ids, never the address, and is signed with HMAC-SHA256 under `BETTER_AUTH_SECRET`. Links do not expire, so a link in an old email keeps working. Changing `BETTER_AUTH_SECRET` retires every link already sent.
@@ -95,6 +101,18 @@ pnpm backend env set ALLOW_LOCAL_OIDC=true
 Use issuer `http://host.docker.internal:8080/realms/opensend`, client `opensend-test`, and secret `isolated-test-secret`. Test login: `oidc-owner` / `isolated-oidc-password`, verified email `owner@example.test`. The browser must also resolve `host.docker.internal`; use a local hostname mapping if necessary. This profile is only for isolated test accounts. Disable `ALLOW_LOCAL_OIDC` before real use. The realm permits callbacks on localhost ports 3000 and 3400.
 
 ## Logs and storage
+
+### Outbound URL security
+
+`lib/net/public-fetch.ts` is the shared Node transport for webhooks, OIDC discovery/token/JWKS requests, Domain Connect discovery/template/signing requests, SNS certificates and installation callback checks. It resolves once, rejects any non-public address in the answer, and pins the socket lookup to a validated address while retaining the original Host header and TLS server name/certificate checks. Each request uses a fresh connection, never follows redirects, and has bounded DNS/request time and response size. This follows Node's documented [custom lookup](https://nodejs.org/api/http.html#httprequesturl-options-callback) and [HTTPS request options](https://nodejs.org/api/https.html#httpsrequesturl-options-callback). URL (`path`) attachments remain disabled; adding them must use this transport too.
+
+Local development exceptions are explicit and limited to an exact HTTP origin on `localhost`, `127.0.0.1` or `host.docker.internal`: installation-admin callback checks, and OIDC with `ALLOW_LOCAL_OIDC=true`. They still pin the resolved address and never follow redirects; an IdP cannot extend the exception to another origin through discovery. Keep the flag disabled in production. SSO uses the installed Better Auth 1.6.15 `getToken` hook and JOSE custom JWKS fetch so neither library performs an unpinned request. Provider refresh tokens are not retained: SSO establishes an Opensend session and does not provide an IdP API-token refresh service.
+
+### Team retirement
+
+Deleting a team, leaving its last membership, or deleting its last member's account queues product-data erasure in bounded, indexed transactions. The eraser covers every `organizationId` table and unscoped child records, keeps aggregate counts synchronized, removes Convex-stored attachments/exports/avatars, and cancels automation workflows. Better Auth membership, invitations, SSO settings/proofs, grants and grant-linked tokens/consents are also erased in batches. Schema guard tests fail when a newly added team table has no retirement policy.
+
+Access ends immediately. A `teamRetirements` record retains only the retired team ID and product-erasure completion time, preventing stale jobs or in-flight API requests from recreating product rows. AWS tenant removal retains its durable retry record until AWS confirms success; failed removal remains visible to the installation administrator for retry. Erasure requires sending domains to have been removed first. Existing installation-wide AWS/SNS resources and raw inbound objects in the shared S3 bucket are not deleted by this database eraser; their retention remains an operator responsibility. No IAM policy revision or permissions change is required.
 
 ### Account email sender
 

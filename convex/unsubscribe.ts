@@ -1,3 +1,4 @@
+import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter"
 import {
@@ -11,9 +12,8 @@ import { components } from "./_generated/api"
 import { requireTeam, findInstallation, defaultCallbackOrigin } from "./access"
 import {
   LIMITS,
-  emitContact,
   findTopicChoice,
-  setTopicChoice,
+  setTopicChoices,
   teamRow,
   updateContact,
 } from "./audience"
@@ -176,7 +176,12 @@ async function recipient(ctx: Ctx, token: string) {
   if (!target) return null
   const contactId = ctx.db.normalizeId("contacts", target.contactId)
   const contact = contactId && (await ctx.db.get("contacts", contactId))
-  if (!contact || contact.organizationId !== target.organizationId) return null
+  if (
+    !contact ||
+    contact.organizationId !== target.organizationId ||
+    (await retirement(ctx, contact.organizationId))
+  )
+    return null
   const topicId = target.topicId
     ? ctx.db.normalizeId("topics", target.topicId)
     : null
@@ -253,15 +258,12 @@ async function chooseTopic(
   topicId: Id<"topics">,
   subscribed: boolean
 ) {
-  if (
-    await setTopicChoice(
-      ctx,
-      contact,
+  await setTopicChoices(ctx, contact, [
+    {
       topicId,
-      subscribed ? "subscribed" : "unsubscribed"
-    )
-  )
-    await emitContact(ctx, "contact.updated", contact)
+      subscription: subscribed ? "subscribed" : "unsubscribed",
+    },
+  ])
 }
 
 /** A recipient's switch for one public topic. */

@@ -29,7 +29,13 @@ export async function requireMember(
       q.eq("organizationId", organizationId).eq("userId", actor.user._id)
     )
     .unique()
-  if (!member || (owner && member.role !== "owner"))
+  const organization = ctx.db.normalizeId("organization", organizationId)
+  if (
+    !member ||
+    !organization ||
+    !(await ctx.db.get("organization", organization)) ||
+    (owner && member.role !== "owner")
+  )
     throw new ConvexError("You do not have permission")
   const sso = await ctx.db
     .query("sso")

@@ -1,4 +1,6 @@
 "use node"
+import { publicFetch } from "../lib/net/public-fetch"
+import { localHttpOrigin } from "../lib/net/public-host"
 import { action } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
@@ -51,9 +53,9 @@ export const checkEnvironment = action({
       const callbackOrigin = installationUrl(args.callbackOrigin, true)
       // A challenge confirms the configured URL reaches this exact deployment.
       const challenge = crypto.randomUUID()
-      const response = await fetch(
+      const response = await publicFetch(
         `${callbackOrigin}/ses/health?challenge=${challenge}`,
-        { signal: AbortSignal.timeout(10000), redirect: "error" }
+        { timeoutMs: 10000, localOrigin: localHttpOrigin(callbackOrigin) }
       )
       const body: unknown = await response.json()
       const expected = await setupProof(challenge)

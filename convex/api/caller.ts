@@ -1,3 +1,4 @@
+import { retirement } from "../teamLifecycle"
 import { ConvexError, v, type Infer } from "convex/values"
 import { components } from "../_generated/api"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
@@ -44,7 +45,10 @@ export async function requireCaller(
           })
         )?.organizationId
       : undefined
-  if (live !== caller.organizationId)
+  if (
+    live !== caller.organizationId ||
+    (await retirement(ctx, caller.organizationId))
+  )
     throw apiError(403, "invalid_api_key", "API key is invalid")
   if (permission === "full_access" && caller.permission !== "full_access")
     throw apiError(

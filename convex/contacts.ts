@@ -21,7 +21,7 @@ import {
   listProperties,
   purgeContactRows,
   setMembership,
-  setTopicChoice,
+  setTopicChoices,
   teamRow,
   updateContact,
   upsertContact,
@@ -222,6 +222,7 @@ export const upsert = mutation({
     contacts: v.array(contactInput),
     segmentIds: v.array(v.id("segments")),
     skipExisting: v.optional(v.boolean()),
+    csvImport: v.optional(v.boolean()),
   },
   returns: v.object({
     created: v.number(),
@@ -250,7 +251,12 @@ export const upsert = mutation({
           ctx,
           args.organizationId,
           input,
-          { properties, segmentIds, skipExisting: args.skipExisting }
+          {
+            properties,
+            segmentIds,
+            skipExisting: args.skipExisting,
+            emit: !args.csvImport,
+          }
         )
         out[result] += 1
         if (result === "created") out.createdIds.push(id)
@@ -367,8 +373,9 @@ export const setTopic = mutation({
   handler: async (ctx, args) => {
     const contact = await writableContact(ctx, args.id)
     await teamRow(ctx, "topics", contact.organizationId, args.topicId)
-    if (await setTopicChoice(ctx, contact, args.topicId, args.subscription))
-      await emitContact(ctx, "contact.updated", contact)
+    await setTopicChoices(ctx, contact, [
+      { topicId: args.topicId, subscription: args.subscription },
+    ])
     return null
   },
 })
@@ -390,8 +397,11 @@ export const subscribeToTopics = mutation({
       args.organizationId,
       args.ids
     ))
-      for (const topicId of topicIds)
-        await setTopicChoice(ctx, contact, topicId, "subscribed")
+      await setTopicChoices(
+        ctx,
+        contact,
+        topicIds.map((topicId) => ({ topicId, subscription: "subscribed" }))
+      )
     return null
   },
 })

@@ -15,7 +15,7 @@ import {
   findTopicChoice,
   listProperties,
   setMembership,
-  setTopicChoice,
+  setTopicChoices,
   updateContact,
   upsertContact,
 } from "../audience"
@@ -272,18 +272,14 @@ export const create = internalMutation({
       }
     )
     const contact = (await ctx.db.get("contacts", result.id))!
-    let changed = false
-    for (const { topic, subscription } of topics)
-      if (
-        await setTopicChoice(
-          ctx,
-          contact,
-          topic._id,
-          subscription === "opt_in" ? "subscribed" : "unsubscribed"
-        )
-      )
-        changed = true
-    if (changed) await emitContact(ctx, "contact.updated", contact)
+    await setTopicChoices(
+      ctx,
+      contact,
+      topics.map(({ topic, subscription }) => ({
+        topicId: topic._id,
+        subscription: subscription === "opt_in" ? "subscribed" : "unsubscribed",
+      }))
+    )
     return result.id
   },
 })
@@ -534,7 +530,7 @@ export const subscriptions = internalMutation({
   handler: async (ctx, { caller, id, body }) => {
     await requireCaller(ctx, caller)
     const contact = await own(ctx, "contacts", caller.organizationId, id)
-    let changed = false
+    const choices = []
     for (const input of array(
       objectBody(JSON.parse(body)).topics,
       "topics",
@@ -551,17 +547,15 @@ export const subscriptions = internalMutation({
         "opt_out",
       ])
       if (!subscription) throw invalid("Missing topic subscription.")
-      if (
-        await setTopicChoice(
-          ctx,
-          contact,
-          topic._id,
-          subscription === "opt_in" ? "subscribed" : "unsubscribed"
-        )
-      )
-        changed = true
+      choices.push({
+        topicId: topic._id,
+        subscription:
+          subscription === "opt_in"
+            ? ("subscribed" as const)
+            : ("unsubscribed" as const),
+      })
     }
-    if (changed) await emitContact(ctx, "contact.updated", contact)
+    await setTopicChoices(ctx, contact, choices)
     return contact._id
   },
 })

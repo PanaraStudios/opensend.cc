@@ -1,10 +1,11 @@
 import { env } from "./_generated/server"
 import { getOAuthState } from "better-auth/api"
-import { createRemoteJWKSet, jwtVerify } from "jose"
+import { createRemoteJWKSet, customFetch, jwtVerify } from "jose"
 import { symmetricDecrypt } from "better-auth/crypto"
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 import type { ActionCtx } from "./_generated/server"
-import { components } from "./_generated/api"
+import { components, internal } from "./_generated/api"
+import { localHttpOrigin } from "../lib/net/public-host"
 
 export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const connection = await ctx.runQuery(components.betterAuth.sso.connection, {
@@ -12,7 +13,27 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   })
   if (!connection) throw new Error("SSO connection not found")
   const discoveryUrl = `${connection.issuer}/.well-known/openid-configuration`
-  const response = await fetch(discoveryUrl)
+  const localOrigin =
+    env.ALLOW_LOCAL_OIDC === "true"
+      ? localHttpOrigin(connection.issuer)
+      : undefined
+  const fetchPublic = async (url: string, body?: string) => {
+    const result = await ctx.runAction(internal.publicHttp.request, {
+      url,
+      method: body === undefined ? "GET" : "POST",
+      headers:
+        body === undefined
+          ? {}
+          : { "content-type": "application/x-www-form-urlencoded" },
+      ...(body === undefined ? {} : { body }),
+      ...(localOrigin ? { localOrigin } : {}),
+    })
+    return new Response(
+      [204, 205, 304].includes(result.status) ? null : result.body,
+      { status: result.status }
+    )
+  }
+  const response = await fetchPublic(discoveryUrl)
   if (!response.ok) throw new Error("Could not load the identity provider")
   const discovery: unknown = await response.json()
   if (
@@ -21,19 +42,72 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
     !("issuer" in discovery) ||
     discovery.issuer !== connection.issuer ||
     !("jwks_uri" in discovery) ||
-    typeof discovery.jwks_uri !== "string"
+    typeof discovery.jwks_uri !== "string" ||
+    !("authorization_endpoint" in discovery) ||
+    typeof discovery.authorization_endpoint !== "string" ||
+    !("token_endpoint" in discovery) ||
+    typeof discovery.token_endpoint !== "string"
   )
     throw new Error("Invalid OIDC discovery document")
-  const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri))
+  const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri), {
+    [customFetch]: (url) => fetchPublic(url),
+  })
+  const clientSecret = await symmetricDecrypt({
+    key: env.SSO_ENCRYPTION_KEY!,
+    data: connection.encryptedSecret,
+  })
+  const tokenUrl = discovery.token_endpoint
+  const authorizationUrl = new URL(discovery.authorization_endpoint)
+  if (
+    (authorizationUrl.protocol !== "https:" &&
+      authorizationUrl.origin !== localOrigin) ||
+    authorizationUrl.username ||
+    authorizationUrl.password
+  )
+    throw new Error("Invalid OIDC authorization endpoint")
   const provider: GenericOAuthConfig = {
     providerId: organizationId,
     issuer: connection.issuer,
-    discoveryUrl,
+    // Do not give Better Auth discovery/token URLs: its built-in fetches and
+    // refresh path do not pin DNS. SSO uses the custom code exchange below.
+    authorizationUrl: authorizationUrl.href,
     clientId: connection.clientId,
-    clientSecret: await symmetricDecrypt({
-      key: env.SSO_ENCRYPTION_KEY!,
-      data: connection.encryptedSecret,
-    }),
+    clientSecret,
+    getToken: async ({ code, redirectURI, codeVerifier }) => {
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectURI,
+        client_id: connection.clientId,
+        client_secret: clientSecret,
+        ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+      })
+      const response = await fetchPublic(tokenUrl, body.toString())
+      const tokens: unknown = await response.json()
+      if (
+        !response.ok ||
+        !tokens ||
+        typeof tokens !== "object" ||
+        !("id_token" in tokens) ||
+        typeof tokens.id_token !== "string"
+      )
+        throw new Error("OIDC ID token required")
+      return {
+        idToken: tokens.id_token,
+        accessToken:
+          "access_token" in tokens && typeof tokens.access_token === "string"
+            ? tokens.access_token
+            : undefined,
+        accessTokenExpiresAt:
+          "expires_in" in tokens && typeof tokens.expires_in === "number"
+            ? new Date(Date.now() + tokens.expires_in * 1000)
+            : undefined,
+        scopes:
+          "scope" in tokens && typeof tokens.scope === "string"
+            ? tokens.scope.split(" ")
+            : [],
+      }
+    },
     scopes: ["openid", "email", "profile"],
     pkce: true,
     requireIssuerValidation: true,

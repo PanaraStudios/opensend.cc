@@ -161,7 +161,8 @@ export function useAudienceCommands() {
     async upsertContacts(
       inputs: ContactInput[],
       segmentIds: string[],
-      skipExisting = false
+      skipExisting = false,
+      csvImport = false
     ) {
       const total = {
         created: 0,
@@ -176,6 +177,7 @@ export function useAudienceCommands() {
           contacts: batch,
           segmentIds: segmentIds as Id<"segments">[],
           skipExisting,
+          csvImport,
         })
         total.created += result.created
         total.updated += result.updated

@@ -156,15 +156,6 @@ export async function deleteKey(ctx: MutationCtx, key: Doc<"apiKeys">) {
   if (usage) await ctx.db.delete("apiKeyUsage", usage._id)
   await deleteRow(ctx, "apiKeys", key._id)
 }
-/** A deleted team's keys stop working with it. */
-export async function retireApiKeys(ctx: MutationCtx, organizationId: string) {
-  for await (const key of ctx.db
-    .query("apiKeys")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId)
-    ))
-    await deleteKey(ctx, key)
-}
 /** Stamps `lastUsedAt`, at most once a minute so busy keys do not contend. */
 export async function touchKey(ctx: MutationCtx, id: Id<"apiKeys">) {
   const now = Date.now()

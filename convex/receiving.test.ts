@@ -1,3 +1,4 @@
+import * as publicHttp from "../lib/net/public-fetch"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { Resolver } from "node:dns/promises"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
@@ -645,7 +646,7 @@ describe("inbound SNS notifications", () => {
       ctx.db.patch("domains", f.domain, { receiving: true })
     )
     const fetcher = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(publicHttp, "publicFetch")
       .mockImplementation(async () => new Response(INBOUND_CERT_PEM))
     const stored = () =>
       f.t.run((ctx) => ctx.db.query("inboundMessages").take(10))

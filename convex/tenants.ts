@@ -1,3 +1,4 @@
+import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import {
   query,
@@ -191,6 +192,14 @@ export const finish = internalMutation({
       tenant.phase !== "running"
     )
       return null
+    if (
+      args.removed &&
+      !args.error &&
+      (await retirement(ctx, tenant.organizationId))
+    ) {
+      await ctx.db.delete("sesTenants", args.id)
+      return null
+    }
     await ctx.db.patch("sesTenants", args.id, {
       phase: args.error ? "failed" : "ready",
       error: args.error,

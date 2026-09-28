@@ -64,6 +64,7 @@ export const domainTables = {
     error: v.optional(v.string()),
     operation: domainOperationValue,
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
     .index("by_deleted_and_status_and_sending_and_name", [
       "deleted",

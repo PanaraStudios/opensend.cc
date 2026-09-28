@@ -1,3 +1,4 @@
+import { retirement } from "./teamLifecycle"
 import { ConvexError, v } from "convex/values"
 import {
   WorkflowManager,
@@ -161,7 +162,11 @@ async function active(ctx: MutationCtx, id: Id<"automationRuns">) {
   const run = await ctx.db.get("automationRuns", id)
   if (!run || run.status !== "running") return null
   const automation = await ctx.db.get("automations", run.automationId)
-  return automation && !automation.deleted ? run : null
+  return automation &&
+    !automation.deleted &&
+    !(await retirement(ctx, run.organizationId))
+    ? run
+    : null
 }
 export const perform = internalMutation({
   args: { id: v.id("automationRuns"), key: v.string() },
@@ -544,7 +549,7 @@ export const dispatch = internalMutation({
   returns: v.null(),
   handler: async (ctx, { id, phase, cursor }): Promise<null> => {
     const event = await ctx.db.get("events", id)
-    if (!event) return null
+    if (!event || (await retirement(ctx, event.organizationId))) return null
     const name = customEventName(event.type)
     if (name === null) return null
     const data = event.data

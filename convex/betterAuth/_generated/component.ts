@@ -4221,6 +4221,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { email: string; id: string },
         Name
       >;
+      purgeOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        { organizationId: string },
+        null,
+        Name
+      >;
       remove: FunctionReference<
         "mutation",
         "internal",

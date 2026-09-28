@@ -61,6 +61,7 @@ export const sesTables = {
     error: v.optional(v.string()),
     checkedAt: v.optional(v.number()),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_deleted", ["deleted"])
     .index("by_organizationId_and_region", ["organizationId", "region"])
     .index("by_operation_and_deleted_and_phase", [

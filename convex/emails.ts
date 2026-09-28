@@ -1,4 +1,5 @@
 import { prepareTracking } from "./tracking"
+import { retirement } from "./teamLifecycle"
 import { countValue, counters, deleteRow } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -469,7 +470,8 @@ export const claim = internalMutation({
     if (
       email?.status !== "queued" ||
       email.generation !== generation ||
-      email.claimed
+      email.claimed ||
+      (await retirement(ctx, email.organizationId))
     )
       return null
     const domain = await ctx.db.get("domains", email.domainId)

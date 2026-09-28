@@ -1,3 +1,4 @@
+import { retirement } from "../teamLifecycle"
 import { smtpSettings } from "../smtp"
 import { v } from "convex/values"
 import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
@@ -99,6 +100,8 @@ export const begin = internalMutation({
         name: "OAuth application",
       }
     }
+    if (await retirement(ctx, caller.organizationId))
+      return { kind: "refused" as const, error: invalidKey }
     const limit = await limiter.limit(ctx, "api", {
       key: caller.organizationId,
     })
@@ -220,6 +223,7 @@ export const finish = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { caller, log, idempotencyId }) => {
+    if (await retirement(ctx, caller.organizationId)) return null
     const logId = await writeLog(ctx, caller.organizationId, {
       ...log,
       source: log.source ?? "api",
