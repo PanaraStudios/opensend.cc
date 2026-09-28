@@ -59,7 +59,7 @@ import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
 import {
   AutomationStatusBadge,
   ConfirmDialog,
-  SuggestInput,
+  OptionSelect,
   useDeleteRecord,
   useAutosaveDraft,
 } from "@/components/dashboard/primitives"
@@ -417,10 +417,9 @@ function TestEventForm({
   const { runAutomation } = useAutomationCommands()
   const event = useAutomationEvent(automation.trigger)
   const { activeTeamId } = useWorkspace()
-  const [search, setSearch] = React.useState("")
   const rows = useQuery(
     api.contacts.options,
-    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
   )
   const contacts = (rows ?? []).map((row) => ({
     id: row._id,
@@ -496,7 +495,7 @@ function TestEventForm({
         <FieldGroup className="py-4">
           <Field>
             <FieldLabel htmlFor="test-contact">Contact</FieldLabel>
-            <SuggestInput
+            <OptionSelect
               id="test-contact"
               className="w-full"
               value={contactId}
@@ -506,9 +505,7 @@ function TestEventForm({
                   : undefined
               }
               onChange={setContactId}
-              onSearch={setSearch}
-              allowCreate={false}
-              options={contacts.map((contact) => ({
+              items={contacts.map((contact) => ({
                 value: contact.id,
                 label: contact.email,
               }))}

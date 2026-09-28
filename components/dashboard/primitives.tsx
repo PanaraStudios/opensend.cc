@@ -1881,8 +1881,6 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
-  onSearch?: (value: string) => void
-  selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1915,30 +1913,17 @@ export function ToolbarFilters({
           now={now}
         />
       ) : null}
-      {filters.map((filter) =>
-        filter.onSearch ? (
-          <SuggestInput
-            key={filter["aria-label"]}
-            value={filter.value}
-            onChange={filter.onChange}
-            options={filter.items}
-            selectedItem={filter.selectedItem}
-            onSearch={filter.onSearch}
-            allowCreate={false}
-            aria-label={filter["aria-label"]}
-          />
-        ) : (
-          <OptionSelect
-            key={filter["aria-label"]}
-            size="sm"
-            align="end"
-            value={filter.value}
-            onChange={filter.onChange}
-            items={filter.items}
-            aria-label={filter["aria-label"]}
-          />
-        )
-      )}
+      {filters.map((filter) => (
+        <OptionSelect
+          key={filter["aria-label"]}
+          size="sm"
+          align="end"
+          value={filter.value}
+          onChange={filter.onChange}
+          items={filter.items}
+          aria-label={filter["aria-label"]}
+        />
+      ))}
     </>
   )
 }

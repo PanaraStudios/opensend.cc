@@ -102,14 +102,9 @@ async function countsFor(
         milestones[i * milestoneTypes.length + j],
       ])
     ) as Omit<Counts, "status">
-    return {
-      ...reached,
-      sent: Object.entries(status).reduce(
-        (n, [type, count]) => n + (type === "scheduled" ? 0 : count),
-        0
-      ),
-      status,
-    }
+    // Like Resend, rates are out of emails actually sent: a suppressed,
+    // failed, canceled or still-queued email never reached SES.
+    return { ...reached, status }
   })
 }
 

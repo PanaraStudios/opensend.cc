@@ -628,10 +628,9 @@ function SendEmailBody({
   onChange: (step: AutomationStep) => void
 }) {
   const { activeTeamId } = useWorkspace()
-  const [search, setSearch] = React.useState("")
   const rows = useQuery(
     api.templates.options,
-    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
   )
   const hasTemplates = useQuery(
     api.templates.hasAny,
@@ -670,7 +669,7 @@ function SendEmailBody({
 
   return (
     <>
-      <SuggestInput
+      <OptionSelect
         className="w-full"
         aria-label="Template"
         value={step.templateId}
@@ -689,9 +688,7 @@ function SendEmailBody({
         onChange={(templateId) =>
           onChange({ ...step, templateId, variables: {} })
         }
-        onSearch={setSearch}
-        allowCreate={false}
-        options={templates.map((item) => ({
+        items={templates.map((item) => ({
           value: item.id,
           label:
             item.status === "published" ? item.name : `${item.name} (draft)`,

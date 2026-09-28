@@ -5,7 +5,7 @@ import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
 import { insertExport } from "./exportRows"
 import { writeLog } from "./logs"
-import { insertEmail } from "./emailRows"
+import { insertEmail, recordEmailStatus } from "./emailRows"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -277,7 +277,7 @@ test("metrics selected domain beyond the summary cap is read directly and cannot
     void _creationTime
     for (let i = 0; i < 100; i++)
       await insertRow(ctx, "domains", { ...base, name: `a${i}.test` })
-    await insertEmail(
+    const id = await insertEmail(
       ctx,
       {
         organizationId: f.owner.team,
@@ -294,6 +294,8 @@ test("metrics selected domain beyond the summary cap is read directly and cannot
       { text: "Test" },
       ["user@example.test"]
     )
+    // Metrics count emails SES accepted, not ones still queued.
+    await recordEmailStatus(ctx, id, "sent")
   })
   const args = { organizationId: f.owner.team, domainId: f.domain }
   expect(

@@ -271,11 +271,9 @@ export function MetricsView() {
   const status = isFilterableStatus(event) ? event : null
   const { loading, totals, days, domains } = useMetrics(range, domain, status)
   const { activeTeamId } = useWorkspace()
-  const [search, setSearch] = React.useState("")
-  const [selectedDomain, setSelectedDomain] = React.useState<SelectOption>()
   const options = useQuery(
     api.metrics.domainOptions,
-    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
   )
   const domainItems: SelectOption[] = [
     { value: "all", label: "All domains" },
@@ -296,14 +294,7 @@ export function MetricsView() {
           filters={[
             {
               value: domain,
-              onChange: (value) => {
-                setDomain(value)
-                setSelectedDomain(
-                  domainItems.find((item) => item.value === value)
-                )
-              },
-              onSearch: setSearch,
-              selectedItem: selectedDomain,
+              onChange: setDomain,
               items: domainItems,
               "aria-label": "Domain",
             },
