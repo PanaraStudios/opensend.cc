@@ -500,9 +500,13 @@ export function broadcastReceivedTests(state: () => State) {
           .getByText("HTML received in lane 6B.")
       ).toBeVisible()
       await owner.getByRole("tab", { name: "Plain text", exact: true }).click()
-      await expect(owner.getByRole("tabpanel")).toContainText(fixture.text)
+      await expect(
+        owner.getByRole("tabpanel", { name: "Plain text", exact: true })
+      ).toContainText(fixture.text)
       await owner.getByRole("tab", { name: "HTML", exact: true }).click()
-      await expect(owner.getByRole("tabpanel")).toContainText(fixture.html)
+      await expect(
+        owner.getByRole("tabpanel", { name: "HTML", exact: true })
+      ).toContainText(fixture.html)
 
       // Detail has no attachment/authentication controls; REST exposes them.
       const url = `${httpOrigin()}/emails/receiving`
