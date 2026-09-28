@@ -15,7 +15,7 @@ const paginationOpts = { cursor: null, numItems: 50 }
 const httpOrigin = () => process.env.OPENSEND_CALLBACK_ORIGIN!
 const toast = (page: Page) => page.locator('[data-slot="toast-viewport"]')
 
-async function createApiKey(page: Page, name: string) {
+export async function createApiKey(page: Page, name: string) {
   await page.goto("/api-keys")
   await page
     .getByRole("button", { name: "Create API key", exact: true })
@@ -35,7 +35,7 @@ async function createApiKey(page: Page, name: string) {
   return { Authorization: `Bearer ${token}` }
 }
 
-async function createDraft(page: Page, name: string) {
+export async function createDraft(page: Page, name: string) {
   await page.goto("/broadcasts")
   await page
     .getByRole("button", { name: "Create broadcast", exact: true })
@@ -120,17 +120,18 @@ export function broadcastReceivedTests(state: () => State) {
     const body = "Hello {{{contact.first_name|friend}}}, welcome to lane 6B."
     const id = await createDraft(owner, name)
     const read = () => backend.query(api.broadcasts.get, { organizationId, id })
+    // The header pickers are searchable menus: their items are options.
     await owner.getByTestId("header-from").click()
     await owner
-      .getByRole("menuitemradio", { name: sender, exact: true })
+      .getByRole("option", { name: sender, exact: true })
       .click()
     await owner.getByTestId("header-audience").click()
     await owner
-      .getByRole("menuitemradio", { name: "Lane 6B readers", exact: true })
+      .getByRole("option", { name: "Lane 6B readers", exact: true })
       .click()
     await owner.getByTestId("header-topic").click()
     await owner
-      .getByRole("menuitemradio", { name: "Lane 6B news", exact: true })
+      .getByRole("option", { name: "Lane 6B news", exact: true })
       .click()
     await owner.getByTestId("header-subject").fill(subject)
     await owner.getByTestId("header-subject").press("Tab")

@@ -8,6 +8,7 @@ import {
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { broadcastReceivedTests } from "./broadcast-received-flow"
+import { hardeningSearchTests } from "./hardening-search-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -931,6 +932,14 @@ test.describe.serial("Docker self-hosted authentication", () => {
     organizationId,
     sendingDomainId,
     ownerEmail,
+  }))
+
+  hardeningSearchTests(() => ({
+    owner,
+    organizationId,
+    ownerEmail,
+    ownerPassword,
+    login,
   }))
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
