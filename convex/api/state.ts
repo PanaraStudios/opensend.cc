@@ -252,10 +252,13 @@ export const finish = internalMutation({
     const reservation = idempotencyId
       ? await ctx.db.get("apiIdempotency", idempotencyId)
       : null
+    // A successful write stores its reply in its own transaction
+    // (`idempotent`); this stores refusals, and is the fallback for a POST
+    // whose handler does not yet, so its key never stays unanswered.
     if (idempotencyId && reservation && !reservation.response) {
       if (log.status >= 500)
         await ctx.db.delete("apiIdempotency", idempotencyId)
-      else if (log.status >= 400 || log.path === "/smtp/auth")
+      else
         await ctx.db.patch("apiIdempotency", idempotencyId, {
           response: { status: log.status, body: log.responseBody ?? "" },
         })

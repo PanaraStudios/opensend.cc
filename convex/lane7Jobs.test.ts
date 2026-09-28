@@ -280,12 +280,29 @@ test("metrics reject oversized queries but every existing day preset fits", asyn
       })
     ).toHaveLength(days)
   }
-  await expect(
-    f.owner.client.query(api.metrics.summary, {
+  // One long span is one read per counter: the breakdown asks for the
+  // whole chosen range this way.
+  expect(
+    await f.owner.client.query(api.metrics.summary, {
       organizationId: f.owner.team,
       spans: [{ from, to: from + 90 * DAY - 1 }],
     })
+  ).toHaveLength(1)
+  await expect(
+    f.owner.client.query(api.metrics.summary, {
+      organizationId: f.owner.team,
+      spans: Array.from({ length: 32 }, (_, i) => ({
+        from: from + i * DAY,
+        to: from + (i + 1) * DAY - 1,
+      })),
+    })
   ).rejects.toThrow("31 days")
+  await expect(
+    f.owner.client.query(api.metrics.summary, {
+      organizationId: f.owner.team,
+      spans: [{ from, to: from + 400 * DAY - 1 }],
+    })
+  ).rejects.toThrow("a year")
   await expect(
     f.owner.client.query(api.metrics.summary, {
       organizationId: f.owner.team,

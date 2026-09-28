@@ -39,14 +39,17 @@ export const metricsCountValue = v.object({
 })
 type Counts = Infer<typeof metricsCountValue>
 
+/** Each span costs one aggregate read per counter whatever its length, so
+    the span count is what bounds a query (the client asks for 31 days at a
+    time); the overall range is kept to a year. */
 function checkSpans(spans: Infer<typeof span>[]) {
   if (!spans.length || spans.length > 31)
     throw new ConvexError(
       "Metrics support up to 31 days per query. Choose a shorter date range."
     )
-  if (spans[spans.length - 1].to - spans[0].from > 31 * 86_400_000 + 3_600_000)
+  if (spans[spans.length - 1].to - spans[0].from > 366 * 86_400_000 + 3_600_000)
     throw new ConvexError(
-      "Metrics support up to 31 days per query. Choose a shorter date range."
+      "Metrics support up to a year. Choose a shorter date range."
     )
   for (let i = 0; i < spans.length; i++) {
     const { from, to } = spans[i]
