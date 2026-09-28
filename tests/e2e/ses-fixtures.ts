@@ -204,18 +204,66 @@ export async function seedBroadcastSender(page: Page, id: string) {
   })
 }
 
-/** Upload through Convex's existing admin storage function, never a product endpoint. */
-async function seedFile(page: Page, bytes: Buffer, contentType: string) {
-  const url = testBackendValue<string>(
-    "_system/frontend/fileStorageV2:generateUploadUrl",
-    {}
+/** A table's newest rows, read through the admin CLI like `pnpm backend data`. */
+function backendRows<T>(table: string, limit = 100): T[] {
+  assertTestOwnership()
+  const output = execFileSync(
+    "node",
+    [
+      "scripts/backend.mjs",
+      "data",
+      table,
+      "--format",
+      "jsonLines",
+      "--limit",
+      String(limit),
+    ],
+    { stdio: "pipe", env: process.env, encoding: "utf8" }
   )
-  const response = await page.request.post(url, {
-    headers: { "Content-Type": contentType },
-    data: bytes,
-  })
+  return output
+    .split("\n")
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line) as T)
+}
+
+/** Puts files in Convex storage the way the product does without S3: a REST
+    send stores its attachments before SES refuses the fixture credentials.
+    Returns their storage ids in order. */
+async function storeFiles(
+  page: Page,
+  headers: Record<string, string>,
+  files: { filename: string; bytes: Buffer; contentType: string }[]
+) {
+  const response = await page.request.post(
+    `${process.env.OPENSEND_CALLBACK_ORIGIN}/emails`,
+    {
+      headers,
+      data: {
+        from: "Opensend <fixture@onboarding.example.test>",
+        to: ["fixture@example.test"],
+        subject: "Storage fixture",
+        text: "Carries files into Convex storage.",
+        attachments: files.map((file) => ({
+          filename: file.filename,
+          content: file.bytes.toString("base64"),
+          content_type: file.contentType,
+        })),
+      },
+    }
+  )
   expect(response.status()).toBe(200)
-  return (await response.json()).storageId as string
+  const { id } = (await response.json()) as { id: string }
+  const contents = backendRows<{
+    emailId: string
+    attachments?: { storageId: string; filename: string }[]
+  }>("emailContents").find((row) => row.emailId === id)
+  const stored = files.map(
+    (file) =>
+      contents?.attachments?.find((row) => row.filename === file.filename)
+        ?.storageId
+  )
+  expect(stored.every(Boolean)).toBe(true)
+  return stored as string[]
 }
 
 export const receivedFixture = {
@@ -231,7 +279,8 @@ export const receivedFixture = {
 export async function seedReceivedMessage(
   page: Page,
   organizationId: string,
-  domainId: string
+  domainId: string,
+  headers: Record<string, string>
 ) {
   const fixture = receivedFixture
   const raw = Buffer.from(
@@ -266,8 +315,14 @@ export async function seedReceivedMessage(
       "",
     ].join("\r\n")
   )
-  const rawId = await seedFile(page, raw, "message/rfc822")
-  const storageId = await seedFile(page, fixture.bytes, "text/plain")
+  const [rawId, storageId] = await storeFiles(page, headers, [
+    { filename: "raw.eml", bytes: raw, contentType: "message/rfc822" },
+    {
+      filename: fixture.filename,
+      bytes: fixture.bytes,
+      contentType: "text/plain",
+    },
+  ])
   // S3 transfer is unavailable. Seed exactly its stored row, then commit the
   // parsed result through the real counter/outbox/idempotency transaction.
   importFixture("inboundMessages", {
@@ -302,15 +357,10 @@ export async function seedReceivedMessage(
     size: raw.length,
     storedAt: Date.now(),
   })
-  const rows = testBackendValue<{ page: { _id: string; messageId: string }[] }>(
-    "_system/cli/tableData",
-    {
-      table: "inboundMessages",
-      order: "desc",
-      paginationOpts: { cursor: null, numItems: 10 },
-    }
-  )
-  const inbound = rows.page.find((row) => row.messageId === "lane-6b-sns")!
+  const inbound = backendRows<{ _id: string; messageId: string }>(
+    "inboundMessages",
+    10
+  ).find((row) => row.messageId === "lane-6b-sns")!
   expect(inbound).toBeTruthy()
   const args = {
     id: inbound._id,

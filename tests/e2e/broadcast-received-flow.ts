@@ -471,10 +471,12 @@ export function broadcastReceivedTests(state: () => State) {
       events: ["email.received"],
     })
     try {
+      const headers = await createApiKey(owner, "Lane 6B received REST")
       const id = await seedReceivedMessage(
         owner,
         organizationId,
-        sendingDomainId
+        sendingDomainId,
+        headers
       )
       const fixture = receivedFixture
       await owner.goto("/emails/receiving")
@@ -503,7 +505,6 @@ export function broadcastReceivedTests(state: () => State) {
       await expect(owner.getByRole("tabpanel")).toContainText(fixture.html)
 
       // Detail has no attachment/authentication controls; REST exposes them.
-      const headers = await createApiKey(owner, "Lane 6B received REST")
       const url = `${httpOrigin()}/emails/receiving`
       for (const path of [url, `${url}/${id}`, `${url}/${id}/attachments`])
         expect((await owner.request.get(path)).status()).toBe(401)
