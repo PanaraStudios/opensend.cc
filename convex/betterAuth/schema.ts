@@ -38,10 +38,10 @@ export default defineSchema({
     start: v.number(),
     count: v.number(),
   }).index("by_key", ["key"]),
-  invitation: tables.invitation.index("by_organizationId", ["organizationId"]),
-  member: tables.member
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_userId", ["organizationId", "userId"]),
+  member: tables.member.index("by_organizationId_and_userId", [
+    "organizationId",
+    "userId",
+  ]),
   bootstrap: defineTable({ key: v.string(), userId: v.string() }).index(
     "by_key",
     ["key"]

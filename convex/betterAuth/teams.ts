@@ -1,6 +1,6 @@
 import { v, ConvexError } from "convex/values"
 import { mutation, query, action } from "./_generated/server"
-import type { MutationCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { api } from "./_generated/api"
 import { requireMember, sessionUser } from "./policy"
@@ -343,16 +343,33 @@ export const ORGANIZATION_TABLES = [
   "avatar",
   "oauthGrant",
 ] as const
+/** Up to `limit` of a team's rows in one of ORGANIZATION_TABLES. Better
+    Auth's generated tables name their index after the field. */
+export function organizationRows(
+  ctx: QueryCtx,
+  table: (typeof ORGANIZATION_TABLES)[number],
+  organizationId: string,
+  limit: number
+) {
+  if (table === "member" || table === "invitation")
+    return ctx.db
+      .query(table)
+      .withIndex("organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .take(limit)
+  return ctx.db
+    .query(table)
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId)
+    )
+    .take(limit)
+}
 
 async function purgeOrganizationRows(ctx: MutationCtx, organizationId: string) {
   let pending = false
   for (const table of ORGANIZATION_TABLES) {
-    const rows = await ctx.db
-      .query(table)
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .take(8)
+    const rows = await organizationRows(ctx, table, organizationId, 8)
     if (rows.length === 8) pending = true
     for (const row of rows) {
       if (table === "oauthGrant") {

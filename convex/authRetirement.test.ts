@@ -3,7 +3,7 @@ import { convexTest } from "convex-test"
 import { afterEach, expect, test, vi } from "vitest"
 import schema from "./betterAuth/schema"
 import { api } from "./betterAuth/_generated/api"
-import { ORGANIZATION_TABLES } from "./betterAuth/teams"
+import { ORGANIZATION_TABLES, organizationRows } from "./betterAuth/teams"
 
 afterEach(() => vi.useRealTimers())
 
@@ -89,12 +89,7 @@ test("component retirement batches memberships, invitations, proofs and grant ch
   await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
   await t.run(async (ctx) => {
     for (const table of ORGANIZATION_TABLES)
-      expect(
-        await ctx.db
-          .query(table)
-          .withIndex("by_organizationId", (q) => q.eq("organizationId", "gone"))
-          .collect()
-      ).toEqual([])
+      expect(await organizationRows(ctx, table, "gone", 100)).toEqual([])
     for (const table of [
       "oauthUse",
       "oauthAccessToken",
