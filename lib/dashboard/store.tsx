@@ -12,7 +12,6 @@ import {
 
 import {
   cancelledRun,
-  cleanSchema,
   duplicatedAutomation,
   eventNameError,
   flattenSteps,
@@ -39,6 +38,7 @@ import {
   useTopics,
 } from "@/lib/audience/use-audience"
 import { asApiKey } from "@/lib/api-keys/use-api-keys"
+import { asAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import { SEED_STATE } from "./data"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
@@ -52,7 +52,6 @@ import {
 } from "./teams"
 import type {
   Automation,
-  AutomationEvent,
   AutomationStatus,
   Broadcast,
   BroadcastStatus,
@@ -420,38 +419,15 @@ function addAutomation() {
   return { id }
 }
 
-/* Naming an event nobody has sent yet is how one gets defined. */
-function withAutomationEvents(
-  events: readonly AutomationEvent[],
-  names: readonly string[]
-): AutomationEvent[] {
-  return names.reduce<AutomationEvent[]>(
-    (all, name) =>
-      eventNameError(
-        name,
-        all.map((item) => item.name)
-      )
-        ? all
-        : [
-            ...all,
-            {
-              id: createId("evt"),
-              name: name.trim(),
-              schema: [],
-              createdAt: Date.now(),
-            },
-          ],
-    /* Never written to: with nothing to add, the same list comes back. */
-    events as AutomationEvent[]
-  )
-}
-
 /** The workflow of an enabled automation is fixed: runs in flight finish on
-    the version they started with. Its name can change at any time. */
+    the version they started with. Its name can change at any time. Returns
+    the event names the workflow now mentions: naming an event nobody has
+    sent yet is how one gets defined, which the provider does in Convex. */
 function updateAutomation(
   id: string,
   patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
-) {
+): string[] {
+  let named: string[] = []
   mutate((current) => {
     const item = current.automations.find((entry) => entry.id === id)
     if (!item) return current
@@ -469,21 +445,16 @@ function updateAutomation(
       entry.id === id ? next : entry
     )
     /* A rename names no events. */
-    if (patch.trigger === undefined && patch.steps === undefined) {
-      return { ...current, automations }
-    }
-    const waitedFor = flattenSteps(next.steps).flatMap((step) =>
-      step.type === "wait_for_event" ? [step.eventName] : []
-    )
-    return {
-      ...current,
-      automations,
-      automationEvents: withAutomationEvents(current.automationEvents, [
+    if (patch.trigger !== undefined || patch.steps !== undefined)
+      named = [
         next.trigger,
-        ...waitedFor,
-      ]),
-    }
+        ...flattenSteps(next.steps).flatMap((step) =>
+          step.type === "wait_for_event" ? [step.eventName] : []
+        ),
+      ].filter((name) => !eventNameError(name))
+    return { ...current, automations }
   })
+  return named
 }
 
 function setAutomationStatus(id: string, status: AutomationStatus) {
@@ -566,37 +537,6 @@ function cancelAutomationRun(id: string) {
   }))
 }
 
-function saveAutomationEvent(
-  input: Pick<AutomationEvent, "name" | "schema"> & { id?: string }
-) {
-  mutate((current) => {
-    const name = input.name.trim()
-    const schema = cleanSchema(input.schema)
-    if (input.id) {
-      return {
-        ...current,
-        automationEvents: current.automationEvents.map((item) =>
-          item.id === input.id ? { ...item, name, schema } : item
-        ),
-      }
-    }
-    return {
-      ...current,
-      automationEvents: [
-        ...current.automationEvents,
-        { id: createId("evt"), name, schema, createdAt: Date.now() },
-      ],
-    }
-  })
-}
-
-function deleteAutomationEvent(id: string) {
-  mutate((current) => ({
-    ...current,
-    automationEvents: current.automationEvents.filter((item) => item.id !== id),
-  }))
-}
-
 function addExport(resource: string, rows: number) {
   mutate((current) => ({
     ...current,
@@ -648,8 +588,6 @@ const actions = {
   deleteAutomation,
   runAutomation,
   cancelAutomationRun,
-  saveAutomationEvent,
-  deleteAutomationEvent,
   addExport,
   updateSettings,
   resetDemo,
@@ -760,6 +698,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       : "skip"
   )
   const apiKeys = useMemo(() => keyPage?.page.map(asApiKey) ?? [], [keyPage])
+  /* Custom events are real. The builder's event picker reads the newest
+     page from here; the events page paginates on its own. */
+  const eventPage = useQuery(
+    api.automationEvents.list,
+    auth.activeTeamId
+      ? {
+          organizationId: auth.activeTeamId,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  const automationEvents = useMemo(
+    () => eventPage?.page.map(asAutomationEvent) ?? [],
+    [eventPage]
+  )
+  const ensureEvents = useMutation(api.automationEvents.ensure)
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -796,6 +750,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
     return {
       ...actions,
+      updateAutomation: (id, patch) => {
+        const named = actions.updateAutomation(id, patch)
+        const known = new Set(automationEvents.map((item) => item.name))
+        const names = named.filter((name) => !known.has(name.trim()))
+        if (auth.activeTeamId && names.length > 0)
+          ensureEvents({ organizationId: auth.activeTeamId, names }).catch(
+            (error: unknown) => console.error(error)
+          )
+        return named
+      },
       state: {
         ...demo,
         domains,
@@ -805,6 +769,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         topics: topics ?? [],
         properties: properties ?? [],
         apiKeys,
+        automationEvents,
         logs: [],
         // Real exports list on their own; only exports of demo lists stay.
         exports: demo.exports.filter(
@@ -859,6 +824,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     topics,
     properties,
     apiKeys,
+    automationEvents,
+    ensureEvents,
     create,
     switchTeam,
     rename,
