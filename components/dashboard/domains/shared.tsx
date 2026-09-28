@@ -25,12 +25,13 @@ import {
 } from "@/lib/dashboard/domains"
 import { regionLabel, statusLabel } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
+import { DOCS_URL } from "@/lib/site"
 import type { SelectOption } from "@/components/dashboard/primitives"
 
 export const DomainIcon = GlobeIcon
 
 /** Where the docs for a record type live. One page for now. */
-export const DNS_DOCS_HREF = "/docs"
+export const DNS_DOCS_HREF = DOCS_URL
 
 export const REGION_ITEMS: readonly SelectOption[] = REGIONS.map((item) => ({
   value: item.value,

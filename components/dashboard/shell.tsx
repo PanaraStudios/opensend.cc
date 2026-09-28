@@ -7,7 +7,7 @@ import { WorkspaceProvider } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
-import { MARKETING_URL } from "@/lib/site"
+import { DOCS_URL, MARKETING_URL } from "@/lib/site"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowUpRightIcon,
@@ -418,7 +418,7 @@ function DashboardSidebar({
                 tooltip="Docs"
                 render={
                   <a
-                    href={`${MARKETING_URL}/docs`}
+                    href={DOCS_URL}
                     target="_blank"
                     rel="noreferrer"
                   />

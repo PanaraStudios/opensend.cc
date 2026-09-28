@@ -1,6 +1,7 @@
 import { v, ConvexError } from "convex/values"
 import { internalQuery } from "../_generated/server"
 import { findInstallation, findRegion } from "../access"
+import { verifiesDomain } from "./records"
 import {
   POLICY_REVISION,
   provisioned,
@@ -53,10 +54,7 @@ export const get = internalQuery({
           domain.dkimVerified &&
           domain.mailFromVerified &&
           domain.records.every(
-            (r) =>
-              r.kind === "Tracking" ||
-              r.kind === "DMARC" ||
-              r.status !== "pending"
+            (r) => !verifiesDomain(r) || r.status !== "pending"
           )
         ))
     )

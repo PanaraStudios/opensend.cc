@@ -2,7 +2,12 @@
 import { trackingTarget } from "./contracts"
 import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
-import { identityRecords, type DnsRecord, type RecordDomain } from "./records"
+import {
+  identityRecords,
+  verifiesDomain,
+  type DnsRecord,
+  type RecordDomain,
+} from "./records"
 export const canonical = (value: string) =>
   value.trim().toLowerCase().replace(/\.$/, "")
 const isSpf = (value: string) => /^v=spf1(\s|$)/i.test(value)
@@ -170,14 +175,13 @@ export async function verificationState(
     identity.MailFromAttributes.MailFromDomain ===
       `${domain.customReturnPath}.${domain.name}` &&
     identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
-  /* DMARC is advisory, so it never holds a domain back from verified, and
-     a resolver that timed out proves nothing: only a record the resolver
+  /* A resolver that timed out proves nothing: only a record the resolver
      positively did not find keeps a domain partially verified. */
   const allVerified =
     sesVerified &&
     dkimVerified &&
     mailFromVerified &&
-    records.every((r) => r.kind === "DMARC" || r.status !== "pending")
+    records.every((r) => !verifiesDomain(r) || r.status !== "pending")
   return {
     records,
     sesVerified,

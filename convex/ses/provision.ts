@@ -40,6 +40,7 @@ import {
   CreateEmailIdentityCommand,
   GetEmailIdentityCommand,
   PutEmailIdentityMailFromAttributesCommand,
+  PutEmailIdentityFeedbackAttributesCommand,
   PutConfigurationSetDeliveryOptionsCommand,
   CreateConfigurationSetEventDestinationCommand,
   UpdateConfigurationSetEventDestinationCommand,
@@ -104,6 +105,28 @@ async function applyEventDestination(
       },
     })
   )
+}
+
+/** SES emails every bounce and complaint to the sender unless forwarding is
+    off. Opensend already gets them from the event destination, so the copies
+    only land in the domain's inbox; Resend sends none. AWS keeps forwarding
+    anyway when no other notification method is set up. A policy from before
+    this permission leaves forwarding as it is, without holding up setup. */
+async function setFeedbackForwarding(
+  ses: SESv2Client,
+  domain: string,
+  enabled: boolean
+) {
+  try {
+    await ses.send(
+      new PutEmailIdentityFeedbackAttributesCommand({
+        EmailIdentity: domain,
+        EmailForwardingEnabled: enabled,
+      })
+    )
+  } catch (e) {
+    if ((e as { name?: string }).name !== "AccessDeniedException") throw e
+  }
 }
 
 export const region = internalAction({
@@ -383,6 +406,8 @@ export const domain = internalAction({
                   : "USE_DEFAULT_VALUE",
             })
           )
+          // The identity goes back with SES's default feedback forwarding.
+          await setFeedbackForwarding(ses, domain.name, true)
         } else if (identity)
           await ses.send(
             new DeleteEmailIdentityCommand({ EmailIdentity: domain.name })
@@ -527,6 +552,8 @@ export const domain = internalAction({
         region.topicArn,
         createdConfig
       )
+      if (identity.FeedbackForwardingStatus !== false)
+        await setFeedbackForwarding(ses, domain.name, false)
       const receiptRuleSet = await syncReceiptRule(
         ctx,
         sesClassic,

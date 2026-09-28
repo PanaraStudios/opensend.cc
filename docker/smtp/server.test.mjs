@@ -203,8 +203,8 @@ test("MIME fields, inline attachments, envelope Bcc and idempotency are forwarde
   })
   const call = f.calls[1]
   assert.equal(call.headers["idempotency-key"], "welcome/1")
-  assert.equal(call.body.from, '"Sender" <hi@example.com>')
-  assert.deepEqual(call.body.to, ['"Ada" <ada@example.net>'])
+  assert.equal(call.body.from, "Sender <hi@example.com>")
+  assert.deepEqual(call.body.to, ["Ada <ada@example.net>"])
   assert.deepEqual(call.body.cc, ["cc@example.net"])
   assert.deepEqual(call.body.bcc, ["secret@example.net"])
   assert.deepEqual(call.body.reply_to, ["reply@example.com"])
@@ -230,6 +230,17 @@ test("MIME header recipients cannot add delivery recipients", async () => {
   )
   assert.deepEqual(parsed.body.to, [])
   assert.deepEqual(parsed.body.bcc, ["actual@example.net"])
+})
+
+test("display names are quoted only when they need it", async () => {
+  const parsed = await parseMessage(
+    Buffer.from(
+      'From: "Acme, Inc." <hi@example.com>\r\nTo: QA Team <a@example.net>\r\nSubject: Hi\r\n\r\nBody'
+    ),
+    ["a@example.net"]
+  )
+  assert.equal(parsed.body.from, '"Acme, Inc." <hi@example.com>')
+  assert.deepEqual(parsed.body.to, ["QA Team <a@example.net>"])
 })
 
 test("oversized DATA is rejected without submitting to Convex", async (t) => {

@@ -1969,6 +1969,44 @@ function publish(zone: { inbound?: number; dmarc?: string } = {}) {
 const read = async (f: Awaited<ReturnType<typeof receivingFixture>>) =>
   (await f.owner.client.query(api.domains.get, { id: f.domain }))!.domain
 
+describe("SES feedback forwarding", () => {
+  const forwardingCalls = (f: Awaited<ReturnType<typeof receivingFixture>>) =>
+    f.aws.calls.filter(
+      (name) => name === "PutEmailIdentityFeedbackAttributesCommand"
+    )
+
+  test("is turned off once events reach Opensend, so senders get no bounce emails", async () => {
+    const f = await receivingFixture()
+    publish()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(forwardingCalls(f)).toHaveLength(1)
+    const destination = f.aws.calls.findIndex((name) =>
+      /ConfigurationSetEventDestinationCommand$/.test(name)
+    )
+    expect(destination).toBeGreaterThanOrEqual(0)
+    expect(
+      f.aws.calls.indexOf("PutEmailIdentityFeedbackAttributesCommand")
+    ).toBeGreaterThan(destination)
+    // Already off: nothing to change on the next refresh.
+    f.aws.identity = { ...f.aws.identity, FeedbackForwardingStatus: false }
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(forwardingCalls(f)).toHaveLength(1)
+  })
+
+  test("a policy without the permission leaves forwarding on and the domain ready", async () => {
+    const f = await receivingFixture()
+    publish()
+    f.aws.onCall = async (name) => {
+      if (name === "PutEmailIdentityFeedbackAttributesCommand")
+        throw Object.assign(new Error("denied"), {
+          name: "AccessDeniedException",
+        })
+    }
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(await read(f)).toMatchObject({ status: "verified", phase: "ready" })
+  })
+})
+
 describe("DMARC guidance and inbound receiving", () => {
   test("DMARC is always published, accepts a stricter policy, and never blocks verification", async () => {
     const f = await receivingFixture()
@@ -2016,9 +2054,10 @@ describe("DMARC guidance and inbound receiving", () => {
       priority: 10,
       status: "pending",
     })
+    // As on Resend, the receiving record has its own status.
     expect(domain).toMatchObject({
       receiving: true,
-      status: "partially_verified",
+      status: "verified",
       phase: "ready",
     })
     publish({ inbound: 20, dmarc: "v=DMARC1; p=none;" })
@@ -2101,6 +2140,9 @@ describe("transient failures never unpublish a working domain", () => {
       "pending"
     )
     expect(domain.status).toBe("partially_verified")
+    // Domain events trace the way to verified, not a later dip.
+    expect(domain.verifiedAt).toBeTruthy()
+    expect(domain.partiallyVerifiedAt).toBeUndefined()
   })
   test("a throttled refresh keeps a verified domain sending, editable and retryable", async () => {
     vi.useFakeTimers()

@@ -27,8 +27,13 @@ const smtpError = (message, responseCode) =>
   Object.assign(new Error(message), { responseCode })
 const addresses = (field) =>
   (Array.isArray(field) ? field : [field]).flatMap((item) => item?.value ?? [])
+// RFC 5322: a display name of atoms and spaces needs no quotes.
 const mailbox = ({ name, address }) =>
-  name ? `${JSON.stringify(name)} <${address}>` : address
+  !name
+    ? address
+    : /^[\w!#$%&'*+\-/=?^`{|}~ ]+$/.test(name)
+      ? `${name} <${address}>`
+      : `${JSON.stringify(name)} <${address}>`
 
 /** Only envelope recipients receive mail. Recipients absent from To/Cc are Bcc. */
 export async function parseMessage(raw, recipients) {

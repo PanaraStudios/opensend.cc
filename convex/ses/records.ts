@@ -35,6 +35,13 @@ export const receivingRecord = (name: string, region: string): DnsRecord => ({
   ttl: "300",
   status: "pending",
 })
+/** Whether a domain's own status waits on this record. DMARC is advisory,
+    and, as on Resend, tracking and receiving records carry their own status
+    without holding a verified domain back from sending. */
+export const verifiesDomain = (record: Pick<DnsRecord, "kind">) =>
+  record.kind !== "DMARC" &&
+  record.kind !== "Tracking" &&
+  record.kind !== "Receiving"
 /** The tracking host while a subdomain is set and some tracking is on, as
     the dashboard's `trackingEnabled` reads it. */
 export const trackingHost = (domain: RecordDomain) =>

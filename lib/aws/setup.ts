@@ -131,6 +131,7 @@ export function buildAwsPolicy(
           "ses:DeleteEmailIdentity",
           "ses:PutEmailIdentityMailFromAttributes",
           "ses:PutEmailIdentityConfigurationSetAttributes",
+          "ses:PutEmailIdentityFeedbackAttributes",
           "ses:TagResource",
           "ses:UntagResource",
           ...tenantAssociations,

@@ -507,8 +507,8 @@ describe("open and click tracking", () => {
       openTracking: true,
       clickTracking: true,
       phase: "ready",
-      // A new record pulls a verified domain back until it is published.
-      status: "partially_verified",
+      // As on Resend, the tracking record has its own status.
+      status: "verified",
     })
     expect(domain.records.find((r) => r.kind === "Tracking")).toEqual({
       id: "tracking",

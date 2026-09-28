@@ -228,7 +228,10 @@ function milestones(
     )
       ? { dnsVerifiedAt: now }
       : {}),
-    ...(!domain.partiallyVerifiedAt && changes.status === "partially_verified"
+    // Milestones trace the way to verified; a later dip is not one of them.
+    ...(!domain.partiallyVerifiedAt &&
+    !domain.verifiedAt &&
+    changes.status === "partially_verified"
       ? { partiallyVerifiedAt: now }
       : {}),
     ...(!domain.verifiedAt && changes.status === "verified"
