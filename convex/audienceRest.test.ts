@@ -209,6 +209,16 @@ describe("audience and template REST resources", () => {
     })
   }
 
+  test("missing contact names read as null, as in Resend's API and webhooks", async () => {
+    const f = await setup()
+    const { id } = await f.ok("/contacts", "POST", {
+      email: "nameless@example.com",
+    })
+    const contact = await f.ok(`/contacts/${id}`)
+    expect(contact).toMatchObject({ first_name: null, last_name: null })
+    const list = await f.ok("/contacts")
+    expect(list.data[0]).toMatchObject({ first_name: null, last_name: null })
+  })
   test("contact properties, email lookup, atomic relations, topic defaults and contact webhooks", async () => {
     const f = await setup()
     await f.ok("/contact-properties", "POST", {

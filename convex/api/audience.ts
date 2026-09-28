@@ -385,8 +385,9 @@ export function summary(row: Doc<Resource>) {
     return {
       ...base,
       email: row.email,
-      first_name: row.firstName,
-      last_name: row.lastName,
+      // Resend sends null for a missing name, here as in contact webhooks.
+      first_name: row.firstName || null,
+      last_name: row.lastName || null,
       unsubscribed: row.unsubscribed,
     }
   if ("key" in row)
