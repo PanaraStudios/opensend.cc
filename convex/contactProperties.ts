@@ -1,3 +1,5 @@
+import type { MutationCtx } from "./_generated/server"
+import type { Doc } from "./_generated/dataModel"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -82,40 +84,7 @@ export const create = mutation({
   returns: v.id("contactProperties"),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
-    const key = normalizePropertyKey(args.key)
-    // Keys still being stripped count as taken.
-    const taken = await ctx.db
-      .query("contactProperties")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", args.organizationId)
-      )
-      .take(LIMITS.properties * 2)
-    const error = propertyKeyError(
-      key,
-      taken.map((row) => row.key)
-    )
-    if (error) throw new ConvexError(error)
-    if (taken.filter((row) => !row.deleting).length >= LIMITS.properties)
-      throw new ConvexError(
-        `A team can have up to ${LIMITS.properties} properties`
-      )
-    const fallbackValue = args.fallbackValue?.trim() || undefined
-    const name = args.name.trim() || key
-    if (name.length > 200 || (fallbackValue?.length ?? 0) > 1000)
-      throw new ConvexError("That name or fallback value is too long")
-    if (
-      args.type === "number" &&
-      fallbackValue &&
-      !Number.isFinite(Number(fallbackValue))
-    )
-      throw new ConvexError("The fallback must be a number")
-    return insertRow(ctx, "contactProperties", {
-      organizationId: args.organizationId,
-      key,
-      name,
-      type: args.type,
-      fallbackValue,
-    })
+    return createProperty(ctx, args)
   },
 })
 
@@ -130,12 +99,7 @@ export const remove = mutation({
     if (!property || property.deleting)
       throw new ConvexError("Property not found")
     await requireTeam(ctx, property.organizationId, "write")
-    await patchRow(ctx, "contactProperties", id, { deleting: true })
-    await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
-      id,
-      cursor: null,
-    })
-    return null
+    return removeProperty(ctx, property)
   },
 })
 
@@ -169,3 +133,70 @@ export const strip = internalMutation({
     return null
   },
 })
+
+export async function createProperty(
+  ctx: MutationCtx,
+  args: Omit<Doc<"contactProperties">, "_id" | "_creationTime" | "deleting">
+) {
+  const key = normalizePropertyKey(args.key)
+  // Keys still being stripped count as taken.
+  const taken = await ctx.db
+    .query("contactProperties")
+    .withIndex("by_organizationId_and_key", (q) =>
+      q.eq("organizationId", args.organizationId)
+    )
+    .take(LIMITS.properties * 2)
+  const error = propertyKeyError(
+    key,
+    taken.map((row) => row.key)
+  )
+  if (error) throw new ConvexError(error)
+  if (taken.filter((row) => !row.deleting).length >= LIMITS.properties)
+    throw new ConvexError(
+      `A team can have up to ${LIMITS.properties} properties`
+    )
+  const fallbackValue = args.fallbackValue?.trim() || undefined
+  const name = args.name.trim() || key
+  if (name.length > 200 || (fallbackValue?.length ?? 0) > 1000)
+    throw new ConvexError("That name or fallback value is too long")
+  if (
+    args.type === "number" &&
+    fallbackValue &&
+    !Number.isFinite(Number(fallbackValue))
+  )
+    throw new ConvexError("The fallback must be a number")
+  return insertRow(ctx, "contactProperties", {
+    organizationId: args.organizationId,
+    key,
+    name,
+    type: args.type,
+    fallbackValue,
+  })
+}
+
+export async function removeProperty(
+  ctx: MutationCtx,
+  property: Doc<"contactProperties">
+) {
+  const id = property._id
+  await patchRow(ctx, "contactProperties", id, { deleting: true })
+  await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
+    id,
+    cursor: null,
+  })
+  return null
+}
+
+export async function updateProperty(
+  ctx: MutationCtx,
+  property: Doc<"contactProperties">,
+  fallbackValue: string | undefined
+) {
+  if (fallbackValue === undefined) return
+  if (
+    fallbackValue.length > 1000 ||
+    (property.type === "number" && !Number.isFinite(Number(fallbackValue)))
+  )
+    throw new ConvexError("Invalid property fallback value")
+  await patchRow(ctx, "contactProperties", property._id, { fallbackValue })
+}

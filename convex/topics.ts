@@ -12,7 +12,7 @@ import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
 import { matchesSearch, teamPage } from "./lists"
 import { topicDefaultValue, topicVisibilityValue } from "./tables/audience"
 import type { MutationCtx } from "./_generated/server"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 
 function topicText(input: { name?: string; description?: string }) {
   const name = input.name?.trim()
@@ -91,13 +91,7 @@ export const create = mutation({
   returns: v.id("topics"),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
-    const text = topicText(args)
-    await requireRoom(ctx, "topics", args.organizationId)
-    return insertRow(ctx, "topics", {
-      ...args,
-      name: text.name!,
-      description: text.description ?? "",
-    })
+    return createTopic(ctx, args)
   },
 })
 
@@ -120,11 +114,7 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, { id, visibility, ...text }) => {
     await writable(ctx, id)
-    await patchRow(ctx, "topics", id, {
-      ...topicText(text),
-      ...(visibility ? { visibility } : {}),
-    })
-    return null
+    return updateTopic(ctx, { id, visibility, ...text })
   },
 })
 
@@ -136,9 +126,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     await writable(ctx, id)
-    await deleteRow(ctx, "topics", id)
-    await purgeChoices(ctx, id)
-    return null
+    return removeTopic(ctx, id)
   },
 })
 
@@ -159,3 +147,42 @@ export const purge = internalMutation({
     return null
   },
 })
+
+export async function createTopic(
+  ctx: MutationCtx,
+  args: Omit<Doc<"topics">, "_id" | "_creationTime">
+) {
+  const text = topicText(args)
+  await requireRoom(ctx, "topics", args.organizationId)
+  return insertRow(ctx, "topics", {
+    ...args,
+    name: text.name!,
+    description: text.description ?? "",
+  })
+}
+
+export async function updateTopic(
+  ctx: MutationCtx,
+  {
+    id,
+    visibility,
+    ...text
+  }: {
+    id: Id<"topics">
+    name?: string
+    description?: string
+    visibility?: "public" | "private"
+  }
+) {
+  await patchRow(ctx, "topics", id, {
+    ...topicText(text),
+    ...(visibility ? { visibility } : {}),
+  })
+  return null
+}
+
+export async function removeTopic(ctx: MutationCtx, id: Id<"topics">) {
+  await deleteRow(ctx, "topics", id)
+  await purgeChoices(ctx, id)
+  return null
+}

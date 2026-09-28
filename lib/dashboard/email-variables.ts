@@ -41,7 +41,10 @@ export function fillVariables(
   return source.replace(
     VARIABLE_PATTERN,
     (_match, name: string, fallback?: string) =>
-      encode(values[name] || (fallback ?? "").trim())
+      encode(
+        (Object.hasOwn(values, name) ? values[name] : undefined) ||
+          (fallback ?? "").trim()
+      )
   )
 }
 

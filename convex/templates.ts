@@ -19,7 +19,7 @@ import {
   patchRow,
 } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
-import { templateStatusValue } from "./tables/templates"
+import { templateStatusValue, templateVariableValue } from "./tables/templates"
 import { UNSUBSCRIBE_VARIABLE_NAME } from "../lib/dashboard/email-variables"
 import {
   MAX_TEMPLATE_VARIABLES,
@@ -33,6 +33,7 @@ import {
   uniqueTemplateAlias,
   UNTITLED_TEMPLATE,
 } from "../lib/dashboard/template"
+import { parseMailbox } from "../lib/dashboard/email-send"
 import type { EmailTemplate } from "../lib/dashboard/types"
 
 /* A document holds at most 1 MB, so the draft's markup and its editor
@@ -48,7 +49,10 @@ const TEXT_LIMITS = {
 } as const
 const bytes = (value: string) => new TextEncoder().encode(value).length
 
-const draftFields = {
+export const draftFields = {
+  text: v.optional(v.string()),
+  variableDefinitions: v.optional(v.array(templateVariableValue)),
+  replyToAddresses: v.optional(v.array(v.string())),
   subject: v.optional(v.string()),
   preview: v.optional(v.string()),
   html: v.optional(v.string()),
@@ -57,16 +61,32 @@ const draftFields = {
   from: v.optional(v.string()),
   replyTo: v.optional(v.string()),
 }
-type Input = Partial<
-  Record<keyof typeof TEXT_LIMITS | "html", string> & { content: unknown }
+export type Input = Partial<
+  Record<keyof typeof TEXT_LIMITS | "html" | "text", string> & {
+    content: unknown
+    variableDefinitions: Infer<typeof templateVariableValue>[]
+    replyToAddresses: string[]
+  }
 >
 type Draft = Pick<EmailTemplate, "name" | "subject" | "preview" | "html"> & {
   content?: unknown
+  text?: string
+  variableDefinitions?: Infer<typeof templateVariableValue>[]
+  replyToAddresses?: string[]
   from?: string
   replyTo?: string
 }
 
 function checkInput(input: Input) {
+  if (input.text !== undefined && bytes(input.text) > TEMPLATE_BODY_LIMIT)
+    throw new ConvexError("The template text is larger than 256 KB")
+  if (input.variableDefinitions) validateVariables(input.variableDefinitions)
+  if (
+    input.replyToAddresses &&
+    (input.replyToAddresses.length > 50 ||
+      input.replyToAddresses.some((address) => !parseMailbox(address)))
+  )
+    throw new ConvexError("Invalid reply-to addresses")
   for (const [key, [label, limit]] of Object.entries(TEXT_LIMITS))
     if ((input[key as keyof typeof TEXT_LIMITS]?.length ?? 0) > limit)
       throw new ConvexError(`${label} is too long`)
@@ -79,7 +99,17 @@ function checkInput(input: Input) {
     throw new ConvexError("The template design is larger than 256 KB")
 }
 function draftVariables(draft: Draft) {
-  const variables = templateVariables(draft)
+  const variables = [
+    ...new Set([
+      ...templateVariables(draft),
+      ...templateVariables({
+        subject: "",
+        preview: "",
+        html: draft.text ?? "",
+      }),
+      ...(draft.variableDefinitions ?? []).map((variable) => variable.key),
+    ]),
+  ]
   if (variables.length > MAX_TEMPLATE_VARIABLES)
     throw new ConvexError(
       `A template can use at most ${MAX_TEMPLATE_VARIABLES} variables`
@@ -101,17 +131,21 @@ async function writable(ctx: MutationCtx, id: Id<"templates">) {
   await requireTeam(ctx, template.organizationId, "write")
   return template
 }
-const findDraft = (ctx: QueryCtx, templateId: Id<"templates">) =>
+export const findDraft = (ctx: QueryCtx, templateId: Id<"templates">) =>
   ctx.db
     .query("templateDrafts")
     .withIndex("by_templateId", (q) => q.eq("templateId", templateId))
     .unique()
-const findPublished = (ctx: QueryCtx, templateId: Id<"templates">) =>
+export const findPublished = (ctx: QueryCtx, templateId: Id<"templates">) =>
   ctx.db
     .query("publishedTemplates")
     .withIndex("by_templateId", (q) => q.eq("templateId", templateId))
     .unique()
-const aliasOwner = (ctx: QueryCtx, organizationId: string, alias: string) =>
+export const aliasOwner = (
+  ctx: QueryCtx,
+  organizationId: string,
+  alias: string
+) =>
   ctx.db
     .query("templates")
     .withIndex("by_organizationId_and_alias", (q) =>
@@ -142,7 +176,7 @@ async function checkFree(ctx: QueryCtx, organizationId: string, alias: string) {
     throw new ConvexError(TEMPLATE_ALIAS_TAKEN)
 }
 
-async function insertTemplate(
+export async function insertTemplate(
   ctx: MutationCtx,
   organizationId: string,
   draft: Draft
@@ -164,12 +198,15 @@ async function insertTemplate(
     from: optionalText(draft.from),
     replyTo: optionalText(draft.replyTo),
     variables: draftVariables(draft),
+    variableDefinitions: draft.variableDefinitions,
+    replyToAddresses: draft.replyToAddresses,
     updatedAt: Date.now(),
     searchText: searchText(name, alias),
   })
   await ctx.db.insert("templateDrafts", {
     templateId: id,
     html: draft.html,
+    text: draft.text,
     ...(draft.content != null ? { content: draft.content } : {}),
   })
   return id
@@ -329,85 +366,7 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, { id, ...input }) => {
     const template = await writable(ctx, id)
-    const draft = await findDraft(ctx, id)
-    if (!draft) throw new ConvexError("Template not found")
-    checkInput(input)
-    const current: Draft = {
-      name: template.name,
-      subject: template.subject,
-      preview: template.preview,
-      from: template.from,
-      replyTo: template.replyTo,
-      html: draft.html,
-      content: draft.content,
-    }
-    const changes: Partial<Draft> = {}
-    const offer = <K extends keyof Draft>(key: K, value: Draft[K]) => {
-      if (
-        JSON.stringify(value ?? null) !== JSON.stringify(current[key] ?? null)
-      )
-        changes[key] = value
-    }
-    /* A template is listed and deleted by its name, so it always has one. */
-    if (input.name !== undefined)
-      offer("name", input.name.trim() || UNTITLED_TEMPLATE)
-    for (const key of ["subject", "preview", "html"] as const)
-      if (input[key] !== undefined) offer(key, input[key])
-    for (const key of ["from", "replyTo"] as const)
-      if (input[key] !== undefined) offer(key, optionalText(input[key]))
-    if (input.content !== undefined)
-      offer("content", input.content ?? undefined)
-    const alias = input.alias?.trim()
-    if (alias !== undefined && alias !== template.alias) {
-      const error = templateAliasError(
-        alias,
-        (await aliasOwner(ctx, template.organizationId, alias))
-          ? [{ alias }]
-          : []
-      )
-      if (error) throw new ConvexError(error)
-    }
-    const aliasChanged = alias !== undefined && alias !== template.alias
-    if (!aliasChanged && Object.keys(changes).length === 0) return null
-
-    const next = { ...current, ...changes }
-    const publishedAt = template.publishedAt ?? null
-    const nextAlias = aliasChanged
-      ? alias
-      : changes.name === undefined || publishedAt !== null
-        ? template.alias
-        : renamedTemplateAlias(
-            { id, name: template.name, alias: template.alias, publishedAt },
-            changes.name,
-            await aliasesNear(ctx, template.organizationId, changes.name)
-          )
-    if (nextAlias !== template.alias && !aliasChanged)
-      await checkFree(ctx, template.organizationId, nextAlias)
-    const now = Date.now()
-    await patchRow(ctx, "templates", id, {
-      name: next.name,
-      alias: nextAlias,
-      subject: next.subject,
-      preview: next.preview,
-      from: next.from,
-      replyTo: next.replyTo,
-      variables: draftVariables(next),
-      updatedAt: now,
-      publishedAt:
-        publishedAtAfterEdit(
-          { updatedAt: template.updatedAt, publishedAt },
-          // It only asks which fields changed, never their values.
-          changes as Partial<EmailTemplate>,
-          now
-        ) ?? undefined,
-      searchText: searchText(next.name, nextAlias),
-    })
-    if ("html" in changes || "content" in changes)
-      await ctx.db.patch("templateDrafts", draft._id, {
-        html: next.html,
-        content: next.content,
-      })
-    return null
+    return updateTemplate(ctx, template, input)
   },
 })
 
@@ -417,34 +376,7 @@ export const publish = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const template = await writable(ctx, id)
-    const draft = await findDraft(ctx, id)
-    if (!draft?.html.trim())
-      throw new ConvexError("Add content to this template before publishing")
-    const now = Date.now()
-    const version = {
-      templateId: id,
-      organizationId: template.organizationId,
-      subject: template.subject,
-      preview: template.preview,
-      html: draft.html,
-      from: template.from,
-      replyTo: template.replyTo,
-      variables: templateVariableDefaults({
-        subject: template.subject,
-        preview: template.preview,
-        html: draft.html,
-      }),
-      publishedAt: now,
-    }
-    const live = await findPublished(ctx, id)
-    if (live) await ctx.db.replace("publishedTemplates", live._id, version)
-    else await ctx.db.insert("publishedTemplates", version)
-    await patchRow(ctx, "templates", id, {
-      status: "published",
-      updatedAt: now,
-      publishedAt: now,
-    })
-    return null
+    return publishTemplate(ctx, template)
   },
 })
 
@@ -472,17 +404,7 @@ export const duplicate = mutation({
   returns: v.id("templates"),
   handler: async (ctx, { id }) => {
     const template = await writable(ctx, id)
-    const draft = await findDraft(ctx, id)
-    return insertTemplate(ctx, template.organizationId, {
-      // " copy" must not push a name at the limit past it.
-      name: `${template.name} copy`.slice(0, TEXT_LIMITS.name[1]),
-      subject: template.subject,
-      preview: template.preview,
-      from: template.from,
-      replyTo: template.replyTo,
-      html: draft?.html ?? "",
-      content: draft?.content,
-    })
+    return duplicateTemplate(ctx, template)
   },
 })
 
@@ -490,13 +412,8 @@ export const remove = mutation({
   args: { id: v.id("templates") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    await writable(ctx, id)
-    const draft = await findDraft(ctx, id)
-    if (draft) await ctx.db.delete("templateDrafts", draft._id)
-    const live = await findPublished(ctx, id)
-    if (live) await ctx.db.delete("publishedTemplates", live._id)
-    await deleteRow(ctx, "templates", id)
-    return null
+    const template = await writable(ctx, id)
+    return removeTemplate(ctx, template)
   },
 })
 
@@ -520,7 +437,17 @@ export async function publishedTemplate(
   if (!template || template.organizationId !== organizationId) return null
   const live = await findPublished(ctx, template._id)
   if (!live) return null
-  const { subject, preview, html, from, replyTo, variables, publishedAt } = live
+  const {
+    subject,
+    preview,
+    html,
+    text,
+    from,
+    replyTo,
+    replyToAddresses,
+    variables,
+    publishedAt,
+  } = live
   return {
     id: template._id,
     name: template.name,
@@ -529,6 +456,8 @@ export async function publishedTemplate(
     preview,
     html,
     variables,
+    text,
+    replyToAddresses,
     publishedAt,
     ...(from !== undefined ? { from } : {}),
     ...(replyTo !== undefined ? { replyTo } : {}),
@@ -548,18 +477,258 @@ const senderFilled = (key: string) =>
 /** One recipient's copy of a published template. As in Resend, a variable
     left out takes its default, and one with no default fails the send. */
 export function renderTemplate(
-  template: Pick<PublishedTemplate, "subject" | "html" | "variables">,
+  template: Pick<PublishedTemplate, "subject" | "html" | "text" | "variables">,
   values: Readonly<Record<string, string | number | undefined>>
 ) {
-  const filled: Record<string, string> = {}
+  const filled: Record<string, string> = Object.create(null)
   const missing: string[] = []
-  for (const { key, fallback } of template.variables) {
-    const given = values[key]
+  for (const { key, fallback, type } of template.variables) {
+    const given = Object.hasOwn(values, key) ? values[key] : undefined
+    if (
+      given !== undefined &&
+      given !== "" &&
+      type &&
+      (typeof given !== type || (type === "number" && !Number.isFinite(given)))
+    )
+      throw new ConvexError(`Invalid type for template variable: ${key}`)
     const value = given === undefined || given === "" ? fallback : String(given)
     if (value !== undefined) filled[key] = value
     else if (!senderFilled(key)) missing.push(key)
   }
   if (missing.length)
     throw new ConvexError(`Missing template variables: ${missing.join(", ")}`)
-  return renderEmail({ subject: template.subject, html: template.html }, filled)
+  return renderEmail(
+    { subject: template.subject, html: template.html, text: template.text },
+    filled
+  )
+}
+
+export async function updateTemplate(
+  ctx: MutationCtx,
+  template: Doc<"templates">,
+  input: Input
+) {
+  const id = template._id
+  const draft = await findDraft(ctx, id)
+  if (!draft) throw new ConvexError("Template not found")
+  checkInput(input)
+  const current: Draft = {
+    name: template.name,
+    subject: template.subject,
+    preview: template.preview,
+    from: template.from,
+    replyTo: template.replyTo,
+    html: draft.html,
+    content: draft.content,
+    text: draft.text,
+    variableDefinitions: template.variableDefinitions,
+    replyToAddresses: template.replyToAddresses,
+  }
+  const changes: Partial<Draft> = {}
+  const offer = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    if (JSON.stringify(value ?? null) !== JSON.stringify(current[key] ?? null))
+      changes[key] = value
+  }
+  /* A template is listed and deleted by its name, so it always has one. */
+  if (input.name !== undefined)
+    offer("name", input.name.trim() || UNTITLED_TEMPLATE)
+  for (const key of ["subject", "preview", "html"] as const)
+    if (input[key] !== undefined) offer(key, input[key])
+  for (const key of ["from", "replyTo"] as const)
+    if (input[key] !== undefined) offer(key, optionalText(input[key]))
+  for (const key of [
+    "text",
+    "variableDefinitions",
+    "replyToAddresses",
+  ] as const)
+    if (input[key] !== undefined) offer(key, input[key])
+  if (input.content !== undefined) offer("content", input.content ?? undefined)
+  if (input.replyTo !== undefined && input.replyToAddresses === undefined)
+    offer(
+      "replyToAddresses",
+      input.replyTo.trim() ? [input.replyTo.trim()] : []
+    )
+  const alias = input.alias?.trim()
+  if (alias !== undefined && alias !== template.alias) {
+    const error = templateAliasError(
+      alias,
+      (await aliasOwner(ctx, template.organizationId, alias)) ? [{ alias }] : []
+    )
+    if (error) throw new ConvexError(error)
+  }
+  const aliasChanged = alias !== undefined && alias !== template.alias
+  if (!aliasChanged && Object.keys(changes).length === 0) return null
+
+  const next = { ...current, ...changes }
+  const publishedAt = template.publishedAt ?? null
+  const nextAlias = aliasChanged
+    ? alias
+    : changes.name === undefined || publishedAt !== null
+      ? template.alias
+      : renamedTemplateAlias(
+          { id, name: template.name, alias: template.alias, publishedAt },
+          changes.name,
+          await aliasesNear(ctx, template.organizationId, changes.name)
+        )
+  if (nextAlias !== template.alias && !aliasChanged)
+    await checkFree(ctx, template.organizationId, nextAlias)
+  const now = Math.max(Date.now(), template.updatedAt + 1)
+  await patchRow(ctx, "templates", id, {
+    name: next.name,
+    alias: nextAlias,
+    subject: next.subject,
+    preview: next.preview,
+    from: next.from,
+    replyTo: next.replyTo,
+    variables: draftVariables(next),
+    variableDefinitions: next.variableDefinitions,
+    replyToAddresses: next.replyToAddresses,
+    updatedAt: now,
+    publishedAt:
+      publishedAtAfterEdit(
+        { updatedAt: template.updatedAt, publishedAt },
+        // It only asks which fields changed, never their values.
+        {
+          ...changes,
+          ...(["text", "variableDefinitions", "replyToAddresses"].some(
+            (key) => key in changes
+          )
+            ? { html: next.html }
+            : {}),
+        } as Partial<EmailTemplate>,
+        now
+      ) ?? undefined,
+    searchText: searchText(next.name, nextAlias),
+  })
+  if ("html" in changes || "content" in changes || "text" in changes)
+    await ctx.db.patch("templateDrafts", draft._id, {
+      html: next.html,
+      text: next.text,
+      content: next.content,
+    })
+  return null
+}
+
+export async function publishTemplate(
+  ctx: MutationCtx,
+  template: Doc<"templates">
+) {
+  const id = template._id
+  const draft = await findDraft(ctx, id)
+  if (!draft?.html.trim())
+    throw new ConvexError("Add content to this template before publishing")
+  const now = Math.max(Date.now(), template.updatedAt + 1)
+  const version = {
+    templateId: id,
+    organizationId: template.organizationId,
+    subject: template.subject,
+    preview: template.preview,
+    html: draft.html,
+    text: draft.text,
+    from: template.from,
+    replyTo: template.replyTo,
+    variables: resolvedVariables(template, draft),
+    replyToAddresses: template.replyToAddresses,
+    publishedAt: now,
+  }
+  const live = await findPublished(ctx, id)
+  if (live) await ctx.db.replace("publishedTemplates", live._id, version)
+  else await ctx.db.insert("publishedTemplates", version)
+  await patchRow(ctx, "templates", id, {
+    status: "published",
+    updatedAt: now,
+    publishedAt: now,
+  })
+  return null
+}
+
+export async function duplicateTemplate(
+  ctx: MutationCtx,
+  template: Doc<"templates">
+) {
+  const id = template._id
+  const draft = await findDraft(ctx, id)
+  return insertTemplate(ctx, template.organizationId, {
+    // " copy" must not push a name at the limit past it.
+    name: `${template.name} copy`.slice(0, TEXT_LIMITS.name[1]),
+    subject: template.subject,
+    preview: template.preview,
+    from: template.from,
+    replyTo: template.replyTo,
+    html: draft?.html ?? "",
+    text: draft?.text,
+    variableDefinitions: template.variableDefinitions,
+    replyToAddresses: template.replyToAddresses,
+    content: draft?.content,
+  })
+}
+
+export async function removeTemplate(
+  ctx: MutationCtx,
+  template: Doc<"templates">
+) {
+  const id = template._id
+  const draft = await findDraft(ctx, id)
+  if (draft) await ctx.db.delete("templateDrafts", draft._id)
+  const live = await findPublished(ctx, id)
+  if (live) await ctx.db.delete("publishedTemplates", live._id)
+  await deleteRow(ctx, "templates", id)
+  return null
+}
+
+const RESERVED_VARIABLES = new Set([
+  "FIRST_NAME",
+  "LAST_NAME",
+  "EMAIL",
+  "RESEND_UNSUBSCRIBE_URL",
+  "contact",
+  "this",
+])
+export function validateVariables(
+  variables: Infer<typeof templateVariableValue>[]
+) {
+  if (variables.length > MAX_TEMPLATE_VARIABLES)
+    throw new ConvexError("A template can use at most 50 variables")
+  const seen = new Set<string>()
+  for (const variable of variables) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable.key) ||
+      variable.key.length > 50 ||
+      RESERVED_VARIABLES.has(variable.key) ||
+      seen.has(variable.key)
+    )
+      throw new ConvexError(
+        "Invalid, reserved or duplicate template variable name"
+      )
+    seen.add(variable.key)
+    if (
+      variable.fallback !== undefined &&
+      (variable.fallback.length > 2000 ||
+        (variable.type === "number" &&
+          !Number.isFinite(Number(variable.fallback))))
+    )
+      throw new ConvexError("Invalid template variable fallback")
+  }
+}
+export function resolvedVariables(
+  template: Pick<
+    Doc<"templates">,
+    "subject" | "preview" | "variableDefinitions"
+  >,
+  draft: { html: string; text?: string }
+) {
+  const inferred = templateVariableDefaults({
+    subject: template.subject,
+    preview: template.preview,
+    html: `${draft.html} ${draft.text ?? ""}`,
+  })
+  const definitions = new Map(
+    inferred.map((variable) => [
+      variable.key,
+      variable as Infer<typeof templateVariableValue>,
+    ])
+  )
+  for (const variable of template.variableDefinitions ?? [])
+    definitions.set(variable.key, variable)
+  return [...definitions.values()]
 }

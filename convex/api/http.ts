@@ -1,4 +1,6 @@
 import type { HttpRouter } from "convex/server"
+import { registerAudienceRoutes } from "./audience"
+import { registerTemplateRoutes } from "./templates"
 import { registerDomainRoutes } from "./domains"
 import { registerEmailRoutes } from "./emails"
 import { registerEventRoutes } from "./events"
@@ -13,4 +15,6 @@ export function registerApiRoutes(http: HttpRouter) {
   registerEmailRoutes(http)
   registerEventRoutes(http)
   registerLogRoutes(http)
+  registerAudienceRoutes(http)
+  registerTemplateRoutes(http)
 }

@@ -242,6 +242,7 @@ function EditorScreen({
           onOpenChange={setTestOpen}
           item={item}
           exportHtml={editor.exportHtml}
+          templateId={noun === "template" ? item.id : undefined}
         />
         <ConfirmDialog
           open={blocksOpen}

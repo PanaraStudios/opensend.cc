@@ -7,6 +7,7 @@ export const templateStatusValue = v.union(
 )
 export const templateVariableValue = v.object({
   key: v.string(),
+  type: v.optional(v.union(v.literal("string"), v.literal("number"))),
   fallback: v.optional(v.string()),
 })
 
@@ -26,8 +27,10 @@ export const templateTables = {
     preview: v.string(),
     from: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    replyToAddresses: v.optional(v.array(v.string())),
     /** The draft's variables, at most MAX_TEMPLATE_VARIABLES. */
     variables: v.array(v.string()),
+    variableDefinitions: v.optional(v.array(templateVariableValue)),
     updatedAt: v.number(),
     /** As in the demo contract: moved forward by an edit that changes
         nothing sent, and kept through a revert to draft. */
@@ -45,6 +48,7 @@ export const templateTables = {
   templateDrafts: defineTable({
     templateId: v.id("templates"),
     html: v.string(),
+    text: v.optional(v.string()),
     /** The editor document; absent for hand-written HTML. */
     content: v.optional(v.any()),
   }).index("by_templateId", ["templateId"]),
@@ -54,8 +58,10 @@ export const templateTables = {
     subject: v.string(),
     preview: v.string(),
     html: v.string(),
+    text: v.optional(v.string()),
     from: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    replyToAddresses: v.optional(v.array(v.string())),
     variables: v.array(templateVariableValue),
     publishedAt: v.number(),
   }).index("by_templateId", ["templateId"]),

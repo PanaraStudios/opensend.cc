@@ -116,12 +116,7 @@ export const create = mutation({
   returns: v.id("segments"),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
-    const name = segmentName(args.name)
-    await requireRoom(ctx, "segments", args.organizationId)
-    return insertRow(ctx, "segments", {
-      organizationId: args.organizationId,
-      name,
-    })
+    return createSegment(ctx, args)
   },
 })
 
@@ -137,8 +132,7 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await writable(ctx, args.id)
-    await patchRow(ctx, "segments", args.id, { name: segmentName(args.name) })
-    return null
+    return updateSegment(ctx, args)
   },
 })
 
@@ -150,9 +144,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     await writable(ctx, id)
-    await deleteRow(ctx, "segments", id)
-    await purgeMembers(ctx, id)
-    return null
+    return removeSegment(ctx, id)
   },
 })
 
@@ -173,3 +165,29 @@ export const purge = internalMutation({
     return null
   },
 })
+
+export async function createSegment(
+  ctx: MutationCtx,
+  args: { organizationId: string; name: string }
+) {
+  const name = segmentName(args.name)
+  await requireRoom(ctx, "segments", args.organizationId)
+  return insertRow(ctx, "segments", {
+    organizationId: args.organizationId,
+    name,
+  })
+}
+
+export async function updateSegment(
+  ctx: MutationCtx,
+  args: { id: Id<"segments">; name: string }
+) {
+  await patchRow(ctx, "segments", args.id, { name: segmentName(args.name) })
+  return null
+}
+
+export async function removeSegment(ctx: MutationCtx, id: Id<"segments">) {
+  await deleteRow(ctx, "segments", id)
+  await purgeMembers(ctx, id)
+  return null
+}
