@@ -1,3 +1,5 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { selectedOption } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -441,21 +443,59 @@ export const purge = internalMutation({
 })
 
 export const options = query({
-  args: { organizationId: v.string(), search: v.optional(v.string()) },
-  returns: v.array(schema.doc("contacts").pick("_id", "email")),
-  handler: async (ctx, { organizationId, search }) => {
-    await requireTeam(ctx, organizationId)
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("contacts")),
+  },
+  returns: v.array(
+    schema.doc("contacts").pick("_id", "email", "firstName", "lastName")
+  ),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
     const prefix = search?.trim().toLowerCase() ?? ""
-    return (
-      await ctx.db
+    let rows = prefix
+      ? await ctx.db
+          .query("contacts")
+          .withIndex("by_organizationId_and_email", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .gte("email", prefix)
+              .lt("email", prefix + "\uffff")
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("contacts")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+    if (prefix && rows.length < OPTION_LIMIT) {
+      const names = await ctx.db
         .query("contacts")
-        .withIndex("by_organizationId_and_email", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .gte("email", prefix)
-            .lt("email", prefix + "\uffff")
+        .withSearchIndex("search_search", (q) =>
+          q.search("search", prefix).eq("organizationId", organizationId)
         )
-        .take(100)
-    ).map(({ _id, email }) => ({ _id, email }))
+        .take(OPTION_LIMIT)
+      rows = [
+        ...rows,
+        ...names.filter((row) => !rows.some((item) => item._id === row._id)),
+      ].slice(0, OPTION_LIMIT)
+    }
+    const selected = await selectedOption(
+      ctx,
+      "contacts",
+      organizationId,
+      selectedId
+    )
+    return includeSelected(rows, selected, (row) => row._id).map(
+      ({ _id, email, firstName, lastName }) => ({
+        _id,
+        email,
+        firstName,
+        lastName,
+      })
+    )
   },
 })

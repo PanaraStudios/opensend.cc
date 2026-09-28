@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Command as CommandPrimitive } from "cmdk"
+import { Command as CommandPrimitive, defaultFilter } from "cmdk"
 import { cn } from "cn"
 
 import {
@@ -14,13 +14,20 @@ import {
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group"
 import { SearchIcon, CheckIcon } from "lucide-react"
 
+const SERVER_RESULT = "__server_result__"
+
 function Command({
   className,
+  filter = (value, search, keywords) =>
+    keywords?.includes(SERVER_RESULT)
+      ? 1
+      : defaultFilter(value, search, keywords),
   ...props
 }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
     <CommandPrimitive
       data-slot="command"
+      filter={filter}
       className={cn(
         "flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground",
         className
@@ -147,11 +154,16 @@ function CommandSeparator({
 function CommandItem({
   className,
   children,
+  serverResult = false,
+  keywords = [],
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: React.ComponentProps<typeof CommandPrimitive.Item> & {
+  serverResult?: boolean
+}) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
+      keywords={serverResult ? [...keywords, SERVER_RESULT] : keywords}
       className={cn(
         "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
         className

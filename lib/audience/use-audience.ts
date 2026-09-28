@@ -89,39 +89,66 @@ export const useSegmentList = (search: string) =>
   useTeamList(api.segments.list, api.segments.count, { search }, asSegment)
 export const useTopicList = (search: string) =>
   useTeamList(api.topics.list, api.topics.count, { search }, asTopic)
-/** How many contacts a picker shows. The command menu used to list every
-    contact; this keeps a team's usual handful whole while bounding the read. */
-const CONTACT_SEARCH_LIMIT = 20
-
-/** The team's contacts matching `search` (the newest when empty), for
-    pickers such as the command menu. Skipped while `enabled` is false. */
+/** Bounded server suggestions for the command menu. */
 export function useContactSearch(search: string, enabled = true) {
   const { activeTeamId } = useWorkspace()
-  const page = useQuery(
-    api.contacts.list,
-    enabled && activeTeamId
+  const rows = useQuery(
+    api.contacts.options,
+    enabled && activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+  )
+  return React.useMemo(
+    () =>
+      rows?.map((row) => ({
+        id: row._id,
+        email: row.email,
+        firstName: row.firstName,
+        lastName: row.lastName,
+      })) ?? [],
+    [rows]
+  )
+}
+
+export function useSegmentOptions(selectedId?: string | null, search?: string) {
+  const { activeTeamId } = useWorkspace()
+  const rows = useQuery(
+    api.segments.options,
+    activeTeamId
       ? {
           organizationId: activeTeamId,
           search,
-          paginationOpts: { numItems: CONTACT_SEARCH_LIMIT, cursor: null },
+          selectedId: selectedId ? (selectedId as Id<"segments">) : undefined,
         }
       : "skip"
   )
-  return React.useMemo(() => page?.page.map(asContact) ?? [], [page])
+  return React.useMemo(() => rows?.map(asSegment), [rows])
+}
+export function useTopicOptions(selectedId?: string | null, search?: string) {
+  const { activeTeamId } = useWorkspace()
+  const rows = useQuery(
+    api.topics.options,
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search,
+          selectedId: selectedId ? (selectedId as Id<"topics">) : undefined,
+        }
+      : "skip"
+  )
+  return React.useMemo(() => rows?.map(asTopic), [rows])
 }
 
 /* Each whole list (capped per team), for pickers, or undefined while
    loading. The list screens page theirs. */
 export function useSegments() {
-  const rows = useTeamQuery(api.segments.options)
+  const rows = useTeamQuery(api.segments.definitions)
   return React.useMemo(() => rows?.map(asSegment), [rows])
 }
 export function useTopics() {
-  const rows = useTeamQuery(api.topics.options)
+  const rows = useTeamQuery(api.topics.definitions)
   return React.useMemo(() => rows?.map(asTopic), [rows])
 }
 export function useProperties() {
-  const rows = useTeamQuery(api.contactProperties.options)
+  const rows = useTeamQuery(api.contactProperties.definitions)
   return React.useMemo(() => rows?.map(asProperty), [rows])
 }
 

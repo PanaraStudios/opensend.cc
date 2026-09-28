@@ -1,3 +1,4 @@
+import { domainOptionRows } from "./domains"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -197,22 +198,17 @@ export const domainCount = query({
 
 /** Bounded name suggestions, including removed domains with historical mail. */
 export const domainOptions = query({
-  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("domains")),
+  },
   returns: v.array(v.object({ value: v.id("domains"), label: v.string() })),
-  handler: async (ctx, { organizationId, search }) => {
-    await requireTeam(ctx, organizationId)
-    const prefix = search?.trim().toLowerCase() ?? ""
-    return (
-      await ctx.db
-        .query("domains")
-        .withIndex("by_organizationId_and_name", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .gte("name", prefix)
-            .lt("name", prefix + "\uffff")
-        )
-        .take(100)
-    ).map((row) => ({ value: row._id, label: row.name }))
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "read")
+    return (await domainOptionRows(ctx, { ...args, historical: true })).map(
+      (row) => ({ value: row._id, label: row.name })
+    )
   },
 })
 

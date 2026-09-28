@@ -65,12 +65,22 @@ export const domainTables = {
     operation: domainOperationValue,
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_deleted_and_status", [
+      "organizationId",
+      "deleted",
+      "status",
+    ])
     .index("by_organizationId_and_deleted_and_receiving", [
       "organizationId",
       "deleted",
       "receiving",
     ])
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
+    .index("by_deleted_and_status_and_sending", [
+      "deleted",
+      "status",
+      "sending",
+    ])
     .index("by_deleted_and_status_and_sending_and_name", [
       "deleted",
       "status",

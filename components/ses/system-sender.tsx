@@ -42,7 +42,10 @@ function SenderForm({
       : undefined
   )
   const [search, setSearch] = React.useState("")
-  const domains = useQuery(api.systemEmail.domains, { search })
+  const domains = useQuery(api.systemEmail.domains, {
+    search,
+    selectedId: domain?.value as Id<"domains"> | undefined,
+  })
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState("")
   const id = React.useId()

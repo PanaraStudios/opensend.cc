@@ -1,3 +1,5 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { selectedOption } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, convexToJson, type Value } from "convex/values"
 import {
@@ -330,21 +332,51 @@ export const prune = internalMutation({
 })
 
 export const options = query({
-  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("automationEvents")),
+    selectedName: v.optional(v.string()),
+  },
   returns: v.array(v.string()),
-  handler: async (ctx, { organizationId, search }) => {
-    await requireTeam(ctx, organizationId)
+  handler: async (
+    ctx,
+    { organizationId, search, selectedId, selectedName }
+  ) => {
+    await requireTeam(ctx, organizationId, "read")
     const prefix = search?.trim() ?? ""
-    return (
-      await ctx.db
+    const rows = prefix
+      ? await ctx.db
+          .query("automationEvents")
+          .withIndex("by_organizationId_and_name", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .gte("name", prefix)
+              .lt("name", prefix + "\uffff")
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("automationEvents")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+    let selected = await selectedOption(
+      ctx,
+      "automationEvents",
+      organizationId,
+      selectedId
+    )
+    if (!selected && selectedName)
+      selected = await ctx.db
         .query("automationEvents")
         .withIndex("by_organizationId_and_name", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .gte("name", prefix)
-            .lt("name", prefix + "\uffff")
+          q.eq("organizationId", organizationId).eq("name", selectedName)
         )
-        .take(100)
-    ).map((row) => row.name)
+        .unique()
+    return includeSelected(rows, selected, (row) => row._id).map(
+      (row) => row.name
+    )
   },
 })

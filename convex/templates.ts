@@ -1,3 +1,5 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { selectedOption } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -303,26 +305,35 @@ export const hasAny = query({
 /** The team's newest templates, without their bodies: for pickers on other
     screens, which re-render on every autosave. */
 export const options = query({
-  args: { organizationId: v.string(), search: v.optional(v.string()) },
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("templates")),
+  },
   returns: v.array(schema.doc("templates")),
-  handler: async (ctx, { organizationId, search }) => {
-    await requireTeam(ctx, organizationId)
-    if (search?.trim())
-      return ctx.db
-        .query("templates")
-        .withSearchIndex("search_searchText", (q) =>
-          q
-            .search("searchText", search.trim())
-            .eq("organizationId", organizationId)
-        )
-        .take(100)
-    return ctx.db
-      .query("templates")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .order("desc")
-      .take(100)
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = search?.trim()
+      ? await ctx.db
+          .query("templates")
+          .withSearchIndex("search_searchText", (q) =>
+            q
+              .search("searchText", search.trim())
+              .eq("organizationId", organizationId)
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("templates")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+    return includeSelected(
+      rows,
+      await selectedOption(ctx, "templates", organizationId, selectedId),
+      (row) => row._id
+    )
   },
 })
 

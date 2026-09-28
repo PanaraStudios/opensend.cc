@@ -146,3 +146,42 @@ export async function teamPage<T extends TeamTable>(
     search
   )
 }
+
+/** Resolve the current selection independently of the bounded suggestions. */
+export async function selectedOption<
+  T extends
+    | "emails"
+    | "contacts"
+    | "segments"
+    | "topics"
+    | "contactProperties"
+    | "templates"
+    | "automationEvents"
+    | "domains",
+>(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  id: string | undefined
+): Promise<Doc<T> | null> {
+  if (!id) return null
+  const normalized = ctx.db.normalizeId(table, id)
+  const row = normalized ? await ctx.db.get(table, normalized) : null
+  return row?.organizationId === organizationId ? row : null
+}
+
+/** Configuration tables have enforced per-team write limits. */
+export function configurationRows<T extends "segments" | "topics">(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  limit: number
+) {
+  return ctx.db
+    .query(table as "segments" | "topics")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId)
+    )
+    .order("desc")
+    .take(limit) as unknown as Promise<Doc<T>[]>
+}

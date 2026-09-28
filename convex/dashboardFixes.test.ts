@@ -451,17 +451,17 @@ test("bounded contact, event, template and domain searches reach options beyond 
   })
   const args = { organizationId: f.owner.team }
   expect(await f.member.client.query(api.contacts.options, args)).toHaveLength(
-    100
+    20
   )
   expect(
     await f.member.client.query(api.automationEvents.options, args)
-  ).toHaveLength(100)
+  ).toHaveLength(20)
   expect(await f.member.client.query(api.templates.options, args)).toHaveLength(
-    100
+    20
   )
   expect(
     await f.member.client.query(api.metrics.domainOptions, args)
-  ).toHaveLength(100)
+  ).toHaveLength(20)
   const search = { ...args, search: "record104" }
   expect(
     await f.member.client.query(api.contacts.options, search)

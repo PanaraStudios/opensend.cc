@@ -56,27 +56,14 @@ export function useEmailList(
   return useTeamList(api.emails.list, api.emails.count, filters, asEmailRow)
 }
 
-/** How many emails the command menu lists. */
-const EMAIL_SEARCH_LIMIT = 20
-
-/** The team's emails matching `search` (the newest when empty), for the
-    command menu. Skipped while `enabled` is false. */
+/** Bounded, relevance-ranked server suggestions for the command menu. */
 export function useEmailSearch(search: string, enabled = true) {
   const { activeTeamId } = useWorkspace()
-  const page = useQuery(
-    api.emails.list,
-    enabled && activeTeamId
-      ? {
-          organizationId: activeTeamId,
-          search,
-          paginationOpts: { numItems: EMAIL_SEARCH_LIMIT, cursor: null },
-        }
-      : "skip"
+  const rows = useQuery(
+    api.emails.options,
+    enabled && activeTeamId ? { organizationId: activeTeamId, search } : "skip"
   )
-  return React.useMemo(
-    () => page?.page.map((row) => asEmail(row)) ?? [],
-    [page]
-  )
+  return React.useMemo(() => rows?.map((row) => asEmail(row)) ?? [], [rows])
 }
 
 /** Every email sent to one address, newest first. */

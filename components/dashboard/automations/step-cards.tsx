@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
 import Link from "next/link"
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
@@ -108,7 +109,14 @@ function usePropertyOptions(
   const [search, setSearch] = React.useState("")
   const properties = useQuery(
     api.contactProperties.options,
-    activeTeamId ? { organizationId: activeTeamId } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search: search.startsWith(prefix)
+            ? search.slice(prefix.length)
+            : search,
+        }
+      : "skip"
   )
   const pageRows = [
     ...builtin,
@@ -131,7 +139,9 @@ function EventNameInput(props: {
   const [search, setSearch] = React.useState("")
   const options = useQuery(
     api.automationEvents.options,
-    activeTeamId ? { organizationId: activeTeamId, search } : "skip"
+    activeTeamId
+      ? { organizationId: activeTeamId, search, selectedName: props.value }
+      : "skip"
   )
   return (
     <SuggestInput
@@ -374,9 +384,18 @@ function SegmentBody({
   onChange: (step: AutomationStep) => void
 }) {
   const { activeTeamId } = useWorkspace()
+  const [segmentSearch, setSegmentSearch] = React.useState("")
   const rows = useQuery(
     api.segments.options,
-    activeTeamId ? { organizationId: activeTeamId } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search: segmentSearch,
+          selectedId: step.segmentId
+            ? (step.segmentId as Id<"segments">)
+            : undefined,
+        }
+      : "skip"
   )
   const segments = (rows ?? []).map(asSegment)
   const selected = segments.find((item) => item.id === step.segmentId)
@@ -384,6 +403,7 @@ function SegmentBody({
   return (
     <CardSection label="Segment" htmlFor={id}>
       <OptionSelect
+        search={{ onChange: setSegmentSearch }}
         id={id}
         className="w-full"
         value={step.segmentId}
@@ -627,9 +647,18 @@ function SendEmailBody({
   onChange: (step: AutomationStep) => void
 }) {
   const { activeTeamId } = useWorkspace()
+  const [templateSearch, setTemplateSearch] = React.useState("")
   const rows = useQuery(
     api.templates.options,
-    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search: templateSearch,
+          selectedId: step.templateId
+            ? (step.templateId as Id<"templates">)
+            : undefined,
+        }
+      : "skip"
   )
   const hasTemplates = useQuery(
     api.templates.hasAny,
@@ -669,6 +698,7 @@ function SendEmailBody({
   return (
     <>
       <OptionSelect
+        search={{ onChange: setTemplateSearch }}
         className="w-full"
         aria-label="Template"
         value={step.templateId}

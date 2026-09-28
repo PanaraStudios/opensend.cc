@@ -1,8 +1,9 @@
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { broadcastRecipientProblem } from "./broadcastMetrics"
 import { prepareTracking } from "./tracking"
 import { retirement } from "./teamLifecycle"
 import { countValue, counters, deleteRow } from "./counts"
-import { filteredPage, matchesSearch } from "./lists"
+import { filteredPage, matchesSearch, selectedOption } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { EMAIL_STATUSES } from "./tables/emails"
 import { v, ConvexError, type Infer } from "convex/values"
@@ -830,6 +831,39 @@ export const count = query({
             args
           ),
     }
+  },
+})
+
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("emails")),
+  },
+  returns: v.array(schema.doc("emails")),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = search?.trim()
+      ? await ctx.db
+          .query("emails")
+          .withSearchIndex("search_search", (q) =>
+            q
+              .search("search", search.trim())
+              .eq("organizationId", organizationId)
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("emails")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
+    return includeSelected(
+      rows,
+      await selectedOption(ctx, "emails", organizationId, selectedId),
+      (row) => row._id
+    )
   },
 })
 

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useWorkspace } from "@/components/auth/workspace"
@@ -267,13 +268,20 @@ export function MetricsView() {
     [chosenRange, now]
   )
   const [domain, setDomain] = React.useState("all")
+  const [domainSearch, setDomainSearch] = React.useState("")
   const [event, setEvent] = React.useState("all")
   const status = isFilterableStatus(event) ? event : null
   const { loading, totals, days, domains } = useMetrics(range, domain, status)
   const { activeTeamId } = useWorkspace()
   const options = useQuery(
     api.metrics.domainOptions,
-    activeTeamId ? { organizationId: activeTeamId, search: "" } : "skip"
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search: domainSearch,
+          selectedId: domain === "all" ? undefined : (domain as Id<"domains">),
+        }
+      : "skip"
   )
   const domainItems: SelectOption[] = [
     { value: "all", label: "All domains" },
@@ -293,6 +301,7 @@ export function MetricsView() {
           allowAllTime={false}
           filters={[
             {
+              search: { onChange: setDomainSearch },
               value: domain,
               onChange: setDomain,
               items: domainItems,

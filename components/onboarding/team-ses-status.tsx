@@ -1,5 +1,10 @@
 "use client"
-import { useMutation, useQuery } from "convex/react"
+import {
+  ListPagination,
+  PAGE_SIZES,
+  useLoadedPagination,
+} from "@/components/dashboard/primitives"
+import { useMutation, useQuery, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -47,7 +52,15 @@ export function TeamSesStatus({ organizationId }: { organizationId: string }) {
   )
 }
 export function TenantCleanup() {
-  const rows = useQuery(api.tenants.cleanup)
+  const query = usePaginatedQuery(
+    api.tenants.cleanup,
+    {},
+    { initialNumItems: PAGE_SIZES[0] }
+  )
+  const { pageRows: rows, pagination } = useLoadedPagination(
+    query.results,
+    query
+  )
   const retry = useMutation(api.tenants.retryCleanup)
   if (!rows?.length) return null
   return (
@@ -68,6 +81,7 @@ export function TenantCleanup() {
               />
             </div>
           ))}
+          <ListPagination {...pagination} noun="tenant" />
         </div>
       </AlertDescription>
     </Alert>
