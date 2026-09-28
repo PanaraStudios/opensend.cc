@@ -21,7 +21,7 @@ const transportHeaders = new Set([
   "received",
   "dkim-signature",
   "authentication-results",
-  "resend-idempotency-key",
+  "opensend-idempotency-key",
 ])
 const smtpError = (message, responseCode) =>
   Object.assign(new Error(message), { responseCode })
@@ -62,7 +62,7 @@ export async function parseMessage(raw, recipients) {
       .slice(line.indexOf(":") + 1)
       .replace(/\r?\n[ \t]+/g, " ")
       .trim()
-    if (key === "resend-idempotency-key") {
+    if (key === "opensend-idempotency-key") {
       if (idempotencyKey !== undefined)
         throw smtpError("Duplicate idempotency header", 554)
       idempotencyKey = value

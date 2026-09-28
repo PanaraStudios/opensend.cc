@@ -304,7 +304,7 @@ key domain restriction, team SES tenant/configuration set, suppression checks,
 attachments, durable queue and provider retries. SMTP envelope recipients are
 honored; recipients absent from To/Cc are Bcc. Body parts, Reply-To, inline
 attachments and custom headers are retained; transport/MIME headers are rebuilt.
-A Bcc-only envelope is supported. `Resend-Idempotency-Key` becomes the existing
+A Bcc-only envelope is supported. `Opensend-Idempotency-Key` becomes the existing
 24-hour HTTP idempotency key. Supply it when retrying an uncertain submission.
 No undocumented SMTP tags header is interpreted; use the REST `tags` field when
 message tags are required.

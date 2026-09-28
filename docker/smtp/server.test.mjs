@@ -190,7 +190,7 @@ test("MIME fields, inline attachments, envelope Bcc and idempotency are forwarde
     html: '<b>rich</b><img src="cid:logo">',
     headers: {
       "X-Entity-Ref-ID": "test-ref",
-      "Resend-Idempotency-Key": "welcome/1",
+      "Opensend-Idempotency-Key": "welcome/1",
     },
     attachments: [
       {
@@ -212,7 +212,7 @@ test("MIME fields, inline attachments, envelope Bcc and idempotency are forwarde
   assert.equal(call.body.text.trim(), "plain")
   assert.match(call.body.html, /cid:logo/)
   assert.equal(call.body.headers["x-entity-ref-id"], "test-ref")
-  assert.equal(call.body.headers["resend-idempotency-key"], undefined)
+  assert.equal(call.body.headers["opensend-idempotency-key"], undefined)
   assert.deepEqual(call.body.attachments[0], {
     filename: "logo.png",
     content: Buffer.from("image").toString("base64"),
