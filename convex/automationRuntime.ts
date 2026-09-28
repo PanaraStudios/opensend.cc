@@ -464,7 +464,7 @@ export const completed = internalMutation({
   returns: v.null(),
   handler: async (ctx, { context, result, workflowId }): Promise<null> => {
     const run = await ctx.db.get("automationRuns", context.id)
-    if (!run) {
+    if (!run || (await retirement(ctx, run.organizationId))) {
       await cleanup(ctx, components.workflow, workflowId)
       return null
     }
@@ -497,6 +497,8 @@ export const completed = internalMutation({
             ...(result.kind === "failed" ? { error: result.error } : {}),
           })
     }
+    await cleanup(ctx, components.workflow, workflowId)
+    await patchRow(ctx, "automationRuns", run._id, { workflowId: undefined })
     return null
   },
 })

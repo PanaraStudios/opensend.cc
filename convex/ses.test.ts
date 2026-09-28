@@ -116,7 +116,8 @@ describe("installation and domain authorization", () => {
         paginationOpts: { cursor: null, numItems: 10 },
       })
     ).rejects.toThrow("permission")
-    const invite = await f.owner.client.mutation(api.teams.invite, {
+    const invite = await f.t.mutation(components.betterAuth.teams.invite, {
+      sessionId: f.owner.session._id,
       organizationId: f.owner.team,
       email: f.outsider.user.email,
       role: "member",

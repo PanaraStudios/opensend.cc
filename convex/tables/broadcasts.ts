@@ -23,6 +23,16 @@ export const broadcastEventValue = v.union(
     "unsubscribed",
   ].map((s) => v.literal(s))
 )
+export const broadcastStatsValue = v.object({
+  recipients: v.number(),
+  delivered: v.number(),
+  opened: v.number(),
+  clicked: v.number(),
+  bounced: v.number(),
+  suppressed: v.number(),
+  complained: v.number(),
+  unsubscribed: v.number(),
+})
 export const broadcastTables = {
   broadcasts: defineTable({
     organizationId: v.string(),
@@ -38,11 +48,13 @@ export const broadcastTables = {
     updatedAt: v.number(),
     scheduledAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
+    settledAt: v.optional(v.number()),
     scheduledJob: v.optional(v.id("_scheduled_functions")),
     workflowId: v.optional(v.string()),
     generation: v.number(),
     cursor: v.optional(v.string()),
     audienceDone: v.boolean(),
+    retainedStats: v.optional(broadcastStatsValue),
     audienceBefore: v.optional(v.number()),
     error: v.optional(v.string()),
   })

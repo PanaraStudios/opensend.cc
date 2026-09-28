@@ -270,7 +270,7 @@ function dispatch(patterns: Pattern[]) {
     } else
       try {
         const result = await options.handler(ctx, {
-          caller: begun.caller,
+          caller: { ...begun.caller, idempotencyId: begun.idempotencyId },
           params,
           query: url.searchParams,
           body,

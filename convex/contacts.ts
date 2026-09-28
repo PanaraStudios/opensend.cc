@@ -27,7 +27,11 @@ import {
   upsertContact,
   withSegments,
 } from "./audience"
-import { topicSubscriptionValue } from "./tables/audience"
+import {
+  contactInputValue,
+  importResultValue,
+  topicSubscriptionValue,
+} from "./tables/audience"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 
@@ -204,14 +208,6 @@ export const get = query({
   },
 })
 
-const contactInput = v.object({
-  email: v.string(),
-  firstName: v.optional(v.string()),
-  lastName: v.optional(v.string()),
-  unsubscribed: v.optional(v.boolean()),
-  properties: v.optional(v.record(v.string(), v.string())),
-})
-
 /** Creates or merges contacts by email; one batch of an import or of
     "Add manually". Every contact joins `segmentIds`. A row that fails
     validation is skipped and counted; with `skipExisting`, so is an address
@@ -219,24 +215,51 @@ const contactInput = v.object({
 export const upsert = mutation({
   args: {
     organizationId: v.string(),
-    contacts: v.array(contactInput),
+    contacts: v.array(contactInputValue),
     segmentIds: v.array(v.id("segments")),
     skipExisting: v.optional(v.boolean()),
     csvImport: v.optional(v.boolean()),
   },
-  returns: v.object({
-    created: v.number(),
-    updated: v.number(),
-    skipped: v.number(),
-    createdIds: v.array(v.id("contacts")),
-    errors: v.array(v.string()),
+  returns: importResultValue.extend({
+    jobId: v.optional(v.id("contactImports")),
   }),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
     const inputs = inBatch(args.contacts)
     const segmentIds = [...new Set(args.segmentIds)]
+    if (segmentIds.length > LIMITS.segments)
+      throw new ConvexError("Too many segments")
     for (const id of segmentIds)
       await teamRow(ctx, "segments", args.organizationId, id)
+    if (args.csvImport) {
+      if (new TextEncoder().encode(JSON.stringify(inputs)).byteLength > 500_000)
+        throw new ConvexError("Import batch is too large. Use smaller batches.")
+      const result = {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        createdIds: [],
+        errors: [],
+      }
+      const jobId = await ctx.db.insert("contactImports", {
+        organizationId: args.organizationId,
+        contacts: inputs,
+        segmentIds,
+        skipExisting: args.skipExisting ?? false,
+        status: "processing",
+        offset: 0,
+        result,
+      })
+      await ctx.scheduler.runAfter(0, internal.contactImports.run, {
+        id: jobId,
+        offset: 0,
+      })
+      return { ...result, jobId }
+    }
+    if (inputs.length * Math.max(1, segmentIds.length) > 500)
+      throw new ConvexError(
+        "Too many contact and segment combinations. Use smaller batches."
+      )
     const properties = await listProperties(ctx, args.organizationId)
     const out = {
       created: 0,
@@ -266,7 +289,7 @@ export const upsert = mutation({
         if (out.errors.length < 5) out.errors.push(String(error.data))
       }
     }
-    return out
+    return { ...out, jobId: undefined }
   },
 })
 

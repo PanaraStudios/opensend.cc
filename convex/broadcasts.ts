@@ -227,6 +227,8 @@ export async function sendBroadcast(
   )
   await patchRow(ctx, "broadcasts", row._id, {
     status: at ? "scheduled" : "queued",
+    settledAt: undefined,
+    retainedStats: undefined,
     generation,
     scheduledAt: at,
     scheduledJob,
@@ -248,6 +250,7 @@ export async function cancelBroadcast(
   if (row.scheduledJob) await ctx.scheduler.cancel(row.scheduledJob)
   await patchRow(ctx, "broadcasts", row._id, {
     status: "canceled",
+    settledAt: Date.now(),
     scheduledAt: undefined,
     scheduledJob: undefined,
     generation: row.generation + 1,

@@ -31,7 +31,8 @@ const EXPORT_TTL = 7 * 86_400_000
 const EXPIRED_KEPT = 30 * 86_400_000
 const BATCH = 500
 /** An export stops here rather than run past an action's limits. */
-const MAX_ROWS = 200_000
+export const MAX_ROWS = 200_000
+export const MAX_BYTES = 16 * 1024 * 1024
 /** Bounds on what a client may store with an export. */
 const SUMMARY_LINES = 20
 const FILTERS = 20
@@ -62,6 +63,7 @@ function view(row: Doc<"exports">) {
     resource: row.resource,
     status: row.expiresAt <= Date.now() ? ("expired" as const) : row.status,
     rows: row.rows,
+    error: row.error,
     expiresAt: row.expiresAt,
     fileName: row.fileName ?? exportFileName(row.resource, row._creationTime),
     creatorEmail: row.creatorEmail ?? "",
@@ -237,10 +239,14 @@ export const run = internalAction({
         organizationId: row.organizationId,
         resource: row.resource,
       })
-      const lines = [csvLine([...columns, ...extra])]
+      const encoder = new TextEncoder()
+      const chunks: Uint8Array<ArrayBuffer>[] = [
+        encoder.encode(csvLine([...columns, ...extra])),
+      ]
+      let bytes = chunks[0].byteLength
       let cursor: string | null = null
       let rows = 0
-      while (rows < MAX_ROWS) {
+      while (true) {
         const batch: {
           rows: string[][]
           isDone: boolean
@@ -252,20 +258,46 @@ export const run = internalAction({
           extra,
           cursor,
         })
-        for (const cells of batch.rows.slice(0, MAX_ROWS - rows))
-          lines.push(csvLine(cells))
-        rows += Math.min(batch.rows.length, MAX_ROWS - rows)
+        if (rows + batch.rows.length > MAX_ROWS)
+          throw new ConvexError(
+            "Export exceeds 200,000 rows. Choose a smaller date range or add filters."
+          )
+        const parts: Uint8Array<ArrayBuffer>[] = []
+        let chunkBytes = 0
+        for (const cells of batch.rows) {
+          const chunk = encoder.encode(csvLine(cells))
+          bytes += chunk.byteLength
+          if (bytes > MAX_BYTES)
+            throw new ConvexError(
+              "Export exceeds 16 MiB. Choose a smaller date range or add filters."
+            )
+          parts.push(chunk)
+          chunkBytes += chunk.byteLength
+        }
+        const chunk = new Uint8Array(chunkBytes)
+        let offset = 0
+        for (const part of parts) {
+          chunk.set(part, offset)
+          offset += part.byteLength
+        }
+        chunks.push(chunk)
+        rows += batch.rows.length
         if (batch.isDone) break
-        if (rows >= MAX_ROWS) throw new Error("Export exceeds the row limit")
         cursor = batch.continueCursor
       }
       const storageId = await ctx.storage.store(
-        new Blob(lines, { type: "text/csv;charset=utf-8" })
+        new Blob(chunks, { type: "text/csv;charset=utf-8" })
       )
       await ctx.runMutation(internal.exports.finish, { id, storageId, rows })
-    } catch {
+    } catch (error) {
       console.error("Export could not be completed")
-      await ctx.runMutation(internal.exports.finish, { id })
+      await ctx.runMutation(internal.exports.finish, {
+        id,
+        error:
+          error instanceof ConvexError
+            ? String(error.data)
+            : "Export could not be completed. Try again with fewer rows.",
+      })
     }
     return null
   },
@@ -276,9 +308,10 @@ export const finish = internalMutation({
     id: v.id("exports"),
     storageId: v.optional(v.id("_storage")),
     rows: v.optional(v.number()),
+    error: v.optional(v.string()),
   },
   returns: v.null(),
-  handler: async (ctx, { id, storageId, rows = 0 }) => {
+  handler: async (ctx, { id, storageId, rows = 0, error }) => {
     const row = await ctx.db.get("exports", id)
     if (
       !row ||
@@ -292,7 +325,9 @@ export const finish = internalMutation({
     await patchExport(
       ctx,
       id,
-      storageId ? { status: "ready", storageId, rows } : { status: "failed" }
+      storageId
+        ? { status: "ready", storageId, rows }
+        : { status: "failed", error }
     )
     // Too long to come down in the browser: Resend emails the creator.
     if (storageId && rows > AUTO_DOWNLOAD_ROWS)

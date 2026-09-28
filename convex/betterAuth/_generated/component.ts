@@ -4082,6 +4082,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      bootstrapRecipient: FunctionReference<
+        "query",
+        "internal",
+        { email: string },
+        boolean,
+        Name
+      >;
       checkSession: FunctionReference<
         "query",
         "internal",
@@ -4099,6 +4106,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         { email: string },
+        null,
+        Name
+      >;
+    };
+    retention: {
+      prune: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          cursor?: string | null;
+          table?: "oauthFlow" | "oauthRate" | "oauthUse" | "ssoProof" | "verification";
+        },
         null,
         Name
       >;

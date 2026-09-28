@@ -40,8 +40,14 @@ export const metricsCountValue = v.object({
 type Counts = Infer<typeof metricsCountValue>
 
 function checkSpans(spans: Infer<typeof span>[]) {
-  if (!spans.length || spans.length > 366)
-    throw new ConvexError("Invalid metrics date range")
+  if (!spans.length || spans.length > 31)
+    throw new ConvexError(
+      "Metrics support up to 31 days per query. Choose a shorter date range."
+    )
+  if (spans[spans.length - 1].to - spans[0].from > 31 * 86_400_000 + 3_600_000)
+    throw new ConvexError(
+      "Metrics support up to 31 days per query. Choose a shorter date range."
+    )
   for (let i = 0; i < spans.length; i++) {
     const { from, to } = spans[i]
     if (
@@ -158,10 +164,11 @@ export const domains = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     const range = {
-      from: args.from ?? 0,
+      from:
+        args.from ?? Math.floor(Date.now() / 900000) * 900000 - 30 * 86_400_000,
       to: args.to ?? (Math.floor(Date.now() / 900000) + 1) * 900000 - 1,
     }
-    if (args.from !== undefined) checkSpans([range])
+    checkSpans([range])
     const page = await ctx.db
       .query("domains")
       .withIndex("by_organizationId_and_deleted_and_name", (q) =>
@@ -214,10 +221,11 @@ export const breakdown = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     const range = {
-      from: args.from ?? 0,
+      from:
+        args.from ?? Math.floor(Date.now() / 900000) * 900000 - 30 * 86_400_000,
       to: args.to ?? (Math.floor(Date.now() / 900000) + 1) * 900000 - 1,
     }
-    if (args.from !== undefined) checkSpans([range])
+    checkSpans([range])
     const selected = args.domainId
       ? await ctx.db.get("domains", args.domainId)
       : null

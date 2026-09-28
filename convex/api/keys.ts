@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { internalMutation, internalQuery } from "../_generated/server"
@@ -56,13 +57,25 @@ export const list = internalQuery({
   },
 })
 export const create = internalMutation({
-  args: { caller: callerValue, input: keyInput, minted: mintedValue },
+  args: {
+    caller: callerValue,
+    input: keyInput,
+    minted: mintedValue,
+    token: v.optional(v.string()),
+  },
   returns: v.id("apiKeys"),
-  handler: async (ctx, { caller, input, minted }) => {
-    await requireCaller(ctx, caller)
-    return insertKey(ctx, caller.organizationId, input, minted, {
-      name: caller.name,
-    })
+  handler: async (ctx, { caller, input, minted, token }) => {
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        return insertKey(ctx, caller.organizationId, input, minted, {
+          name: caller.name,
+        })
+      },
+      (id) => ({ body: { id, object: "api_key", token } })
+    )
   },
 })
 export const remove = internalMutation({
@@ -92,6 +105,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
         {
           caller,
           minted,
+          token,
           input: {
             name: stringField(input, "name", true)!,
             permission:

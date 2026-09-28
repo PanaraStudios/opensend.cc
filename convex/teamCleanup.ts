@@ -48,6 +48,7 @@ export const TEAM_TABLES = [
   "inboundMessages",
   "domains",
   "sesTenants",
+  "contactImports",
 ] as const
 
 export const CHILD_TABLES = [

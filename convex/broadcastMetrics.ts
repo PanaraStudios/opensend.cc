@@ -1,8 +1,9 @@
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
+import { broadcastStatsValue } from "./tables/broadcasts"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
-import { query, type MutationCtx } from "./_generated/server"
+import { query, type MutationCtx, type QueryCtx } from "./_generated/server"
 import { requireTeam } from "./access"
 import { counters, insertRow, patchRow } from "./counts"
 import { emptyBroadcastStats } from "../lib/dashboard/broadcast"
@@ -21,6 +22,7 @@ export async function finishBroadcast(ctx: MutationCtx, id: Id<"broadcasts">) {
   await patchRow(ctx, "broadcasts", id, {
     status: failed ? "failed" : "sent",
     sentAt: Date.now(),
+    settledAt: Date.now(),
     updatedAt: Date.now(),
   })
 }
@@ -36,6 +38,8 @@ export async function broadcastMetric(
     .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
     .unique()
   if (!recipient) return
+  if ((await ctx.db.get("broadcasts", recipient.broadcastId))?.retainedStats)
+    return
   const supported = [
     "delivered",
     "opened",
@@ -74,38 +78,35 @@ export async function broadcastMetric(
 }
 export const stats = query({
   args: { organizationId: v.string(), id: v.id("broadcasts") },
-  returns: v.object({
-    recipients: v.number(),
-    delivered: v.number(),
-    opened: v.number(),
-    clicked: v.number(),
-    bounced: v.number(),
-    suppressed: v.number(),
-    complained: v.number(),
-    unsubscribed: v.number(),
-  }),
+  returns: broadcastStatsValue,
   handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId)
     const row = await ctx.db.get("broadcasts", id)
     const stats = emptyBroadcastStats()
     if (!row || row.organizationId !== organizationId) return stats
-    stats.recipients = (await counters.broadcastRecipients.total(ctx, id)) ?? 0
-    for (const key of [
-      "delivered",
-      "opened",
-      "clicked",
-      "bounced",
-      "suppressed",
-      "complained",
-      "unsubscribed",
-    ] as const)
-      stats[key] =
-        (await counters.broadcastEvents.total(ctx, id, [
-          { is: key, among: [] },
-        ])) ?? 0
-    return stats
+    if (row.retainedStats) return row.retainedStats
+    return readBroadcastStats(ctx, id)
   },
 })
+
+export async function readBroadcastStats(ctx: QueryCtx, id: Id<"broadcasts">) {
+  const stats = emptyBroadcastStats()
+  stats.recipients = (await counters.broadcastRecipients.total(ctx, id)) ?? 0
+  for (const key of [
+    "delivered",
+    "opened",
+    "clicked",
+    "bounced",
+    "suppressed",
+    "complained",
+    "unsubscribed",
+  ] as const)
+    stats[key] =
+      (await counters.broadcastEvents.total(ctx, id, [
+        { is: key, among: [] },
+      ])) ?? 0
+  return stats
+}
 
 /** Preferences may change while SES pacing keeps a recipient in the queue. */
 export async function broadcastRecipientProblem(

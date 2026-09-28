@@ -34,8 +34,7 @@ export function authEmailContent({ kind, url }: Omit<AuthEmail, "to">) {
   }
 }
 
-/** Without a system sender, account email goes to the server log, so a new
-    installation can still verify its first account. */
+/** Only systemEmail.send may call this, after checking the bootstrap account. */
 export function logAuthEmail({ to, kind, url }: AuthEmail) {
   const { subject } = authEmailContent({ kind, url })
   console.log(

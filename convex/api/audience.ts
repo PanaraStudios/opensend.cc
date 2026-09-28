@@ -1,3 +1,4 @@
+import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import {
@@ -196,91 +197,104 @@ export const create = internalMutation({
   args: { caller: callerValue, resource: resourceValue, body: v.string() },
   returns: v.string(),
   handler: async (ctx, { caller, resource, body }) => {
-    await requireCaller(ctx, caller)
-    const input = objectBody(JSON.parse(body))
-    const organizationId = caller.organizationId
-    if (resource === "segments")
-      return createSegment(ctx, {
-        organizationId,
-        name: stringField(input, "name", true)!,
-      })
-    if (resource === "topics") {
-      const topic = topicInput(input, true)
-      const defaultSubscription = enumField(input, "default_subscription", [
-        "opt_in",
-        "opt_out",
-      ])
-      if (!defaultSubscription)
-        throw invalid("Missing `default_subscription` field.")
-      return createTopic(ctx, {
-        organizationId,
-        name: topic.name!,
-        description: topic.description ?? "",
-        visibility: topic.visibility ?? "private",
-        defaultSubscription:
-          defaultSubscription === "opt_in" ? "opt_out" : "opt_in",
-      })
-    }
-    if (resource === "contactProperties") {
-      const key = stringField(input, "key", true)!
-      const type = enumField(input, "type", ["string", "number"])
-      if (!type) throw invalid("Missing `type` field.")
-      if (!/^[a-zA-Z0-9_]{1,50}$/.test(key))
-        throw invalid("Invalid property key.")
-      return createProperty(ctx, {
-        organizationId,
-        key,
-        name: key,
-        type,
-        fallbackValue: fallback(input, type),
-      })
-    }
-    const segments = await Promise.all(
-      array(input.segments ?? [], "segments", 500).map((segment) =>
-        own(ctx, "segments", organizationId, stringField(segment, "id", true)!)
-      )
-    )
-    const topics = await Promise.all(
-      array(input.topics ?? [], "topics", 100).map(async (topic) => {
-        const subscription = enumField(topic, "subscription", [
-          "opt_in",
-          "opt_out",
-        ])
-        if (!subscription) throw invalid("Missing topic subscription.")
-        return {
-          topic: await own(
-            ctx,
-            "topics",
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const input = objectBody(JSON.parse(body))
+        const organizationId = caller.organizationId
+        if (resource === "segments")
+          return createSegment(ctx, {
             organizationId,
-            stringField(topic, "id", true)!
-          ),
-          subscription,
+            name: stringField(input, "name", true)!,
+          })
+        if (resource === "topics") {
+          const topic = topicInput(input, true)
+          const defaultSubscription = enumField(input, "default_subscription", [
+            "opt_in",
+            "opt_out",
+          ])
+          if (!defaultSubscription)
+            throw invalid("Missing `default_subscription` field.")
+          return createTopic(ctx, {
+            organizationId,
+            name: topic.name!,
+            description: topic.description ?? "",
+            visibility: topic.visibility ?? "private",
+            defaultSubscription:
+              defaultSubscription === "opt_in" ? "opt_out" : "opt_in",
+          })
         }
-      })
-    )
-    const result = await upsertContact(
-      ctx,
-      organizationId,
-      {
-        email: stringField(input, "email", true)!,
-        ...contactFields(input),
-        properties: await properties(ctx, organizationId, input.properties),
+        if (resource === "contactProperties") {
+          const key = stringField(input, "key", true)!
+          const type = enumField(input, "type", ["string", "number"])
+          if (!type) throw invalid("Missing `type` field.")
+          if (!/^[a-zA-Z0-9_]{1,50}$/.test(key))
+            throw invalid("Invalid property key.")
+          return createProperty(ctx, {
+            organizationId,
+            key,
+            name: key,
+            type,
+            fallbackValue: fallback(input, type),
+          })
+        }
+        const segments = await Promise.all(
+          array(input.segments ?? [], "segments", 500).map((segment) =>
+            own(
+              ctx,
+              "segments",
+              organizationId,
+              stringField(segment, "id", true)!
+            )
+          )
+        )
+        const topics = await Promise.all(
+          array(input.topics ?? [], "topics", 100).map(async (topic) => {
+            const subscription = enumField(topic, "subscription", [
+              "opt_in",
+              "opt_out",
+            ])
+            if (!subscription) throw invalid("Missing topic subscription.")
+            return {
+              topic: await own(
+                ctx,
+                "topics",
+                organizationId,
+                stringField(topic, "id", true)!
+              ),
+              subscription,
+            }
+          })
+        )
+        const result = await upsertContact(
+          ctx,
+          organizationId,
+          {
+            email: stringField(input, "email", true)!,
+            ...contactFields(input),
+            properties: await properties(ctx, organizationId, input.properties),
+          },
+          {
+            properties: await listProperties(ctx, organizationId),
+            segmentIds: segments.map((segment) => segment._id),
+          }
+        )
+        const contact = (await ctx.db.get("contacts", result.id))!
+        await setTopicChoices(
+          ctx,
+          contact,
+          topics.map(({ topic, subscription }) => ({
+            topicId: topic._id,
+            subscription:
+              subscription === "opt_in" ? "subscribed" : "unsubscribed",
+          }))
+        )
+        return result.id
       },
-      {
-        properties: await listProperties(ctx, organizationId),
-        segmentIds: segments.map((segment) => segment._id),
-      }
+      (id) => ({ body: { object: nouns[resource], id } })
     )
-    const contact = (await ctx.db.get("contacts", result.id))!
-    await setTopicChoices(
-      ctx,
-      contact,
-      topics.map(({ topic, subscription }) => ({
-        topicId: topic._id,
-        subscription: subscription === "opt_in" ? "subscribed" : "unsubscribed",
-      }))
-    )
-    return result.id
   },
 })
 
@@ -517,12 +531,19 @@ export const membership = internalMutation({
   },
   returns: v.object({ contact: v.string(), segment: v.string() }),
   handler: async (ctx, { caller, id, segment, member }) => {
-    await requireCaller(ctx, caller)
-    const contact = await own(ctx, "contacts", caller.organizationId, id)
-    const group = await own(ctx, "segments", caller.organizationId, segment)
-    if (await setMembership(ctx, contact, group._id, member))
-      await emitContact(ctx, "contact.updated", contact)
-    return { contact: contact._id, segment: group._id }
+    return idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const contact = await own(ctx, "contacts", caller.organizationId, id)
+        const group = await own(ctx, "segments", caller.organizationId, segment)
+        if (await setMembership(ctx, contact, group._id, member))
+          await emitContact(ctx, "contact.updated", contact)
+        return { contact: contact._id, segment: group._id }
+      },
+      (result) => ({ body: { id: result.segment } })
+    )
   },
 })
 export const subscriptions = internalMutation({

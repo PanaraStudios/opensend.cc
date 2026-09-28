@@ -116,11 +116,20 @@ export const rate = mutation({
       .unique()
     const now = Date.now()
     if (!row) {
-      await ctx.db.insert("oauthRate", { key: args.key, start: now, count: 1 })
+      await ctx.db.insert("oauthRate", {
+        key: args.key,
+        start: now,
+        count: 1,
+        expiresAt: now + args.window,
+      })
       return true
     }
     if (row.start + args.window <= now) {
-      await ctx.db.patch(row._id, { start: now, count: 1 })
+      await ctx.db.patch(row._id, {
+        start: now,
+        count: 1,
+        expiresAt: now + args.window,
+      })
       return true
     }
     if (row.count >= args.max) return false
@@ -312,6 +321,7 @@ export const claim = mutation({
         await ctx.db.patch(grant._id, { revoked: true })
       return null
     }
+    let expiresAt = 0
     let referenceId: string | undefined
     if (args.kind === "code") {
       const row = await ctx.db
@@ -324,6 +334,7 @@ export const claim = mutation({
         query?: { client_id?: string }
       }
       if (value.query?.client_id !== args.clientId) return null
+      expiresAt = row.expiresAt
       referenceId = value.referenceId
     } else {
       const row = await ctx.db
@@ -337,10 +348,11 @@ export const claim = mutation({
         row.expiresAt <= Date.now()
       )
         return null
+      expiresAt = row.expiresAt
       referenceId = row.referenceId ?? undefined
     }
     if (!referenceId || !(await liveGrant(ctx, referenceId))) return null
-    await ctx.db.insert("oauthUse", { key, grantId: referenceId })
+    await ctx.db.insert("oauthUse", { key, grantId: referenceId, expiresAt })
     return referenceId
   },
 })

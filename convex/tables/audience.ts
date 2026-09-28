@@ -21,7 +21,35 @@ export const propertyTypeValue = v.union(
 /* Segment membership and topic choices are child tables, not arrays on the
    contact: a segment can hold any number of contacts, and broadcasts resolve
    recipients by segment or topic. */
+export const contactInputValue = v.object({
+  email: v.string(),
+  firstName: v.optional(v.string()),
+  lastName: v.optional(v.string()),
+  unsubscribed: v.optional(v.boolean()),
+  properties: v.optional(v.record(v.string(), v.string())),
+})
+export const importResultValue = v.object({
+  created: v.number(),
+  updated: v.number(),
+  skipped: v.number(),
+  createdIds: v.array(v.id("contacts")),
+  errors: v.array(v.string()),
+})
 export const audienceTables = {
+  contactImports: defineTable({
+    organizationId: v.string(),
+    contacts: v.array(contactInputValue),
+    segmentIds: v.array(v.id("segments")),
+    skipExisting: v.boolean(),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    offset: v.number(),
+    result: importResultValue,
+    error: v.optional(v.string()),
+  }).index("by_organizationId", ["organizationId"]),
   contacts: defineTable({
     organizationId: v.string(),
     /** Normalized lowercase; unique per team. */
@@ -56,7 +84,8 @@ export const audienceTables = {
     deleting: v.optional(v.boolean()),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_key", ["organizationId", "key"]),
+    .index("by_organizationId_and_key", ["organizationId", "key"])
+    .index("by_organizationId_and_deleting", ["organizationId", "deleting"]),
   segments: defineTable({
     organizationId: v.string(),
     name: v.string(),

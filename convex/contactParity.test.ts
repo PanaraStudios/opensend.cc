@@ -29,17 +29,26 @@ async function setup() {
       },
     },
   })
-  const upsert = (
+  const upsert = async (
     csvImport = false,
     email = "ada@example.com",
     firstName = "Ada"
-  ) =>
-    member.client.mutation(api.contacts.upsert, {
+  ) => {
+    const result = await member.client.mutation(api.contacts.upsert, {
       organizationId: f.owner.team,
       contacts: [{ email, firstName }],
       segmentIds: [],
       csvImport,
     })
+    if (!result.jobId) return result
+    await f.t.mutation(internal.contactImports.step, {
+      id: result.jobId,
+      offset: 0,
+    })
+    return (await member.client.query(api.contactImports.get, {
+      id: result.jobId,
+    }))!.result
+  }
   const events = () =>
     f.t.run((ctx) =>
       ctx.db

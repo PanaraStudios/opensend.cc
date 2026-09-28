@@ -2,6 +2,7 @@
 import * as React from "react"
 import {
   useMutation,
+  useConvex,
   useQuery,
   type OptionalRestArgsOrSkip,
 } from "convex/react"
@@ -135,6 +136,7 @@ function chunks<T>(items: T[]) {
 
 export function useAudienceCommands() {
   const { activeTeamId } = useWorkspace()
+  const convex = useConvex()
   const upsert = useMutation(api.contacts.upsert)
   const update = useMutation(api.contacts.update)
   const remove = useMutation(api.contacts.remove)
@@ -171,7 +173,17 @@ export function useAudienceCommands() {
         createdIds: [] as string[],
         errors: [] as string[],
       }
-      for (const batch of chunks(inputs)) {
+      const pending: Id<"contactImports">[] = []
+      const size = Math.min(
+        AUDIENCE_BATCH,
+        Math.max(1, Math.floor(500 / Math.max(1, segmentIds.length)))
+      )
+      const batches = csvImport
+        ? chunks(inputs)
+        : Array.from({ length: Math.ceil(inputs.length / size) }, (_, i) =>
+            inputs.slice(i * size, (i + 1) * size)
+          )
+      for (const batch of batches) {
         const result = await upsert({
           organizationId: team(),
           contacts: batch,
@@ -179,11 +191,39 @@ export function useAudienceCommands() {
           skipExisting,
           csvImport,
         })
+        if (result.jobId) pending.push(result.jobId)
         total.created += result.created
         total.updated += result.updated
         total.skipped += result.skipped
         total.createdIds.push(...result.createdIds)
         total.errors.push(...result.errors)
+      }
+      for (const id of pending) {
+        const result = await new Promise<
+          FunctionReturnType<typeof api.contactImports.get>
+        >((resolve, reject) => {
+          const watch = convex.watchQuery(api.contactImports.get, { id })
+          const stop = watch.onUpdate(() => {
+            try {
+              const job = watch.localQueryResult()
+              if (job === undefined || job?.status === "processing") return
+              stop()
+              if (!job || job.status === "failed")
+                reject(new Error(job?.error ?? "Import could not be completed"))
+              else resolve(job)
+            } catch (error) {
+              stop()
+              reject(error)
+            }
+          })
+        })
+        if (result) {
+          total.created += result.result.created
+          total.updated += result.result.updated
+          total.skipped += result.result.skipped
+          total.createdIds.push(...result.result.createdIds)
+          total.errors.push(...result.result.errors)
+        }
       }
       return total
     },
