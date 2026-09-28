@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
+import { insertRow, patchRow } from "./counts"
 import { tokenHash } from "../lib/oauth/policy"
 
 afterEach(() => {
@@ -135,7 +136,7 @@ describe("API keys in the dashboard", () => {
       const fields = Object.fromEntries(
         Object.entries(domain).filter(([key]) => !key.startsWith("_"))
       ) as Omit<typeof domain, "_id" | "_creationTime">
-      return ctx.db.insert("domains", {
+      return insertRow(ctx, "domains", {
         ...fields,
         name: "other.example.test",
         organizationId: f.outsider.team,
@@ -265,10 +266,12 @@ describe("REST API", () => {
         permission: "sending",
       })
     await f.t.run((ctx) =>
-      ctx.db.patch("apiKeys", sending.id, { tokenHash: "" })
+      patchRow(ctx, "apiKeys", sending.id, { tokenHash: "" })
     )
     expect((await begin()).kind).toBe("ok")
-    await f.t.run((ctx) => ctx.db.patch("domains", f.domain, { deleted: true }))
+    await f.t.run((ctx) =>
+      patchRow(ctx, "domains", f.domain, { deleted: true })
+    )
     const gone = await begin()
     expect(gone.kind === "error" && gone.error.statusCode).toBe(403)
   })

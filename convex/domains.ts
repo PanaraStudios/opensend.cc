@@ -39,6 +39,7 @@ import { startWorkflow } from "./ses/workflows"
 import { mailRecords } from "./ses/records"
 import { limitDomainCheck } from "./ses/limits"
 import { emitEvent } from "./events"
+import { countValue, counters, insertRow, literals, patchRow } from "./counts"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -102,6 +103,25 @@ export const list = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     return domainPage(ctx, args)
+  },
+})
+export const count = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    status: v.optional(domainStatusValue),
+    region: v.optional(regionValue),
+  },
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.domains.total(ctx, args.organizationId, [
+        { is: args.status, among: literals(domainStatusValue) },
+        { is: args.region, among: literals(regionValue) },
+      ]),
+    }
   },
 })
 export const get = query({
@@ -242,7 +262,7 @@ async function dispatchCheck(
   domain: Doc<"domains">,
   attempt: number
 ) {
-  await ctx.db.patch("domains", domain._id, {
+  await patchRow(ctx, "domains", domain._id, {
     checkAttempt: attempt,
     nextCheckAt: Date.now() + CHECK_LEASE,
     checking: true,
@@ -259,7 +279,7 @@ export async function start(
 ) {
   if (domain.phase === "running")
     throw new ConvexError("A domain operation is already running")
-  await ctx.db.patch("domains", domain._id, {
+  await patchRow(ctx, "domains", domain._id, {
     phase: "running",
     operation,
     error: undefined,
@@ -304,7 +324,7 @@ export async function createDomain(
   if (existing) {
     throw new ConvexError("That domain is already reserved in this region")
   }
-  const id = await ctx.db.insert("domains", {
+  const id = await insertRow(ctx, "domains", {
     organizationId,
     region: args.region,
     name,
@@ -400,7 +420,7 @@ export async function updateDomain(
       : undefined
   if (sending === undefined && tls === undefined && receiving === undefined)
     return
-  await ctx.db.patch("domains", domain._id, {
+  await patchRow(ctx, "domains", domain._id, {
     ...(sending !== undefined ? { sending } : {}),
     ...(tls ? { pendingTls: tls } : {}),
     ...(receiving !== undefined ? { receiving } : {}),
@@ -475,7 +495,7 @@ export const saveRecords = internalMutation({
       domain.phase === "running" &&
       domain.operation === "provision"
     )
-      await ctx.db.patch("domains", args.id, { records: args.records })
+      await patchRow(ctx, "domains", args.id, { records: args.records })
     return null
   },
 })
@@ -516,7 +536,7 @@ export const finish = internalMutation({
       !args.changes.deleted &&
       status !== "verified" &&
       provisioned({ phase, operation: domain.operation })
-    await ctx.db.patch("domains", args.id, {
+    await patchRow(ctx, "domains", args.id, {
       ...args.changes,
       ...milestones(domain, args.changes, now),
       status,
@@ -622,7 +642,7 @@ export const saveCheck = internalMutation({
     }
     if ("error" in args.result) {
       // A failed read proves nothing, so the status stands until the next one.
-      await ctx.db.patch("domains", args.id, next)
+      await patchRow(ctx, "domains", args.id, next)
       await logHistory(
         ctx,
         args.id,
@@ -630,7 +650,7 @@ export const saveCheck = internalMutation({
       )
       return null
     }
-    await ctx.db.patch("domains", args.id, {
+    await patchRow(ctx, "domains", args.id, {
       ...args.result,
       ...milestones(domain, args.result, now),
       ...next,
@@ -680,7 +700,7 @@ export const savePreview = internalMutation({
     if (!domain || domain.phase !== "failed" || domain.deleted)
       throw new ConvexError("Domain changed. Review it again.")
     await requireTeam(ctx, domain.organizationId, "write")
-    await ctx.db.patch("domains", domain._id, { adoption: args.adoption })
+    await patchRow(ctx, "domains", domain._id, { adoption: args.adoption })
     return null
   },
 })
@@ -701,7 +721,7 @@ export const approveAdoption = mutation({
         "Review the current AWS identity before approving changes"
       )
     await requireTeam(ctx, domain.organizationId, "write")
-    await ctx.db.patch("domains", domain._id, {
+    await patchRow(ctx, "domains", domain._id, {
       adoption: { ...domain.adoption, approved: true },
       needsAdoptionReview: undefined,
     })
@@ -728,7 +748,7 @@ export const claimDnsProviderLookup = internalMutation({
         now - domain.dnsProviderRequestedAt < 60000)
     )
       return null
-    await ctx.db.patch("domains", id, { dnsProviderRequestedAt: now })
+    await patchRow(ctx, "domains", id, { dnsProviderRequestedAt: now })
     return { name: domain.name, requestedAt: now }
   },
 })
@@ -745,7 +765,7 @@ export const saveDnsProvider = internalMutation({
     if (!domain || domain.deleted) return null
     await requireTeam(ctx, domain.organizationId)
     if (domain.dnsProviderRequestedAt !== args.requestedAt) return null
-    await ctx.db.patch("domains", args.id, {
+    await patchRow(ctx, "domains", args.id, {
       dnsProvider: args.provider,
       domainConnect: args.domainConnect,
       dnsProviderCheckedAt: Date.now(),

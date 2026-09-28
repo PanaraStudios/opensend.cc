@@ -58,8 +58,9 @@ export const webhookTables = {
       "event",
       "failed",
     ]),
-  /* Running totals for the webhook page, kept apart from the webhook so a
-     busy endpoint's deliveries never contend with edits to it. */
+  /* Deprecated: the webhook page's totals come from the delivery counts.
+     `migrations:backfillCounts` empties it; drop it once every install has
+     run that. */
   webhookStats: defineTable({
     webhookId: v.id("webhooks"),
     deliveries: v.number(),

@@ -4,6 +4,7 @@ import { SESClient } from "@aws-sdk/client-ses"
 import { api, internal } from "./_generated/api"
 import { POLICY_REVISION, resourcePrefix } from "./ses/contracts"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { patchRow } from "./counts"
 
 beforeEach(() => vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32)))
 afterEach(() => {
@@ -47,7 +48,7 @@ describe("AWS policy revision", () => {
   test("send context refuses until the current permissions are recorded", async () => {
     const f = await fixture()
     await f.t.run(async (ctx) => {
-      await ctx.db.patch("domains", f.domain, {
+      await patchRow(ctx, "domains", f.domain, {
         status: "verified",
         tenantAssociated: true,
         configurationSet: "team-configuration",

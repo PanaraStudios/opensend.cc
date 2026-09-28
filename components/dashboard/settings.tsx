@@ -63,6 +63,12 @@ import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
 import { useDashboard } from "@/lib/dashboard/store"
 import { useExports } from "@/lib/exports/use-exports"
+import { useTopics } from "@/lib/audience/use-audience"
+import {
+  useUnsubscribeCommands,
+  useUnsubscribePage,
+} from "@/lib/unsubscribe/use-unsubscribe"
+import { UnsubscribePageCard } from "@/components/unsubscribe/page-card"
 import type { Team, TeamMember } from "@/lib/dashboard/types"
 
 const SMTP_PORT_ITEMS = [
@@ -746,20 +752,28 @@ export function SettingsSso() {
 }
 
 export function SettingsUnsubscribe() {
-  const { state, updateSettings } = useDashboard()
-  const page = state.settings.unsubscribe
+  const page = useUnsubscribePage()
+  const topics = useTopics()
+  const { savePage } = useUnsubscribeCommands()
+  const [pending, setPending] = React.useState(false)
 
-  function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!page) return
     const form = new FormData(event.currentTarget)
-    updateSettings({
-      unsubscribe: {
+    setPending(true)
+    try {
+      await savePage({
         heading: String(form.get("heading") ?? page.heading),
         body: String(form.get("body") ?? page.body),
         brandName: String(form.get("brandName") ?? page.brandName),
-      },
-    })
-    toast.add({ type: "success", title: "Unsubscribe page saved" })
+      })
+      toast.add({ type: "success", title: "Unsubscribe page saved" })
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -768,61 +782,50 @@ export function SettingsUnsubscribe() {
         Contacts land here from broadcast footers. Public topics are listed so
         they can stay on the mail they want.
       </SettingsLead>
-      <div className="grid items-stretch gap-6 lg:grid-cols-2">
-        <form onSubmit={save} className="flex flex-col self-stretch">
-          <Surface className="min-h-0 flex-1">
-            <Field>
-              <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
-              <Input
-                id="unsub-brand"
-                name="brandName"
-                key={page.brandName}
-                defaultValue={page.brandName}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="unsub-heading">Heading</FieldLabel>
-              <Input
-                id="unsub-heading"
-                name="heading"
-                key={page.heading}
-                defaultValue={page.heading}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="unsub-body">Body</FieldLabel>
-              <Input
-                id="unsub-body"
-                name="body"
-                key={page.body}
-                defaultValue={page.body}
-              />
-            </Field>
-            <Button type="submit">Save</Button>
-          </Surface>
-        </form>
-        <Surface>
-          <p className="font-mono text-caption text-muted-foreground">
-            Preview
-          </p>
-          <p className="text-small text-muted-foreground">{page.brandName}</p>
-          <h2 className="text-h4">{page.heading}</h2>
-          <p className="text-small text-muted-foreground">{page.body}</p>
-          <ul className="space-y-2 text-sm">
-            {state.topics
-              .filter((topic) => topic.visibility === "public")
-              .map((topic) => (
-                <li
-                  key={topic.id}
-                  className="flex items-center justify-between"
-                >
-                  <span>{topic.name}</span>
-                  <Badge variant="secondary">Topic</Badge>
-                </li>
-              ))}
-          </ul>
-        </Surface>
-      </div>
+      {page === undefined || topics === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : (
+        <div className="grid items-stretch gap-6 lg:grid-cols-2">
+          <form onSubmit={save} className="flex flex-col self-stretch">
+            <Surface className="min-h-0 flex-1">
+              <Field>
+                <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
+                <Input
+                  id="unsub-brand"
+                  name="brandName"
+                  key={page.brandName}
+                  defaultValue={page.brandName}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="unsub-heading">Heading</FieldLabel>
+                <Input
+                  id="unsub-heading"
+                  name="heading"
+                  key={page.heading}
+                  defaultValue={page.heading}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="unsub-body">Body</FieldLabel>
+                <Input
+                  id="unsub-body"
+                  name="body"
+                  key={page.body}
+                  defaultValue={page.body}
+                />
+              </Field>
+              <Button type="submit" disabled={pending}>
+                Save
+              </Button>
+            </Surface>
+          </form>
+          <UnsubscribePageCard
+            page={page}
+            topics={topics.filter((topic) => topic.visibility === "public")}
+          />
+        </div>
+      )}
     </>
   )
 }

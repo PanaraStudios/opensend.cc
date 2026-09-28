@@ -16,6 +16,7 @@ import {
   requireInstallationAdmin,
 } from "./access"
 import { findActiveDomain } from "./domains"
+import { patchRow } from "./counts"
 import { regionValue, teamTenantName, tenantProvisioned } from "./ses/contracts"
 import { startWorkflow } from "./ses/workflows"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -162,7 +163,7 @@ export const prepareDomain = internalMutation({
     /* A provision can recreate the identity, and a different tenant makes the
        old association meaningless; a refresh only re-checks the association it
        already has, so it must not take a verified domain out of sending. */
-    await ctx.db.patch("domains", domainId, {
+    await patchRow(ctx, "domains", domainId, {
       tenantId,
       ...(domain.operation === "provision" || domain.tenantId !== tenantId
         ? { tenantAssociated: false }

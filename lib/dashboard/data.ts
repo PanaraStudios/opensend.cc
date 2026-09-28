@@ -1163,11 +1163,6 @@ export const SEED_STATE: DashboardState = {
       issuer: "",
       clientId: "",
     },
-    unsubscribe: {
-      heading: "Manage your email preferences",
-      body: "Choose the topics you still want from this workspace.",
-      brandName: "Opensend",
-    },
     smtp: {
       enabled: true,
       host: "smtp.opensend.cc",

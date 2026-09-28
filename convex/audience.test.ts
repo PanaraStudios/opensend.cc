@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { api } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
+import { insertRow } from "./counts"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import type { Id } from "./_generated/dataModel"
 
@@ -105,10 +106,10 @@ describe("audience access", () => {
       outsider.mutation(api.segments.update, { id: segment, name: "Mine" })
     ).rejects.toThrow("permission")
     await expect(
-      outsider.query(api.topics.list, { organizationId: org })
+      outsider.query(api.topics.options, { organizationId: org })
     ).rejects.toThrow("permission")
     await expect(
-      outsider.query(api.contactProperties.list, { organizationId: org })
+      outsider.query(api.contactProperties.options, { organizationId: org })
     ).rejects.toThrow("permission")
     // Their own team cannot reach into ours by id either.
     await expect(
@@ -392,7 +393,7 @@ describe("segments", () => {
     // More rows than one cleanup pass deletes.
     await f.t.run(async (ctx) => {
       for (let i = 0; i < 520; i++)
-        await ctx.db.insert("segmentMembers", {
+        await insertRow(ctx, "segmentMembers", {
           organizationId: org,
           segmentId: segment,
           contactId,
@@ -424,7 +425,7 @@ describe("topics", () => {
     })
     const [id] = (await upsert([{ email: "a@example.com" }])).createdIds
     const stored = (
-      await owner.query(api.topics.list, { organizationId: org })
+      await owner.query(api.topics.options, { organizationId: org })
     )[0]
     const status = async () => {
       const contact = await owner.query(api.contacts.get, { id })
@@ -503,7 +504,7 @@ describe("properties", () => {
     await owner.mutation(api.contactProperties.remove, { id: plan })
     // Hidden at once, and its key stays taken until the values are gone.
     expect(
-      await owner.query(api.contactProperties.list, { organizationId: org })
+      await owner.query(api.contactProperties.options, { organizationId: org })
     ).toEqual([])
     await expect(
       owner.mutation(api.contactProperties.create, {

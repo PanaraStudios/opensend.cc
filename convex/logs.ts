@@ -16,6 +16,8 @@ import { requireTeam } from "./access"
 import schema from "./schema"
 import { logSourceValue, statusClassValue } from "./tables/api"
 import { logStatusClass } from "../lib/dashboard/logs"
+import { countValue, counters, deleteRow, insertRow, literals } from "./counts"
+import { matchesSearch, narrow } from "./lists"
 
 /** Resend states no retention for request logs; keep them 30 days. */
 export const LOG_RETENTION = 30 * 86_400_000
@@ -53,7 +55,7 @@ export async function writeLog(
   entry: LogEntry
 ) {
   const { requestHeaders, requestBody, responseBody, ...row } = entry
-  const logId = await ctx.db.insert("apiLogs", {
+  const logId = await insertRow(ctx, "apiLogs", {
     ...row,
     organizationId,
     statusClass: logStatusClass(row.status),
@@ -164,17 +166,17 @@ export async function logPage(
       )
         .order("desc")
         .paginate(args.paginationOpts)
-  return {
-    ...result,
-    page: result.page.filter(
-      (log) =>
-        log._creationTime >= from &&
-        log._creationTime <= to &&
-        (!args.statusClass || log.statusClass === args.statusClass) &&
-        (!args.source || log.source === args.source) &&
-        (!args.userAgent || log.userAgent === args.userAgent)
-    ),
-  }
+  const matches = matchesSearch(search)
+  return narrow(
+    result,
+    (log) =>
+      log._creationTime >= from &&
+      log._creationTime <= to &&
+      (!args.statusClass || log.statusClass === args.statusClass) &&
+      (!args.source || log.source === args.source) &&
+      (!args.userAgent || log.userAgent === args.userAgent) &&
+      matches(log.summary)
+  )
 }
 export const list = query({
   args: {
@@ -186,6 +188,34 @@ export const list = query({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
     return logPage(ctx, args)
+  },
+})
+
+/** How many requests the filters match: by status and source over whole
+    days, for the team or one key. A search, user agent or email is not
+    counted. */
+export async function logCount(
+  ctx: QueryCtx,
+  args: LogFilters & { organizationId: string }
+) {
+  if (args.search?.trim() || args.userAgent || args.emailId) return null
+  const parts = [
+    { is: args.statusClass, among: literals(statusClassValue) },
+    { is: args.source, among: literals(logSourceValue) },
+  ]
+  const range = { from: args.from, to: args.to }
+  if (!args.apiKeyId)
+    return counters.apiLogs.total(ctx, args.organizationId, parts, range)
+  const key = await ctx.db.get("apiKeys", args.apiKeyId)
+  if (key?.organizationId !== args.organizationId) return 0
+  return counters.apiKeyLogs.total(ctx, key._id, parts, range)
+}
+export const count = query({
+  args: { organizationId: v.string(), ...logFilters.fields },
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    return { total: await logCount(ctx, args) }
   },
 })
 
@@ -256,7 +286,7 @@ export const prune = internalMutation({
         .withIndex("by_logId", (q) => q.eq("logId", log._id))
         .unique()
       if (body) await ctx.db.delete("apiLogBodies", body._id)
-      await ctx.db.delete("apiLogs", log._id)
+      await deleteRow(ctx, "apiLogs", log._id)
     }
     if (old.length === 200)
       await ctx.scheduler.runAfter(0, internal.logs.prune, {})

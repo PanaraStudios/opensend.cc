@@ -24,5 +24,11 @@ crons.interval(
   {}
 )
 crons.interval("export expiry", { hours: 1 }, internal.exports.expire, {})
+crons.interval(
+  "custom event retention",
+  { hours: 1 },
+  internal.automationEvents.prune,
+  {}
+)
 
 export default crons

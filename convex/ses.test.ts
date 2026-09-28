@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { patchRow } from "./counts"
 import type { Doc } from "./_generated/dataModel"
 import {
   encryptCredentials,
@@ -701,7 +702,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
   test("publishes AWS-issued records before the rest of the setup runs", async () => {
     const f = await awsFixture()
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, { phase: "running" })
+      patchRow(ctx, "domains", f.domain, { phase: "running" })
     )
     let early: Doc<"domains"> | null = null
     f.aws.onCall = async (name) => {
@@ -806,7 +807,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       configurationSet: "other-app",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         adoption: { ...domain.adoption!, approved: true },
       })
     )
@@ -817,7 +818,10 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       Value: "marketing",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
+      patchRow(ctx, "domains", f.domain, {
+        operation: "remove",
+        sending: false,
+      })
     )
     await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -877,7 +881,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
     // Approved, but the provision never reached TagResource and AWS has drifted
     // since: there is nothing of ours to restore or delete here.
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         operation: "remove",
         sending: false,
         adoption: {
@@ -1085,7 +1089,7 @@ test("removing a refused identity claim preserves the unrelated AWS identity", a
     Tags: [{ Key: "owner", Value: "other" }],
   }
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
+    patchRow(ctx, "domains", f.domain, { operation: "remove", sending: false })
   )
   await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
   expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -1519,7 +1523,9 @@ describe("native SES team tenants", () => {
   test("unexpected tenant resources stop cleanup and remain intact until an administrator retries", async () => {
     vi.useFakeTimers()
     const f = await awsFixture()
-    await f.t.run((ctx) => ctx.db.patch("domains", f.domain, { deleted: true }))
+    await f.t.run((ctx) =>
+      patchRow(ctx, "domains", f.domain, { deleted: true })
+    )
     f.aws.associations.set(
       "arn:aws:ses:us-east-1:123456789012:identity/unrelated.test",
       new Set([f.tenantName])
@@ -1574,7 +1580,7 @@ describe("native SES team tenants", () => {
       })
     ).rejects.toThrow("Domain is not ready")
     await f.t.run(async (ctx) => {
-      await ctx.db.patch("domains", f.domain, {
+      await patchRow(ctx, "domains", f.domain, {
         status: "verified",
         tenantAssociated: true,
         configurationSet: "team-configuration",
@@ -1630,7 +1636,7 @@ test("setup completion requires a ready tenant belonging to the first domain's t
     await ctx.db.patch("installation", f.installation, {
       completedAt: undefined,
     })
-    await ctx.db.patch("domains", f.domain, {
+    await patchRow(ctx, "domains", f.domain, {
       tenantAssociated: false,
       phase: "failed",
       status: "failed",
@@ -1678,7 +1684,7 @@ test("saving the first domain atomically completes setup before AWS/DNS verifica
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch("domains", f.domain, { deleted: true })
+    await patchRow(ctx, "domains", f.domain, { deleted: true })
   })
   const id = await f.owner.client.mutation(api.domains.create, {
     organizationId: f.owner.team,
@@ -1713,7 +1719,7 @@ test("first domain creation rolls back if team setup is not ready", async () => 
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch("domains", f.domain, { deleted: true })
+    await patchRow(ctx, "domains", f.domain, { deleted: true })
     await ctx.db.patch("sesTenants", f.tenant, { phase: "failed" })
   })
   await expect(
@@ -1849,7 +1855,7 @@ test("TLS changes preserve verified DNS, identity state and tenant associations,
     },
   ]
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, {
+    patchRow(ctx, "domains", f.domain, {
       records,
       status: "verified",
       sesVerified: true,
@@ -1927,7 +1933,7 @@ async function receivingFixture() {
     },
   }
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, { operation: "refresh" })
+    patchRow(ctx, "domains", f.domain, { operation: "refresh" })
   )
   return f
 }
@@ -2281,7 +2287,7 @@ describe("automatic status checks", () => {
     f.aws.onCall = async (name) => {
       if (name === "GetEmailIdentityCommand")
         await f.t.run((ctx) =>
-          ctx.db.patch("domains", f.domain, { phase: "running" })
+          patchRow(ctx, "domains", f.domain, { phase: "running" })
         )
     }
     await f.t.action(internal.ses.verify.run, {
@@ -2318,7 +2324,7 @@ describe("automatic status checks", () => {
   test("Check DNS records retries a failed operation instead", async () => {
     const f = await receivingFixture()
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         phase: "failed",
         operation: "provision",
       })
@@ -2526,7 +2532,7 @@ describe("Domain Connect", () => {
       f.owner.client.action(api.ses.domainConnect.apply, { id: f.domain })
     ).rejects.toThrow("isn't available")
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         records: domain().records,
         domainConnect: {
           zone: "example.test",

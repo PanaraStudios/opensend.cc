@@ -48,7 +48,6 @@ import {
   SelectionBar,
   Th,
   useDebouncedValue,
-  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -578,8 +577,7 @@ export function ContactsView() {
     ...(segment !== "all" ? { segmentId: segment as Id<"segments"> } : {}),
     ...rangeBounds(range),
   })
-  const rows = contacts.rows
-  const { pageRows, pagination } = useLoadedPagination(rows, contacts)
+  const { rows, pageRows, pagination } = contacts
 
   const visibleIds = rows.map((contact) => contact.id)
   /* Bulk actions only ever touch rows the current filters still show. */

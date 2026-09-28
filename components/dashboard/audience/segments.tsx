@@ -43,7 +43,6 @@ import {
   useDebouncedValue,
   useDeleteRecord,
   useAutosaveDraft,
-  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
@@ -53,14 +52,13 @@ import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Skeleton } from "@/components/ui/skeleton"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useDashboard } from "@/lib/dashboard/store"
 import {
   asSegment,
   useAudienceCommands,
   useContactList,
-  useSegments,
+  useSegmentList,
 } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
 
@@ -140,16 +138,12 @@ function AddSegmentDialog({
 export function SegmentsView() {
   const { addExport } = useDashboard()
   const { deleteSegment } = useAudienceCommands()
-  const segments = useSegments()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
   const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-
-  const needle = searchNeedle(query)
-  const rows = (segments ?? []).filter((segment) =>
-    matchesNeedle(needle, segment.name)
-  )
+  const segments = useSegmentList(useDebouncedValue(query))
+  const { rows, pageRows, pagination } = segments
 
   return (
     <AudienceChrome
@@ -168,11 +162,11 @@ export function SegmentsView() {
         onQueryChange={setQuery}
         placeholder="Search segments…"
         onExport={() => {
-          addExport("Segments", rows.length)
+          addExport("Segments", pagination.total ?? rows.length)
           toast.add({ type: "success", title: "Export started" })
         }}
       />
-      {segments === undefined ? (
+      {segments.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
@@ -186,54 +180,57 @@ export function SegmentsView() {
           </Button>
         </EmptyState>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Contacts</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((segment) => (
-            <TableRow key={segment.id}>
-              <TableCell>
-                <Link
-                  href={`/segments/${segment.id}`}
-                  className="font-medium hover:underline"
-                >
-                  {segment.name}
-                </Link>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {segment.count}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(segment.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/segments/${segment.id}`} />}
-                    >
-                      <EyeIcon />
-                      View segment
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPendingDelete(segment.id)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Contacts</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((segment) => (
+              <TableRow key={segment.id}>
+                <TableCell>
+                  <Link
+                    href={`/segments/${segment.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {segment.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {segment.count}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(segment.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/segments/${segment.id}`} />}
+                      >
+                        <EyeIcon />
+                        View segment
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPendingDelete(segment.id)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="segment" />
+        </>
       )}
       <AddSegmentDialog open={open} onOpenChange={setOpen} />
       <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
@@ -286,10 +283,7 @@ function SegmentPage({
   })
   const title = name.draft.trim() || segment.name
   const candidates = useContactList({ search })
-  const { pageRows, pagination } = useLoadedPagination(
-    candidates.rows,
-    candidates
-  )
+  const { pageRows, pagination } = candidates
 
   return (
     <>
