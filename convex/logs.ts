@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -17,7 +18,7 @@ import schema from "./schema"
 import { logSourceValue, statusClassValue } from "./tables/api"
 import { logStatusClass } from "../lib/dashboard/logs"
 import { countValue, counters, deleteRow, insertRow, literals } from "./counts"
-import { matchesSearch, narrow } from "./lists"
+import { filteredPage, matchesSearch } from "./lists"
 
 /** Resend states no retention for request logs; keep them 30 days. */
 export const LOG_RETENTION = 30 * 86_400_000
@@ -86,9 +87,10 @@ export const logFilters = v.object({
 })
 export type LogFilters = Infer<typeof logFilters>
 
-/** Newest first. An index or the search index narrows each page; what they
-    cannot express is dropped from the page afterwards, so a page may come
-    back short and the client loads on. */
+// 1024 small summaries, no hydration; 4 MiB leaves 12 MiB for overhead.
+export const LOG_SEARCH_BUDGET = { rows: 1024, bytes: 4 * 1024 * 1024 }
+
+/** Newest first; remaining filters narrow each bounded index page. */
 export async function logPage(
   ctx: QueryCtx,
   args: LogFilters & {
@@ -97,85 +99,77 @@ export async function logPage(
   }
 ) {
   const org = args.organizationId
-  const logs = ctx.db.query("apiLogs")
-  const search = args.search?.trim().slice(0, 200)
+  const logs = stream(ctx.db, schema).query("apiLogs")
+  const search = args.search
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
-  const result = search
-    ? await logs
-        .withSearchIndex("search_summary", (q) => {
-          let s = q.search("summary", search).eq("organizationId", org)
-          if (args.statusClass) s = s.eq("statusClass", args.statusClass)
-          if (args.source) s = s.eq("source", args.source)
-          if (args.userAgent) s = s.eq("userAgent", args.userAgent)
-          if (args.emailId) s = s.eq("emailId", args.emailId)
-          if (args.apiKeyId) s = s.eq("apiKeyId", args.apiKeyId)
-          return s
-        })
-        .paginate(args.paginationOpts)
-    : await (
-        args.emailId
-          ? logs.withIndex("by_organizationId_and_emailId", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("emailId", args.emailId)
-                .gte("_creationTime", from)
-                .lte("_creationTime", to)
-            )
-          : args.apiKeyId
-            ? logs.withIndex("by_organizationId_and_apiKeyId", (q) =>
+  const rows = (
+    args.emailId
+      ? logs.withIndex("by_organizationId_and_emailId", (q) =>
+          q
+            .eq("organizationId", org)
+            .eq("emailId", args.emailId)
+            .gte("_creationTime", from)
+            .lte("_creationTime", to)
+        )
+      : args.apiKeyId
+        ? logs.withIndex("by_organizationId_and_apiKeyId", (q) =>
+            q
+              .eq("organizationId", org)
+              .eq("apiKeyId", args.apiKeyId)
+              .gte("_creationTime", from)
+              .lte("_creationTime", to)
+          )
+        : args.statusClass && args.source
+          ? logs.withIndex(
+              "by_organizationId_and_statusClass_and_source",
+              (q) =>
                 q
                   .eq("organizationId", org)
-                  .eq("apiKeyId", args.apiKeyId)
+                  .eq("statusClass", args.statusClass!)
+                  .eq("source", args.source!)
+                  .gte("_creationTime", from)
+                  .lte("_creationTime", to)
+            )
+          : args.statusClass
+            ? logs.withIndex("by_organizationId_and_statusClass", (q) =>
+                q
+                  .eq("organizationId", org)
+                  .eq("statusClass", args.statusClass!)
                   .gte("_creationTime", from)
                   .lte("_creationTime", to)
               )
-            : args.statusClass && args.source
-              ? logs.withIndex(
-                  "by_organizationId_and_statusClass_and_source",
-                  (q) =>
-                    q
-                      .eq("organizationId", org)
-                      .eq("statusClass", args.statusClass!)
-                      .eq("source", args.source!)
-                      .gte("_creationTime", from)
-                      .lte("_creationTime", to)
+            : args.source
+              ? logs.withIndex("by_organizationId_and_source", (q) =>
+                  q
+                    .eq("organizationId", org)
+                    .eq("source", args.source!)
+                    .gte("_creationTime", from)
+                    .lte("_creationTime", to)
                 )
-              : args.statusClass
-                ? logs.withIndex("by_organizationId_and_statusClass", (q) =>
-                    q
-                      .eq("organizationId", org)
-                      .eq("statusClass", args.statusClass!)
-                      .gte("_creationTime", from)
-                      .lte("_creationTime", to)
-                  )
-                : args.source
-                  ? logs.withIndex("by_organizationId_and_source", (q) =>
-                      q
-                        .eq("organizationId", org)
-                        .eq("source", args.source!)
-                        .gte("_creationTime", from)
-                        .lte("_creationTime", to)
-                    )
-                  : logs.withIndex("by_organizationId", (q) =>
-                      q
-                        .eq("organizationId", org)
-                        .gte("_creationTime", from)
-                        .lte("_creationTime", to)
-                    )
-      )
-        .order("desc")
-        .paginate(args.paginationOpts)
+              : logs.withIndex("by_organizationId", (q) =>
+                  q
+                    .eq("organizationId", org)
+                    .gte("_creationTime", from)
+                    .lte("_creationTime", to)
+                )
+  ).order("desc")
+
   const matches = matchesSearch(search)
-  return narrow(
-    result,
+  return filteredPage(
+    rows,
+    args.paginationOpts,
     (log) =>
       log._creationTime >= from &&
       log._creationTime <= to &&
       (!args.statusClass || log.statusClass === args.statusClass) &&
       (!args.source || log.source === args.source) &&
       (!args.userAgent || log.userAgent === args.userAgent) &&
-      matches(log.summary)
+      (!args.emailId || log.emailId === args.emailId) &&
+      (!args.apiKeyId || log.apiKeyId === args.apiKeyId) &&
+      matches(log.summary),
+    LOG_SEARCH_BUDGET,
+    search
   )
 }
 export const list = query({

@@ -24,6 +24,9 @@ const propertyFilters = {
   search: v.optional(v.string()),
 }
 
+// 512 property rows, no hydration; 4 MiB leaves ample transaction headroom.
+export const PROPERTY_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
 /** The team's custom properties, newest first, a page at a time. */
 export const list = query({
   args: { ...propertyFilters, paginationOpts: paginationOptsValidator },
@@ -37,7 +40,9 @@ export const list = query({
       args.organizationId,
       args.paginationOpts,
       // One being deleted is already gone for the team.
-      (property) => !property.deleting && matches(property.name, property.key)
+      (property) => !property.deleting && matches(property.name, property.key),
+      PROPERTY_SEARCH_BUDGET,
+      args.search
     )
   },
 })

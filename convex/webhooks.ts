@@ -180,6 +180,9 @@ const webhookFilters = {
   enabled: v.optional(v.boolean()),
 }
 
+// 512 endpoint rows, no hydration; large event arrays count toward 4 MiB.
+export const WEBHOOK_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
 /** The team's webhooks, newest first, a page at a time. */
 export const list = query({
   args: { ...webhookFilters, paginationOpts: paginationOptsValidator },
@@ -194,7 +197,9 @@ export const list = query({
       args.paginationOpts,
       (webhook) =>
         (args.enabled === undefined || webhook.enabled === args.enabled) &&
-        matches(webhook.endpoint, ...webhook.events)
+        matches(webhook.endpoint, ...webhook.events),
+      WEBHOOK_SEARCH_BUDGET,
+      args.search
     )
     return { ...result, page: result.page.map(shown) }
   },

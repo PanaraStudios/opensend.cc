@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, convexToJson, type Value } from "convex/values"
 import {
   paginationOptsValidator,
@@ -26,7 +27,7 @@ import {
   payloadErrors,
   schemaError,
 } from "../lib/dashboard/automation"
-import { matchesNeedle, searchNeedle } from "../lib/dashboard/search"
+import { filteredPage, matchesSearch } from "./lists"
 import type { AutomationEvent } from "../lib/dashboard/types"
 
 /** A flat payload rarely has more than a few dozen fields, and every send
@@ -203,8 +204,10 @@ async function writableEvent(ctx: MutationCtx, id: Id<"automationEvents">) {
   return event
 }
 
-/** Newest first. A search matches words through the search index, then
-    keeps the rows that contain the text, so a page may come back short. */
+// 512 definitions, no hydration; schema keys are already in the scanned document.
+export const EVENT_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
+/** Newest first; substring search filters each bounded index page. */
 export const list = query({
   args: {
     organizationId: v.string(),
@@ -214,32 +217,19 @@ export const list = query({
   returns: paginationResultValidator(schema.doc("automationEvents")),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const search = (args.search ?? "").trim().slice(0, 256)
-    if (!search)
-      return ctx.db
+    const matches = matchesSearch(args.search)
+    return filteredPage(
+      stream(ctx.db, schema)
         .query("automationEvents")
         .withIndex("by_organizationId", (q) =>
           q.eq("organizationId", args.organizationId)
         )
-        .order("desc")
-        .paginate(args.paginationOpts)
-    const result = await ctx.db
-      .query("automationEvents")
-      .withSearchIndex("search_searchText", (q) =>
-        q.search("searchText", search).eq("organizationId", args.organizationId)
-      )
-      .paginate(args.paginationOpts)
-    const needle = searchNeedle(search)
-    return {
-      ...result,
-      page: result.page.filter((row) =>
-        matchesNeedle(
-          needle,
-          row.searchText,
-          ...row.schema.map((field) => field.key)
-        )
-      ),
-    }
+        .order("desc"),
+      args.paginationOpts,
+      (row) => matches(row.searchText, ...row.schema.map((field) => field.key)),
+      EVENT_SEARCH_BUDGET,
+      args.search
+    )
   },
 })
 

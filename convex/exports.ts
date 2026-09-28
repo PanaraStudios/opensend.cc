@@ -106,6 +106,9 @@ export const start = mutation({
   },
 })
 
+// 1024 export metadata rows, no hydration; file contents are never read by the list.
+export const EXPORT_SEARCH_BUDGET = { rows: 1024, bytes: 4 * 1024 * 1024 }
+
 /** The team's exports, newest first. */
 export const list = query({
   args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },
@@ -117,7 +120,8 @@ export const list = query({
       "exports",
       organizationId,
       paginationOpts,
-      () => true
+      () => true,
+      EXPORT_SEARCH_BUDGET
     )
     return { ...result, page: result.page.map(view) }
   },

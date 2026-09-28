@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -17,7 +18,7 @@ import {
   literals,
   patchRow,
 } from "./counts"
-import { matchesSearch, narrow } from "./lists"
+import { filteredPage, matchesSearch } from "./lists"
 import { templateStatusValue } from "./tables/templates"
 import { UNSUBSCRIBE_VARIABLE_NAME } from "../lib/dashboard/email-variables"
 import {
@@ -183,36 +184,40 @@ const templateFilters = {
   status: v.optional(templateStatusValue),
 }
 
+// Scan 512 metadata rows; reserve one maximum-size (1 MiB) draft per match.
+export const TEMPLATE_SEARCH_BUDGET = {
+  rows: 512,
+  bytes: 8 * 1024 * 1024,
+  bytesPerMatch: 1024 * 1024,
+}
+
 export const list = query({
   args: { ...templateFilters, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(listItem),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const search = (args.search ?? "").trim().slice(0, 200)
+    const search = args.search
     const matches = matchesSearch(search)
-    const templates = ctx.db.query("templates")
-    const rows = search
-      ? templates.withSearchIndex("search_searchText", (q) => {
-          const scoped = q
-            .search("searchText", search)
-            .eq("organizationId", args.organizationId)
-          return args.status ? scoped.eq("status", args.status) : scoped
-        })
-      : args.status
-        ? templates
-            .withIndex("by_organizationId_and_status", (q) =>
-              q
-                .eq("organizationId", args.organizationId)
-                .eq("status", args.status!)
-            )
-            .order("desc")
-        : templates
-            .withIndex("by_organizationId", (q) =>
-              q.eq("organizationId", args.organizationId)
-            )
-            .order("desc")
-    const result = narrow(await rows.paginate(args.paginationOpts), (row) =>
-      matches(row.name, row.alias)
+    const templates = stream(ctx.db, schema).query("templates")
+    const rows = args.status
+      ? templates
+          .withIndex("by_organizationId_and_status", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("status", args.status!)
+          )
+          .order("desc")
+      : templates
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId)
+          )
+          .order("desc")
+    const result = await filteredPage(
+      rows,
+      args.paginationOpts,
+      (row) => matches(row.name, row.alias),
+      TEMPLATE_SEARCH_BUDGET,
+      search
     )
     // The cards draw each email, so the page carries the draft markup.
     return {
