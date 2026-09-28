@@ -6,6 +6,7 @@ import { domainTables } from "./tables/domains"
 import { emailTables } from "./tables/emails"
 import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
+import { metricsTables } from "./tables/metrics"
 import { receivingTables } from "./tables/receiving"
 import { smtpTables } from "./tables/smtp"
 import { sesTables } from "./tables/ses"
@@ -18,6 +19,7 @@ import { webhookTables } from "./tables/webhooks"
 export default defineSchema({
   ...sesTables,
   ...smtpTables,
+  ...metricsTables,
   ...domainTables,
   ...eventTables,
   ...templateTables,

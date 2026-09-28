@@ -1614,7 +1614,7 @@ describe("native SES team tenants", () => {
         organizationId: f.owner.team,
         domainId: f.domain,
       })
-    ).rejects.toThrow("tenant is not ready")
+    ).rejects.toThrow("Sending is paused")
   })
   test("management calls reserve separate slots per AWS region", async () => {
     vi.useFakeTimers()

@@ -55,9 +55,13 @@ export const sesTables = {
     arn: v.optional(v.string()),
     providerId: v.optional(v.string()),
     sendingStatus: v.optional(v.string()),
+    customerSendingStatus: v.optional(v.string()),
+    statusOperation: v.optional(v.string()),
+    statusOperationAt: v.optional(v.number()),
     error: v.optional(v.string()),
     checkedAt: v.optional(v.number()),
   })
+    .index("by_deleted", ["deleted"])
     .index("by_organizationId_and_region", ["organizationId", "region"])
     .index("by_operation_and_deleted_and_phase", [
       "operation",
@@ -68,5 +72,6 @@ export const sesTables = {
     topicArn: v.string(),
     messageId: v.string(),
     message: v.string(),
+    projectedAt: v.optional(v.number()),
   }).index("by_topicArn_and_messageId", ["topicArn", "messageId"]),
 }

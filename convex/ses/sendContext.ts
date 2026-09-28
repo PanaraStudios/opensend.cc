@@ -32,13 +32,15 @@ export const get = internalQuery({
     const tenant = domain.tenantId
       ? await ctx.db.get("sesTenants", domain.tenantId)
       : null
+    if (!tenant || !tenantProvisioned(tenant) || !tenantMatches(tenant, domain))
+      throw new ConvexError("Team SES tenant is not ready to send")
     if (
-      !tenant ||
-      !tenantProvisioned(tenant) ||
-      !tenantMatches(tenant, domain) ||
+      tenant.statusOperation ||
       !["ENABLED", "REINSTATED"].includes(tenant.sendingStatus ?? "")
     )
-      throw new ConvexError("Team SES tenant is not ready to send")
+      throw new ConvexError(
+        "Sending is paused for this team. Ask your installation administrator to resume sending."
+      )
     if (
       !domain.tenantAssociated ||
       !domain.configurationSet ||

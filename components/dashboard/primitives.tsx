@@ -1675,12 +1675,14 @@ export function OptionSelect({
   className,
   disabled,
   placeholder,
+  footer,
   "aria-label": ariaLabel,
 }: {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
   items: readonly SelectOption[]
+  footer?: React.ReactNode
   /** Shown while no item is chosen. */
   placeholder?: string
   id?: string
@@ -1710,7 +1712,7 @@ export function OptionSelect({
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent align={align} alignItemWithTrigger={false}>
+      <SelectContent align={align} alignItemWithTrigger={false} footer={footer}>
         <SelectGroup>
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
@@ -1823,6 +1825,7 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
+  footer?: React.ReactNode
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1863,6 +1866,7 @@ export function ToolbarFilters({
           value={filter.value}
           onChange={filter.onChange}
           items={filter.items}
+          footer={filter.footer}
           aria-label={filter["aria-label"]}
         />
       ))}

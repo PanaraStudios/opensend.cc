@@ -1,3 +1,5 @@
+import { recordMetric } from "./metricRows"
+import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
 import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
@@ -17,6 +19,23 @@ const backfill = <T extends CountedTable>(table: T) =>
 
 export const countExports = backfill("exports")
 export const countEmails = backfill("emails")
+export const countEmailDomains = backfill("emails")
+export const countEmailMetrics = backfill("emailMetrics")
+export const countRecipientMetrics = backfill("recipientMetrics")
+export const projectSesEvents = migrations.define({
+  table: "sesEvents",
+  batchSize: 1,
+  migrateOne: (ctx, event) => projectEvent(ctx, event),
+})
+export const seedEmailMetrics = migrations.define({
+  table: "emailEvents",
+  batchSize: 1,
+  migrateOne: async (ctx, event) => {
+    const email = await ctx.db.get("emails", event.emailId)
+    if (email)
+      await recordMetric(ctx, email, event.type, event.at, event.recipients)
+  },
+})
 export const countSuppressions = backfill("suppressions")
 export const countEmailRecipients = backfill("emailRecipients")
 export const countEmailEvents = backfill("emailEvents")
@@ -48,6 +67,11 @@ export const dropWebhookStats = migrations.define({
 export const backfillCounts = migrations.runner([
   internal.migrations.countExports,
   internal.migrations.countEmails,
+  internal.migrations.countEmailDomains,
+  internal.migrations.countEmailMetrics,
+  internal.migrations.countRecipientMetrics,
+  internal.migrations.seedEmailMetrics,
+  internal.migrations.projectSesEvents,
   internal.migrations.countSuppressions,
   internal.migrations.countEmailRecipients,
   internal.migrations.countEmailEvents,
