@@ -61,6 +61,7 @@ export const apiTables = {
     response: v.optional(v.object({ status: v.number(), body: v.string() })),
     expiresAt: v.number(),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_key", ["organizationId", "key"])
     .index("by_expiresAt", ["expiresAt"]),
   /* One row per request. Lists read these small rows; headers and bodies

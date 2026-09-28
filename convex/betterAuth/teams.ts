@@ -335,35 +335,74 @@ export const changeMember = mutation({
     return null
   },
 })
-async function deleteOrganization(ctx: MutationCtx, organizationId: string) {
-  for (const m of await ctx.db
-    .query("member")
-    .withIndex("organizationId", (q) => q.eq("organizationId", organizationId))
-    .take(100))
-    await ctx.db.delete("member", m._id)
-  for (const i of await ctx.db
-    .query("invitation")
-    .withIndex("organizationId", (q) => q.eq("organizationId", organizationId))
-    .take(100))
-    await ctx.db.delete("invitation", i._id)
-  const sso = await ctx.db
-    .query("sso")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId)
-    )
-    .unique()
-  if (sso) await ctx.db.delete("sso", sso._id)
-  const avatar = await ctx.db
-    .query("avatar")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId)
-    )
-    .unique()
-  if (avatar) {
-    await ctx.storage.delete(avatar.storageId)
-    await ctx.db.delete("avatar", avatar._id)
+export const ORGANIZATION_TABLES = [
+  "member",
+  "invitation",
+  "sso",
+  "ssoProof",
+  "avatar",
+  "oauthGrant",
+] as const
+
+async function purgeOrganizationRows(ctx: MutationCtx, organizationId: string) {
+  let pending = false
+  for (const table of ORGANIZATION_TABLES) {
+    const rows = await ctx.db
+      .query(table)
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .take(8)
+    if (rows.length === 8) pending = true
+    for (const row of rows) {
+      if (table === "oauthGrant") {
+        const uses = await ctx.db
+          .query("oauthUse")
+          .withIndex("by_grantId", (q) => q.eq("grantId", row._id))
+          .take(8)
+        for (const use of uses) await ctx.db.delete("oauthUse", use._id)
+        let more = uses.length === 8
+        for (const tokenTable of [
+          "oauthAccessToken",
+          "oauthRefreshToken",
+          "oauthConsent",
+        ] as const) {
+          const tokens = await ctx.db
+            .query(tokenTable)
+            .withIndex("referenceId", (q) => q.eq("referenceId", row._id))
+            .take(8)
+          for (const token of tokens) await ctx.db.delete(tokenTable, token._id)
+          if (tokens.length === 8) more = true
+        }
+        if (more) {
+          pending = true
+          continue
+        }
+      }
+      if ("storageId" in row) await ctx.storage.delete(row.storageId)
+      await ctx.db.delete(table, row._id)
+    }
   }
+  if (pending)
+    await ctx.scheduler.runAfter(0, api.teams.purgeOrganization, {
+      organizationId,
+    })
+}
+
+export const purgeOrganization = mutation({
+  args: { organizationId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { organizationId }) => {
+    const id = ctx.db.normalizeId("organization", organizationId)
+    if (id && (await ctx.db.get("organization", id))) return null
+    await purgeOrganizationRows(ctx, organizationId)
+    return null
+  },
+})
+
+async function deleteOrganization(ctx: MutationCtx, organizationId: string) {
   await ctx.db.delete("organization", organizationId as Id<"organization">)
+  await purgeOrganizationRows(ctx, organizationId)
 }
 export const remove = mutation({
   args: {

@@ -114,6 +114,7 @@ export const emailTables = {
     /** Lowercased address, without a display name. */
     address: v.string(),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_address", ["organizationId", "address"])
     .index("by_emailId", ["emailId"]),
   suppressions: defineTable({

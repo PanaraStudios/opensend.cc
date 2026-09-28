@@ -1,3 +1,4 @@
+import * as publicHttp from "../lib/net/public-fetch"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import { runToCompletion } from "@convex-dev/migrations"
@@ -380,8 +381,7 @@ describe("SES projection", () => {
       })
       await patchEmail(ctx, id, { messageId: message.mail.messageId })
     })
-    vi.stubGlobal(
-      "fetch",
+    vi.spyOn(publicHttp, "publicFetch").mockImplementation(
       vi.fn(async () => new Response(TEST_CERT_PEM))
     )
     for (let i = 0; i < 2; i++)

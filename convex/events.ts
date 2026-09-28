@@ -1,3 +1,4 @@
+import { requireActiveTeam } from "./teamLifecycle"
 import type { FunctionReference } from "convex/server"
 import { internal } from "./_generated/api"
 import type { MutationCtx } from "./_generated/server"
@@ -27,6 +28,7 @@ export async function emitEvent(
   type: WebhookEvent | (string & {}),
   data: Record<string, unknown>
 ) {
+  await requireActiveTeam(ctx, organizationId)
   const id = await ctx.db.insert("events", { organizationId, type, data })
   for (const consumer of CONSUMERS)
     await ctx.scheduler.runAfter(0, consumer, { id })

@@ -69,6 +69,7 @@ export const audienceTables = {
     segmentId: v.id("segments"),
     contactId: v.id("contacts"),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_segmentId", ["segmentId"])
     .index("by_contactId_and_segmentId", ["contactId", "segmentId"]),
   topics: defineTable({
@@ -86,6 +87,7 @@ export const audienceTables = {
     contactId: v.id("contacts"),
     subscription: topicSubscriptionValue,
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_topicId_and_subscription", ["topicId", "subscription"])
     .index("by_contactId_and_topicId", ["contactId", "topicId"]),
 }

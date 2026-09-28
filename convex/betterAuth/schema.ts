@@ -30,19 +30,18 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_organizationId", ["organizationId"]),
-  oauthUse: defineTable({ key: v.string(), grantId: v.string() }).index(
-    "by_key",
-    ["key"]
-  ),
+  oauthUse: defineTable({ key: v.string(), grantId: v.string() })
+    .index("by_key", ["key"])
+    .index("by_grantId", ["grantId"]),
   oauthRate: defineTable({
     key: v.string(),
     start: v.number(),
     count: v.number(),
   }).index("by_key", ["key"]),
-  member: tables.member.index("by_organizationId_and_userId", [
-    "organizationId",
-    "userId",
-  ]),
+  invitation: tables.invitation.index("by_organizationId", ["organizationId"]),
+  member: tables.member
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_userId", ["organizationId", "userId"]),
   bootstrap: defineTable({ key: v.string(), userId: v.string() }).index(
     "by_key",
     ["key"]
@@ -60,7 +59,9 @@ export default defineSchema({
     sessionId: v.string(),
     organizationId: v.string(),
     revision: v.string(),
-  }).index("by_sessionId_and_organizationId", ["sessionId", "organizationId"]),
+  })
+    .index("by_sessionId_and_organizationId", ["sessionId", "organizationId"])
+    .index("by_organizationId", ["organizationId"]),
   avatar: defineTable({
     organizationId: v.string(),
     storageId: v.id("_storage"),

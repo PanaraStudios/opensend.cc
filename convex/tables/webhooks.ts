@@ -22,6 +22,7 @@ export const webhookTables = {
     enabled: v.boolean(),
     webhookId: v.id("webhooks"),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_event_and_enabled", [
       "organizationId",
       "event",
@@ -50,6 +51,7 @@ export const webhookTables = {
     /** Set while another automatic attempt is scheduled. */
     nextAttemptAt: v.optional(v.number()),
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_webhookId", ["webhookId"])
     .index("by_webhookId_and_failed", ["webhookId", "failed"])
     .index("by_webhookId_and_event", ["webhookId", "event"])

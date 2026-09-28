@@ -1,3 +1,4 @@
+import * as publicHttp from "../lib/net/public-fetch"
 /// <reference types="vite/client" />
 import dns from "node:dns"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
@@ -14,7 +15,7 @@ const PUBLIC_IP = "93.184.216.34"
 let fetcher: ReturnType<typeof stubFetch>
 let answer: () => Response
 const stubFetch = () =>
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => answer())
+  vi.spyOn(publicHttp, "publicFetch").mockImplementation(async () => answer())
 
 beforeEach(() => {
   /* convex-test runs scheduled functions on real timers, which would let the
@@ -207,7 +208,7 @@ describe("signing", () => {
     await attempt(f, delivery._id, 0)
     const [url, init] = fetcher.mock.calls[0] as [URL, RequestInit]
     expect(String(url)).toBe("https://hooks.example.com/opensend")
-    expect(init.redirect).toBe("manual")
+    expect(init).not.toHaveProperty("redirect")
     const headers = sentHeaders(0)
     expect(headers["svix-id"]).toBe(`msg_${event}`)
     const body = JSON.parse(init.body as string)
@@ -401,6 +402,7 @@ describe("delivery", () => {
       { address: PUBLIC_IP, family: 4 },
       { address: "169.254.169.254", family: 4 },
     ] as never)
+    fetcher.mockRestore()
     await attempt(f, _id, 0)
     expect(fetcher).not.toHaveBeenCalled()
     expect(await getDelivery(f, _id)).toMatchObject({

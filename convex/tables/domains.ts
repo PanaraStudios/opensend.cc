@@ -63,6 +63,7 @@ export const domainTables = {
     error: v.optional(v.string()),
     operation: domainOperationValue,
   })
+    .index("by_organizationId", ["organizationId"])
     .index("by_name_and_region_and_deleted", ["name", "region", "deleted"])
     .index("by_nextCheckAt", ["nextCheckAt"])
     // Whether any domain in a region still receives mail.

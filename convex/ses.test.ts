@@ -1,3 +1,4 @@
+import * as publicHttp from "../lib/net/public-fetch"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
@@ -1058,7 +1059,7 @@ test("signed SNS notifications deduplicate and forged or foreign envelopes never
     changes: { topicArn: SIGNED_NOTIFICATION_V2.TopicArn },
   })
   const fetcher = vi
-    .spyOn(globalThis, "fetch")
+    .spyOn(publicHttp, "publicFetch")
     .mockImplementation(async () => new Response(TEST_CERT_PEM))
   await f.t.action(internal.ses.events.receive, {
     body: JSON.stringify(SIGNED_NOTIFICATION_V2),
@@ -1155,7 +1156,7 @@ test("signed subscription confirmation sets readiness only for the configured en
     id: f.region._id,
     changes: { topicArn: SIGNED_SUBSCRIPTION_CONFIRMATION.TopicArn },
   })
-  vi.spyOn(globalThis, "fetch").mockImplementation(
+  vi.spyOn(publicHttp, "publicFetch").mockImplementation(
     async () => new Response(TEST_CERT_PEM)
   )
   const arn = `${SIGNED_SUBSCRIPTION_CONFIRMATION.TopicArn}:subscription`
@@ -1518,8 +1519,8 @@ describe("native SES team tenants", () => {
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).toContain("DeleteTenantCommand")
     expect(
-      (await f.t.query(internal.tenants.get, { id: f.tenant }))?.deleted
-    ).toBe(true)
+      await f.t.query(internal.tenants.get, { id: f.tenant })
+    ).toBeNull()
   })
   test("unexpected tenant resources stop cleanup and remain intact until an administrator retries", async () => {
     vi.useFakeTimers()
@@ -1546,8 +1547,8 @@ describe("native SES team tenants", () => {
     await f.owner.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(
-      (await f.t.query(internal.tenants.get, { id: f.tenant }))?.deleted
-    ).toBe(true)
+      await f.t.query(internal.tenants.get, { id: f.tenant })
+    ).toBeNull()
   })
   test("stale lifecycle workers cannot overwrite a newer removal operation", async () => {
     const f = await awsFixture()
@@ -2363,7 +2364,7 @@ describe("Domain Connect", () => {
       }),
     }
     const fetch = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(publicHttp, "publicFetch")
       .mockImplementation(async (input) =>
         String(input).endsWith("/v2/example.test/settings")
           ? Response.json(settings)
@@ -2472,7 +2473,7 @@ describe("Domain Connect", () => {
     const { pem, publicKey } = keyPair()
     vi.stubEnv("DOMAIN_CONNECT_PRIVATE_KEY", pem.replace(/\n/g, "\\n"))
     vi.stubEnv("DOMAIN_CONNECT_KEY", "_dck1")
-    const fetch = vi.spyOn(globalThis, "fetch")
+    const fetch = vi.spyOn(publicHttp, "publicFetch")
     const query = templateQuery({
       domain: "example.test",
       host: "mail",
@@ -2496,7 +2497,7 @@ describe("Domain Connect", () => {
   })
   test("any other installation asks opensend.cc to sign, and says so when it cannot", async () => {
     const fetch = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(publicHttp, "publicFetch")
       .mockResolvedValueOnce(Response.json({ sig: "c2ln", key: "_dck1" }))
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
     expect(await signature("domain=example.test")).toEqual({
@@ -2547,7 +2548,7 @@ describe("Domain Connect", () => {
     await expect(
       f.outsider.client.action(api.ses.domainConnect.apply, { id: f.domain })
     ).rejects.toThrow("permission")
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    vi.spyOn(publicHttp, "publicFetch").mockResolvedValue(
       Response.json({ sig: "c2ln", key: "_dck1" })
     )
     const url = new URL(

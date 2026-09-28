@@ -64,5 +64,7 @@ export const templateTables = {
     replyToAddresses: v.optional(v.array(v.string())),
     variables: v.array(templateVariableValue),
     publishedAt: v.number(),
-  }).index("by_templateId", ["templateId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_templateId", ["templateId"]),
 }

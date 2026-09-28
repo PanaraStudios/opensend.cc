@@ -11,6 +11,7 @@ import { metricsTables } from "./tables/metrics"
 import { receivingTables } from "./tables/receiving"
 import { smtpTables } from "./tables/smtp"
 import { sesTables } from "./tables/ses"
+import { teamTables } from "./tables/teams"
 import { templateTables } from "./tables/templates"
 import { unsubscribeTables } from "./tables/unsubscribe"
 import { webhookTables } from "./tables/webhooks"
@@ -25,6 +26,7 @@ export default defineSchema({
   ...domainTables,
   ...eventTables,
   ...templateTables,
+  ...teamTables,
   ...audienceTables,
   ...webhookTables,
   ...apiTables,

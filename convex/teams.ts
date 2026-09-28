@@ -1,6 +1,6 @@
 import { env } from "./_generated/server"
 import { mutation, query, action } from "./_generated/server"
-import { components } from "./_generated/api"
+import { components, internal } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
 import {
   sessionId,
@@ -16,8 +16,7 @@ import type { MutationCtx } from "./_generated/server"
 import { snapshotValue } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
-import { retireApiKeys } from "./apiKeys"
-import { smtpSettings } from "./smtp"
+import { retirement } from "./teamLifecycle"
 const role = v.union(v.literal("admin"), v.literal("member"))
 /** A team is deleted only once it has no domains; its tenants go with it. */
 async function retireTeam(ctx: MutationCtx, organizationId: string) {
@@ -32,9 +31,13 @@ async function retireTeam(ctx: MutationCtx, organizationId: string) {
       "Remove this team's sending domains before deleting the team"
     )
   await removeTeamTenants(ctx, organizationId)
-  await retireApiKeys(ctx, organizationId)
-  const smtp = await smtpSettings(ctx, organizationId)
-  if (smtp) await ctx.db.delete("smtpSettings", smtp._id)
+  if (!(await retirement(ctx, organizationId))) {
+    await ctx.db.insert("teamRetirements", { teamId: organizationId })
+    await ctx.scheduler.runAfter(0, internal.teamCleanup.purge, {
+      organizationId,
+      table: 0,
+    })
+  }
 }
 export const snapshot = query({
   args: {},

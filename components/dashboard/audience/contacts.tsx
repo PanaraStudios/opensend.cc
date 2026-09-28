@@ -327,7 +327,9 @@ function ImportCsvDialog({
     try {
       const result = await upsertContacts(
         inputs,
-        segmentId === "none" ? [] : [segmentId]
+        segmentId === "none" ? [] : [segmentId],
+        false,
+        true
       )
       toast.add({
         type: "success",

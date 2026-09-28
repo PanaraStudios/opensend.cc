@@ -5,6 +5,17 @@
 
 const LOCAL_SUFFIXES = [".localhost", ".local", ".internal", ".arpa"]
 
+/** Only the installation's explicit development endpoints may opt out. */
+export function localHttpOrigin(input: string): string | undefined {
+  const url = new URL(input)
+  return url.protocol === "http:" &&
+    !url.username &&
+    !url.password &&
+    ["localhost", "127.0.0.1", "host.docker.internal"].includes(url.hostname)
+    ? url.origin
+    : undefined
+}
+
 /** A DNS name on the public internet: not an IP literal, and not a name
     that only resolves on a local network. Takes `URL.hostname`, which has
     already turned hex and octal IPv4 spellings into dotted decimal. */
