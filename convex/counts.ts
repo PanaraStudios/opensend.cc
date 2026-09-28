@@ -21,9 +21,9 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
    the backfill (`migrations:backfillCounts`), possibly after live writes.
 
    Counts update in the writing transaction rather than in the component's
-   queued mode: no key ends in a raw timestamp, so concurrent writes land
-   on different leaves (see BUCKET), and counts stay exact at once instead
-   of trailing a background worker. */
+   queued mode, so counts stay exact at once instead of trailing a
+   background worker. Most time filters use BUCKET to spread concurrent
+   writes; automation metrics keep exact timestamps for range sums. */
 
 /** A list's row count for its current filters; null when they cannot be
     counted exactly (a text search, or filters no count is keyed by). */
@@ -66,11 +66,13 @@ class Counter<T extends TableNames, N extends Value> {
       key: (doc: Doc<T>) => Key
       /** Rows outside it are not counted (soft-deleted ones, say). */
       where?: (doc: Doc<T>) => boolean
+      sum?: (doc: Doc<T>) => number
     }
   ) {
     this.aggregate = new TableAggregate(component, {
       namespace: spec.namespace,
       sortKey: spec.key,
+      sumValue: spec.sum,
     })
   }
   private counts(doc: Doc<T>) {
@@ -87,7 +89,8 @@ class Counter<T extends TableNames, N extends Value> {
       const { namespace, key } = this.spec
       if (
         sameValue(namespace(before), namespace(after)) &&
-        sameValue(key(before), key(after))
+        sameValue(key(before), key(after)) &&
+        this.spec.sum?.(before) === this.spec.sum?.(after)
       )
         return
       await this.aggregate.replaceOrInsert(ctx, before, after)
@@ -159,6 +162,28 @@ const created = (doc: { _creationTime: number }) => bucket(doc._creationTime)
 /** Every count, by what it counts. Keys follow each list's filters, so a
     filter narrows the count with key bounds instead of a scan. */
 export const counters = {
+  automations: new Counter<"automations", string>(components.automationCounts, {
+    namespace: team,
+    key: (row) => [row.status],
+    where: (row) => !row.deleted,
+  }),
+  automationRuns: new Counter<"automationRuns", Id<"automations">>(
+    components.automationRunCounts,
+    {
+      namespace: (row) => row.automationId,
+      key: (row) => [row.status, row._creationTime],
+      sum: (row) => row.sent,
+    }
+  ),
+  automationRunSteps: new Counter<"automationRunSteps", Id<"automations">>(
+    components.automationStepCounts,
+    {
+      namespace: (row) => row.automationId,
+      key: (row) => [row.key, row.status, row.runStartedAt],
+      sum: (row) =>
+        row.completedAt === undefined ? 0 : row.completedAt - row.startedAt,
+    }
+  ),
   exports: new Counter<"exports", string>(components.exportCounts, {
     namespace: team,
     key: () => [],
@@ -256,6 +281,9 @@ type Sync<T extends TableNames> = Pick<
 >
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
+  automations: [counters.automations],
+  automationRuns: [counters.automationRuns],
+  automationRunSteps: [counters.automationRunSteps],
   exports: [counters.exports],
   emails: [counters.emails],
   suppressions: [counters.suppressions],
@@ -274,6 +302,9 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   domains: [counters.domains],
 }
 export type CountedTable =
+  | "automations"
+  | "automationRuns"
+  | "automationRunSteps"
   | "exports"
   | "emails"
   | "suppressions"

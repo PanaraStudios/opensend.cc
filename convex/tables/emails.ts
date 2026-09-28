@@ -26,6 +26,7 @@ export const suppressionReasonValue = v.union(
 export const emailSourceValue = v.union(
   v.literal("api"),
   v.literal("dashboard"),
+  v.literal("automation"),
   v.literal("system")
 )
 export const tagValue = v.object({ name: v.string(), value: v.string() })

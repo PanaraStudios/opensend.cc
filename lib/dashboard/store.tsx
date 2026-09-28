@@ -11,15 +11,6 @@ import {
 } from "react"
 
 import {
-  cancelledRun,
-  duplicatedAutomation,
-  eventNameError,
-  flattenSteps,
-  keptRuns,
-  startRun,
-  UNTITLED_AUTOMATION,
-} from "./automation"
-import {
   emailFrom,
   broadcastRecipients,
   emptyBroadcastStats,
@@ -54,15 +45,11 @@ import {
   type DashboardRoot,
 } from "./teams"
 import type {
-  Automation,
-  AutomationStatus,
   Broadcast,
   BroadcastStatus,
-  Contact,
   DashboardState,
   EmailStatus,
   MemberRole,
-  Segment,
   SentEmail,
   Settings,
   Team,
@@ -361,144 +348,6 @@ function deleteBroadcast(id: string) {
   }))
 }
 
-/** A new automation is blank and disabled; it is set up in the editor. */
-function addAutomation() {
-  const id = createId("atm")
-  mutate((current) => ({
-    ...current,
-    automations: [
-      {
-        id,
-        name: UNTITLED_AUTOMATION,
-        trigger: "",
-        status: "disabled",
-        steps: [],
-        createdAt: Date.now(),
-      },
-      ...current.automations,
-    ],
-  }))
-  return { id }
-}
-
-/** The workflow of an enabled automation is fixed: runs in flight finish on
-    the version they started with. Its name can change at any time. Returns
-    the event names the workflow now mentions: naming an event nobody has
-    sent yet is how one gets defined, which the provider does in Convex. */
-function updateAutomation(
-  id: string,
-  patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
-): string[] {
-  let named: string[] = []
-  mutate((current) => {
-    const item = current.automations.find((entry) => entry.id === id)
-    if (!item) return current
-    const locked = item.status === "enabled"
-    const next: Automation = {
-      ...item,
-      name:
-        patch.name === undefined
-          ? item.name
-          : patch.name.trim() || UNTITLED_AUTOMATION,
-      trigger: locked ? item.trigger : (patch.trigger?.trim() ?? item.trigger),
-      steps: locked ? item.steps : (patch.steps ?? item.steps),
-    }
-    const automations = current.automations.map((entry) =>
-      entry.id === id ? next : entry
-    )
-    /* A rename names no events. */
-    if (patch.trigger !== undefined || patch.steps !== undefined)
-      named = [
-        next.trigger,
-        ...flattenSteps(next.steps).flatMap((step) =>
-          step.type === "wait_for_event" ? [step.eventName] : []
-        ),
-      ].filter((name) => !eventNameError(name))
-    return { ...current, automations }
-  })
-  return named
-}
-
-function setAutomationStatus(id: string, status: AutomationStatus) {
-  mutate((current) => ({
-    ...current,
-    automations: current.automations.map((item) =>
-      item.id === id ? { ...item, status } : item
-    ),
-  }))
-}
-
-function duplicateAutomation(id: string): { id: string } | null {
-  const nextId = createId("atm")
-  let made = false
-  mutate((current) => {
-    const source = current.automations.find((item) => item.id === id)
-    if (!source) return current
-    made = true
-    return {
-      ...current,
-      automations: [
-        duplicatedAutomation(source, nextId, Date.now()),
-        ...current.automations,
-      ],
-    }
-  })
-  return made ? { id: nextId } : null
-}
-
-function deleteAutomation(id: string) {
-  mutate((current) => ({
-    ...current,
-    automations: current.automations.filter((item) => item.id !== id),
-    automationRuns: current.automationRuns.filter(
-      (run) => run.automationId !== id
-    ),
-  }))
-}
-
-/** Sends the trigger event for one contact and starts a run. Contacts and
-    segments are the team's real ones, so the caller passes them in. */
-function runAutomation(
-  id: string,
-  input: {
-    contact: Contact | undefined
-    segments: Segment[]
-    payload: Record<string, unknown>
-  }
-): boolean {
-  let made = false
-  mutate((current) => {
-    const automation = current.automations.find((item) => item.id === id)
-    const contact = input.contact
-    if (!automation || !contact) return current
-    made = true
-    return {
-      ...current,
-      automationRuns: keptRuns([
-        startRun({
-          id: createId("run"),
-          automation,
-          contact,
-          payload: input.payload,
-          context: { ...current, segments: input.segments },
-          now: Date.now(),
-        }),
-        ...current.automationRuns,
-      ]),
-    }
-  })
-  return made
-}
-
-function cancelAutomationRun(id: string) {
-  mutate((current) => ({
-    ...current,
-    automationRuns: current.automationRuns.map((run) =>
-      run.id === id ? cancelledRun(run, Date.now()) : run
-    ),
-  }))
-}
-
 function addExport(resource: string, rows: number) {
   const createdAt = Date.now()
   mutate((current) => ({
@@ -542,13 +391,6 @@ const actions = {
   duplicateBroadcast,
   setBroadcastStatus,
   deleteBroadcast,
-  addAutomation,
-  updateAutomation,
-  setAutomationStatus,
-  duplicateAutomation,
-  deleteAutomation,
-  runAutomation,
-  cancelAutomationRun,
   addExport,
   updateSettings,
   resetDemo,
@@ -690,7 +532,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     () => eventPage?.page.map(asAutomationEvent) ?? [],
     [eventPage]
   )
-  const ensureEvents = useMutation(api.automationEvents.ensure)
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -727,16 +568,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
     return {
       ...actions,
-      updateAutomation: (id, patch) => {
-        const named = actions.updateAutomation(id, patch)
-        const known = new Set(automationEvents.map((item) => item.name))
-        const names = named.filter((name) => !known.has(name.trim()))
-        if (auth.activeTeamId && names.length > 0)
-          ensureEvents({ organizationId: auth.activeTeamId, names }).catch(
-            (error: unknown) => console.error(error)
-          )
-        return named
-      },
       state: {
         ...demo,
         domains,
@@ -749,6 +580,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         emails,
         suppressions: [],
         automationEvents,
+        automations: [],
+        automationRuns: [],
         logs: [],
         // Real exports list on their own; only exports of demo lists stay.
         exports: demo.exports.filter(
@@ -805,7 +638,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     apiKeys,
     emails,
     automationEvents,
-    ensureEvents,
     create,
     switchTeam,
     rename,

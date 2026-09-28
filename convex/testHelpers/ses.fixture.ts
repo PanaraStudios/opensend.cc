@@ -14,6 +14,9 @@ import { components, internal } from "../_generated/api"
 const modules = import.meta.glob("../**/*.ts")
 /** The aggregates convex.config.ts mounts for convex/counts.ts. */
 const COUNT_COMPONENTS = [
+  "automationCounts",
+  "automationRunCounts",
+  "automationStepCounts",
   "contactCounts",
   "segmentCounts",
   "segmentMemberCounts",

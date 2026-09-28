@@ -24,6 +24,7 @@ export const narrow = <T>(
 ): PaginationResult<T> => ({ ...result, page: result.page.filter(keep) })
 
 type TeamTable =
+  | "automations"
   | "exports"
   | "segments"
   | "topics"

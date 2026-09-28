@@ -44,5 +44,8 @@ app.use(aggregate, { name: "emailCounts" })
 app.use(aggregate, { name: "suppressionCounts" })
 app.use(aggregate, { name: "emailRecipientCounts" })
 app.use(aggregate, { name: "emailEventCounts" })
+app.use(aggregate, { name: "automationCounts" })
+app.use(aggregate, { name: "automationRunCounts" })
+app.use(aggregate, { name: "automationStepCounts" })
 app.use(migrations)
 export default app

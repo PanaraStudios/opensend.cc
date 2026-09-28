@@ -119,6 +119,16 @@ export async function changeEvent(
   event: Doc<"automationEvents">,
   input: { name?: string; schema?: Schema }
 ) {
+  if (input.name !== undefined && input.name.trim() !== event.name) {
+    const used = await ctx.db
+      .query("automationEventLinks")
+      .withIndex("by_organizationId_and_name", (q) =>
+        q.eq("organizationId", event.organizationId).eq("name", event.name)
+      )
+      .first()
+    if (used)
+      throw new ConvexError("An event used by automations cannot be renamed")
+  }
   await patchAutomationEvent(ctx, event, {
     ...(input.schema === undefined
       ? {}
