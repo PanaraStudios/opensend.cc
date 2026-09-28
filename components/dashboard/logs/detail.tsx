@@ -31,7 +31,7 @@ import { LogIcon, LogsDocsSheet } from "@/components/dashboard/logs/shared"
 import { permissionLabel } from "@/lib/dashboard/format"
 import { api } from "@/convex/_generated/api"
 import { logSourceLabel, storedBody } from "@/lib/dashboard/logs"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useEmail } from "@/lib/emails/use-emails"
 import { asLog } from "@/lib/logs/use-logs"
 
 function RequestHeaders({
@@ -81,9 +81,9 @@ function RequestHeaders({
 
 export function LogDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state } = useDashboard()
   const [docsOpen, setDocsOpen] = React.useState(false)
   const found = useQuery(api.logs.get, { id })
+  const email = useEmail(found?.log.emailId)?.email
 
   if (found === undefined) return <Skeleton className="h-64 w-full" />
   if (!found) {
@@ -101,7 +101,6 @@ export function LogDetail() {
   const { apiKey, body } = found
   const requestBody = storedBody(body?.requestBody)
   const responseBody = storedBody(body?.responseBody)
-  const email = state.emails.find((item) => item.id === log.emailId)
 
   return (
     <div className="flex flex-col gap-6">

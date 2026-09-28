@@ -1,6 +1,9 @@
 import type { PaginationOptions } from "convex/server"
 import type { QueryCtx } from "./_generated/server"
 import { keyPage } from "./apiKeys"
+import { emailPage } from "./emails"
+import { suppressionPage } from "./suppressions"
+import { EMAIL_STATUSES, SUPPRESSION_REASONS } from "./tables/emails"
 import { logPage } from "./logs"
 import { API_KEY_PERMISSIONS } from "../lib/dashboard/api-keys"
 import { LOG_SOURCES, LOG_STATUS_CLASSES } from "../lib/dashboard/logs"
@@ -109,6 +112,69 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
           String(log.durationMs),
           log.apiKeyId ?? "",
           log.emailId ?? "",
+        ]),
+      }
+    },
+  },
+  emails: {
+    label: "Emails",
+    columns: [
+      "id",
+      "created_at",
+      "from",
+      "to",
+      "cc",
+      "bcc",
+      "subject",
+      "status",
+      "scheduled_at",
+      "sent_at",
+    ],
+    page: async (ctx, organizationId, filters, paginationOpts) => {
+      const result = await emailPage(ctx, {
+        organizationId,
+        paginationOpts,
+        status: oneOf(filters.status, EMAIL_STATUSES),
+        search: filters.search,
+        from: time(filters.from),
+        to: time(filters.to),
+      })
+      return {
+        ...result,
+        rows: result.page.map((email) => [
+          email._id,
+          iso(email._creationTime),
+          email.from,
+          email.to.join(", "),
+          (email.cc ?? []).join(", "),
+          (email.bcc ?? []).join(", "),
+          email.subject,
+          email.status,
+          iso(email.scheduledAt),
+          iso(email.sentAt),
+        ]),
+      }
+    },
+  },
+  suppressions: {
+    label: "Suppressions",
+    columns: ["id", "email", "origin", "created_at"],
+    page: async (ctx, organizationId, filters, paginationOpts) => {
+      const result = await suppressionPage(ctx, {
+        organizationId,
+        paginationOpts,
+        reason: oneOf(filters.reason, SUPPRESSION_REASONS),
+        search: filters.search,
+        from: time(filters.from),
+        to: time(filters.to),
+      })
+      return {
+        ...result,
+        rows: result.page.map((row) => [
+          row._id,
+          row.email,
+          row.reason,
+          iso(row._creationTime),
         ]),
       }
     },

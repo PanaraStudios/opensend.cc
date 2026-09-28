@@ -173,7 +173,7 @@ export const invite = mutation({
       components.betterAuth.teams.invite,
       { ...args, sessionId: await sessionId(ctx) }
     )
-    sendAuthEmail({
+    await sendAuthEmail(ctx, {
       to: invitation.email,
       kind: "invite",
       url: `${env.SITE_URL}/invitation?id=${invitation.id}`,

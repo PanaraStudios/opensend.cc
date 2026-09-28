@@ -26,6 +26,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
@@ -33,11 +34,14 @@ import {
   DocsButton,
   EmailStatusBadge,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   OptionSelect,
   ResourceTable,
   Th,
+  useDebouncedValue,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import {
   CircleMinusIcon,
@@ -56,6 +60,7 @@ import {
   defaultEmailRange,
   emailMatches,
   inDateRange,
+  isFilterableStatus,
   isSuppressionReason,
 } from "@/components/dashboard/emails/shared"
 import {
@@ -63,25 +68,38 @@ import {
   isEmail,
   suppressionReasonLabel,
 } from "@/lib/dashboard/format"
+import { actionError } from "@/lib/action-error"
+import { rangeBounds } from "@/lib/dashboard/email-range"
 import { searchNeedle } from "@/lib/dashboard/search"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { SuppressionReason } from "@/lib/dashboard/types"
+import {
+  useEmailCommands,
+  useEmailList,
+  useSuppressionList,
+} from "@/lib/emails/use-emails"
+import { useStartExport } from "@/lib/exports/use-exports"
+import { useClock } from "@/lib/time/use-clock"
 
 export function EmailsView() {
-  const { state, addExport } = useDashboard()
+  const startExport = useStartExport()
+  const now = useClock() ?? undefined
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(
-    defaultEmailRange
+  const [range, setRange] = React.useState<DateRange | undefined>(() =>
+    defaultEmailRange(Date.now())
   )
   const [docsOpen, setDocsOpen] = React.useState(false)
+  const search = useDebouncedValue(query)
 
-  const needle = searchNeedle(query)
-  const rows = state.emails.filter((email) => {
-    if (!emailMatches(needle, email)) return false
-    if (status !== "all" && email.status !== status) return false
-    return inDateRange(email.createdAt, range)
-  })
+  const filters = {
+    status: isFilterableStatus(status) ? status : undefined,
+    search: search.trim() || undefined,
+    ...rangeBounds(range),
+  }
+  const emails = useEmailList(filters)
+  const rows = emails.rows
+  const { pageRows, pagination } = useLoadedPagination(rows, emails)
 
   return (
     <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
@@ -91,6 +109,7 @@ export function EmailsView() {
         placeholder="Search emails…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: status,
@@ -99,70 +118,72 @@ export function EmailsView() {
             "aria-label": "Filter by status",
           },
         ]}
-        onExport={() => {
-          addExport("Emails", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={() => void startExport("emails", filters)}
       />
-      {rows.length === 0 ? (
+      {emails.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={MailIcon}
           title="No emails"
           description="Send a message with POST /emails from the API and it appears here with its delivery events."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>To</Th>
-              <Th>Status</Th>
-              <Th>Sent</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((email) => (
-            <TableRow key={email.id}>
-              <TableCell>
-                <div className="flex flex-col gap-0.5">
-                  <Link
-                    href={`/emails/${email.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {email.to}
-                  </Link>
-                  <span className="text-xs text-muted-foreground">
-                    {email.subject}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell>
-                <EmailStatusBadge status={email.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(email.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/emails/${email.id}`} />}
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>To</Th>
+                <Th>Status</Th>
+                <Th>Sent</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((email) => (
+              <TableRow key={email.id}>
+                <TableCell>
+                  <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={`/emails/${email.id}`}
+                      className="font-medium hover:underline"
                     >
-                      <EyeIcon />
-                      View email
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      render={<Link href={`/logs?email=${email.id}`} />}
-                    >
-                      <ScrollTextIcon />
-                      View log
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+                      {email.to}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {email.subject}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <EmailStatusBadge status={email.status} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(email.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/emails/${email.id}`} />}
+                      >
+                        <EyeIcon />
+                        View email
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        render={<Link href={`/logs?email=${email.id}`} />}
+                      >
+                        <ScrollTextIcon />
+                        View log
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="email" />
+        </>
       )}
       <EmailsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </EmailsChrome>
@@ -263,11 +284,13 @@ export function ReceivingView() {
 }
 
 export function SuppressionsView() {
-  const { state, addSuppression, removeSuppression, addExport } = useDashboard()
+  const { addSuppression, removeSuppression } = useEmailCommands()
+  const startExport = useStartExport()
+  const now = useClock() ?? undefined
   const [query, setQuery] = React.useState("")
   const [origin, setOrigin] = React.useState("all")
-  const [range, setRange] = React.useState<DateRange | undefined>(
-    defaultEmailRange
+  const [range, setRange] = React.useState<DateRange | undefined>(() =>
+    defaultEmailRange(Date.now())
   )
   const [open, setOpen] = React.useState(false)
   const [email, setEmail] = React.useState("")
@@ -275,12 +298,16 @@ export function SuppressionsView() {
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const needle = searchNeedle(query)
-  const rows = state.suppressions.filter((item) => {
-    if (!emailMatches(needle, { to: item.email })) return false
-    if (origin !== "all" && item.reason !== origin) return false
-    return inDateRange(item.createdAt, range)
-  })
+  const search = useDebouncedValue(query)
+
+  const filters = {
+    reason: isSuppressionReason(origin) ? origin : undefined,
+    search: search.trim() || undefined,
+    ...rangeBounds(range),
+  }
+  const suppressions = useSuppressionList(filters)
+  const rows = suppressions.rows
+  const { pageRows, pagination } = useLoadedPagination(rows, suppressions)
 
   function reset() {
     setEmail("")
@@ -288,13 +315,18 @@ export function SuppressionsView() {
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!isEmail(email)) {
       setError("Enter a valid email")
       return
     }
-    addSuppression({ email, reason })
+    try {
+      await addSuppression({ email, reason })
+    } catch (e) {
+      setError(actionError(e))
+      return
+    }
     toast.add({ type: "success", title: "Address suppressed" })
     reset()
     setOpen(false)
@@ -315,6 +347,7 @@ export function SuppressionsView() {
         placeholder="Search suppressions…"
         range={range}
         onRangeChange={setRange}
+        now={now}
         filters={[
           {
             value: origin,
@@ -323,55 +356,57 @@ export function SuppressionsView() {
             "aria-label": "Filter by origin",
           },
         ]}
-        onExport={() => {
-          addExport("Suppressions", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={() => void startExport("suppressions", filters)}
       />
-      {rows.length === 0 ? (
+      {suppressions.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={CircleSlashIcon}
           title="No suppressions"
           description="Bounces and complaints will appear here. You can also add an address by hand."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Email</Th>
-              <Th>Origin</Th>
-              <Th>Added</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.email}</TableCell>
-              <TableCell>
-                <Badge variant="secondary">
-                  {suppressionReasonLabel(item.reason)}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDateTime(item.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPending(item.id)}
-                    >
-                      <CircleMinusIcon />
-                      Remove
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Email</Th>
+                <Th>Origin</Th>
+                <Th>Added</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="font-medium">{item.email}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {suppressionReasonLabel(item.reason)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDateTime(item.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPending(item.id)}
+                      >
+                        <CircleMinusIcon />
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="suppression" />
+        </>
       )}
 
       <Dialog
@@ -444,8 +479,8 @@ export function SuppressionsView() {
         title="Remove suppression?"
         description="This address can receive mail again. Use only when you know the bounce or complaint is resolved."
         confirmLabel="Remove"
-        onConfirm={() => {
-          if (pending) removeSuppression(pending)
+        onConfirm={async () => {
+          if (pending) await removeSuppression(pending)
           toast.add({ type: "success", title: "Suppression removed" })
         }}
       />

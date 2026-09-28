@@ -17,6 +17,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
@@ -52,8 +53,10 @@ import {
   tokenizeHtml,
   type HtmlTokenKind,
 } from "@/lib/dashboard/highlight-html"
+import { actionError } from "@/lib/action-error"
 import { useDashboard } from "@/lib/dashboard/store"
 import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
+import { useEmail, useEmailCommands } from "@/lib/emails/use-emails"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 type TimelineEvent = {
@@ -252,15 +255,12 @@ function EmailBodyTabs({
 export function EmailDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, cancelEmail } = useDashboard()
+  const { cancelEmail } = useEmailCommands()
   const saveAsTemplate = useSaveAsTemplate()
-  const email = state.emails.find((item) => item.id === id)
-  const log = state.logs.find(
-    (item) =>
-      item.emailId === id && item.method === "POST" && item.path === "/emails"
-  )
+  const found = useEmail(id)
 
-  if (!email) {
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
+  if (!found) {
     return (
       <NotFoundState
         icon={MailIcon}
@@ -271,6 +271,7 @@ export function EmailDetail() {
     )
   }
 
+  const { email, log } = found
   return (
     <div className="flex flex-col gap-6">
       <DetailHeader
@@ -297,9 +298,13 @@ export function EmailDetail() {
             {email.status === "scheduled" ? (
               <Button
                 variant="outline"
-                onClick={() => {
-                  cancelEmail(email.id)
-                  toast.add({ type: "success", title: "Send canceled" })
+                onClick={async () => {
+                  try {
+                    await cancelEmail(email.id)
+                    toast.add({ type: "success", title: "Send canceled" })
+                  } catch (e) {
+                    toast.add({ type: "error", title: actionError(e) })
+                  }
                 }}
               >
                 Cancel

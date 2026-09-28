@@ -32,12 +32,14 @@ import {
   DetailHeader,
   EmailStatusBadge,
   EmptyState,
+  ListPagination,
   NotFoundState,
   ResourceTable,
   Surface,
   Th,
   useAutosaveDraft,
   useDeleteRecord,
+  useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -53,6 +55,7 @@ import {
   useTopics,
 } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
+import { useRecipientEmails } from "@/lib/emails/use-emails"
 import type { Contact } from "@/lib/dashboard/types"
 
 /** Reports a failed save; the stored value then shows again. */
@@ -219,7 +222,7 @@ function ContactPage({
   contact: Contact
   onDelete: (remove: () => void) => void
 }) {
-  /* Sends, broadcasts and replies are still demo data, matched by address. */
+  /* Broadcasts and replies are still demo data, matched by address. */
   const { state } = useDashboard()
   const { updateContact, deleteContacts, setContactTopic } =
     useAudienceCommands()
@@ -231,9 +234,10 @@ function ContactPage({
   const update = (patch: Parameters<typeof updateContact>[1]) =>
     save(patch).catch(reportError)
 
-  const emails = state.emails
-    .filter((email) => email.to === contact.email)
-    .sort((a, b) => b.createdAt - a.createdAt)
+  const sends = useRecipientEmails(contact.email)
+  const emails = sends.rows
+  const { pageRows: emailRows, pagination: emailPagination } =
+    useLoadedPagination(emails, sends)
   const received = state.received
     .filter((email) => email.from.toLowerCase().includes(contact.email))
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -397,9 +401,11 @@ function ContactPage({
           </div>
         </TabsContent>
         <TabsContent value="history">
-          {emails.length === 0 &&
-          received.length === 0 &&
-          broadcasts.length === 0 ? (
+          {sends.status === "LoadingFirstPage" ? (
+            <Skeleton className="h-40 w-full" />
+          ) : emails.length === 0 &&
+            received.length === 0 &&
+            broadcasts.length === 0 ? (
             <EmptyState
               icon={MailIcon}
               title="No marketing history"
@@ -409,7 +415,7 @@ function ContactPage({
             <div className="flex flex-col gap-6">
               {emails.length > 0 ? (
                 <HistorySection title="Emails">
-                  {emails.map((email) => (
+                  {emailRows.map((email) => (
                     <Item
                       key={email.id}
                       size="sm"
@@ -428,6 +434,9 @@ function ContactPage({
                     </Item>
                   ))}
                 </HistorySection>
+              ) : null}
+              {emailPagination.pageCount > 1 || emailPagination.hasMore ? (
+                <ListPagination {...emailPagination} noun="email" />
               ) : null}
               {broadcasts.length > 0 ? (
                 <HistorySection title="Broadcasts">

@@ -39,6 +39,7 @@ import {
   useTopics,
 } from "@/lib/audience/use-audience"
 import { asApiKey } from "@/lib/api-keys/use-api-keys"
+import { asEmail } from "@/lib/emails/use-emails"
 import { SEED_STATE } from "./data"
 import { useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
@@ -63,7 +64,6 @@ import type {
   Segment,
   SentEmail,
   Settings,
-  SuppressionReason,
   Team,
   TeamMember,
 } from "./types"
@@ -203,24 +203,6 @@ function sendEmail(input: {
   return email
 }
 
-function cancelEmail(id: string) {
-  mutate((current) => ({
-    ...current,
-    emails: current.emails.map((email) =>
-      email.id === id && email.status === "scheduled"
-        ? {
-            ...email,
-            status: "canceled",
-            events: [
-              ...email.events,
-              { id: createId("evt"), type: "canceled", at: Date.now() },
-            ],
-          }
-        : email
-    ),
-  }))
-}
-
 function addReceived(input: {
   from: string
   to: string
@@ -241,28 +223,6 @@ function addReceived(input: {
       },
       ...current.received,
     ],
-  }))
-}
-
-function addSuppression(input: { email: string; reason: SuppressionReason }) {
-  mutate((current) => ({
-    ...current,
-    suppressions: [
-      {
-        id: createId("sup"),
-        email: input.email.trim().toLowerCase(),
-        reason: input.reason,
-        createdAt: Date.now(),
-      },
-      ...current.suppressions,
-    ],
-  }))
-}
-
-function removeSuppression(id: string) {
-  mutate((current) => ({
-    ...current,
-    suppressions: current.suppressions.filter((item) => item.id !== id),
   }))
 }
 
@@ -632,10 +592,7 @@ function resetDemo() {
 
 const actions = {
   sendEmail,
-  cancelEmail,
   addReceived,
-  addSuppression,
-  removeSuppression,
   addBroadcast,
   updateBroadcast,
   duplicateBroadcast,
@@ -760,6 +717,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       : "skip"
   )
   const apiKeys = useMemo(() => keyPage?.page.map(asApiKey) ?? [], [keyPage])
+  /* Sent email is real too. Screens still on the demo (metrics, broadcast
+     reports) read the team's newest page from here; suppressions are read
+     only by their own screen. */
+  const emailPage = useQuery(
+    api.emails.list,
+    auth.activeTeamId
+      ? {
+          organizationId: auth.activeTeamId,
+          paginationOpts: { numItems: 100, cursor: null },
+        }
+      : "skip"
+  )
+  const emails = useMemo(
+    () => emailPage?.page.map((row) => asEmail(row)) ?? [],
+    [emailPage]
+  )
   const create = useMutation(api.teams.create)
   const switchTeam = useMutation(api.teams.switchTeam)
   const rename = useMutation(api.teams.rename)
@@ -805,6 +778,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         topics: topics ?? [],
         properties: properties ?? [],
         apiKeys,
+        emails,
+        suppressions: [],
         logs: [],
         // Real exports list on their own; only exports of demo lists stay.
         exports: demo.exports.filter(
@@ -859,6 +834,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     topics,
     properties,
     apiKeys,
+    emails,
     create,
     switchTeam,
     rename,

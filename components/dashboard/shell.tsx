@@ -31,6 +31,7 @@ import {
   useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import { useContactSearch } from "@/lib/audience/use-audience"
+import { useEmailSearch } from "@/lib/emails/use-emails"
 import { TeamSwitcher } from "@/components/dashboard/team-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Kbd } from "@/components/ui/kbd"
@@ -138,7 +139,9 @@ function CommandMenu({
   const router = useRouter()
   const { state } = useDashboard()
   const [search, setSearch] = React.useState("")
-  const contacts = useContactSearch(useDebouncedValue(search), open)
+  const settled = useDebouncedValue(search)
+  const contacts = useContactSearch(settled, open)
+  const emails = useEmailSearch(settled, open)
 
   function setOpen(next: boolean) {
     if (!next) setSearch("")
@@ -206,7 +209,7 @@ function CommandMenu({
           {open ? (
             <>
               <CommandGroup heading="Emails">
-                {state.emails.map((email) => (
+                {emails.map((email) => (
                   <CommandItem
                     key={email.id}
                     value={`email ${email.subject} ${email.to}`}

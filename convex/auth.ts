@@ -6,6 +6,7 @@ import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
 import schema from "./betterAuth/schema"
 import { createAuthOptions } from "./authOptions"
+import { sendAuthEmail } from "./authEmail"
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 
 export const authComponent: ReturnType<
@@ -29,7 +30,9 @@ export function createAuth(
   ctx: GenericCtx<DataModel>,
   providers: GenericOAuthConfig[] = []
 ) {
-  const options = createAuthOptions(providers)
+  const options = createAuthOptions(providers, (email) =>
+    sendAuthEmail(ctx, email)
+  )
   return betterAuth({
     ...options,
     emailAndPassword: {

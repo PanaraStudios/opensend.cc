@@ -25,6 +25,11 @@ export const sesTables = {
     defaultRegion: v.optional(regionValue),
     /** The verified IAM policy revision; missing means revision 1. */
     policyRevision: v.optional(v.number()),
+    /** Sends account email (verification, resets, invitations); set with
+        `installationAdmin:setSystemSender`. */
+    systemSender: v.optional(
+      v.object({ from: v.string(), domainId: v.id("domains") })
+    ),
   }).index("by_key", ["key"]),
   sesRegions: defineTable({
     region: regionValue,
