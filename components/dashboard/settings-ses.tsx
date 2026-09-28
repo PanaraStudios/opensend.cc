@@ -24,6 +24,7 @@ import {
 import { AwsConnectionForm } from "@/components/ses/connection-form"
 import { DownloadIamPolicyButton } from "@/components/ses/credentials-help"
 import { SesRegions } from "@/components/ses/regions"
+import { TenantReputation } from "@/components/ses/reputation"
 import { TenantCleanup } from "@/components/onboarding/team-ses-status"
 
 export function SettingsSes() {
@@ -122,6 +123,7 @@ export function SettingsSes() {
           </p>
         )}
       </SettingsCard>
+      <TenantReputation />
       <TenantCleanup />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">

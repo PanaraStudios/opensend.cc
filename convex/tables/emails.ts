@@ -102,6 +102,9 @@ export const emailTables = {
     emailId: v.id("emails"),
     type: emailStatusValue,
     at: v.number(),
+    sesEventId: v.optional(v.id("sesEvents")),
+    recipients: v.optional(v.array(v.string())),
+    details: v.optional(v.any()),
   }).index("by_emailId_and_at", ["emailId", "at"]),
   emailRecipients: defineTable({
     organizationId: v.string(),

@@ -1,5 +1,6 @@
 import { internalQuery, internalMutation } from "../_generated/server"
 import { v } from "convex/values"
+import { internal } from "../_generated/api"
 import schema from "../schema"
 export const region = internalQuery({
   args: { id: v.id("sesRegions") },
@@ -48,7 +49,9 @@ export const ingest = internalMutation({
         q.eq("topicArn", args.topicArn).eq("messageId", args.messageId)
       )
       .unique()
-    if (!existing) await ctx.db.insert("sesEvents", args)
+    const id = existing?._id ?? (await ctx.db.insert("sesEvents", args))
+    if (existing?.projectedAt === undefined)
+      await ctx.scheduler.runAfter(0, internal.ses.projection.project, { id })
     return null
   },
 })

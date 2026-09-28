@@ -159,6 +159,32 @@ const created = (doc: { _creationTime: number }) => bucket(doc._creationTime)
 /** Every count, by what it counts. Keys follow each list's filters, so a
     filter narrows the count with key bounds instead of a scan. */
 export const counters = {
+  emailDomains: new Counter<"emails", string>(components.emailDomainCounts, {
+    namespace: (row) => JSON.stringify([row.organizationId, row.domainId]),
+    key: (row) => [row.status, created(row)],
+    where: (row) => row.source !== "system",
+  }),
+  emailMetrics: new Counter<"emailMetrics", string>(
+    components.emailMetricCounts,
+    {
+      namespace: team,
+      key: (row) => [row.type, bucket(row.createdAt)],
+    }
+  ),
+  domainMetrics: new Counter<"emailMetrics", string>(
+    components.domainMetricCounts,
+    {
+      namespace: (row) => JSON.stringify([row.organizationId, row.domainId]),
+      key: (row) => [row.type, bucket(row.createdAt)],
+    }
+  ),
+  reputation: new Counter<"recipientMetrics", string>(
+    components.reputationCounts,
+    {
+      namespace: (row) => row.tenantId,
+      key: (row) => [row.type, row.at],
+    }
+  ),
   exports: new Counter<"exports", string>(components.exportCounts, {
     namespace: team,
     key: () => [],
@@ -257,7 +283,9 @@ type Sync<T extends TableNames> = Pick<
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   exports: [counters.exports],
-  emails: [counters.emails],
+  emails: [counters.emails, counters.emailDomains],
+  recipientMetrics: [counters.reputation],
+  emailMetrics: [counters.emailMetrics, counters.domainMetrics],
   suppressions: [counters.suppressions],
   emailRecipients: [counters.emailRecipients],
   emailEvents: [counters.emailEvents],
@@ -276,6 +304,8 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
 export type CountedTable =
   | "exports"
   | "emails"
+  | "emailMetrics"
+  | "recipientMetrics"
   | "suppressions"
   | "emailRecipients"
   | "emailEvents"

@@ -104,3 +104,79 @@ Choices deliberately not copied:
 - [CreateTenantResourceAssociation](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_CreateTenantResourceAssociation.html)
 - [Tenant suppression settings](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_PutTenantSuppressionAttributes.html)
 - [SES IAM actions and resource types](https://docs.aws.amazon.com/service-authorization/latest/reference/list_sesv2.html)
+
+## Event projection, metrics and sending controls
+
+Verified `/ses/events` notifications are deduplicated by SNS topic/message ID.
+`ses/state:ingest` schedules `ses/projection:project`; its projection marker,
+email status, timeline entries, aggregates, suppressions and webhook outbox writes
+commit atomically. It resolves `opensend_email`/`opensend_team` tags, falling back
+to SES MessageId, and checks the sending domain's team and region. Unmatched
+notifications retry six times over 10.5 minutes; their raw records remain available
+for migration replay. Invalid and unsupported records never change email state.
+
+Acceptance is recorded once even when SNS precedes the SendEmail response.
+Status precedence is queued/scheduled → sent → delivery_delayed → failed →
+delivered → opened → clicked → bounced → complained. Canceled and suppressed mail
+cannot be projected into sent mail. This is Opensend's deterministic aggregation
+policy: actual delivery can recover an ambiguous sender failure, while recipient
+bounce/complaint feedback stays visible even if another recipient engages.
+Resend documents event meanings, but does not specify its multi-recipient
+`last_event` precedence. All recipient outcomes remain in the paginated timeline,
+including SES diagnostic details and their original timestamps.
+
+Delivery, delay, bounce and complaint webhooks are emitted separately for each
+reported recipient (`data.to` contains that recipient), matching Resend's
+[recipient event visibility](https://resend.com/changelog/webhook-event-visibility).
+Bounce payloads include `type`, `subType`, and diagnostic `message`; clicks include
+link, IP address, user agent and timestamp; failures include `failed.reason`.
+Permanent bounces and complaints feed the existing team suppression writer.
+SES transient bounces are final exhausted retries, so they are reported as
+bounced but do not automatically suppress the recipient. System email generates
+no team webhooks, metrics or suppressions.
+
+SES open/click events do not identify which address in a multi-recipient envelope
+engaged. Those events retain message-level recipients; no individual attribution
+is claimed. SES may also redact the complainant and report all recipients at that
+mailbox provider. The timeline retains exactly that provider detail. See the
+[AWS event field reference](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-retrieving-sns-contents.html).
+
+`emailMetrics` records unique email milestones and bounce types, scoped by team
+and domain. `recipientMetrics` records unique accepted, hard-bounced and complained
+recipients with their own timestamps. Both use the shared transactional count
+writers. `/metrics` keeps its existing date/domain/event filters, counts email
+creation-day cohorts in local calendar days, and counts delivery/open/click
+milestones cumulatively even after a complaint. Exact status filters still count
+current email status. The domain picker and breakdown are server-paginated.
+Metrics expire with the existing 30-day email retention; long ranges may therefore
+contain days with no retained records. The upgrade runner `migrations:backfillCounts`
+includes the new domain counter, timeline backfill and raw SES event projection;
+no backend commands were run during implementation.
+
+The installation administrator's **Team sending** card lists regional tenants.
+Its volume is accepted recipients; bounce and complaint percentages are unique
+recipient feedback events divided by accepted recipients in the preceding 24
+hours. These are local operational rates, not AWS's reputation scores or an
+estimate of its precise evaluation window. AWS uses a variable representative
+volume and excludes some feedback, while
+[GetReputationEntity](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_GetReputationEntity.html)
+exposes status and reputation impact, not per-tenant rate counters. See
+[AWS reputation calculations](https://docs.aws.amazon.com/ses/latest/dg/reputationdashboardmessages.html).
+
+Pause/Resume uses the existing revision 2 tenant-scoped IAM grant and
+`UpdateReputationEntityCustomerManagedStatus` (`DISABLED` / `ENABLED`), followed
+by `GetReputationEntity` to save the aggregate sending status. Resuming cannot
+clear an AWS restriction. Every control/read requires installation-admin access;
+ordinary team owners and members cannot change it. Operations are serialized,
+generation-checked, and keep the local send gate closed until a successful
+readback; a failed readback stores UNKNOWN. A stalled operation can be retried
+after five minutes. Pausing cannot recall an in-flight AWS request or mail already
+accepted by SES.
+
+Queued messages fail with `email.failed` at claim time while paused. Scheduled
+messages are checked when they become due. Resume permits new sends; it never
+retries failed mail automatically. This preserves the sender's existing permanent
+failure semantics, produces an observable failure instead of an indefinite hold,
+and avoids stale transactional mail being delivered unexpectedly on resume.
+Resend's public docs describe failed events but do not specify paused queue retry
+behavior, so this queue policy is an explicit Opensend choice.

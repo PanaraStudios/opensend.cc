@@ -26,6 +26,7 @@ import { emitEvent } from "./events"
 import {
   deleteEmailContent,
   insertEmail,
+  insertEmailEvent,
   patchEmail,
   recordEmailStatus,
 } from "./emailRows"
@@ -415,7 +416,7 @@ export const release = internalMutation({
   },
 })
 
-const tagSafe = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "_")
+export const tagSafe = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "_")
 type SendBinding = {
   TenantName: string
   ConfigurationSetName: string
@@ -567,6 +568,30 @@ const outcomeValue = v.union(
     retryable: v.boolean(),
   })
 )
+/** SNS can arrive before the SendEmail response. Acceptance is recorded once,
+    without overwriting a delivery/bounce already projected from that send. */
+export async function acceptEmail(
+  ctx: MutationCtx,
+  email: Doc<"emails">,
+  messageId: string,
+  at: number
+) {
+  if (email.sentAt !== undefined) return
+  await patchEmail(ctx, email._id, {
+    messageId,
+    sentAt: at,
+    claimed: false,
+    expiresAt: Date.now() + RETENTION,
+    ...(["queued", "scheduled"].includes(email.status)
+      ? { status: "sent" as const }
+      : {}),
+  })
+  await insertEmailEvent(ctx, email._id, "sent", at)
+  await emitEmail(ctx, email._id, "email.sent")
+  if (email.organizationId === SYSTEM_SCOPE)
+    await deleteEmailContent(ctx, email._id)
+}
+
 /** Settles one run: sent, retried later, or failed for good. */
 async function recordOutcome(
   ctx: MutationCtx,
@@ -577,15 +602,13 @@ async function recordOutcome(
   }
 ) {
   const email = await ctx.db.get("emails", args.id)
-  if (email?.status !== "queued" || email.generation !== args.generation) return
+  if (!email || email.generation !== args.generation) return
+  if (email.status !== "queued" && email.sentAt === undefined) return
   const { outcome } = args
   if (outcome.kind === "sent") {
-    await settle(ctx, email, "sent", {
-      messageId: outcome.messageId,
-      sentAt: Date.now(),
-    })
-    await emitEmail(ctx, email._id, "email.sent")
-  } else if (outcome.retryable && email.attempts <= RETRY_DELAYS.length) {
+    await acceptEmail(ctx, email, outcome.messageId, Date.now())
+  } else if (email.sentAt !== undefined) return
+  else if (outcome.retryable && email.attempts <= RETRY_DELAYS.length) {
     const next = args.generation + 1
     await patchEmail(ctx, email._id, { generation: next, claimed: false })
     await enqueue(ctx, email._id, next, RETRY_DELAYS[email.attempts - 1] ?? 0)
@@ -947,6 +970,20 @@ export const prune = internalMutation({
           .take(MAX_RECIPIENTS)
         for (const recipient of recipients)
           await deleteRow(ctx, "emailRecipients", recipient._id)
+        const metrics = await ctx.db
+          .query("emailMetrics")
+          .withIndex("by_emailId_and_type", (q) => q.eq("emailId", email._id))
+          .take(20)
+        for (const metric of metrics)
+          await deleteRow(ctx, "emailMetrics", metric._id)
+        const recipientMetrics = await ctx.db
+          .query("recipientMetrics")
+          .withIndex("by_emailId_and_type_and_address", (q) =>
+            q.eq("emailId", email._id)
+          )
+          .take(MAX_RECIPIENTS * 3)
+        for (const metric of recipientMetrics)
+          await deleteRow(ctx, "recipientMetrics", metric._id)
         await deleteEmailContent(ctx, email._id)
         await deleteRow(ctx, "emails", email._id)
       }

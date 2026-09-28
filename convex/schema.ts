@@ -6,6 +6,7 @@ import { domainTables } from "./tables/domains"
 import { emailTables } from "./tables/emails"
 import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
+import { metricsTables } from "./tables/metrics"
 import { receivingTables } from "./tables/receiving"
 import { sesTables } from "./tables/ses"
 import { templateTables } from "./tables/templates"
@@ -16,6 +17,7 @@ import { webhookTables } from "./tables/webhooks"
    parallel without editing the same lines here. */
 export default defineSchema({
   ...sesTables,
+  ...metricsTables,
   ...domainTables,
   ...eventTables,
   ...templateTables,

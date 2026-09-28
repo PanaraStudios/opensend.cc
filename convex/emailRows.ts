@@ -1,3 +1,4 @@
+import { recordMetric } from "./metricRows"
 import { insertRow, patchRow } from "./counts"
 import type { WithoutSystemFields } from "convex/server"
 import type { MutationCtx } from "./_generated/server"
@@ -33,12 +34,25 @@ export const patchEmail = (
   patch: Partial<WithoutSystemFields<Doc<"emails">>>
 ) => patchRow(ctx, "emails", id, patch)
 
-export const insertEmailEvent = (
+export async function insertEmailEvent(
   ctx: MutationCtx,
   emailId: Id<"emails">,
   type: EmailStatus,
-  at = Date.now()
-) => insertRow(ctx, "emailEvents", { emailId, type, at })
+  at = Date.now(),
+  detail: Partial<
+    Pick<Doc<"emailEvents">, "sesEventId" | "recipients" | "details">
+  > = {}
+) {
+  const id = await insertRow(ctx, "emailEvents", {
+    emailId,
+    type,
+    at,
+    ...detail,
+  })
+  const email = (await ctx.db.get("emails", emailId))!
+  await recordMetric(ctx, email, type, at, detail.recipients)
+  return id
+}
 
 /** Moves an email to `status` and adds it to the timeline. SES event
     processing records delivered, bounced… through this. */
