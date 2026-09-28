@@ -163,7 +163,9 @@ export function hardeningSearchTests(state: () => State) {
     await page.getByLabel("Password", { exact: true }).fill(ownerPassword)
     await page.getByRole("button", { name: "Continue", exact: true }).click()
     // The token was spent by the first reset.
-    await expect(page.getByRole("alert")).toBeVisible()
+    await expect(
+      page.getByText("The link or sign-in attempt failed", { exact: false })
+    ).toBeVisible()
     await page.close()
     // Reset revokes sessions, so the owner signs in again.
     await login(owner, ownerEmail, ownerPassword)
