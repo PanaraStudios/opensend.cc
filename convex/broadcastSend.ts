@@ -10,7 +10,7 @@ import type { Id } from "./_generated/dataModel"
 import { internalMutation, type MutationCtx } from "./_generated/server"
 import { patchRow, insertRow } from "./counts"
 import { audience, draft, recipientPage } from "./broadcasts"
-import { createEmail } from "./emails"
+import { createEmail, type ResolvedSender } from "./emails"
 import { finishBroadcast } from "./broadcastMetrics"
 import { unsubscribeLinks, unsubscribeContext } from "./unsubscribe"
 import { renderEmail } from "./email/render"
@@ -85,6 +85,7 @@ export const batch = internalMutation({
     )
     const properties = await listProperties(ctx, row.organizationId)
     let linksContext: Awaited<ReturnType<typeof unsubscribeContext>> | undefined
+    const senders = new Map<string, ResolvedSender>()
     for (const contact of page.page) {
       const previous = await ctx.db
         .query("broadcastRecipients")
@@ -144,6 +145,7 @@ export const batch = internalMutation({
           organizationId: row.organizationId,
           source: "dashboard",
           broadcastId: id,
+          senders,
         }
       )
       await insertRow(ctx, "broadcastRecipients", {

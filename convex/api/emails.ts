@@ -17,6 +17,8 @@ import {
   errorMessage,
   newEmailValue,
   rescheduleEmail,
+  resolvedSenderValue,
+  type ResolvedSender,
   type NewEmail,
 } from "../emails"
 import { downloadLink, sentAttachmentId } from "../receivedDownloads"
@@ -45,6 +47,8 @@ import {
 import {
   attachmentContentType,
   parseScheduledAt,
+  parseMailbox,
+  senderDomainOf,
 } from "../../lib/dashboard/email-send"
 
 /** Resend's limits: 100 emails a batch, 40 MB of base64 attachments. */
@@ -84,6 +88,7 @@ export const send = internalMutation({
         await requireCaller(ctx, caller, "sending")
         if (source === "smtp") await requireSmtp(ctx, caller)
         const ids: Id<"emails">[] = []
+        const senders = new Map<string, ResolvedSender>()
         // One transaction: a batch with any invalid email sends none of them.
         for (const email of emails)
           ids.push(
@@ -92,6 +97,7 @@ export const send = internalMutation({
               source: source ?? "api",
               apiKeyId: caller.apiKeyId,
               onlyDomain: caller.domainId,
+              senders,
             })
           )
         return ids
@@ -105,15 +111,24 @@ export const send = internalMutation({
 
 /** Called only inside an authorized batch; each item has its own rollback. */
 export const createBatchItem = internalMutation({
-  args: { caller: callerValue, email: newEmailValue },
-  returns: v.id("emails"),
-  handler: (ctx, { caller, email }) =>
-    createEmail(ctx, email, {
+  args: {
+    caller: callerValue,
+    email: newEmailValue,
+    sender: v.optional(resolvedSenderValue),
+  },
+  returns: v.object({ id: v.id("emails"), sender: resolvedSenderValue }),
+  handler: async (ctx, { caller, email, sender }) => {
+    const senders = new Map<string, ResolvedSender>()
+    const id = await createEmail(ctx, email, {
       organizationId: caller.organizationId,
       source: "api",
       apiKeyId: caller.apiKeyId,
       onlyDomain: caller.domainId,
-    }),
+      sender,
+      senders,
+    })
+    return { id, sender: [...senders.values()][0] }
+  },
 })
 
 export const batchSend = internalMutation({
@@ -143,17 +158,29 @@ export const batchSend = internalMutation({
           throw invalid(`A batch must have between 1 and ${MAX_BATCH} emails.`)
         const data: { id: Id<"emails"> }[] = []
         const errors: { index: number; message: string }[] = []
+        const senders = new Map<string, ResolvedSender>()
+        const templateDomains = new Map<string, string>()
         for (const [index, item] of items.entries()) {
           try {
             const { input } = parseEmail(item, Date.now(), true)
+            const mailbox = input.from ? parseMailbox(input.from) : null
+            const domainName = mailbox
+              ? senderDomainOf(mailbox)
+              : input.template && input.from === undefined
+                ? templateDomains.get(input.template.id)
+                : undefined
             // The child transaction rolls back all writes for a refused item.
-            const id = await ctx.runMutation(
+            const { id, sender } = await ctx.runMutation(
               internal.api.emails.createBatchItem,
               {
                 caller,
                 email: { ...input, attachments: [] },
+                sender: domainName ? senders.get(domainName) : undefined,
               }
             )
+            senders.set(sender.domain.name, sender)
+            if (input.template && input.from === undefined)
+              templateDomains.set(input.template.id, sender.domain.name)
             data.push({ id })
           } catch (error) {
             const message = errorMessage(error)

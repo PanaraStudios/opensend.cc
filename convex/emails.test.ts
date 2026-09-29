@@ -10,6 +10,7 @@ import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent, patchEmail } from "./emailRows"
 import { patchRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
+import * as sendContexts from "./ses/sendContext"
 
 beforeEach(() => {
   vi.mocked(publicFetch).mockRejectedValue(
@@ -510,6 +511,101 @@ describe("attachments, batches and templates", () => {
       expect((await response.json()).message).toContain(text)
     }
     expect(await count()).toBe(2)
+  })
+
+  test.each(["strict", "permissive"])(
+    "%s batches reuse a sender binding and preserve identical emails",
+    async (mode) => {
+      const f = await setup()
+      const single = await sendOne(f)
+      const binding = vi.spyOn(sendContexts, "sendContext")
+      const response = await post(
+        f,
+        [
+          EMAIL,
+          EMAIL,
+          EMAIL,
+          { ...EMAIL, from: "Other <other@mail.example.test>" },
+        ],
+        { headers: { "x-batch-validation": mode } },
+        "/emails/batch"
+      )
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result.data).toHaveLength(4)
+      expect(result.errors).toEqual(mode === "permissive" ? [] : undefined)
+      expect(binding).toHaveBeenCalledTimes(1)
+      const original = await email(f, single)
+      const originalBody = await (await request(f, `/emails/${single}`)).json()
+      for (const { id } of result.data.slice(0, 3)) {
+        const row = await email(f, id)
+        expect(row).toEqual({
+          ...original,
+          _id: id,
+          _creationTime: row._creationTime,
+          apiLogId: row.apiLogId,
+        })
+        const body = await (await request(f, `/emails/${id}`)).json()
+        expect(body).toEqual({
+          ...originalBody,
+          id,
+          created_at: body.created_at,
+        })
+      }
+      expect(await email(f, result.data[3].id)).toMatchObject({
+        domainId: f.domain,
+        from: "Other <other@mail.example.test>",
+      })
+    }
+  )
+
+  test("cached batch senders preserve domain errors, validation order and item indexes", async () => {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      const { _id, _creationTime, ...domain } = (await ctx.db.get(
+        "domains",
+        f.domain
+      ))!
+      void _id
+      void _creationTime
+      await ctx.db.insert("domains", {
+        ...domain,
+        name: "pending.example.test",
+        status: "pending",
+      })
+    })
+    const response = await post(
+      f,
+      [
+        EMAIL,
+        { ...EMAIL, from: "hi@pending.example.test" },
+        { ...EMAIL, from: "hi@unknown.example.test" },
+        { ...EMAIL, from: "hi@pending.example.test", subject: "" },
+        { ...EMAIL, topic_id: "missing" },
+        EMAIL,
+      ],
+      { headers: { "x-batch-validation": "permissive" } },
+      "/emails/batch"
+    )
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result.data).toHaveLength(2)
+    expect(result.errors).toEqual([
+      { index: 1, message: "Domain is not ready to send" },
+      {
+        index: 2,
+        message:
+          "The `unknown.example.test` domain is not verified. Please, add and verify your domain.",
+      },
+      { index: 3, message: "Missing `subject` field." },
+      { index: 4, message: "Topic not found" },
+    ])
+    expect(
+      await f.t.run((ctx) => ctx.db.query("emails").collect())
+    ).toHaveLength(2)
+    expect(
+      await f.t.run((ctx) => ctx.db.query("emailContents").collect())
+    ).toHaveLength(2)
   })
 
   test("a published template fills the email; its variables are checked", async () => {

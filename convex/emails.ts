@@ -54,6 +54,7 @@ import {
   tagValue,
 } from "./tables/emails"
 import { regionValue } from "./ses/contracts"
+import { sendBindingValue, sendContext } from "./ses/sendContext"
 import {
   TAG_PATTERN,
   addressKey,
@@ -170,16 +171,23 @@ async function bindingFor(
   domain: Doc<"domains">
 ): Promise<SendBinding> {
   try {
-    return await ctx.runQuery(internal.ses.sendContext.get, {
-      organizationId: domain.organizationId,
-      domainId: domain._id,
-    })
+    return await sendContext(
+      ctx,
+      { organizationId: domain.organizationId, domainId: domain._id },
+      domain
+    )
   } catch (e) {
     if (e instanceof ConvexError && typeof e.data === "string")
       throw apiError(403, "validation_error", e.data)
     throw e
   }
 }
+
+export const resolvedSenderValue = v.object({
+  domain: schema.doc("domains"),
+  binding: sendBindingValue,
+})
+export type ResolvedSender = Infer<typeof resolvedSenderValue>
 
 /** Reused by broadcasts before a schedule or fan-out is accepted. */
 export async function validateSender(
@@ -214,6 +222,9 @@ export async function createEmail(
     onlyDomain?: Id<"domains">
     /** Account email: sent from this domain, whichever team owns it. */
     systemDomain?: Id<"domains">
+    /** Resolved within this batch's transaction, after input validation. */
+    sender?: ResolvedSender
+    senders?: Map<string, ResolvedSender>
   }
 ) {
   let { from, subject, html, text } = input
@@ -307,9 +318,12 @@ export async function createEmail(
   if (scheduledAt !== undefined && scheduledAt <= now) scheduledAt = undefined
 
   const senderDomain = senderDomainOf(sender.mailbox)
-  const domain = meta.systemDomain
-    ? await ctx.db.get("domains", meta.systemDomain)
-    : await sendingDomain(ctx, meta.organizationId, senderDomain)
+  const resolved = meta.sender ?? meta.senders?.get(senderDomain)
+  const domain =
+    resolved?.domain ??
+    (meta.systemDomain
+      ? await ctx.db.get("domains", meta.systemDomain)
+      : await sendingDomain(ctx, meta.organizationId, senderDomain))
   if (!domain || domain.deleted || domain.name !== senderDomain)
     throw invalid("The `from` address must be on the sending domain.")
   if (meta.onlyDomain && meta.onlyDomain !== domain._id)
@@ -318,7 +332,8 @@ export async function createEmail(
       "validation_error",
       `This API key can only send from its own domain, not \`${domain.name}\`.`
     )
-  await bindingFor(ctx, domain)
+  const binding = resolved?.binding ?? (await bindingFor(ctx, domain))
+  meta.senders?.set(senderDomain, { domain, binding })
 
   const topicId = input.topicId
     ? ctx.db.normalizeId("topics", input.topicId)
@@ -467,12 +482,7 @@ export const release = internalMutation({
 })
 
 export const tagSafe = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, "_")
-type SendBinding = {
-  TenantName: string
-  ConfigurationSetName: string
-  region: Infer<typeof regionValue>
-  domain: string
-}
+type SendBinding = Infer<typeof sendBindingValue>
 const claimResult = v.union(
   v.null(),
   v.object({
