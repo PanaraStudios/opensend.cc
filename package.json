@@ -26,6 +26,7 @@
     "test": "tsx --test lib/*.test.ts lib/dashboard/*.test.ts lib/aws/*.test.ts docker/smtp/*.test.mjs",
     "setup": "node scripts/setup.mjs",
     "test:auth": "vitest run --config vitest.auth.config.ts",
+    "test:sdk": "pnpm --filter @opensend/sdk test",
     "backend": "node scripts/backend.mjs",
     "aws:cleanup": "node scripts/aws-cleanup.mjs",
     "test:e2e": "node scripts/test-e2e.mjs"

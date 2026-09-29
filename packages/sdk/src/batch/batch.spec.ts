@@ -1,0 +1,727 @@
+import createFetchMock from 'vitest-fetch-mock';
+import { Resend } from '../resend';
+import {
+  mockSuccessResponse,
+  mockSuccessWithStatusCode,
+} from '../test-utils/mock-fetch';
+import type { CreateBatchOptions } from './interfaces/create-batch-options.interface';
+
+const fetchMocker = createFetchMock(vi);
+fetchMocker.enableMocks();
+
+const resend = new Resend('os_test00000000000000000000000000001');
+
+describe('Batch', () => {
+  afterEach(() => fetchMock.resetMocks());
+  afterAll(() => fetchMocker.disableMocks());
+
+  describe('create', () => {
+    it('sends multiple emails', async () => {
+      const payload: CreateBatchOptions = [
+        {
+          from: 'bu@resend.com',
+          to: 'zeno@resend.com',
+          subject: 'Hello World',
+          html: '<h1>Hello world</h1>',
+        },
+        {
+          from: 'vitor@resend.com',
+          to: 'zeno@resend.com',
+          subject: 'Olá mundo',
+          html: '<h1>olá mundo</h1>',
+        },
+        {
+          from: 'bu@resend.com',
+          to: 'vitor@resend.com',
+          subject: 'Hi there',
+          html: '<h1>Hi there</h1>',
+        },
+      ];
+      mockSuccessResponse(
+        {
+          data: [
+            { id: 'aabeeefc-bd13-474a-a440-0ee139b3a4cc' },
+            { id: 'aebe1c6e-30ad-4257-993b-519f5affa626' },
+            { id: 'b2bc2598-f98b-4da4-86c9-7b32881ef394' },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const data = await resend.batch.create(payload);
+      expect(data).toMatchInlineSnapshot(`
+        {
+          "data": {
+            "data": [
+              {
+                "id": "aabeeefc-bd13-474a-a440-0ee139b3a4cc",
+              },
+              {
+                "id": "aebe1c6e-30ad-4257-993b-519f5affa626",
+              },
+              {
+                "id": "b2bc2598-f98b-4da4-86c9-7b32881ef394",
+              },
+            ],
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('does not send the Idempotency-Key header when idempotencyKey is not provided', async () => {
+      mockSuccessResponse(
+        {
+          data: [
+            {
+              id: 'not-idempotent-123',
+            },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user@resend.com',
+          subject: 'Not Idempotent Test',
+          html: '<h1>Test</h1>',
+        },
+      ];
+
+      await resend.batch.create(payload);
+
+      // Inspect the last fetch call and body
+      const lastCall = fetchMock.mock.calls[0];
+      expect(lastCall).toBeDefined();
+
+      const request = lastCall[1];
+      expect(request).toBeDefined();
+
+      const headers = new Headers(request?.headers);
+      expect(headers.has('Idempotency-Key')).toBeFalsy();
+    });
+
+    it('sends the Idempotency-Key header when idempotencyKey is provided', async () => {
+      mockSuccessResponse(
+        {
+          data: [
+            {
+              id: 'idempotent-123',
+            },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user@resend.com',
+          subject: 'Idempotency Test',
+          html: '<h1>Test</h1>',
+        },
+      ];
+      const idempotencyKey = 'unique-key-123';
+
+      await resend.batch.create(payload, { idempotencyKey });
+
+      // Inspect the last fetch call and body
+      const lastCall = fetchMock.mock.calls[0];
+      expect(lastCall).toBeDefined();
+
+      // Check if headers contains Idempotency-Key
+      // In the mock, headers is an object with key-value pairs
+      expect(fetchMock.mock.calls[0][1]?.headers).toBeDefined();
+
+      //@ts-expect-error
+      const hasIdempotencyKey = lastCall[1]?.headers.has('Idempotency-Key');
+      expect(hasIdempotencyKey).toBeTruthy();
+
+      //@ts-expect-error
+      const usedIdempotencyKey = lastCall[1]?.headers.get('Idempotency-Key');
+      expect(usedIdempotencyKey).toBe(idempotencyKey);
+    });
+
+    it('sends emails with tags and scheduledAt', async () => {
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user1@resend.com',
+          subject: 'Scheduled Email 1',
+          html: '<h1>Hello</h1>',
+          tags: [{ name: 'category', value: 'welcome' }],
+          scheduledAt: 'in 1 hour',
+        },
+        {
+          from: 'admin@resend.com',
+          to: 'user2@resend.com',
+          subject: 'Scheduled Email 2',
+          html: '<h1>Hi</h1>',
+          tags: [
+            { name: 'category', value: 'newsletter' },
+            { name: 'campaign', value: 'summer-2026' },
+          ],
+          scheduledAt: '2026-07-16T10:00:00.000Z',
+        },
+      ];
+
+      mockSuccessResponse(
+        {
+          data: [{ id: 'scheduled-batch-1' }, { id: 'scheduled-batch-2' }],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      await resend.batch.create(payload);
+
+      const lastCall = fetchMock.mock.calls[0];
+      const requestBody = JSON.parse(lastCall[1]?.body as string);
+      expect(requestBody).toEqual([
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: 'admin@resend.com',
+          headers: undefined,
+          html: '<h1>Hello</h1>',
+          reply_to: undefined,
+          scheduled_at: 'in 1 hour',
+          subject: 'Scheduled Email 1',
+          tags: [{ name: 'category', value: 'welcome' }],
+          text: undefined,
+          to: 'user1@resend.com',
+          template: undefined,
+        },
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: 'admin@resend.com',
+          headers: undefined,
+          html: '<h1>Hi</h1>',
+          reply_to: undefined,
+          scheduled_at: '2026-07-16T10:00:00.000Z',
+          subject: 'Scheduled Email 2',
+          tags: [
+            { name: 'category', value: 'newsletter' },
+            { name: 'campaign', value: 'summer-2026' },
+          ],
+          text: undefined,
+          to: 'user2@resend.com',
+          template: undefined,
+        },
+      ]);
+    });
+  });
+
+  describe('send', () => {
+    it('sends multiple emails', async () => {
+      const payload = [
+        {
+          from: 'bu@resend.com',
+          to: 'zeno@resend.com',
+          subject: 'Hello World',
+          html: '<h1>Hello world</h1>',
+        },
+        {
+          from: 'vitor@resend.com',
+          to: 'zeno@resend.com',
+          subject: 'Olá mundo',
+          html: '<h1>olá mundo</h1>',
+        },
+        {
+          from: 'bu@resend.com',
+          to: 'vitor@resend.com',
+          subject: 'Hi there',
+          html: '<h1>Hi there</h1>',
+        },
+      ];
+
+      mockSuccessResponse(
+        {
+          data: [
+            { id: 'aabeeefc-bd13-474a-a440-0ee139b3a4cc' },
+            { id: 'aebe1c6e-30ad-4257-993b-519f5affa626' },
+            { id: 'b2bc2598-f98b-4da4-86c9-7b32881ef394' },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const data = await resend.batch.send(payload);
+      expect(data).toMatchInlineSnapshot(`
+        {
+          "data": {
+            "data": [
+              {
+                "id": "aabeeefc-bd13-474a-a440-0ee139b3a4cc",
+              },
+              {
+                "id": "aebe1c6e-30ad-4257-993b-519f5affa626",
+              },
+              {
+                "id": "b2bc2598-f98b-4da4-86c9-7b32881ef394",
+              },
+            ],
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('does not send the Idempotency-Key header when idempotencyKey is not provided', async () => {
+      mockSuccessResponse(
+        {
+          data: [
+            {
+              id: 'not-idempotent-123',
+            },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user@resend.com',
+          subject: 'Not Idempotent Test',
+          html: '<h1>Test</h1>',
+        },
+      ];
+
+      await resend.batch.send(payload);
+
+      // Inspect the last fetch call and body
+      const lastCall = fetchMock.mock.calls[0];
+      expect(lastCall).toBeDefined();
+      const request = lastCall[1];
+      expect(request).toBeDefined();
+      const headers = new Headers(request?.headers);
+      expect(headers.has('Idempotency-Key')).toBe(false);
+    });
+
+    it('sends the Idempotency-Key header when idempotencyKey is provided', async () => {
+      mockSuccessResponse(
+        {
+          data: [
+            {
+              id: 'idempotent-123',
+            },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user@resend.com',
+          subject: 'Idempotency Test',
+          html: '<h1>Test</h1>',
+        },
+      ];
+      const idempotencyKey = 'unique-key-123';
+
+      await resend.batch.send(payload, { idempotencyKey });
+
+      // Inspect the last fetch call and body
+      const lastCall = fetchMock.mock.calls[0];
+      expect(lastCall).toBeDefined();
+      const headers = new Headers(lastCall[1]?.headers);
+      expect(headers.has('Idempotency-Key')).toBeTruthy();
+      expect(headers.get('Idempotency-Key')).toBe(idempotencyKey);
+    });
+
+    it('handles batch response with errors field when permissive option is set', async () => {
+      mockSuccessWithStatusCode(
+        {
+          data: [],
+          errors: [{ index: 2, message: 'Invalid email address' }],
+        },
+        202,
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [];
+
+      const result = await resend.batch.create(payload, {
+        batchValidation: 'permissive',
+      });
+
+      // Verify the header was passed correctly
+      const lastCall = fetchMock.mock.calls[0];
+      expect(lastCall).toBeDefined();
+      const request = lastCall[1];
+      expect(request).toBeDefined();
+      const headers = new Headers(request?.headers);
+      expect(headers.get('x-batch-validation')).toBe('permissive');
+
+      expect(result.data).toEqual({
+        data: [],
+        errors: [{ index: 2, message: 'Invalid email address' }],
+      });
+      expect(result.error).toBeNull();
+    });
+
+    it('removes errors field when permissive header is not set (backward compatibility)', async () => {
+      mockSuccessResponse(
+        {
+          data: [
+            { id: 'success-email-1' },
+            { id: 'success-email-2' },
+            { id: 'success-email-3' },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const payload: CreateBatchOptions = [
+        {
+          from: 'admin@resend.com',
+          to: 'user1@example.com',
+          subject: 'Test 1',
+          html: '<h1>Test 1</h1>',
+        },
+        {
+          from: 'admin@resend.com',
+          to: 'user2@example.com',
+          subject: 'Test 2',
+          html: '<h1>Test 2</h1>',
+        },
+        {
+          from: 'admin@resend.com',
+          to: 'invalid-email',
+          subject: 'Test 3',
+          html: '<h1>Test 3</h1>',
+        },
+      ];
+
+      const response = await resend.batch.create(payload);
+      // Should not have errors field for backward compatibility
+      expect(response.data).not.toHaveProperty('errors');
+      expect(response.data?.data).toEqual([
+        { id: 'success-email-1' },
+        { id: 'success-email-2' },
+        { id: 'success-email-3' },
+      ]);
+    });
+  });
+
+  describe('template emails in batch', () => {
+    it('sends batch with template emails only', async () => {
+      const payload: CreateBatchOptions = [
+        {
+          template: {
+            id: 'welcome-template-123',
+          },
+          to: 'user1@example.com',
+        },
+        {
+          template: {
+            id: 'newsletter-template-456',
+            variables: {
+              name: 'John Doe',
+              company: 'Acme Corp',
+              count: 42,
+              isPremium: 'true',
+            },
+          },
+          to: 'user2@example.com',
+        },
+      ];
+
+      mockSuccessResponse(
+        {
+          data: [{ id: 'template-batch-1' }, { id: 'template-batch-2' }],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const data = await resend.batch.send(payload);
+      expect(data).toMatchInlineSnapshot(`
+        {
+          "data": {
+            "data": [
+              {
+                "id": "template-batch-1",
+              },
+              {
+                "id": "template-batch-2",
+              },
+            ],
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+
+      // Verify the correct API payload was sent
+      const lastCall = fetchMock.mock.calls[0];
+      const requestBody = JSON.parse(lastCall[1]?.body as string);
+      expect(requestBody).toEqual([
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: undefined,
+          headers: undefined,
+          html: undefined,
+          reply_to: undefined,
+          scheduled_at: undefined,
+          subject: undefined,
+          tags: undefined,
+          text: undefined,
+          to: 'user1@example.com',
+          template: {
+            id: 'welcome-template-123',
+          },
+        },
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: undefined,
+          headers: undefined,
+          html: undefined,
+          reply_to: undefined,
+          scheduled_at: undefined,
+          subject: undefined,
+          tags: undefined,
+          text: undefined,
+          to: 'user2@example.com',
+          template: {
+            id: 'newsletter-template-456',
+            variables: {
+              name: 'John Doe',
+              company: 'Acme Corp',
+              count: 42,
+              isPremium: 'true',
+            },
+          },
+        },
+      ]);
+    });
+
+    it('sends mixed batch with template and HTML emails', async () => {
+      const payload: CreateBatchOptions = [
+        {
+          from: 'sender@example.com',
+          to: 'user1@example.com',
+          subject: 'HTML Email',
+          html: '<h1>Hello World</h1>',
+        },
+        {
+          template: {
+            id: 'welcome-template-123',
+            variables: {
+              name: 'Jane Smith',
+            },
+          },
+          to: 'user2@example.com',
+        },
+        {
+          from: 'admin@example.com',
+          to: 'user3@example.com',
+          subject: 'Another HTML Email',
+          text: 'Plain text content',
+        },
+      ];
+
+      mockSuccessResponse(
+        {
+          data: [
+            { id: 'html-batch-1' },
+            { id: 'template-batch-2' },
+            { id: 'html-batch-3' },
+          ],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const data = await resend.batch.send(payload);
+      expect(data).toMatchInlineSnapshot(`
+        {
+          "data": {
+            "data": [
+              {
+                "id": "html-batch-1",
+              },
+              {
+                "id": "template-batch-2",
+              },
+              {
+                "id": "html-batch-3",
+              },
+            ],
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+
+      // Verify the correct API payload was sent
+      const lastCall = fetchMock.mock.calls[0];
+      const requestBody = JSON.parse(lastCall[1]?.body as string);
+      expect(requestBody).toEqual([
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: 'sender@example.com',
+          headers: undefined,
+          html: '<h1>Hello World</h1>',
+          reply_to: undefined,
+          scheduled_at: undefined,
+          subject: 'HTML Email',
+          tags: undefined,
+          text: undefined,
+          to: 'user1@example.com',
+          template: undefined,
+        },
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: undefined,
+          headers: undefined,
+          html: undefined,
+          reply_to: undefined,
+          scheduled_at: undefined,
+          subject: undefined,
+          tags: undefined,
+          text: undefined,
+          to: 'user2@example.com',
+          template: {
+            id: 'welcome-template-123',
+            variables: {
+              name: 'Jane Smith',
+            },
+          },
+        },
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: 'admin@example.com',
+          headers: undefined,
+          html: undefined,
+          reply_to: undefined,
+          scheduled_at: undefined,
+          subject: 'Another HTML Email',
+          tags: undefined,
+          text: 'Plain text content',
+          to: 'user3@example.com',
+          template: undefined,
+        },
+      ]);
+    });
+
+    it('handles template emails with optional fields', async () => {
+      const payload: CreateBatchOptions = [
+        {
+          template: {
+            id: 'newsletter-template-456',
+            variables: {
+              title: 'Weekly Update',
+              count: 150,
+            },
+          },
+          from: 'newsletter@example.com',
+          subject: 'Custom Subject Override',
+          to: 'subscriber@example.com',
+          replyTo: 'noreply@example.com',
+          scheduledAt: 'in 1 hour',
+          tags: [{ name: 'type', value: 'newsletter' }],
+        },
+      ];
+
+      mockSuccessResponse(
+        {
+          data: [{ id: 'template-with-overrides-1' }],
+        },
+        {
+          headers: {},
+        },
+      );
+
+      const data = await resend.batch.send(payload);
+      expect(data).toMatchInlineSnapshot(`
+        {
+          "data": {
+            "data": [
+              {
+                "id": "template-with-overrides-1",
+              },
+            ],
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+
+      // Verify the correct API payload was sent
+      const lastCall = fetchMock.mock.calls[0];
+      const requestBody = JSON.parse(lastCall[1]?.body as string);
+      expect(requestBody).toEqual([
+        {
+          attachments: undefined,
+          bcc: undefined,
+          cc: undefined,
+          from: 'newsletter@example.com',
+          headers: undefined,
+          html: undefined,
+          reply_to: 'noreply@example.com',
+          scheduled_at: 'in 1 hour',
+          subject: 'Custom Subject Override',
+          tags: [{ name: 'type', value: 'newsletter' }],
+          text: undefined,
+          to: 'subscriber@example.com',
+          template: {
+            id: 'newsletter-template-456',
+            variables: {
+              title: 'Weekly Update',
+              count: 150,
+            },
+          },
+        },
+      ]);
+    });
+  });
+});

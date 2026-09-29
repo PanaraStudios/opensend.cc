@@ -1,0 +1,960 @@
+import { Webhook } from 'standardwebhooks';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import createFetchMock from 'vitest-fetch-mock';
+import type { ErrorResponse } from '../interfaces';
+import { Resend } from '../resend';
+import { mockSuccessResponse } from '../test-utils/mock-fetch';
+import type {
+  CreateWebhookOptions,
+  CreateWebhookResponseSuccess,
+} from './interfaces/create-webhook-options.interface';
+import type { GetWebhookResponseSuccess } from './interfaces/get-webhook.interface';
+import type { GetWebhookEventResponseSuccess } from './interfaces/get-webhook-event.interface';
+import type { ListWebhookEventAttemptsResponseSuccess } from './interfaces/list-webhook-event-attempts.interface';
+import type { ListWebhookEventsResponseSuccess } from './interfaces/list-webhook-events.interface';
+import type { ListWebhooksResponseSuccess } from './interfaces/list-webhooks.interface';
+import type { RemoveWebhookResponseSuccess } from './interfaces/remove-webhook.interface';
+import type { ReplayWebhookEventResponseSuccess } from './interfaces/replay-webhook-event.interface';
+import type { RotateWebhookSigningSecretResponseSuccess } from './interfaces/rotate-webhook-signing-secret.interface';
+import type {
+  UpdateWebhookOptions,
+  UpdateWebhookResponseSuccess,
+} from './interfaces/update-webhook.interface';
+
+const fetchMocker = createFetchMock(vi);
+fetchMocker.enableMocks();
+
+describe('Webhooks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.resetMocks();
+  });
+
+  afterAll(() => fetchMocker.disableMocks());
+
+  describe('create', () => {
+    it('creates a webhook', async () => {
+      const payload: CreateWebhookOptions = {
+        endpoint: 'https://example.com/webhook',
+        events: ['email.sent', 'email.delivered'],
+      };
+      const response: CreateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: '430eed87-632a-4ea6-90db-0aace67ec228',
+        signing_secret: 'whsec_test_secret_key_123',
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 201,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.create(payload),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+            "object": "webhook",
+            "signing_secret": "whsec_test_secret_key_123",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+  });
+
+  describe('get', () => {
+    describe('when webhook not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Webhook endpoint not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.get('1234');
+
+        await expect(result).resolves.toMatchInlineSnapshot(`
+          {
+            "data": null,
+            "error": {
+              "message": "Webhook endpoint not found",
+              "name": "not_found",
+              "statusCode": 404,
+            },
+            "headers": {
+              "content-type": "application/json",
+            },
+          }
+        `);
+      });
+    });
+
+    it('gets a webhook', async () => {
+      const response: GetWebhookResponseSuccess = {
+        object: 'webhook',
+        id: '430eed87-632a-4ea6-90db-0aace67ec228',
+        created_at: '2023-06-21 06:10:36.144+00',
+        status: 'enabled',
+        endpoint: 'https://example.com/webhook',
+        events: ['email.sent', 'email.delivered'],
+        signing_secret: 'whsec_test_secret_key_123',
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(resend.webhooks.get('1234')).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "created_at": "2023-06-21 06:10:36.144+00",
+            "endpoint": "https://example.com/webhook",
+            "events": [
+              "email.sent",
+              "email.delivered",
+            ],
+            "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+            "object": "webhook",
+            "signing_secret": "whsec_test_secret_key_123",
+            "status": "enabled",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+  });
+
+  describe('list', () => {
+    const response: ListWebhooksResponseSuccess = {
+      has_more: false,
+      object: 'list',
+      data: [
+        {
+          id: '430eed87-632a-4ea6-90db-0aace67ec228',
+          endpoint: 'https://example.com/webhook',
+          created_at: '2023-06-21 06:10:36.144+00',
+          status: 'enabled',
+          events: ['email.sent', 'email.delivered'],
+        },
+        {
+          id: 'b6d24b8e-af0b-4c3c-be0c-359bbd97381e',
+          endpoint: 'https://example.com/webhook2',
+          created_at: '2023-06-20 06:10:36.144+00',
+          status: 'enabled',
+          events: ['email.bounced'],
+        },
+      ],
+    };
+
+    describe('when no pagination options are provided', () => {
+      it('lists webhooks', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = await resend.webhooks.list();
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/webhooks',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+
+    describe('when pagination options are provided', () => {
+      it('passes limit param and returns a response', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = await resend.webhooks.list({ limit: 10 });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/webhooks?limit=10',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+  });
+
+  describe('events.list', () => {
+    const webhookId = '430eed87-632a-4ea6-90db-0aace67ec228';
+    const response: ListWebhookEventsResponseSuccess = {
+      has_more: false,
+      object: 'list',
+      data: [
+        {
+          id: 'msg_1srOrx2ZWZBpBUvZwXKQmoEYga2',
+          type: 'email.sent',
+          created_at: '2026-08-22T15:28:00.000Z',
+          status: 'success',
+        },
+      ],
+    };
+
+    describe('when no pagination options are provided', () => {
+      it('lists events', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = await resend.webhooks.events.list({ webhookId });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          `https://api.opensend.test/webhooks/${webhookId}/events`,
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+
+    describe('when pagination options are provided', () => {
+      it('passes limit and after params', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        await resend.webhooks.events.list({
+          webhookId,
+          limit: 10,
+          after: 'msg_1srOrx2ZWZBpBUvZwXKQmoEYga2',
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          `https://api.opensend.test/webhooks/${webhookId}/events?limit=10&after=msg_1srOrx2ZWZBpBUvZwXKQmoEYga2`,
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+  });
+
+  describe('events.get', () => {
+    const webhookId = '430eed87-632a-4ea6-90db-0aace67ec228';
+    const eventId = 'msg_1srOrx2ZWZBpBUvZwXKQmoEYga2';
+
+    it('gets an event', async () => {
+      const response: GetWebhookEventResponseSuccess = {
+        object: 'webhook_event',
+        id: eventId,
+        type: 'email.sent',
+        created_at: '2026-08-22T15:28:00.000Z',
+        status: 'success',
+        next_attempt_at: null,
+        payload: {
+          type: 'email.sent',
+          created_at: '2026-08-22T15:28:00.000Z',
+          data: {
+            created_at: '2026-08-22T15:28:00.000Z',
+            email_id: 'abc',
+            message_id: '<abc@resend.dev>',
+            from: 'bu@resend.com',
+            to: ['zeno@resend.com'],
+            subject: 'Hello World',
+          },
+        },
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = await resend.webhooks.events.get({ webhookId, eventId });
+      expect(result).toEqual({
+        data: response,
+        error: null,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `https://api.opensend.test/webhooks/${webhookId}/events/${eventId}`,
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.any(Headers),
+        }),
+      );
+    });
+
+    describe('when event not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Webhook event not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.events.get({ webhookId, eventId });
+
+        await expect(result).resolves.toEqual({
+          data: null,
+          error: {
+            message: 'Webhook event not found',
+            name: 'not_found',
+            statusCode: 404,
+          },
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      });
+    });
+  });
+
+  describe('events.replay', () => {
+    const webhookId = '430eed87-632a-4ea6-90db-0aace67ec228';
+    const eventId = 'msg_1srOrx2ZWZBpBUvZwXKQmoEYga2';
+
+    it('replays an event', async () => {
+      const response: ReplayWebhookEventResponseSuccess = {
+        object: 'webhook_event',
+        id: eventId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = await resend.webhooks.events.replay({
+        webhookId,
+        eventId,
+      });
+      expect(result).toEqual({
+        data: response,
+        error: null,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `https://api.opensend.test/webhooks/${webhookId}/events/${eventId}/replay`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.any(Headers),
+        }),
+      );
+    });
+
+    describe('when event not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Webhook event not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.events.replay({ webhookId, eventId });
+
+        await expect(result).resolves.toEqual({
+          data: null,
+          error: {
+            message: 'Webhook event not found',
+            name: 'not_found',
+            statusCode: 404,
+          },
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      });
+    });
+  });
+
+  describe('events.attempts.list', () => {
+    const webhookId = '430eed87-632a-4ea6-90db-0aace67ec228';
+    const eventId = 'msg_1srOrx2ZWZBpBUvZwXKQmoEYga2';
+    const response: ListWebhookEventAttemptsResponseSuccess = {
+      has_more: false,
+      object: 'list',
+      data: [
+        {
+          id: 'atmpt_2ZbUCwvGmIT4mLIN6d3Yz0Ainbd',
+          http_status_code: 200,
+          response: '{"ok":true}',
+          sent_at: '2026-08-22T15:28:05.000Z',
+        },
+      ],
+    };
+
+    describe('when no pagination options are provided', () => {
+      it('lists attempts', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = await resend.webhooks.events.attempts.list({
+          webhookId,
+          eventId,
+        });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          `https://api.opensend.test/webhooks/${webhookId}/events/${eventId}/attempts`,
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+
+    describe('when pagination options are provided', () => {
+      it('passes limit and after params', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        await resend.webhooks.events.attempts.list({
+          webhookId,
+          eventId,
+          limit: 10,
+          after: 'atmpt_2ZbUCwvGmIT4mLIN6d3Yz0Ainbd',
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          `https://api.opensend.test/webhooks/${webhookId}/events/${eventId}/attempts?limit=10&after=atmpt_2ZbUCwvGmIT4mLIN6d3Yz0Ainbd`,
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+  });
+
+  describe('update', () => {
+    const webhookId = '430eed87-632a-4ea6-90db-0aace67ec228';
+
+    it('updates all webhook fields', async () => {
+      const payload: UpdateWebhookOptions = {
+        endpoint: 'https://new.com/webhook',
+        events: ['email.sent', 'email.delivered', 'email.bounced'],
+        status: 'disabled',
+      };
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    it('updates only endpoint field', async () => {
+      const payload: UpdateWebhookOptions = {
+        endpoint: 'https://new.com/webhook',
+      };
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    it('updates only events field', async () => {
+      const payload: UpdateWebhookOptions = {
+        events: ['email.sent', 'email.delivered'],
+      };
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    it('updates only status field to disabled', async () => {
+      const payload: UpdateWebhookOptions = {
+        status: 'disabled',
+      };
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    it('updates only status field to enabled', async () => {
+      const payload: UpdateWebhookOptions = {
+        status: 'enabled',
+      };
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    it('handles empty payload', async () => {
+      const payload: UpdateWebhookOptions = {};
+      const response: UpdateWebhookResponseSuccess = {
+        object: 'webhook',
+        id: webhookId,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.webhooks.update(webhookId, payload),
+      ).resolves.toMatchInlineSnapshot(`
+{
+  "data": {
+    "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+    "object": "webhook",
+  },
+  "error": null,
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+    });
+
+    describe('when webhook not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Failed to update webhook endpoint',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.update(webhookId, {
+          endpoint: 'https://new.com/webhook',
+        });
+
+        await expect(result).resolves.toMatchInlineSnapshot(`
+{
+  "data": null,
+  "error": {
+    "message": "Failed to update webhook endpoint",
+    "name": "not_found",
+    "statusCode": 404,
+  },
+  "headers": {
+    "content-type": "application/json",
+  },
+}
+`);
+      });
+    });
+  });
+
+  describe('remove', () => {
+    it('removes a webhook', async () => {
+      const id = '430eed87-632a-4ea6-90db-0aace67ec228';
+      const response: RemoveWebhookResponseSuccess = {
+        object: 'webhook',
+        id,
+        deleted: true,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(resend.webhooks.remove(id)).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "deleted": true,
+            "id": "430eed87-632a-4ea6-90db-0aace67ec228",
+            "object": "webhook",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    describe('when webhook not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Webhook not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.remove('1234');
+
+        await expect(result).resolves.toMatchInlineSnapshot(`
+          {
+            "data": null,
+            "error": {
+              "message": "Webhook not found",
+              "name": "not_found",
+              "statusCode": 404,
+            },
+            "headers": {
+              "content-type": "application/json",
+            },
+          }
+        `);
+      });
+    });
+  });
+
+  describe('rotateSigningSecret', () => {
+    const id = '430eed87-632a-4ea6-90db-0aace67ec228';
+
+    it('rotates the signing secret', async () => {
+      const response: RotateWebhookSigningSecretResponseSuccess = {
+        object: 'webhook',
+        id,
+        signing_secret: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = await resend.webhooks.rotateSigningSecret(id);
+      expect(result).toEqual({
+        data: response,
+        error: null,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `https://api.opensend.test/webhooks/${id}/signing-secret/rotate`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.any(Headers),
+        }),
+      );
+    });
+
+    describe('when webhook not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Webhook not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.webhooks.rotateSigningSecret(id);
+
+        await expect(result).resolves.toEqual({
+          data: null,
+          error: {
+            message: 'Webhook not found',
+            name: 'not_found',
+            statusCode: 404,
+          },
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+      });
+    });
+  });
+
+  describe('verify', () => {
+    // Uses the real `standardwebhooks` library to sign a payload the same way
+    // Resend does, then verifies it round-trips through `resend.webhooks.verify`.
+    const webhookSecret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
+
+    it('verifies a genuinely signed payload and returns the parsed event', () => {
+      const id = 'msg_2KWPBgLlAfxdpx2AI54pPJ85f4W';
+      const payload = JSON.stringify({ type: 'email.sent', data: { id } });
+      // Fresh timestamp: standardwebhooks rejects signatures outside a 5-min window.
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = new Webhook(webhookSecret).sign(
+        id,
+        new Date(timestamp * 1000),
+        payload,
+      );
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+      const result = resend.webhooks.verify({
+        payload,
+        headers: { id, timestamp: String(timestamp), signature },
+        webhookSecret,
+      });
+
+      expect(result).toEqual({ type: 'email.sent', data: { id } });
+    });
+
+    it('throws when the signature does not match', () => {
+      const id = 'msg_2KWPBgLlAfxdpx2AI54pPJ85f4W';
+      const payload = JSON.stringify({ type: 'email.sent' });
+      const timestamp = Math.floor(Date.now() / 1000);
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+      expect(() =>
+        resend.webhooks.verify({
+          payload,
+          headers: {
+            id,
+            timestamp: String(timestamp),
+            signature: 'v1,not-a-valid-signature',
+          },
+          webhookSecret,
+        }),
+      ).toThrow();
+    });
+  });
+});
