@@ -33,7 +33,7 @@ export function testBackend(name: string, args: unknown, component?: string) {
 }
 function importFixture(
   table: string,
-  row: Record<string, unknown>,
+  row: Record<string, unknown> | Record<string, unknown>[],
   replace = false
 ) {
   assertTestOwnership()
@@ -41,7 +41,10 @@ function importFixture(
     process.env.OPENSEND_TEST_RESULTS!,
     `${table}-fixture.jsonl`
   )
-  writeFileSync(file, JSON.stringify(row) + "\n", { mode: 0o600 })
+  const rows = Array.isArray(row) ? row : [row]
+  writeFileSync(file, rows.map((r) => JSON.stringify(r) + "\n").join(""), {
+    mode: 0o600,
+  })
   execFileSync(
     "node",
     [
@@ -129,16 +132,21 @@ export async function seedTeamTenant(page: Page, organizationId: string) {
   })
   expect(rows).toHaveLength(1)
   const tenant = rows[0]
+  // A replace import rewrites the whole table, so keep every other team's tenant.
   importFixture(
     "sesTenants",
-    {
-      ...tenant,
-      phase: "ready",
-      error: undefined,
-      arn: `arn:aws:ses:${tenant.region}:123456789012:tenant/${tenant.name}/fixture-tenant`,
-      providerId: "fixture-tenant",
-      sendingStatus: "ENABLED",
-    },
+    backendRows<{ _id: string }>("sesTenants").map((row) =>
+      row._id === tenant._id
+        ? {
+            ...tenant,
+            phase: "ready",
+            error: undefined,
+            arn: `arn:aws:ses:${tenant.region}:123456789012:tenant/${tenant.name}/fixture-tenant`,
+            providerId: "fixture-tenant",
+            sendingStatus: "ENABLED",
+          }
+        : row
+    ),
     true
   )
 }

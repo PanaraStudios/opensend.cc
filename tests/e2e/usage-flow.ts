@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "../../convex/_generated/api"
+import { SES_SETTINGS_PAGE } from "../../lib/dashboard/nav"
 import { createApiKey } from "./broadcast-received-flow"
 import { client, seedReceivedMessage } from "./ses-fixtures"
 
@@ -52,9 +53,11 @@ export function usageTests(state: () => State) {
     await expect(
       owner.getByText("Shared Amazon SES quota", { exact: true })
     ).toBeVisible()
-    await expect(
-      owner.getByRole("link", { name: "Amazon SES settings" })
-    ).toHaveAttribute("href", "/settings/ses")
+    // Only the installation admin gets the link; link-styled Buttons keep the button role.
+    const sesLink = owner.getByRole("button", { name: "Amazon SES settings" })
+    if ((await backend.query(api.installation.status, {})).admin)
+      await expect(sesLink).toHaveAttribute("href", SES_SETTINGS_PAGE.href)
+    else await expect(sesLink).toHaveCount(0)
     const original = await owner.evaluate(() => localStorage.getItem("theme"))
     for (const theme of ["light", "dark"]) {
       await owner.evaluate(
