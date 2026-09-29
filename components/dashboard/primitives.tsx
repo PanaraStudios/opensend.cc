@@ -53,7 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardAction,
@@ -2225,21 +2225,19 @@ export function ListToolbar({
 
 export function DocsButton({ href }: { href?: string }) {
   const pathname = usePathname()
+  // A plain anchor keeps the link role for this new-tab page; Button would
+  // announce it as a button.
   return (
-    <Button
-      variant="outline"
-      nativeButton={false}
-      render={
-        <a
-          href={href ?? docsHrefForRoute(pathname)}
-          target="_blank"
-          rel="noreferrer"
-        />
-      }
+    <a
+      data-slot="button"
+      className={buttonVariants({ variant: "outline" })}
+      href={href ?? docsHrefForRoute(pathname)}
+      target="_blank"
+      rel="noreferrer"
     >
       <BookOpenIcon data-icon="inline-start" />
       Docs
-    </Button>
+    </a>
   )
 }
 
