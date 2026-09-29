@@ -29,8 +29,8 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  useDebouncedValue,
   useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQuery } from "convex/react"
@@ -44,14 +44,13 @@ import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 export function ApiKeysView() {
   const { organizationId, createApiKey, updateApiKey, deleteApiKey } =
     useApiKeyCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [permission, setPermission] = React.useState(ALL_PERMISSIONS)
   const [adding, setAdding] = React.useState(false)
   const [editing, setEditing] = React.useState<ApiKey | null>(null)
   const [deleting, setDeleting] = React.useState<ApiKey | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
 
-  const search = useDebouncedValue(query)
   const filters = {
     search: search.trim() || undefined,
     permission:

@@ -40,9 +40,9 @@ import {
   ResourceTable,
   Surface,
   Th,
-  useDebouncedValue,
   useDeleteRecord,
   useAutosaveDraft,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
@@ -135,7 +135,7 @@ function AddSegmentDialog({
 
 export function SegmentsView() {
   const { deleteSegment } = useAudienceCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [open, setOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const exporting = useExportDialog({
@@ -143,7 +143,7 @@ export function SegmentsView() {
     noun: "segments",
     filters: { search: query.trim() || undefined },
   })
-  const segments = useSegmentList(useDebouncedValue(query))
+  const segments = useSegmentList(search)
   const { rows, pageRows, pagination } = segments
 
   return (
@@ -273,8 +273,7 @@ function SegmentPage({
   const { updateSegment, deleteSegment, setContactSegment } =
     useAudienceCommands()
   const [pendingDelete, setPendingDelete] = React.useState(false)
-  const [query, setQuery] = React.useState("")
-  const search = useDebouncedValue(query)
+  const { query, setQuery, search } = useListSearch()
   /* A cleared field waits for a name instead of saving a blank one. */
   const name = useAutosaveDraft(segment.name, async (next) => {
     if (next.trim()) await updateSegment(segment.id, next)

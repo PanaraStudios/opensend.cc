@@ -42,7 +42,7 @@ import {
   OptionSelect,
   ResourceTable,
   Th,
-  useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   CircleMinusIcon,
@@ -82,12 +82,11 @@ import {
 
 export function EmailsView() {
   const now = useClock() ?? undefined
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
-  const search = useDebouncedValue(query)
 
   const filters = {
     status: isFilterableStatus(status) ? status : undefined,
@@ -193,13 +192,12 @@ export function EmailsView() {
 }
 
 export function ReceivingView() {
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const now = useClock() ?? undefined
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
   const receivingDomain = useReceivingDomain()
-  const search = useDebouncedValue(query)
   const filters = { search: search.trim() || undefined, ...rangeBounds(range) }
   const received = useReceivedList(filters)
   const { rows, pageRows, pagination } = received
@@ -295,7 +293,7 @@ export function ReceivingView() {
 export function SuppressionsView() {
   const { addSuppression, removeSuppression } = useEmailCommands()
   const now = useClock() ?? undefined
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [origin, setOrigin] = React.useState("all")
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
@@ -305,8 +303,6 @@ export function SuppressionsView() {
   const [reason, setReason] = React.useState<SuppressionReason>("manual")
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<string | null>(null)
-
-  const search = useDebouncedValue(query)
 
   const filters = {
     reason: isSuppressionReason(origin) ? origin : undefined,

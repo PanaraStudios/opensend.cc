@@ -24,8 +24,8 @@ import {
   ResourceTable,
   TemplateStatusBadge,
   Th,
-  useDebouncedValue,
   useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   TEMPLATE_STATUS_ITEMS,
@@ -82,11 +82,10 @@ function TemplateCard({ item }: { item: EmailTemplate }) {
 export function TemplatesView() {
   const router = useRouter()
   const { organizationId, addTemplate } = useTemplateCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [layout, setLayout] = React.useState<TemplatesLayout>("grid")
   const creating = React.useRef(false)
-  const search = useDebouncedValue(query)
 
   const {
     rows,

@@ -30,7 +30,6 @@ import {
 type TeamRow = FunctionReturnType<
   typeof api.ses.reputation.list
 >["page"][number]
-const asTeam = (row: TeamRow) => row
 const enabled = (status?: string) =>
   status === "ENABLED" || status === "REINSTATED"
 
@@ -39,8 +38,7 @@ export function TenantReputation() {
   const list = usePagedList(
     api.ses.reputation.list,
     api.ses.reputation.count,
-    {},
-    asTeam
+    {}
   )
   const setPaused = useAction(api.ses.reputationActions.setPaused)
   const [pending, setPending] = React.useState<TeamRow | null>(null)

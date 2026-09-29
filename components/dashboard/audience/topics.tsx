@@ -37,11 +37,9 @@ import {
   RadioCards,
   ResourceTable,
   Th,
-  useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
-import {
-  AudienceChrome,
-} from "@/components/dashboard/audience/shared"
+import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
 import { useAudienceCommands, useTopicList } from "@/lib/audience/use-audience"
@@ -324,11 +322,11 @@ function EditTopicDialog({
 
 export function TopicsView() {
   const { deleteTopic } = useAudienceCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Topic | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-  const topics = useTopicList(useDebouncedValue(query))
+  const topics = useTopicList(search)
   const { rows, pageRows, pagination } = topics
 
   return (
