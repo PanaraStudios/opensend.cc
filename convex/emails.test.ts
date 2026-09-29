@@ -1,3 +1,5 @@
+import { publicFetch } from "../lib/net/public-fetch"
+vi.mock("../lib/net/public-fetch", () => ({ publicFetch: vi.fn() }))
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
@@ -10,6 +12,9 @@ import { patchRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
 
 beforeEach(() => {
+  vi.mocked(publicFetch).mockRejectedValue(
+    new Error("Unexpected attachment download")
+  )
   /* Scheduled functions and pool runs stay put; tests drive the sender. */
   vi.useFakeTimers()
   vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
@@ -285,7 +290,7 @@ describe("sending", () => {
       "within the next 30 days"
     )
     await refuse({ ...EMAIL, headers: { Subject: "x" } }, 422, "own fields")
-    await refuse({ ...EMAIL, topic_id: "t" }, 422, "topic_id")
+    await refuse({ ...EMAIL, topic_id: "t" }, 404, "Topic not found")
     expect(
       await f.t.run((ctx) => ctx.db.query("emails").collect())
     ).toHaveLength(0)
@@ -473,7 +478,7 @@ describe("attachments, batches and templates", () => {
     await refuse({ filename: "a.pdf" }, "either a `content` or `path`")
     await refuse(
       { filename: "a.pdf", path: "https://example.com/a.pdf" },
-      "by `path` are not supported"
+      "Attachment could not be downloaded"
     )
     await refuse({ content }, "`filename`")
     // Refused sends leave no files behind.

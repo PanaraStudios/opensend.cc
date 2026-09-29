@@ -290,25 +290,6 @@ export const handler = httpAction(async (ctx, request) => {
         201
       )
     }
-    if (path === "/oauth/grants" || path.startsWith("/oauth/grants/")) {
-      const auth = await authorizeOAuth(
-        ctx,
-        request.headers.get("authorization")?.replace(/^Bearer /, "") ?? ""
-      )
-      if (!auth.scopes.includes("full_access"))
-        return json({ error: "insufficient_scope" }, 403)
-      const revokeId =
-        request.method === "DELETE"
-          ? path.slice("/oauth/grants/".length)
-          : undefined
-      return json(
-        await ctx.runMutation(components.betterAuth.oauth.resource, {
-          grantId: auth.grant,
-          scopes: auth.scopes,
-          revokeId,
-        })
-      )
-    }
     if (["/oauth/token", "/oauth/revoke", "/oauth/introspect"].includes(path)) {
       if (
         !(await ctx.runMutation(components.betterAuth.oauth.rate, {
@@ -435,7 +416,6 @@ export function registerOAuthRoutes(http: HttpRouter) {
     "/oauth/authorize",
     "/oauth/jwks",
     "/oauth/flow",
-    "/oauth/grants",
     "/.well-known/oauth-authorization-server",
     "/.well-known/oauth-authorization-server/oauth",
   ])
@@ -448,9 +428,4 @@ export function registerOAuthRoutes(http: HttpRouter) {
     "/oauth/flow",
   ])
     http.route({ path, method: "POST", handler })
-  http.route({
-    pathPrefix: "/oauth/grants/",
-    method: "DELETE",
-    handler,
-  })
 }

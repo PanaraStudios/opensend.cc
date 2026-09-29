@@ -442,6 +442,9 @@ export async function createDomain(
     name: string
     region: Doc<"domains">["region"]
     customReturnPath: string
+    sending?: boolean
+    receiving?: boolean
+    tls?: "opportunistic" | "enforced"
   } & TrackingSettings
 ) {
   const name = normalizeDomainName(args.name)
@@ -450,6 +453,7 @@ export async function createDomain(
     validateDomainName(name, []) || validateDnsLabel(customReturnPath)
   if (error || `${customReturnPath}.${name}`.length > 253)
     throw new ConvexError(error ?? "Return-Path is too long")
+  if (args.receiving) requireReceivingRegion(args.region)
   const tracking = trackingSettings({ name, customReturnPath }, args)
   const region = await findRegion(ctx, args.region)
   if (!region || region.phase !== "ready")
@@ -476,12 +480,14 @@ export async function createDomain(
     status: "pending",
     phase: "pending",
     deleted: false,
-    sending: true,
-    tls: "opportunistic",
+    sending: args.sending ?? true,
+    receiving: args.receiving ?? false,
+    tls: args.tls ?? "opportunistic",
     ...tracking,
     trackingTarget: target,
     // Shown at once; the DKIM records join them when SES issues its keys.
     records: mailRecords({
+      receiving: args.receiving,
       trackingTarget: target,
       name,
       region: args.region,

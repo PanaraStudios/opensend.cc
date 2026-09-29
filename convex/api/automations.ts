@@ -3,6 +3,7 @@ import { readGraph } from "../automationDefinition"
 import { aliasOwner } from "../templates"
 import { own as ownAudience } from "./audience"
 import { v } from "convex/values"
+import { stream } from "convex-helpers/server/stream"
 import type { HttpRouter } from "convex/server"
 import {
   internalMutation,
@@ -182,37 +183,23 @@ export const list = internalQuery({
           row.organizationId === caller.organizationId &&
           !row.deleted &&
           (!status || row.status === status)
-          ? row._creationTime
+          ? row
           : null
       },
-      (bound, order, count) => {
-        const query = status
-          ? ctx.db
-              .query("automations")
-              .withIndex("by_organizationId_and_deleted_and_status", (q) => {
-                const base = q
+      (order) => {
+        const rows = stream(ctx.db, schema).query("automations")
+        return (
+          status
+            ? rows.withIndex("by_organizationId_and_deleted_and_status", (q) =>
+                q
                   .eq("organizationId", caller.organizationId)
                   .eq("deleted", false)
                   .eq("status", status)
-                return bound.lt !== undefined
-                  ? base.lt("_creationTime", bound.lt)
-                  : bound.gt !== undefined
-                    ? base.gt("_creationTime", bound.gt)
-                    : base
-              })
-          : ctx.db
-              .query("automations")
-              .withIndex("by_organizationId_and_deleted", (q) => {
-                const base = q
-                  .eq("organizationId", caller.organizationId)
-                  .eq("deleted", false)
-                return bound.lt !== undefined
-                  ? base.lt("_creationTime", bound.lt)
-                  : bound.gt !== undefined
-                    ? base.gt("_creationTime", bound.gt)
-                    : base
-              })
-        return query.order(order).take(count)
+              )
+            : rows.withIndex("by_organizationId_and_deleted", (q) =>
+                q.eq("organizationId", caller.organizationId).eq("deleted", false)
+              )
+        ).order(order)
       }
     )
   },
@@ -227,18 +214,30 @@ export const runs = internalQuery({
   handler: async (ctx, { caller, id, status, ...page }) => {
     await requireCaller(ctx, caller)
     const automation = await own(ctx, caller.organizationId, id)
+    // Several status indexes merge in memory: each is read from the anchor's
+    // time inclusive, and cursorPage breaks equal-time ties by id.
+    let anchor: Doc<"automationRuns"> | undefined
+    const count = page.limit + 1
     return cursorPage(
       page,
       async (value) => {
         const rid = ctx.db.normalizeId("automationRuns", value)
         const row = rid ? await ctx.db.get("automationRuns", rid) : null
-        return row?.organizationId === caller.organizationId &&
+        anchor =
+          row?.organizationId === caller.organizationId &&
           row.automationId === automation._id &&
           (!status || status.includes(row.status))
-          ? row._creationTime
-          : null
+            ? row
+            : undefined
+        return anchor ?? null
       },
-      async (bound, order, count) => {
+      async (order) => {
+        const bound =
+          anchor === undefined
+            ? {}
+            : order === "desc"
+              ? { lt: anchor._creationTime }
+              : { gt: anchor._creationTime }
         if (!status?.length)
           return ctx.db
             .query("automationRuns")
@@ -247,13 +246,13 @@ export const runs = internalQuery({
                 .eq("organizationId", caller.organizationId)
                 .eq("automationId", automation._id)
               return bound.lt !== undefined
-                ? base.lt("_creationTime", bound.lt)
+                ? base.lte("_creationTime", bound.lt)
                 : bound.gt !== undefined
-                  ? base.gt("_creationTime", bound.gt)
+                  ? base.gte("_creationTime", bound.gt)
                   : base
             })
             .order(order)
-            .take(count)
+            .take(count + 1)
         const pages = await Promise.all(
           status.map((value) =>
             ctx.db
@@ -266,14 +265,14 @@ export const runs = internalQuery({
                     .eq("automationId", automation._id)
                     .eq("status", value)
                   return bound.lt !== undefined
-                    ? base.lt("_creationTime", bound.lt)
+                    ? base.lte("_creationTime", bound.lt)
                     : bound.gt !== undefined
-                      ? base.gt("_creationTime", bound.gt)
+                      ? base.gte("_creationTime", bound.gt)
                       : base
                 }
               )
               .order(order)
-              .take(count)
+              .take(count + 1)
           )
         )
         return pages
@@ -283,7 +282,7 @@ export const runs = internalQuery({
               (order === "asc" ? 1 : -1) *
               (a._creationTime - b._creationTime || a._id.localeCompare(b._id))
           )
-          .slice(0, count)
+          .slice(0, count + 1)
       }
     )
   },

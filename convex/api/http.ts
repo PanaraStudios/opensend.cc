@@ -3,6 +3,7 @@ import { registerWebhookRoutes } from "./webhooks"
 import { registerAutomationRoutes } from "./automations"
 import { registerImportRoutes } from "./imports"
 import { registerMetricsRoutes } from "./metrics"
+import { registerOAuthGrantRoutes } from "./oauth"
 import { registerReceivedRoutes } from "./received"
 import type { HttpRouter } from "convex/server"
 import { registerAudienceRoutes } from "./audience"
@@ -19,6 +20,7 @@ export function registerApiRoutes(http: HttpRouter) {
   registerAutomationRoutes(http)
   registerImportRoutes(http)
   registerMetricsRoutes(http)
+  registerOAuthGrantRoutes(http)
   registerApiKeyRoutes(http)
   registerDomainRoutes(http)
   registerEmailRoutes(http)

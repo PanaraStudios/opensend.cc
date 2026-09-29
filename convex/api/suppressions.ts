@@ -1,4 +1,5 @@
 import { v } from "convex/values"
+import { stream } from "convex-helpers/server/stream"
 import type { HttpRouter } from "convex/server"
 import {
   internalMutation,
@@ -141,36 +142,22 @@ export const list = internalQuery({
       async (id) => {
         try {
           const row = await own(ctx, caller.organizationId, id)
-          return reason && row.reason !== reason ? null : row._creationTime
+          return reason && row.reason !== reason ? null : row
         } catch {
           return null
         }
       },
-      (bound, order, count) => {
-        const rows = ctx.db.query("suppressions")
+      (order) => {
+        const rows = stream(ctx.db, schema).query("suppressions")
         return (
           reason
-            ? rows.withIndex("by_organizationId_and_reason", (q) => {
-                const scope = q
-                  .eq("organizationId", caller.organizationId)
-                  .eq("reason", reason)
-                return bound.lt !== undefined
-                  ? scope.lt("_creationTime", bound.lt)
-                  : bound.gt !== undefined
-                    ? scope.gt("_creationTime", bound.gt)
-                    : scope
-              })
-            : rows.withIndex("by_organizationId", (q) => {
-                const scope = q.eq("organizationId", caller.organizationId)
-                return bound.lt !== undefined
-                  ? scope.lt("_creationTime", bound.lt)
-                  : bound.gt !== undefined
-                    ? scope.gt("_creationTime", bound.gt)
-                    : scope
-              })
-        )
-          .order(order)
-          .take(count)
+            ? rows.withIndex("by_organizationId_and_reason", (q) =>
+                q.eq("organizationId", caller.organizationId).eq("reason", reason)
+              )
+            : rows.withIndex("by_organizationId", (q) =>
+                q.eq("organizationId", caller.organizationId)
+              )
+        ).order(order)
       }
     )
   },

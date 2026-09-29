@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import {
@@ -16,7 +17,7 @@ import {
   type Caller,
 } from "./caller"
 import { cursorPage, listArgs } from "./paging"
-import { apiRoute, apiTime, listParams } from "./route"
+import { apiRoute, listParams } from "./route"
 import { attachmentMetadata, MAX_RECEIVED_ATTACHMENTS } from "../received"
 import { downloadLink } from "../receivedDownloads"
 
@@ -45,20 +46,14 @@ export const list = internalQuery({
     await requireCaller(ctx, caller)
     const result = await cursorPage(
       page,
-      async (id) => (await own(ctx, caller, id))?.receivedAt ?? null,
-      (bound, order, count) =>
-        ctx.db
+      async (id) => await own(ctx, caller, id),
+      (order) =>
+        stream(ctx.db, schema)
           .query("receivedEmails")
           .withIndex("by_organizationId_and_receivedAt", (q) => {
-            const scope = q.eq("organizationId", caller.organizationId)
-            return bound.lt !== undefined
-              ? scope.lt("receivedAt", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("receivedAt", bound.gt)
-                : scope
+            return q.eq("organizationId", caller.organizationId)
           })
           .order(order)
-          .take(count)
     )
     const data = []
     for (const email of result.data)
@@ -119,20 +114,14 @@ export const attachments = internalQuery({
     }
     const result = await cursorPage(
       page,
-      async (value) => (await ownFile(value))?._creationTime ?? null,
-      (bound, order, count) =>
-        ctx.db
+      async (value) => await ownFile(value),
+      (order) =>
+        stream(ctx.db, schema)
           .query("receivedAttachments")
           .withIndex("by_emailId", (q) => {
-            const scope = q.eq("emailId", email._id)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("emailId", email._id)
           })
           .order(order)
-          .take(count)
     )
     return { emailId: email._id, ...result }
   },
@@ -145,7 +134,7 @@ function summary(
     id: email._id,
     to: email.to,
     from: email.from,
-    created_at: apiTime(email.receivedAt),
+    created_at: new Date(email.receivedAt).toISOString(),
     subject: email.subject,
     bcc: email.bcc,
     cc: email.cc,
@@ -249,7 +238,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
           caller,
           id: params.id,
           attachmentId: params.attachmentId,
-          ...listParams(query),
+          ...(single ? { limit: 1 } : listParams(query)),
         })
         if (!result) throw notFound(single ? "Attachment" : "Email")
         const data = []

@@ -95,7 +95,29 @@ export const broadcasts = internalMutation({
         await deleteRow(ctx, "broadcastRecipients", recipient._id)
       for (const event of events.page)
         await deleteRow(ctx, "broadcastEvents", event._id)
-      if (!recipients.isDone || !events.isDone) {
+      let linksDone = true
+      for (const table of [
+        "broadcastRecipientLinks",
+        "broadcastLinks",
+      ] as const) {
+        const links =
+          table === "broadcastLinks"
+            ? await ctx.db
+                .query(table)
+                .withIndex("by_broadcastId_and_url", (q) =>
+                  q.eq("broadcastId", row._id)
+                )
+                .take(100)
+            : await ctx.db
+                .query(table)
+                .withIndex("by_broadcastId", (q) =>
+                  q.eq("broadcastId", row._id)
+                )
+                .take(100)
+        for (const link of links) await deleteRow(ctx, table, link._id)
+        if (links.length === 100) linksDone = false
+      }
+      if (!recipients.isDone || !events.isDone || !linksDone) {
         await ctx.scheduler.runAfter(0, internal.retention.broadcasts, {
           cursor: cursor ?? null,
         })

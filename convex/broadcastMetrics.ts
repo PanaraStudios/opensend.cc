@@ -65,6 +65,8 @@ export async function broadcastMetric(
         type,
       })
   }
+  if (type === "sent" && !recipient.sent)
+    await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
   if (
     !recipient.settled &&
     ["sent", "failed", "suppressed", "canceled"].includes(type)
@@ -148,4 +150,83 @@ export async function broadcastRecipientProblem(
   )
     return "unsubscribed"
   return null
+}
+
+/** Count actual engagement occurrences separately from unique milestone metrics. */
+export async function recordBroadcastReport(
+  ctx: MutationCtx,
+  email: Doc<"emails">,
+  event: Doc<"emailEvents">
+) {
+  if (!email.broadcastId || event.broadcastReported) return
+  const recipient = await ctx.db
+    .query("broadcastRecipients")
+    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+    .unique()
+  if (
+    !recipient ||
+    (await ctx.db.get("broadcasts", recipient.broadcastId))?.retainedStats
+  )
+    return
+  if (event.type === "sent" && !recipient.sent)
+    await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
+  const milestone = await ctx.db
+    .query("broadcastEvents")
+    .withIndex("by_emailId_and_type", (q) =>
+      q.eq("emailId", email._id).eq("type", event.type)
+    )
+    .unique()
+  if (milestone && ["opened", "clicked", "bounced"].includes(event.type)) {
+    await patchRow(ctx, "broadcastEvents", milestone._id, {
+      count: (milestone.count ?? 0) + 1,
+      ...(event.type === "bounced"
+        ? {
+            bounceType: String(
+              event.details?.bounceType ?? "Undetermined"
+            ).toLowerCase(),
+          }
+        : {}),
+    })
+  }
+  const url: unknown = event.details?.link
+  if (event.type === "clicked" && typeof url === "string" && url) {
+    const previous = await ctx.db
+      .query("broadcastLinks")
+      .withIndex("by_broadcastId_and_url", (q) =>
+        q.eq("broadcastId", recipient.broadcastId).eq("url", url)
+      )
+      .unique()
+    const linkId =
+      previous?._id ??
+      (await insertRow(ctx, "broadcastLinks", {
+        organizationId: email.organizationId,
+        broadcastId: recipient.broadcastId,
+        url,
+        clicks: 0,
+        uniqueClicks: 0,
+      }))
+    const member = await ctx.db
+      .query("broadcastRecipientLinks")
+      .withIndex("by_emailId_and_linkId", (q) =>
+        q.eq("emailId", email._id).eq("linkId", linkId)
+      )
+      .unique()
+    if (member)
+      await patchRow(ctx, "broadcastRecipientLinks", member._id, {
+        clicks: member.clicks + 1,
+      })
+    else
+      await insertRow(ctx, "broadcastRecipientLinks", {
+        organizationId: email.organizationId,
+        broadcastId: recipient.broadcastId,
+        emailId: email._id,
+        linkId,
+        clicks: 1,
+      })
+    await patchRow(ctx, "broadcastLinks", linkId, {
+      clicks: (previous?.clicks ?? 0) + 1,
+      uniqueClicks: (previous?.uniqueClicks ?? 0) + (member ? 0 : 1),
+    })
+  }
+  await patchRow(ctx, "emailEvents", event._id, { broadcastReported: true })
 }

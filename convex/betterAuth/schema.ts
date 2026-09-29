@@ -29,6 +29,8 @@ export default defineSchema({
     epochs: v.array(v.object({ key: v.string(), revision: v.number() })),
     createdAt: v.number(),
     revoked: v.boolean(),
+    revokedAt: v.optional(v.number()),
+    revokedReason: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_organizationId", ["organizationId"]),

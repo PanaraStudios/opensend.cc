@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -12,10 +13,12 @@ import type { Doc, Id } from "../_generated/dataModel"
 import {
   cancelEmail,
   createEmail,
+  errorMessage,
   newEmailValue,
   rescheduleEmail,
   type NewEmail,
 } from "../emails"
+import { downloadLink, sentAttachmentId } from "../receivedDownloads"
 import { requireSmtp } from "../smtp"
 import schema from "../schema"
 import {
@@ -45,6 +48,15 @@ async function own(ctx: QueryCtx, caller: Caller, id: string) {
   const email = emailId ? await ctx.db.get("emails", emailId) : null
   return email?.organizationId === caller.organizationId ? email : null
 }
+
+export const authorizeSending = internalQuery({
+  args: { caller: callerValue },
+  returns: v.null(),
+  handler: async (ctx, { caller }) => {
+    await requireCaller(ctx, caller, "sending")
+    return null
+  },
+})
 
 export const send = internalMutation({
   args: {
@@ -81,6 +93,54 @@ export const send = internalMutation({
   },
 })
 
+export const batchSend = internalMutation({
+  args: { caller: callerValue, body: v.string(), permissive: v.boolean() },
+  returns: v.object({
+    data: v.array(v.object({ id: v.id("emails") })),
+    errors: v.optional(
+      v.array(v.object({ index: v.number(), message: v.string() }))
+    ),
+  }),
+  handler: async (
+    ctx,
+    { caller, body, permissive }
+  ): Promise<{
+    data: { id: Id<"emails"> }[]
+    errors?: { index: number; message: string }[]
+  }> =>
+    idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller, "sending")
+        const items: unknown = JSON.parse(body)
+        if (!Array.isArray(items))
+          throw invalid("The request body must be an array of emails.")
+        if (!items.length || items.length > MAX_BATCH)
+          throw invalid(`A batch must have between 1 and ${MAX_BATCH} emails.`)
+        const data: { id: Id<"emails"> }[] = []
+        const errors: { index: number; message: string }[] = []
+        for (const [index, item] of items.entries()) {
+          try {
+            const { input } = parseEmail(item, Date.now(), true)
+            // The child transaction rolls back all writes for a refused item.
+            const [id] = await ctx.runMutation(internal.api.emails.send, {
+              caller: { ...caller, idempotencyId: undefined },
+              emails: [{ ...input, attachments: [] }],
+            })
+            data.push({ id })
+          } catch (error) {
+            const message = errorMessage(error)
+            if (!permissive || !message) throw error
+            errors.push({ index, message })
+          }
+        }
+        return { data, ...(permissive ? { errors } : {}) }
+      },
+      (body) => ({ body })
+    ),
+})
+
 export const get = internalQuery({
   args: { caller: callerValue, id: v.string() },
   returns: v.union(
@@ -113,20 +173,14 @@ export const list = internalQuery({
     const org = caller.organizationId
     return cursorPage(
       page,
-      async (id) => (await own(ctx, caller, id))?._creationTime ?? null,
-      (bound, order, count) =>
-        ctx.db
+      async (id) => await own(ctx, caller, id),
+      (order) =>
+        stream(ctx.db, schema)
           .query("emails")
           .withIndex("by_organizationId", (q) => {
-            const scope = q.eq("organizationId", org)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("organizationId", org)
           })
           .order(order)
-          .take(count)
     )
   },
 })
@@ -192,7 +246,8 @@ function arrayField(body: Record<string, unknown>, name: string) {
 }
 
 type Attachment = {
-  bytes: Uint8Array
+  bytes?: Uint8Array
+  path?: string
   filename: string
   contentType: string
   contentId?: string
@@ -234,20 +289,23 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
         "invalid_attachment",
         "Attachment must have either a `content` or `path`."
       )
-    if (content === undefined)
-      throw apiError(
-        422,
-        "invalid_attachment",
-        "Attachments by `path` are not supported on this server. Send the file as base64 `content`."
-      )
-    size += content.length
+    size += content?.length ?? 0
     if (size > MAX_ATTACHMENTS)
       throw apiError(
         422,
         "invalid_attachment",
         "Attachments can be at most 40 MB in total after base64 encoding."
       )
-    const filename = stringField(fields, "filename")
+    let filename = stringField(fields, "filename")
+    if (!filename && path) {
+      try {
+        filename = decodeURIComponent(
+          new URL(path).pathname.split("/").pop() || "attachment"
+        )
+      } catch {
+        throw apiError(422, "invalid_attachment", "Invalid attachment path.")
+      }
+    }
     if (!filename)
       throw apiError(
         422,
@@ -273,7 +331,7 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
         "Attachment `content_id` is not valid."
       )
     return {
-      bytes: decodeBase64(content),
+      ...(content === undefined ? { path } : { bytes: decodeBase64(content) }),
       filename,
       contentType,
       ...(contentId ? { contentId } : {}),
@@ -285,8 +343,6 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
     mutation makes. */
 function parseEmail(item: unknown, now: number, batch: boolean) {
   const body = objectBody(item)
-  if (body.topic_id !== undefined && body.topic_id !== null)
-    throw invalid("The `topic_id` field is not supported on this server yet.")
   const headers = objectField(body, "headers") ?? {}
   const template = objectField(body, "template")
   const variables = template ? (objectField(template, "variables") ?? {}) : {}
@@ -298,6 +354,7 @@ function parseEmail(item: unknown, now: number, batch: boolean) {
       "Invalid `scheduled_at` field. Use an ISO 8601 date or natural language like `in 1 min`."
     )
   const input: Omit<NewEmail, "attachments"> = {
+    topicId: stringField(body, "topic_id"),
     from: stringField(body, "from"),
     to: addresses(body, "to"),
     cc: addresses(body, "cc"),
@@ -351,12 +408,35 @@ async function sendParsed(
     const emails: NewEmail[] = []
     for (const { input, attachments } of parsed) {
       const files = []
-      for (const { bytes, ...attachment } of attachments) {
-        const storageId = await ctx.storage.store(
-          new Blob([bytes as BlobPart], { type: attachment.contentType })
-        )
-        stored.push(storageId)
-        files.push({ ...attachment, size: bytes.length, storageId })
+      let totalBytes = 0
+      for (const { bytes, path, ...attachment } of attachments) {
+        if (path) {
+          const file = await ctx.runAction(
+            internal.emailAttachments.fetchFile,
+            {
+              caller,
+              path,
+              ...attachment,
+              maxBytes: Math.floor((MAX_ATTACHMENTS * 3) / 4) - totalBytes,
+            }
+          )
+          stored.push(file.storageId)
+          totalBytes += file.size
+          files.push(file)
+        } else {
+          totalBytes += bytes!.length
+          if (Math.ceil(totalBytes / 3) * 4 > MAX_ATTACHMENTS)
+            throw apiError(
+              422,
+              "invalid_attachment",
+              "Attachments can be at most 40 MB after base64 encoding."
+            )
+          const storageId = await ctx.storage.store(
+            new Blob([bytes! as BlobPart], { type: attachment.contentType })
+          )
+          stored.push(storageId)
+          files.push({ ...attachment, size: bytes!.length, storageId })
+        }
       }
       emails.push({ ...input, attachments: files })
     }
@@ -433,20 +513,19 @@ export function registerEmailRoutes(http: HttpRouter) {
     method: "POST",
     path: "/emails/batch",
     permission: "sending",
-    handler: async (ctx, { caller, body }) => {
-      if (!Array.isArray(body))
-        throw invalid("The request body must be an array of emails.")
-      if (!body.length || body.length > MAX_BATCH)
-        throw invalid(`A batch must have between 1 and ${MAX_BATCH} emails.`)
-      const now = Date.now()
-      const ids = await sendParsed(
-        ctx,
-        caller,
-        body.map((item) => parseEmail(item, now, true)),
-        undefined,
-        true
-      )
-      return { body: { data: ids.map((id) => ({ id })) } }
+    handler: async (ctx, { caller, body, headers }) => {
+      const mode = headers.get("x-batch-validation") ?? "strict"
+      if (mode !== "strict" && mode !== "permissive")
+        throw invalid(
+          "The `x-batch-validation` header must be strict or permissive."
+        )
+      return {
+        body: await ctx.runMutation(internal.api.emails.batchSend, {
+          caller,
+          body: JSON.stringify(body ?? null),
+          permissive: mode === "permissive",
+        }),
+      }
     },
   })
   apiRoute(http, {
@@ -480,6 +559,58 @@ export function registerEmailRoutes(http: HttpRouter) {
       return { body: detail(found.email, found.content) }
     },
   })
+  for (const single of [false, true])
+    apiRoute(http, {
+      method: "GET",
+      path: `/emails/{id}/attachments${single ? "/{attachmentId}" : ""}`,
+      permission: "full_access",
+      handler: async (ctx, { caller, params, query }) => {
+        const found = await ctx.runQuery(internal.api.emails.get, {
+          caller,
+          id: params.id,
+        })
+        if (!found) throw notFound("Email")
+        const files = (found.content?.attachments ?? []).map((file, index) => ({
+          ...file,
+          id: sentAttachmentId(found.email._id, index),
+        }))
+        let selected = files
+        let has_more = false
+        if (single) {
+          selected = files.filter((file) => file.id === params.attachmentId)
+          if (!selected.length) throw notFound("Attachment")
+        } else {
+          const { limit, after, before } = listParams(query)
+          const cursor = after ?? before
+          const anchor =
+            cursor === undefined
+              ? -1
+              : files.findIndex((file) => file.id === cursor)
+          if (cursor !== undefined && anchor < 0)
+            throw invalid("Invalid attachment cursor.")
+          const start = before ? Math.max(0, anchor - limit) : anchor + 1
+          const end = before ? anchor : start + limit
+          selected = files.slice(start, end)
+          has_more = before ? start > 0 : end < files.length
+        }
+        const data = await Promise.all(
+          selected.map(async (file) => ({
+            id: file.id,
+            filename: file.filename,
+            size: file.size,
+            content_type: file.contentType,
+            content_disposition: file.contentId ? "inline" : "attachment",
+            content_id: file.contentId ?? null,
+            ...(await downloadLink(ctx, found.email._id, file.id, true)),
+          }))
+        )
+        return {
+          body: single
+            ? { object: "attachment", ...data[0] }
+            : { object: "list", has_more, data },
+        }
+      },
+    })
   const changeEmail = async (
     ctx: ActionCtx,
     caller: Caller,

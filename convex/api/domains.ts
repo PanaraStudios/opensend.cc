@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -20,13 +21,7 @@ import {
 import schema from "../schema"
 import { regionValue, regions } from "../ses/contracts"
 import { DEFAULT_RETURN_PATH } from "../../lib/dashboard/domains"
-import {
-  apiError,
-  callerValue,
-  notFound,
-  requireCaller,
-  type Caller,
-} from "./caller"
+import { callerValue, notFound, requireCaller, type Caller } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
   apiRoute,
@@ -60,20 +55,14 @@ export const list = internalQuery({
     const org = caller.organizationId
     return cursorPage(
       page,
-      async (id) => (await own(ctx, caller, id))?._creationTime ?? null,
-      (bound, order, count) =>
-        ctx.db
+      async (id) => await own(ctx, caller, id),
+      (order) =>
+        stream(ctx.db, schema)
           .query("domains")
           .withIndex("by_organizationId_and_deleted", (q) => {
-            const scope = q.eq("organizationId", org).eq("deleted", false)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("organizationId", org).eq("deleted", false)
           })
           .order(order)
-          .take(count)
     )
   },
 })
@@ -91,6 +80,9 @@ export const create = internalMutation({
     name: v.string(),
     region: v.optional(regionValue),
     customReturnPath: v.string(),
+    sending: v.optional(v.boolean()),
+    receiving: v.optional(v.boolean()),
+    tls: v.optional(v.union(v.literal("opportunistic"), v.literal("enforced"))),
     ...trackingFields,
   },
   returns: schema.doc("domains"),
@@ -109,7 +101,7 @@ export const create = internalMutation({
         })
         return (await ctx.db.get("domains", id))!
       },
-      (row) => ({ body: detail(row) })
+      (row) => ({ status: 201, body: detail(row) })
     )
   },
 })
@@ -238,28 +230,17 @@ export function registerDomainRoutes(http: HttpRouter) {
     permission: "full_access",
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
-      /* A new domain always starts sending with opportunistic TLS and no
-         receiving; other settings wait until it is provisioned. */
-      const wanted = capabilities(input)
-      if (
-        enumField(input, "tls", ["opportunistic", "enforced"]) === "enforced" ||
-        wanted.receiving ||
-        wanted.sending === false
-      )
-        throw apiError(
-          422,
-          "validation_error",
-          "Create the domain first, then change `tls` or `capabilities` with PATCH once it is provisioned."
-        )
       const domain = await ctx.runMutation(internal.api.domains.create, {
         caller,
+        ...capabilities(input),
+        tls: enumField(input, "tls", ["opportunistic", "enforced"]),
         name: stringField(input, "name", true)!,
         region: enumField(input, "region", regions),
         customReturnPath:
           stringField(input, "custom_return_path") ?? DEFAULT_RETURN_PATH,
         ...tracking(input),
       })
-      return { body: detail(domain) }
+      return { status: 201, body: detail(domain) }
     },
   })
   apiRoute(http, {

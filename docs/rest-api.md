@@ -20,7 +20,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 | Errors | `{ "statusCode", "name", "message" }` with Resend's names: `missing_api_key` (401), `restricted_api_key` (401), `invalid_api_key` (403), `invalid_permission` (403, OAuth scope), `not_found` (404), `validation_error` / `missing_required_field` (422), `invalid_idempotency_key` (400), `invalid_idempotent_request` and `concurrent_idempotent_requests` (409), `rate_limit_exceeded` (429), `application_error` (500). |
 | Rate limit | 10 requests per second per team, shared by all its keys. Every authenticated response carries `ratelimit-limit`, `ratelimit-remaining` and `ratelimit-reset`; a 429 adds `retry-after` (seconds). |
 | Idempotency | `Idempotency-Key` (1–256 characters) on any POST. The same key and body within 24 hours replays the first response; a different body is a 409. Concurrent requests receive `concurrent_idempotent_requests` (409). Resource creation and its wire response commit in the same transaction. A crash or logging failure after that commit cannot release the key. An uncommitted reservation can be retried after its 60-second lease; a stale worker is fenced before writing. |
-| Lists | `limit` (1–100, default 20) with `after` or `before` an id, newest first; responses are `{ "object": "list", "has_more", "data" }`. |
+| Lists | `limit` (1–100, default 20) with `after` or `before` an id, newest first with an id tie-break for equal timestamps; responses are `{ "object": "list", "has_more", "data" }`. |
 | Bodies | JSON, up to 1 MB. |
 | CORS | None: the API is for servers, like Resend's. |
 | Logs | Every request that authenticates to a team is logged (Logs in the dashboard, `GET /logs`), failures included, with `authorization` and cookies redacted and bodies cut at 64 KB. Logs are kept 30 days. |
@@ -29,7 +29,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 
 | Endpoint | Notes |
 | --- | --- |
-| `POST /api-keys`, `GET /api-keys`, `DELETE /api-keys/{id}` | As Resend. |
+| `POST /api-keys`, `GET /api-keys`, `PATCH /api-keys/{id}`, `DELETE /api-keys/{id}` | As Resend. |
 | `POST /domains`, `GET /domains`, `GET /domains/{id}`, `PATCH /domains/{id}`, `POST /domains/{id}/verify`, `DELETE /domains/{id}` | As Resend, backed by the same logic as the dashboard. |
 | `GET /logs`, `GET /logs/{id}` | As Resend. |
 | `POST /emails`, `POST /emails/batch` | Queues transactional mail through the team's SES tenant. Sending-access or full-access credentials. Returns `{ "id" }` or `{ "data": [{ "id" }] }`. |
@@ -43,7 +43,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 ## Deviations from Resend
 
 - Ids are Convex document ids, not UUIDs.
-- Domains: `region` defaults to the installation's default region. A new domain starts with opportunistic TLS, sending on and receiving off; change `tls` and `capabilities` with `PATCH` once it is provisioned (a create asking otherwise is a 422). `open_tracking`, `click_tracking` and `tracking_subdomain` work as in Resend, on create and `PATCH`: the subdomain can change but not be removed, and tracking starts once its `Tracking` CNAME record is verified. Tracked links use HTTP (SES's HTTP redirect option); HTTPS tracking needs a CDN and certificate Opensend does not create. Turning receiving on in a region SES does not receive mail in is a 422. `POST /domains/{id}/verify` retries a failed setup or starts a DNS check; checks are limited to one per domain every 10 seconds. Deleting a domain queues its removal from AWS.
+- Domains: `region` defaults to the installation's default region. New domains accept `tls` and `capabilities` at creation; omitted values default to opportunistic TLS, sending on and receiving off. The shared provisioning workflow applies the requested settings. `open_tracking`, `click_tracking` and `tracking_subdomain` work as in Resend, on create and `PATCH`: the subdomain can change but not be removed, and tracking starts once its `Tracking` CNAME record is verified. Tracked links use HTTP (SES's HTTP redirect option); HTTPS tracking needs a CDN and certificate Opensend does not create. Turning receiving on in a region SES does not receive mail in is a 422. `POST /domains/{id}/verify` retries a failed setup or starts a DNS check; checks are limited to one per domain every 10 seconds. Deleting a domain queues its removal from AWS.
 - Events: names starting with `opensend:` (Resend: `resend:`) are reserved. A schema has at most 50 properties and property names use letters, numbers and underscores. Like Resend, every endpoint needs a full-access key: a sending key may only send emails.
 - `POST /events/send`: a defined event's payload must carry every schema property with its type (`date` is an ISO 8601 string), or the send is a 422 naming each problem; values are not coerced. An event nobody defined is accepted as sent and is not defined by it. An `email` with no contact yet is accepted, and the contact is created when an automation run starts, as Resend does; an unknown `contact_id` is a 404. Payloads are limited to 64 KB and 32 levels of nesting, and object keys must be printable ASCII not starting with `$` (a Convex storage rule). Sent events are kept 30 days. There is no client-supplied event id; use `Idempotency-Key` to make a retry safe. Sent events are not delivered to webhooks (Resend's webhooks carry only its own event types).
 - Requests that fail before a team is known (no key, an unknown key) are answered but not logged.
@@ -52,7 +52,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 
 `POST /emails` accepts `from`, `to`, `cc`, `bcc`, `reply_to`, `subject`, `html`,
 `text`, `headers`, `attachments`, `tags`, `scheduled_at`, and
-`template: { id, variables }`. Address fields accept a string or array, except
+`topic_id`, and `template: { id, variables }`. Address fields accept a string or array, except
 `from`, which is one mailbox. `to` is required; SES limits the combined `to`,
 `cc`, and `bcc` to 50 recipients. The sender must belong to the team's verified,
 sending-enabled domain. A domain-restricted key cannot send from another domain.
@@ -71,19 +71,29 @@ expressions return 422; times without a timezone use UTC. Past send times queue
 immediately. Rescheduling requires a future time. Cancel and reschedule race
 atomically with release into the send queue: once released, either change
 returns 422. A successful cancellation prevents every stale worker from sending.
-Batch requests validate all 1–100 messages together, support scheduling and
-templates, and reject attachments.
+Batch requests accept 1–100 messages, scheduling and templates, but no attachments.
+The default `x-batch-validation: strict` validates and commits the entire batch
+atomically. `permissive` commits valid items and returns `data` with successful
+ids plus `errors: [{ index, message }]` using original zero-based positions.
+The errors array is present even when empty. Changing this header while reusing
+an idempotency key is a conflict.
 
 Attachments accept base64 `content`, `filename`, optional `content_type`, and
-optional `content_id` for inline images. URL `path` attachments are deliberately
-rejected with 422; no outbound URL fetch occurs. Unsupported SES file extensions,
+optional `content_id` for inline images. Alternatively supply a public HTTPS
+`path`; the filename can be inferred from its URL. Downloads use DNS-pinned
+public addresses, a 10-second timeout per fetch, and at most three redirects,
+each revalidated. Local/private/HTTP targets are refused to protect the host. Unsupported SES file extensions,
 invalid MIME metadata, and malformed base64 also return 422. Base64 attachments
 are capped at 40 MiB in aggregate. The send endpoint allows a larger JSON body
 than the default endpoint limit, but the deployed Convex HTTP/proxy limit can be
 lower. Email HTML, text and headers together are capped at 900,000 UTF-8 bytes
 to fit one Convex content document. Custom headers cannot override fields SES
 builds itself. There are at most 50 headers and 48 user tags (two SES tags are
-reserved for `opensend_email` and `opensend_team`). `topic_id` is not supported.
+reserved for `opensend_email` and `opensend_team`).
+`topic_id` checks every to/cc/bcc address just before delivery: an explicit
+contact choice overrides the topic default; global contact opt-outs also apply.
+Noncontacts use the topic default. Opted-out addresses receive failed events
+and are removed from delivery; if all recipients opt out the email fails.
 Transactional sends do not automatically add List-Unsubscribe headers.
 
 Every send passes `TenantName` and `ConfigurationSetName`. The queue reserves
@@ -164,8 +174,9 @@ Audience compatibility details:
 - Only string and number properties are supported; boolean values are rejected.
   Number values/fallbacks must be JSON numbers; responses return numbers. Empty
   property strings clear the value and use its default, like the dashboard.
-- Property keys follow the existing dashboard normalization (lowercase) and
-  reserved-key validation. Teams have at most 100 properties, 500 segments and
+- REST property keys preserve alphanumeric/underscore spelling (1–50 characters);
+  reserved contact fields remain unavailable. String fallbacks preserve whitespace
+  and empty strings on both create and update. The dashboard keeps its normalization. Teams have at most 100 properties, 500 segments and
   100 topics. Create-contact relationship arrays share those limits.
 - Resend's wire `default_subscription: "opt_in"` means subscribed by default;
   `"opt_out"` means unsubscribed. The existing dashboard names the consent mode
@@ -215,10 +226,14 @@ Template compatibility details:
   across editing, publishing and duplication. Legacy editor reserved-name tags
   remain readable; reserved names are rejected in explicit variable definitions.
 - There is one mutable draft and one published snapshot, not a version-history
-  table. `current_version_id` is the draft document id, stable across edits.
-  Variable entries have `key`, `type`, and `fallback_value`, without Resend's
-  per-variable ids and creation/update timestamps. No version-history endpoints
-  are exposed.
+  table. `current_version_id` identifies the draft revision, changes on edits and is
+  preserved when that revision is published.
+  Variable entries include `id`, `key`, `type`, `fallback_value`, `created_at`,
+  and `updated_at`. Variable ids and timestamps are persisted across unrelated edits; changing
+  a variable changes only its updated timestamp, and readding a removed key
+  creates a new id. Legacy templates fall back to template timestamps until
+  edited; past variable lifetimes cannot be reconstructed. No version-history
+  endpoints are exposed.
 - An omitted alias is generated using the dashboard's alias rules. Aliases remain
   unique within the team and follow the existing dashboard rename semantics.
 - The wire API accepts HTML; the Node SDK is responsible for rendering `react`.
@@ -279,7 +294,8 @@ returns `object: "email"`, `id`, `created_at`, `from`, `to`, `cc`, `bcc`,
 authentication and raw downloads. `received_for` comes from the `for` clauses
 of Received headers; authentication verdicts come from SES. Retrieval defaults
 to `html_format=data_uri` for inline images; `html_format=cid` preserves CID
-references. HTML that would exceed 100 MiB after inlining retains CID references.
+references. Received `created_at` uses ISO 8601. An individual image over 6 MiB
+or projected inlined HTML over 8 MiB retains CID references to fit Convex limits.
 
 Attachment metadata uses `id`, `filename`, `size`, `content_type`,
 `content_disposition`, and `content_id`. The attachment list and retrieval add
@@ -321,7 +337,7 @@ permissions, pagination, logs and POST idempotency.
 | `GET /broadcasts` | `{ "object": "list", "has_more", "data" }` |
 | `GET /broadcasts/{id}` | Broadcast metadata and `html` / `text` |
 | `PATCH /broadcasts/{id}` | `{ "object": "broadcast", "id" }` |
-| `POST /broadcasts/{id}/send` | `{ "object": "broadcast", "id" }` |
+| `POST /broadcasts/{id}/send` | `{ "id" }` |
 | `POST /broadcasts/{id}/cancel` | `{ "object": "broadcast", "id" }` |
 | `POST /broadcasts/{id}/duplicate` | `{ "object": "broadcast", "id" }` for the new draft |
 | `DELETE /broadcasts/{id}` | `{ "object": "broadcast", "id", "deleted": true }` |
@@ -364,9 +380,9 @@ are generated for every recipient. One-click unsubscribes only the selected
 topic, when present. Unsubscribes through these signed links are attributed once
 to their broadcast; unrelated preference edits are not attributed to an old send.
 
-Reports count unique per-recipient milestones using aggregates. Broadcast
-recipient history and milestones remain after the ordinary 30-day email
-retention and are removed with the team. Test sends use the current editor
+Reports retain unique per-recipient milestones and actual open/click occurrence
+counts. Recipient history, milestones and clicked-link details expire 30 days
+after the broadcast settles; summary statistics remain on the broadcast. Test sends use the current editor
 export, one address and the normal email pipeline without changing the audience,
 status or report. Broadcast CSV exports use the same server filters and cursor
 pagination as the list.
@@ -597,3 +613,61 @@ Email/broadcast dimensions and filters, repeat `opened`/`clicked` events,
 retain those dimensions/events; the API does not invent zero values for them.
 These are documented parity gaps, alongside self-hosted range and precision
 limits. No raw unbounded event scan is used.
+
+## Compatibility additions (wave 8A)
+
+Resource creation returns **201** for domains, API keys, contacts, segments,
+audiences, topics, contact properties, templates and broadcasts, including
+broadcast duplication. Email send/batch return **200**; event create/send remain
+**201/202**. Idempotency replay preserves these exact statuses and bodies.
+API-key creation returns only `{id, token}`. `PATCH /api-keys/{id}` requires
+`name` and returns `{object:"api_key",id}` using the dashboard’s shared update helper.
+
+`POST /audiences`, `GET /audiences`, `GET /audiences/{id}` and
+`DELETE /audiences/{id}` alias the same segment records, with `object:"audience"`
+on singular responses. Lists use the standard list envelope; deleting an audience
+preserves contacts. The modern SDK’s `audiences` alias already calls `/segments`.
+Deprecated `audience_id` on contact creation assigns that segment when `segments`
+is omitted. Contact GET/PATCH paths accept ids or URL-encoded email addresses,
+case-insensitively. PATCH `first_name: null` or `last_name: null` clears the name;
+`email` is the SDK’s path selector, not an address-change operation.
+
+`GET /emails/{id}/attachments` and `GET /emails/{id}/attachments/{attachmentId}`
+return stored outbound files with stable opaque ids, filename, size, content type,
+disposition, nullable content id, a signed `download_url`, and ISO `expires_at`.
+Only singular retrieval includes `object:"attachment"`; lists use the shared list
+envelope. Downloads expire after one hour and recheck retention and team removal;
+they never redirect to permanent storage URLs. Unknown/foreign parents or file ids
+return 404. A single-file request ignores list parameters.
+
+`GET /oauth/grants` and `DELETE /oauth/grants/{id}` now use the shared REST wrapper,
+accept full-access API keys or OAuth tokens, and log/rate-limit requests normally.
+List rows contain `id`, `client_id`, `scopes`, `resource` (null for this installation),
+`created_at`, nullable `revoked_at`/`revoked_reason`, and `client: {name,logo_uri}`.
+Lists include revoked rows. Revocation returns
+`{object:"oauth_grant",id,revoked_at,revoked_reason:"revoked_from_api"}`;
+foreign, unknown or already-revoked grants return 404. All tokens under the grant
+immediately fail validation. Historical revocations and epoch invalidations do not
+have reconstructed timestamps/reasons.
+
+`GET /broadcasts/{id}/recipients` requires `type`:
+`sent`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `unsubscribed`,
+or `suppressed`. `email` filters by substring. `bounce_type` accepts `permanent`,
+`transient`, or `undetermined` only with `type=bounced`. Results include an opaque
+cursor `id`, nullable `contact_id`, and `email`; opened/clicked add `count`, clicked
+adds `clicked_links: [{url,clicks}]`, and bounced adds `bounce_type`.
+
+`GET /broadcasts/{id}/clicked-links` returns `id`, `url`, `clicks` and
+`unique_clicks`, ordered by total clicks descending. Unique clicks count distinct
+recipient messages; the broadcast pipeline creates at most one message per address.
+Both reports support limit/after/before, enforce full access and team ownership,
+and use id tie-breaks. Lists of broadcasts now include `topic_id`; reply-to fields
+on broadcast/template retrieval are arrays or null.
+
+Broadcast report tables are maintained transactionally from the same email events
+that drive dashboard metrics. After deployment, the existing
+`migrations:backfillCounts` runner backfills retained events and the new aggregates;
+re-running it is safe. Events already removed by retention cannot be reconstructed.
+No new AWS permissions are required. Log responses return null for unknown user
+agents and preserve the original JSON body shape (including batch arrays), subject
+to redaction and the existing 64 KiB truncation.

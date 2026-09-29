@@ -7,13 +7,12 @@ info:
   version: 1.0.0
   description: >-
     REST contract audited at 0b10d8d. Adapted from Resend OpenAPI (MIT; LICENSE-resend). Self-hosted Convex
-    site origin, not dashboard origin. Opaque Convex ids replace UUIDs. Most create operations return 200;
-    event/webhook/suppression creation and suppression batch add 201, event send 202. Except legacy OAuth
-    grant routes, common POST idempotency, team-wide 10 requests/s, bounded id cursors (limit 20, max 100), no
-    CORS. Default request limit 1 MiB; POST /emails and /smtp/emails permit 42 MiB JSON subject to deployment
-    proxy limits. Error bodies use statusCode/name/message. Validation descriptions also specify constraints
-    requiring backend state or byte counting; JSON Schema alone cannot express all validation. See
-    docs/resend-parity.md and docs/rest-api.md.
+    site origin, not dashboard origin. Opaque Convex ids replace UUIDs. Resource creates return 201; email
+    sends return 200, event send 202. All REST routes share POST idempotency, team-wide 10 requests/s, bounded
+    id cursors with id tie-breaks (limit 20, max 100), no CORS. Default request limit 1 MiB; POST /emails and
+    /smtp/emails permit 42 MiB JSON subject to deployment proxy limits. Error bodies use
+    statusCode/name/message. Validation descriptions also specify constraints requiring backend state or byte
+    counting; JSON Schema alone cannot express all validation. See docs/resend-parity.md and docs/rest-api.md.
   license:
     name: Apache-2.0; Resend-derived portions MIT
     url: https://github.com/resend/resend-openapi/blob/main/LICENSE
@@ -154,13 +153,19 @@ paths:
         - Emails
       summary: Trigger up to 100 batch emails at once.
       description: >-
-        Same email validation as SendEmailRequest; nonempty attachments rejected. All messages validate and
-        queue atomically; x-batch-validation is ignored (strict only). Scheduling and templates supported.
-        Total batch JSON is limited to 1 MiB. Requires sending credentials. Unknown query/body fields are
-        ignored unless documented otherwise.
+        Same validation as SendEmailRequest; attachments unsupported. Strict mode rolls the whole batch back.
+        Permissive mode returns successful ids and indexed errors. Total JSON limit 1 MiB.
       x-opensend-permission: sending
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+        - name: x-batch-validation
+          in: header
+          schema:
+            type: string
+            enum:
+              - strict
+              - permissive
+            default: strict
       requestBody:
         required: true
         content:
@@ -366,13 +371,10 @@ paths:
         - Domains
       summary: Create a new domain
       description: >-
-        Region defaults to installation region (fallback us-east-1). Creation only permits opportunistic TLS,
-        sending enabled and receiving disabled; other settings require PATCH after provisioning. Tracking
-        CNAME verification activates tracking; subdomain cannot later be removed. Tracking uses HTTP; HTTPS
-        needs operator-provided CDN/certificate. Provisioning is asynchronous. Requires full_access
-        credentials. Unknown query/body fields are ignored unless documented otherwise. Domain statuses omit
-        not_started/partially_failed; DNS records include DMARC but no TrackingCAA/CAA. Creation and retrieval
-        return tls; lists may return tracking_subdomain.
+        Region defaults to installation region (fallback us-east-1). TLS and sending/receiving capabilities
+        are accepted at creation. Receiving requires a supported SES region. Tracking CNAME verification
+        activates tracking; subdomain cannot later be removed. Tracking uses HTTP; HTTPS needs
+        operator-provided CDN/certificate. Provisioning is asynchronous.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -383,7 +385,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateDomainRequest'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -624,11 +626,11 @@ paths:
         - Contacts
       summary: Create a new contact
       description: >-
-        Upserts case-insensitive email, merging supplied fields and memberships. audience_id is ignored.
-        Property keys must already exist; values match their string/number definition. Empty strings and null
-        clear property values. Names and stored property values cap 1000 characters. Teams cap 100 properties,
-        500 segments, 100 topics. Requires full_access credentials. Unknown query/body fields are ignored
-        unless documented otherwise.
+        Upserts case-insensitive email, merging supplied fields and memberships. audience_id aliases segment
+        membership when segments is omitted. Property keys must already exist; values match their
+        string/number definition. Empty strings and null clear property values. Names and stored property
+        values cap 1000 characters. Teams cap 100 properties, 500 segments, 100 topics. Requires full_access
+        credentials. Unknown query/body fields are ignored unless documented otherwise.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -639,7 +641,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateContactOptions'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -771,8 +773,8 @@ paths:
         - Contacts
       summary: Update a single contact by ID or email
       description: >-
-        Email is immutable through this endpoint: an email field is ignored. Null scalar names/subscription
-        leave the field unchanged; null property values clear it. Boolean properties rejected. Requires
+        Email is immutable through this endpoint: an email field is ignored. Null names clear; null
+        subscription is omitted; null property values clear it. Boolean properties rejected. Requires
         full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
       x-opensend-permission: full_access
       parameters:
@@ -885,7 +887,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateSegmentOptions'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -1126,7 +1128,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateTopicOptions'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -1360,8 +1362,8 @@ paths:
         email/first_name/last_name/unsubscribed names. Fallback must match declared type; no null fallback
         input. Create trims string fallback, empty means unset, trimmed fallback max 1000 characters. Keys
         remain reserved during asynchronous deletion cleanup. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Key
-        normalized lowercase. Only string/number types.
+        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Keys
+        preserve their supplied spelling. Only string/number types.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1372,7 +1374,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateContactPropertyOptions'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -1410,7 +1412,7 @@ paths:
       summary: Retrieve a list of contact properties
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        Unset fallback_value returns null. Key normalized lowercase. Only string/number types.
+        Unset fallback_value returns null. Keys preserve their supplied spelling. Only string/number types.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
@@ -1456,7 +1458,7 @@ paths:
       summary: Retrieve a single contact property
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        Unset fallback_value returns null. Key normalized lowercase. Only string/number types.
+        Unset fallback_value returns null. Keys preserve their supplied spelling. Only string/number types.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1506,8 +1508,8 @@ paths:
         Key/type immutable. Fallback must match stored type. Omission leaves the fallback unchanged; null is
         rejected. String fallback max 1000 characters. Create trims fallback and treats an empty string as
         unset; PATCH preserves string whitespace and empty string. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Key
-        normalized lowercase. Only string/number types.
+        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Keys
+        preserve their supplied spelling. Only string/number types.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1561,8 +1563,8 @@ paths:
       summary: Remove an existing contact property
       description: >-
         Removal and related cleanup may continue asynchronously. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Key
-        normalized lowercase. Only string/number types.
+        query/body fields are ignored unless documented otherwise. Unset fallback_value returns null. Keys
+        preserve their supplied spelling. Only string/number types.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1614,8 +1616,9 @@ paths:
         preserved. reply_to max 50 valid mailboxes. Missing alias generated by dashboard rules. Inline merge
         tags infer variables; explicit definitions override them. Only string/number variables. Requires
         full_access credentials. Unknown query/body fields are ignored unless documented otherwise. One
-        mutable draft and published snapshot; no version history. Variables have only key/type/fallback_value
-        (no ids/timestamps), string/number only. reply_to may be string, array or null for legacy editor data.
+        mutable draft and published snapshot; no version history. Variables include stable opaque ids and
+        independent variable timestamps; string/number only. reply_to may be string, array or null for legacy
+        editor data.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1626,7 +1629,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateTemplateRequest'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -1664,9 +1667,9 @@ paths:
       summary: Retrieve a list of templates
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        One mutable draft and published snapshot; no version history. Variables have only
-        key/type/fallback_value (no ids/timestamps), string/number only. reply_to may be string, array or null
-        for legacy editor data.
+        One mutable draft and published snapshot; no version history. Variables include stable opaque ids and
+        independent variable timestamps; string/number only. reply_to may be string, array or null for legacy
+        editor data.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
@@ -1712,9 +1715,9 @@ paths:
       summary: Retrieve a single template
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        One mutable draft and published snapshot; no version history. Variables have only
-        key/type/fallback_value (no ids/timestamps), string/number only. reply_to may be string, array or null
-        for legacy editor data.
+        One mutable draft and published snapshot; no version history. Variables include stable opaque ids and
+        independent variable timestamps; string/number only. reply_to may be string, array or null for legacy
+        editor data.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1762,10 +1765,10 @@ paths:
       summary: Update an existing template
       description: >-
         Edits current draft; published snapshot unchanged. Same limits as create. No historical version API;
-        current_version_id remains stable across edits. Requires full_access credentials. Unknown query/body
-        fields are ignored unless documented otherwise. One mutable draft and published snapshot; no version
-        history. Variables have only key/type/fallback_value (no ids/timestamps), string/number only. reply_to
-        may be string, array or null for legacy editor data.
+        current_version_id changes on draft edits and stays stable on publish. Requires full_access
+        credentials. Unknown query/body fields are ignored unless documented otherwise. One mutable draft and
+        published snapshot; no version history. Variables include stable opaque ids and template variable
+        timestamps; string/number only. reply_to may be string, array or null for legacy editor data.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1820,8 +1823,8 @@ paths:
       description: >-
         Removal and related cleanup may continue asynchronously. Requires full_access credentials. Unknown
         query/body fields are ignored unless documented otherwise. One mutable draft and published snapshot;
-        no version history. Variables have only key/type/fallback_value (no ids/timestamps), string/number
-        only. reply_to may be string, array or null for legacy editor data.
+        no version history. Variables include stable opaque ids and template variable timestamps;
+        string/number only. reply_to may be string, array or null for legacy editor data.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -1874,7 +1877,7 @@ paths:
         Suppression/global/topic preferences checked during bounded fan-out and before SES delivery. Merge
         tags and signed unsubscribe links supported. Body limits are 256 KiB per HTML/text. Reply-to accepts
         up to 50 valid mailboxes, first address max 1000 characters. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. List omits topic_id. Get includes
+        query/body fields are ignored unless documented otherwise. Lists include topic_id. Get includes
         object=broadcast; timestamps/segment ids may be null, reply_to may be string/array/null.
       x-opensend-permission: full_access
       parameters:
@@ -1886,7 +1889,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateBroadcastOptions'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -1924,8 +1927,8 @@ paths:
       summary: Retrieve a list of broadcasts
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        List omits topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may
-        be string/array/null.
+        Lists include topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to
+        may be string/array/null.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
@@ -1971,8 +1974,8 @@ paths:
       summary: Retrieve a single broadcast
       description: >-
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        List omits topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may
-        be string/array/null.
+        Lists include topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to
+        may be string/array/null.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -2021,8 +2024,8 @@ paths:
       description: >-
         Draft/canceled broadcasts can be edited; other statuses permit name only. scheduled_at and send are
         ignored; use /send. Null segment selects all contacts (unless audience_id supplied). Requires
-        full_access credentials. Unknown query/body fields are ignored unless documented otherwise. List omits
-        topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may be
+        full_access credentials. Unknown query/body fields are ignored unless documented otherwise. Lists
+        include topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may be
         string/array/null.
       x-opensend-permission: full_access
       parameters:
@@ -2077,7 +2080,7 @@ paths:
       summary: Remove an existing broadcast that is in the draft status
       description: >-
         Removal and related cleanup may continue asynchronously. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. List omits topic_id. Get includes
+        query/body fields are ignored unless documented otherwise. Lists include topic_id. Get includes
         object=broadcast; timestamps/segment ids may be null, reply_to may be string/array/null.
       x-opensend-permission: full_access
       parameters:
@@ -2443,7 +2446,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateApiKeyRequest'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -2564,6 +2567,57 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+    patch:
+      operationId: api-keys/update
+      tags:
+        - API Keys
+      summary: api-keys/update
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateApiKeyResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiKeyOptions'
   /templates/{id}/publish:
     post:
       operationId: templates/publish
@@ -2573,7 +2627,7 @@ paths:
       description: >-
         Publish snapshots the current draft, requiring nonempty HTML. Requires full_access credentials.
         Unknown query/body fields are ignored unless documented otherwise. One mutable draft and published
-        snapshot; no version history. Variables have only key/type/fallback_value (no ids/timestamps),
+        snapshot; no version history. Variables include stable opaque ids and independent variable timestamps;
         string/number only. reply_to may be string, array or null for legacy editor data.
       x-opensend-permission: full_access
       parameters:
@@ -2625,8 +2679,8 @@ paths:
       description: >-
         Duplicates current draft with unique alias and a copy suffix; no body options. Requires full_access
         credentials. Unknown query/body fields are ignored unless documented otherwise. One mutable draft and
-        published snapshot; no version history. Variables have only key/type/fallback_value (no
-        ids/timestamps), string/number only. reply_to may be string, array or null for legacy editor data.
+        published snapshot; no version history. Variables include stable opaque ids and independent variable
+        timestamps; string/number only. reply_to may be string, array or null for legacy editor data.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -2678,8 +2732,8 @@ paths:
         Cancel allowed until audience resolution starts; already submitted emails cannot be recalled.
         Duplicate creates a new draft. Send resolves audience in pages with a creation cutoff. queued means in
         progress, sent means eligible copies settled, failed means fan-out or send failure. Requires
-        full_access credentials. Unknown query/body fields are ignored unless documented otherwise. List omits
-        topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may be
+        full_access credentials. Unknown query/body fields are ignored unless documented otherwise. Lists
+        include topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may be
         string/array/null.
       x-opensend-permission: full_access
       parameters:
@@ -2740,7 +2794,7 @@ paths:
         resolution starts; already submitted emails cannot be recalled. Duplicate creates a new draft. Send
         resolves audience in pages with a creation cutoff. queued means in progress, sent means eligible
         copies settled, failed means fan-out or send failure. Requires full_access credentials. Unknown
-        query/body fields are ignored unless documented otherwise. List omits topic_id. Get includes
+        query/body fields are ignored unless documented otherwise. Lists include topic_id. Get includes
         object=broadcast; timestamps/segment ids may be null, reply_to may be string/array/null.
       x-opensend-permission: full_access
       parameters:
@@ -2796,8 +2850,8 @@ paths:
         recalled. Duplicate creates a new draft. Send resolves audience in pages with a creation cutoff.
         queued means in progress, sent means eligible copies settled, failed means fan-out or send failure.
         Requires full_access credentials. Unknown query/body fields are ignored unless documented otherwise.
-        List omits topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to may
-        be string/array/null.
+        Lists include topic_id. Get includes object=broadcast; timestamps/segment ids may be null, reply_to
+        may be string/array/null.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -2808,7 +2862,7 @@ paths:
           description: Opaque resource id.
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '200':
+        '201':
           description: OK
           headers:
             ratelimit-limit:
@@ -3164,7 +3218,7 @@ paths:
         - Receiving Emails
       summary: Retrieve a list of received emails
       description: >-
-        Newest receivedAt first; PostgreSQL-style timestamps. 30-day retention. Metadata only, no
+        Newest receivedAt first; ISO 8601 created_at. 30-day retention. Metadata only, no
         raw/body/header/authentication. Requires full_access credentials. Unknown query/body fields are
         ignored unless documented otherwise.
       x-opensend-permission: full_access
@@ -3323,9 +3377,8 @@ paths:
         - Receiving Emails
       summary: Retrieve a single attachment for a received email
       description: >-
-        Signed download expires in one hour. Pagination parameters are validated but do not change the
-        selected attachment. Requires full_access credentials. Unknown query/body fields are ignored unless
-        documented otherwise.
+        Retrieve one received attachment with a one-hour signed download. Full access and same-team parent
+        required. List parameters are ignored.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -3340,9 +3393,6 @@ paths:
           schema:
             type: string
           description: Opaque resource id.
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationAfter'
-        - $ref: '#/components/parameters/PaginationBefore'
       responses:
         '200':
           description: OK
@@ -3627,146 +3677,91 @@ paths:
       operationId: oauth/list-grants
       tags:
         - OAuth
-      summary: Retrieve a list of OAuth grants
-      x-opensend-permission: oauth:full_access
-      security:
-        - oauthBearer: []
-      description: >-
-        Legacy OAuth resource route outside apiRoute. OAuth full_access token only, no API keys. No REST
-        rate-limit headers, API request logging or cursor pagination. All query parameters ignored. List scans
-        at most 100 team grants in ascending creation order, then filters live grants, and returns a bare
-        array of internal view fields. Delete revokes a grant belonging to the token team and returns [].
-        Invalid token/missing or foreign grant returns 400 {error: invalid_request, error_description}; valid
-        token lacking scope returns 403 {error: insufficient_scope}. Cache-Control: no-store and Pragma:
-        no-cache.
+      summary: oauth/list-grants
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
       responses:
         '200':
           description: OK
           headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListOAuthGrantsResponse'
         '400':
-          description: OAuth request refused
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OAuthInvalidRequest'
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
         '403':
-          description: OAuth request refused
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OAuthInsufficientScope'
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
   /oauth/grants/{id}:
     delete:
       operationId: oauth/revoke-grant
       tags:
         - OAuth
-      summary: Revoke an OAuth grant
-      x-opensend-permission: oauth:full_access
-      security:
-        - oauthBearer: []
-      description: >-
-        Legacy OAuth resource route outside apiRoute. OAuth full_access token only, no API keys. No REST
-        rate-limit headers, API request logging or cursor pagination. All query parameters ignored. List scans
-        at most 100 team grants in ascending creation order, then filters live grants, and returns a bare
-        array of internal view fields. Delete revokes a grant belonging to the token team and returns [].
-        Invalid token/missing or foreign grant returns 400 {error: invalid_request, error_description}; valid
-        token lacking scope returns 403 {error: insufficient_scope}. Cache-Control: no-store and Pragma:
-        no-cache.
+      summary: oauth/revoke-grant
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
-          description: OAuth grant id. The legacy prefix router passes the entire suffix as the id.
       responses:
         '200':
           description: OK
           headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RevokeOAuthGrantResponse'
         '400':
-          description: OAuth request refused
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OAuthInvalidRequest'
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
         '403':
-          description: OAuth request refused
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                enum:
-                  - no-store
-            Pragma:
-              schema:
-                type: string
-                enum:
-                  - no-cache
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OAuthInsufficientScope'
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
   /webhooks:
     post:
       operationId: webhooks/create
@@ -5377,6 +5372,419 @@ paths:
         '500':
           $ref: '#/components/responses/Error500'
       x-opensend-permission: full_access
+  /audiences:
+    post:
+      operationId: audiences/create
+      tags:
+        - Segments
+      summary: audiences/create
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAudienceResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSegmentOptions'
+      deprecated: true
+    get:
+      operationId: audiences/list
+      tags:
+        - Segments
+      summary: audiences/list
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAudiencesResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      deprecated: true
+  /audiences/{id}:
+    get:
+      operationId: audiences/get
+      tags:
+        - Segments
+      summary: audiences/get
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAudienceResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      deprecated: true
+    delete:
+      operationId: audiences/remove
+      tags:
+        - Segments
+      summary: audiences/remove
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveAudienceResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      deprecated: true
+  /emails/{id}/attachments:
+    get:
+      operationId: emails/list-attachments
+      tags:
+        - Emails
+      summary: emails/list-attachments
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAttachmentsResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /emails/{id}/attachments/{attachmentId}:
+    get:
+      operationId: emails/get-attachment
+      tags:
+        - Emails
+      summary: emails/get-attachment
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievedAttachment'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /broadcasts/{id}/recipients:
+    get:
+      operationId: broadcasts/recipients
+      tags:
+        - Broadcasts
+      summary: broadcasts/recipients
+      description: Resend-compatible REST operation. Opaque local ids; full-access bearer key or OAuth token required.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+        - name: type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - sent
+              - delivered
+              - opened
+              - clicked
+              - bounced
+              - complained
+              - unsubscribed
+              - suppressed
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: bounce_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - permanent
+              - transient
+              - undetermined
+          description: Only accepted with type=bounced.
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListBroadcastRecipientsResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /broadcasts/{id}/clicked-links:
+    get:
+      operationId: broadcasts/list-clicked-links
+      tags:
+        - Broadcasts
+      summary: broadcasts/list-clicked-links
+      description: >-
+        Links ranked by total clicks descending. Unique clicks count distinct recipient messages. Opaque id
+        cursors; tied counts use creation time and id.
+      x-opensend-permission: full_access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListBroadcastClickedLinksResponseSuccess'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
 components:
   headers:
     ratelimit_limit:
@@ -5403,9 +5811,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: OAuth access token
-      description: >-
-        Only a valid OAuth access token with full_access. os_ API keys are not accepted by these legacy
-        routes.
+      description: OAuth bearer tokens with full_access, accepted alongside full-access API keys by REST routes.
   parameters:
     PaginationLimit:
       name: limit
@@ -5629,13 +6035,9 @@ components:
           maxLength: 255
           description: Name of attached file.
         path:
-          anyOf:
-            - type: string
-              description: >-
-                A URL is ignored when content is supplied; path-only attachments fail with invalid_attachment
-                (422).
-            - type: 'null'
-          description: Path where the attachment file is hosted
+          type: string
+          format: uri
+          description: Public HTTPS URL, DNS pinned; up to three redirects, each revalidated.
         content_type:
           anyOf:
             - type: string
@@ -5649,9 +6051,17 @@ components:
               maxLength: 78
             - type: 'null'
           description: Content ID for embedding inline images using cid references (e.g., cid:image001).
-      required:
-        - content
-        - filename
+      required: []
+      allOf:
+        - anyOf:
+            - required:
+                - path
+            - required:
+                - content
+                - filename
+      description: >-
+        Base64 content or a public HTTPS URL. Filename can be derived from a URL path. Download and combined
+        base64 size limits apply.
     EmailTemplateInput:
       type: object
       properties:
@@ -5764,8 +6174,12 @@ components:
             - $ref: '#/components/schemas/EmailTemplateInput'
             - type: 'null'
         topic_id:
-          type: 'null'
-          description: Only null/omitted is accepted; non-null topic_id returns 422.
+          type:
+            - string
+            - 'null'
+          description: >-
+            Team topic. Each to/cc/bcc recipient is checked at delivery; explicit choices override its
+            default. Unsubscribed recipients fail.
       required:
         - to
       description: >-
@@ -5902,14 +6316,17 @@ components:
             - $ref: '#/components/schemas/EmailTemplateInput'
             - type: 'null'
         topic_id:
-          type: 'null'
-          description: Only null/omitted is accepted; non-null topic_id returns 422.
+          type:
+            - string
+            - 'null'
+          description: >-
+            Team topic. Each to/cc/bcc recipient is checked at delivery; explicit choices override its
+            default. Unsubscribed recipients fail.
       required:
         - to
       description: >-
-        Same email validation as SendEmailRequest; nonempty attachments rejected. All messages validate and
-        queue atomically; x-batch-validation is ignored (strict only). Scheduling and templates supported.
-        Total batch JSON is limited to 1 MiB.
+        Same validation as SendEmailRequest; attachments unsupported. Strict mode rolls the whole batch back.
+        Permissive mode returns successful ids and indexed errors. Total JSON limit 1 MiB.
       allOf:
         - anyOf:
             - required:
@@ -6159,8 +6576,23 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SendEmailResponse'
-          minItems: 1
+          minItems: 0
           maxItems: 100
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                minimum: 0
+              message:
+                type: string
+            required:
+              - index
+              - message
+            additionalProperties: false
+          description: 'Always present with x-batch-validation: permissive, absent in strict mode.'
       required:
         - data
       additionalProperties: false
@@ -6294,8 +6726,12 @@ components:
             - $ref: '#/components/schemas/EmailTemplateInput'
             - type: 'null'
         topic_id:
-          type: 'null'
-          description: Only null/omitted is accepted; non-null topic_id returns 422.
+          type:
+            - string
+            - 'null'
+          description: >-
+            Team topic. Each to/cc/bcc recipient is checked at delivery; explicit choices override its
+            default. Unsubscribed recipients fail.
       description: >-
         SMTP variant: at least one address across to/cc/bcc; to can be omitted. Other validation matches
         SendEmailRequest.
@@ -6672,6 +7108,7 @@ components:
             - type: string
               enum:
                 - opportunistic
+                - enforced
             - type: 'null'
         capabilities:
           type: object
@@ -6681,20 +7118,22 @@ components:
                 - type: string
                   enum:
                     - enabled
+                    - disabled
                 - type: 'null'
             receiving:
               anyOf:
                 - type: string
                   enum:
+                    - enabled
                     - disabled
                 - type: 'null'
       required:
         - name
       description: >-
-        Region defaults to installation region (fallback us-east-1). Creation only permits opportunistic TLS,
-        sending enabled and receiving disabled; other settings require PATCH after provisioning. Tracking
-        CNAME verification activates tracking; subdomain cannot later be removed. Tracking uses HTTP; HTTPS
-        needs operator-provided CDN/certificate. Provisioning is asynchronous.
+        Region defaults to installation region (fallback us-east-1). TLS and sending/receiving capabilities
+        are accepted at creation. Receiving requires a supported SES region. Tracking CNAME verification
+        activates tracking; subdomain cannot later be removed. Tracking uses HTTP; HTTPS needs
+        operator-provided CDN/certificate. Provisioning is asynchronous.
     UpdateDomainOptions:
       type: object
       properties:
@@ -6812,18 +7251,12 @@ components:
       properties:
         id:
           type: string
-          description: Opaque Convex document id, not a UUID.
-        object:
-          type: string
-          enum:
-            - api_key
         token:
           type: string
           pattern: ^os_[a-z0-9]{32}$
           description: The token of the API key.
       required:
         - id
-        - object
         - token
       additionalProperties: false
     ApiKey:
@@ -7043,13 +7476,17 @@ components:
               maxItems: 100
             - type: 'null'
           description: Array of topic subscriptions for the contact.
+        audience_id:
+          type: string
+          deprecated: true
+          description: Legacy initial segment membership.
       required:
         - email
       description: >-
-        Upserts case-insensitive email, merging supplied fields and memberships. audience_id is ignored.
-        Property keys must already exist; values match their string/number definition. Empty strings and null
-        clear property values. Names and stored property values cap 1000 characters. Teams cap 100 properties,
-        500 segments, 100 topics.
+        Upserts case-insensitive email, merging supplied fields and memberships. audience_id aliases segment
+        membership when segments is omitted. Property keys must already exist; values match their
+        string/number definition. Empty strings and null clear property values. Names and stored property
+        values cap 1000 characters. Teams cap 100 properties, 500 segments, 100 topics.
     UpdateContactOptions:
       type: object
       properties:
@@ -7081,8 +7518,9 @@ components:
               - 'null'
           description: A map of custom property keys and values to update.
       description: >-
-        Email is immutable through this endpoint: an email field is ignored. Null scalar names/subscription
-        leave the field unchanged; null property values clear it. Boolean properties rejected.
+        Contact id or URL-encoded email is the path selector; the address cannot be renamed. Null
+        first_name/last_name clears the name. Null property values clear to their default. Values must match
+        their string/number definition.
     CreateContactResponseSuccess:
       type: object
       properties:
@@ -7615,7 +8053,7 @@ components:
       properties:
         key:
           type: string
-          pattern: ^[a-zA-Z][a-zA-Z0-9_]{0,49}$
+          pattern: ^[a-zA-Z0-9_]{1,50}$
           description: >-
             The property key. Max length is 50 characters. Only alphanumeric characters and underscores are
             allowed.
@@ -7636,10 +8074,9 @@ components:
         - key
         - type
       description: >-
-        Key must start with a letter, is normalized to lowercase and rejects reserved
-        email/first_name/last_name/unsubscribed names. Fallback must match declared type; no null fallback
-        input. Create trims string fallback, empty means unset, trimmed fallback max 1000 characters. Keys
-        remain reserved during asynchronous deletion cleanup.
+        Preserves API key spelling and exact string fallbacks. Reserved
+        email/first_name/last_name/unsubscribed keys are rejected. String/number values must match the
+        definition. Team cap 100, fallback cap 1000 characters.
     UpdateContactPropertyOptions:
       type: object
       properties:
@@ -7835,10 +8272,19 @@ components:
             - number
             - 'null'
           description: The fallback value of the variable.
+        id:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
       required:
         - key
         - type
         - fallback_value
+        - id
+        - created_at
+        - updated_at
       additionalProperties: false
     CreateTemplateRequest:
       type: object
@@ -7943,7 +8389,7 @@ components:
           maxItems: 50
       description: >-
         Edits current draft; published snapshot unchanged. Same limits as create. No historical version API;
-        current_version_id remains stable across edits.
+        current_version_id changes on draft edits and stays stable on publish.
     TemplateListItem:
       type: object
       properties:
@@ -8033,13 +8479,10 @@ components:
           description: Email subject.
         reply_to:
           anyOf:
-            - oneOf:
-                - type: string
-                - type: array
-                  items:
-                    type: string
+            - type: array
+              items:
+                type: string
             - type: 'null'
-          description: Reply-to email addresses.
         html:
           type: string
           description: The HTML version of the template.
@@ -8376,6 +8819,10 @@ components:
             - type: string
               description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
             - type: 'null'
+        topic_id:
+          type:
+            - string
+            - 'null'
       required:
         - id
         - name
@@ -8385,6 +8832,7 @@ components:
         - created_at
         - scheduled_at
         - sent_at
+        - topic_id
       additionalProperties: false
     ListBroadcastsResponseSuccess:
       type: object
@@ -8465,13 +8913,10 @@ components:
           description: The subject line of the email.
         reply_to:
           anyOf:
-            - oneOf:
-                - type: string
-                - type: array
-                  items:
-                    type: string
+            - type: array
+              items:
+                type: string
             - type: 'null'
-          description: The email addresses to which replies should be sent.
         preview_text:
           type: string
           description: The preview text of the email.
@@ -8537,15 +8982,9 @@ components:
     SendBroadcastResponseSuccess:
       type: object
       properties:
-        object:
-          type: string
-          enum:
-            - broadcast
         id:
           type: string
-          description: The ID of the broadcast.
       required:
-        - object
         - id
       additionalProperties: false
     CancelBroadcastResponseSuccess:
@@ -8765,7 +9204,7 @@ components:
           type: string
         created_at:
           type: string
-          description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
+          format: date-time
         subject:
           type: string
         bcc:
@@ -8841,7 +9280,7 @@ components:
           description: The sender email address.
         created_at:
           type: string
-          description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
+          format: date-time
         subject:
           type: string
           description: The email subject.
@@ -9202,8 +9641,9 @@ components:
           type: number
           description: The HTTP status code of the response.
         user_agent:
-          type: string
-          description: The user agent of the request.
+          type:
+            - string
+            - 'null'
       required:
         - id
         - created_at
@@ -9236,8 +9676,9 @@ components:
           type: number
           description: The HTTP status code of the response.
         user_agent:
-          type: string
-          description: The user agent of the request.
+          type:
+            - string
+            - 'null'
         request_body:
           description: The request body sent to the API.
         response_body:
@@ -9448,39 +9889,81 @@ components:
       properties:
         id:
           type: string
-          description: Opaque Convex document id, not a UUID.
-        application:
-          type: string
-        team:
-          type: string
-        organizationId:
+        client_id:
           type: string
         scopes:
           type: array
           items:
             type: string
-          description: The scopes granted to the OAuth client.
-        createdAt:
-          type: number
-          description: Unix milliseconds.
+        resource:
+          type: 'null'
+        created_at:
+          type: string
+        revoked_at:
+          type:
+            - string
+            - 'null'
+        revoked_reason:
+          type:
+            - string
+            - 'null'
+        client:
+          type: object
+          properties:
+            name:
+              type: string
+            logo_uri:
+              type:
+                - string
+                - 'null'
+          required:
+            - name
+            - logo_uri
+          additionalProperties: false
       required:
         - id
-        - application
-        - team
-        - organizationId
+        - client_id
         - scopes
-        - createdAt
+        - resource
+        - created_at
+        - revoked_at
+        - revoked_reason
+        - client
       additionalProperties: false
     ListOAuthGrantsResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/OAuthGrant'
-      maxItems: 100
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthGrant'
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
     RevokeOAuthGrantResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/OAuthGrant'
-      maxItems: 0
+      type: object
+      properties:
+        object:
+          const: oauth_grant
+        id:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+        revoked_reason:
+          const: revoked_from_api
+      required:
+        - object
+        - id
+        - revoked_at
+        - revoked_reason
+      additionalProperties: false
     OAuthInvalidRequest:
       type: object
       properties:
@@ -10819,4 +11302,187 @@ components:
         - output
         - error
         - created_at
+      additionalProperties: false
+    UpdateApiKeyOptions:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+      required:
+        - name
+      additionalProperties: false
+    UpdateApiKeyResponse:
+      type: object
+      properties:
+        object:
+          const: api_key
+        id:
+          type: string
+      required:
+        - object
+        - id
+      additionalProperties: false
+    CreateAudienceResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: audience
+        id:
+          type: string
+      required:
+        - object
+        - id
+      additionalProperties: false
+    GetAudienceResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: audience
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+      required:
+        - object
+        - id
+        - name
+        - created_at
+      additionalProperties: false
+    RemoveAudienceResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: audience
+        id:
+          type: string
+        deleted:
+          const: true
+      required:
+        - object
+        - id
+        - deleted
+      additionalProperties: false
+    Audience:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+      required:
+        - id
+        - name
+        - created_at
+      additionalProperties: false
+    ListAudiencesResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audience'
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    BroadcastRecipient:
+      type: object
+      properties:
+        id:
+          type: string
+        contact_id:
+          type:
+            - string
+            - 'null'
+        email:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+        bounce_type:
+          type: string
+          enum:
+            - permanent
+            - transient
+            - undetermined
+        clicked_links:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              clicks:
+                type: integer
+                minimum: 1
+            required:
+              - url
+              - clicks
+            additionalProperties: false
+      required:
+        - id
+        - contact_id
+        - email
+      additionalProperties: false
+    ListBroadcastRecipientsResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BroadcastRecipient'
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    BroadcastClickedLink:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        clicks:
+          type: integer
+          minimum: 1
+        unique_clicks:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - url
+        - clicks
+        - unique_clicks
+      additionalProperties: false
+    ListBroadcastClickedLinksResponseSuccess:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BroadcastClickedLink'
+      required:
+        - object
+        - has_more
+        - data
       additionalProperties: false

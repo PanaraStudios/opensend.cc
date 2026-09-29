@@ -186,7 +186,9 @@ test("resource command POSTs retain their exact responses", async () => {
     vi.setSystemTime(Date.now() + 1000)
     const first = await f.call(path, {})
     const text = await first.text()
-    expect(first.status, text).toBe(200)
+    expect(first.status, text).toBe(
+      path.startsWith("/broadcasts/") && path.endsWith("/duplicate") ? 201 : 200
+    )
     const saved = await f.t.run((ctx) =>
       ctx.db
         .query("apiIdempotency")
@@ -247,7 +249,7 @@ test("a committed key expires after 24 hours", async () => {
   const f = await setup()
   await f.call("/segments", { name: "One" })
   vi.setSystemTime(Date.now() + 86_400_001)
-  expect((await f.call("/segments", { name: "Two" })).status).toBe(200)
+  expect((await f.call("/segments", { name: "Two" })).status).toBe(201)
   expect(
     await f.t.run((ctx) => ctx.db.query("segments").collect())
   ).toHaveLength(2)

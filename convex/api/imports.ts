@@ -207,17 +207,30 @@ export const list = internalQuery({
     if (status === "queued") return { has_more: false, data: [] }
     const storedStatus = status === "in_progress" ? "processing" : status
     let scanHasMore = false
+    // Rows carry their queued contacts, so the scan is byte-bounded and
+    // returned as an array: read from the anchor's time inclusive, and
+    // cursorPage breaks equal-time ties by id.
+    let anchor: Doc<"contactImports"> | undefined
+    const count = page.limit + 2
     const result = await cursorPage(
       page,
       async (value) => {
         const id = ctx.db.normalizeId("contactImports", value)
         const row = id ? await ctx.db.get("contactImports", id) : null
-        return row?.organizationId === caller.organizationId &&
+        anchor =
+          row?.organizationId === caller.organizationId &&
           (!storedStatus || row.status === storedStatus)
-          ? row._creationTime
-          : null
+            ? row
+            : undefined
+        return anchor ?? null
       },
-      async (bound, order, count) => {
+      async (order) => {
+        const bound =
+          anchor === undefined
+            ? {}
+            : order === "desc"
+              ? { lt: anchor._creationTime }
+              : { gt: anchor._creationTime }
         const query = storedStatus
           ? ctx.db
               .query("contactImports")
@@ -226,9 +239,9 @@ export const list = internalQuery({
                   .eq("organizationId", caller.organizationId)
                   .eq("status", storedStatus)
                 return bound.lt !== undefined
-                  ? base.lt("_creationTime", bound.lt)
+                  ? base.lte("_creationTime", bound.lt)
                   : bound.gt !== undefined
-                    ? base.gt("_creationTime", bound.gt)
+                    ? base.gte("_creationTime", bound.gt)
                     : base
               })
           : ctx.db
@@ -236,9 +249,9 @@ export const list = internalQuery({
               .withIndex("by_organizationId", (q) => {
                 const base = q.eq("organizationId", caller.organizationId)
                 return bound.lt !== undefined
-                  ? base.lt("_creationTime", bound.lt)
+                  ? base.lte("_creationTime", bound.lt)
                   : bound.gt !== undefined
-                    ? base.gt("_creationTime", bound.gt)
+                    ? base.gte("_creationTime", bound.gt)
                     : base
               })
         const scanned = await query.order(order).paginate({

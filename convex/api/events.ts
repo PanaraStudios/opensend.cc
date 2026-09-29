@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -54,20 +55,14 @@ export const list = internalQuery({
     const org = caller.organizationId
     return cursorPage(
       page,
-      async (id) => (await own(ctx, caller, id))?._creationTime ?? null,
-      (bound, order, count) =>
-        ctx.db
+      async (id) => await own(ctx, caller, id),
+      (order) =>
+        stream(ctx.db, schema)
           .query("automationEvents")
           .withIndex("by_organizationId", (q) => {
-            const scope = q.eq("organizationId", org)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("organizationId", org)
           })
           .order(order)
-          .take(count)
     )
   },
 })

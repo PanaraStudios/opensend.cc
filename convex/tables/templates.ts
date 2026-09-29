@@ -31,6 +31,19 @@ export const templateTables = {
     /** The draft's variables, at most MAX_TEMPLATE_VARIABLES. */
     variables: v.array(v.string()),
     variableDefinitions: v.optional(v.array(templateVariableValue)),
+    version: v.optional(v.number()),
+    variableMetadata: v.optional(
+      v.array(
+        v.object({
+          key: v.string(),
+          id: v.string(),
+          createdAt: v.number(),
+          updatedAt: v.number(),
+          type: v.string(),
+          fallback: v.optional(v.string()),
+        })
+      )
+    ),
     updatedAt: v.number(),
     /** As in the demo contract: moved forward by an edit that changes
         nothing sent, and kept through a revert to draft. */

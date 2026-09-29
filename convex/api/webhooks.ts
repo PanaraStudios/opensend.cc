@@ -1,4 +1,5 @@
 import { v } from "convex/values"
+import { stream } from "convex-helpers/server/stream"
 import type { HttpRouter } from "convex/server"
 import { symmetricEncrypt } from "better-auth/crypto"
 import {
@@ -173,24 +174,18 @@ export const list = internalQuery({
       page,
       async (id) => {
         try {
-          return (await own(ctx, caller.organizationId, id))._creationTime
+          return await own(ctx, caller.organizationId, id)
         } catch {
           return null
         }
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("webhooks")
-          .withIndex("by_organizationId", (q) => {
-            const scope = q.eq("organizationId", caller.organizationId)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
-          })
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", caller.organizationId)
+          )
           .order(order)
-          .take(count)
     )
     return { ...result, data: result.data.map(shown) }
   },
@@ -217,22 +212,18 @@ export const listEvents = internalQuery({
       page,
       async (id) => {
         try {
-          return (await event(ctx, row._id, id))._creationTime
+          return await event(ctx, row._id, id)
         } catch {
           return null
         }
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("webhookDeliveries")
-          .withIndex("by_webhookId_and_replay", (q) => {
-            const scope = q.eq("webhookId", row._id).eq("replay", false)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : scope
-          })
+          .withIndex("by_webhookId_and_replay", (q) =>
+            q.eq("webhookId", row._id).eq("replay", false)
+          )
           .order(order)
-          .take(count)
     )
   },
 })
@@ -257,20 +248,14 @@ export const listAttempts = internalQuery({
         const id = ctx.db.normalizeId("webhookAttempts", value)
         const attempt = id ? await ctx.db.get("webhookAttempts", id) : null
         return attempt?.eventId === row._id && attempt.webhookId === webhook._id
-          ? attempt._creationTime
+          ? attempt
           : null
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("webhookAttempts")
-          .withIndex("by_eventId", (q) => {
-            const scope = q.eq("eventId", row._id)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : scope
-          })
+          .withIndex("by_eventId", (q) => q.eq("eventId", row._id))
           .order(order)
-          .take(count)
     )
   },
 })

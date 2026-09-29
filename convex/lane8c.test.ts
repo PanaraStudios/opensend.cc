@@ -303,7 +303,8 @@ test("runs return graph-ordered step history and support comma-separated status 
   const f = await setup()
   const { id } = await json(f.call("/automations", "POST", definition), 201)
   const contact = await json(
-    f.call("/contacts", "POST", { email: "ada@example.com" })
+    f.call("/contacts", "POST", { email: "ada@example.com" }),
+    201
   )
   const ids: Id<"automationRuns">[] = []
   for (const status of ["completed", "failed", "running"] as const) {
@@ -454,7 +455,8 @@ test("imports apply segments/topics without contact events and respect skip conf
     name: "Readers",
   })
   const topic = await json(
-    f.call("/topics", "POST", { name: "News", default_subscription: "opt_in" })
+    f.call("/topics", "POST", { name: "News", default_subscription: "opt_in" }),
+    201
   )
   const fields = {
     segments: JSON.stringify([{ id: segment }]),
