@@ -29,8 +29,6 @@ import {
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
-  DocsCode,
-  DocsSheet,
   MoreMenu,
   SectionChrome,
   TextFieldDialog,
@@ -76,48 +74,6 @@ export function AutomationsChrome({
     <SectionChrome title="Automations" tabs={AUTOMATION_TABS} actions={actions}>
       {children}
     </SectionChrome>
-  )
-}
-
-const AUTOMATION_DOCS = [
-  {
-    title: "Trigger",
-    body: "Every automation starts with an event your app sends. Each enabled automation listening for that event starts a run for the contact it names.",
-  },
-  {
-    title: "Steps",
-    body: "Send a published template, wait for a while or for another event, branch on the event's payload or the contact, and keep the contact up to date.",
-  },
-  {
-    title: "Editing",
-    body: "An enabled automation cannot be edited. Duplicate it, change the copy, enable that, then disable the original. Runs in flight finish on the version they started with.",
-  },
-  {
-    title: "Send an event",
-    body: (
-      <DocsCode>
-        {`POST /events
-{
-  "event": "user.created",
-  "email": "ada@example.com",
-  "payload": { "plan": "team" }
-}`}
-      </DocsCode>
-    ),
-  },
-]
-
-export function AutomationsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Automations"
-      description="Emails and contact updates that run themselves when your app sends an event."
-      sections={AUTOMATION_DOCS}
-    />
   )
 }
 

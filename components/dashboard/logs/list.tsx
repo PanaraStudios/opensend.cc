@@ -23,7 +23,6 @@ import {
   LOG_TABLE_HEADERS,
   LogIcon,
   LogRow,
-  LogsDocsSheet,
 } from "@/components/dashboard/logs/shared"
 import { useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -61,7 +60,6 @@ export function LogsView() {
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     emailFilter ? undefined : defaultEmailRange(now)
   )
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const search = useDebouncedValue(query)
 
   const filters = {
@@ -110,7 +108,7 @@ export function LogsView() {
   return (
     <>
       <PageHeader title="Logs">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
       </PageHeader>
       {exporting.dialog}
       <ListToolbar
@@ -173,7 +171,6 @@ export function LogsView() {
           />
         </>
       )}
-      <LogsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

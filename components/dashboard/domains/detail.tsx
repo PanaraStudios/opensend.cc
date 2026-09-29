@@ -74,7 +74,6 @@ import {
   DnsRecordsTable,
   DomainIcon,
   DomainSection,
-  DomainsDocsSheet,
   ProviderMark,
   ProviderValue,
   RegionValue,
@@ -661,7 +660,6 @@ export function DomainDetail() {
   const { deleteDomain, canWrite } = useDomainCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/domains")
   const [tab, setTab] = React.useState("records")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState(false)
   const [providerLookupFailed, setProviderLookupFailed] = React.useState(false)
@@ -722,7 +720,7 @@ export function DomainDetail() {
         icon={DomainIcon}
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem
@@ -790,7 +788,6 @@ export function DomainDetail() {
         open={reviewOpen}
         onOpenChange={setReviewOpen}
       />
-      <DomainsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}

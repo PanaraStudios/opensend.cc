@@ -38,8 +38,6 @@ import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
-  DocsCode,
-  DocsSheet,
   MoreMenu,
   type SelectOption,
 } from "@/components/dashboard/primitives"
@@ -65,47 +63,6 @@ export function WebhookStatusBadge({ enabled }: { enabled: boolean }) {
     <Badge variant={enabled ? "success" : "secondary"} dot>
       {enabled ? "Enabled" : "Disabled"}
     </Badge>
-  )
-}
-
-const WEBHOOK_DOCS = [
-  {
-    title: "Deliveries",
-    body: "Each event is sent to your endpoint as a JSON POST. Answer with a 2xx status to take it; anything else is retried with a growing delay.",
-  },
-  {
-    title: "Verify the signature",
-    body: "Every request is signed with the webhook's signing secret. Check the signature against the raw request body before you trust the payload.",
-  },
-  {
-    title: "Payload",
-    body: (
-      <DocsCode>
-        {`{
-  "type": "email.delivered",
-  "created_at": "2026-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "em_…",
-    "to": ["ada@example.com"],
-    "subject": "Welcome"
-  }
-}`}
-      </DocsCode>
-    ),
-  },
-]
-
-export function WebhooksDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Webhooks"
-      description="Real-time events, pushed to your server as they happen."
-      sections={WEBHOOK_DOCS}
-    />
   )
 }
 

@@ -41,7 +41,6 @@ import {
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsSheet,
 } from "@/components/dashboard/audience/shared"
 import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
 import { formatDate } from "@/lib/dashboard/format"
@@ -327,7 +326,6 @@ export function TopicsView() {
   const { deleteTopic } = useAudienceCommands()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Topic | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const topics = useTopicList(useDebouncedValue(query))
@@ -337,7 +335,7 @@ export function TopicsView() {
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Create topic
@@ -427,7 +425,6 @@ export function TopicsView() {
           if (!next) setEditing(null)
         }}
       />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {

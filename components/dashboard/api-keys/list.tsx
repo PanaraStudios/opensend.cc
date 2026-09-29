@@ -15,7 +15,6 @@ import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
-  ApiKeysDocsSheet,
   DeleteApiKeyDialog,
   PERMISSION_FILTER_ITEMS,
   ViewApiKeyDialog,
@@ -47,7 +46,6 @@ export function ApiKeysView() {
     useApiKeyCommands()
   const [query, setQuery] = React.useState("")
   const [permission, setPermission] = React.useState(ALL_PERMISSIONS)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
   const [editing, setEditing] = React.useState<ApiKey | null>(null)
   const [deleting, setDeleting] = React.useState<ApiKey | null>(null)
@@ -80,7 +78,7 @@ export function ApiKeysView() {
   return (
     <>
       <PageHeader title="API keys">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         <Button onClick={() => setAdding(true)}>
           <PlusIcon data-icon="inline-start" />
           Create API key
@@ -229,7 +227,6 @@ export function ApiKeysView() {
           toast.add({ type: "success", title: "API key removed" })
         }}
       />
-      <ApiKeysDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }
