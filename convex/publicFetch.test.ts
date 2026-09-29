@@ -149,3 +149,38 @@ test("an installation-approved local origin stays pinned and cannot allow anothe
   ).rejects.toThrow("private network")
   expect(request).toHaveBeenCalledTimes(1)
 })
+
+test("prefers IPv4 and tries the next pinned address only when one is unreachable", async () => {
+  vi.spyOn(dns, "lookup").mockResolvedValue([
+    { address: "2606:4700::1", family: 6 },
+    { address: "93.184.216.34", family: 4 },
+    { address: "93.184.216.35", family: 4 },
+  ] as never)
+  const tried: string[] = []
+  vi.spyOn(https, "request").mockImplementation((...args: unknown[]) => {
+    const options = args[1] as https.RequestOptions
+    const callback = args[2] as (response: IncomingMessage) => void
+    const req = new EventEmitter()
+    Object.assign(req, {
+      end: () =>
+        options.lookup!("host.example", {}, (_error, address) => {
+          tried.push(address as string)
+          if (tried.length === 1)
+            req.emit(
+              "error",
+              Object.assign(new Error("connect ENETUNREACH"), {
+                code: "ENETUNREACH",
+              })
+            )
+          else {
+            const incoming = Readable.from([Buffer.from("OK")])
+            Object.assign(incoming, { statusCode: 200, headers: {} })
+            callback(incoming as IncomingMessage)
+          }
+        }),
+    })
+    return req as ReturnType<typeof https.request>
+  })
+  expect(await (await publicFetch("https://host.example/")).text()).toBe("OK")
+  expect(tried).toEqual(["93.184.216.34", "93.184.216.35"])
+})

@@ -52,7 +52,40 @@ export async function publicFetch(
   )
     throw new Error("The endpoint resolves to a private network address")
   signal.throwIfAborted()
-  const pinned = addresses[0]
+  // IPv4 first: container networks often have no IPv6 route. Each attempt
+  // stays pinned to one validated address; only a failed connection moves on.
+  const ordered = [
+    ...addresses.filter((address) => address.family === 4),
+    ...addresses.filter((address) => address.family !== 4),
+  ]
+  for (const [index, pinned] of ordered.entries()) {
+    try {
+      return await request(url, local, pinned, options, signal)
+    } catch (error) {
+      const last = index === ordered.length - 1
+      if (last || signal.aborted || !unreachable(error)) throw error
+    }
+  }
+  throw new Error("The endpoint has no reachable address")
+}
+
+type Address = { address: string; family: number }
+
+/** Errors raised before any byte was exchanged with that address. */
+const unreachable = (error: unknown) =>
+  error instanceof Error &&
+  "code" in error &&
+  ["ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "EADDRNOTAVAIL"].includes(
+    String(error.code)
+  )
+
+function request(
+  url: URL,
+  local: boolean,
+  pinned: Address,
+  options: PublicFetchOptions,
+  signal: AbortSignal
+): Promise<Response> {
   return new Promise((resolveResponse, reject) => {
     const request = (local ? http : https).request(
       url,
