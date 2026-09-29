@@ -31,6 +31,7 @@ import type * as api_route from "../api/route.js";
 import type * as api_state from "../api/state.js";
 import type * as api_suppressions from "../api/suppressions.js";
 import type * as api_templates from "../api/templates.js";
+import type * as api_usage from "../api/usage.js";
 import type * as api_webhooks from "../api/webhooks.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as audience from "../audience.js";
@@ -147,6 +148,7 @@ import type * as tracking from "../tracking.js";
 import type * as trackingHttp from "../trackingHttp.js";
 import type * as unsubscribe from "../unsubscribe.js";
 import type * as unsubscribeHttp from "../unsubscribeHttp.js";
+import type * as usage from "../usage.js";
 import type * as webhookDelivery from "../webhookDelivery.js";
 import type * as webhooks from "../webhooks.js";
 
@@ -180,6 +182,7 @@ declare const fullApi: ApiFromModules<{
   "api/state": typeof api_state;
   "api/suppressions": typeof api_suppressions;
   "api/templates": typeof api_templates;
+  "api/usage": typeof api_usage;
   "api/webhooks": typeof api_webhooks;
   apiKeys: typeof apiKeys;
   audience: typeof audience;
@@ -296,6 +299,7 @@ declare const fullApi: ApiFromModules<{
   trackingHttp: typeof trackingHttp;
   unsubscribe: typeof unsubscribe;
   unsubscribeHttp: typeof unsubscribeHttp;
+  usage: typeof usage;
   webhookDelivery: typeof webhookDelivery;
   webhooks: typeof webhooks;
 }>;
@@ -327,6 +331,9 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
+  usageSentCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"usageSentCounts">;
+  usageReceivedCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"usageReceivedCounts">;
+  usageAutomationCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"usageAutomationCounts">;
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;

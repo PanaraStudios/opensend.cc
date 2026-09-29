@@ -38,10 +38,35 @@ tags:
   - name: Templates
   - name: Topics
   - name: Webhooks
+  - name: Usage
   - name: Suppressions
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
+  /usage:
+    get:
+      operationId: usage/get
+      tags: [Usage]
+      summary: Retrieve account usage
+      description: Team usage in UTC calendar periods with self-hosted limits. The SES sending quota is shared across the installation. See docs/rest-api.md for intentional plan differences and upgrade backfills.
+      x-opensend-permission: full_access
+      responses:
+        "200":
+          description: Current team usage and limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUsageResponseSuccess"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
   /emails:
     post:
       operationId: emails/send
@@ -5965,6 +5990,133 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    GetUsageResponseSuccess:
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "The type of object."
+          example: "usage"
+          enum: ["usage"]
+        emails:
+          type: "object"
+          properties:
+            daily:
+              type: "object"
+              properties:
+                used:
+                  type: "integer"
+                  description: "Emails sent and received in the current day."
+                limit:
+                  type: ["integer", "null"]
+                  description: "Stored SES Max24HourSend for the installation default region, shared by all teams; null when unavailable. SES uses a rolling 24-hour sending window, unlike these UTC calendar-day counters."
+                sent:
+                  type: "integer"
+                  description: "Emails sent today."
+                received:
+                  type: "integer"
+                  description: "Emails received today."
+                resets_at:
+                  type: "string"
+                  description: "When the daily counter resets, as an ISO 8601 datetime."
+              required: ["used", "limit", "sent", "received", "resets_at"]
+            monthly:
+              type: "object"
+              properties:
+                used:
+                  type: "integer"
+                  description: "Emails sent and received in the current UTC calendar month."
+                limit:
+                  type: ["integer", "null"]
+                  description: "Always null on self-hosted Opensend; there is no billing plan limit."
+                sent:
+                  type: "integer"
+                  description: "Emails sent this UTC calendar month."
+                received:
+                  type: "integer"
+                  description: "Emails received this UTC calendar month."
+                resets_at:
+                  type: "string"
+                  description: "When the monthly counter resets, as an ISO 8601 datetime."
+              required: ["used", "limit", "sent", "received", "resets_at"]
+          required: ["daily", "monthly"]
+        contacts:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Contacts currently stored."
+            limit:
+              type: ["integer", "null"]
+              description: "Always null on self-hosted Opensend; there is no billing plan limit."
+          required: ["used", "limit"]
+        segments:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Segments currently created."
+            limit:
+              type: ["integer", "null"]
+              description: "The enforced per-team segment cap (500)."
+          required: ["used", "limit"]
+        broadcasts:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Broadcasts sent."
+            limit:
+              type: "null"
+              description: "Always `null`; broadcasts aren't limited."
+          required: ["used", "limit"]
+        ai_credits:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Always zero; AI credits are unsupported."
+            limit:
+              type: ["integer", "null"]
+              description: "Always zero; no credit allowance is provided."
+            next_increase_at:
+              type: ["string", "null"]
+              description: "When the AI credit balance next increases, as an ISO 8601 datetime, or `null` when unknown."
+          required: ["used", "limit", "next_increase_at"]
+        automation_runs:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Automation runs started in the current UTC calendar month."
+            limit:
+              type: ["integer", "null"]
+              description: "Always null on self-hosted Opensend; there is no billing plan limit."
+            resets_at:
+              type: "string"
+              description: "When the counter resets, as an ISO 8601 datetime."
+          required: ["used", "limit", "resets_at"]
+        domains:
+          type: "object"
+          properties:
+            used:
+              type: "integer"
+              description: "Domains currently added."
+            limit:
+              type: ["integer", "null"]
+              description: "Null: no self-hosted plan limit."
+          required: ["used", "limit"]
+        rate_limit:
+          type: "object"
+          properties:
+            limit:
+              type: "integer"
+              description: "The number of requests allowed per `duration`."
+            duration:
+              type: "string"
+              description: "The rate-limit window, e.g. `'1000ms'`."
+          required: ["limit", "duration"]
+      required: ["object", "emails", "contacts", "segments", "broadcasts", "ai_credits", "automation_runs", "domains", "rate_limit"]
     DomainCapabilities:
       type: object
       properties:

@@ -5,7 +5,12 @@ import { cancel, cleanup, type WorkflowId } from "@convex-dev/workflow"
 import { internalMutation, type MutationCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import type { DataModel, Id, TableNames } from "./_generated/dataModel"
-import { COUNTED_TABLES, deleteRow, type CountedTable } from "./counts"
+import {
+  COUNTED_TABLES,
+  counters,
+  deleteRow,
+  type CountedTable,
+} from "./counts"
 import { deleteEmailContent } from "./emailRows"
 import { retirement } from "./teamLifecycle"
 
@@ -103,6 +108,12 @@ export const purge = internalMutation({
       throw new Error("Invalid retirement table")
     const name = TEAM_TABLES[table]
     if (!name) {
+      for (const counter of [
+        counters.usageSent,
+        counters.usageReceived,
+        counters.usageAutomationRuns,
+      ])
+        await counter.aggregate.clear(ctx, { namespace: organizationId })
       await ctx.db.patch("teamRetirements", job._id, {
         completedAt: Date.now(),
       })

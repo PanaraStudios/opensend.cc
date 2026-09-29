@@ -64,5 +64,8 @@ app.use(aggregate, { name: "broadcastHistoryCounts" })
 app.use(aggregate, { name: "broadcastEventCounts" })
 app.use(aggregate, { name: "broadcastLinkCounts" })
 app.use(aggregate, { name: "broadcastRecipientLinkCounts" })
+app.use(aggregate, { name: "usageSentCounts" })
+app.use(aggregate, { name: "usageReceivedCounts" })
+app.use(aggregate, { name: "usageAutomationCounts" })
 app.use(migrations)
 export default app

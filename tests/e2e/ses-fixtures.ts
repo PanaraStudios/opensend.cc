@@ -280,7 +280,8 @@ export async function seedReceivedMessage(
   page: Page,
   organizationId: string,
   domainId: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  fixtureId = "lane-6b"
 ) {
   const fixture = receivedFixture
   const raw = Buffer.from(
@@ -330,14 +331,14 @@ export async function seedReceivedMessage(
     domainId,
     region: "us-east-1",
     topicArn: "arn:aws:sns:us-east-1:123456789012:inbound-fixture",
-    messageId: "lane-6b-sns",
-    sesMessageId: "lane-6b-ses",
+    messageId: `${fixtureId}-sns`,
+    sesMessageId: `${fixtureId}-ses`,
     bucket: "opensend-e2e-inbound",
-    objectKey: `${domainId}/lane-6b-ses`,
+    objectKey: `${domainId}/${fixtureId}-ses`,
     notification: JSON.stringify({
       notificationType: "Received",
       mail: {
-        messageId: "lane-6b-ses",
+        messageId: `${fixtureId}-ses`,
         source: "sender@example.test",
         destination: [fixture.to],
       },
@@ -346,7 +347,7 @@ export async function seedReceivedMessage(
         action: {
           type: "S3",
           bucketName: "opensend-e2e-inbound",
-          objectKey: `${domainId}/lane-6b-ses`,
+          objectKey: `${domainId}/${fixtureId}-ses`,
         },
         spfVerdict: { status: "PASS" },
         dkimVerdict: { status: "PASS" },
@@ -360,7 +361,7 @@ export async function seedReceivedMessage(
   const inbound = backendRows<{ _id: string; messageId: string }>(
     "inboundMessages",
     10
-  ).find((row) => row.messageId === "lane-6b-sns")!
+  ).find((row) => row.messageId === `${fixtureId}-sns`)!
   expect(inbound).toBeTruthy()
   const args = {
     id: inbound._id,

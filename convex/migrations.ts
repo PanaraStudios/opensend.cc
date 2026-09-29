@@ -48,6 +48,9 @@ export const countBroadcastEvents = backfill("broadcastEvents")
 export const countExports = backfill("exports")
 export const countEmails = backfill("emails")
 export const countEmailDomains = backfill("emails")
+export const countUsageSent = backfill("emailMetrics")
+export const countUsageReceived = backfill("receivedEmails")
+export const countUsageAutomationRuns = backfill("automationRuns")
 export const countEmailMetrics = backfill("emailMetrics")
 export const countRecipientMetrics = backfill("recipientMetrics")
 export const projectSesEvents = migrations.define({
@@ -110,6 +113,9 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countEmails,
   internal.migrations.countEmailDomains,
   internal.migrations.countEmailMetrics,
+  internal.migrations.countUsageSent,
+  internal.migrations.countUsageReceived,
+  internal.migrations.countUsageAutomationRuns,
   internal.migrations.countRecipientMetrics,
   internal.migrations.seedEmailMetrics,
   internal.migrations.backfillBroadcastReports,

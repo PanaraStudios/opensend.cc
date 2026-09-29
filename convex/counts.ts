@@ -68,6 +68,8 @@ class Counter<T extends TableNames, N extends Value> {
       /** Rows outside it are not counted (soft-deleted ones, say). */
       where?: (doc: Doc<T>) => boolean
       sum?: (doc: Doc<T>) => number
+      /** Usage survives content retention; team retirement clears its namespace. */
+      retainDeleted?: boolean
     }
   ) {
     this.aggregate = new TableAggregate(component, {
@@ -99,6 +101,7 @@ class Counter<T extends TableNames, N extends Value> {
     else if (is) await this.aggregate.insertIfDoesNotExist(ctx, after)
   }
   async delete(ctx: MutationCtx, doc: Doc<T>) {
+    if (this.spec.retainDeleted) return
     if (this.counts(doc)) await this.aggregate.deleteIfExists(ctx, doc)
   }
 
@@ -163,6 +166,28 @@ const created = (doc: { _creationTime: number }) => bucket(doc._creationTime)
 /** Every count, by what it counts. Keys follow each list's filters, so a
     filter narrows the count with key bounds instead of a scan. */
 export const counters = {
+  usageSent: new Counter<"emailMetrics", string>(components.usageSentCounts, {
+    namespace: team,
+    key: (row) => [bucket(row.at)],
+    where: (row) => row.type === "sent",
+    retainDeleted: true,
+  }),
+  usageReceived: new Counter<"receivedEmails", string>(
+    components.usageReceivedCounts,
+    {
+      namespace: team,
+      key: (row) => [bucket(row.receivedAt)],
+      retainDeleted: true,
+    }
+  ),
+  usageAutomationRuns: new Counter<"automationRuns", string>(
+    components.usageAutomationCounts,
+    {
+      namespace: team,
+      key: (row) => [created(row)],
+      retainDeleted: true,
+    }
+  ),
   contactImports: new Counter<"contactImports", string>(
     components.contactImportCounts,
     { namespace: team, key: (row) => [row.status] }
@@ -369,13 +394,17 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   ],
   broadcastEvents: [counters.broadcastEvents],
   automations: [counters.automations],
-  automationRuns: [counters.automationRuns],
+  automationRuns: [counters.automationRuns, counters.usageAutomationRuns],
   automationRunSteps: [counters.automationRunSteps],
   exports: [counters.exports],
-  receivedEmails: [counters.receivedEmails],
+  receivedEmails: [counters.receivedEmails, counters.usageReceived],
   emails: [counters.emails, counters.emailDomains],
   recipientMetrics: [counters.reputation],
-  emailMetrics: [counters.emailMetrics, counters.domainMetrics],
+  emailMetrics: [
+    counters.emailMetrics,
+    counters.domainMetrics,
+    counters.usageSent,
+  ],
   suppressions: [counters.suppressions],
   emailRecipients: [counters.emailRecipients],
   emailEvents: [counters.emailEvents],

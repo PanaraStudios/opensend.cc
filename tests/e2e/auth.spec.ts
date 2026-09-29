@@ -8,6 +8,7 @@ import {
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { broadcastReceivedTests } from "./broadcast-received-flow"
+import { usageTests } from "./usage-flow"
 import { hardeningSearchTests } from "./hardening-search-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
@@ -941,6 +942,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     ownerPassword,
     login,
   }))
+
+  usageTests(() => ({ owner, organizationId, sendingDomainId }))
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
     await owner.goto("/settings/team")
