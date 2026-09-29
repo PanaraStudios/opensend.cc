@@ -109,6 +109,8 @@ export const domainTables = {
       "deleted",
       "receiving",
     ])
+    // Whether any domain operation is running, before the public URL moves.
+    .index("by_deleted_and_phase", ["deleted", "phase"])
     // The REST API lists newest first, like Resend.
     .index("by_organizationId_and_deleted", ["organizationId", "deleted"])
     .index("by_organizationId_and_deleted_and_name", [

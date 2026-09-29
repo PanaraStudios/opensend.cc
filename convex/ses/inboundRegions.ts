@@ -70,6 +70,16 @@ export const prepare = internalMutation({
     return startOperation(ctx, domain.region, row, "provision")
   },
 })
+/** After the public URL moved: provisions a region's inbound setup again, so
+    its topic subscribes the new URL. The callback counts as unconfirmed until
+    SNS confirms the new subscription. */
+export async function resubscribe(ctx: MutationCtx, row: InboundRegion) {
+  await ctx.db.patch("inboundRegions", row._id, {
+    callbackConfirmed: false,
+    subscriptionArn: undefined,
+  })
+  await startOperation(ctx, row.region, row, "provision")
+}
 /** Where a waiting domain operation stands: a finished cleanup is followed
     by a fresh provision, and a finished or failed provision ends the wait. */
 export const poll = internalMutation({

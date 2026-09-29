@@ -546,6 +546,32 @@ export const refresh = mutation({
     return null
   },
 })
+/** After the public URL moved: refreshes one page of a region's domains, so
+    their tracking records point at the new URL. A domain that is not
+    provisioned, runs an operation of its own, or is being claimed is left
+    alone; its next operation reads the new URL anyway. Returns the cursor of
+    the next page, or null after the last one. */
+export const refreshForNewOrigin = internalMutation({
+  args: { region: regionValue, cursor: v.union(v.string(), v.null()) },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, { region, cursor }) => {
+    const page = await ctx.db
+      .query("domains")
+      .withIndex("by_region_and_deleted_and_receiving", (q) =>
+        q.eq("region", region).eq("deleted", false)
+      )
+      .paginate({ numItems: 25, cursor })
+    for (const domain of page.page)
+      if (
+        provisioned(domain) &&
+        !domain.claimPending &&
+        !domain.claimId &&
+        !domain.transferClaimId
+      )
+        await start(ctx, domain, "refresh")
+    return page.isDone ? null : page.continueCursor
+  },
+})
 /** "Check DNS records". A failed operation is retried. Otherwise the status is
     read now, without re-running the AWS setup, and automatic checks restart.
     Returns whether a status check started, rather than an operation. */
