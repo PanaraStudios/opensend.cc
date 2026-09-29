@@ -2,7 +2,63 @@
 
 Opensend runs as a Docker Compose stack: the Next.js dashboard, a self-hosted Convex backend that stores every team's data and runs sending, events, webhooks and automations, and an optional SMTP gateway. Amazon SES sends and receives the mail. Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component.
 
-## Start
+## Install with the script
+
+Install Docker with Docker Compose v2 or later, then run:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh
+```
+
+Prompts read from the terminal even when the script is piped. With no terminal,
+supply a hostname using flags or environment variables:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh -s -- install \
+  --domain mail.example.com --api-domain api.mail.example.com \
+  --hooks-domain hooks.mail.example.com --yes
+```
+
+The default directory is `./opensend`. The script downloads release Compose files
+and the Caddyfile, writes `.env` with mode 0600, pulls prebuilt images and starts
+the stack. No Node, pnpm or source checkout is needed on the server. Point the
+three DNS hostnames at your server IP and allow ports 80 and 443. The first
+account you create becomes the installation administrator. From the installation
+directory, read its verification links with `docker compose run --rm migrate logs`.
+
+Use `--dir PATH`, `--version TAG` to pin a release, `--caddy no` for an existing
+HTTPS proxy, `--local` for localhost testing without Caddy, or `--no-start` to
+prepare configuration. `--source-url URL` overrides the release asset base URL.
+`help` lists the corresponding `OPENSEND_*`
+environment variables. Image overrides (`APP_IMAGE`, `MIGRATE_IMAGE`, `SMTP_IMAGE`,
+`CONVEX_IMAGE`), ports (`APP_PORT`, `CONVEX_PORT`, `CONVEX_SITE_PORT`) and
+`COMPOSE_PROJECT_NAME` are saved in `.env`.
+
+Re-running install preserves every existing environment value and secret; replaced
+Compose files get timestamped backups. Keep `.env` private and back it up along
+with the persistent `convex-data` volume. Upgrade also backs up `.env`, sets the
+release version and redeploys functions through the migrate container. If you use
+image overrides, supply their new values when upgrading.
+
+```sh
+# Back up first; keep this one-off container until the export is copied out.
+cd opensend
+docker compose run --name opensend-backup migrate export --include-file-storage --path /tmp/backup.zip
+docker cp opensend-backup:/tmp/backup.zip ./backup.zip
+docker rm opensend-backup
+cd ..
+
+curl -fsSL https://opensend.cc/install.sh | sh -s -- upgrade --dir ./opensend
+# Or pin the upgrade: ... | sh -s -- upgrade v0.1.0 --dir ./opensend
+curl -fsSL https://opensend.cc/install.sh | sh -s -- uninstall --dir ./opensend
+```
+
+Uninstall stops the stack and keeps its volumes and configuration. Add `--purge`
+to delete volumes; this always requires typing `PURGE` at a terminal, even with
+`--yes`. The commands below use `.env.docker` for source installations; script
+installations use `.env`, which Compose reads automatically.
+
+## From source
 
 Install Docker with Compose, Node 22, and pnpm 11.7.0. Run:
 
