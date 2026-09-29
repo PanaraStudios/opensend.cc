@@ -159,28 +159,22 @@ export const batchSend = internalMutation({
         const data: { id: Id<"emails"> }[] = []
         const errors: { index: number; message: string }[] = []
         const senders = new Map<string, ResolvedSender>()
-        const templateDomains = new Map<string, string>()
         for (const [index, item] of items.entries()) {
           try {
             const { input } = parseEmail(item, Date.now(), true)
             const mailbox = input.from ? parseMailbox(input.from) : null
-            const domainName = mailbox
-              ? senderDomainOf(mailbox)
-              : input.template && input.from === undefined
-                ? templateDomains.get(input.template.id)
-                : undefined
             // The child transaction rolls back all writes for a refused item.
             const { id, sender } = await ctx.runMutation(
               internal.api.emails.createBatchItem,
               {
                 caller,
                 email: { ...input, attachments: [] },
-                sender: domainName ? senders.get(domainName) : undefined,
+                sender: mailbox
+                  ? senders.get(senderDomainOf(mailbox))
+                  : undefined,
               }
             )
             senders.set(sender.domain.name, sender)
-            if (input.template && input.from === undefined)
-              templateDomains.set(input.template.id, sender.domain.name)
             data.push({ id })
           } catch (error) {
             const message = errorMessage(error)
