@@ -1,8 +1,6 @@
 "use client"
 
 import {
-  DocsCode,
-  DocsSheet,
   TextFieldDialog,
   broadcastStatusDotClassName,
   type SelectOption,
@@ -31,41 +29,6 @@ export function audienceFilterItems(
       label: segment.name,
     })),
   ]
-}
-
-const BROADCAST_DOCS = [
-  {
-    title: "Create",
-    body: "Drafts stay in this workspace until you send or schedule them.",
-  },
-  {
-    title: "API",
-    body: (
-      <DocsCode>
-        {`POST /broadcasts
-{
-  "name": "Launch week",
-  "segmentId": "seg_newsletter",
-  "subject": "Launch week is live",
-  "html": "<p>What shipped.</p>"
-}`}
-      </DocsCode>
-    ),
-  },
-]
-
-export function BroadcastsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Broadcasts"
-      description="Send one email to a segment. Topics and unsubscribes are honored."
-      sections={BROADCAST_DOCS}
-    />
-  )
 }
 
 export function RenameBroadcastDialog(props: {

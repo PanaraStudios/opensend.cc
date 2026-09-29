@@ -15,7 +15,6 @@ import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
-  ApiKeysDocsSheet,
   DeleteApiKeyDialog,
 } from "@/components/dashboard/api-keys/shared"
 import {
@@ -47,7 +46,6 @@ export function ApiKeyDetail() {
   const { id } = useParams<{ id: string }>()
   const { updateApiKey, deleteApiKey } = useApiKeyCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/api-keys")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
   const found = useQuery(api.apiKeys.get, { id })
@@ -83,7 +81,7 @@ export function ApiKeyDetail() {
         icon={ApiKeyIcon}
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setEditing(true)}>
@@ -170,7 +168,6 @@ export function ApiKeyDetail() {
           })
         }
       />
-      <ApiKeysDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </div>
   )
 }

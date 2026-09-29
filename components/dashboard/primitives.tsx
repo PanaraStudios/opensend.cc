@@ -42,6 +42,7 @@ import {
 
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
+import { docsHrefForRoute } from "@/lib/docs-links"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -133,13 +134,6 @@ import {
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import {
   Table,
   TableBody,
@@ -2229,60 +2223,23 @@ export function ListToolbar({
 
 /* ------------------------------------------------------------------- docs */
 
-export function DocsButton({ onClick }: { onClick: () => void }) {
+export function DocsButton({ href }: { href?: string }) {
+  const pathname = usePathname()
   return (
-    <Button variant="outline" onClick={onClick}>
+    <Button
+      variant="outline"
+      nativeButton={false}
+      render={
+        <a
+          href={href ?? docsHrefForRoute(pathname)}
+          target="_blank"
+          rel="noreferrer"
+        />
+      }
+    >
       <BookOpenIcon data-icon="inline-start" />
       Docs
     </Button>
-  )
-}
-
-export type DocsSection = { title: string; body: React.ReactNode }
-
-/** A request or payload sample inside a docs section. */
-export function DocsCode({ children }: { children: string }) {
-  return (
-    <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
-      {children}
-    </pre>
-  )
-}
-
-export function DocsSheet({
-  open,
-  onOpenChange,
-  title,
-  description,
-  sections,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  sections: readonly DocsSection[]
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
-        </SheetHeader>
-        <div className="flex flex-col gap-4 px-4 pb-4 text-sm">
-          {sections.map((section) => (
-            <div key={section.title} className="flex flex-col gap-1">
-              <p className="font-medium">{section.title}</p>
-              {typeof section.body === "string" ? (
-                <p className="text-muted-foreground">{section.body}</p>
-              ) : (
-                section.body
-              )}
-            </div>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
   )
 }
 

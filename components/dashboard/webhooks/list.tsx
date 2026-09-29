@@ -28,7 +28,6 @@ import {
   WebhookFormDialog,
   WebhookIcon,
   WebhookMenu,
-  WebhooksDocsSheet,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
@@ -40,7 +39,6 @@ export function WebhooksView() {
   const { organizationId, createWebhook } = useWebhookCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
   const webhooks = useTeamList(
     api.webhooks.list,
@@ -67,7 +65,7 @@ export function WebhooksView() {
   return (
     <>
       <PageHeader title="Webhooks">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         {addButton}
       </PageHeader>
       <ListToolbar
@@ -148,7 +146,6 @@ export function WebhooksView() {
           router.push(`/webhooks/${id}`)
         }}
       />
-      <WebhooksDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

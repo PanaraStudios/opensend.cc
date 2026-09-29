@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  DocsSheet,
   SectionChrome,
   emailStatusDotClassName,
   type SelectOption,
@@ -92,34 +91,5 @@ export function EmailsChrome({
     <SectionChrome title="Emails" tabs={EMAIL_TABS} actions={actions}>
       {children}
     </SectionChrome>
-  )
-}
-
-const EMAIL_DOCS = [
-  {
-    title: "Sending",
-    body: "POST /emails from the API. Events appear on the message as they arrive from SES.",
-  },
-  {
-    title: "Receiving",
-    body: "Enable receiving on a verified domain, then send to that inbound address. Replay missed deliveries from Webhooks.",
-  },
-  {
-    title: "Suppressions",
-    body: "Hard bounces and complaints are added automatically. Manual entries skip future sends to that address.",
-  },
-]
-
-export function EmailsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Emails"
-      description="Sending, inbound mail, and the suppression list share this section."
-      sections={EMAIL_DOCS}
-    />
   )
 }

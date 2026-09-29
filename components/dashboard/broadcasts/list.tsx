@@ -25,7 +25,6 @@ import { toast } from "@/components/ui/toast"
 import {
   audienceFilterItems,
   BROADCAST_STATUS_ITEMS,
-  BroadcastsDocsSheet,
   RenameBroadcastDialog,
 } from "@/components/dashboard/broadcasts/shared"
 import {
@@ -74,7 +73,6 @@ export function BroadcastsView() {
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [audience, setAudience] = React.useState("all")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [renaming, setRenaming] = React.useState<Broadcast | null>(null)
   const [deleting, setDeleting] = React.useState<Broadcast | null>(null)
 
@@ -122,7 +120,7 @@ export function BroadcastsView() {
   return (
     <>
       <PageHeader title="Broadcasts">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         <Button onClick={createBroadcast}>
           <PlusIcon data-icon="inline-start" />
           Create broadcast
@@ -257,7 +255,6 @@ export function BroadcastsView() {
           <ListPagination {...pagination} noun="broadcast" />
         </>
       )}
-      <BroadcastsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <RenameBroadcastDialog
         open={renaming !== null}
         onOpenChange={(next) => {

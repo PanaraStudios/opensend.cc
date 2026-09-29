@@ -12,6 +12,7 @@ import { shareEmailTests } from "./share-email-flow"
 import { domainClaimTests } from "./domain-claim-flow"
 import { usageTests } from "./usage-flow"
 import { hardeningSearchTests } from "./hardening-search-flow"
+import { docsLinksTests } from "./docs-links-flow"
 import { shortcutTests } from "./shortcuts-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
@@ -945,6 +946,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     ownerPassword,
     login,
   }))
+
+  docsLinksTests(() => ({ owner }))
 
   shortcutTests(() => ({ owner, organizationId, createTeam }))
 

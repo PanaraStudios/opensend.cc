@@ -55,7 +55,6 @@ import {
 import {
   DOMAIN_STATUS_ITEMS,
   DomainIcon,
-  DomainsDocsSheet,
   REGION_ITEMS,
   RegionValue,
 } from "@/components/dashboard/domains/shared"
@@ -291,7 +290,6 @@ export function DomainsView() {
   const [status, setStatus] = React.useState("all")
   const [region, setRegion] = React.useState("all")
   const [addOpen, setAddOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const search = useDebouncedValue(query)
 
@@ -340,7 +338,7 @@ export function DomainsView() {
           <PlusIcon />
           Add domain
         </Button>
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
       </PageHeader>
       {exporting.dialog}
       <ListToolbar
@@ -467,7 +465,6 @@ export function DomainsView() {
         </>
       )}
       <AddDomainDialog open={addOpen} onOpenChange={setAddOpen} />
-      <DomainsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {

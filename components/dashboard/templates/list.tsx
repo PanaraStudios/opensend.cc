@@ -30,7 +30,6 @@ import {
 import {
   TEMPLATE_STATUS_ITEMS,
   TemplateMenu,
-  TemplatesDocsSheet,
   TemplateThumbnail,
 } from "@/components/dashboard/templates/shared"
 import { api } from "@/convex/_generated/api"
@@ -86,7 +85,6 @@ export function TemplatesView() {
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [layout, setLayout] = React.useState<TemplatesLayout>("grid")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const creating = React.useRef(false)
   const search = useDebouncedValue(query)
 
@@ -133,7 +131,7 @@ export function TemplatesView() {
   return (
     <>
       <PageHeader title="Templates">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         {createButton}
       </PageHeader>
       <ListToolbar
@@ -226,7 +224,6 @@ export function TemplatesView() {
           <ListPagination {...pagination} noun="template" />
         </>
       )}
-      <TemplatesDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

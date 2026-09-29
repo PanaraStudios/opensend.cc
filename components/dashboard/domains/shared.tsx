@@ -1,14 +1,12 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { ArrowUpRightIcon, CloudIcon, GlobeIcon } from "lucide-react"
 
 import { CloudflareIcon } from "@/components/brand-icons"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
-  DocsSheet,
   MonoValue,
   ResourceTable,
   StatusBadge,
@@ -25,13 +23,10 @@ import {
 } from "@/lib/dashboard/domains"
 import { regionLabel, statusLabel } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
-import { DOCS_URL } from "@/lib/site"
+import { docsHrefForDnsRecord } from "@/lib/docs-links"
 import type { SelectOption } from "@/components/dashboard/primitives"
 
 export const DomainIcon = GlobeIcon
-
-/** Where the docs for a record type live. One page for now. */
-export const DNS_DOCS_HREF = DOCS_URL
 
 export const REGION_ITEMS: readonly SelectOption[] = REGIONS.map((item) => ({
   value: item.value,
@@ -154,13 +149,15 @@ export function DomainSection({
         ) : null}
       </div>
       {docLabel ? (
-        <Link
-          href={DNS_DOCS_HREF}
+        <a
+          href={docsHrefForDnsRecord(docLabel)}
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex w-fit items-center gap-0.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           {docLabel}
           <ArrowUpRightIcon className="size-3 shrink-0" />
-        </Link>
+        </a>
       ) : null}
       {children}
     </section>
@@ -223,39 +220,6 @@ export function DnsRecordsTable({
         )
       })}
     </ResourceTable>
-  )
-}
-
-const DOMAIN_DOCS = [
-  {
-    title: "Add a domain",
-    body: "A subdomain such as updates.example.com keeps transactional reputation separate from marketing, and does not affect your root domain.",
-  },
-  {
-    title: "Verification",
-    body: "Add the DKIM and SPF records at your DNS provider, then click Check DNS records. We also check them automatically for 72 hours, since DNS changes can take that long to propagate.",
-  },
-  {
-    title: "Receiving",
-    body: "Turning receiving on adds an MX record that points inbound mail for the domain at SES. It replaces the mail provider the domain uses today, so use a subdomain when that mailbox must keep working. Receipt rules and an inbox come later.",
-  },
-  {
-    title: "Where SES lives",
-    body: "Opensend publishes the record values AWS returns and reads their status back. SES stays on your AWS account, and API callers never see your credentials.",
-  },
-]
-
-export function DomainsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Domains"
-      description="Verify a domain you own, then send from any address on it."
-      sections={DOMAIN_DOCS}
-    />
   )
 }
 

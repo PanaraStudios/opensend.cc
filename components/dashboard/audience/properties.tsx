@@ -42,7 +42,6 @@ import {
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsSheet,
   propertyDisplayName,
 } from "@/components/dashboard/audience/shared"
 import { DatabaseIcon, PlusIcon, Trash2Icon } from "lucide-react"
@@ -199,7 +198,6 @@ export function PropertiesView() {
   const { deleteProperty } = useAudienceCommands()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pending, setPending] = React.useState<string | null>(null)
 
   const search = useDebouncedValue(query)
@@ -223,7 +221,7 @@ export function PropertiesView() {
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Add property
@@ -313,7 +311,6 @@ export function PropertiesView() {
         </>
       )}
       <AddPropertyDialog open={open} onOpenChange={setOpen} />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {

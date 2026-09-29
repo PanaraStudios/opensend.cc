@@ -25,8 +25,6 @@ import {
 import { Input } from "@/components/ui/input"
 import {
   ConfirmDialog,
-  DocsCode,
-  DocsSheet,
   InfoTip,
   MonoValue,
   OptionSelect,
@@ -72,45 +70,6 @@ export function domainItems(
 export function ApiKeyToken({ apiKey }: { apiKey: ApiKey }) {
   return (
     <MonoValue>{maskToken(apiKey.tokenPrefix, apiKey.tokenLast4)}</MonoValue>
-  )
-}
-
-const API_KEY_DOCS = [
-  {
-    title: "Permissions",
-    body: "Full access can create, delete, get, and update any resource. Sending access can only send emails.",
-  },
-  {
-    title: "Domains",
-    body: "A sending key can be limited to one domain, so a leaked key cannot send from the rest of the workspace.",
-  },
-  {
-    title: "Authorization",
-    body: (
-      <DocsCode>
-        {`curl https://api.opensend.cc/emails \\
-  -H "Authorization: Bearer os_..." \\
-  -H "Content-Type: application/json"`}
-      </DocsCode>
-    ),
-  },
-  {
-    title: "Rotation",
-    body: "The token is shown once. Create a replacement, deploy it, then delete the old key.",
-  },
-]
-
-export function ApiKeysDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="API keys"
-      description="Bearer tokens for the REST API and SMTP."
-      sections={API_KEY_DOCS}
-    />
   )
 }
 

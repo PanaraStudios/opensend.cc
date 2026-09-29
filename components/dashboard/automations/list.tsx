@@ -25,7 +25,6 @@ import {
   AutomationIcon,
   AutomationMenu,
   AutomationsChrome,
-  AutomationsDocsSheet,
 } from "@/components/dashboard/automations/shared"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -42,7 +41,6 @@ export function AutomationsView() {
   const { organizationId, addAutomation } = useAutomationCommands()
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [docsOpen, setDocsOpen] = React.useState(false)
 
   const search = useDebouncedValue(query)
   const {
@@ -86,7 +84,7 @@ export function AutomationsView() {
       <AutomationsChrome
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             {createButton}
           </>
         }
@@ -163,7 +161,6 @@ export function AutomationsView() {
           <ListPagination {...pagination} noun="automation" />
         </>
       )}
-      <AutomationsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

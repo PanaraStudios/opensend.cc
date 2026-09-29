@@ -44,10 +44,7 @@ import {
   useDeleteRecord,
   useAutosaveDraft,
 } from "@/components/dashboard/primitives"
-import {
-  AudienceChrome,
-  AudienceDocsSheet,
-} from "@/components/dashboard/audience/shared"
+import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -139,7 +136,6 @@ export function SegmentsView() {
   const { deleteSegment } = useAudienceCommands()
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const exporting = useExportDialog({
     resource: "segments",
@@ -153,7 +149,7 @@ export function SegmentsView() {
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Create segment
@@ -235,7 +231,6 @@ export function SegmentsView() {
         </>
       )}
       <AddSegmentDialog open={open} onOpenChange={setOpen} />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {

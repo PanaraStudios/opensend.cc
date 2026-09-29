@@ -17,7 +17,8 @@ import { WorkspaceProvider, useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
-import { DOCS_URL, MARKETING_URL } from "@/lib/site"
+import { MARKETING_URL } from "@/lib/site"
+import { docsHrefForRoute } from "@/lib/docs-links"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowUpRightIcon,
@@ -487,7 +488,13 @@ function DashboardSidebar({
               <SidebarMenuButton
                 size="icon"
                 tooltip="Docs"
-                render={<a href={DOCS_URL} target="_blank" rel="noreferrer" />}
+                render={
+                  <a
+                    href={docsHrefForRoute(pathname)}
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
               >
                 <BookOpenIcon />
                 <span className="sr-only">Docs</span>

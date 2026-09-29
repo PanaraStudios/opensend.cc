@@ -29,7 +29,6 @@ import {
 import {
   WebhookIcon,
   WebhookMenu,
-  WebhooksDocsSheet,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
@@ -51,7 +50,6 @@ export function WebhookDetail() {
   const { id } = useParams<{ id: string }>()
   const { deleteWebhook } = useWebhookCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/webhooks")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [status, setStatus] = React.useState("all")
   const [eventType, setEventType] = React.useState("all")
   const result = useQuery(api.webhooks.get, { id })
@@ -97,7 +95,7 @@ export function WebhookDetail() {
         badge={<WebhookStatusBadge enabled={webhook.enabled} />}
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             <WebhookMenu
               webhook={webhook}
               inDetail
@@ -225,7 +223,6 @@ export function WebhookDetail() {
           </>
         )}
       </DetailSection>
-      <WebhooksDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </div>
   )
 }

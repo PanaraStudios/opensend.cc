@@ -54,7 +54,6 @@ import {
 } from "lucide-react"
 import {
   EmailsChrome,
-  EmailsDocsSheet,
   ORIGIN_ITEMS,
   REASON_ITEMS,
   STATUS_ITEMS,
@@ -88,7 +87,6 @@ export function EmailsView() {
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const search = useDebouncedValue(query)
 
   const filters = {
@@ -106,7 +104,7 @@ export function EmailsView() {
   })
 
   return (
-    <EmailsChrome actions={<DocsButton onClick={() => setDocsOpen(true)} />}>
+    <EmailsChrome actions={<DocsButton />}>
       {exporting.dialog}
       <ListToolbar
         query={query}
@@ -190,7 +188,6 @@ export function EmailsView() {
           <ListPagination {...pagination} noun="email" />
         </>
       )}
-      <EmailsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </EmailsChrome>
   )
 }

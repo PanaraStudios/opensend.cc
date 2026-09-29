@@ -48,7 +48,6 @@ import {
 } from "@/components/dashboard/primitives"
 import {
   AutomationsChrome,
-  AutomationsDocsSheet,
   EventIcon,
 } from "@/components/dashboard/automations/shared"
 import { eventNameError, schemaError } from "@/lib/dashboard/automation"
@@ -72,7 +71,6 @@ const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
 export function AutomationEventsView() {
   const { organizationId, deleteAutomationEvent } = useAutomationEventCommands()
   const [query, setQuery] = React.useState("")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   /* The event in the form: one being edited, or "new". */
   const [editing, setEditing] = React.useState<AutomationEvent | "new" | null>(
     null
@@ -109,7 +107,7 @@ export function AutomationEventsView() {
       <AutomationsChrome
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             {addButton}
           </>
         }
@@ -202,7 +200,6 @@ export function AutomationEventsView() {
           toast.add({ type: "success", title: "Event deleted" })
         }}
       />
-      <AutomationsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

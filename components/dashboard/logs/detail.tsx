@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useQuery } from "convex/react"
@@ -27,7 +26,7 @@ import {
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
-import { LogIcon, LogsDocsSheet } from "@/components/dashboard/logs/shared"
+import { LogIcon } from "@/components/dashboard/logs/shared"
 import { permissionLabel } from "@/lib/dashboard/format"
 import { api } from "@/convex/_generated/api"
 import { logSourceLabel, storedBody } from "@/lib/dashboard/logs"
@@ -81,7 +80,6 @@ function RequestHeaders({
 
 export function LogDetail() {
   const { id } = useParams<{ id: string }>()
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const found = useQuery(api.logs.get, { id })
   const email = useEmail(found?.log.emailId)?.email
 
@@ -110,7 +108,7 @@ export function LogDetail() {
         title={`${log.method} ${log.path}`}
         icon={LogIcon}
         badge={<HttpStatusBadge status={log.status} />}
-        actions={<DocsButton onClick={() => setDocsOpen(true)} />}
+        actions={<DocsButton />}
       />
       <MetaStrip
         items={[
@@ -174,7 +172,6 @@ export function LogDetail() {
           value,
         ])}
       />
-      <LogsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </div>
   )
 }

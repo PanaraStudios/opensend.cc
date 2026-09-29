@@ -52,7 +52,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   AudienceChrome,
-  AudienceDocsSheet,
   SUBSCRIBED_ITEMS,
 } from "@/components/dashboard/audience/shared"
 import {
@@ -561,7 +560,6 @@ export function ContactsView() {
   const now = useClock() ?? undefined
   const [manualOpen, setManualOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [selection, setSelected] = React.useState<string[]>([])
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
   const [bulkDelete, setBulkDelete] = React.useState(false)
@@ -608,7 +606,7 @@ export function ContactsView() {
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button />}>
               <PlusIcon data-icon="inline-start" />
@@ -776,7 +774,6 @@ export function ContactsView() {
       )}
       <AddManuallyDialog open={manualOpen} onOpenChange={setManualOpen} />
       <ImportCsvDialog open={importOpen} onOpenChange={setImportOpen} />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <BulkEditDialog
         open={bulkMode !== null}
         onOpenChange={(next) => {

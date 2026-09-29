@@ -19,8 +19,6 @@ import { toast } from "@/components/ui/toast"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import {
   ConfirmDialog,
-  DocsCode,
-  DocsSheet,
   MoreMenu,
   TextFieldDialog,
   type SelectOption,
@@ -62,47 +60,6 @@ export const TEMPLATE_STATUS_ITEMS: readonly SelectOption[] = [
     label: templateStatusLabel(value),
   })),
 ]
-
-const TEMPLATE_DOCS = [
-  {
-    title: "Create",
-    body: "Design a reusable email once. It stays a draft until you publish it, and the API only ever sends the published version.",
-  },
-  {
-    title: "Variables",
-    body: "Write {{{NAME}}} or {{{NAME|fallback}}} anywhere in the subject or the body, and pass the values with each send.",
-  },
-  {
-    title: "API",
-    body: (
-      <DocsCode>
-        {`POST /emails
-{
-  "from": "Acme <hello@acme.com>",
-  "to": "ada@example.com",
-  "template": {
-    "id": "welcome",
-    "variables": { "FIRST_NAME": "Ada" }
-  }
-}`}
-      </DocsCode>
-    ),
-  },
-]
-
-export function TemplatesDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Templates"
-      description="Reusable emails, sent through the API by id or alias."
-      sections={TEMPLATE_DOCS}
-    />
-  )
-}
 
 /** Runs a template command, and says how it went. */
 async function report(run: () => Promise<unknown>, title: string) {
