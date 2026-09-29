@@ -230,7 +230,7 @@ describe("signing", () => {
     )
   })
 
-  test("rotating replaces the secret at once", async () => {
+  test("rotating signs with the new and previous secrets during overlap", async () => {
     const f = await setup()
     const id = await createWebhook(f.owner)
     const before = await f.owner.client.query(api.webhooks.signingSecret, {
@@ -260,6 +260,7 @@ describe("signing", () => {
         timestamp: Number(headers["svix-timestamp"]),
         body: init.body as string,
         secret: after!,
+        previousSecret: before!,
       })
     )
   })

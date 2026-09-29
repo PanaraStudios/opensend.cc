@@ -165,6 +165,7 @@ async function send(
     | "event"
     | "payload"
     | "replay"
+    | "originalDeliveryId"
   >
 ) {
   const id = await insertRow(ctx, "webhookDeliveries", {
@@ -395,6 +396,36 @@ export const create = action({
     }),
 })
 
+export async function insertWebhook(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string
+    endpoint: string
+    events: string[]
+    secret: string
+  }
+) {
+  const { endpoint, events } = validated(args.endpoint, args.events)
+  const existing = await ctx.db
+    .query("webhooks")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", args.organizationId)
+    )
+    .take(WEBHOOK_LIMIT)
+  if (existing.length >= WEBHOOK_LIMIT)
+    throw new ConvexError(`A team can have up to ${WEBHOOK_LIMIT} webhooks`)
+  const webhook = {
+    organizationId: args.organizationId,
+    endpoint,
+    events,
+    enabled: true,
+    secret: args.secret,
+  }
+  const id = await insertRow(ctx, "webhooks", webhook)
+  await subscribe(ctx, { ...webhook, _id: id }, events)
+  return id
+}
+
 export const insert = internalMutation({
   args: {
     organizationId: v.string(),
@@ -405,25 +436,7 @@ export const insert = internalMutation({
   returns: v.id("webhooks"),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
-    const { endpoint, events } = validated(args.endpoint, args.events)
-    const existing = await ctx.db
-      .query("webhooks")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId)
-      )
-      .take(WEBHOOK_LIMIT)
-    if (existing.length >= WEBHOOK_LIMIT)
-      throw new ConvexError(`A team can have up to ${WEBHOOK_LIMIT} webhooks`)
-    const webhook = {
-      organizationId: args.organizationId,
-      endpoint,
-      events,
-      enabled: true,
-      secret: args.secret,
-    }
-    const id = await insertRow(ctx, "webhooks", webhook)
-    await subscribe(ctx, { ...webhook, _id: id }, events)
-    return id
+    return insertWebhook(ctx, args)
   },
 })
 
@@ -437,17 +450,51 @@ export const rotateSecret = action({
     }),
 })
 
-/** The new secret replaces the old one at once: every attempt from now on,
-    retries included, is signed with it alone. */
+/** Keep the preceding key for Resend's 24-hour overlap window. */
+export async function rotateWebhookSecret(
+  ctx: MutationCtx,
+  webhook: Doc<"webhooks">,
+  secret: string
+) {
+  await patchRow(ctx, "webhooks", webhook._id, {
+    secret,
+    previousSecret: webhook.secret,
+    previousSecretExpiresAt: Date.now() + DAY,
+  })
+  return null
+}
 export const saveSecret = internalMutation({
   args: { id: v.id("webhooks"), secret: v.string() },
   returns: v.null(),
   handler: async (ctx, { id, secret }) => {
-    await writableWebhook(ctx, id)
-    await patchRow(ctx, "webhooks", id, { secret })
-    return null
+    return rotateWebhookSecret(ctx, await writableWebhook(ctx, id), secret)
   },
 })
+
+export async function updateWebhook(
+  ctx: MutationCtx,
+  webhook: Doc<"webhooks">,
+  args: {
+    endpoint?: string
+    events?: string[]
+    enabled?: boolean
+  }
+) {
+  const { endpoint, events } = validated(
+    args.endpoint ?? webhook.endpoint,
+    args.events ?? webhook.events
+  )
+  const enabled = args.enabled ?? webhook.enabled
+  await patchRow(ctx, "webhooks", webhook._id, {
+    endpoint,
+    events,
+    enabled,
+    // Re-enabling starts the failure clock over.
+    ...(enabled && !webhook.enabled ? { failingSince: undefined } : {}),
+  })
+  await subscribe(ctx, { ...webhook, enabled }, events)
+  return null
+}
 
 export const update = mutation({
   args: {
@@ -459,22 +506,21 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const webhook = await writableWebhook(ctx, args.id)
-    const { endpoint, events } = validated(
-      args.endpoint ?? webhook.endpoint,
-      args.events ?? webhook.events
-    )
-    const enabled = args.enabled ?? webhook.enabled
-    await patchRow(ctx, "webhooks", webhook._id, {
-      endpoint,
-      events,
-      enabled,
-      // Re-enabling starts the failure clock over.
-      ...(enabled && !webhook.enabled ? { failingSince: undefined } : {}),
-    })
-    await subscribe(ctx, { ...webhook, enabled }, events)
-    return null
+    return updateWebhook(ctx, webhook, args)
   },
 })
+
+export async function removeWebhook(
+  ctx: MutationCtx,
+  webhook: Doc<"webhooks">
+) {
+  await subscribe(ctx, webhook, [])
+  await deleteRow(ctx, "webhooks", webhook._id)
+  await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
+    webhookId: webhook._id,
+  })
+  return null
+}
 
 /** Stops deliveries at once; the history is removed in batches after. */
 export const remove = mutation({
@@ -482,12 +528,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const webhook = await writableWebhook(ctx, id)
-    await subscribe(ctx, webhook, [])
-    await deleteRow(ctx, "webhooks", id)
-    await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
-      webhookId: id,
-    })
-    return null
+    return removeWebhook(ctx, webhook)
   },
 })
 
@@ -495,19 +536,42 @@ export const purgeDeliveries = internalMutation({
   args: { webhookId: v.id("webhooks") },
   returns: v.null(),
   handler: async (ctx, { webhookId }) => {
+    const attempts = await ctx.db
+      .query("webhookAttempts")
+      .withIndex("by_webhookId", (q) => q.eq("webhookId", webhookId))
+      .take(BATCH)
+    for (const row of attempts) await deleteRow(ctx, "webhookAttempts", row._id)
     const rows = await stream(ctx.db, schema)
       .query("webhookDeliveries")
       .withIndex("by_webhookId", (q) => q.eq("webhookId", webhookId))
       .paginate(cleanupPage)
     for (const row of rows.page)
       await deleteRow(ctx, "webhookDeliveries", row._id)
-    if (!rows.isDone)
+    if (!rows.isDone || attempts.length === BATCH)
       await ctx.scheduler.runAfter(0, internal.webhooks.purgeDeliveries, {
         webhookId,
       })
     return null
   },
 })
+
+export async function replayDelivery(
+  ctx: MutationCtx,
+  webhook: Doc<"webhooks">,
+  source: Doc<"webhookDeliveries">
+) {
+  if (!webhook.enabled)
+    throw new ConvexError("Enable the webhook to replay its deliveries")
+  return send(ctx, {
+    organizationId: webhook.organizationId,
+    webhookId: webhook._id,
+    messageId: source.messageId,
+    event: source.event,
+    payload: source.payload,
+    replay: true,
+    originalDeliveryId: source.originalDeliveryId ?? source._id,
+  })
+}
 
 /** Sends the message again as one new attempt under the same `svix-id`, as
     Svix's resend does, so a receiver that already took it can skip it. */
@@ -518,16 +582,7 @@ export const replay = mutation({
     const source = await ctx.db.get("webhookDeliveries", id)
     if (!source) throw new ConvexError("Delivery not found")
     const webhook = await writableWebhook(ctx, source.webhookId)
-    if (!webhook.enabled)
-      throw new ConvexError("Enable the webhook to replay its deliveries")
-    return send(ctx, {
-      organizationId: webhook.organizationId,
-      webhookId: webhook._id,
-      messageId: source.messageId,
-      event: source.event,
-      payload: source.payload,
-      replay: true,
-    })
+    return replayDelivery(ctx, webhook, source)
   },
 })
 
@@ -579,6 +634,7 @@ export const claimAttempt = internalMutation({
       payload: v.record(v.string(), v.any()),
       /** For signing. */
       secret: v.string(),
+      previousSecret: v.optional(v.string()),
     })
   ),
   handler: async (ctx, args) => {
@@ -596,11 +652,18 @@ export const claimAttempt = internalMutation({
       })
       return null
     }
+    await patchRow(ctx, "webhookDeliveries", delivery._id, {
+      attemptStartedAt: Date.now(),
+    })
     return {
       endpoint: webhook.endpoint,
       messageId: delivery.messageId,
       payload: delivery.payload,
       secret: await decryptSecret(webhook.secret),
+      ...(webhook.previousSecret &&
+      (webhook.previousSecretExpiresAt ?? 0) > Date.now()
+        ? { previousSecret: await decryptSecret(webhook.previousSecret) }
+        : {}),
     }
   },
 })
@@ -646,7 +709,27 @@ async function record(
     !!webhook?.enabled &&
     !disable &&
     attempts < RETRY_DELAYS.length
+  await insertRow(ctx, "webhookAttempts", {
+    organizationId: delivery.organizationId,
+    webhookId: delivery.webhookId,
+    eventId: delivery.originalDeliveryId ?? delivery._id,
+    httpStatusCode: args.status,
+    response: args.response,
+    sentAt: delivery.attemptStartedAt ?? now,
+  })
+  if (delivery.originalDeliveryId) {
+    const original = await ctx.db.get(
+      "webhookDeliveries",
+      delivery.originalDeliveryId
+    )
+    if (original)
+      await patchRow(ctx, "webhookDeliveries", original._id, {
+        lastAttemptStatus: args.status,
+      })
+  }
   await patchRow(ctx, "webhookDeliveries", delivery._id, {
+    attemptStartedAt: undefined,
+    lastAttemptStatus: args.status,
     status: args.status,
     failed,
     attempts,
@@ -707,12 +790,17 @@ export const cleanup = internalMutation({
       .paginate(cleanupPage)
     for (const row of deliveries.page)
       await deleteRow(ctx, "webhookDeliveries", row._id)
+    const attempts = await ctx.db
+      .query("webhookAttempts")
+      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
+      .take(BATCH)
+    for (const row of attempts) await deleteRow(ctx, "webhookAttempts", row._id)
     const events = await stream(ctx.db, schema)
       .query("events")
       .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
       .paginate(cleanupPage)
     for (const row of events.page) await ctx.db.delete("events", row._id)
-    if (!deliveries.isDone || !events.isDone)
+    if (!deliveries.isDone || !events.isDone || attempts.length === BATCH)
       await ctx.scheduler.runAfter(0, internal.webhooks.cleanup, {})
     return null
   },

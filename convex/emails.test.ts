@@ -581,10 +581,11 @@ describe("suppressions", () => {
     expect(await timeline(f, whole)).toEqual(["queued", "suppressed"])
     const events = await outbox(f)
     expect(events.map((event) => event.type)).toEqual([
+      "suppression.added",
       "email.sent",
       "email.suppressed",
     ])
-    expect(events[1].data).toMatchObject({
+    expect(events[2].data).toMatchObject({
       email_id: whole,
       suppressed: { type: "OnTeamSuppressionList" },
     })

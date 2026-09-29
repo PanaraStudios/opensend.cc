@@ -38,6 +38,7 @@ const COUNT_COMPONENTS = [
   "apiKeyLogCounts",
   "webhookCounts",
   "deliveryCounts",
+  "webhookAttemptCounts",
   "domainCounts",
   "exportCounts",
   "emailCounts",

@@ -319,6 +319,13 @@ export const counters = {
     namespace: team,
     key: (webhook) => [webhook.enabled],
   }),
+  webhookAttempts: new Counter<"webhookAttempts", string>(
+    components.webhookAttemptCounts,
+    {
+      namespace: team,
+      key: () => [],
+    }
+  ),
   /** Each webhook's deliveries. */
   webhookDeliveries: new Counter<"webhookDeliveries", Id<"webhooks">>(
     components.deliveryCounts,
@@ -367,6 +374,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   apiLogs: [counters.apiLogs, counters.apiKeyLogs],
   webhooks: [counters.webhooks],
   webhookDeliveries: [counters.webhookDeliveries],
+  webhookAttempts: [counters.webhookAttempts],
   domains: [counters.domains],
 }
 export type CountedTable =
@@ -394,6 +402,7 @@ export type CountedTable =
   | "apiLogs"
   | "webhooks"
   | "webhookDeliveries"
+  | "webhookAttempts"
   | "domains"
 export const COUNTED_TABLES = Object.keys(COUNTED) as CountedTable[]
 

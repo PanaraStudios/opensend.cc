@@ -370,3 +370,87 @@ retention and are removed with the team. Test sends use the current editor
 export, one address and the normal email pipeline without changing the audience,
 status or report. Broadcast CSV exports use the same server filters and cursor
 pagination as the list.
+
+## Webhooks
+
+All ten webhook routes require full access. They use the dashboard's shared
+validation, subscription, rotation, deletion and replay helpers. Webhook URLs
+must be HTTPS public hosts; delivery resolves public addresses safely and does
+not follow redirects. Each team can register 100 webhooks.
+
+| Endpoint | Success | Body / response |
+| --- | --- | --- |
+| `POST /webhooks` | 201 | `{endpoint, events}` → `{object:"webhook", id, signing_secret}` |
+| `GET /webhooks` | 200 | `{object:"list", has_more, data:[{id, endpoint, events, status, created_at}]}` |
+| `GET /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, endpoint, events, status, created_at}` |
+| `PATCH /webhooks/{webhook_id}` | 200 | Optional `endpoint`, `events`, `status` (`enabled`/`disabled`) → `{object:"webhook", id}` |
+| `DELETE /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, deleted:true}` |
+| `POST /webhooks/{webhook_id}/signing-secret/rotate` | 200 | `{object:"webhook", id, signing_secret}` |
+| `GET /webhooks/{webhook_id}/events` | 200 | `{object:"list", has_more, data:[{id, type, created_at, status}]}` |
+| `GET /webhooks/{webhook_id}/events/{event_id}` | 200 | `{object:"webhook_event", id, type, created_at, status, next_attempt_at, payload}` |
+| `POST /webhooks/{webhook_id}/events/{event_id}/replay` | 200 | `{object:"webhook_event", id}` with the original event id |
+| `GET /webhooks/{webhook_id}/events/{event_id}/attempts` | 200 | `{object:"list", has_more, data:[{id, http_status_code, response, sent_at}]}` |
+
+The webhook list supports `limit`, `after` and `before`. Event and attempt lists
+support `limit` and `after` only, reject `before`, and default to 20 (maximum 100).
+IDs are opaque; an event must belong to the webhook in the URL. An inaccessible
+or deleted resource returns 404 `not_found`. Event states are `pending`,
+`attempting`, `success` and `failed`; event and attempt timestamps are ISO UTC.
+
+Secrets are returned on create and rotation only, including a replay of that
+POST's `Idempotency-Key`. This lane's disclosure requirement differs from the
+current [Resend GET response](https://resend.com/docs/api-reference/webhooks/get-webhook.md),
+which also includes the secret. Secrets remain encrypted in webhook storage and are redacted from request logs.
+Rotation signs each new attempt with both the new and immediately preceding
+secret for 24 hours, using space-separated Svix signatures. After that window,
+only the new secret signs; repeated rotations replace the preceding key.
+
+Replay queues a single extra attempt with the same `svix-id`, leaves automatic
+retry scheduling intact, and requires an enabled webhook (otherwise 422
+`validation_error`). Replays share the original event's attempt history and do
+not add another item to the REST event list. All POST writes commit their
+idempotency response with their rows. Deletion stops delivery immediately and
+purges delivery and attempt records in bounded background batches.
+
+Attempt history is recorded from wave 8B onward. Older versions retained only
+the latest result, so earlier individual attempts cannot be reconstructed.
+History expires after 90 days; each recorded response is limited to 4 KiB.
+The existing `migrations:backfillCounts` runner includes the new attempt counter.
+No backend deployment or migration is run by this lane.
+
+## Suppressions
+
+All six suppression routes require full access. Sending-only keys receive 401
+`restricted_api_key`. The dashboard, REST API and SES projection share storage
+helpers and emit `suppression.added` / `suppression.removed` through the outbox.
+These event types can be subscribed to through REST; this wave keeps the
+existing dashboard subscription controls unchanged.
+
+| Endpoint | Success | Body / response |
+| --- | --- | --- |
+| `POST /suppressions` | 201 | `{email}` → `{object:"suppression", id}` |
+| `GET /suppressions` | 200 | `{object:"list", has_more, data:[{id, email, origin, source_id, created_at}]}` |
+| `POST /suppressions/batch/add` | 201 | `{emails:[...]}` → `{data:[{object:"suppression", id}]}` |
+| `POST /suppressions/batch/remove` | 200 | `{emails:[...]}` or `{ids:[...]}` → `{data:[{object:"suppression", id, deleted:true}]}` |
+| `GET /suppressions/{suppression}` | 200 | `{object:"suppression", id, email, origin, source_id, created_at}` |
+| `DELETE /suppressions/{suppression}` | 200 | `{object:"suppression", id, deleted:true}` |
+
+`{suppression}` accepts an id or URL-encoded email. Addresses are trimmed and
+lowercased; manual creation sets `origin:"manual"`. Automatic SES reasons map
+`bounced` to `bounce` and `complained` to `complaint`. List accepts the usual
+`limit`/`after`/`before` parameters and `origin=bounce|complaint|manual`.
+`source_id` is the email that caused an automatic suppression, or null for a
+manual entry. Automatic records created before wave 8B also return null because
+those versions did not retain the source id.
+
+Batches accept 1–100 entries, return results in input order, and commit atomically.
+Batch removal requires exactly one of `emails` and `ids`; a missing or foreign
+entry refuses the whole batch with 404. Duplicate normalized addresses share
+one suppression id; duplicate removals delete it once. Repeating a POST with the
+same idempotency key returns the original status and body without emitting
+another event. Removing a bounce/complaint schedules the existing SES tenant
+suppression cleanup for each provisioned region, so SES can deliver again.
+
+Suppression webhook data contains `id`, `email`, `origin`, `source_id`, and ISO
+`created_at` inside the standard `{type, created_at, data}` envelope. Repeated
+adds of an existing address do not emit duplicate `suppression.added` events.

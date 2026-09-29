@@ -49,13 +49,20 @@ const cut = (body: string | undefined) =>
     : { body: body.slice(0, BODY_LIMIT), cut: true }
 
 export function responseForLog(path: string, method: string, body?: string) {
-  if (path !== "/api-keys" || method !== "POST" || !body) return body
+  const field =
+    path === "/api-keys"
+      ? "token"
+      : path === "/webhooks" ||
+          /^\/webhooks\/[^/]+\/signing-secret\/rotate$/.test(path)
+        ? "signing_secret"
+        : null
+  if (!field || method !== "POST" || !body) return body
   try {
     const value: unknown = JSON.parse(body)
     if (value && typeof value === "object" && !Array.isArray(value))
       return JSON.stringify({
         ...value,
-        ...("token" in value ? { token: "[redacted]" } : {}),
+        ...(field in value ? { [field]: "[redacted]" } : {}),
       })
   } catch {
     // Legacy bodies may have been truncated in the middle of a secret.

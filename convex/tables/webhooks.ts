@@ -10,6 +10,8 @@ export const webhookTables = {
     enabled: v.boolean(),
     /** `whsec_…`, encrypted with SSO_ENCRYPTION_KEY. */
     secret: v.string(),
+    previousSecret: v.optional(v.string()),
+    previousSecretExpiresAt: v.optional(v.number()),
     /** When attempts started failing without a success since; after five
         days of that the endpoint is disabled, as Svix does. */
     failingSince: v.optional(v.number()),
@@ -48,11 +50,16 @@ export const webhookTables = {
     response: v.string(),
     /** A replay is one manual attempt; it is not retried on its own. */
     replay: v.boolean(),
+    originalDeliveryId: v.optional(v.id("webhookDeliveries")),
+    attemptStartedAt: v.optional(v.number()),
+    /** Latest result across automatic attempts and manual replays. */
+    lastAttemptStatus: v.optional(v.number()),
     /** Set while another automatic attempt is scheduled. */
     nextAttemptAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_webhookId", ["webhookId"])
+    .index("by_webhookId_and_replay", ["webhookId", "replay"])
     .index("by_webhookId_and_failed", ["webhookId", "failed"])
     .index("by_webhookId_and_event", ["webhookId", "event"])
     .index("by_webhookId_and_event_and_failed", [
@@ -60,6 +67,17 @@ export const webhookTables = {
       "event",
       "failed",
     ]),
+  webhookAttempts: defineTable({
+    organizationId: v.string(),
+    webhookId: v.id("webhooks"),
+    eventId: v.id("webhookDeliveries"),
+    httpStatusCode: v.number(),
+    response: v.string(),
+    sentAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_webhookId", ["webhookId"])
+    .index("by_eventId", ["eventId"]),
   /* Deprecated: the webhook page's totals come from the delivery counts.
      `migrations:backfillCounts` empties it; drop it once every install has
      run that. */
