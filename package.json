@@ -29,7 +29,8 @@
     "test:sdk": "pnpm --filter @opensend/sdk test",
     "backend": "node scripts/backend.mjs",
     "aws:cleanup": "node scripts/aws-cleanup.mjs",
-    "test:e2e": "node scripts/test-e2e.mjs"
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "test:mcp": "pnpm --filter @opensend/mcp test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1136.0",

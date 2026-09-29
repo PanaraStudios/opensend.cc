@@ -1,0 +1,1371 @@
+import fs from "node:fs/promises"
+import type { McpServer } from "@modelcontextprotocol/server"
+import type { Opensend } from "@opensend/sdk"
+import { z } from "zod"
+
+const SEND_EMAIL_TOOL_BASE = {
+  title: "Send Email",
+  description: `**Purpose:** Send a single transactional email to one or more recipients immediately (or schedule it). Use for one-off messages, notifications, and direct replies.
+
+**NOT for:** Sending the same email to a whole list/audience (use create-broadcast + send-broadcast). Not for managing contacts or audiences.
+
+**Returns:** Send confirmation and email ID.
+
+**When to use:**
+- User wants to "send an email" to specific people (names or addresses)
+- One-off messages: password reset, order confirmation, receipt, alert
+- User says "email this to X", "notify them", "send a message to..."
+- Scheduling a single email for later
+
+**Workflow:** Get recipient(s) and content from user → send-email. Use list-emails or get-email to check delivery status afterward.
+
+**Key trigger phrases:** "Send an email", "Email this to", "Notify", "Send a message", "Reply to them", "Schedule an email"`,
+} as const
+
+let cachedSendEmailSchemaKey: string | undefined
+let cachedSendEmailInputSchema: ReturnType<typeof buildSendEmailInputSchema>
+
+function buildSendEmailInputSchema(
+  senderEmailAddress: string | undefined,
+  replierEmailAddresses: string[]
+) {
+  return {
+    to: z
+      .array(z.email())
+      .min(1)
+      .max(50)
+      .describe("Array of recipient email addresses (1-50 recipients)"),
+    subject: z.string().describe("Email subject line"),
+    text: z.string().describe("Plain text email content"),
+    html: z
+      .string()
+      .optional()
+      .describe(
+        "HTML email content. When provided, the plain text argument MUST be provided as well."
+      ),
+    cc: z
+      .array(z.email())
+      .optional()
+      .describe(
+        "Optional array of CC email addresses. You MUST ask the user for this parameter. Under no circumstance provide it yourself"
+      ),
+    bcc: z
+      .array(z.email())
+      .optional()
+      .describe(
+        "Optional array of BCC email addresses. You MUST ask the user for this parameter. Under no circumstance provide it yourself"
+      ),
+    scheduledAt: z
+      .string()
+      .optional()
+      .describe(
+        "Optional parameter to schedule the email. This uses natural language. Examples would be 'tomorrow at 10am' or 'in 2 hours' or 'next day at 9am PST' or 'Friday at 3pm ET'."
+      ),
+    attachments: z
+      .array(
+        z.object({
+          filename: z
+            .string()
+            .describe('Name of the file with extension (e.g., "report.pdf")'),
+          filePath: z
+            .string()
+            .optional()
+            .describe("Local file path to read and attach"),
+          url: z
+            .string()
+            .optional()
+            .describe("URL where the file is hosted (Opensend will fetch it)"),
+          content: z
+            .string()
+            .optional()
+            .describe("Base64-encoded file content"),
+          contentType: z
+            .string()
+            .optional()
+            .describe(
+              'MIME type (e.g., "application/pdf"). Auto-derived from filename if not set'
+            ),
+          contentId: z
+            .string()
+            .optional()
+            .describe(
+              "Content ID for inline images. Reference in HTML with cid:<contentId>"
+            ),
+        })
+      )
+      .optional()
+      .describe(
+        "Array of file attachments. Each needs filename plus one of: filePath, url, or content. Max 40MB total."
+      ),
+    tags: z
+      .array(
+        z.object({
+          name: z.string().describe("Tag name (key)"),
+          value: z.string().describe("Tag value"),
+        })
+      )
+      .optional()
+      .describe(
+        "Array of custom tags for tracking/analytics. Each tag has a name and value."
+      ),
+    topicId: z
+      .string()
+      .optional()
+      .describe(
+        "Topic ID for subscription-based sending. When set, the email respects contact subscription preferences for this topic."
+      ),
+    headers: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        'Optional custom email headers as key/value pairs (e.g. {"List-Unsubscribe": "<https://example.com/unsubscribe>", "X-Entity-Ref-ID": "unique-id"}). Use for one-click unsubscribe, preventing Gmail threading, or other MIME headers Opensend accepts.'
+      ),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe(
+        "Optional unique key that prevents duplicate sends on retries (sent as the Idempotency-Key header). Use the same key when retrying the same logical email; use a new key for a different email. Must be 1-256 characters."
+      ),
+    // If sender email address is not provided, the tool requires it as an argument
+    ...(!senderEmailAddress
+      ? {
+          from: z
+            .string()
+            .nonempty()
+            .describe(
+              'Sender email address (e.g. "sender@example.com" or "Acme <sender@example.com>"). You MUST ask the user for this parameter. Under no circumstance provide it yourself'
+            ),
+        }
+      : {}),
+    ...(replierEmailAddresses.length === 0
+      ? {
+          replyTo: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Optional email addresses for the email readers to reply to (e.g. "support@example.com" or "Support Team <support@example.com>"). You MUST ask the user for this parameter. Under no circumstance provide it yourself'
+            ),
+        }
+      : {}),
+  }
+}
+
+function getSendEmailInputSchema(
+  senderEmailAddress: string | undefined,
+  replierEmailAddresses: string[]
+) {
+  const key = `${senderEmailAddress ?? ""}|${replierEmailAddresses.join(",")}`
+  if (cachedSendEmailSchemaKey !== key) {
+    cachedSendEmailInputSchema = buildSendEmailInputSchema(
+      senderEmailAddress,
+      replierEmailAddresses
+    )
+    cachedSendEmailSchemaKey = key
+  }
+  return cachedSendEmailInputSchema
+}
+
+const LIST_EMAILS_TOOL = {
+  title: "List Emails",
+  annotations: { readOnlyHint: true },
+  description: `**Purpose:** List recently sent emails (transactional emails sent via send-email) with metadata: recipient, subject, status, timestamps.
+
+**NOT for:** Listing broadcast campaigns (use list-broadcasts). Not for composing or sending.
+
+**Returns:** Paginated list with to, subject, status, created_at, message_id, and ID per email.
+
+**When to use:**
+- User asks "what emails were sent?", "show recent emails", "did my email go out?"
+- Checking delivery status of sent messages
+- Finding an email ID to fetch full content (then use get-email)
+
+**Workflow:** list-emails → get-email( id ) when user needs full body or details.`,
+  inputSchema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Number of emails to retrieve. Default: 20, Max: 100, Min: 1"),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Email ID after which to retrieve more emails (for forward pagination). Cannot be used with "before".'
+      ),
+    before: z
+      .string()
+      .optional()
+      .describe(
+        'Email ID before which to retrieve more emails (for backward pagination). Cannot be used with "after".'
+      ),
+  },
+} as const
+
+const GET_EMAIL_TOOL = {
+  title: "Get Email",
+  annotations: { readOnlyHint: true },
+  description:
+    "Retrieve full details of a specific sent transactional email by ID, including message_id, HTML and plain text content.",
+  inputSchema: {
+    id: z.string().describe("The email ID to retrieve"),
+  },
+} as const
+
+const LIST_RECEIVED_EMAILS_TOOL = {
+  title: "List Received Emails",
+  annotations: { readOnlyHint: true },
+  description: `**Purpose:** List emails received (inbox) by your Opensend receiving address. Use for "show my inbox", "what emails did I get?", "list incoming mail".
+
+**NOT for:** Listing emails you sent (use list-emails). Not for listing broadcasts (use list-broadcasts).
+
+**Returns:** Paginated metadata: from, to, subject, message_id, received time. Use get-received-email with an ID for full content.`,
+  inputSchema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Number of emails to retrieve. Default: 20, Max: 100, Min: 1"),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Email ID after which to retrieve more emails (for forward pagination). Cannot be used with "before".'
+      ),
+    before: z
+      .string()
+      .optional()
+      .describe(
+        'Email ID before which to retrieve more emails (for backward pagination). Cannot be used with "after".'
+      ),
+  },
+} as const
+
+const GET_RECEIVED_EMAIL_TOOL = {
+  title: "Get Received Email",
+  annotations: { readOnlyHint: true },
+  description:
+    "Retrieve full details of a specific received email by ID, including HTML and plain text content, headers, and raw email download URL.",
+  inputSchema: {
+    id: z.string().describe("The received email ID to retrieve"),
+  },
+} as const
+
+const LIST_RECEIVED_EMAIL_ATTACHMENTS_TOOL = {
+  title: "List Received Email Attachments",
+  annotations: { readOnlyHint: true },
+  description:
+    "List all attachments from a specific received (inbox) email. Returns attachment metadata including filename, size, content type, and a time-limited download URL. Use for emails listed by list-received-emails.",
+  inputSchema: {
+    emailId: z.string().describe("The received email ID"),
+    limit: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe(
+        "Number of attachments to retrieve. Default: 20, Max: 100, Min: 1"
+      ),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Attachment ID after which to retrieve more (for forward pagination). Cannot be used with "before".'
+      ),
+    before: z
+      .string()
+      .optional()
+      .describe(
+        'Attachment ID before which to retrieve more (for backward pagination). Cannot be used with "after".'
+      ),
+  },
+} as const
+
+const GET_RECEIVED_EMAIL_ATTACHMENT_TOOL = {
+  title: "Get Received Email Attachment",
+  annotations: { readOnlyHint: true },
+  description:
+    "Retrieve details of a specific attachment from a received email, including a time-limited download URL.",
+  inputSchema: {
+    emailId: z.string().describe("The received email ID"),
+    id: z.string().describe("The attachment ID"),
+  },
+} as const
+
+const CANCEL_EMAIL_TOOL = {
+  title: "Cancel Email",
+  description:
+    "Cancel a scheduled email that has not yet been sent. Only works for emails that were scheduled using the scheduledAt parameter.",
+  inputSchema: {
+    id: z.string().describe("The ID of the scheduled email to cancel"),
+  },
+} as const
+
+const UPDATE_EMAIL_TOOL = {
+  title: "Update Email",
+  description:
+    "Reschedule a scheduled email by updating its scheduled send time. Only works for emails that were scheduled and have not yet been sent.",
+  inputSchema: {
+    id: z.string().describe("The ID of the scheduled email to update"),
+    scheduledAt: z
+      .string()
+      .describe(
+        'The new scheduled time in ISO 8601 format (e.g., "2024-08-05T11:52:01.858Z").'
+      ),
+  },
+} as const
+
+const SHARE_EMAIL_TOOL = {
+  title: "Share Email",
+  description:
+    "Create a shareable link for a sent or received email, so anyone with the link can view it without Opensend dashboard access. Works for any email ID, sent or received.",
+  inputSchema: {
+    id: z.string().describe("The ID of the sent or received email to share"),
+    expiresIn: z
+      .string()
+      .optional()
+      .describe(
+        'How long the share link stays valid, as a human-readable duration (e.g. "10m", "2 hours", "1 day", "1h 30m"). Defaults to 48 hours; capped at 48 hours.'
+      ),
+  },
+} as const
+
+const GET_EMAIL_METRICS_TOOL = {
+  title: "Email Metrics",
+  annotations: { readOnlyHint: true },
+  description:
+    "Retrieve account-level email delivery and engagement metrics (sent, delivered, bounced, opened, clicked, etc.) for a date range, optionally broken down by period, domain, email, or broadcast.",
+  inputSchema: {
+    startDate: z
+      .string()
+      .optional()
+      .describe(
+        "Start of the date range, as an ISO 8601 date or datetime. Defaults to 6 days before endDate."
+      ),
+    endDate: z
+      .string()
+      .optional()
+      .describe(
+        "End of the date range, as an ISO 8601 date or datetime. Defaults to now."
+      ),
+    timezone: z
+      .string()
+      .optional()
+      .describe(
+        'IANA timezone (e.g. "America/New_York") used to bucket periods when "period" is in dimensions. Defaults to UTC.'
+      ),
+    granularity: z
+      .enum(["hourly", "daily", "weekly", "monthly"])
+      .optional()
+      .describe(
+        'Bucket size used when "period" is in dimensions. Defaults to "daily".'
+      ),
+    metrics: z
+      .array(
+        z.enum([
+          "received",
+          "delivered",
+          "complained",
+          "suppressed",
+          "bounced",
+          "bounced_transient",
+          "bounced_permanent",
+          "bounced_undetermined",
+          "opened",
+          "clicked",
+          "unsubscribed",
+          "delivery_delayed",
+          "failed",
+          "sent",
+          "unique_opened",
+          "unique_clicked",
+          "delivery_rate",
+          "open_rate",
+          "click_rate",
+          "bounce_rate",
+          "complaint_rate",
+          "unsubscribe_rate",
+        ])
+      )
+      .optional()
+      .describe("Metrics to include in the response. Defaults to all metrics."),
+    dimensions: z
+      .array(z.enum(["period", "domain", "email", "broadcast"]))
+      .optional()
+      .describe(
+        'Dimensions to break the response down by. "email" and "broadcast" cannot be combined. Defaults to none, which returns totals only.'
+      ),
+    domainId: z
+      .array(z.uuid())
+      .max(100)
+      .optional()
+      .describe("Restrict the response to these sending domain IDs (max 100)."),
+    emailId: z
+      .array(z.uuid())
+      .max(100)
+      .optional()
+      .describe(
+        'Restrict the response to these email IDs (max 100). Cannot be combined with the "broadcast" dimension or broadcastId.'
+      ),
+    broadcastId: z
+      .array(z.uuid())
+      .max(100)
+      .optional()
+      .describe(
+        'Restrict the response to these broadcast IDs (max 100). Cannot be combined with the "email" dimension or emailId.'
+      ),
+  },
+} as const
+
+const LIST_SENT_EMAIL_ATTACHMENTS_TOOL = {
+  title: "List Sent Email Attachments",
+  annotations: { readOnlyHint: true },
+  description:
+    "List all attachments from a specific sent email (from send-email or list-emails). Returns attachment metadata including filename, size, content type, and a time-limited download URL.",
+  inputSchema: {
+    emailId: z.string().describe("The sent email ID"),
+    limit: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe(
+        "Number of attachments to retrieve. Default: 20, Max: 100, Min: 1"
+      ),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Attachment ID after which to retrieve more (for forward pagination). Cannot be used with "before".'
+      ),
+    before: z
+      .string()
+      .optional()
+      .describe(
+        'Attachment ID before which to retrieve more (for backward pagination). Cannot be used with "after".'
+      ),
+  },
+} as const
+
+const GET_SENT_EMAIL_ATTACHMENT_TOOL = {
+  title: "Get Sent Email Attachment",
+  annotations: { readOnlyHint: true },
+  description:
+    "Retrieve details of a specific attachment from a sent email, including a time-limited download URL.",
+  inputSchema: {
+    emailId: z.string().describe("The sent email ID"),
+    id: z.string().describe("The attachment ID"),
+  },
+} as const
+
+const SEND_BATCH_EMAILS_TOOL = {
+  title: "Send Batch Emails",
+  description: `**Purpose:** Send up to 100 transactional emails in one API call. Each item has the same fields as send-email (to, subject, text, from, etc.).
+
+**NOT for:** Sending one email (use send-email) or the same content to a segment (use create-broadcast + send-broadcast).
+
+**When to use:** User wants to send many individual emails in bulk (e.g. 50 password resets, 100 receipts). Not for one-to-many broadcasts.`,
+  inputSchema: {
+    emails: z
+      .array(
+        z.object({
+          to: z
+            .array(z.email())
+            .min(1)
+            .max(50)
+            .describe("Array of recipient email addresses (1-50 recipients)"),
+          subject: z.string().describe("Email subject line"),
+          text: z.string().describe("Plain text email content"),
+          html: z.string().optional().describe("HTML email content"),
+          from: z
+            .string()
+            .optional()
+            .describe(
+              "Sender email address. Falls back to the configured default sender if not provided."
+            ),
+          replyTo: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Reply-to email addresses (e.g. "support@example.com" or "Support Team <support@example.com>")'
+            ),
+          cc: z.array(z.email()).optional().describe("CC email addresses"),
+          bcc: z.array(z.email()).optional().describe("BCC email addresses"),
+          scheduledAt: z
+            .string()
+            .optional()
+            .describe(
+              "Optional schedule time. Uses natural language (e.g., 'tomorrow at 10am') or ISO 8601."
+            ),
+          tags: z
+            .array(
+              z.object({
+                name: z.string().describe("Tag name (key)"),
+                value: z.string().describe("Tag value"),
+              })
+            )
+            .optional()
+            .describe("Custom tags for tracking/analytics"),
+          topicId: z
+            .string()
+            .optional()
+            .describe("Topic ID for subscription-based sending"),
+          headers: z
+            .record(z.string(), z.string())
+            .optional()
+            .describe(
+              'Optional custom email headers as key/value pairs (e.g. {"List-Unsubscribe": "<https://example.com/unsubscribe>", "X-Entity-Ref-ID": "unique-id"}).'
+            ),
+        })
+      )
+      .min(1)
+      .max(100)
+      .describe("Array of email objects to send (1-100 emails)"),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe(
+        "Optional unique key for the whole batch that prevents duplicate batch sends on retries (sent as the Idempotency-Key header). Use the same key when retrying the same batch; use a new key for a different batch. Must be 1-256 characters."
+      ),
+  },
+} as const
+
+export function addEmailTools(
+  server: McpServer,
+  opensend: Opensend,
+  {
+    senderEmailAddress,
+    replierEmailAddresses,
+  }: {
+    senderEmailAddress?: string
+    replierEmailAddresses: string[]
+  }
+) {
+  server.registerTool(
+    "send-email",
+    {
+      ...SEND_EMAIL_TOOL_BASE,
+      inputSchema: getSendEmailInputSchema(
+        senderEmailAddress,
+        replierEmailAddresses
+      ),
+    },
+    async ({
+      from,
+      to,
+      subject,
+      text,
+      html,
+      replyTo,
+      scheduledAt,
+      cc,
+      bcc,
+      attachments,
+      tags,
+      topicId,
+      headers,
+      idempotencyKey,
+    }) => {
+      const fromEmailAddress = from ?? senderEmailAddress
+      const replyToEmailAddresses = replyTo ?? replierEmailAddresses
+
+      // Type check on from, since "from" is optionally included in the arguments schema
+      // This should never happen.
+      if (typeof fromEmailAddress !== "string") {
+        throw new Error("from argument must be provided.")
+      }
+
+      // Similar type check for "reply-to" email addresses.
+      if (
+        typeof replyToEmailAddresses !== "string" &&
+        !Array.isArray(replyToEmailAddresses)
+      ) {
+        throw new Error("replyTo argument must be provided.")
+      }
+
+      // Explicitly structure the request with all parameters to ensure they're passed correctly
+      const emailRequest: {
+        to: string[]
+        subject: string
+        text: string
+        from: string
+        replyTo: string | string[]
+        html?: string
+        scheduledAt?: string
+        cc?: string[]
+        bcc?: string[]
+        attachments?: Array<{
+          content?: Buffer
+          filename?: string
+          path?: string
+          contentType?: string
+          contentId?: string
+        }>
+        tags?: Array<{
+          name: string
+          value: string
+        }>
+        topicId?: string
+        headers?: Record<string, string>
+      } = {
+        to,
+        subject,
+        text,
+        from: fromEmailAddress,
+        replyTo: replyToEmailAddresses,
+      }
+
+      // Add optional parameters conditionally
+      if (html) {
+        emailRequest.html = html
+      }
+
+      if (scheduledAt) {
+        emailRequest.scheduledAt = scheduledAt
+      }
+
+      if (cc) {
+        emailRequest.cc = cc
+      }
+
+      if (bcc) {
+        emailRequest.bcc = bcc
+      }
+
+      if (attachments && attachments.length > 0) {
+        emailRequest.attachments = await Promise.all(
+          attachments.map(async (att) => {
+            const result: {
+              filename?: string
+              content?: Buffer
+              path?: string
+              contentType?: string
+              contentId?: string
+            } = {}
+
+            if (att.filename) result.filename = att.filename
+            if (att.contentType) result.contentType = att.contentType
+            if (att.contentId) result.contentId = att.contentId
+
+            // Priority: filePath > url > content
+            if (att.filePath) {
+              // Read local file
+              const fileBuffer = await fs.readFile(att.filePath)
+              result.content = fileBuffer
+            } else if (att.url) {
+              // Let Opensend fetch from URL
+              result.path = att.url
+            } else if (att.content) {
+              // Direct Base64 content
+              result.content = Buffer.from(att.content, "base64")
+            }
+
+            return result
+          })
+        )
+      }
+
+      if (tags && tags.length > 0) {
+        emailRequest.tags = tags
+      }
+
+      if (topicId) {
+        emailRequest.topicId = topicId
+      }
+
+      if (headers && Object.keys(headers).length > 0) {
+        emailRequest.headers = headers
+      }
+
+      const response = await opensend.emails.send(
+        emailRequest,
+        idempotencyKey ? { idempotencyKey } : undefined
+      )
+
+      if (response.error) {
+        throw new Error(
+          `Email failed to send: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Email sent successfully! ${JSON.stringify(response.data)}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "list-emails",
+    LIST_EMAILS_TOOL,
+    async ({ limit, after, before }) => {
+      if (after && before) {
+        throw new Error(
+          'Cannot use both "after" and "before" parameters. Use only one for pagination.'
+        )
+      }
+
+      // Build pagination options - Opensend SDK requires mutually exclusive after/before
+      const paginationOptions = after
+        ? { limit, after }
+        : before
+          ? { limit, before }
+          : limit !== undefined
+            ? { limit }
+            : undefined
+
+      const response = await opensend.emails.list(paginationOptions)
+
+      if (response.error) {
+        throw new Error(
+          `Failed to list emails: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const emails = response.data?.data ?? []
+      const hasMore = response.data?.has_more ?? false
+
+      if (emails.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No emails found.",
+            },
+          ],
+        }
+      }
+
+      const emailSummaries = emails
+        .map((email) => {
+          const to = Array.isArray(email.to) ? email.to.join(", ") : email.to
+          const scheduledInfo = email.scheduled_at
+            ? ` (Scheduled: ${email.scheduled_at})`
+            : ""
+          return `- To: ${to} | Subject: "${email.subject}" | Status: ${email.last_event} | Sent: ${email.created_at}${scheduledInfo} | Message ID: ${email.message_id} | ID: ${email.id}`
+        })
+        .join("\n")
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${emails.length} email(s)${hasMore ? " (more available)" : ""}:\n\n${emailSummaries}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool("get-email", GET_EMAIL_TOOL, async ({ id }) => {
+    const response = await opensend.emails.get(id)
+
+    if (response.error) {
+      throw new Error(
+        `Failed to retrieve email: ${JSON.stringify(response.error)}`
+      )
+    }
+
+    const email = response.data
+
+    if (!email) {
+      throw new Error(`Email with ID ${id} not found.`)
+    }
+
+    const to = Array.isArray(email.to) ? email.to.join(", ") : email.to
+    const cc = email.cc
+      ? Array.isArray(email.cc)
+        ? email.cc.join(", ")
+        : email.cc
+      : null
+    const bcc = email.bcc
+      ? Array.isArray(email.bcc)
+        ? email.bcc.join(", ")
+        : email.bcc
+      : null
+    const replyTo = email.reply_to
+      ? Array.isArray(email.reply_to)
+        ? email.reply_to.join(", ")
+        : email.reply_to
+      : null
+
+    let details = `Email Details:\n`
+    details += `- ID: ${email.id}\n`
+    details += `- Message ID: ${email.message_id}\n`
+    details += `- From: ${email.from}\n`
+    details += `- To: ${to}\n`
+    if (cc) details += `- CC: ${cc}\n`
+    if (bcc) details += `- BCC: ${bcc}\n`
+    if (replyTo) details += `- Reply-To: ${replyTo}\n`
+    details += `- Subject: ${email.subject}\n`
+    details += `- Status: ${email.last_event}\n`
+    details += `- Created: ${email.created_at}\n`
+    if (email.scheduled_at) details += `- Scheduled: ${email.scheduled_at}\n`
+    details += `\n--- Plain Text Content ---\n${email.text || "(none)"}\n`
+    if (email.html) {
+      details += `\n--- HTML Content ---\n${email.html}\n`
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: details,
+        },
+      ],
+    }
+  })
+
+  server.registerTool(
+    "list-received-emails",
+    LIST_RECEIVED_EMAILS_TOOL,
+    async ({ limit, after, before }) => {
+      if (after && before) {
+        throw new Error(
+          'Cannot use both "after" and "before" parameters. Use only one for pagination.'
+        )
+      }
+
+      const paginationOptions = after
+        ? { limit, after }
+        : before
+          ? { limit, before }
+          : limit !== undefined
+            ? { limit }
+            : undefined
+
+      const response = await opensend.emails.receiving.list(paginationOptions)
+
+      if (response.error) {
+        throw new Error(
+          `Failed to list received emails: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const emails = response.data?.data ?? []
+      const hasMore = response.data?.has_more ?? false
+
+      if (emails.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No received emails found.",
+            },
+          ],
+        }
+      }
+
+      const emailSummaries = emails
+        .map((email) => {
+          const to = Array.isArray(email.to) ? email.to.join(", ") : email.to
+          const attachmentCount = email.attachments?.length ?? 0
+          const attachmentInfo =
+            attachmentCount > 0 ? ` | Attachments: ${attachmentCount}` : ""
+          return `- From: ${email.from} | To: ${to} | Subject: "${email.subject}" | Message ID: ${email.message_id} | Received: ${email.created_at}${attachmentInfo} | ID: ${email.id}`
+        })
+        .join("\n")
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${emails.length} received email(s)${hasMore ? " (more available)" : ""}:\n\n${emailSummaries}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "get-received-email",
+    GET_RECEIVED_EMAIL_TOOL,
+    async ({ id }) => {
+      const response = await opensend.emails.receiving.get(id)
+
+      if (response.error) {
+        throw new Error(
+          `Failed to retrieve received email: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const email = response.data
+
+      if (!email) {
+        throw new Error(`Received email with ID ${id} not found.`)
+      }
+
+      const to = Array.isArray(email.to) ? email.to.join(", ") : email.to
+      const cc = email.cc
+        ? Array.isArray(email.cc)
+          ? email.cc.join(", ")
+          : email.cc
+        : null
+      const bcc = email.bcc
+        ? Array.isArray(email.bcc)
+          ? email.bcc.join(", ")
+          : email.bcc
+        : null
+      const replyTo = email.reply_to
+        ? Array.isArray(email.reply_to)
+          ? email.reply_to.join(", ")
+          : email.reply_to
+        : null
+
+      let details = "Received Email Details:\n"
+      details += `- ID: ${email.id}\n`
+      details += `- From: ${email.from}\n`
+      details += `- To: ${to}\n`
+      if (cc) details += `- CC: ${cc}\n`
+      if (bcc) details += `- BCC: ${bcc}\n`
+      if (replyTo) details += `- Reply-To: ${replyTo}\n`
+      details += `- Subject: ${email.subject}\n`
+      details += `- Message ID: ${email.message_id}\n`
+      details += `- Received: ${email.created_at}\n`
+      if (email.raw) {
+        details += `- Raw Email URL: ${email.raw.download_url} (expires: ${email.raw.expires_at})\n`
+      }
+      if (email.attachments && email.attachments.length > 0) {
+        details += `- Attachments: ${email.attachments.map((a) => `${a.filename} (${a.content_type}, ${a.size} bytes)`).join(", ")}\n`
+      }
+      details += `\n--- Plain Text Content ---\n${email.text || "(none)"}\n`
+      if (email.html) {
+        details += `\n--- HTML Content ---\n${email.html}\n`
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: details,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "list-received-email-attachments",
+    LIST_RECEIVED_EMAIL_ATTACHMENTS_TOOL,
+    async ({ emailId, limit, after, before }) => {
+      if (after && before) {
+        throw new Error(
+          'Cannot use both "after" and "before" parameters. Use only one for pagination.'
+        )
+      }
+
+      const paginationOptions = after
+        ? { emailId, limit, after }
+        : before
+          ? { emailId, limit, before }
+          : { emailId, limit }
+
+      const response =
+        await opensend.emails.receiving.attachments.list(paginationOptions)
+
+      if (response.error) {
+        throw new Error(
+          `Failed to list attachments: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const attachments = response.data?.data ?? []
+      const hasMore = response.data?.has_more ?? false
+
+      if (attachments.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No attachments found for this email.",
+            },
+          ],
+        }
+      }
+
+      const attachmentSummaries = attachments
+        .map(
+          (att) =>
+            `- ${att.filename} | Type: ${att.content_type} | Size: ${att.size} bytes | Download: ${att.download_url} (expires: ${att.expires_at}) | ID: ${att.id}`
+        )
+        .join("\n")
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${attachments.length} attachment(s)${hasMore ? " (more available)" : ""}:\n\n${attachmentSummaries}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "get-received-email-attachment",
+    GET_RECEIVED_EMAIL_ATTACHMENT_TOOL,
+    async ({ emailId, id }) => {
+      const response = await opensend.emails.receiving.attachments.get({
+        emailId,
+        id,
+      })
+
+      if (response.error) {
+        throw new Error(
+          `Failed to retrieve attachment: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const attachment = response.data
+
+      if (!attachment) {
+        throw new Error(`Attachment ${id} not found for email ${emailId}.`)
+      }
+
+      let details = "Attachment Details:\n"
+      details += `- ID: ${attachment.id}\n`
+      details += `- Filename: ${attachment.filename}\n`
+      details += `- Content Type: ${attachment.content_type}\n`
+      details += `- Size: ${attachment.size} bytes\n`
+      details += `- Content Disposition: ${attachment.content_disposition}\n`
+      if (attachment.content_id) {
+        details += `- Content ID: ${attachment.content_id}\n`
+      }
+      details += `- Download URL: ${attachment.download_url}\n`
+      details += `- Expires At: ${attachment.expires_at}\n`
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: details,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool("cancel-email", CANCEL_EMAIL_TOOL, async ({ id }) => {
+    const response = await opensend.emails.cancel(id)
+
+    if (response.error) {
+      throw new Error(
+        `Failed to cancel email: ${JSON.stringify(response.error)}`
+      )
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Email ${response.data?.id} has been cancelled successfully.`,
+        },
+      ],
+    }
+  })
+
+  server.registerTool(
+    "update-email",
+    UPDATE_EMAIL_TOOL,
+    async ({ id, scheduledAt }) => {
+      const response = await opensend.emails.update({ id, scheduledAt })
+
+      if (response.error) {
+        throw new Error(
+          `Failed to update email: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Email ${response.data?.id} has been rescheduled to ${scheduledAt}.`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "share-email",
+    SHARE_EMAIL_TOOL,
+    async ({ id, expiresIn }) => {
+      const response = await opensend.emails.share(
+        id,
+        expiresIn !== undefined ? { expiresIn } : undefined
+      )
+
+      if (response.error) {
+        throw new Error(
+          `Failed to share email: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Share link for email ${response.data?.id}: ${response.data?.url}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "get-email-metrics",
+    GET_EMAIL_METRICS_TOOL,
+    async ({
+      startDate,
+      endDate,
+      timezone,
+      granularity,
+      metrics,
+      dimensions,
+      domainId,
+      emailId,
+      broadcastId,
+    }) => {
+      const hasEmail =
+        (dimensions?.includes("email") ?? false) || (emailId?.length ?? 0) > 0
+      const hasBroadcast =
+        (dimensions?.includes("broadcast") ?? false) ||
+        (broadcastId?.length ?? 0) > 0
+
+      if (hasEmail && hasBroadcast) {
+        throw new Error(
+          'Cannot combine the "broadcast" dimension/broadcastId filter with the "email" dimension/emailId filter.'
+        )
+      }
+
+      const response = await opensend.emails.metrics({
+        startDate,
+        endDate,
+        timezone,
+        granularity,
+        metrics,
+        dimensions,
+        domainId,
+        emailId,
+        broadcastId,
+      } as Parameters<typeof opensend.emails.metrics>[0])
+
+      if (response.error) {
+        throw new Error(
+          `Failed to retrieve email metrics: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const data = response.data
+
+      let text = `Email metrics for ${data.start_date} to ${data.end_date} (${data.granularity} granularity):\n\nTotals:\n`
+      for (const [metric, value] of Object.entries(data.totals)) {
+        text += `- ${metric}: ${value}\n`
+      }
+
+      if (data.data && data.data.length > 0) {
+        text += `\nBreakdown by ${data.dimensions.join(", ")}:\n`
+        for (const row of data.data) {
+          // Prefer domain_name/broadcast_name over the raw id when present, but keep
+          // the id as a fallback if the name is missing/blank so the label is never
+          // empty, and never show a blank/missing name field on its own.
+          const hasDomainName =
+            typeof row.domain_name === "string" &&
+            row.domain_name.trim().length > 0
+          const hasBroadcastName =
+            typeof row.broadcast_name === "string" &&
+            row.broadcast_name.trim().length > 0
+          const labelFields = Object.entries(row).filter(([key]) => {
+            if (data.metrics.includes(key as never)) return false
+            if (key === "domain_id") return !hasDomainName
+            if (key === "broadcast_id") return !hasBroadcastName
+            if (key === "domain_name") return hasDomainName
+            if (key === "broadcast_name") return hasBroadcastName
+            return true
+          })
+          const label = labelFields.map(([, value]) => value).join(" / ")
+          const metricValues = data.metrics
+            .map((metric) => `${metric}: ${row[metric]}`)
+            .join(", ")
+          text += `- ${label} — ${metricValues}\n`
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "list-sent-email-attachments",
+    LIST_SENT_EMAIL_ATTACHMENTS_TOOL,
+    async ({ emailId, limit, after, before }) => {
+      if (after && before) {
+        throw new Error(
+          'Cannot use both "after" and "before" parameters. Use only one for pagination.'
+        )
+      }
+
+      const paginationOptions = after
+        ? { emailId, limit, after }
+        : before
+          ? { emailId, limit, before }
+          : { emailId, limit }
+
+      const response = await opensend.emails.attachments.list(paginationOptions)
+
+      if (response.error) {
+        throw new Error(
+          `Failed to list attachments: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const attachments = response.data?.data ?? []
+      const hasMore = response.data?.has_more ?? false
+
+      if (attachments.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No attachments found for this email.",
+            },
+          ],
+        }
+      }
+
+      const attachmentSummaries = attachments
+        .map(
+          (att) =>
+            `- ${att.filename} | Type: ${att.content_type} | Size: ${att.size} bytes | Download: ${att.download_url} (expires: ${att.expires_at}) | ID: ${att.id}`
+        )
+        .join("\n")
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${attachments.length} attachment(s)${hasMore ? " (more available)" : ""}:\n\n${attachmentSummaries}`,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "get-sent-email-attachment",
+    GET_SENT_EMAIL_ATTACHMENT_TOOL,
+    async ({ emailId, id }) => {
+      const response = await opensend.emails.attachments.get({
+        emailId,
+        id,
+      })
+
+      if (response.error) {
+        throw new Error(
+          `Failed to retrieve attachment: ${JSON.stringify(response.error)}`
+        )
+      }
+
+      const attachment = response.data
+
+      if (!attachment) {
+        throw new Error(`Attachment ${id} not found for email ${emailId}.`)
+      }
+
+      let details = "Attachment Details:\n"
+      details += `- ID: ${attachment.id}\n`
+      details += `- Filename: ${attachment.filename}\n`
+      details += `- Content Type: ${attachment.content_type}\n`
+      details += `- Size: ${attachment.size} bytes\n`
+      details += `- Content Disposition: ${attachment.content_disposition}\n`
+      if (attachment.content_id) {
+        details += `- Content ID: ${attachment.content_id}\n`
+      }
+      details += `- Download URL: ${attachment.download_url}\n`
+      details += `- Expires At: ${attachment.expires_at}\n`
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: details,
+          },
+        ],
+      }
+    }
+  )
+
+  server.registerTool(
+    "send-batch-emails",
+    SEND_BATCH_EMAILS_TOOL,
+    async ({ emails, idempotencyKey }) => {
+      const emailRequests = emails.map((email) => {
+        const fromAddress = email.from ?? senderEmailAddress
+        const replyToAddresses = email.replyTo ?? replierEmailAddresses
+
+        if (typeof fromAddress !== "string") {
+          throw new Error(
+            `from address must be provided for email to ${email.to.join(", ")}`
+          )
+        }
+
+        const request: Record<string, unknown> = {
+          to: email.to,
+          subject: email.subject,
+          text: email.text,
+          from: fromAddress,
+          replyTo: replyToAddresses,
+        }
+
+        if (email.html) request.html = email.html
+        if (email.cc) request.cc = email.cc
+        if (email.bcc) request.bcc = email.bcc
+        if (email.scheduledAt) request.scheduledAt = email.scheduledAt
+        if (email.tags && email.tags.length > 0) request.tags = email.tags
+        if (email.topicId) request.topicId = email.topicId
+        if (email.headers && Object.keys(email.headers).length > 0) {
+          request.headers = email.headers
+        }
+
+        return request
+      })
+
+      const response = await opensend.batch.send(
+        emailRequests as unknown as Parameters<typeof opensend.batch.send>[0],
+        idempotencyKey ? { idempotencyKey } : undefined
+      )
+
+      if (response.error) {
+        throw new Error(`Batch send failed: ${JSON.stringify(response.error)}`)
+      }
+
+      const ids = response.data?.data?.map((e) => e.id) ?? []
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Batch sent successfully! ${ids.length} email(s) queued.\nIDs: ${ids.join(", ")}`,
+          },
+        ],
+      }
+    }
+  )
+}

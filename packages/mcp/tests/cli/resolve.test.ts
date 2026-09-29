@@ -1,0 +1,247 @@
+import { describe, expect, it } from "vitest"
+import { parseArgs } from "../../src/cli/parse.js"
+import { resolveConfig } from "../../src/cli/resolve.js"
+
+describe("resolveConfig", () => {
+  it("returns error when no API key in stdio mode", () => {
+    const parsed = parseArgs([])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain("API key")
+    }
+  })
+
+  it("returns error when API key is whitespace only in stdio mode", () => {
+    const result = resolveConfig(parseArgs(["--key", "   "]), {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "   ",
+    })
+    expect(result.ok).toBe(false)
+  })
+
+  // HTTP mode allows missing API key because each client provides
+  // their own via the Authorization: Bearer header at request time.
+  it("allows missing API key in HTTP mode", () => {
+    const parsed = parseArgs(["--http"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.transport).toBe("http")
+      expect(result.config.apiKey).toBeUndefined()
+    }
+  })
+
+  it("resolves config from --key", () => {
+    const parsed = parseArgs([
+      "--key",
+      "  os_test0000000000000000000000000000  ",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.apiKey).toBe("os_test0000000000000000000000000000")
+      expect(result.config.senderEmailAddress).toBe("")
+      expect(result.config.replierEmailAddresses).toEqual([])
+    }
+  })
+
+  it("resolves config from OPENSEND_API_KEY when --key not set", () => {
+    const parsed = parseArgs([])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.apiKey).toBe("os_test0000000000000000000000000000")
+    }
+  })
+
+  it("--key overrides OPENSEND_API_KEY", () => {
+    const parsed = parseArgs(["--key", "os_test0000000000000000000000000000"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.apiKey).toBe("os_test0000000000000000000000000000")
+    }
+  })
+
+  it("includes sender from --sender", () => {
+    const parsed = parseArgs([
+      "--key",
+      "os_test0000000000000000000000000000",
+      "--sender",
+      "from@resend.dev",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.senderEmailAddress).toBe("from@resend.dev")
+    }
+  })
+
+  it("includes sender from OPENSEND_SENDER_EMAIL_ADDRESS", () => {
+    const parsed = parseArgs(["--key", "os_test0000000000000000000000000000"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+      OPENSEND_SENDER_EMAIL_ADDRESS: " env@resend.dev ",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.senderEmailAddress).toBe("env@resend.dev")
+    }
+  })
+
+  it("defaults sender to empty string when not set", () => {
+    const parsed = parseArgs(["--key", "os_test0000000000000000000000000000"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.senderEmailAddress).toBe("")
+    }
+  })
+
+  it("includes replier addresses from env", () => {
+    const parsed = parseArgs(["--key", "os_test0000000000000000000000000000"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+      OPENSEND_REPLY_TO_EMAIL_ADDRESSES: "r1@x.com,r2@x.com",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.replierEmailAddresses).toEqual([
+        "r1@x.com",
+        "r2@x.com",
+      ])
+    }
+  })
+
+  it("defaults transport to stdio and port to 3000", () => {
+    const parsed = parseArgs(["--key", "os_test0000000000000000000000000000"])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.transport).toBe("stdio")
+      expect(result.config.port).toBe(3000)
+    }
+  })
+
+  it("sets transport to http and uses default port when --http", () => {
+    const parsed = parseArgs([
+      "--key",
+      "os_test0000000000000000000000000000",
+      "--http",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.transport).toBe("http")
+      expect(result.config.port).toBe(3000)
+    }
+  })
+
+  it("uses --port when provided with --http", () => {
+    const parsed = parseArgs([
+      "--key",
+      "os_test0000000000000000000000000000",
+      "--http",
+      "--port",
+      "8080",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.transport).toBe("http")
+      expect(result.config.port).toBe(8080)
+    }
+  })
+
+  it("uses OPENSEND_MCP_PORT when --port not set", () => {
+    const parsed = parseArgs([
+      "--key",
+      "os_test0000000000000000000000000000",
+      "--http",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+      OPENSEND_MCP_PORT: "9000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.port).toBe(9000)
+    }
+  })
+
+  it("--port overrides OPENSEND_MCP_PORT", () => {
+    const parsed = parseArgs([
+      "--key",
+      "os_test0000000000000000000000000000",
+      "--http",
+      "--port",
+      "4000",
+    ])
+    const result = resolveConfig(parsed, {
+      OPENSEND_BASE_URL: "https://api.opensend.test",
+      OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+      OPENSEND_MCP_PORT: "9000",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.config.port).toBe(4000)
+    }
+  })
+
+  it("invalid or out-of-range port falls back to default", () => {
+    const invalid = resolveConfig(
+      parseArgs([
+        "--key",
+        "os_test0000000000000000000000000000",
+        "--http",
+        "--port",
+        "not-a-number",
+      ]),
+      {
+        OPENSEND_BASE_URL: "https://api.opensend.test",
+        OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+      }
+    )
+    const outOfRange = resolveConfig(
+      parseArgs(["--key", "os_test0000000000000000000000000000", "--http"]),
+      {
+        OPENSEND_BASE_URL: "https://api.opensend.test",
+        OPENSEND_API_KEY: "os_test0000000000000000000000000000",
+        OPENSEND_MCP_PORT: "99999",
+      }
+    )
+    expect(invalid.ok && outOfRange.ok).toBe(true)
+    if (invalid.ok) expect(invalid.config.port).toBe(3000)
+    if (outOfRange.ok) expect(outOfRange.config.port).toBe(3000)
+  })
+})
