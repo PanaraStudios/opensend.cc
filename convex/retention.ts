@@ -187,7 +187,7 @@ export const imports = internalMutation({
       .paginate({ ...retentionPage, cursor: cursor ?? null })
     for (const row of page.page)
       if (row.status !== "processing")
-        await ctx.db.delete("contactImports", row._id)
+        await deleteRow(ctx, "contactImports", row._id)
     if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.retention.imports, {
         cursor: page.continueCursor,

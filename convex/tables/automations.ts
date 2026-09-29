@@ -42,11 +42,18 @@ export const automationTables = {
     status: automationStatus,
     trigger: v.string(),
     graph: v.string(),
+    apiDefinition: v.optional(v.string()),
     deleted: v.boolean(),
     updatedAt: v.number(),
     enabledAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_deleted", ["organizationId", "deleted"])
+    .index("by_organizationId_and_deleted_and_status", [
+      "organizationId",
+      "deleted",
+      "status",
+    ])
     .index("by_organizationId_and_trigger_and_status", [
       "organizationId",
       "trigger",
@@ -61,6 +68,7 @@ export const automationTables = {
     lastSignalEventId: v.optional(v.id("events")),
     payload: payloadValue,
     graph: v.string(),
+    apiDefinition: v.optional(v.string()),
     trigger: v.string(),
     status: runStatus,
     sent: v.number(),
@@ -75,6 +83,11 @@ export const automationTables = {
     .index("by_organizationId_and_automationId", [
       "organizationId",
       "automationId",
+    ])
+    .index("by_organizationId_and_automationId_and_status", [
+      "organizationId",
+      "automationId",
+      "status",
     ])
     .index("by_organizationId_and_automationId_and_eventId", [
       "organizationId",

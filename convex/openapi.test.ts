@@ -16,7 +16,8 @@ import { SESv2Client } from "@aws-sdk/client-sesv2"
 import type { ApiRouteOptions } from "./api/route"
 import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
-import { patchRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
+import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
   () => [] as Pick<ApiRouteOptions, "method" | "path" | "permission">[]
@@ -38,7 +39,7 @@ import http from "./http"
 type Operation = {
   operationId: string
   "x-opensend-permission": string
-  requestBody?: { content: { "application/json": { schema: AnySchema } } }
+  requestBody?: { content: Record<string, { schema: AnySchema }> }
   responses: Record<
     string,
     { content: { "application/json": { schema: AnySchema } } }
@@ -224,7 +225,8 @@ describe("OpenAPI contract", () => {
     for (const methods of Object.values(contract.paths))
       for (const operation of Object.values(methods)) {
         if (operation.requestBody)
-          ajv.compile(operation.requestBody.content["application/json"].schema)
+          for (const media of Object.values(operation.requestBody.content))
+            ajv.compile(media.schema)
         for (const result of Object.values(operation.responses))
           ajv.compile(result.content["application/json"].schema)
       }
@@ -390,6 +392,143 @@ describe("OpenAPI contract", () => {
       "GET",
       await f.call("/domains", "GET", undefined, "os_invalid"),
       403
+    )
+  })
+
+  test("all automation operations and run history match the wire contract", async () => {
+    const f = await setup()
+    const input = {
+      name: "Welcome",
+      steps: [
+        {
+          key: "start",
+          type: "trigger",
+          config: { event_name: "user.created" },
+        },
+        { key: "wait", type: "delay", config: { duration: "1 hour" } },
+      ],
+      connections: [{ from: "start", to: "wait" }],
+    }
+    const { id } = await response(
+      "/automations",
+      "POST",
+      await f.call("/automations", "POST", input),
+      201
+    )
+    await response("/automations", "GET", await f.call("/automations"))
+    await response(
+      "/automations/{automation_id}",
+      "GET",
+      await f.call(`/automations/${id}`)
+    )
+    await response(
+      "/automations/{automation_id}",
+      "PATCH",
+      await f.call(`/automations/${id}`, "PATCH", { status: "enabled" })
+    )
+    const copy = await response(
+      "/automations/{automation_id}/duplicate",
+      "POST",
+      await f.call(`/automations/${id}/duplicate`, "POST"),
+      201
+    )
+    await response(
+      "/automations/{automation_id}/stop",
+      "POST",
+      await f.call(`/automations/${id}/stop`, "POST")
+    )
+    const contact = await (
+      await f.call("/contacts", "POST", { email: "run@example.com" })
+    ).json()
+    const runId = await f.t.run(async (ctx) => {
+      const row = (await ctx.db.get("automations", id as Id<"automations">))!
+      const run = await insertRow(ctx, "automationRuns", {
+        organizationId: f.owner.team,
+        automationId: row._id,
+        contactId: contact.id,
+        contactEmail: "run@example.com",
+        trigger: row.trigger,
+        graph: row.graph,
+        payload: {},
+        status: "completed",
+        sent: 0,
+        completedAt: Date.now(),
+      })
+      await insertRow(ctx, "automationRunSteps", {
+        organizationId: f.owner.team,
+        automationId: row._id,
+        runId: run,
+        key: "start",
+        type: "trigger",
+        status: "completed",
+        startedAt: Date.now(),
+        runStartedAt: Date.now(),
+        completedAt: Date.now(),
+      })
+      return run
+    })
+    await response(
+      "/automations/{automation_id}/runs",
+      "GET",
+      await f.call(`/automations/${id}/runs`)
+    )
+    await response(
+      "/automations/{automation_id}/runs/{run_id}",
+      "GET",
+      await f.call(`/automations/${id}/runs/${runId}`)
+    )
+    await response(
+      "/automations/{automation_id}",
+      "DELETE",
+      await f.call(`/automations/${copy.id}`, "DELETE")
+    )
+  })
+
+  test("multipart contact import creation, list and retrieval match the contract", async () => {
+    const f = await setup()
+    const { token } = await f.owner.client.action(api.apiKeys.create, {
+      organizationId: f.owner.team,
+      input: { name: "CSV", permission: "full_access", domainId: null },
+    })
+    const data = new FormData()
+    data.append(
+      "file",
+      new Blob(["email,first_name\nada@example.com,Ada\n"], {
+        type: "text/csv",
+      }),
+      "contacts.csv"
+    )
+    const { id } = await response(
+      "/contacts/imports",
+      "POST",
+      await f.t.fetch("/contacts/imports", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: data,
+      }),
+      201
+    )
+    await response(
+      "/contacts/imports",
+      "GET",
+      await f.call("/contacts/imports")
+    )
+    await response(
+      "/contacts/imports/{id}",
+      "GET",
+      await f.call(`/contacts/imports/${id}`)
+    )
+  })
+
+  test("metrics totals and dimension rows match the contract", async () => {
+    const f = await setup()
+    await response("/emails/metrics", "GET", await f.call("/emails/metrics"))
+    await response(
+      "/emails/metrics",
+      "GET",
+      await f.call(
+        `/emails/metrics?dimensions=period,domain&domain_id=${f.domain}&metrics=sent,delivered`
+      )
     )
   })
 

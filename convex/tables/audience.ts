@@ -49,7 +49,19 @@ export const audienceTables = {
     offset: v.number(),
     result: importResultValue,
     error: v.optional(v.string()),
-  }).index("by_organizationId", ["organizationId"]),
+    failedCount: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    topics: v.optional(
+      v.array(
+        v.object({
+          topicId: v.id("topics"),
+          subscription: topicSubscriptionValue,
+        })
+      )
+    ),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_status", ["organizationId", "status"]),
   contacts: defineTable({
     organizationId: v.string(),
     /** Normalized lowercase; unique per team. */

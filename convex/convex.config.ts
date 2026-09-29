@@ -31,6 +31,7 @@ app.use(workpool, { name: "inboundPool" })
 app.use(workpool, { name: "sendPool" })
 app.use(workpool, { name: "webhookPool" })
 // One aggregate per count, as its README asks; convex/counts.ts owns them.
+app.use(aggregate, { name: "contactImportCounts" })
 app.use(aggregate, { name: "contactCounts" })
 app.use(aggregate, { name: "segmentCounts" })
 app.use(aggregate, { name: "segmentMemberCounts" })

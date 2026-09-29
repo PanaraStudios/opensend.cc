@@ -103,20 +103,26 @@ export const get = query({
       : null
   },
 })
+export async function createAutomation(
+  ctx: MutationCtx,
+  organizationId: string
+) {
+  return insertRow(ctx, "automations", {
+    organizationId,
+    name: UNTITLED_AUTOMATION,
+    trigger: "",
+    graph: "[]",
+    status: "disabled",
+    deleted: false,
+    updatedAt: Date.now(),
+  })
+}
 export const create = mutation({
   args: { organizationId: v.string() },
   returns: v.id("automations"),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId, "write")
-    return insertRow(ctx, "automations", {
-      organizationId,
-      name: UNTITLED_AUTOMATION,
-      trigger: "",
-      graph: "[]",
-      status: "disabled",
-      deleted: false,
-      updatedAt: Date.now(),
-    })
+    return createAutomation(ctx, organizationId)
   },
 })
 async function ensureNames(
@@ -151,6 +157,45 @@ async function ensureNames(
       await defineEvent(ctx, organizationId, { name, schema: [] })
   }
 }
+export async function updateAutomation(
+  ctx: MutationCtx,
+  organizationId: string,
+  id: Id<"automations">,
+  patch: { name?: string; trigger?: string; graph?: string }
+) {
+  const row = await ownedAutomation(ctx, organizationId, id)
+  if (
+    row.status === "enabled" &&
+    (patch.graph !== undefined || patch.trigger !== undefined)
+  )
+    throw new ConvexError("An enabled automation cannot be edited")
+  if (patch.graph !== undefined) readGraph(patch.graph)
+  if (patch.name !== undefined) {
+    patch.name = patch.name.trim() || UNTITLED_AUTOMATION
+    if (patch.name.length > 256)
+      throw new ConvexError("Automation name is too long")
+  }
+  if (patch.trigger !== undefined) {
+    patch.trigger = patch.trigger.trim()
+    if (patch.trigger && eventNameError(patch.trigger))
+      throw new ConvexError(eventNameError(patch.trigger)!)
+  }
+  await ensureNames(
+    ctx,
+    organizationId,
+    patch.trigger ?? row.trigger,
+    patch.graph ?? row.graph,
+    id
+  )
+  await patchRow(ctx, "automations", id, {
+    ...patch,
+    ...(patch.graph !== undefined || patch.trigger !== undefined
+      ? { apiDefinition: undefined }
+      : {}),
+    updatedAt: Date.now(),
+  })
+  return null
+}
 export const update = mutation({
   args: {
     ...scope,
@@ -161,34 +206,56 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, { organizationId, id, ...patch }) => {
     await requireTeam(ctx, organizationId, "write")
-    const row = await ownedAutomation(ctx, organizationId, id)
-    if (
-      row.status === "enabled" &&
-      (patch.graph !== undefined || patch.trigger !== undefined)
-    )
-      throw new ConvexError("An enabled automation cannot be edited")
-    if (patch.graph !== undefined) readGraph(patch.graph)
-    if (patch.name !== undefined) {
-      patch.name = patch.name.trim() || UNTITLED_AUTOMATION
-      if (patch.name.length > 256)
-        throw new ConvexError("Automation name is too long")
-    }
-    if (patch.trigger !== undefined) {
-      patch.trigger = patch.trigger.trim()
-      if (patch.trigger && eventNameError(patch.trigger))
-        throw new ConvexError(eventNameError(patch.trigger)!)
-    }
-    await ensureNames(
-      ctx,
-      organizationId,
-      patch.trigger ?? row.trigger,
-      patch.graph ?? row.graph,
-      id
-    )
-    await patchRow(ctx, "automations", id, { ...patch, updatedAt: Date.now() })
-    return null
+    return updateAutomation(ctx, organizationId, id, patch)
   },
 })
+export async function setAutomationStatus(
+  ctx: MutationCtx,
+  organizationId: string,
+  id: Id<"automations">,
+  status: "enabled" | "disabled"
+) {
+  const row = await ownedAutomation(ctx, organizationId, id)
+  if (status === "enabled") {
+    const steps = readGraph(row.graph)
+    const templates = []
+    const segments = []
+    for (const step of flattenSteps(steps)) {
+      if (step.type === "send_email") {
+        const template = await publishedTemplate(
+          ctx,
+          organizationId,
+          step.templateId
+        )
+        if (template)
+          templates.push({
+            id: template.id,
+            name: template.name,
+            status: "published" as const,
+          })
+      }
+      if (step.type === "add_to_segment") {
+        const sid = ctx.db.normalizeId("segments", step.segmentId)
+        const segment = sid ? await ctx.db.get("segments", sid) : null
+        if (segment?.organizationId === organizationId)
+          segments.push({ id: segment._id, name: segment.name })
+      }
+    }
+    const tasks = automationTasks(
+      { trigger: row.trigger, steps },
+      { templates, segments }
+    )
+    if (tasks.length) return tasks
+  }
+  await patchRow(ctx, "automations", id, {
+    status,
+    updatedAt: Date.now(),
+    ...(status === "enabled" && row.status !== "enabled"
+      ? { enabledAt: Date.now() }
+      : {}),
+  })
+  return []
+}
 export const setStatus = mutation({
   args: { ...scope, status: automationStatus },
   returns: v.array(
@@ -201,92 +268,68 @@ export const setStatus = mutation({
   ),
   handler: async (ctx, { organizationId, id, status }) => {
     await requireTeam(ctx, organizationId, "write")
-    const row = await ownedAutomation(ctx, organizationId, id)
-    if (status === "enabled") {
-      const steps = readGraph(row.graph)
-      const templates = []
-      const segments = []
-      for (const step of flattenSteps(steps)) {
-        if (step.type === "send_email") {
-          const template = await publishedTemplate(
-            ctx,
-            organizationId,
-            step.templateId
-          )
-          if (template)
-            templates.push({
-              id: template.id,
-              name: template.name,
-              status: "published" as const,
-            })
-        }
-        if (step.type === "add_to_segment") {
-          const sid = ctx.db.normalizeId("segments", step.segmentId)
-          const segment = sid ? await ctx.db.get("segments", sid) : null
-          if (segment?.organizationId === organizationId)
-            segments.push({ id: segment._id, name: segment.name })
-        }
-      }
-      const tasks = automationTasks(
-        { trigger: row.trigger, steps },
-        { templates, segments }
-      )
-      if (tasks.length) return tasks
-    }
-    await patchRow(ctx, "automations", id, {
-      status,
-      updatedAt: Date.now(),
-      ...(status === "enabled" && row.status !== "enabled"
-        ? { enabledAt: Date.now() }
-        : {}),
-    })
-    return []
+    return setAutomationStatus(ctx, organizationId, id, status)
   },
 })
+export async function duplicateAutomation(
+  ctx: MutationCtx,
+  organizationId: string,
+  id: Id<"automations">
+) {
+  const row = await ownedAutomation(ctx, organizationId, id)
+  const copy = await insertRow(ctx, "automations", {
+    organizationId,
+    name: `${row.name} copy`,
+    graph: row.graph,
+    apiDefinition: row.apiDefinition,
+    trigger: row.trigger,
+    status: "disabled",
+    deleted: false,
+    updatedAt: Date.now(),
+  })
+  await ensureNames(ctx, organizationId, row.trigger, row.graph, copy)
+  return copy
+}
 export const duplicate = mutation({
   args: scope,
   returns: v.id("automations"),
   handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId, "write")
-    const row = await ownedAutomation(ctx, organizationId, id)
-    const copy = await insertRow(ctx, "automations", {
-      organizationId,
-      name: `${row.name} copy`,
-      graph: row.graph,
-      trigger: row.trigger,
-      status: "disabled",
-      deleted: false,
-      updatedAt: Date.now(),
-    })
-    await ensureNames(ctx, organizationId, row.trigger, row.graph, copy)
-    return copy
+    return duplicateAutomation(ctx, organizationId, id)
   },
 })
+export async function removeAutomation(
+  ctx: MutationCtx,
+  organizationId: string,
+  id: Id<"automations">
+) {
+  await ownedAutomation(ctx, organizationId, id)
+  // The tombstone fences every step before the bounded cleanup reaches it.
+  const links = await ctx.db
+    .query("automationEventLinks")
+    .withIndex("by_organizationId_and_automationId", (q) =>
+      q.eq("organizationId", organizationId).eq("automationId", id)
+    )
+    .take(101)
+  for (const link of links)
+    await ctx.db.delete("automationEventLinks", link._id)
+  await patchRow(ctx, "automations", id, {
+    deleted: true,
+    status: "disabled",
+    updatedAt: Date.now(),
+  })
+  await ctx.scheduler.runAfter(0, internal.automationRuntime.purge, {
+    organizationId,
+    id,
+  })
+  return null
+}
 export const remove = mutation({
   args: scope,
   returns: v.null(),
   handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId, "write")
-    await ownedAutomation(ctx, organizationId, id)
-    // The tombstone fences every step before the bounded cleanup reaches it.
-    const links = await ctx.db
-      .query("automationEventLinks")
-      .withIndex("by_organizationId_and_automationId", (q) =>
-        q.eq("organizationId", organizationId).eq("automationId", id)
-      )
-      .take(101)
-    for (const link of links)
-      await ctx.db.delete("automationEventLinks", link._id)
-    await patchRow(ctx, "automations", id, {
-      deleted: true,
-      status: "disabled",
-      updatedAt: Date.now(),
-    })
-    await ctx.scheduler.runAfter(0, internal.automationRuntime.purge, {
-      organizationId,
-      id,
-    })
-    return null
+    return removeAutomation(ctx, organizationId, id)
   },
 })
 export const test = mutation({

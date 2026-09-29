@@ -1,10 +1,20 @@
-import { contactInputValue, propertyTypeValue } from "./tables/audience"
-import { ConvexError, v } from "convex/values"
-import { internalMutation, query } from "./_generated/server"
+import { insertRow, patchRow, deleteRow } from "./counts"
+import {
+  contactInputValue,
+  propertyTypeValue,
+  topicSubscriptionValue,
+} from "./tables/audience"
+import { ConvexError, v, type Infer } from "convex/values"
+import { internalMutation, query, type MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import { retirement } from "./teamLifecycle"
-import { listProperties, teamRow, upsertContact } from "./audience"
+import {
+  listProperties,
+  teamRow,
+  upsertContact,
+  setTopicChoices,
+} from "./audience"
 import schema from "./schema"
 
 const args = { id: v.id("contactImports"), offset: v.number() }
@@ -33,7 +43,7 @@ export const step = internalMutation({
     if (!job || job.status !== "processing" || job.offset !== offset)
       return null
     if (await retirement(ctx, job.organizationId)) {
-      await ctx.db.delete("contactImports", id)
+      await deleteRow(ctx, "contactImports", id)
       return null
     }
     for (const segmentId of job.segmentIds)
@@ -41,10 +51,16 @@ export const step = internalMutation({
     const properties = await listProperties(ctx, job.organizationId)
     const size = Math.min(
       100,
-      Math.max(1, Math.floor(500 / Math.max(1, job.segmentIds.length)))
+      Math.max(
+        1,
+        Math.floor(
+          500 / Math.max(1, job.segmentIds.length + (job.topics?.length ?? 0))
+        )
+      )
     )
     const end = Math.min(offset + size, job.contacts.length)
     const result = job.result
+    let failedCount = job.failedCount ?? 0
     for (const contact of job.contacts.slice(offset, end)) {
       try {
         // Each contact is a subtransaction: a validation failure never commits a partial contact.
@@ -53,6 +69,7 @@ export const step = internalMutation({
           contact,
           segmentIds: job.segmentIds,
           skipExisting: job.skipExisting,
+          topics: job.topics,
           properties: properties.map(({ key, type }) => ({ key, type })),
         })
         result[outcome.result]++
@@ -60,13 +77,16 @@ export const step = internalMutation({
       } catch (error) {
         if (!(error instanceof ConvexError)) throw error
         result.skipped++
+        failedCount++
         if (result.errors.length < 5) result.errors.push(String(error.data))
       }
     }
     const done = end === job.contacts.length
-    await ctx.db.patch("contactImports", id, {
+    await patchRow(ctx, "contactImports", id, {
       offset: end,
       result,
+      failedCount,
+      ...(done ? { completedAt: Date.now() } : {}),
       status: done ? "completed" : "processing",
     })
     if (!done)
@@ -84,6 +104,14 @@ export const one = internalMutation({
     segmentIds: v.array(v.id("segments")),
     skipExisting: v.boolean(),
     properties: v.array(v.object({ key: v.string(), type: propertyTypeValue })),
+    topics: v.optional(
+      v.array(
+        v.object({
+          topicId: v.id("topics"),
+          subscription: topicSubscriptionValue,
+        })
+      )
+    ),
   },
   returns: v.object({
     id: v.id("contacts"),
@@ -93,8 +121,20 @@ export const one = internalMutation({
       v.literal("skipped")
     ),
   }),
-  handler: async (ctx, { organizationId, contact, ...options }) =>
-    upsertContact(ctx, organizationId, contact, { ...options, emit: false }),
+  handler: async (ctx, { organizationId, contact, topics, ...options }) => {
+    const result = await upsertContact(ctx, organizationId, contact, {
+      ...options,
+      emit: false,
+    })
+    if (topics?.length && result.result !== "skipped")
+      await setTopicChoices(
+        ctx,
+        (await ctx.db.get("contacts", result.id))!,
+        topics,
+        { emit: false }
+      )
+    return result
+  },
 })
 export const failed = internalMutation({
   args,
@@ -102,8 +142,9 @@ export const failed = internalMutation({
   handler: async (ctx, { id, offset }) => {
     const job = await ctx.db.get("contactImports", id)
     if (job?.status === "processing" && job.offset === offset)
-      await ctx.db.patch("contactImports", id, {
+      await patchRow(ctx, "contactImports", id, {
         status: "failed",
+        completedAt: Date.now(),
         error: "Import could not be completed. Retry the remaining contacts.",
       })
     return null
@@ -121,3 +162,45 @@ export const run = internalMutation({
     return null
   },
 })
+
+export async function enqueueImport(
+  ctx: MutationCtx,
+  input: {
+    organizationId: string
+    contacts: Infer<typeof contactInputValue>[]
+    segmentIds: import("./_generated/dataModel").Id<"segments">[]
+    skipExisting: boolean
+    topics?: {
+      topicId: import("./_generated/dataModel").Id<"topics">
+      subscription: Infer<typeof topicSubscriptionValue>
+    }[]
+  }
+) {
+  if (
+    !input.contacts.length ||
+    input.contacts.length > 500 ||
+    new TextEncoder().encode(JSON.stringify(input)).byteLength > 500_000
+  )
+    throw new ConvexError(
+      "Imports support 1–500 rows and at most 500 KB of parsed data. Use smaller batches."
+    )
+  const result = {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    createdIds: [],
+    errors: [],
+  }
+  const jobId = await insertRow(ctx, "contactImports", {
+    ...input,
+    status: "processing",
+    offset: 0,
+    result,
+    failedCount: 0,
+  })
+  await ctx.scheduler.runAfter(0, internal.contactImports.run, {
+    id: jobId,
+    offset: 0,
+  })
+  return { ...result, jobId }
+}

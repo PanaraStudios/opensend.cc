@@ -56,6 +56,7 @@ export const seedEmailMetrics = migrations.define({
 export const countSuppressions = backfill("suppressions")
 export const countEmailRecipients = backfill("emailRecipients")
 export const countEmailEvents = backfill("emailEvents")
+export const countContactImports = backfill("contactImports")
 export const countContacts = backfill("contacts")
 export const countTopics = backfill("topics")
 export const countContactProperties = backfill("contactProperties")
@@ -83,6 +84,7 @@ export const dropWebhookStats = migrations.define({
 })
 
 export const backfillCounts = migrations.runner([
+  internal.migrations.countContactImports,
   internal.migrations.countReceivedEmails,
   internal.migrations.parseStoredInbound,
   internal.migrations.countAutomations,

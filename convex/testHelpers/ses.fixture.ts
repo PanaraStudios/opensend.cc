@@ -27,6 +27,7 @@ const COUNT_COMPONENTS = [
   "automationCounts",
   "automationRunCounts",
   "automationStepCounts",
+  "contactImportCounts",
   "contactCounts",
   "segmentCounts",
   "segmentMemberCounts",

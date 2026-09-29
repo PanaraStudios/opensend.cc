@@ -1,3 +1,4 @@
+import { enqueueImport } from "./contactImports"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { selectedOption } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -234,29 +235,12 @@ export const upsert = mutation({
     for (const id of segmentIds)
       await teamRow(ctx, "segments", args.organizationId, id)
     if (args.csvImport) {
-      if (new TextEncoder().encode(JSON.stringify(inputs)).byteLength > 500_000)
-        throw new ConvexError("Import batch is too large. Use smaller batches.")
-      const result = {
-        created: 0,
-        updated: 0,
-        skipped: 0,
-        createdIds: [],
-        errors: [],
-      }
-      const jobId = await ctx.db.insert("contactImports", {
+      return enqueueImport(ctx, {
         organizationId: args.organizationId,
         contacts: inputs,
         segmentIds,
         skipExisting: args.skipExisting ?? false,
-        status: "processing",
-        offset: 0,
-        result,
       })
-      await ctx.scheduler.runAfter(0, internal.contactImports.run, {
-        id: jobId,
-        offset: 0,
-      })
-      return { ...result, jobId }
     }
     if (inputs.length * Math.max(1, segmentIds.length) > 500)
       throw new ConvexError(

@@ -174,7 +174,7 @@ Audience compatibility details:
   recipient behavior. See [Resend's topic semantics](https://resend.com/blog/unsubscribe-topics).
 - Topic API names are limited to 50 characters and descriptions to 200, as in
   Resend. The existing dashboard accepts longer values, which retrieval preserves.
-- Contact imports and segment metrics are outside this lane. Broadcast REST
+- Contact imports are documented below; segment metrics remain unavailable. Broadcast REST
   endpoints remain wave 5.
 
 References: [contacts](https://resend.com/docs/api-reference/contacts/create-contact),
@@ -454,3 +454,146 @@ suppression cleanup for each provisioned region, so SES can deliver again.
 Suppression webhook data contains `id`, `email`, `origin`, `source_id`, and ISO
 `created_at` inside the standard `{type, created_at, data}` envelope. Repeated
 adds of an existing address do not emit duplicate `suppression.added` events.
+
+## Automations
+
+Every route requires `full_access`, checks team ownership and uses the shared
+REST error/rate-limit/logging wrapper. POSTs support transactional idempotency.
+
+| Endpoint | Success |
+| --- | --- |
+| `POST /automations` | 201 `{object:"automation",id}` |
+| `GET /automations` | 200 `{object:"list",has_more,data}` |
+| `GET /automations/{automation_id}` | 200 automation metadata, `steps`, `connections` |
+| `PATCH /automations/{automation_id}` | 200 `{object:"automation",id}` |
+| `DELETE /automations/{automation_id}` | 200 `{object:"automation",id,deleted:true}` |
+| `POST /automations/{automation_id}/duplicate` | 201 `{object:"automation",id}` for a disabled copy |
+| `POST /automations/{automation_id}/stop` | 200 `{object:"automation",id,status:"disabled"}` |
+| `GET /automations/{automation_id}/runs` | 200 `{object:"list",has_more,data}` |
+| `GET /automations/{automation_id}/runs/{run_id}` | 200 `{object:"automation_run",id,status,started_at,completed_at,created_at,steps}` |
+
+Create accepts a nonempty `name`, optional `status` (`enabled` or `disabled`,
+default disabled), `steps` and `connections`. These are the Resend wire objects:
+
+```json
+{
+  "name": "Welcome",
+  "steps": [
+    {"key":"start","type":"trigger","config":{"event_name":"user.created"}},
+    {"key":"pause","type":"delay","config":{"duration":"1 hour"}}
+  ],
+  "connections": [{"from":"start","to":"pause"}]
+}
+```
+
+The supported step types are `trigger`, `send_email`, `delay`, `wait_for_event`,
+`condition`, `contact_update`, `contact_delete`, and `add_to_segment`.
+Connection types are `default`, `condition_met`, `condition_not_met`,
+`event_received`, and `timeout`. The adapter translates into the dashboard's
+validated graph; execution and webhook effects use the same runtime. Unknown
+step types return 422 `validation_error` naming the type.
+
+The shared runtime bounds definitions to one trigger plus 100 steps, 64 KiB and
+12 levels of nested branches. Cycles, joins and arbitrary parallel fan-out are
+rejected. Conditions accept a rule or a flat and/or rule group; nested mixed
+groups and null comparisons are unsupported. Template variables support scalars
+and `{var:"event.key"}` / `{var:"contact.key"}` references; subject overrides
+and structured variables are unsupported. Wait steps require a timeout before
+activation, at most 30 days; `filter_rule` is unsupported. Unsupported options
+return explicit 422 errors.
+
+PATCH requires name/status or both steps and connections. Disable an automation
+in a separate request before editing its graph. Enabling uses the dashboard's
+publish checks, including published templates and owned segments. Stop disables
+new starts; existing snapshots finish, matching dashboard disable behavior.
+Delete immediately fences execution and schedules bounded workflow cleanup.
+Duplicate preserves the accepted definition and appends ` copy` to the name.
+
+Both lists accept `limit`, `after`, and `before`. Automations accept a `status`
+filter. Runs accept `running`, `completed`, `failed`, or `cancelled`, including
+comma-separated or repeated statuses. Run detail orders steps by the execution
+graph, preserves the original trigger key and returns nullable output/error and
+completion timestamps. Errors contain `{message}`. A foreign id or a run under
+the wrong parent returns 404 `not_found`.
+
+## Contact imports
+
+`POST /contacts/imports` accepts `multipart/form-data`, as the Resend SDK sends:
+a CSV `file`, optional JSON-encoded `column_map`, `segments`, and `topics`, and
+`on_conflict` (`upsert` or `skip`). The current docs' default is `upsert`.
+Column maps use `email`, `first_name`, `last_name`, `unsubscribed`, and
+`properties:{key:{column,type}}`; absent maps match the standard column names.
+Custom property types are `string` and `number`; boolean properties are
+unsupported by the shared contact model. New mapped property definitions are
+created in the same transaction as the job. Segment entries use `{id}`, topic
+entries use `{id,subscription:"opt_in"|"opt_out"}`.
+
+```sh
+curl "$OPENSEND_API_URL/contacts/imports" \
+  -H "Authorization: Bearer $OPENSEND_API_KEY" \
+  -H "Idempotency-Key: contacts-september" \
+  -F 'file=@contacts.csv;type=text/csv' \
+  -F 'column_map={"email":"Email","first_name":"First Name"}' \
+  -F 'on_conflict=upsert'
+```
+
+Success is 201 `{object:"contact_import",id}`. Multipart replay hashes the
+sorted decoded form fields, including CSV contents, so fresh boundary strings
+do not create duplicate jobs. The request limit is 1 MiB; each durable import
+accepts 1–500 rows and at most 500 KB of parsed job data, plus up to 100 segment
+and 100 topic references. Larger files must be split into smaller imports.
+Malformed CSV/maps and unsupported property types return 422; malformed
+multipart returns 400. Neither URLs nor inline JSON contact lists are accepted.
+
+`GET /contacts/imports` uses standard id pagination and an optional `status`
+filter (`queued`, `in_progress`, `completed`, `failed`). Jobs enter in_progress
+immediately. Scans cap at 4 MiB, so pages may be shorter than the requested limit.
+`GET /contacts/imports/{id}` returns the same item shape:
+`{object:"contact_import",id,status,created_at,completed_at,counts}` with counts
+`{total,created,updated,skipped,failed}`. Total is rows processed so far.
+Completion is nullable while processing. Invalid rows increment failed rather
+than skipped; existing contacts under skip increment skipped. Legacy jobs have
+no stored completion timestamp or separate failure count. Private diagnostic
+text and CSV contents are not returned. Completed/failed jobs expire after
+seven days, following existing import retention.
+
+Processing reuses dashboard CSV jobs, including per-contact subtransactions and
+bounded scheduling. All contact creation/update and topic changes suppress
+contact webhooks, as CSV imports do in Resend. Every referenced segment/topic
+must belong to the caller's team. After upgrade, `migrations:backfillCounts`
+also backfills the import-job counter; no deployment is performed by this lane.
+
+## Email metrics
+
+`GET /emails/metrics` requires `full_access`. It accepts ISO `start_date` and
+`end_date`, IANA `timezone` (default UTC), `granularity` (`hourly`, `daily`,
+`weekly`, `monthly`, default daily), `metrics`, `dimensions`, and `domain_id`.
+List parameters accept commas, repeated parameters or both. With no dates,
+it covers today and the previous six days. Date-only end dates include the
+whole date; future end dates clamp to now.
+
+The response is `{object:"metrics",start_date,end_date,metrics,dimensions,
+granularity,totals,data?}`. With no dimensions, only totals are returned.
+Supported dimensions are `period` and `domain`, alone or together. Domain rows
+include `domain_id` and `domain_name`; period rows are chronological. Timezone
+bucketing handles DST and non-hour offsets. Rates are percentages, recomputed
+from total counts rather than averaged across periods.
+
+Supported metrics (also the default selection) are `received`, `sent`,
+`delivered`, `delivery_delayed`, `failed`, `suppressed`, `bounced`,
+`bounced_transient`, `bounced_permanent`, `bounced_undetermined`, `complained`,
+`unique_opened`, `unique_clicked`, `delivery_rate`, `open_rate`, `click_rate`,
+`bounce_rate`, and `complaint_rate`. Received counts retained email rows; other
+counts use retained unique milestones grouped by email creation time.
+
+Queries use the existing aggregates, whose precision is 15 minutes. Date-time
+boundaries round outward to those buckets. A query supports at most 31 total
+domain-period spans and a one-year range; excess requests return 422
+`validation_error`. Select fewer domains, a coarser granularity or shorter
+range. Domain filters accept at most 100 ids and return 404 for foreign ids.
+
+Email/broadcast dimensions and filters, repeat `opened`/`clicked` events,
+`unsubscribed` and `unsubscribe_rate` return 422. Historical aggregates do not
+retain those dimensions/events; the API does not invent zero values for them.
+These are documented parity gaps, alongside self-hosted range and precision
+limits. No raw unbounded event scan is used.

@@ -70,6 +70,7 @@ export async function startRun(
     contactEmail: contact.email,
     payload,
     graph: automation.graph,
+    apiDefinition: automation.apiDefinition,
     trigger: automation.trigger,
     status: "running",
     sent: 0,
