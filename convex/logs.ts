@@ -51,14 +51,18 @@ const cut = (body: string | undefined) =>
 export function responseForLog(path: string, method: string, body?: string) {
   if (method === "POST" && /^\/emails\/[^/]+\/share$/.test(path))
     return "[redacted]"
+  // Responses that carry a secret: key and webhook creation, secret
+  // rotation, and webhook retrieval.
   const field =
-    path === "/api-keys"
+    method === "POST" && path === "/api-keys"
       ? "token"
-      : path === "/webhooks" ||
-          /^\/webhooks\/[^/]+\/signing-secret\/rotate$/.test(path)
+      : (method === "POST" &&
+            (path === "/webhooks" ||
+              /^\/webhooks\/[^/]+\/signing-secret\/rotate$/.test(path))) ||
+          (method === "GET" && /^\/webhooks\/[^/]+$/.test(path))
         ? "signing_secret"
         : null
-  if (!field || method !== "POST" || !body) return body
+  if (!field || !body) return body
   try {
     const value: unknown = JSON.parse(body)
     if (value && typeof value === "object" && !Array.isArray(value))

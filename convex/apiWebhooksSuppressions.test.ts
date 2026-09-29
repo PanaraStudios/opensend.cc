@@ -143,6 +143,31 @@ describe("webhook REST parity", () => {
     expect((await f.call(url)).body.signing_secret).toBe(
       first.body.signing_secret
     )
+    // ...but the request log never keeps it.
+    const reads = await f.t.run(async (ctx) => {
+      const logs = await ctx.db
+        .query("apiLogs")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", f.owner.team)
+        )
+        .take(100)
+      return Promise.all(
+        logs
+          .filter((log) => log.method === "GET" && log.path === url)
+          .map((log) =>
+            ctx.db
+              .query("apiLogBodies")
+              .withIndex("by_logId", (q) => q.eq("logId", log._id))
+              .unique()
+          )
+      )
+    })
+    expect(reads.length).toBeGreaterThan(0)
+    for (const body of reads)
+      expect(JSON.parse(body!.responseBody!)).toMatchObject({
+        object: "webhook",
+        signing_secret: "[redacted]",
+      })
     expect(
       (
         await f.call(url, "PATCH", {
