@@ -26,7 +26,7 @@ export default async function SharedPage({
     }
   }
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-4xl flex-col px-6 py-10">
+    <main className="mx-auto flex min-h-svh w-full max-w-5xl flex-col px-4 py-8 sm:px-6">
       <SharedEmailView email={email} unavailable={unavailable} />
     </main>
   )

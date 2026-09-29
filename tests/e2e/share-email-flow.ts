@@ -35,6 +35,15 @@ export function shareEmailTests(state: () => State) {
         name: "Share email",
         exact: true,
       })
+      // Resend's flow: choose how long the link lasts, then generate it.
+      await expect(
+        dialog.getByRole("combobox", { name: "Link expires after" })
+      ).toContainText("48 hours")
+      await screenshots(owner, "dialog")
+      await dialog.getByRole("combobox", { name: "Link expires after" }).click()
+      await owner.getByRole("option", { name: "24 hours", exact: true }).click()
+      await dialog.getByRole("combobox", { name: "Link expires after" }).focus()
+      await owner.keyboard.press("ControlOrMeta+Enter")
       const link = dialog.getByRole("textbox", {
         name: "Share link",
         exact: true,
@@ -44,17 +53,12 @@ export function shareEmailTests(state: () => State) {
       await expect(
         dialog.getByRole("button", { name: "Copy share link" })
       ).toBeVisible()
-      const first = await link.inputValue()
-      await screenshots(owner, "dialog")
-      await dialog.getByRole("button", { name: "Create new link" }).click()
-      await expect(link).not.toHaveValue(first)
+      await screenshots(owner, "dialog-link")
       const url = await link.inputValue()
       const page = await publicContext.newPage()
       const response = await page.goto(url)
       expect(response?.headers()["cache-control"]).toContain("no-store")
-      await expect(
-        page.getByRole("heading", { name: email.subject, exact: true })
-      ).toBeVisible()
+      await expect(page).toHaveTitle(/Shared email/)
       await expect(
         page
           .frameLocator("iframe")

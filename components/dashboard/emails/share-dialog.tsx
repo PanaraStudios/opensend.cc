@@ -6,8 +6,8 @@ import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { useWorkspace, useTeamRole } from "@/components/auth/workspace"
 import { Button } from "@/components/ui/button"
+import { Kbd } from "@/components/ui/kbd"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
   Dialog,
@@ -18,9 +18,17 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { CopyButton } from "@/components/dashboard/primitives"
+import { CopyButton, OptionSelect } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
 import { formatDateTime } from "@/lib/dashboard/format"
+
+/* Resend's choices; links last at most 48 hours. */
+const EXPIRY_ITEMS = [
+  { value: "1h", label: "1 hour" },
+  { value: "6h", label: "6 hours" },
+  { value: "24h", label: "24 hours" },
+  { value: "48h", label: "48 hours" },
+]
 
 export function useShareEmail(id: string) {
   const { activeTeamId } = useWorkspace()
@@ -29,6 +37,7 @@ export function useShareEmail(id: string) {
   const [open, setOpen] = React.useState(false)
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState("")
+  const [expiresIn, setExpiresIn] = React.useState("48h")
   const [savedShare, setShare] = React.useState<{
     id: string
     organizationId: string
@@ -50,6 +59,7 @@ export function useShareEmail(id: string) {
         ...(await create({
           organizationId: activeTeamId,
           id: id as Id<"emails"> | Id<"receivedEmails">,
+          expiresIn,
         })),
         organizationId: activeTeamId,
       })
@@ -63,17 +73,26 @@ export function useShareEmail(id: string) {
   return {
     canWrite,
     open: () => {
+      setShare(null)
+      setError("")
+      setExpiresIn("48h")
       setOpen(true)
-      if (!share || share.expiresAt <= Date.now()) void generate()
     },
     dialog: (
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onKeyDown={(event) => {
+            if (!share && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault()
+              void generate()
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Share email</DialogTitle>
             <DialogDescription>
-              Anyone with this link can view this email for 48 hours without
-              signing in.
+              Anyone with the link can view this email.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4" aria-busy={pending}>
@@ -95,14 +114,21 @@ export function useShareEmail(id: string) {
                   Expires {formatDateTime(share.expiresAt)}
                 </p>
               </>
-            ) : pending ? (
-              <Skeleton className="h-9 w-full" />
-            ) : null}
-            {pending ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                Creating link…
-              </p>
-            ) : null}
+            ) : (
+              <Field>
+                <FieldLabel htmlFor="email-share-expiry">
+                  Link expires after
+                </FieldLabel>
+                <OptionSelect
+                  id="email-share-expiry"
+                  className="w-full"
+                  value={expiresIn}
+                  onChange={setExpiresIn}
+                  items={EXPIRY_ITEMS}
+                  disabled={pending}
+                />
+              </Field>
+            )}
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -110,15 +136,24 @@ export function useShareEmail(id: string) {
             ) : null}
           </div>
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              Done
-            </DialogClose>
-            <Button
-              disabled={pending || !canWrite}
-              onClick={() => void generate()}
-            >
-              {share ? "Create new link" : "Create link"}
-            </Button>
+            {share ? (
+              <DialogClose render={<Button />}>Done</DialogClose>
+            ) : (
+              <>
+                <DialogClose render={<Button variant="outline" />}>
+                  Cancel
+                  <Kbd>Esc</Kbd>
+                </DialogClose>
+                <Button
+                  disabled={pending || !canWrite}
+                  aria-keyshortcuts="Meta+Enter Control+Enter"
+                  onClick={() => void generate()}
+                >
+                  {pending ? "Generating…" : "Generate link"}
+                  <Kbd>⌘↵</Kbd>
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
