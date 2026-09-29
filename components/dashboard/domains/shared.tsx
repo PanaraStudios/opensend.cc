@@ -25,12 +25,13 @@ import { regionLabel, statusLabel } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
 import { docsHrefForDnsRecord } from "@/lib/docs-links"
 import type { SelectOption } from "@/components/dashboard/primitives"
+import { downloadBlob } from "@/lib/dashboard/download"
 
 export const DomainIcon = GlobeIcon
 
 export const REGION_ITEMS: readonly SelectOption[] = REGIONS.map((item) => ({
   value: item.value,
-  label: `${item.label} (${item.code})`,
+  label: `${item.label} (${item.value})`,
 }))
 
 export const DOMAIN_STATUS_ITEMS: readonly SelectOption[] = [
@@ -226,12 +227,7 @@ export function DnsRecordsTable({
 /** Hand the browser a generated file, the way the record menu offers a zone
     file. Kept here so the callers stay declarative. */
 export function downloadTextFile(name: string, contents: string) {
-  const url = URL.createObjectURL(new Blob([contents], { type: "text/plain" }))
-  const link = document.createElement("a")
-  link.href = url
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(name, new Blob([contents], { type: "text/plain" }))
 }
 
 export function downloadZoneFile(domain: Domain, records?: DnsRecord[]) {

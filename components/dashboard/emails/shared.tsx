@@ -10,18 +10,9 @@ import {
   suppressionReasonLabel,
 } from "@/lib/dashboard/format"
 import { EMAIL_TABS } from "@/lib/dashboard/nav"
-import { matchesNeedle } from "@/lib/dashboard/search"
 import type { EmailStatus, SuppressionReason } from "@/lib/dashboard/types"
 
-export {
-  RANGE_PRESETS,
-  defaultEmailRange,
-  inDateRange,
-  rangeFromPreset,
-  rangeLabel,
-  presetFromRange,
-  type RangePreset,
-} from "@/lib/dashboard/email-range"
+export { defaultEmailRange } from "@/lib/dashboard/email-range"
 
 const FILTERABLE_STATUSES: EmailStatus[] = [
   "delivered",
@@ -67,14 +58,6 @@ export const ORIGIN_ITEMS: readonly SelectOption[] = [
   reasonItem("complained"),
   reasonItem("manual"),
 ]
-
-/** `needle` comes from searchNeedle(), computed once per render. */
-export function emailMatches(
-  needle: string,
-  fields: { to?: string; from?: string; subject?: string }
-): boolean {
-  return matchesNeedle(needle, fields.to, fields.from, fields.subject)
-}
 
 export function isSuppressionReason(value: string): value is SuppressionReason {
   return (SUPPRESSION_REASONS as string[]).includes(value)

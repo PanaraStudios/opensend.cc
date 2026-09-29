@@ -327,3 +327,5 @@ export function httpStatusTone(status: number): BadgeTone {
 export function httpStatusLabel(status: number): string {
   return status === 0 ? "No response" : String(status)
 }
+
+export const formatNumber = (value: number) => value.toLocaleString("en-US")

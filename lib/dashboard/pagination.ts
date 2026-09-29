@@ -1,3 +1,4 @@
+import { formatNumber } from "./format"
 /* The list pager's arithmetic. Lists load from the server a page at a time
    (Convex cursor pagination), so the pager steps over the rows loaded so
    far and knows the list's size only when the server counted it or the
@@ -46,8 +47,6 @@ export function hasPages(pager: Pager) {
   return total === null ? pager.loaded >= pageSize : total > pageSize
 }
 
-const number = (value: number) => value.toLocaleString("en-US")
-
 /** Resend's pager label: "Page 1 – 3 of 120 contacts". While the size is
     unknown it counts what loaded so far: "Page 2 – 2+ of 80+ contacts".
     The noun stays plural, as Resend's does ("of 1 domains"). */
@@ -56,5 +55,5 @@ export function pageLabel(pager: Pager, noun: string, plural = `${noun}s`) {
   const more = total === null ? "+" : ""
   const size = total ?? pager.loaded
   const pages = Math.max(1, Math.ceil(size / pager.pageSize))
-  return `Page ${number(pager.page + 1)} – ${number(pages)}${more} of ${number(size)}${more} ${plural}`
+  return `Page ${formatNumber(pager.page + 1)} – ${formatNumber(pages)}${more} of ${formatNumber(size)}${more} ${plural}`
 }

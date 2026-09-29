@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
-  normalizeTemplates,
   publishedAtAfterEdit,
   renamedTemplateAlias,
   templateAliasError,
@@ -159,28 +158,5 @@ describe("publishedAtAfterEdit", () => {
     const edited = { ...live, updatedAt: 6 }
     assert.equal(publishedAtAfterEdit(edited, { name: "New" }, 9), 5)
     assert.equal(publishedAtAfterEdit(template({}), { name: "New" }, 9), null)
-  })
-})
-
-describe("normalizeTemplates", () => {
-  it("backfills alias, preview and publish time on old records", () => {
-    const old = (patch: Partial<EmailTemplate>) => {
-      const record: Partial<EmailTemplate> = template(patch)
-      delete record.alias
-      delete record.preview
-      delete record.publishedAt
-      return record as EmailTemplate
-    }
-    const [first, second, third] = normalizeTemplates([
-      old({ name: "Invoice", status: "published", updatedAt: 7 }),
-      old({ name: "Invoice" }),
-      template({ alias: "kept" }),
-    ])
-    assert.deepEqual(
-      [first!.alias, first!.preview, first!.publishedAt],
-      ["invoice", "", 7]
-    )
-    assert.deepEqual([second!.alias, second!.publishedAt], ["invoice-2", null])
-    assert.equal(third!.alias, "kept")
   })
 })

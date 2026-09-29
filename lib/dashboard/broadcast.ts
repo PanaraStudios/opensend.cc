@@ -4,7 +4,6 @@ import type {
   Broadcast,
   BroadcastStats,
   BroadcastStatus,
-  DashboardState,
   Domain,
   Segment,
 } from "./types"
@@ -32,12 +31,6 @@ export function emptyBroadcastStats(): BroadcastStats {
     unsubscribed: 0,
     complained: 0,
   }
-}
-
-export function normalizeBroadcastStats(
-  stats: Partial<BroadcastStats> | null | undefined
-): BroadcastStats {
-  return { ...emptyBroadcastStats(), ...stats }
 }
 
 /** Drafts (and canceled sends, which behave like drafts) open the block
@@ -74,52 +67,6 @@ export function broadcastActions(status: BroadcastStatus) {
   }
 }
 
-/** Only the transitions the UI offers are legal; a schedule needs a time. */
-export function canTransitionBroadcast(
-  from: BroadcastStatus,
-  to: BroadcastStatus,
-  scheduledAt: number | null = null
-): boolean {
-  const actions = broadcastActions(from)
-  if (to === "sent") return actions.canSend
-  if (to === "scheduled") return actions.canSchedule && scheduledAt !== null
-  if (to === "canceled") return actions.canCancel
-  return false
-}
-
-export type BroadcastTransition = {
-  now: number
-  /** Recipient count when the transition is to `sent`. */
-  recipients?: number
-  /** Send time when the transition is to `scheduled`. */
-  scheduledAt?: number | null
-}
-
-/** Pure status change. Illegal transitions return the record untouched. */
-export function transitionBroadcast(
-  item: Broadcast,
-  status: BroadcastStatus,
-  { now, recipients = 0, scheduledAt = null }: BroadcastTransition
-): Broadcast {
-  if (!canTransitionBroadcast(item.status, status, scheduledAt)) return item
-  if (status === "sent") {
-    return {
-      ...item,
-      status,
-      scheduledAt: null,
-      sentAt: now,
-      updatedAt: now,
-      stats: { ...emptyBroadcastStats(), recipients, delivered: recipients },
-    }
-  }
-  return {
-    ...item,
-    status,
-    updatedAt: now,
-    scheduledAt: status === "scheduled" ? scheduledAt : null,
-  }
-}
-
 export function audienceLabel(
   segmentId: string | null,
   segments: Segment[]
@@ -150,11 +97,6 @@ export function emailFrom(
   return item.from && options.includes(item.from) ? item.from : options[0]!
 }
 
-/** Backfill for records persisted before `updatedAt` existed. */
-export function broadcastUpdatedAt(item: Broadcast): number {
-  return item.updatedAt || item.sentAt || item.createdAt
-}
-
 /** A broadcast's email as a new template, editor document and all. */
 export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
   return {
@@ -166,27 +108,4 @@ export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
     from: item.from,
     replyTo: item.replyTo,
   }
-}
-
-export function broadcastEventRows(
-  state: Pick<DashboardState, "emails" | "contacts">,
-  item: Broadcast,
-  tab: BroadcastEventTab
-): { email: string }[] {
-  if (tab === "unsubscribed") {
-    const recipients = new Set(
-      state.emails
-        .filter((email) => email.broadcastId === item.id)
-        .map((email) => email.to)
-    )
-    return state.contacts
-      .filter(
-        (contact) => contact.unsubscribed && recipients.has(contact.email)
-      )
-      .map((contact) => ({ email: contact.email }))
-  }
-
-  return state.emails
-    .filter((email) => email.broadcastId === item.id && email.status === tab)
-    .map((email) => ({ email: email.to }))
 }

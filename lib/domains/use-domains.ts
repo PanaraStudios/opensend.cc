@@ -36,18 +36,9 @@ export function asDomain(row: Doc<"domains">): Domain {
           },
         }
       : {}),
-    events: [
-      { type: "added", at: row._creationTime },
-      ...(row.dnsVerifiedAt
-        ? [{ type: "dns_verified" as const, at: row.dnsVerifiedAt }]
-        : []),
-      ...(row.partiallyVerifiedAt
-        ? [{ type: "partially_verified" as const, at: row.partiallyVerifiedAt }]
-        : []),
-      ...(row.verifiedAt
-        ? [{ type: "verified" as const, at: row.verifiedAt }]
-        : []),
-    ],
+    dnsVerifiedAt: row.dnsVerifiedAt,
+    partiallyVerifiedAt: row.partiallyVerifiedAt,
+    verifiedAt: row.verifiedAt,
   }
 }
 export function useDomainCommands() {

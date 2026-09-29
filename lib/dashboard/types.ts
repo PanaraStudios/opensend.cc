@@ -1,13 +1,32 @@
 import type { JSONContent } from "@tiptap/core"
+import type { Infer } from "convex/values"
+import { regions } from "../../convex/ses/contracts"
+import type {
+  propertyTypeValue,
+  topicDefaultValue,
+  topicSubscriptionValue,
+  topicVisibilityValue,
+} from "../../convex/tables/audience"
+import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
+import type {
+  emailStatusValue,
+  suppressionReasonValue,
+} from "../../convex/tables/emails"
+import type { exportStatusValue } from "../../convex/tables/exports"
+import type { templateStatusValue } from "../../convex/tables/templates"
 
-export const REGIONS = [
-  { value: "us-east-1", label: "North Virginia", code: "us-east-1" },
-  { value: "eu-west-1", label: "Ireland", code: "eu-west-1" },
-  { value: "sa-east-1", label: "São Paulo", code: "sa-east-1" },
-  { value: "ap-northeast-1", label: "Tokyo", code: "ap-northeast-1" },
-] as const
+export type Region = (typeof regions)[number]
 
-export type Region = (typeof REGIONS)[number]["value"]
+export const REGION_DETAILS: Record<Region, { label: string; flag: string }> = {
+  "us-east-1": { label: "North Virginia", flag: "🇺🇸" },
+  "eu-west-1": { label: "Ireland", flag: "🇮🇪" },
+  "sa-east-1": { label: "São Paulo", flag: "🇧🇷" },
+  "ap-northeast-1": { label: "Tokyo", flag: "🇯🇵" },
+}
+export const REGIONS = regions.map((value) => ({
+  value,
+  label: REGION_DETAILS[value].label,
+}))
 
 export type DomainStatus =
   | "not_started"
@@ -24,40 +43,25 @@ export type DnsProvider =
 export type DomainEventType =
   "added" | "dns_verified" | "partially_verified" | "verified"
 
-export type DomainEvent = { type: DomainEventType; at: number }
-
 export type RecordKind =
   "DKIM" | "SPF" | "DMARC" | "MX" | "Tracking" | "Receiving"
 export type DnsType = "CNAME" | "MX" | "TXT"
 export type TlsMode = "opportunistic" | "enforced"
-export type TopicDefault = "opt_in" | "opt_out"
-export type TopicVisibility = "public" | "private"
-export type TopicSubscription = "subscribed" | "unsubscribed"
+export type TopicDefault = Infer<typeof topicDefaultValue>
+export type TopicVisibility = Infer<typeof topicVisibilityValue>
+export type TopicSubscription = Infer<typeof topicSubscriptionValue>
 export type ApiKeyPermission = "full_access" | "sending_access"
 export type MemberRole = "admin" | "member"
 
-export type EmailStatus =
-  | "queued"
-  | "scheduled"
-  | "sent"
-  | "delivered"
-  | "delivery_delayed"
-  | "opened"
-  | "clicked"
-  | "bounced"
-  | "complained"
-  | "failed"
-  | "canceled"
-  | "suppressed"
+export type EmailStatus = Infer<typeof emailStatusValue>
 
-export type BroadcastStatus =
-  "draft" | "scheduled" | "queued" | "sent" | "failed" | "canceled"
+export type BroadcastStatus = Infer<typeof broadcastStatusValue>
 
-export type TemplateStatus = "draft" | "published"
+export type TemplateStatus = Infer<typeof templateStatusValue>
 export type AutomationStatus = "enabled" | "disabled"
-export type PropertyType = "string" | "number"
-export type SuppressionReason = "bounced" | "complained" | "manual"
-export type ExportStatus = "processing" | "ready" | "failed" | "expired"
+export type PropertyType = Infer<typeof propertyTypeValue>
+export type SuppressionReason = Infer<typeof suppressionReasonValue>
+export type ExportStatus = Infer<typeof exportStatusValue>
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
 export const WEBHOOK_EVENTS = [
@@ -108,13 +112,14 @@ export type Domain = {
   customReturnPath: string
   receiving: boolean
   records: DnsRecord[]
-  /* Added after the first release, so persisted workspaces may lack them.
-     `normalizeDomain` in ./domains backfills every one on parse. */
+  /** Optional domain configuration returned by the backend. */
   provider?: DnsProvider
   sending?: boolean
   trackingSubdomain?: string
   trackingTarget?: string
-  events?: DomainEvent[]
+  dnsVerifiedAt?: number
+  partiallyVerifiedAt?: number
+  verifiedAt?: number
   /** Set when the DNS provider can apply the records itself (Domain Connect). */
   autoConfigure?: { providerName: string; width?: number; height?: number }
   /** A status check is running. */
@@ -463,47 +468,4 @@ export type Team = {
   members: number
   /** False for the last team left, which stays. */
   removable: boolean
-}
-
-export const AUTH_PROVIDERS = ["password", "github", "google"] as const
-export type AuthProvider = (typeof AUTH_PROVIDERS)[number]
-
-/** What belongs to the person rather than to a team. Their name and email
-    are on their member record in each team. */
-export type Account = {
-  providers: { provider: AuthProvider; connectedAt: number }[]
-  /** The second factor: its secret, and when it was verified. */
-  mfa: { enabledAt: number } | null
-}
-
-export type Settings = {
-  teamName: string
-  teamSlug: string
-  teamAvatar?: string
-  sso: {
-    enabled: boolean
-    issuer: string
-    clientId: string
-  }
-}
-
-export type DashboardState = {
-  domains: Domain[]
-  contacts: Contact[]
-  segments: Segment[]
-  topics: Topic[]
-  properties: ContactProperty[]
-  apiKeys: ApiKey[]
-  members: TeamMember[]
-  emails: SentEmail[]
-  received: ReceivedEmail[]
-  suppressions: Suppression[]
-  broadcasts: Broadcast[]
-  templates: EmailTemplate[]
-  automations: Automation[]
-  automationEvents: AutomationEvent[]
-  automationRuns: AutomationRun[]
-  logs: ApiLog[]
-  exports: ExportJob[]
-  settings: Settings
 }

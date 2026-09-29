@@ -38,9 +38,7 @@ export function propertyKeyError(
   return null
 }
 
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase()
-}
+export { normalizeEmail } from "./format"
 
 export function defaultTopicSubscription(
   topic: Pick<Topic, "defaultSubscription">
