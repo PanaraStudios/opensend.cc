@@ -18,7 +18,7 @@ import schema from "./schema"
 import { requireTeam } from "./access"
 import { counters, countValue, insertRow, patchRow, deleteRow } from "./counts"
 import { stream } from "convex-helpers/server/stream"
-import { filteredPage, matchesSearch } from "./lists"
+import { filteredPage, matchesSearch, selectedOption } from "./lists"
 import {
   BROADCAST_STATUSES,
   broadcastStatusValue,
@@ -404,9 +404,13 @@ export const get = query({
   ),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const id = ctx.db.normalizeId("broadcasts", args.id)
-    const row = id && (await ctx.db.get("broadcasts", id))
-    if (!row || row.organizationId !== args.organizationId) return null
+    const row = await selectedOption(
+      ctx,
+      "broadcasts",
+      args.organizationId,
+      args.id
+    )
+    if (!row) return null
     return { row, body: await draft(ctx, row._id) }
   },
 })

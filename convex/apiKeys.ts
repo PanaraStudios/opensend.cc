@@ -26,7 +26,7 @@ import {
   literals,
   patchRow,
 } from "./counts"
-import { filteredPage, matchesSearch } from "./lists"
+import { filteredPage, matchesSearch, readTeamRow, hasTeamRows } from "./lists"
 import { logCount } from "./logs"
 import { createToken, tokenParts } from "../lib/dashboard/ids"
 import { tokenHash } from "../lib/oauth/policy"
@@ -244,16 +244,8 @@ export const list = query({
 export const hasAny = query({
   args: { organizationId: v.string() },
   returns: v.boolean(),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId)
-    const first = await ctx.db
-      .query("apiKeys")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .first()
-    return first !== null
-  },
+  handler: (ctx, { organizationId }) =>
+    hasTeamRows(ctx, "apiKeys", organizationId),
 })
 export const get = query({
   args: { id: v.string() },
@@ -266,10 +258,8 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const keyId = ctx.db.normalizeId("apiKeys", id)
-    const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
+    const key = await readTeamRow(ctx, "apiKeys", id)
     if (!key) return null
-    await requireTeam(ctx, key.organizationId)
     return {
       key: await viewKey(ctx, key),
       requests:

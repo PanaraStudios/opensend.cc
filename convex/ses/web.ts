@@ -1,3 +1,4 @@
+import { hmacHex } from "../../lib/tokens/signed"
 /* Runtime-neutral helpers: the HTTP routes run in the default runtime and the
    actions that call them back run in Node, so both import from here. */
 export class BodyTooLarge extends Error {
@@ -37,20 +38,9 @@ export async function limitedBody(
   }
 }
 /** Proves a callback URL reaches this deployment without revealing the secret. */
-export async function setupProof(challenge: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(process.env.BETTER_AUTH_SECRET ?? ""),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+export function setupProof(challenge: string) {
+  return hmacHex(
+    `opensend:setup-proof:${challenge}`,
+    process.env.BETTER_AUTH_SECRET ?? ""
   )
-  const signed = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`opensend:setup-proof:${challenge}`)
-  )
-  return Array.from(new Uint8Array(signed), (b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("")
 }

@@ -16,8 +16,8 @@ function fromBase64url(value: string) {
   }
 }
 
-function hmacKey(secret: string) {
-  if (secret.length < 32)
+function hmacKey(secret: string, validate = true) {
+  if (validate && secret.length < 32)
     throw new Error("The installation server secret is unavailable")
   return crypto.subtle.importKey(
     "raw",
@@ -60,4 +60,19 @@ export async function readToken(
   ))
     ? payload
     : null
+}
+
+export function toHex(bytes: Uint8Array) {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  )
+}
+
+export async function hmacHex(payload: string, secret: string) {
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await hmacKey(secret, false),
+    encoder.encode(payload)
+  )
+  return toHex(new Uint8Array(signature))
 }

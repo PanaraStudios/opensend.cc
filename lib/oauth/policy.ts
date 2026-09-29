@@ -1,3 +1,4 @@
+import { toHex } from "../tokens/signed"
 /** The only public permission registry. offline_access is protocol-internal. */
 export const oauthScopes = {
   "emails:send": "Send emails",
@@ -51,12 +52,8 @@ export async function tokenHash(value: string) {
     "SHA-256",
     new TextEncoder().encode(value)
   )
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("")
+  return toHex(new Uint8Array(digest))
 }
 export function randomToken() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("")
+  return toHex(crypto.getRandomValues(new Uint8Array(32)))
 }

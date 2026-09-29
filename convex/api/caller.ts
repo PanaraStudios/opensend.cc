@@ -1,3 +1,4 @@
+import { teamRow, type TeamRowTable, type TeamRowOptions } from "../lists"
 import { retirement } from "../teamLifecycle"
 import { ConvexError, v, type Infer } from "convex/values"
 import { components } from "../_generated/api"
@@ -29,6 +30,11 @@ export const apiError = (statusCode: number, name: string, message: string) =>
 export const notFound = (noun: string) =>
   apiError(404, "not_found", `${noun} not found`)
 
+export const invalid = (message: string) =>
+  apiError(422, "validation_error", message)
+export const missing = (field: string) =>
+  apiError(422, "missing_required_field", `Missing \`${field}\` field.`)
+
 /** Re-checks the caller inside the transaction that reads or writes team
     data: a key deleted, or an OAuth grant revoked, mid-request stops here.
     Every internal function behind a REST route calls this first. */
@@ -45,15 +51,18 @@ export async function requireCaller(
     (key.permission !== caller.permission || key.domainId !== caller.domainId)
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (key?.domainId) {
-    const domain = await ctx.db.get("domains", key.domainId)
-    if (
-      !domain ||
-      domain.deleted ||
-      domain.organizationId !== key.organizationId
+  if (
+    await callerProblem(
+      ctx,
+      {
+        ...caller,
+        organizationId: key?.organizationId ?? caller.organizationId,
+        domainId: key?.domainId,
+      },
+      "sending"
     )
-      throw apiError(403, "invalid_api_key", "API key is invalid")
-  }
+  )
+    throw apiError(403, "invalid_api_key", "API key is invalid")
   const live = caller.apiKeyId
     ? key?.organizationId
     : caller.oauthGrantId
@@ -68,10 +77,44 @@ export async function requireCaller(
     (await retirement(ctx, caller.organizationId))
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (permission === "full_access" && caller.permission !== "full_access")
+  if (await callerProblem(ctx, caller, permission, false))
     throw apiError(
       401,
       "restricted_api_key",
       "This API key is restricted to only send emails."
     )
+}
+
+export async function requireTeamRow<T extends TeamRowTable>(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  id: string,
+  noun: string,
+  options?: TeamRowOptions<T>
+) {
+  const row = await teamRow(ctx, table, organizationId, id, options)
+  if (!row) throw notFound(noun)
+  return row
+}
+
+/** Return policy failures so each entry point retains its own wire errors. */
+export async function callerProblem(
+  ctx: QueryCtx,
+  caller: Caller,
+  permission: "full_access" | "sending",
+  checkDomain = true
+): Promise<"permission" | "domain" | null> {
+  if (permission === "full_access" && caller.permission !== "full_access")
+    return "permission"
+  if (checkDomain && caller.domainId) {
+    const domain = await ctx.db.get("domains", caller.domainId)
+    if (
+      !domain ||
+      domain.deleted ||
+      domain.organizationId !== caller.organizationId
+    )
+      return "domain"
+  }
+  return null
 }

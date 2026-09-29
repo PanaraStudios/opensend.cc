@@ -6,7 +6,7 @@ import { authorizeOAuth } from "../oauthHttp"
 import { BodyTooLarge, limitedBody } from "../ses/web"
 import { pgTimestamp } from "../../lib/dashboard/exports"
 import { tokenHash } from "../../lib/oauth/policy"
-import { apiError, type Caller } from "./caller"
+import { type Caller, invalid, missing } from "./caller"
 import { API_RATE } from "./state"
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE"
@@ -35,6 +35,7 @@ export type ApiRouteOptions = {
   maxBody?: number
   bodyFormat?: "multipart"
   source?: "smtp"
+  idempotencyHeaders?: Record<string, string>
   /** Materialize a sensitive response only at the wire, also on replay. */
   serializeResponse?: (body: unknown) => Promise<unknown>
   handler: (ctx: ActionCtx, request: ApiRequest) => Promise<ApiReply>
@@ -286,7 +287,14 @@ function dispatch(patterns: Pattern[]) {
           ? {
               key: idempotencyKey,
               requestHash: await tokenHash(
-                `${options.method} ${url.pathname}${url.pathname === "/emails/batch" ? ` ${request.headers.get("x-batch-validation") ?? "strict"}` : ""}\n${text}`
+                `${options.method} ${url.pathname}${Object.entries(
+                  options.idempotencyHeaders ?? {}
+                )
+                  .map(
+                    ([name, fallback]) =>
+                      ` ${request.headers.get(name) ?? fallback}`
+                  )
+                  .join("")}\n${text}`
               ),
             }
           : undefined,
@@ -367,11 +375,7 @@ function dispatch(patterns: Pattern[]) {
 export function objectBody(body: unknown): Record<string, unknown> {
   if (body === undefined) return {}
   if (!body || typeof body !== "object" || Array.isArray(body))
-    throw apiError(
-      422,
-      "validation_error",
-      "The request body must be a JSON object."
-    )
+    throw invalid("The request body must be a JSON object.")
   return body as Record<string, unknown>
 }
 export function stringField(
@@ -381,20 +385,11 @@ export function stringField(
 ): string | undefined {
   const value = body[name]
   if (value === undefined || value === null) {
-    if (required)
-      throw apiError(
-        422,
-        "missing_required_field",
-        `Missing \`${name}\` field.`
-      )
+    if (required) throw missing(name)
     return undefined
   }
   if (typeof value !== "string")
-    throw apiError(
-      422,
-      "validation_error",
-      `The \`${name}\` field must be a string.`
-    )
+    throw invalid(`The \`${name}\` field must be a string.`)
   return value
 }
 export function booleanField(
@@ -404,11 +399,7 @@ export function booleanField(
   const value = body[name]
   if (value === undefined || value === null) return undefined
   if (typeof value !== "boolean")
-    throw apiError(
-      422,
-      "validation_error",
-      `The \`${name}\` field must be a boolean.`
-    )
+    throw invalid(`The \`${name}\` field must be a boolean.`)
   return value
 }
 export function enumField<T extends string>(
@@ -418,11 +409,7 @@ export function enumField<T extends string>(
 ): T | undefined {
   const value = stringField(body, name)
   if (value !== undefined && !values.includes(value as T))
-    throw apiError(
-      422,
-      "validation_error",
-      `The \`${name}\` field must be one of: ${values.join(", ")}.`
-    )
+    throw invalid(`The \`${name}\` field must be one of: ${values.join(", ")}.`)
   return value as T | undefined
 }
 
@@ -431,17 +418,11 @@ export function listParams(query: URLSearchParams) {
   const raw = query.get("limit")
   const limit = raw === null ? 20 : Number(raw)
   if (!Number.isInteger(limit) || limit < 1 || limit > 100)
-    throw apiError(
-      422,
-      "validation_error",
-      "The `limit` parameter must be an integer between 1 and 100."
-    )
+    throw invalid("The `limit` parameter must be an integer between 1 and 100.")
   const after = query.get("after") ?? undefined
   const before = query.get("before") ?? undefined
   if (after && before)
-    throw apiError(
-      422,
-      "validation_error",
+    throw invalid(
       "The `after` and `before` parameters cannot be used together."
     )
   return { limit, after, before }
@@ -449,3 +430,67 @@ export function listParams(query: URLSearchParams) {
 
 /** Resend's timestamp format: "2026-04-08 00:11:13.110000+00". */
 export const apiTime = pgTimestamp
+
+export function objectField(body: Record<string, unknown>, name: string) {
+  const value = body[name]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "object" || Array.isArray(value))
+    throw invalid(`The \`${name}\` field must be an object.`)
+  return value as Record<string, unknown>
+}
+export function arrayField(body: Record<string, unknown>, name: string) {
+  const value = body[name]
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value))
+    throw invalid(`The \`${name}\` field must be an array.`)
+  return value as unknown[]
+}
+
+/** Preserve each endpoint's treatment of absent, null and scalar values. */
+export function stringListField(
+  body: Record<string, unknown>,
+  name: string,
+  options: {
+    arrayOnly?: boolean
+    rejectNull?: boolean
+    emptyString?: boolean
+    message?: string
+  } = {}
+): string[] | undefined {
+  const value = body[name]
+  if (value === undefined || (value === null && !options.rejectNull))
+    return undefined
+  const list = Array.isArray(value) ? value : options.arrayOnly ? null : [value]
+  if (!list || !list.every((item): item is string => typeof item === "string"))
+    throw invalid(
+      options.message ??
+        `The \`${name}\` field must be ${options.arrayOnly ? "an array of strings" : "a string or an array of strings"}.`
+    )
+  return options.emptyString && value === "" ? [] : list
+}
+
+export function listBody<P extends { has_more: boolean; data: unknown[] }, R>(
+  page: P,
+  project: (row: P["data"][number], index: number) => R
+) {
+  return {
+    object: "list" as const,
+    has_more: page.has_more,
+    data: page.data.map(project),
+  }
+}
+
+export function queryValues(
+  query: URLSearchParams,
+  key: string,
+  keepEmpty = false
+) {
+  return [
+    ...new Set(
+      query
+        .getAll(key)
+        .flatMap((value) => value.split(","))
+        .filter((value) => keepEmpty || !!value)
+    ),
+  ]
+}

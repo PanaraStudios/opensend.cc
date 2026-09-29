@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import {
   createClaim,
   ownClaim,
@@ -31,6 +32,7 @@ import { DEFAULT_RETURN_PATH } from "../../lib/dashboard/domains"
 import { callerValue, notFound, requireCaller, type Caller } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   booleanField,
@@ -41,14 +43,10 @@ import {
 } from "./route"
 
 /** A live domain of the caller's team, or null. */
-async function own(ctx: QueryCtx, caller: Caller, id: string) {
-  const domainId = ctx.db.normalizeId("domains", id)
-  const domain = domainId ? await ctx.db.get("domains", domainId) : null
-  return domain &&
-    !domain.deleted &&
-    domain.organizationId === caller.organizationId
-    ? domain
-    : null
+function own(ctx: QueryCtx, caller: Caller, id: string) {
+  return teamRow(ctx, "domains", caller.organizationId, id, {
+    keep: (row) => !row.deleted,
+  })
 }
 
 export const list = internalQuery({
@@ -314,11 +312,7 @@ export function registerDomainRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: page.has_more,
-          data: page.data.map(summary),
-        },
+        body: listBody(page, summary),
       }
     },
   })

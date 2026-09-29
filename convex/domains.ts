@@ -1,6 +1,6 @@
 import { apiError } from "./api/caller"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
-import { selectedOption } from "./lists"
+import { selectedOption, readTeamRow, prefixOptions } from "./lists"
 import { trackingTarget } from "./ses/contracts"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -124,29 +124,15 @@ export async function domainOptionRows(
 ) {
   const prefix = args.search?.trim().toLowerCase() ?? ""
   const domains = ctx.db.query("domains")
-  const rows = prefix
-    ? args.historical
-      ? await domains
-          .withIndex("by_organizationId_and_name", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .gte("name", prefix)
-              .lt("name", prefix + "\uffff")
-          )
-          .take(OPTION_LIMIT)
-      : (
+  const rows = args.historical
+    ? await prefixOptions(ctx, "domains", args.organizationId, prefix)
+    : prefix
+      ? (
           await domainPage(ctx, {
             ...args,
             paginationOpts: { cursor: null, numItems: OPTION_LIMIT },
           })
         ).page
-    : args.historical
-      ? await domains
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
       : args.status
         ? await domains
             .withIndex("by_organizationId_and_deleted_and_status", (q) =>
@@ -242,10 +228,8 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const normalized = ctx.db.normalizeId("domains", id)
-    const domain = normalized ? await ctx.db.get("domains", normalized) : null
+    const domain = await readTeamRow(ctx, "domains", id)
     if (!domain) return null
-    await requireTeam(ctx, domain.organizationId)
     if (domain.deleted) return null
     const tenant = domain.tenantId
       ? await ctx.db.get("sesTenants", domain.tenantId)

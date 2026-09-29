@@ -27,7 +27,7 @@ import {
   insertRow,
   patchRow,
 } from "./counts"
-import { matchesSearch, teamPage } from "./lists"
+import { matchesSearch, teamPage, readTeamRow, hasTeamRows } from "./lists"
 import { createWebhookSecret } from "../lib/dashboard/ids"
 import {
   isDeliveryFailed,
@@ -110,10 +110,7 @@ async function writableWebhook(ctx: MutationCtx, id: Id<"webhooks">) {
 
 /** A webhook named by a route parameter, or null if there is none. */
 async function readWebhook(ctx: QueryCtx, id: string) {
-  const normalized = ctx.db.normalizeId("webhooks", id)
-  const webhook = normalized ? await ctx.db.get("webhooks", normalized) : null
-  if (webhook) await requireTeam(ctx, webhook.organizationId)
-  return webhook
+  return readTeamRow(ctx, "webhooks", id)
 }
 
 /** Rewrites the webhook's subscription rows to match its events and state. */
@@ -232,16 +229,8 @@ export const count = query({
 export const hasAny = query({
   args: { organizationId: v.string() },
   returns: v.boolean(),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId)
-    const first = await ctx.db
-      .query("webhooks")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .first()
-    return first !== null
-  },
+  handler: (ctx, { organizationId }) =>
+    hasTeamRows(ctx, "webhooks", organizationId),
 })
 
 export const get = query({

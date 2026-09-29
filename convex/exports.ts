@@ -16,7 +16,7 @@ import type { Doc, Id } from "./_generated/dataModel"
 import { findInstallation, requireTeam, sessionId } from "./access"
 import schema from "./schema"
 import { countValue, counters } from "./counts"
-import { teamPage } from "./lists"
+import { teamPage, readTeamRow } from "./lists"
 import { EXPORT_SOURCES } from "./exportSources"
 import { deleteExport, insertExport, patchExport } from "./exportRows"
 import { exportFilterLineValue } from "./tables/exports"
@@ -152,10 +152,8 @@ export const get = query({
   args: { id: v.string() },
   returns: v.union(v.null(), exportView),
   handler: async (ctx, { id }) => {
-    const exportId = ctx.db.normalizeId("exports", id)
-    const row = exportId ? await ctx.db.get("exports", exportId) : null
+    const row = await readTeamRow(ctx, "exports", id)
     if (!row) return null
-    await requireTeam(ctx, row.organizationId)
     return view(row)
   },
 })

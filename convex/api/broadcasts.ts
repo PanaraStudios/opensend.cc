@@ -21,25 +21,30 @@ import {
   draft,
   type BroadcastInput,
 } from "../broadcasts"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import {
+  apiError,
+  callerValue,
+  notFound,
+  requireCaller,
+  invalid,
+  requireTeamRow,
+} from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
   listParams,
   objectBody,
   stringField,
+  stringListField,
 } from "./route"
 import { parseScheduledAt } from "../../lib/dashboard/email-send"
 
-async function own(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("broadcasts", value)
-  const row = id ? await ctx.db.get("broadcasts", id) : null
-  if (!row || row.organizationId !== organizationId) throw notFound("Broadcast")
-  return row
+function own(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(ctx, "broadcasts", organizationId, value, "Broadcast")
 }
-const invalid = (message: string) => apiError(422, "validation_error", message)
 function inputFields(
   ctx: QueryCtx,
   input: Record<string, unknown>,
@@ -62,16 +67,10 @@ function inputFields(
     throw invalid("Invalid `segment_id` field.")
   if (input.topic_id != null && !topicId)
     throw invalid("Invalid `topic_id` field.")
-  let replyToAddresses: string[] | undefined
-  if (input.reply_to !== undefined) {
-    if (typeof input.reply_to === "string") replyToAddresses = [input.reply_to]
-    else if (
-      Array.isArray(input.reply_to) &&
-      input.reply_to.every((v): v is string => typeof v === "string")
-    )
-      replyToAddresses = input.reply_to
-    else throw invalid("Invalid `reply_to` field.")
-  }
+  const replyToAddresses = stringListField(input, "reply_to", {
+    rejectNull: true,
+    message: "Invalid `reply_to` field.",
+  })
   const result = {
     name: stringField(input, "name"),
     from: stringField(input, "from", required),
@@ -177,6 +176,7 @@ export const recipientPage = internalQuery({
     bounceType: v.optional(v.string()),
     cursor: v.optional(v.string()),
     before: v.boolean(),
+    limit: v.optional(v.number()),
   },
   returns: v.object({
     done: v.boolean(),
@@ -185,7 +185,7 @@ export const recipientPage = internalQuery({
   }),
   handler: async (
     ctx,
-    { caller, id, type, email, bounceType, cursor, before }
+    { caller, id, type, email, bounceType, cursor, before, limit = 100 }
   ) => {
     await requireCaller(ctx, caller)
     const broadcast = await own(ctx, caller.organizationId, id)
@@ -238,6 +238,7 @@ export const recipientPage = internalQuery({
           ? (row.bounceType ?? "undetermined")
           : "undetermined"
       if (bounceType && classification !== bounceType) continue
+      if (data.length >= limit) break
       const contact = await ctx.db
         .query("contacts")
         .withIndex("by_organizationId_and_email", (q) =>
@@ -462,6 +463,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
           bounceType,
           cursor,
           before: !!before,
+          limit: limit + 1 - data.length,
         })
         data.push(...page.data)
         if (page.done) break
@@ -509,11 +511,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(summary),
-        },
+        body: listBody(result, summary),
       }
     },
   })

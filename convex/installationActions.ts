@@ -15,13 +15,7 @@ import {
   encryptCredentials,
   createWrappedKey,
 } from "./ses/crypto"
-import {
-  clients,
-  connectionClients,
-  hasPolicyRevision,
-  readAccount,
-  awsError,
-} from "./ses/aws"
+import { clients, hasPolicyRevision, readAccount, awsError } from "./ses/aws"
 import { GetCallerIdentityCommand } from "@aws-sdk/client-sts"
 import { controlPlanePacer } from "./ses/pacing"
 import { setupProof } from "./ses/web"
@@ -207,46 +201,8 @@ export const connect = action({
           policyRevision: POLICY_REVISION,
         })
     } catch {
-      // The explicit check reports the reason.
+      // Connection succeeds even if the probes cannot yet confirm permissions.
     }
-    return null
-  },
-})
-/** Proves the connected AWS user has the current IAM policy revision in every
-    enabled region, then records it. Sending waits for this. */
-export const checkPermissions = action({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const { installation, regions } = await ctx.runMutation(
-      internal.installation.beginPermissionCheck,
-      {}
-    )
-    let granted: boolean[]
-    try {
-      granted = await Promise.all(
-        regions.map((region) =>
-          hasPolicyRevision(
-            connectionClients(
-              installation,
-              region,
-              controlPlanePacer(ctx, region)
-            ),
-            installation._id
-          )
-        )
-      )
-    } catch (e) {
-      throw new ConvexError(awsError(e))
-    }
-    if (!granted.every(Boolean))
-      throw new ConvexError(
-        "AWS has not granted the new permissions yet. Update your AWS setup and check again."
-      )
-    await ctx.runMutation(internal.installation.recordPolicyRevision, {
-      credentialRevision: installation.credentialRevision,
-      policyRevision: POLICY_REVISION,
-    })
     return null
   },
 })

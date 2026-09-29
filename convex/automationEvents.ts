@@ -1,5 +1,5 @@
-import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
-import { selectedOption } from "./lists"
+import { includeSelected } from "../lib/dashboard/options"
+import { selectedOption, prefixOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, convexToJson, type Value } from "convex/values"
 import {
@@ -345,23 +345,12 @@ export const options = query({
   ) => {
     await requireTeam(ctx, organizationId, "read")
     const prefix = search?.trim() ?? ""
-    const rows = prefix
-      ? await ctx.db
-          .query("automationEvents")
-          .withIndex("by_organizationId_and_name", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .gte("name", prefix)
-              .lt("name", prefix + "\uffff")
-          )
-          .take(OPTION_LIMIT)
-      : await ctx.db
-          .query("automationEvents")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
+    const rows = await prefixOptions(
+      ctx,
+      "automationEvents",
+      organizationId,
+      prefix
+    )
     let selected = await selectedOption(
       ctx,
       "automationEvents",

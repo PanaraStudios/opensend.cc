@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { requireTeam } from "./access"
-import { notFound, apiError } from "./api/caller"
+import { notFound, invalid } from "./api/caller"
 import { retirement } from "./teamLifecycle"
 import { randomToken, tokenHash } from "../lib/oauth/policy"
 import { sharedEmailId } from "./tables/emailShares"
@@ -25,9 +25,7 @@ export function shareDuration(value: unknown = "48h") {
         )
       : null
   if (!match)
-    throw apiError(
-      422,
-      "validation_error",
+    throw invalid(
       "The `expires_in` field must be a valid duration, such as `10m`, `2 hours`, or `1 day`."
     )
   const unit = match[2].toLowerCase()
@@ -43,9 +41,7 @@ export function shareDuration(value: unknown = "48h") {
             : 86_400_000
   const duration = Number(match[1]) * factor
   if (!Number.isFinite(duration) || duration < 1 || duration > MAX_SHARE_AGE)
-    throw apiError(
-      422,
-      "validation_error",
+    throw invalid(
       "The `expires_in` field must be greater than zero and cannot exceed 48 hours."
     )
   return Math.floor(duration)

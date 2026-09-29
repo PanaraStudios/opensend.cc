@@ -9,7 +9,7 @@ import type { Id } from "./_generated/dataModel"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import { counters, countValue, insertRow, patchRow } from "./counts"
-import { matchesSearch, teamPage } from "./lists"
+import { matchesSearch, teamPage, teamRow } from "./lists"
 import { defineEvent, findEvent, payloadShapeError } from "./automationEvents"
 import { startRun, stopRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
@@ -96,11 +96,9 @@ export const get = query({
   returns: v.union(v.null(), schema.doc("automations")),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const id = ctx.db.normalizeId("automations", args.id)
-    const row = id ? await ctx.db.get("automations", id) : null
-    return row && row.organizationId === args.organizationId && !row.deleted
-      ? row
-      : null
+    return teamRow(ctx, "automations", args.organizationId, args.id, {
+      keep: (row) => !row.deleted,
+    })
   },
 })
 export async function createAutomation(

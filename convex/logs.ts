@@ -18,7 +18,7 @@ import schema from "./schema"
 import { logSourceValue, statusClassValue } from "./tables/api"
 import { logStatusClass } from "../lib/dashboard/logs"
 import { countValue, counters, deleteRow, insertRow, literals } from "./counts"
-import { filteredPage, matchesSearch } from "./lists"
+import { filteredPage, matchesSearch, readTeamRow, hasTeamRows } from "./lists"
 
 /** Resend states no retention for request logs; keep them 30 days. */
 export const LOG_RETENTION = 30 * 86_400_000
@@ -247,16 +247,8 @@ export const count = query({
 export const hasAny = query({
   args: { organizationId: v.string() },
   returns: v.boolean(),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId)
-    const first = await ctx.db
-      .query("apiLogs")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .first()
-    return first !== null
-  },
+  handler: (ctx, { organizationId }) =>
+    hasTeamRows(ctx, "apiLogs", organizationId),
 })
 
 /** Seek past each distinct agent, so duplicate requests and the loaded page
@@ -299,10 +291,8 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const logId = ctx.db.normalizeId("apiLogs", id)
-    const log = logId ? await ctx.db.get("apiLogs", logId) : null
+    const log = await readTeamRow(ctx, "apiLogs", id)
     if (!log) return null
-    await requireTeam(ctx, log.organizationId)
     const body = await ctx.db
       .query("apiLogBodies")
       .withIndex("by_logId", (q) => q.eq("logId", log._id))

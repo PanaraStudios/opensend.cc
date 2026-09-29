@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
@@ -26,22 +27,30 @@ import {
   type AutomationEventFieldType,
 } from "../../lib/dashboard/types"
 import {
-  apiError,
   callerValue,
   notFound,
   requireCaller,
   type Caller,
+  invalid,
+  missing,
 } from "./caller"
 import { cursorPage, listArgs } from "./paging"
-import { apiRoute, apiTime, listParams, objectBody, stringField } from "./route"
+import {
+  listBody,
+  apiRoute,
+  apiTime,
+  listParams,
+  objectBody,
+  stringField,
+  objectField,
+} from "./route"
 
 /** An event of the caller's team by its id or its name, or null. */
-async function own(ctx: QueryCtx, caller: Caller, idOrName: string) {
-  const id = ctx.db.normalizeId("automationEvents", idOrName)
-  const byId = id ? await ctx.db.get("automationEvents", id) : null
-  return byId?.organizationId === caller.organizationId
-    ? byId
-    : findEvent(ctx, caller.organizationId, idOrName)
+function own(ctx: QueryCtx, caller: Caller, idOrName: string) {
+  return teamRow(ctx, "automationEvents", caller.organizationId, idOrName, {
+    fallback: () => findEvent(ctx, caller.organizationId, idOrName),
+    fallbackOnMissing: true,
+  })
 }
 
 export const list = internalQuery({
@@ -161,10 +170,10 @@ const SCHEMA_SHAPE =
 function readSchema(value: unknown): AutomationEvent["schema"] {
   if (value === undefined || value === null) return []
   if (typeof value !== "object" || Array.isArray(value))
-    throw apiError(422, "validation_error", SCHEMA_SHAPE)
+    throw invalid(SCHEMA_SHAPE)
   return Object.entries(value).map(([key, type]) => {
     if (!(AUTOMATION_EVENT_FIELD_TYPES as readonly unknown[]).includes(type))
-      throw apiError(422, "validation_error", SCHEMA_SHAPE)
+      throw invalid(SCHEMA_SHAPE)
     return { key, type: type as AutomationEventFieldType }
   })
 }
@@ -186,28 +195,19 @@ function sendContact(input: Record<string, unknown>) {
   const id = stringField(input, "contact_id")
   const email = stringField(input, "email")
   if ((id === undefined) === (email === undefined))
-    throw apiError(
-      422,
-      "validation_error",
+    throw invalid(
       "Either `contact_id` or `email` must be provided, but not both."
     )
   if (id !== undefined) return { id }
   const problem = contactEmailError(email!.trim())
-  if (problem) throw apiError(422, "validation_error", problem)
+  if (problem) throw invalid(problem)
   return { email: email! }
 }
 function sendPayload(input: Record<string, unknown>) {
-  if (input.payload === undefined || input.payload === null) return {}
-  const payload = input.payload
-  if (typeof payload !== "object" || Array.isArray(payload))
-    throw apiError(
-      422,
-      "validation_error",
-      "The `payload` field must be an object."
-    )
-  const problem = payloadShapeError(payload as Record<string, unknown>)
-  if (problem) throw apiError(422, "validation_error", problem)
-  return payload as Record<string, unknown>
+  const payload = objectField(input, "payload") ?? {}
+  const problem = payloadShapeError(payload)
+  if (problem) throw invalid(problem)
+  return payload
 }
 
 /** `/events`, as Resend documents it: definitions, and `POST /events/send`
@@ -228,11 +228,7 @@ export function registerEventRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: page.has_more,
-          data: page.data.map(summary),
-        },
+        body: listBody(page, summary),
       }
     },
   })
@@ -285,8 +281,7 @@ export function registerEventRoutes(http: HttpRouter) {
     permission: "full_access",
     handler: async (ctx, { caller, params, body }) => {
       const input = objectBody(body)
-      if (!("schema" in input))
-        throw apiError(422, "missing_required_field", "Missing `schema` field.")
+      if (!("schema" in input)) throw missing("schema")
       return {
         body: changed(
           await ctx.runMutation(internal.api.events.change, {

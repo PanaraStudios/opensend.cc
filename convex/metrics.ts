@@ -182,11 +182,10 @@ export const domains = query({
         q.eq("organizationId", args.organizationId)
       )
       .paginate(args.paginationOpts)
-    const rows = await summarizeDomains(ctx, page.page, range)
-    return {
-      ...page,
-      page: rows.filter((row) => !args.domainId || args.domainId === row.id),
-    }
+    const selected = page.page.filter(
+      (row) => !args.domainId || args.domainId === row._id
+    )
+    return { ...page, page: await summarizeDomains(ctx, selected, range) }
   },
 })
 

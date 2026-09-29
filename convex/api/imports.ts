@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { normalizePropertyKey } from "../../lib/dashboard/contacts"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -14,8 +15,9 @@ import { createProperty } from "../contactProperties"
 import { listProperties, SEGMENT_INPUT_LIMIT } from "../audience"
 import { parseCsv, parseUnsubscribed } from "../../lib/dashboard/csv"
 import { own } from "./audience"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import { callerValue, requireCaller, invalid, requireTeamRow } from "./caller"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
@@ -26,7 +28,6 @@ import {
 import { cursorPage, listArgs } from "./paging"
 import { idempotent } from "./idempotency"
 
-const invalid = (message: string) => apiError(422, "validation_error", message)
 const statuses = ["queued", "in_progress", "completed", "failed"] as const
 const statusValue = v.union(...statuses.map((s) => v.literal(s)))
 function jsonField(
@@ -42,12 +43,14 @@ function jsonField(
     throw invalid(`The ${name} field must contain valid JSON.`)
   }
 }
-async function owned(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("contactImports", value)
-  const row = id ? await ctx.db.get("contactImports", id) : null
-  if (!row || row.organizationId !== organizationId)
-    throw notFound("Contact import")
-  return row
+function owned(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(
+    ctx,
+    "contactImports",
+    organizationId,
+    value,
+    "Contact import"
+  )
 }
 export const create = internalMutation({
   args: { caller: callerValue, body: v.string() },
@@ -217,11 +220,14 @@ export const list = internalQuery({
     const result = await cursorPage(
       page,
       async (value) => {
-        const id = ctx.db.normalizeId("contactImports", value)
-        const row = id ? await ctx.db.get("contactImports", id) : null
+        const row = await teamRow(
+          ctx,
+          "contactImports",
+          caller.organizationId,
+          value
+        )
         anchor =
-          row?.organizationId === caller.organizationId &&
-          (!storedStatus || row.status === storedStatus)
+          row && (!storedStatus || row.status === storedStatus)
             ? row
             : undefined
         return anchor ?? null
@@ -321,11 +327,7 @@ export function registerImportRoutes(http: HttpRouter) {
         status: enumField({ status: query.get("status") }, "status", statuses),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(view),
-        },
+        body: listBody(result, view),
       }
     },
   })

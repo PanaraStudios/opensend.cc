@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import schema from "../schema"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
@@ -16,9 +17,10 @@ import {
   mintedValue,
   viewKey,
 } from "../apiKeys"
-import { callerValue, notFound, requireCaller } from "./caller"
+import { callerValue, notFound, requireCaller, requireTeamRow } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
@@ -36,9 +38,7 @@ export const list = internalQuery({
     const result = await cursorPage(
       page,
       async (id) => {
-        const keyId = ctx.db.normalizeId("apiKeys", id)
-        const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
-        return key?.organizationId === org ? key : null
+        return teamRow(ctx, "apiKeys", org, id)
       },
       (order) =>
         stream(ctx.db, schema)
@@ -79,10 +79,13 @@ export const update = internalMutation({
   returns: v.id("apiKeys"),
   handler: async (ctx, { caller, id, name }) => {
     await requireCaller(ctx, caller)
-    const keyId = ctx.db.normalizeId("apiKeys", id)
-    const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
-    if (!key || key.organizationId !== caller.organizationId)
-      throw notFound("API key")
+    const key = await requireTeamRow(
+      ctx,
+      "apiKeys",
+      caller.organizationId,
+      id,
+      "API key"
+    )
     await patchKey(ctx, key, { name })
     return key._id
   },
@@ -93,9 +96,8 @@ export const remove = internalMutation({
   returns: v.union(v.null(), v.id("apiKeys")),
   handler: async (ctx, { caller, id }) => {
     await requireCaller(ctx, caller)
-    const keyId = ctx.db.normalizeId("apiKeys", id)
-    const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
-    if (!key || key.organizationId !== caller.organizationId) return null
+    const key = await teamRow(ctx, "apiKeys", caller.organizationId, id)
+    if (!key) return null
     await deleteKey(ctx, key)
     return key._id
   },
@@ -140,17 +142,13 @@ export function registerApiKeyRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: page.has_more,
-          data: page.data.map((key) => ({
-            id: key._id,
-            name: key.name,
-            created_at: apiTime(key._creationTime),
-            last_used_at:
-              key.lastUsedAt === null ? null : apiTime(key.lastUsedAt),
-          })),
-        },
+        body: listBody(page, (key) => ({
+          id: key._id,
+          name: key.name,
+          created_at: apiTime(key._creationTime),
+          last_used_at:
+            key.lastUsedAt === null ? null : apiTime(key.lastUsedAt),
+        })),
       }
     },
   })

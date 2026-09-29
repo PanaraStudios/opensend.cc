@@ -1,3 +1,4 @@
+import { hmacHex } from "../../lib/tokens/signed"
 import type { HttpRouter } from "convex/server"
 import { v } from "convex/values"
 import { env, internalMutation } from "../_generated/server"
@@ -10,22 +11,8 @@ import { apiRoute, objectBody } from "./route"
 
 // Idempotency stores only a random nonce. Recover the same bearer using a
 // domain-separated PRF, so neither the share table nor the replay cache has it.
-async function replayToken(nonce: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(env.BETTER_AUTH_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  )
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`opensend:email-share:${nonce}`)
-  )
-  return Array.from(new Uint8Array(signature), (b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("")
+function replayToken(nonce: string) {
+  return hmacHex(`opensend:email-share:${nonce}`, env.BETTER_AUTH_SECRET)
 }
 
 export const create = internalMutation({
