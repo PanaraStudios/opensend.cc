@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { ShortcutAction } from "@/lib/dashboard/use-shortcut"
 import Link from "next/link"
 import { HouseIcon, type LucideIcon } from "lucide-react"
 
@@ -73,7 +74,9 @@ export function EditorTopBar({
         />
         {badge}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <ShortcutAction value="save">{children}</ShortcutAction>
+      </div>
     </header>
   )
 }
