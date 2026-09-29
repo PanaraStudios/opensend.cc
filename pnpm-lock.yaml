@@ -241,6 +241,15 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@edge-runtime/vm@5.0.0)(@types/node@20.19.43)(happy-dom@20.14.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
 
+  docker/smtp:
+    dependencies:
+      mailparser:
+        specifier: 3.9.29
+        version: 3.9.29
+      smtp-server:
+        specifier: 3.19.14
+        version: 3.19.14
+
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/express':

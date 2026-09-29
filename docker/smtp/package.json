@@ -1,0 +1,13 @@
+{
+  "name": "@opensend/smtp-gateway",
+  "private": true,
+  "type": "module",
+  "files": [
+    "main.mjs",
+    "server.mjs"
+  ],
+  "dependencies": {
+    "mailparser": "3.9.29",
+    "smtp-server": "3.19.14"
+  }
+}

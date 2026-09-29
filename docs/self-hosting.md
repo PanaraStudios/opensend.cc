@@ -11,7 +11,9 @@ pnpm install --frozen-lockfile
 pnpm setup
 ```
 
-The setup command generates `.env.docker` with mode 0600, starts Convex, generates its admin key, sets the auth secrets in Convex, deploys functions, and builds and starts the application and dashboard. Running it again preserves secrets and the persistent volume. Keep `.env.docker` private and back it up. The Next.js container never receives the deployment admin key, Better Auth secret, or SSO encryption key.
+The setup command generates `.env.docker` with mode 0600, generates the admin key using the pinned backend image, builds local images, and starts Convex and the application. A one-shot `migrate` container sets the backend environment and deploys functions before the application starts. Running setup again preserves secrets and the persistent volume. Keep `.env.docker` private and back it up. The Next.js container never receives the deployment admin key, Better Auth secret, or SSO encryption key.
+
+Compose defaults to prebuilt `ghcr.io/panarastudios/opensend-app`, `opensend-migrate`, and `opensend-smtp` images. Set `OPENSEND_VERSION` to pin a release; `APP_IMAGE`, `MIGRATE_IMAGE`, and `SMTP_IMAGE` override individual images. Source setup saves local image names in `.env.docker`, so later Compose commands continue using your builds.
 
 Open http://localhost:3000/signup. The first account claims instance setup atomically. Verify its email, sign in, and create a team. Subsequent accounts require a pending invitation matching their email. Deleting the first account does not reopen registration. A team invitation does not become a membership until the recipient accepts it.
 
@@ -21,13 +23,15 @@ The first account is the installation administrator: only it can change the AWS 
 pnpm backend run installationAdmin:transfer '{"email":"new-admin@example.com"}'
 ```
 
-Before an account sender is configured, only the installation’s first administrator receives account links through Convex function logs. View them in the Convex dashboard at http://localhost:6791, or use the helper below. Each bootstrap message is one JSON entry with recipient, subject, content, and actionLink; restrict log access. Other users need a sender configured in Amazon SES settings.
+Before an account sender is configured, only the installation’s first administrator receives account links through Convex function logs. Use the migrate container or the development helper below. Each bootstrap message is one JSON entry with recipient, subject, content, and actionLink; restrict log access. Other users need a sender configured in Amazon SES settings.
 
 ```sh
+docker compose --env-file .env.docker run --rm migrate logs --history 50
+# With Node and pnpm installed:
 pnpm backend logs --history 50
 ```
 
-The dashboard asks for the admin key in `.env.docker`. Treat dashboard access as administrative access to all stored data. Its port and both backend ports bind to loopback by default.
+The Convex dashboard is optional: start it with `docker compose --env-file .env.docker --profile debug up -d dashboard`, then open http://localhost:6791. It asks for the admin key in `.env.docker`. Treat dashboard access as administrative access to all stored data. Its port and both backend ports bind to loopback by default.
 
 ## URLs and production
 
@@ -35,7 +39,7 @@ Before the first setup, create `.env.docker` with your `SITE_URL`, `CONVEX_PUBLI
 
 The auth issuer is the public Convex HTTP origin. It must be reachable from Convex itself so it can retrieve its JWT signing keys. In Docker, public `localhost:3211` works only with the default backend HTTP port. For other local port mappings, use a hostname reachable from both the host and containers. Linux may require a `host.docker.internal:host-gateway` extra-host mapping for local OIDC tests.
 
-Images are pinned by digest. No `NEXT_PUBLIC_*` hostname is baked into the app image. Do not publish the dashboard or backend administrative key. Set up TLS at your reverse proxy before using real accounts.
+The backend image is pinned by digest. No `NEXT_PUBLIC_*` hostname is baked into the app image. Do not publish the dashboard or backend administrative key. Set up TLS at your reverse proxy before using real accounts.
 
 ### HTTPS with the Caddy add-on
 
@@ -305,7 +309,7 @@ pnpm test:auth
 pnpm build
 ```
 
-The Playwright suite starts a fresh Docker project named `opensend-e2e`, with a separate Convex volume, the production app image, dashboard and Keycloak. It uses app port 3400, Convex ports 3410/3411, dashboard port 6792 and OIDC port 8180. It leaves the main instance untouched and removes the test volume on completion.
+The Playwright suite starts a fresh Docker project named `opensend-e2e-…`, with a separate Convex volume, the production app image, the migrate container and Keycloak. It allocates free host ports, leaves the main instance untouched and removes the test volume on completion.
 
 ```sh
 pnpm exec playwright install chromium
@@ -349,8 +353,8 @@ preferred connection port; both listeners stay available to enabled teams.
    files into this directory. It is mounted read-only. Restart the SMTP service
    after certificate renewal; certificates are loaded at startup.
 3. Set `SMTP_HOST=smtp.example.com` and `SMTP_CERT_DIR=/absolute/certificate/directory`
-   in `.env.docker`. Also set **SMTP_HOST** in the Convex deployment environment
-   to the same hostname so the existing settings tab displays it. It is an
+   in `.env.docker` and run `pnpm setup` to push **SMTP_HOST** to the Convex
+   deployment environment so the existing settings tab displays it. It is an
    installation setting, never a team-editable hostname. When unset or blank in
    Convex, the dashboard uses the hostname of `SITE_URL` (without protocol, port,
    or path). This fallback only supplies the displayed connection host; the SMTP
