@@ -1,0 +1,1406 @@
+import createFetchMock from 'vitest-fetch-mock';
+import type { ErrorResponse } from '../interfaces';
+import { Resend } from '../resend';
+import { mockSuccessResponse } from '../test-utils/mock-fetch';
+import type {
+  CreateDomainOptions,
+  CreateDomainResponseSuccess,
+} from './interfaces/create-domain-options.interface';
+import type { DomainRegion } from './interfaces/domain';
+import type { GetDomainResponseSuccess } from './interfaces/get-domain.interface';
+import type { ListDomainsResponseSuccess } from './interfaces/list-domains.interface';
+import type { RemoveDomainsResponseSuccess } from './interfaces/remove-domain.interface';
+import type { UpdateDomainsResponseSuccess } from './interfaces/update-domain.interface';
+import type { VerifyDomainsResponseSuccess } from './interfaces/verify-domain.interface';
+
+const fetchMocker = createFetchMock(vi);
+fetchMocker.enableMocks();
+
+describe('Domains', () => {
+  afterEach(() => fetchMock.resetMocks());
+  afterAll(() => fetchMocker.disableMocks());
+
+  describe('create', () => {
+    it('creates a domain', async () => {
+      const response: CreateDomainResponseSuccess = {
+        id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+        name: 'resend.com',
+        created_at: '2023-04-07 22:48:33.420498+00',
+        status: 'not_started',
+        capabilities: {
+          sending: 'enabled',
+          receiving: 'enabled',
+        },
+        records: [
+          {
+            record: 'SPF',
+            name: 'bounces',
+            type: 'MX',
+            ttl: 'Auto',
+            status: 'not_started',
+            value: 'feedback-smtp.us-east-1.com',
+            priority: 10,
+          },
+          {
+            record: 'SPF',
+            name: 'bounces',
+            value: '"v=spf1 include:com ~all"',
+            type: 'TXT',
+            ttl: 'Auto',
+            status: 'not_started',
+          },
+          {
+            record: 'DKIM',
+            name: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg._domainkey',
+            value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+            type: 'CNAME',
+            status: 'not_started',
+            ttl: 'Auto',
+          },
+          {
+            record: 'DKIM',
+            name: 'qklz5ozk742hhql3vmekdu3pr4f5ggsj._domainkey',
+            value: 'qklz5ozk742hhql3vmekdu3pr4f5ggsj.dkim.com.',
+            type: 'CNAME',
+            status: 'not_started',
+            ttl: 'Auto',
+          },
+          {
+            record: 'DKIM',
+            name: 'eeaemodxoao5hxwjvhywx4bo5mswjw6v._domainkey',
+            value: 'eeaemodxoao5hxwjvhywx4bo5mswjw6v.dkim.com.',
+            type: 'CNAME',
+            status: 'not_started',
+            ttl: 'Auto',
+          },
+          {
+            record: 'Receiving',
+            name: 'resend.com',
+            value: 'inbound-mx.resend.com',
+            type: 'MX',
+            ttl: 'Auto',
+            status: 'not_started',
+            priority: 10,
+          },
+        ],
+        region: 'us-east-1',
+      };
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+      const payload: CreateDomainOptions = { name: 'resend.com' };
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+      await expect(
+        resend.domains.create(payload),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "capabilities": {
+              "receiving": "enabled",
+              "sending": "enabled",
+            },
+            "created_at": "2023-04-07 22:48:33.420498+00",
+            "id": "3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222",
+            "name": "resend.com",
+            "records": [
+              {
+                "name": "bounces",
+                "priority": 10,
+                "record": "SPF",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "MX",
+                "value": "feedback-smtp.us-east-1.com",
+              },
+              {
+                "name": "bounces",
+                "record": "SPF",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "TXT",
+                "value": ""v=spf1 include:com ~all"",
+              },
+              {
+                "name": "nu22pfdfqaxdybogtw3ebaokmalv5mxg._domainkey",
+                "record": "DKIM",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "CNAME",
+                "value": "nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.",
+              },
+              {
+                "name": "qklz5ozk742hhql3vmekdu3pr4f5ggsj._domainkey",
+                "record": "DKIM",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "CNAME",
+                "value": "qklz5ozk742hhql3vmekdu3pr4f5ggsj.dkim.com.",
+              },
+              {
+                "name": "eeaemodxoao5hxwjvhywx4bo5mswjw6v._domainkey",
+                "record": "DKIM",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "CNAME",
+                "value": "eeaemodxoao5hxwjvhywx4bo5mswjw6v.dkim.com.",
+              },
+              {
+                "name": "resend.com",
+                "priority": 10,
+                "record": "Receiving",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "MX",
+                "value": "inbound-mx.resend.com",
+              },
+            ],
+            "region": "us-east-1",
+            "status": "not_started",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('throws error when missing name', async () => {
+      const response: ErrorResponse = {
+        name: 'missing_required_field',
+        message: 'Missing "name" field',
+        statusCode: 422,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 422,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const payload: CreateDomainOptions = {
+        name: '',
+      };
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = resend.domains.create(payload);
+
+      await expect(result).resolves.toMatchInlineSnapshot(`
+        {
+          "data": null,
+          "error": {
+            "message": "Missing "name" field",
+            "name": "missing_required_field",
+            "statusCode": 422,
+          },
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    describe('with region', () => {
+      it('creates a domain with region', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+          records: [
+            {
+              record: 'SPF',
+              name: 'bounces',
+              type: 'MX',
+              ttl: 'Auto',
+              status: 'not_started',
+              value: 'feedback-smtp.eu-west-1.com',
+              priority: 10,
+            },
+            {
+              record: 'SPF',
+              name: 'bounces',
+              value: '"v=spf1 include:com ~all"',
+              type: 'TXT',
+              ttl: 'Auto',
+              status: 'not_started',
+            },
+            {
+              record: 'DKIM',
+              name: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'DKIM',
+              name: 'qklz5ozk742hhql3vmekdu3pr4f5ggsj._domainkey',
+              value: 'qklz5ozk742hhql3vmekdu3pr4f5ggsj.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'DKIM',
+              name: 'eeaemodxoao5hxwjvhywx4bo5mswjw6v._domainkey',
+              value: 'eeaemodxoao5hxwjvhywx4bo5mswjw6v.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+          ],
+          region: 'eu-west-1',
+        };
+        fetchMock.mockOnce(JSON.stringify(response));
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          region: 'eu-west-1',
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        await expect(
+          resend.domains.create(payload),
+        ).resolves.toMatchInlineSnapshot(`
+          {
+            "data": {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled",
+              },
+              "created_at": "2023-04-07 22:48:33.420498+00",
+              "id": "3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222",
+              "name": "resend.com",
+              "records": [
+                {
+                  "name": "bounces",
+                  "priority": 10,
+                  "record": "SPF",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "MX",
+                  "value": "feedback-smtp.eu-west-1.com",
+                },
+                {
+                  "name": "bounces",
+                  "record": "SPF",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "TXT",
+                  "value": ""v=spf1 include:com ~all"",
+                },
+                {
+                  "name": "nu22pfdfqaxdybogtw3ebaokmalv5mxg._domainkey",
+                  "record": "DKIM",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "CNAME",
+                  "value": "nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.",
+                },
+                {
+                  "name": "qklz5ozk742hhql3vmekdu3pr4f5ggsj._domainkey",
+                  "record": "DKIM",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "CNAME",
+                  "value": "qklz5ozk742hhql3vmekdu3pr4f5ggsj.dkim.com.",
+                },
+                {
+                  "name": "eeaemodxoao5hxwjvhywx4bo5mswjw6v._domainkey",
+                  "record": "DKIM",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "CNAME",
+                  "value": "eeaemodxoao5hxwjvhywx4bo5mswjw6v.dkim.com.",
+                },
+              ],
+              "region": "eu-west-1",
+              "status": "not_started",
+            },
+            "error": null,
+            "headers": {
+              "content-type": "text/plain;charset=UTF-8",
+            },
+          }
+        `);
+      });
+
+      it('throws error with wrong region', async () => {
+        const errorResponse: ErrorResponse = {
+          name: 'invalid_region',
+          message: 'Region must be "us-east-1" | "eu-west-1" | "sa-east-1"',
+          statusCode: 422,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(errorResponse), {
+          status: 422,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.domains.create({
+          name: 'resend.com',
+          region: 'remote' as DomainRegion,
+        });
+
+        await expect(result).resolves.toMatchInlineSnapshot(`
+          {
+            "data": null,
+            "error": {
+              "message": "Region must be "us-east-1" | "eu-west-1" | "sa-east-1"",
+              "name": "invalid_region",
+              "statusCode": 422,
+            },
+            "headers": {
+              "content-type": "application/json",
+            },
+          }
+        `);
+      });
+    });
+
+    describe('with customReturnPath', () => {
+      it('creates a domain with customReturnPath', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+          records: [
+            {
+              record: 'SPF',
+              name: 'custom',
+              type: 'MX',
+              ttl: 'Auto',
+              status: 'not_started',
+              value: 'feedback-smtp.us-east-1.com',
+              priority: 10,
+            },
+            {
+              record: 'SPF',
+              name: 'custom',
+              value: '"v=spf1 include:com ~all"',
+              type: 'TXT',
+              ttl: 'Auto',
+              status: 'not_started',
+            },
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          customReturnPath: 'custom',
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        await expect(
+          resend.domains.create(payload),
+        ).resolves.toMatchInlineSnapshot(`
+          {
+            "data": {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled",
+              },
+              "created_at": "2023-04-07 22:48:33.420498+00",
+              "id": "3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222",
+              "name": "resend.com",
+              "records": [
+                {
+                  "name": "custom",
+                  "priority": 10,
+                  "record": "SPF",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "MX",
+                  "value": "feedback-smtp.us-east-1.com",
+                },
+                {
+                  "name": "custom",
+                  "record": "SPF",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "TXT",
+                  "value": ""v=spf1 include:com ~all"",
+                },
+                {
+                  "name": "resend._domainkey",
+                  "record": "DKIM",
+                  "status": "not_started",
+                  "ttl": "Auto",
+                  "type": "CNAME",
+                  "value": "nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.",
+                },
+              ],
+              "region": "us-east-1",
+              "status": "not_started",
+            },
+            "error": null,
+            "headers": {
+              "content-type": "application/json",
+            },
+          }
+        `);
+      });
+    });
+
+    describe('with trackingSubdomain', () => {
+      it('creates a domain with tracking subdomain', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+          open_tracking: true,
+          click_tracking: true,
+          tracking_subdomain: 'track',
+          records: [
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'Tracking',
+              name: 'track.resend.com',
+              value: 'tracking.resend.com',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'TrackingCAA',
+              name: '',
+              value: '0 issue "amazon.com"',
+              type: 'CAA',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          trackingSubdomain: 'track',
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.create(payload);
+
+        expect(result.data?.tracking_subdomain).toBe('track');
+        expect(result.data?.open_tracking).toBe(true);
+        expect(result.data?.click_tracking).toBe(true);
+        expect(result.data?.records).toContainEqual(
+          expect.objectContaining({ record: 'Tracking' }),
+        );
+        expect(result.data?.records).toContainEqual(
+          expect.objectContaining({ record: 'TrackingCAA' }),
+        );
+        expect(result.error).toBeNull();
+      });
+    });
+
+    describe('with capabilities', () => {
+      it('creates a domain with sending only', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'disabled',
+          },
+          records: [
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'disabled',
+          },
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.create(payload);
+
+        expect(result.data?.capabilities).toEqual({
+          sending: 'enabled',
+          receiving: 'disabled',
+        });
+        expect(result.error).toBeNull();
+      });
+
+      it('creates a domain with receiving only', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'disabled',
+            receiving: 'enabled',
+          },
+          records: [
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'Receiving',
+              name: 'resend.com',
+              value: 'inbound-mx.resend.com',
+              type: 'MX',
+              ttl: 'Auto',
+              status: 'not_started',
+              priority: 10,
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          capabilities: {
+            sending: 'disabled',
+            receiving: 'enabled',
+          },
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.create(payload);
+
+        expect(result.data?.capabilities).toEqual({
+          sending: 'disabled',
+          receiving: 'enabled',
+        });
+        expect(result.error).toBeNull();
+      });
+
+      it('creates a domain with both sending and receiving', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+          records: [
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+            {
+              record: 'SPF',
+              name: 'bounces',
+              type: 'MX',
+              ttl: 'Auto',
+              status: 'not_started',
+              value: 'feedback-smtp.us-east-1.com',
+              priority: 10,
+            },
+            {
+              record: 'Receiving',
+              name: 'resend.com',
+              value: 'inbound-mx.resend.com',
+              type: 'MX',
+              ttl: 'Auto',
+              status: 'not_started',
+              priority: 10,
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.create(payload);
+
+        expect(result.data?.capabilities).toEqual({
+          sending: 'enabled',
+          receiving: 'enabled',
+        });
+        expect(result.error).toBeNull();
+      });
+
+      it('creates a domain with partial capabilities (only specifying sending)', async () => {
+        const response: CreateDomainResponseSuccess = {
+          id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
+          name: 'resend.com',
+          created_at: '2023-04-07 22:48:33.420498+00',
+          status: 'not_started',
+          capabilities: {
+            sending: 'disabled',
+            receiving: 'enabled',
+          },
+          records: [
+            {
+              record: 'DKIM',
+              name: 'resend._domainkey',
+              value: 'nu22pfdfqaxdybogtw3ebaokmalv5mxg.dkim.com.',
+              type: 'CNAME',
+              status: 'not_started',
+              ttl: 'Auto',
+            },
+          ],
+          region: 'us-east-1',
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const payload: CreateDomainOptions = {
+          name: 'resend.com',
+          capabilities: {
+            sending: 'disabled',
+          },
+        };
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.create(payload);
+
+        expect(result.data?.capabilities).toEqual({
+          sending: 'disabled',
+          receiving: 'enabled',
+        });
+        expect(result.error).toBeNull();
+      });
+    });
+  });
+
+  describe('list', () => {
+    const response: ListDomainsResponseSuccess = {
+      has_more: false,
+      object: 'list',
+      data: [
+        {
+          id: 'b6d24b8e-af0b-4c3c-be0c-359bbd97381e',
+          name: 'resend.com',
+          status: 'not_started',
+          created_at: '2023-04-07 23:13:52.669661+00',
+          region: 'eu-west-1',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+        },
+        {
+          id: 'ac7503ac-e027-4aea-94b3-b0acd46f65f9',
+          name: 'react.email',
+          status: 'not_started',
+          created_at: '2023-04-07 23:13:20.417116+00',
+          region: 'us-east-1',
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+        },
+      ],
+    };
+
+    describe('when no pagination options are provided', () => {
+      it('lists domains', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = await resend.domains.list();
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/domains',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+
+    describe('when pagination options are provided', () => {
+      it('passes limit param and returns a response', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.list({ limit: 1 });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/domains?limit=1',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+
+      it('passes after param and returns a response', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.list({
+          limit: 1,
+          after: 'cursor-value',
+        });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/domains?limit=1&after=cursor-value',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+
+      it('passes before param and returns a response', async () => {
+        mockSuccessResponse(response, {
+          headers: {},
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+        const result = await resend.domains.list({
+          limit: 1,
+          before: 'cursor-value',
+        });
+        expect(result).toEqual({
+          data: response,
+          error: null,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'https://api.opensend.test/domains?limit=1&before=cursor-value',
+          expect.objectContaining({
+            method: 'GET',
+            headers: expect.any(Headers),
+          }),
+        );
+      });
+    });
+  });
+
+  describe('get', () => {
+    describe('when domain not found', () => {
+      it('returns error', async () => {
+        const response: ErrorResponse = {
+          name: 'not_found',
+          message: 'Domain not found',
+          statusCode: 404,
+        };
+
+        fetchMock.mockOnce(JSON.stringify(response), {
+          status: 404,
+          headers: {
+            'content-type': 'application/json',
+          },
+        });
+
+        const resend = new Resend('os_test00000000000000000000000000001');
+
+        const result = resend.domains.get('1234');
+
+        await expect(result).resolves.toMatchInlineSnapshot(`
+          {
+            "data": null,
+            "error": {
+              "message": "Domain not found",
+              "name": "not_found",
+              "statusCode": 404,
+            },
+            "headers": {
+              "content-type": "application/json",
+            },
+          }
+        `);
+      });
+    });
+
+    it('get domain', async () => {
+      const response: GetDomainResponseSuccess = {
+        object: 'domain',
+        id: 'fd61172c-cafc-40f5-b049-b45947779a29',
+        name: 'resend.com',
+        status: 'not_started',
+        created_at: '2023-06-21 06:10:36.144+00',
+        region: 'us-east-1',
+        open_tracking: true,
+        click_tracking: true,
+        tracking_subdomain: 'track',
+        capabilities: {
+          sending: 'enabled',
+          receiving: 'enabled',
+        },
+        records: [
+          {
+            record: 'SPF',
+            name: 'bounces.resend.com',
+            type: 'MX',
+            ttl: 'Auto',
+            status: 'not_started',
+            value: 'feedback-smtp.us-east-1.amazonses.com',
+            priority: 10,
+          },
+          {
+            record: 'SPF',
+            name: 'bounces.resend.com',
+            value: '"v=spf1 include:amazonses.com ~all"',
+            type: 'TXT',
+            ttl: 'Auto',
+            status: 'not_started',
+          },
+          {
+            record: 'DKIM',
+            name: 'resend._domainkey',
+            value:
+              'p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDZDhdsAKs5xdSj7h3v22wjx3WMWWADCHwxfef8U03JUbVM/sNSVuY5mbrdJKUoG6QBdfxsOGzhINmQnT89idjp5GdAUhx/KNpt8hcLXMID4nB0Gbcafn03/z5zEPxPfzVJqQd/UqOtZQcfxN9OrIhLiBsYTbcTBB7EvjCb3wEaBwIDAQAB',
+            type: 'TXT',
+            status: 'verified',
+            ttl: 'Auto',
+          },
+          {
+            record: 'Receiving',
+            name: 'resend.com',
+            value: 'inbound-mx.resend.com',
+            type: 'MX',
+            ttl: 'Auto',
+            status: 'not_started',
+            priority: 10,
+          },
+          {
+            record: 'Tracking',
+            name: 'track.resend.com',
+            value: 'tracking.resend.com',
+            type: 'CNAME',
+            ttl: 'Auto',
+            status: 'verified',
+          },
+          {
+            record: 'TrackingCAA',
+            name: '',
+            value: '0 issue "amazon.com"',
+            type: 'CAA',
+            ttl: 'Auto',
+            status: 'verified',
+          },
+        ],
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(resend.domains.get('1234')).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "capabilities": {
+              "receiving": "enabled",
+              "sending": "enabled",
+            },
+            "click_tracking": true,
+            "created_at": "2023-06-21 06:10:36.144+00",
+            "id": "fd61172c-cafc-40f5-b049-b45947779a29",
+            "name": "resend.com",
+            "object": "domain",
+            "open_tracking": true,
+            "records": [
+              {
+                "name": "bounces.resend.com",
+                "priority": 10,
+                "record": "SPF",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "MX",
+                "value": "feedback-smtp.us-east-1.amazonses.com",
+              },
+              {
+                "name": "bounces.resend.com",
+                "record": "SPF",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "TXT",
+                "value": ""v=spf1 include:amazonses.com ~all"",
+              },
+              {
+                "name": "resend._domainkey",
+                "record": "DKIM",
+                "status": "verified",
+                "ttl": "Auto",
+                "type": "TXT",
+                "value": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDZDhdsAKs5xdSj7h3v22wjx3WMWWADCHwxfef8U03JUbVM/sNSVuY5mbrdJKUoG6QBdfxsOGzhINmQnT89idjp5GdAUhx/KNpt8hcLXMID4nB0Gbcafn03/z5zEPxPfzVJqQd/UqOtZQcfxN9OrIhLiBsYTbcTBB7EvjCb3wEaBwIDAQAB",
+              },
+              {
+                "name": "resend.com",
+                "priority": 10,
+                "record": "Receiving",
+                "status": "not_started",
+                "ttl": "Auto",
+                "type": "MX",
+                "value": "inbound-mx.resend.com",
+              },
+              {
+                "name": "track.resend.com",
+                "record": "Tracking",
+                "status": "verified",
+                "ttl": "Auto",
+                "type": "CNAME",
+                "value": "tracking.resend.com",
+              },
+              {
+                "name": "",
+                "record": "TrackingCAA",
+                "status": "verified",
+                "ttl": "Auto",
+                "type": "CAA",
+                "value": "0 issue "amazon.com"",
+              },
+            ],
+            "region": "us-east-1",
+            "status": "not_started",
+            "tracking_subdomain": "track",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('get partially_verified domain', async () => {
+      const response: GetDomainResponseSuccess = {
+        object: 'domain',
+        id: 'fd61172c-cafc-40f5-b049-b45947779a29',
+        name: 'resend.com',
+        status: 'partially_verified',
+        created_at: '2023-06-21 06:10:36.144+00',
+        region: 'us-east-1',
+        click_tracking: true,
+        tracking_subdomain: 'track',
+        capabilities: {
+          sending: 'enabled',
+          receiving: 'disabled',
+        },
+        records: [
+          {
+            record: 'DKIM',
+            name: 'resend._domainkey',
+            value: 'p=MIG...',
+            type: 'TXT',
+            status: 'verified',
+            ttl: 'Auto',
+          },
+          {
+            record: 'Tracking',
+            name: 'track.resend.com',
+            value: 'tracking.resend.com',
+            type: 'CNAME',
+            ttl: 'Auto',
+            status: 'pending',
+          },
+        ],
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = await resend.domains.get('1234');
+      expect(result.data?.status).toBe('partially_verified');
+    });
+
+    it('get partially_failed domain', async () => {
+      const response: GetDomainResponseSuccess = {
+        object: 'domain',
+        id: 'fd61172c-cafc-40f5-b049-b45947779a29',
+        name: 'resend.com',
+        status: 'partially_failed',
+        created_at: '2023-06-21 06:10:36.144+00',
+        region: 'us-east-1',
+        capabilities: {
+          sending: 'enabled',
+          receiving: 'enabled',
+        },
+        records: [
+          {
+            record: 'DKIM',
+            name: 'resend._domainkey',
+            value: 'p=MIG...',
+            type: 'TXT',
+            status: 'verified',
+            ttl: 'Auto',
+          },
+          {
+            record: 'Receiving',
+            name: 'resend.com',
+            value: 'inbound-mx.resend.com',
+            type: 'MX',
+            ttl: 'Auto',
+            status: 'failed',
+            priority: 10,
+          },
+        ],
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      const result = await resend.domains.get('1234');
+      expect(result.data?.status).toBe('partially_failed');
+    });
+  });
+
+  describe('update', () => {
+    it('update domain click tracking', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: UpdateDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.domains.update({
+          id,
+          clickTracking: true,
+        }),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('update domain capabilities', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: UpdateDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.domains.update({
+          id,
+          capabilities: {
+            sending: 'enabled',
+            receiving: 'enabled',
+          },
+        }),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('update domain tracking subdomain', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: UpdateDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.domains.update({
+          id,
+          trackingSubdomain: 'track',
+        }),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+
+    it('update domain with partial capabilities', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: UpdateDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+      };
+
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(
+        resend.domains.update({
+          id,
+          capabilities: {
+            receiving: 'enabled',
+          },
+        }),
+      ).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+  });
+
+  describe('verify', () => {
+    it('verifies a domain', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: VerifyDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+      };
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(resend.domains.verify(id)).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+  });
+
+  describe('remove', () => {
+    it('removes a domain', async () => {
+      const id = '5262504e-8ed7-4fac-bd16-0d4be94bc9f2';
+      const response: RemoveDomainsResponseSuccess = {
+        object: 'domain',
+        id,
+        deleted: true,
+      };
+      fetchMock.mockOnce(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+      });
+
+      const resend = new Resend('os_test00000000000000000000000000001');
+
+      await expect(resend.domains.remove(id)).resolves.toMatchInlineSnapshot(`
+        {
+          "data": {
+            "deleted": true,
+            "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
+            "object": "domain",
+          },
+          "error": null,
+          "headers": {
+            "content-type": "application/json",
+          },
+        }
+      `);
+    });
+  });
+});
