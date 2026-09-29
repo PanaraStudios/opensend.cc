@@ -41,6 +41,7 @@ crons.interval(
 )
 
 for (const name of [
+  "emailShares",
   "ses",
   "inbound",
   "broadcasts",

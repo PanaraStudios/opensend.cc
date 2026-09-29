@@ -49,6 +49,8 @@ const cut = (body: string | undefined) =>
     : { body: body.slice(0, BODY_LIMIT), cut: true }
 
 export function responseForLog(path: string, method: string, body?: string) {
+  if (method === "POST" && /^\/emails\/[^/]+\/share$/.test(path))
+    return "[redacted]"
   const field =
     path === "/api-keys"
       ? "token"
