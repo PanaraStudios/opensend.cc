@@ -67,6 +67,10 @@ export function shortcutTests(state: () => State) {
       .getAttribute("href")
     await owner.keyboard.press("Enter")
     await expect(owner).toHaveURL(new RegExp(`${href}$`))
+    // The detail page registers Esc once its header renders.
+    await expect(
+      owner.getByRole("button", { name: "Domains", exact: true })
+    ).toHaveAttribute("aria-keyshortcuts", "Escape")
     await owner.keyboard.press("Escape")
     await expect(owner).toHaveURL(/\/domains$/)
     await owner.keyboard.press("c")

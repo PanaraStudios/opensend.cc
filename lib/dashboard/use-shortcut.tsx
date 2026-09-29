@@ -29,8 +29,9 @@ export function isTypingTarget(target: EventTarget | null) {
   )
 }
 
+// Toasts use the dialog role but never hold focus the way an overlay does.
 const OVERLAYS =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="popover-content"]'
+  '[role="dialog"]:not([data-slot="toast"]), [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="popover-content"]'
 
 export function ShortcutProvider({ children }: { children: React.ReactNode }) {
   const [bindings] = React.useState(() => new Set<Binding>())
@@ -54,9 +55,12 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
         reset()
         return
       }
+      // A closing overlay stays mounted until its exit animation ends.
       const overlays = Array.from(
         document.querySelectorAll<HTMLElement>(OVERLAYS)
-      ).filter(isVisible)
+      ).filter(
+        (overlay) => isVisible(overlay) && !overlay.closest("[data-closed]")
+      )
       const typing = isTypingTarget(event.target)
       if (overlays.length || typing) reset()
       const ordered = [...bindings].sort(
@@ -69,14 +73,10 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
       for (const binding of ordered) {
         const scope = binding.scope?.current
         if (binding.scope && (!scope || !isVisible(scope))) continue
+        // A scoped binding fires only for keys pressed inside its scope; a menu
+        // opened from a dialog is portaled outside it, so it never matches.
         if (scope) {
           if (!(event.target instanceof Node) || !scope.contains(event.target))
-            continue
-          if (
-            overlays.some(
-              (overlay) => !overlay.contains(scope) && overlay !== scope
-            )
-          )
             continue
         } else if (typing || overlays.length) continue
         const match = binding.keys.includes(" ")
@@ -92,13 +92,13 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
         event.preventDefault()
       }
     }
+    // Focus returning from a closed dialog must not cancel a started "G" sequence;
+    // each key is checked against the typing target anyway.
     window.addEventListener("keydown", onKeyDown)
     window.addEventListener("blur", reset)
-    document.addEventListener("focusin", reset)
     return () => {
       window.removeEventListener("keydown", onKeyDown)
       window.removeEventListener("blur", reset)
-      document.removeEventListener("focusin", reset)
     }
   }, [bindings, mac])
   return (
