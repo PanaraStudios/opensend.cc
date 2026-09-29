@@ -1,0 +1,41 @@
+# HTTPS for the three public origins, plus on-demand certificates for custom
+# tracking hosts. Site addresses come from the same variables as .env.docker.
+{
+	on_demand_tls {
+		ask http://convex:3211/t/ask
+	}
+}
+
+# Dashboard (SITE_URL).
+{$SITE_URL} {
+	reverse_proxy app:3000
+}
+
+# Convex API and WebSocket sync (CONVEX_PUBLIC_URL).
+{$CONVEX_PUBLIC_URL} {
+	reverse_proxy convex:3210
+}
+
+# Convex HTTP actions: REST API, SNS callbacks, tracking and one-click
+# unsubscribe (CONVEX_PUBLIC_SITE_URL). Tracking reads the client IP from X-Real-IP.
+{$CONVEX_PUBLIC_SITE_URL} {
+	reverse_proxy convex:3211 {
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+# Custom tracking hosts. /t/ask allows only verified tracking CNAMEs, so
+# certificates are never issued for other names.
+https:// {
+	tls {
+		on_demand
+	}
+	handle /t/* {
+		reverse_proxy convex:3211 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+	handle {
+		respond 404
+	}
+}

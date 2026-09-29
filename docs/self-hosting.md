@@ -1,6 +1,6 @@
 # Self-hosted Opensend
 
-Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component. Email sending, audiences, automations and the other dashboard resources remain demo data in this release. Demo data is stored separately for each authenticated user and team. Existing demo identities and memberships are never imported.
+Opensend runs as a Docker Compose stack: the Next.js dashboard, a self-hosted Convex backend that stores every team's data and runs sending, events, webhooks and automations, and an optional SMTP gateway. Amazon SES sends and receives the mail. Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component.
 
 ## Start
 
@@ -36,6 +36,16 @@ Before the first setup, create `.env.docker` with your `SITE_URL`, `CONVEX_PUBLI
 The auth issuer is the public Convex HTTP origin. It must be reachable from Convex itself so it can retrieve its JWT signing keys. In Docker, public `localhost:3211` works only with the default backend HTTP port. For other local port mappings, use a hostname reachable from both the host and containers. Linux may require a `host.docker.internal:host-gateway` extra-host mapping for local OIDC tests.
 
 Images are pinned by digest. No `NEXT_PUBLIC_*` hostname is baked into the app image. Do not publish the dashboard or backend administrative key. Set up TLS at your reverse proxy before using real accounts.
+
+### HTTPS with the Caddy add-on
+
+If your platform already terminates TLS (Dokploy, Coolify, or your own Traefik or nginx), route the three origins there and skip this. Otherwise, the optional `compose.caddy.yaml` adds [Caddy](https://caddyserver.com/docs/automatic-https), which gets and renews certificates automatically. Point DNS for the three hostnames at the server, open ports 80 and 443, set the three URLs in `.env.docker` to `https://`, and start the stack with both files:
+
+```sh
+docker compose -f compose.yaml -f compose.caddy.yaml --env-file .env.docker up -d
+```
+
+`docker/caddy/Caddyfile` routes `SITE_URL` to the dashboard, `CONVEX_PUBLIC_URL` to Convex (WebSockets included) and `CONVEX_PUBLIC_SITE_URL` to Convex HTTP actions, setting `X-Real-IP` for tracking. It also serves [custom tracking hosts](#tls-and-routing-for-custom-tracking-hosts) with on-demand certificates. With the add-on, the dashboard's port binds to loopback so Caddy is the only public entry point. The SMTP gateway terminates its own TLS and still reads its certificate from `SMTP_CERT_DIR`.
 
 ## Development
 
@@ -430,7 +440,8 @@ serve `/t/*` on the installation callback origin for fallback links. Preserve th
 path and query, disable caching, and overwrite `X-Real-IP` with the client IP;
 Opensend uses that trusted proxy header in click webhooks.
 
-For Caddy, restrict [on-demand TLS](https://caddyserver.com/docs/automatic-https#on-demand-tls)
+The [Caddy add-on](#https-with-the-caddy-add-on) already does this. For your own
+Caddy, restrict [on-demand TLS](https://caddyserver.com/docs/automatic-https#on-demand-tls)
 with the provided ask endpoint. For example, merge these rules into your existing
 Caddyfile (replace the host and internal upstream with your deployment's values):
 
