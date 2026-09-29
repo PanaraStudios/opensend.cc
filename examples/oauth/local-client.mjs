@@ -108,9 +108,11 @@ async function revoke() {
 }
 async function grants() {
   requireTokens()
-  return request("/oauth/grants", undefined, {
+  // Resend's list shape: { object: "list", has_more, data }.
+  const list = await request("/oauth/grants", undefined, {
     accessToken: tokens.access_token,
   })
+  return list.data
 }
 
 server.on("request", async (req, res) => {

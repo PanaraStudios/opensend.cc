@@ -160,9 +160,11 @@ export async function oauthFlow(page: Page, teamId: string) {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     })
     expect(grants.status(), await grants.text()).toBe(200)
+    // Resend's list shape, already scoped to the token's team.
     const rows = await grants.json()
+    expect(rows.object).toBe("list")
     expect(
-      rows.some((g: { organizationId: string }) => g.organizationId === teamId)
+      rows.data.some((g: { client_id: string }) => g.client_id === app.client_id)
     ).toBe(true)
     const introspect = await page.request.post(`${base}/oauth/introspect`, {
       headers,
