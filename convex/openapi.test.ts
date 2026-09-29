@@ -274,6 +274,11 @@ describe("OpenAPI contract", () => {
       last_event: "queued",
       scheduled_at: null,
     })
+    await response(
+      "/emails/{email_id}/share",
+      "POST",
+      await f.call(`/emails/${id}/share`, "POST", { expires_in: "2 hours" })
+    )
     await response("/emails", "GET", await f.call("/emails"))
     expect(SESv2Client.prototype.send).not.toHaveBeenCalled()
   })

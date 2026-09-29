@@ -1,3 +1,4 @@
+import { registerEmailShareRoutes } from "./api/emailShares"
 import { registerReceivedDownloadRoutes } from "./receivedDownloads"
 import { registerBroadcastRoutes } from "./api/broadcasts"
 import { registerTrackingRoutes } from "./trackingHttp"
@@ -18,6 +19,7 @@ registerSesRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)
 registerApiRoutes(http)
+registerEmailShareRoutes(http)
 registerReceivedDownloadRoutes(http)
 registerBroadcastRoutes(http)
 registerUnsubscribeRoutes(http)

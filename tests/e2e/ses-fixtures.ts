@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -398,4 +399,45 @@ export async function seedReceivedMessage(
   // A parser retry must neither duplicate the message nor emit another event.
   expect(testBackendValue<null>("received:complete", args)).toBeNull()
   return id
+}
+
+/** Isolated share fixtures; no send job, AWS request, or production test endpoint. */
+export function seedShareEmail(organizationId: string, domainId: string) {
+  const subject = `Wave 9 share ${randomBytes(8).toString("hex")}`
+  importFixture("emails", {
+    organizationId,
+    domainId,
+    from: "sender@example.test",
+    to: ["reader@example.test"],
+    bcc: ["hidden@example.test"],
+    subject,
+    status: "sent",
+    source: "dashboard",
+    generation: 1,
+    attempts: 1,
+    search: subject,
+    sentAt: Date.now(),
+  })
+  const email = backendRows<{ _id: string; subject: string }>(
+    "emails",
+    1000
+  ).find((row) => row.subject === subject)!
+  expect(email).toBeTruthy()
+  importFixture("emailContents", {
+    emailId: email._id,
+    html: "<p>A message shared without signing in.</p><script>parent.document.body.textContent='unsafe'</script>",
+    text: "A message shared without signing in.",
+  })
+  return { id: email._id, subject }
+}
+
+export function seedExpiredEmailShare(organizationId: string, emailId: string) {
+  const token = randomBytes(32).toString("hex")
+  importFixture("emailShares", {
+    organizationId,
+    emailId,
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() - 60_000,
+  })
+  return token
 }

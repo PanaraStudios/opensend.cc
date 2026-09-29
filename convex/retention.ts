@@ -217,3 +217,18 @@ export const imports = internalMutation({
     return null
   },
 })
+
+export const emailShares = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const page = await ctx.db
+      .query("emailShares")
+      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", Date.now()))
+      .paginate({ ...retentionPage, cursor: null })
+    for (const row of page.page) await ctx.db.delete("emailShares", row._id)
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(0, internal.retention.emailShares, {})
+    return null
+  },
+})

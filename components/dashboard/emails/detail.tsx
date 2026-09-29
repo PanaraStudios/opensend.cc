@@ -33,6 +33,7 @@ import {
   PlayIcon,
   ScrollTextIcon,
   SendIcon,
+  ShareIcon,
   type LucideIcon,
 } from "lucide-react"
 import {
@@ -64,6 +65,8 @@ import {
 } from "@/lib/emails/use-emails"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
+
+import { useShareEmail } from "./share-dialog"
 
 type TimelineEvent = {
   id: string
@@ -263,6 +266,7 @@ function EmailBodyTabs({
 
 export function EmailDetail() {
   const { id } = useParams<{ id: string }>()
+  const share = useShareEmail(id)
   const router = useRouter()
   const { cancelEmail } = useEmailCommands()
   const saveAsTemplate = useSaveAsTemplate()
@@ -323,6 +327,13 @@ export function EmailDetail() {
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem
+                  disabled={!share.canWrite}
+                  onClick={share.open}
+                >
+                  <ShareIcon />
+                  Share email
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   render={<Link href={`/logs?email=${email.id}`} />}
                 >
                   <ScrollTextIcon />
@@ -339,6 +350,7 @@ export function EmailDetail() {
           </>
         }
       />
+      {share.dialog}
       <MetaStrip items={emailMeta(email)} />
       {log ? (
         <Item
@@ -374,6 +386,7 @@ export function EmailDetail() {
 
 export function ReceivedDetail() {
   const { id } = useParams<{ id: string }>()
+  const share = useShareEmail(id)
   const email = useReceived(id)
 
   if (email === undefined) return <Skeleton className="h-64 w-full" />
@@ -396,7 +409,18 @@ export function ReceivedDetail() {
         backLabel="Emails"
         title={email.from}
         icon={InboxIcon}
+        actions={
+          <MoreMenu>
+            <DropdownMenuGroup>
+              <DropdownMenuItem disabled={!share.canWrite} onClick={share.open}>
+                <ShareIcon />
+                Share email
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </MoreMenu>
+        }
       />
+      {share.dialog}
       <MetaStrip items={emailMeta(email)} />
       <EmailEventsRow
         events={[

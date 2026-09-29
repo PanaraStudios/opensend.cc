@@ -671,3 +671,29 @@ re-running it is safe. Events already removed by retention cannot be reconstruct
 No new AWS permissions are required. Log responses return null for unknown user
 agents and preserve the original JSON body shape (including batch arrays), subject
 to redaction and the existing 64 KiB truncation.
+
+### Share an email
+
+`POST /emails/{email_id}/share` requires a full-access key and accepts either a
+sent or received email ID belonging to its team. The optional JSON body is
+`{"expires_in":"2 hours"}`. Durations such as `10m`, `2 hours`, and `1 day` are
+supported; the default and maximum are 48 hours. Nonpositive, invalid, or longer
+durations return `422 validation_error`; foreign or missing IDs return
+`404 not_found`. A sending-only key returns `401 restricted_api_key`.
+
+Success is `200 {"object":"email","id":"…","url":"https://your-dashboard/shared?token=…"}`.
+The route supports `Idempotency-Key` and replays the same link without extending
+its expiry. The cache keeps a nonce; a domain-separated HMAC using the existing
+`BETTER_AUTH_SECRET` reconstructs the bearer at the wire. Only its SHA-256 hash
+is stored in `emailShares`, and share responses are redacted in API logs.
+Rotating that secret during the 24-hour idempotency window prevents replayed
+links from matching their original hashes; existing issued links still work.
+
+The public page requires no account, is not indexed or cached, and uses the same
+sandboxed HTML preview as the dashboard. It shows subject, From, To, Cc, Reply-To,
+date, body, and attachment names/types/sizes. It excludes Bcc, arbitrary headers,
+raw MIME, download URLs, events, and internal identifiers. Links become invalid
+at expiry or when the email or team is deleted/retired; expired tokens are pruned
+hourly in bounded batches. Creating another link does not revoke previous links.
+Dashboard members can create and copy links from **Share email** in either email
+detail menu.

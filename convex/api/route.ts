@@ -35,6 +35,8 @@ export type ApiRouteOptions = {
   maxBody?: number
   bodyFormat?: "multipart"
   source?: "smtp"
+  /** Materialize a sensitive response only at the wire, also on replay. */
+  serializeResponse?: (body: unknown) => Promise<unknown>
   handler: (ctx: ActionCtx, request: ApiRequest) => Promise<ApiReply>
 }
 
@@ -344,6 +346,10 @@ function dispatch(patterns: Pattern[]) {
       // A lost log line never fails the request it describes.
       console.error("API request log could not be saved")
     }
+    if (status < 300 && options.serializeResponse)
+      responseBody = JSON.stringify(
+        await options.serializeResponse(JSON.parse(responseBody))
+      )
     return reply(status, responseBody, {
       "ratelimit-limit": String(API_RATE),
       "ratelimit-remaining": String(begun.rate.remaining),

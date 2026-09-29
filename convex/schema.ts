@@ -6,6 +6,7 @@ import { audienceTables } from "./tables/audience"
 import { automationEventTables } from "./tables/automationEvents"
 import { apiTables } from "./tables/api"
 import { domainTables } from "./tables/domains"
+import { emailShareTables } from "./tables/emailShares"
 import { emailTables } from "./tables/emails"
 import { eventTables } from "./tables/events"
 import { exportTables } from "./tables/exports"
@@ -35,6 +36,7 @@ export default defineSchema({
   ...apiTables,
   ...exportTables,
   ...emailTables,
+  ...emailShareTables,
   ...automationEventTables,
   ...unsubscribeTables,
   ...receivingTables,

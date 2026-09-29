@@ -357,6 +357,61 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /emails/{email_id}/share:
+    post:
+      operationId: emails/share
+      tags:
+        - Emails
+      summary: Share Email
+      description: >-
+        Create a public link for a sent or received email. Defaults to 48 hours; longer or invalid durations return 422.
+      x-opensend-permission: full_access
+      parameters:
+        - name: email_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque resource id.
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareEmailOptions'
+      responses:
+        '200':
+          description: The result of the successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareEmailResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
   /domains:
     post:
       operationId: domains/create
@@ -5965,6 +6020,26 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    ShareEmailOptions:
+      type: object
+      properties:
+        expires_in:
+          type: string
+          default: 48h
+          description: A positive duration such as 10m, 2 hours, or 1 day; maximum 48 hours.
+    ShareEmailResponse:
+      type: object
+      required: [object, id, url]
+      additionalProperties: false
+      properties:
+        object:
+          const: email
+          type: string
+        id:
+          type: string
+        url:
+          type: string
+          format: uri
     DomainCapabilities:
       type: object
       properties:
