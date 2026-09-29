@@ -122,6 +122,19 @@ function secret() {
   return env.BETTER_AUTH_SECRET ?? ""
 }
 
+export async function unsubscribeContext(ctx: Ctx) {
+  return {
+    secret: secret(),
+    origin:
+      (await findInstallation(ctx))?.callbackOrigin || defaultCallbackOrigin(),
+  }
+}
+
+type LinkContext = Awaited<ReturnType<typeof unsubscribeContext>> & {
+  contact: Doc<"contacts">
+  topic: Doc<"topics"> | null
+}
+
 /** One recipient's unsubscribe links, for every sender (sends, broadcasts,
     automations). `pageUrl` fills {{{OPENSEND_UNSUBSCRIBE_URL}}}; `headers`
     go on the message so mailbox providers offer one-click unsubscribe. With
@@ -133,16 +146,26 @@ export async function unsubscribeLinks(
     contactId: Id<"contacts">
     broadcastId?: Id<"broadcasts">
     topicId?: Id<"topics">
-  }
+  },
+  loaded?: LinkContext
 ) {
-  await teamRow(ctx, "contacts", target.organizationId, target.contactId)
-  if (target.topicId)
+  if (
+    !loaded ||
+    loaded.contact._id !== target.contactId ||
+    loaded.contact.organizationId !== target.organizationId
+  )
+    await teamRow(ctx, "contacts", target.organizationId, target.contactId)
+  if (
+    target.topicId &&
+    (!loaded ||
+      loaded.topic?._id !== target.topicId ||
+      loaded.topic.organizationId !== target.organizationId)
+  )
     await teamRow(ctx, "topics", target.organizationId, target.topicId)
-  const token = await signUnsubscribeToken(target, secret())
+  const token = await signUnsubscribeToken(target, loaded?.secret ?? secret())
   // The one-click POST comes from mailbox providers, so it goes to the
   // public HTTPS origin AWS already reaches.
-  const origin =
-    (await findInstallation(ctx))?.callbackOrigin || defaultCallbackOrigin()
+  const origin = loaded?.origin ?? (await unsubscribeContext(ctx)).origin
   const pageUrl = `${env.SITE_URL}/unsubscribe/${token}`
   const oneClickUrl = `${origin}/unsubscribe/${token}`
   return {
