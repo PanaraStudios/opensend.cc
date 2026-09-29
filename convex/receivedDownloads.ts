@@ -12,27 +12,35 @@ import type { Id } from "./_generated/dataModel"
 import { retirement } from "./teamLifecycle"
 
 const PREFIX = "/receiving-files/"
+const SENT_PREFIX = "/email-files/"
+export const sentAttachmentId = (emailId: string, index: number) =>
+  `${emailId}_${index}`
 const key = () => new TextEncoder().encode(env.BETTER_AUTH_SECRET)
 export async function downloadLink(
   ctx: ActionCtx,
-  emailId: Id<"receivedEmails">,
-  attachmentId?: Id<"receivedAttachments">
+  emailId: Id<"receivedEmails"> | Id<"emails">,
+  attachmentId?: string,
+  outbound = false
 ) {
   const expires = Math.floor(Date.now() / 1000) + 3600
-  const token = await new SignJWT({ emailId, attachmentId })
+  const token = await new SignJWT({ emailId, attachmentId, outbound })
     .setProtectedHeader({ alg: "HS256" })
-    .setAudience("received-file")
+    .setAudience(outbound ? "sent-file" : "received-file")
     .setExpirationTime(expires)
     .sign(key())
   const installation = await ctx.runQuery(internal.installation.connection, {})
   const origin = installation.callbackOrigin ?? env.CONVEX_SITE_URL
   return {
-    download_url: `${origin}${PREFIX}${token}`,
+    download_url: `${origin}${outbound ? SENT_PREFIX : PREFIX}${token}`,
     expires_at: new Date(expires * 1000).toISOString(),
   }
 }
 export const file = internalQuery({
-  args: { emailId: v.string(), attachmentId: v.optional(v.string()) },
+  args: {
+    emailId: v.string(),
+    attachmentId: v.optional(v.string()),
+    outbound: v.optional(v.boolean()),
+  },
   returns: v.union(
     v.null(),
     v.object({
@@ -42,6 +50,30 @@ export const file = internalQuery({
     })
   ),
   handler: async (ctx, args) => {
+    if (args.outbound) {
+      const id = ctx.db.normalizeId("emails", args.emailId)
+      const email = id ? await ctx.db.get("emails", id) : null
+      if (
+        !email ||
+        (email.expiresAt !== undefined && email.expiresAt <= Date.now()) ||
+        (await retirement(ctx, email.organizationId))
+      )
+        return null
+      const content = await ctx.db
+        .query("emailContents")
+        .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+        .unique()
+      const file = content?.attachments?.find(
+        (_, index) => sentAttachmentId(email._id, index) === args.attachmentId
+      )
+      return file
+        ? {
+            storageId: file.storageId,
+            filename: file.filename,
+            contentType: file.contentType,
+          }
+        : null
+    }
     const id = ctx.db.normalizeId("receivedEmails", args.emailId)
     const email = id ? await ctx.db.get("receivedEmails", id) : null
     if (
@@ -74,11 +106,16 @@ export const file = internalQuery({
 })
 export const download = httpAction(async (ctx, request) => {
   let emailId: string, attachmentId: string | undefined
+  const pathname = new URL(request.url).pathname
+  const outbound = pathname.startsWith(SENT_PREFIX)
   try {
     const { payload } = await jwtVerify(
-      new URL(request.url).pathname.slice(PREFIX.length),
+      pathname.slice(outbound ? SENT_PREFIX.length : PREFIX.length),
       key(),
-      { algorithms: ["HS256"], audience: "received-file" }
+      {
+        algorithms: ["HS256"],
+        audience: outbound ? "sent-file" : "received-file",
+      }
     )
     if (
       typeof payload.emailId !== "string" ||
@@ -94,6 +131,7 @@ export const download = httpAction(async (ctx, request) => {
   const file = await ctx.runQuery(internal.receivedDownloads.file, {
     emailId,
     attachmentId,
+    outbound,
   })
   if (!file) return new Response(null, { status: 404 })
   const blob = await ctx.storage.get(file.storageId)
@@ -110,4 +148,5 @@ export const download = httpAction(async (ctx, request) => {
 })
 export function registerReceivedDownloadRoutes(http: HttpRouter) {
   http.route({ method: "GET", pathPrefix: PREFIX, handler: download })
+  http.route({ method: "GET", pathPrefix: SENT_PREFIX, handler: download })
 }

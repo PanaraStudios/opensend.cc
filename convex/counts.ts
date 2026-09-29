@@ -170,6 +170,14 @@ export const counters = {
       key: (row) => [bucket(row.receivedAt)],
     }
   ),
+  broadcastLinks: new Counter<"broadcastLinks", string>(
+    components.broadcastLinkCounts,
+    { namespace: (row) => row.broadcastId, key: () => [] }
+  ),
+  broadcastRecipientLinks: new Counter<"broadcastRecipientLinks", string>(
+    components.broadcastRecipientLinkCounts,
+    { namespace: (row) => row.emailId, key: () => [] }
+  ),
   broadcasts: new Counter<"broadcasts", string>(components.broadcastCounts, {
     namespace: team,
     key: (row) => [row.status, row.segmentId ?? "everyone"],
@@ -340,6 +348,8 @@ type Sync<T extends TableNames> = Pick<
 >
 /** The counters each counted table keeps in step. */
 const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
+  broadcastLinks: [counters.broadcastLinks],
+  broadcastRecipientLinks: [counters.broadcastRecipientLinks],
   broadcasts: [counters.broadcasts],
   broadcastRecipients: [
     counters.broadcastRecipients,
@@ -371,6 +381,8 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
 }
 export type CountedTable =
   | "receivedEmails"
+  | "broadcastLinks"
+  | "broadcastRecipientLinks"
   | "broadcasts"
   | "broadcastRecipients"
   | "broadcastEvents"

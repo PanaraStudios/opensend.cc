@@ -1,4 +1,5 @@
-import { v } from "convex/values"
+import { v, type Value } from "convex/values"
+import { QueryStream } from "convex-helpers/server/stream"
 import { apiError } from "./caller"
 
 export const listArgs = {
@@ -7,36 +8,52 @@ export const listArgs = {
   before: v.optional(v.string()),
 }
 type Page = { limit: number; after?: string; before?: string }
-/** Rows strictly newer (`gt`) or older (`lt`) than a creation time. */
-type Scan<T> = (
-  bound: { lt?: number; gt?: number },
-  order: "asc" | "desc",
-  count: number
-) => Promise<T[]>
+type Row = { _id: string; _creationTime: number }
+type Rows<T extends Row> = QueryStream<T> | T[]
 
-/** Resend's list paging, newest first: `after` an id continues to older
-    rows, `before` an id goes back to newer ones. `anchor` gives an id's
-    creation time within the caller's team, or null. */
-export async function cursorPage<T>(
+/** The anchor is resolved within the resource's team/parent before its complete
+    index key is used, including the implicit creation time and id tie-break. */
+export async function cursorPage<T extends Row>(
   page: Page,
-  anchor: (id: string) => Promise<number | null>,
-  scan: Scan<T>
+  anchor: (id: string) => Promise<Row | null>,
+  scan: (order: "asc" | "desc") => Rows<T> | Promise<Rows<T>>
 ) {
   const cursor = page.before ?? page.after
-  const time = cursor === undefined ? undefined : await anchor(cursor)
-  if (time === null)
+  const row = cursor === undefined ? undefined : await anchor(cursor)
+  if (row === null)
     throw apiError(422, "validation_error", `No item has the id ${cursor}.`)
-  if (page.before !== undefined) {
-    const rows = await scan({ gt: time }, "asc", page.limit + 1)
-    return {
-      has_more: rows.length > page.limit,
-      data: rows.slice(0, page.limit).reverse(),
-    }
+  const before = page.before !== undefined
+  const source = await scan(before ? "asc" : "desc")
+  let rows: T[]
+  if (Array.isArray(source)) {
+    // Only bounded relation/property sets use in-memory ordering.
+    const compare = (a: Row, b: Row) =>
+      a._creationTime - b._creationTime ||
+      (a._id < b._id ? -1 : a._id > b._id ? 1 : 0)
+    rows = source
+      .filter(
+        (item) =>
+          !row || (before ? compare(item, row) > 0 : compare(item, row) < 0)
+      )
+      .sort((a, b) => (before ? compare(a, b) : compare(b, a)))
+      .slice(0, page.limit + 1)
+  } else {
+    const key = row
+      ? source
+          .getIndexFields()
+          .map((field) => (row as Record<string, Value>)[field])
+      : []
+    const bounded = row
+      ? source.narrow({
+          lowerBound: before ? key : [],
+          lowerBoundInclusive: false,
+          upperBound: before ? [] : key,
+          upperBoundInclusive: false,
+        })
+      : source
+    rows = await bounded.take(page.limit + 1)
   }
-  const rows = await scan(
-    time === undefined ? {} : { lt: time },
-    "desc",
-    page.limit + 1
-  )
-  return { has_more: rows.length > page.limit, data: rows.slice(0, page.limit) }
+  const data = rows.slice(0, page.limit)
+  if (before) data.reverse()
+  return { has_more: rows.length > page.limit, data }
 }

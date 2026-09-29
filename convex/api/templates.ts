@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -104,24 +105,18 @@ export const list = internalQuery({
       page,
       async (value) => {
         try {
-          return (await own(ctx, caller.organizationId, value))._creationTime
+          return await own(ctx, caller.organizationId, value)
         } catch {
           return null
         }
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("templates")
           .withIndex("by_organizationId", (q) => {
-            const scope = q.eq("organizationId", caller.organizationId)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("organizationId", caller.organizationId)
           })
           .order(order)
-          .take(count)
     )
   },
 })
@@ -165,7 +160,7 @@ export const create = internalMutation({
           })
         return id
       },
-      (id) => ({ body: { object: "template", id } })
+      (id) => ({ status: 201, body: { object: "template", id } })
     )
   },
 })
@@ -245,23 +240,32 @@ export function registerTemplateRoutes(http: HttpRouter) {
         body: {
           object: "template",
           ...summary(row),
-          current_version_id: draft?._id ?? null,
+          current_version_id: draft ? `${draft._id}:${row.version ?? 0}` : null,
           from: row.from ?? null,
           subject: row.subject,
-          reply_to: row.replyToAddresses ?? row.replyTo ?? null,
+          reply_to:
+            row.replyToAddresses ?? (row.replyTo ? [row.replyTo] : null),
           html: draft?.html ?? "",
           text: draft?.text ?? toPlainText(draft?.html ?? ""),
           variables: resolvedVariables(row, draft ?? { html: "" }).map(
-            (variable) => ({
-              key: variable.key,
-              type: variable.type ?? "string",
-              fallback_value:
-                variable.fallback === undefined
-                  ? null
-                  : variable.type === "number"
-                    ? Number(variable.fallback)
-                    : variable.fallback,
-            })
+            (variable) => {
+              const metadata = row.variableMetadata?.find(
+                (entry) => entry.key === variable.key
+              )
+              return {
+                id: metadata?.id ?? `${row._id}:${variable.key}`,
+                created_at: apiTime(metadata?.createdAt ?? row._creationTime),
+                updated_at: apiTime(metadata?.updatedAt ?? row.updatedAt),
+                key: variable.key,
+                type: variable.type ?? "string",
+                fallback_value:
+                  variable.fallback === undefined
+                    ? null
+                    : variable.type === "number"
+                      ? Number(variable.fallback)
+                      : variable.fallback,
+              }
+            }
           ),
           has_unpublished_versions:
             !published || row.updatedAt > (row.publishedAt ?? 0),
@@ -274,6 +278,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
     path: "/templates",
     permission: "full_access",
     handler: async (ctx, { caller, body }) => ({
+      status: 201,
       body: {
         object: "template",
         id: await ctx.runMutation(internal.api.templates.create, {

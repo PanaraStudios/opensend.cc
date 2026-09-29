@@ -235,6 +235,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   memberId: string;
                   organizationId: string;
                   revoked: boolean;
+                  revokedAt?: number;
+                  revokedReason?: string;
                   scopes: Array<string>;
                   userId: string;
                 };
@@ -3879,6 +3881,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     oauth: {
+      listRest: FunctionReference<"query", "internal", { organizationId: string; limit: number; after?: string; before?: string }, { has_more: boolean; data: Array<{ id: string; client_id: string; scopes: string[]; resource: null; created_at: string; revoked_at: string | null; revoked_reason: string | null; client: { name: string; logo_uri: string | null } }> }, Name>;
+      revokeRest: FunctionReference<"mutation", "internal", { organizationId: string; id: string }, { object: "oauth_grant"; id: string; revoked_at: string; revoked_reason: "revoked_from_api" }, Name>;
+
       checkGrant: FunctionReference<
         "query",
         "internal",
@@ -3892,6 +3897,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           memberId: string;
           organizationId: string;
           revoked: boolean;
+          revokedAt?: number;
+          revokedReason?: string;
           scopes: Array<string>;
           userId: string;
         },

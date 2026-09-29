@@ -1,3 +1,4 @@
+import { recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
@@ -29,6 +30,16 @@ export const parseStoredInbound = migrations.define({
       await ctx.scheduler.runAfter(0, internal.receivedParse.parse, {
         id: row._id,
       })
+  },
+})
+export const countBroadcastLinks = backfill("broadcastLinks")
+export const countBroadcastRecipientLinks = backfill("broadcastRecipientLinks")
+export const backfillBroadcastReports = migrations.define({
+  table: "emailEvents",
+  batchSize: 10,
+  migrateOne: async (ctx, event) => {
+    const email = await ctx.db.get("emails", event.emailId)
+    if (email) await recordBroadcastReport(ctx, email, event)
   },
 })
 export const countBroadcasts = backfill("broadcasts")
@@ -87,6 +98,8 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countAutomations,
   internal.migrations.countAutomationRuns,
   internal.migrations.countAutomationRunSteps,
+  internal.migrations.countBroadcastLinks,
+  internal.migrations.countBroadcastRecipientLinks,
   internal.migrations.countBroadcasts,
   internal.migrations.countBroadcastRecipients,
   internal.migrations.countBroadcastEvents,
@@ -96,6 +109,7 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countEmailMetrics,
   internal.migrations.countRecipientMetrics,
   internal.migrations.seedEmailMetrics,
+  internal.migrations.backfillBroadcastReports,
   internal.migrations.projectSesEvents,
   internal.migrations.countSuppressions,
   internal.migrations.countEmailRecipients,

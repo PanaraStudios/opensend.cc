@@ -14,9 +14,9 @@ import {
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import type { ApiRouteOptions } from "./api/route"
-import { api, components } from "./_generated/api"
+import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
-import { patchRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
 
 const registrations = vi.hoisted(
   () => [] as Pick<ApiRouteOptions, "method" | "path" | "permission">[]
@@ -69,7 +69,21 @@ async function response(
   path: string,
   method: string,
   result: Response,
-  status = 200
+  status = method === "POST" &&
+  [
+    "/api-keys",
+    "/domains",
+    "/contacts",
+    "/segments",
+    "/topics",
+    "/contact-properties",
+    "/templates",
+    "/broadcasts",
+    "/audiences",
+    "/broadcasts/{id}/duplicate",
+  ].includes(path)
+    ? 201
+    : 200
 ) {
   expect(result.status).toBe(status)
   const operation = contract.paths[path][method.toLowerCase()]
@@ -91,6 +105,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
+  vi.stubEnv("BETTER_AUTH_SECRET", "contract-file-secret")
   vi.stubEnv("SITE_URL", "https://opensend.test")
   vi.stubGlobal(
     "fetch",
@@ -170,8 +185,7 @@ describe("OpenAPI contract", () => {
       .map(({ method, path }) => `${method} ${path}`)
       .sort()
     expect(new Set(actual).size).toBe(actual.length)
-    const legacy = ["GET /oauth/grants", "DELETE /oauth/grants/{id}"]
-    expect(operations(contract)).toEqual([...actual, ...legacy].sort())
+    expect(operations(contract)).toEqual(actual)
     const dispatchRoutes = new Set(
       registrations.map(
         ({ method, path }) =>
@@ -194,6 +208,7 @@ describe("OpenAPI contract", () => {
       "POST /oauth/revoke",
       "POST /oauth/introspect",
       "GET /receiving-files/*",
+      "GET /email-files/*",
       "GET /ses/health",
       "POST /ses/events",
       "POST /ses/inbound",
@@ -207,9 +222,7 @@ describe("OpenAPI contract", () => {
       .getRoutes()
       .map(([path, method]) => `${method} ${path}`)
       .filter((route) => !dispatchRoutes.has(route))
-    expect(directRoutes.sort()).toEqual(
-      [...protocols, "GET /oauth/grants", "DELETE /oauth/grants/*"].sort()
-    )
+    expect(directRoutes.sort()).toEqual(protocols.sort())
     for (const { path, method, permission } of registrations)
       expect(
         contract.paths[path][method.toLowerCase()]["x-opensend-permission"]
@@ -383,7 +396,7 @@ describe("OpenAPI contract", () => {
       await f.call("/emails", "POST", { topic_id: "unsupported" }),
       422
     )
-    expect(unsupported.name).toBe("validation_error")
+    expect(unsupported.name).toBe("missing_required_field")
     await response("/domains", "GET", await f.t.fetch("/domains"), 401)
     await response(
       "/domains",
@@ -393,27 +406,180 @@ describe("OpenAPI contract", () => {
     )
   })
 
-  test("legacy OAuth grant routes use their own error contract and refuse API keys", async () => {
+  test("OAuth grant routes accept API keys and share the REST error contract", async () => {
     const f = await setup()
     const listed = await response(
       "/oauth/grants",
       "GET",
       await f.call("/oauth/grants"),
-      400
+      200
     )
-    expect(listed.error).toBe("invalid_request")
+    expect(listed).toEqual({ object: "list", has_more: false, data: [] })
     const revoked = await response(
       "/oauth/grants/{id}",
       "DELETE",
       await f.call("/oauth/grants/unknown", "DELETE"),
-      400
+      404
     )
-    expect(revoked.error).toBe("invalid_request")
+    expect(revoked.name).toBe("not_found")
+  })
+
+  test("validates every new parity route with nonempty authenticated responses", async () => {
+    const f = await setup()
+    const key = await response(
+      "/api-keys",
+      "POST",
+      await f.call("/api-keys", "POST", { name: "Contract key" })
+    )
+    await response(
+      "/api-keys/{id}",
+      "PATCH",
+      await f.call(`/api-keys/${key.id}`, "PATCH", { name: "Renamed" })
+    )
+    const audience = await response(
+      "/audiences",
+      "POST",
+      await f.call("/audiences", "POST", { name: "Legacy audience" })
+    )
+    await response("/audiences", "GET", await f.call("/audiences"))
+    await response(
+      "/audiences/{id}",
+      "GET",
+      await f.call(`/audiences/${audience.id}`)
+    )
+    await response(
+      "/audiences/{id}",
+      "DELETE",
+      await f.call(`/audiences/${audience.id}`, "DELETE")
+    )
+    const email = await response(
+      "/emails",
+      "POST",
+      await f.call("/emails", "POST", {
+        from: "hi@mail.example.test",
+        to: "a@example.com",
+        subject: "Attachment",
+        html: "<p>Hi</p>",
+        attachments: [{ filename: "a.txt", content: btoa("hello") }],
+      })
+    )
+    const files = await response(
+      "/emails/{id}/attachments",
+      "GET",
+      await f.call(`/emails/${email.id}/attachments`)
+    )
+    await response(
+      "/emails/{id}/attachments/{attachmentId}",
+      "GET",
+      await f.call(`/emails/${email.id}/attachments/${files.data[0].id}`)
+    )
+    const broadcast = await response(
+      "/broadcasts",
+      "POST",
+      await f.call("/broadcasts", "POST", {
+        name: "Report",
+        from: "hi@mail.example.test",
+        subject: "Report",
+        html: "<p>Hello</p>",
+      })
+    )
+    const contact = await response(
+      "/contacts",
+      "POST",
+      await f.call("/contacts", "POST", { email: "a@example.com" })
+    )
+    await f.t.run(async (ctx) => {
+      await insertRow(ctx, "broadcastRecipients", {
+        organizationId: f.owner.team,
+        broadcastId: broadcast.id,
+        contactId: contact.id,
+        emailId: email.id,
+        email: "a@example.com",
+        settled: true,
+        failed: false,
+        sent: true,
+      })
+      await insertRow(ctx, "broadcastLinks", {
+        organizationId: f.owner.team,
+        broadcastId: broadcast.id,
+        url: "https://example.com",
+        clicks: 2,
+        uniqueClicks: 1,
+      })
+    })
+    await response(
+      "/broadcasts/{id}/recipients",
+      "GET",
+      await f.call(`/broadcasts/${broadcast.id}/recipients?type=sent`)
+    )
+    await response(
+      "/broadcasts/{id}/clicked-links",
+      "GET",
+      await f.call(`/broadcasts/${broadcast.id}/clicked-links`)
+    )
+    await f.t.mutation(components.betterAuth.oauthClients.register, {
+      clientId: "contract",
+      name: "Contract",
+      redirects: ["https://client.example.com/callback"],
+      scope: "full_access",
+      method: "none",
+    })
+    await f.t.mutation(components.betterAuth.oauth.start, {
+      token: "contract-flow",
+      browserHash: "contract",
+      query: new URLSearchParams({
+        client_id: "contract",
+        redirect_uri: "https://client.example.com/callback",
+        scope: "full_access",
+        response_type: "code",
+        code_challenge: "a".repeat(43),
+        code_challenge_method: "S256",
+      }).toString(),
+    })
+    const grant = await f.t.mutation(components.betterAuth.oauth.decide, {
+      token: "contract-flow",
+      browserHash: "contract",
+      sessionId: f.owner.session._id,
+      organizationId: f.owner.team,
+      accept: true,
+    })
+    await response("/oauth/grants", "GET", await f.call("/oauth/grants"))
+    await response(
+      "/oauth/grants/{id}",
+      "DELETE",
+      await f.call(`/oauth/grants/${grant.grantId}`, "DELETE")
+    )
+    // Validate the mode-dependent response using the same internal transaction as HTTP.
+    const caller = await f.t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("apiKeys")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", f.owner.team)
+        )
+        .first()
+      return {
+        organizationId: f.owner.team,
+        apiKeyId: row!._id,
+        permission: "full_access" as const,
+        name: "Contract",
+      }
+    })
+    const batch = await f.t.mutation(internal.api.emails.batchSend, {
+      caller,
+      body: "[{}]",
+      permissive: true,
+    })
+    validateBody(
+      contract.paths["/emails/batch"].post.responses["200"].content[
+        "application/json"
+      ].schema,
+      batch
+    )
   })
 
   test("response schemas reject missing required fields, wrong types and undocumented fields", () => {
     const schema =
-      contract.paths["/contacts"].post.responses["200"].content[
+      contract.paths["/contacts"].post.responses["201"].content[
         "application/json"
       ].schema
     const validate = ajv.compile(schema)

@@ -561,7 +561,7 @@ test("REST CRUD shapes, natural-language scheduling, cancel and delete", async (
     preview_text: "Preview",
     reply_to: ["reply@example.com"],
   })
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(201)
   const created = await response.json()
   expect(created.object).toBe("broadcast")
   const url = `/broadcasts/${created.id}`

@@ -16,6 +16,7 @@ import { matchesSearch, teamPage, selectedOption } from "./lists"
 import { propertyTypeValue } from "./tables/audience"
 import {
   normalizePropertyKey,
+  isReservedPropertyKey,
   propertyKeyError,
 } from "../lib/dashboard/contacts"
 
@@ -164,9 +165,10 @@ export const strip = internalMutation({
 
 export async function createProperty(
   ctx: MutationCtx,
-  args: Omit<Doc<"contactProperties">, "_id" | "_creationTime" | "deleting">
+  args: Omit<Doc<"contactProperties">, "_id" | "_creationTime" | "deleting">,
+  format: "dashboard" | "api" = "dashboard"
 ) {
-  const key = normalizePropertyKey(args.key)
+  const key = format === "api" ? args.key : normalizePropertyKey(args.key)
   // Keys still being stripped count as taken.
   const taken = await ctx.db
     .query("contactProperties")
@@ -174,10 +176,10 @@ export async function createProperty(
       q.eq("organizationId", args.organizationId).eq("key", key)
     )
     .take(1)
-  const error = propertyKeyError(
-    key,
-    taken.map((row) => row.key)
-  )
+  const error = format === "api"
+    ? !/^[a-zA-Z0-9_]{1,50}$/.test(key) ? "Invalid property key"
+      : isReservedPropertyKey(key.toLowerCase()) || taken.length ? "That key already exists" : null
+    : propertyKeyError(key, taken.map((row) => row.key))
   if (error) throw new ConvexError(error)
   if (
     ((await counters.contactProperties.total(ctx, args.organizationId)) ?? 0) >=
@@ -186,7 +188,7 @@ export async function createProperty(
     throw new ConvexError(
       `A team can have up to ${LIMITS.properties} properties`
     )
-  const fallbackValue = args.fallbackValue?.trim() || undefined
+  const fallbackValue = format === "api" ? args.fallbackValue : args.fallbackValue?.trim() || undefined
   const name = args.name.trim() || key
   if (name.length > 200 || (fallbackValue?.length ?? 0) > 1000)
     throw new ConvexError("That name or fallback value is too long")

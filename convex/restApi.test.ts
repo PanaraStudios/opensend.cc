@@ -192,16 +192,16 @@ describe("REST API", () => {
       method: "POST",
       body: JSON.stringify({ name: "CI", permission: "sending_access" }),
     })
-    expect(created.status).toBe(200)
+    expect(created.status).toBe(201)
     const made = await created.json()
-    expect(made).toMatchObject({ object: "api_key" })
+    expect(Object.keys(made).sort()).toEqual(["id", "token"])
     expect(made.token).toMatch(/^os_/)
     const logs = await f.owner.client.query(api.logs.list, {
       organizationId: f.owner.team,
       paginationOpts: { numItems: 10, cursor: null },
     })
     expect(logs.page.map((log) => [log.method, log.path, log.status])).toEqual([
-      ["POST", "/api-keys", 200],
+      ["POST", "/api-keys", 201],
       ["GET", "/api-keys", 200],
     ])
     const detail = await f.owner.client.query(api.logs.get, {

@@ -1,3 +1,4 @@
+import { recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { insertRow, patchRow } from "./counts"
 import type { WithoutSystemFields } from "convex/server"
@@ -51,6 +52,11 @@ export async function insertEmailEvent(
   })
   const email = (await ctx.db.get("emails", emailId))!
   await recordMetric(ctx, email, type, at, detail.recipients)
+  await recordBroadcastReport(
+    ctx,
+    email,
+    (await ctx.db.get("emailEvents", id))!
+  )
   return id
 }
 

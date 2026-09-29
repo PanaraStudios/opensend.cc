@@ -12,6 +12,7 @@ import { API_RATE } from "./state"
 type Method = "GET" | "POST" | "PATCH" | "DELETE"
 export type ApiRequest = {
   caller: Caller
+  headers: Headers
   /** The `{named}` segments of the route path. */
   params: Record<string, string>
   query: URLSearchParams
@@ -251,7 +252,7 @@ function dispatch(patterns: Pattern[]) {
           ? {
               key: idempotencyKey,
               requestHash: await tokenHash(
-                `${options.method} ${url.pathname}\n${text}`
+                `${options.method} ${url.pathname}${url.pathname === "/emails/batch" ? ` ${request.headers.get("x-batch-validation") ?? "strict"}` : ""}\n${text}`
               ),
             }
           : undefined,
@@ -273,6 +274,7 @@ function dispatch(patterns: Pattern[]) {
           caller: { ...begun.caller, idempotencyId: begun.idempotencyId },
           params,
           query: url.searchParams,
+          headers: request.headers,
           body,
         })
         status = result.status ?? 200

@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -97,49 +98,29 @@ export const list = internalQuery({
       page,
       async (id) => {
         try {
-          return (await own(ctx, resource, caller.organizationId, id))
-            ._creationTime
+          return await own(ctx, resource, caller.organizationId, id)
         } catch {
           return null
         }
       },
-      async (bound, order, count) => {
-        if (resource === "contactProperties") {
-          const rows = (
-            await listProperties(ctx, caller.organizationId)
-          ).filter(
-            (row) =>
-              (bound.lt === undefined || row._creationTime < bound.lt) &&
-              (bound.gt === undefined || row._creationTime > bound.gt)
-          )
-          return rows
-            .sort((a, b) =>
-              order === "asc"
-                ? a._creationTime - b._creationTime
-                : b._creationTime - a._creationTime
-            )
-            .slice(0, count)
-        }
-        const query = ctx.db
+      async (order) => {
+        if (resource === "contactProperties")
+          return listProperties(ctx, caller.organizationId)
+        const query = stream(ctx.db, schema)
           .query(resource)
           .withIndex("by_organizationId", (q) => {
-            const scope = q.eq("organizationId", caller.organizationId)
-            return bound.lt !== undefined
-              ? scope.lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? scope.gt("_creationTime", bound.gt)
-                : scope
+            return q.eq("organizationId", caller.organizationId)
           })
           .order(order)
-        return query.take(count)
+        return query
       }
     )
   },
 })
 
 const contactFields = (body: Record<string, unknown>) => ({
-  firstName: stringField(body, "first_name"),
-  lastName: stringField(body, "last_name"),
+  firstName: body.first_name === null ? "" : stringField(body, "first_name"),
+  lastName: body.last_name === null ? "" : stringField(body, "last_name"),
   unsubscribed: booleanField(body, "unsubscribed"),
 })
 async function properties(
@@ -194,9 +175,14 @@ function topicInput(body: Record<string, unknown>, required = false) {
 }
 
 export const create = internalMutation({
-  args: { caller: callerValue, resource: resourceValue, body: v.string() },
+  args: {
+    caller: callerValue,
+    resource: resourceValue,
+    body: v.string(),
+    audienceAlias: v.optional(v.boolean()),
+  },
   returns: v.string(),
-  handler: async (ctx, { caller, resource, body }) => {
+  handler: async (ctx, { caller, resource, body, audienceAlias }) => {
     return idempotent(
       ctx,
       caller,
@@ -232,16 +218,25 @@ export const create = internalMutation({
           if (!type) throw invalid("Missing `type` field.")
           if (!/^[a-zA-Z0-9_]{1,50}$/.test(key))
             throw invalid("Invalid property key.")
-          return createProperty(ctx, {
-            organizationId,
-            key,
-            name: key,
-            type,
-            fallbackValue: fallback(input, type),
-          })
+          return createProperty(
+            ctx,
+            {
+              organizationId,
+              key,
+              name: key,
+              type,
+              fallbackValue: fallback(input, type),
+            },
+            "api"
+          )
         }
         const segments = await Promise.all(
-          array(input.segments ?? [], "segments", 500).map((segment) =>
+          array(
+            input.segments ??
+              (input.audience_id ? [{ id: input.audience_id }] : []),
+            "segments",
+            500
+          ).map((segment) =>
             own(
               ctx,
               "segments",
@@ -293,7 +288,10 @@ export const create = internalMutation({
         )
         return result.id
       },
-      (id) => ({ body: { object: nouns[resource], id } })
+      (id) => ({
+        status: 201,
+        body: { object: audienceAlias ? "audience" : nouns[resource], id },
+      })
     )
   },
 })
@@ -429,14 +427,17 @@ export function summary(row: Doc<Resource>) {
 }
 
 export function registerAudienceRoutes(http: HttpRouter) {
-  for (const resource of [
+  for (const endpoint of [
+    "audiences",
     "contacts",
     "segments",
     "topics",
     "contactProperties",
   ] as const) {
+    const resource = endpoint === "audiences" ? "segments" : endpoint
+    const noun = endpoint === "audiences" ? "audience" : nouns[resource]
     const path =
-      resource === "contactProperties" ? "/contact-properties" : `/${resource}`
+      resource === "contactProperties" ? "/contact-properties" : `/${endpoint}`
     apiRoute(http, {
       method: "GET",
       path,
@@ -465,10 +466,12 @@ export function registerAudienceRoutes(http: HttpRouter) {
       path,
       permission: "full_access",
       handler: async (ctx, { caller, body }) => ({
+        status: 201,
         body: {
-          object: nouns[resource],
+          object: noun,
           id: await ctx.runMutation(internal.api.audience.create, {
             caller,
+            audienceAlias: endpoint === "audiences",
             resource,
             body: JSON.stringify(body ?? {}),
           }),
@@ -487,14 +490,16 @@ export function registerAudienceRoutes(http: HttpRouter) {
         })
         return {
           body: {
-            object: nouns[resource],
+            object: noun,
             ...summary(result.row),
             ...(result.properties ? { properties: result.properties } : {}),
           },
         }
       },
     })
-    for (const method of ["PATCH", "DELETE"] as const)
+    for (const method of endpoint === "audiences"
+      ? (["DELETE"] as const)
+      : (["PATCH", "DELETE"] as const))
       apiRoute(http, {
         method,
         path: `${path}/{id}`,
@@ -509,7 +514,7 @@ export function registerAudienceRoutes(http: HttpRouter) {
           })
           return {
             body: {
-              object: nouns[resource],
+              object: noun,
               ...(method === "DELETE" && resource === "contacts"
                 ? { contact: id }
                 : { id }),
@@ -616,20 +621,14 @@ export const relations = internalQuery({
       }
       const result = await cursorPage(
         page,
-        async (value) => (await anchor(value))?._creationTime ?? null,
-        (bound, order, count) =>
-          ctx.db
+        async (value) => await anchor(value),
+        (order) =>
+          stream(ctx.db, schema)
             .query("segmentMembers")
             .withIndex("by_segmentId", (q) => {
-              const scope = q.eq("segmentId", segment._id)
-              return bound.lt !== undefined
-                ? scope.lt("_creationTime", bound.lt)
-                : bound.gt !== undefined
-                  ? scope.gt("_creationTime", bound.gt)
-                  : scope
+              return q.eq("segmentId", segment._id)
             })
             .order(order)
-            .take(count)
       )
       const rows = await Promise.all(
         result.data.map((member) => ctx.db.get("contacts", member.contactId))
@@ -655,22 +654,16 @@ export const relations = internalQuery({
             .unique()
           if (!membership) return null
         }
-        return row._creationTime
+        return row
       },
-      async (bound, order, count) => {
+      async (order) => {
         if (kind === "topics")
-          return ctx.db
+          return stream(ctx.db, schema)
             .query("topics")
             .withIndex("by_organizationId", (q) => {
-              const scope = q.eq("organizationId", org)
-              return bound.lt !== undefined
-                ? scope.lt("_creationTime", bound.lt)
-                : bound.gt !== undefined
-                  ? scope.gt("_creationTime", bound.gt)
-                  : scope
+              return q.eq("organizationId", org)
             })
             .order(order)
-            .take(count)
         // At most 500 segments exist per team, so hydration is bounded.
         const members = await ctx.db
           .query("segmentMembers")
@@ -678,23 +671,11 @@ export const relations = internalQuery({
             q.eq("contactId", contact._id)
           )
           .take(500)
-        const rows = (
+        return (
           await Promise.all(
             members.map((member) => ctx.db.get("segments", member.segmentId))
           )
-        ).filter(
-          (row): row is Doc<"segments"> =>
-            row !== null &&
-            (bound.lt === undefined || row._creationTime < bound.lt) &&
-            (bound.gt === undefined || row._creationTime > bound.gt)
-        )
-        return rows
-          .sort((a, b) =>
-            order === "asc"
-              ? a._creationTime - b._creationTime
-              : b._creationTime - a._creationTime
-          )
-          .slice(0, count)
+        ).filter((row): row is Doc<"segments"> => row !== null)
       }
     )
     if (kind !== "topics") return result

@@ -35,6 +35,8 @@ import {
   patchEmail,
   recordEmailStatus,
 } from "./emailRows"
+import { findTopicChoice } from "./audience"
+import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import { suppressedAmong } from "./suppressions"
 import { publishedTemplate, renderTemplate } from "./templates"
 import {
@@ -78,6 +80,7 @@ const limiter = new RateLimiter(components.rateLimiter)
 /* ---------------------------------------------------------------- input */
 
 export const newEmailValue = v.object({
+  topicId: v.optional(v.string()),
   from: v.optional(v.string()),
   to: v.array(v.string()),
   cc: v.array(v.string()),
@@ -313,12 +316,21 @@ export async function createEmail(
     )
   await bindingFor(ctx, domain)
 
+  const topicId = input.topicId
+    ? ctx.db.normalizeId("topics", input.topicId)
+    : null
+  if (input.topicId !== undefined) {
+    const topic = topicId ? await ctx.db.get("topics", topicId) : null
+    if (!topic || topic.organizationId !== meta.organizationId)
+      throw apiError(404, "not_found", "Topic not found")
+  }
   const status = scheduledAt === undefined ? "queued" : "scheduled"
   const id = await insertEmail(
     ctx,
     {
       organizationId: meta.organizationId,
       domainId: domain._id,
+      ...(topicId ? { topicId } : {}),
       from: sender.value,
       to: to.map((m) => m.value),
       ...(cc.length ? { cc: cc.map((m) => m.value) } : {}),
@@ -539,6 +551,53 @@ export const claim = internalMutation({
     const dropped = system
       ? new Set<string>()
       : await suppressedAmong(ctx, email.organizationId, all.map(key))
+    const optedOut = new Set<string>()
+    if (email.topicId) {
+      const topic = await ctx.db.get("topics", email.topicId)
+      if (!topic || topic.organizationId !== email.organizationId) {
+        await fail(ctx, email, "The email topic was removed")
+        return null
+      }
+      for (const address of new Set(all.map(key))) {
+        const contact = await ctx.db
+          .query("contacts")
+          .withIndex("by_organizationId_and_email", (q) =>
+            q.eq("organizationId", email.organizationId).eq("email", address)
+          )
+          .unique()
+        const choice = contact
+          ? await findTopicChoice(ctx, contact._id, topic._id)
+          : null
+        if (
+          contact?.unsubscribed ||
+          effectiveTopicSubscription(choice?.subscription, topic) !==
+            "subscribed"
+        ) {
+          optedOut.add(address)
+          dropped.add(address)
+        }
+      }
+      if (optedOut.size === new Set(all.map(key)).size) {
+        await fail(
+          ctx,
+          email,
+          "The recipients are not subscribed to this topic"
+        )
+        return null
+      }
+      if (optedOut.size) {
+        await insertEmailEvent(ctx, id, "failed", Date.now(), {
+          recipients: [...optedOut],
+          details: {
+            message: "The recipients are not subscribed to this topic",
+          },
+        })
+        await emitEmail(ctx, id, "email.failed", {
+          to: [...optedOut],
+          failed: { reason: "The recipients are not subscribed to this topic" },
+        })
+      }
+    }
     const keep = (values: string[] = []) =>
       values.filter((value) => !dropped.has(key(value)))
     const to = keep(email.to)

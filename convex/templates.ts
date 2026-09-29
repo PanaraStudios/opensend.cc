@@ -203,6 +203,7 @@ export async function insertTemplate(
     variableDefinitions: draft.variableDefinitions,
     replyToAddresses: draft.replyToAddresses,
     updatedAt: Date.now(),
+    version: 1,
     searchText: searchText(name, alias),
   })
   await ctx.db.insert("templateDrafts", {
@@ -210,6 +211,14 @@ export async function insertTemplate(
     html: draft.html,
     text: draft.text,
     ...(draft.content != null ? { content: draft.content } : {}),
+  })
+  const row = (await ctx.db.get("templates", id))!
+  await patchRow(ctx, "templates", id, {
+    variableMetadata: variableMetadata(
+      row,
+      resolvedVariables(row, draft),
+      row._creationTime
+    ),
   })
   return id
 }
@@ -604,6 +613,12 @@ export async function updateTemplate(
     variableDefinitions: next.variableDefinitions,
     replyToAddresses: next.replyToAddresses,
     updatedAt: now,
+    version: (template.version ?? 0) + 1,
+    variableMetadata: variableMetadata(
+      template,
+      resolvedVariables(next, next),
+      now
+    ),
     publishedAt:
       publishedAtAfterEdit(
         { updatedAt: template.updatedAt, publishedAt },
@@ -751,4 +766,31 @@ export function resolvedVariables(
   for (const variable of template.variableDefinitions ?? [])
     definitions.set(variable.key, variable)
   return [...definitions.values()]
+}
+
+/** Metadata follows each variable across edits; removing and readding creates a new id. */
+function variableMetadata(
+  row: Doc<"templates">,
+  variables: ReturnType<typeof resolvedVariables>,
+  now: number
+): NonNullable<Doc<"templates">["variableMetadata"]> {
+  return variables.map((variable) => {
+    const previous = row.variableMetadata?.find(
+      (entry) => entry.key === variable.key
+    )
+    const type = variable.type ?? "string"
+    return {
+      key: variable.key,
+      type,
+      fallback: variable.fallback,
+      id: previous?.id ?? `${row._id}:${variable.key}:${now}`,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt:
+        previous &&
+        previous.type === type &&
+        previous.fallback === variable.fallback
+          ? previous.updatedAt
+          : now,
+    }
+  })
 }

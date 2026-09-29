@@ -87,7 +87,7 @@ test("API-key creation and replay preserve the token but request logs redact it"
     body: JSON.stringify({ name: "Created through REST" }),
   }
   const first = await f.t.fetch("/api-keys", request)
-  expect(first.status).toBe(200)
+  expect(first.status).toBe(201)
   const created = await first.json()
   expect(created.token).toMatch(/^os_/)
   expect(await (await f.t.fetch("/api-keys", request)).json()).toEqual(created)

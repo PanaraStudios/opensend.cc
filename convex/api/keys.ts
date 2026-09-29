@@ -1,3 +1,5 @@
+import schema from "../schema"
+import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -7,6 +9,7 @@ import type { Id } from "../_generated/dataModel"
 import {
   deleteKey,
   insertKey,
+  patchKey,
   keyInput,
   keyView,
   mintToken,
@@ -35,20 +38,13 @@ export const list = internalQuery({
       async (id) => {
         const keyId = ctx.db.normalizeId("apiKeys", id)
         const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
-        return key?.organizationId === org ? key._creationTime : null
+        return key?.organizationId === org ? key : null
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("apiKeys")
-          .withIndex("by_organizationId", (q) =>
-            bound.lt !== undefined
-              ? q.eq("organizationId", org).lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? q.eq("organizationId", org).gt("_creationTime", bound.gt)
-                : q.eq("organizationId", org)
-          )
+          .withIndex("by_organizationId", (q) => q.eq("organizationId", org))
           .order(order)
-          .take(count)
     )
     return {
       ...result,
@@ -74,10 +70,24 @@ export const create = internalMutation({
           name: caller.name,
         })
       },
-      (id) => ({ body: { id, object: "api_key", token } })
+      (id) => ({ status: 201, body: { id, token } })
     )
   },
 })
+export const update = internalMutation({
+  args: { caller: callerValue, id: v.string(), name: v.string() },
+  returns: v.id("apiKeys"),
+  handler: async (ctx, { caller, id, name }) => {
+    await requireCaller(ctx, caller)
+    const keyId = ctx.db.normalizeId("apiKeys", id)
+    const key = keyId ? await ctx.db.get("apiKeys", keyId) : null
+    if (!key || key.organizationId !== caller.organizationId)
+      throw notFound("API key")
+    await patchKey(ctx, key, { name })
+    return key._id
+  },
+})
+
 export const remove = internalMutation({
   args: { caller: callerValue, id: v.string() },
   returns: v.union(v.null(), v.id("apiKeys")),
@@ -117,7 +127,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
           },
         }
       )
-      return { body: { id, object: "api_key", token } }
+      return { status: 201, body: { id, token } }
     },
   })
   apiRoute(http, {
@@ -143,6 +153,21 @@ export function registerApiKeyRoutes(http: HttpRouter) {
         },
       }
     },
+  })
+  apiRoute(http, {
+    method: "PATCH",
+    path: "/api-keys/{id}",
+    permission: "full_access",
+    handler: async (ctx, { caller, params, body }) => ({
+      body: {
+        object: "api_key",
+        id: await ctx.runMutation(internal.api.keys.update, {
+          caller,
+          id: params.id,
+          name: stringField(objectBody(body), "name", true)!,
+        }),
+      },
+    }),
   })
   apiRoute(http, {
     method: "DELETE",

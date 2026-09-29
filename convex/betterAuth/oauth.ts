@@ -1,3 +1,5 @@
+import { stream } from "convex-helpers/server/stream"
+import { pgTimestamp } from "../../lib/dashboard/exports"
 import { v, ConvexError } from "convex/values"
 import { mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -486,5 +488,112 @@ export const revokeGrant = mutation({
     if (grant?.clientId === args.clientId)
       await ctx.db.patch(grant._id, { revoked: true })
     return null
+  },
+})
+
+const restGrantValue = v.object({
+  id: v.string(),
+  client_id: v.string(),
+  scopes: v.array(v.string()),
+  resource: v.null(),
+  created_at: v.string(),
+  revoked_at: v.union(v.string(), v.null()),
+  revoked_reason: v.union(v.string(), v.null()),
+  client: v.object({
+    name: v.string(),
+    logo_uri: v.union(v.string(), v.null()),
+  }),
+})
+export const listRest = query({
+  args: {
+    organizationId: v.string(),
+    limit: v.number(),
+    after: v.optional(v.string()),
+    before: v.optional(v.string()),
+  },
+  returns: v.object({ has_more: v.boolean(), data: v.array(restGrantValue) }),
+  handler: async (ctx, { organizationId, limit, after, before }) => {
+    const cursor = after ?? before
+    const id = cursor ? ctx.db.normalizeId("oauthGrant", cursor) : null
+    const anchor = id ? await ctx.db.get(id) : null
+    if (cursor && anchor?.organizationId !== organizationId)
+      throw new ConvexError({
+        statusCode: 422,
+        name: "validation_error",
+        message: "Invalid grant cursor.",
+      })
+    const source = stream(ctx.db, schema)
+      .query("oauthGrant")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .order(before ? "asc" : "desc")
+    const key = anchor ? [organizationId, anchor._creationTime, anchor._id] : []
+    const rows = await (
+      anchor
+        ? source.narrow({
+            lowerBound: before ? key : [],
+            lowerBoundInclusive: false,
+            upperBound: before ? [] : key,
+            upperBoundInclusive: false,
+          })
+        : source
+    ).take(limit + 1)
+    const page = rows.slice(0, limit)
+    if (before) page.reverse()
+    const data = await Promise.all(
+      page.map(async (grant) => {
+        const client = await ctx.db
+          .query("oauthClient")
+          .withIndex("clientId", (q) => q.eq("clientId", grant.clientId))
+          .unique()
+        return {
+          id: grant._id,
+          client_id: grant.clientId,
+          scopes: grant.scopes,
+          resource: null,
+          created_at: pgTimestamp(grant.createdAt),
+          revoked_at:
+            grant.revokedAt === undefined ? null : pgTimestamp(grant.revokedAt),
+          revoked_reason: grant.revokedReason ?? null,
+          client: {
+            name: client?.name ?? "Application",
+            logo_uri: client?.icon ?? null,
+          },
+        }
+      })
+    )
+    return { has_more: rows.length > limit, data }
+  },
+})
+export const revokeRest = mutation({
+  args: { organizationId: v.string(), id: v.string() },
+  returns: v.object({
+    object: v.literal("oauth_grant"),
+    id: v.string(),
+    revoked_at: v.string(),
+    revoked_reason: v.literal("revoked_from_api"),
+  }),
+  handler: async (ctx, { organizationId, id }) => {
+    const grantId = ctx.db.normalizeId("oauthGrant", id)
+    const grant = grantId ? await ctx.db.get(grantId) : null
+    if (!grant || grant.organizationId !== organizationId || grant.revoked)
+      throw new ConvexError({
+        statusCode: 404,
+        name: "not_found",
+        message: "OAuth grant not found",
+      })
+    const at = Date.now()
+    await ctx.db.patch(grant._id, {
+      revoked: true,
+      revokedAt: at,
+      revokedReason: "revoked_from_api",
+    })
+    return {
+      object: "oauth_grant" as const,
+      id: grant._id,
+      revoked_at: new Date(at).toISOString(),
+      revoked_reason: "revoked_from_api" as const,
+    }
   },
 })

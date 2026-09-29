@@ -64,7 +64,11 @@ async function setup() {
   const ok = async (path: string, method = "GET", body?: unknown) => {
     const response = await call(path, method, body)
     const result = await response.json()
-    expect(response.status, JSON.stringify(result)).toBe(200)
+    expect(response.status, JSON.stringify(result)).toBe(
+      method === "POST" && resources.some((resource) => resource.path === path)
+        ? 201
+        : 200
+    )
     return result
   }
   return {
@@ -168,7 +172,7 @@ describe("audience and template REST resources", () => {
         { "Idempotency-Key": "new-resource" }
       )
       const first = await response.json()
-      expect(response.status, JSON.stringify(first)).toBe(200)
+      expect(response.status, JSON.stringify(first)).toBe(201)
       expect(
         await (
           await f.call(resource.path, "POST", resource.body, f.token, {

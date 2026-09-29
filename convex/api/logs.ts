@@ -1,3 +1,4 @@
+import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { internalQuery } from "../_generated/server"
@@ -24,20 +25,13 @@ export const list = internalQuery({
       async (id) => {
         const logId = ctx.db.normalizeId("apiLogs", id)
         const log = logId ? await ctx.db.get("apiLogs", logId) : null
-        return log?.organizationId === org ? log._creationTime : null
+        return log?.organizationId === org ? log : null
       },
-      (bound, order, count) =>
-        ctx.db
+      (order) =>
+        stream(ctx.db, schema)
           .query("apiLogs")
-          .withIndex("by_organizationId", (q) =>
-            bound.lt !== undefined
-              ? q.eq("organizationId", org).lt("_creationTime", bound.lt)
-              : bound.gt !== undefined
-                ? q.eq("organizationId", org).gt("_creationTime", bound.gt)
-                : q.eq("organizationId", org)
-          )
+          .withIndex("by_organizationId", (q) => q.eq("organizationId", org))
           .order(order)
-          .take(count)
     )
   },
 })
@@ -81,7 +75,7 @@ const summary = (log: Doc<"apiLogs">) => ({
   endpoint: log.path,
   method: log.method,
   response_status: log.status,
-  user_agent: log.userAgent,
+  user_agent: log.userAgent === "Unknown" ? null : log.userAgent,
 })
 /** `/logs`, as Resend documents it. */
 export function registerLogRoutes(http: HttpRouter) {
