@@ -5,6 +5,7 @@ import { defineSchema } from "convex/server"
 import { audienceTables } from "./tables/audience"
 import { automationEventTables } from "./tables/automationEvents"
 import { apiTables } from "./tables/api"
+import { domainClaimTables } from "./tables/domainClaims"
 import { domainTables } from "./tables/domains"
 import { emailTables } from "./tables/emails"
 import { eventTables } from "./tables/events"
@@ -27,6 +28,7 @@ export default defineSchema({
   ...smtpTables,
   ...metricsTables,
   ...domainTables,
+  ...domainClaimTables,
   ...eventTables,
   ...templateTables,
   ...teamTables,

@@ -1,4 +1,5 @@
 "use client"
+import { DomainClaim } from "./claim"
 import * as React from "react"
 import { useParams } from "next/navigation"
 import { useQuery, useMutation, useAction } from "convex/react"
@@ -703,6 +704,7 @@ export function DomainDetail() {
     if (leaving) return null
     return <NotFoundState icon={DomainIcon} noun="domain" backHref="/domains" />
   }
+  if (stored?.claimId) return <DomainClaim domain={stored} />
   const busy = result.domain.phase === "running"
   const error = result.domain.error ?? result.tenant?.error
   // The worker flags an identity it could not claim; error text is never parsed.

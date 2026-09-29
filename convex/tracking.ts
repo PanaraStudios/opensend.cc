@@ -158,8 +158,11 @@ export const allowedHost = internalQuery({
     if (!installation) return false
     const domains = await ctx.db
       .query("domains")
-      .withIndex("by_name_and_region_and_deleted", (q) =>
-        q.eq("name", hostname.slice(hostname.indexOf(".") + 1))
+      .withIndex("by_name_and_deleted_and_claimPending", (q) =>
+        q
+          .eq("name", hostname.slice(hostname.indexOf(".") + 1))
+          .eq("deleted", false)
+          .eq("claimPending", undefined)
       )
       .take(20)
     return domains.some(
