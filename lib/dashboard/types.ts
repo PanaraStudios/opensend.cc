@@ -96,6 +96,7 @@ export type DnsRecord = {
 }
 
 export type Domain = {
+  claiming?: boolean
   id: string
   name: string
   region: Region

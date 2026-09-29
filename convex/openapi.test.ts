@@ -179,6 +179,57 @@ async function setup() {
 }
 
 describe("OpenAPI contract", () => {
+  test("validates domain claim creation, retrieval, verification, resumption and ownership conflict", async () => {
+    const f = await setup()
+    const key = await f.outsider.client.action(api.apiKeys.create, {
+      organizationId: f.outsider.team,
+      input: {
+        name: "Claim contract",
+        permission: "full_access",
+        domainId: null,
+      },
+    })
+    const input = { name: "mail.example.test" }
+    await response(
+      "/domains",
+      "POST",
+      await f.call("/domains", "POST", input, key.token),
+      403
+    )
+    const claim = await response(
+      "/domains/claim",
+      "POST",
+      await f.call("/domains/claim", "POST", input, key.token),
+      201
+    )
+    await response(
+      "/domains/claim",
+      "POST",
+      await f.call("/domains/claim", "POST", input, key.token),
+      200
+    )
+    await response(
+      "/domains/{id}/claim",
+      "GET",
+      await f.call(
+        `/domains/${claim.domain_id}/claim`,
+        "GET",
+        undefined,
+        key.token
+      )
+    )
+    await response(
+      "/domains/{id}/claim/verify",
+      "POST",
+      await f.call(
+        `/domains/${claim.domain_id}/claim/verify`,
+        "POST",
+        undefined,
+        key.token
+      )
+    )
+  })
+
   test("is OpenAPI 3.1 and exactly covers every registered REST method/path and permission", () => {
     expect(contract.openapi).toBe("3.1.0")
     expect(registrations.length).toBeGreaterThan(0)

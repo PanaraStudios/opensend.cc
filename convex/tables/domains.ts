@@ -14,6 +14,9 @@ import {
 
 export const domainTables = {
   domains: defineTable({
+    claimPending: v.optional(v.boolean()),
+    claimId: v.optional(v.id("domainClaims")),
+    transferClaimId: v.optional(v.id("domainClaims")),
     dnsProvider: v.optional(dnsProviderValue),
     dnsProviderCheckedAt: v.optional(v.number()),
     dnsProviderRequestedAt: v.optional(v.number()),
@@ -64,6 +67,17 @@ export const domainTables = {
     error: v.optional(v.string()),
     operation: domainOperationValue,
   })
+    .index("by_name_and_deleted_and_claimPending", [
+      "name",
+      "deleted",
+      "claimPending",
+    ])
+    .index("by_name_and_region_and_deleted_and_claimPending", [
+      "name",
+      "region",
+      "deleted",
+      "claimPending",
+    ])
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_deleted_and_status", [
       "organizationId",

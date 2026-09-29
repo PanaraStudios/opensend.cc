@@ -1,3 +1,4 @@
+import { apiError } from "./api/caller"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { selectedOption } from "./lists"
 import { trackingTarget } from "./ses/contracts"
@@ -269,7 +270,7 @@ export async function findActiveDomain(
 }
 /** Emits a `domain.*` event with the domain as it now stands, shaped like
     the domain in Resend's domain events. */
-async function emitDomain(
+export async function emitDomain(
   ctx: MutationCtx,
   id: Id<"domains">,
   type: "domain.created" | "domain.updated" | "domain.deleted"
@@ -382,8 +383,18 @@ async function dispatchCheck(
 export async function start(
   ctx: MutationCtx,
   domain: Doc<"domains">,
-  operation: Doc<"domains">["operation"]
-) {
+  operation: Doc<"domains">["operation"],
+  claiming = false
+): Promise<void> {
+  if (domain.claimPending) {
+    if (operation === "remove") {
+      await ctx.runMutation(internal.domainClaims.cancel, { id: domain._id })
+      return
+    }
+    throw new ConvexError("Verify the domain claim first")
+  }
+  if ((domain.transferClaimId || domain.claimId) && !claiming)
+    throw new ConvexError("A domain claim transfer is in progress")
   if (domain.phase === "running")
     throw new ConvexError("A domain operation is already running")
   await patchRow(ctx, "domains", domain._id, {
@@ -445,8 +456,9 @@ export async function createDomain(
     sending?: boolean
     receiving?: boolean
     tls?: "opportunistic" | "enforced"
-  } & TrackingSettings
-) {
+  } & TrackingSettings,
+  placeholder = false
+): Promise<Id<"domains">> {
   const name = normalizeDomainName(args.name)
   const customReturnPath = args.customReturnPath.trim().toLowerCase()
   const error =
@@ -460,14 +472,17 @@ export async function createDomain(
     throw new ConvexError(
       "Provision this AWS region in installation settings first"
     )
-  const existing = await ctx.db
-    .query("domains")
-    .withIndex("by_name_and_region_and_deleted", (q) =>
-      q.eq("name", name).eq("region", args.region).eq("deleted", false)
-    )
-    .unique()
-  if (existing) {
-    throw new ConvexError("That domain is already reserved in this region")
+  if (!placeholder) {
+    const existing = await activeName(ctx, name)
+    if (existing.length) {
+      if (existing.some((domain) => domain.organizationId !== organizationId))
+        throw apiError(
+          403,
+          "validation_error",
+          `The ${name} domain has been registered already`
+        )
+      throw new ConvexError("That domain is already reserved in this region")
+    }
   }
   const installation = await findInstallation(ctx)
   if (!installation) throw new ConvexError("Installation not found")
@@ -480,27 +495,31 @@ export async function createDomain(
     status: "pending",
     phase: "pending",
     deleted: false,
-    sending: args.sending ?? true,
+    sending: placeholder ? false : (args.sending ?? true),
+    ...(placeholder ? { claimPending: true } : {}),
     receiving: args.receiving ?? false,
     tls: args.tls ?? "opportunistic",
     ...tracking,
     trackingTarget: target,
     // Shown at once; the DKIM records join them when SES issues its keys.
-    records: mailRecords({
-      receiving: args.receiving,
-      trackingTarget: target,
-      name,
-      region: args.region,
-      customReturnPath,
-      ...tracking,
-    }),
+    records: placeholder
+      ? []
+      : mailRecords({
+          receiving: args.receiving,
+          trackingTarget: target,
+          name,
+          region: args.region,
+          customReturnPath,
+          ...tracking,
+        }),
     sesVerified: false,
     dkimVerified: false,
     mailFromVerified: false,
     operation: "provision",
   })
   await emitDomain(ctx, id, "domain.created")
-  await start(ctx, (await ctx.db.get("domains", id))!, "provision")
+  if (!placeholder)
+    await start(ctx, (await ctx.db.get("domains", id))!, "provision")
   if (!installation.completedAt) await completeInstallation(ctx, organizationId)
   return id
 }
@@ -531,6 +550,8 @@ export const refresh = mutation({
     read now, without re-running the AWS setup, and automatic checks restart.
     Returns whether a status check started, rather than an operation. */
 export async function verifyDomain(ctx: MutationCtx, domain: Doc<"domains">) {
+  if (domain.claimId || domain.transferClaimId)
+    throw new ConvexError("A domain claim is in progress")
   if (domain.phase === "failed") {
     await start(ctx, domain, retryOperation(domain))
     return false
@@ -563,6 +584,8 @@ export async function updateDomain(
 ) {
   // A refresh or TLS change that failed left the provisioned domain intact,
   // so its settings stay editable; an unfinished provision or removal does not.
+  if (domain.claimId || domain.transferClaimId)
+    throw new ConvexError("A domain claim is in progress")
   if (!provisioned(domain))
     throw new ConvexError("Finish provisioning this domain first")
   const tls = args.tls && args.tls !== domain.tls ? args.tls : undefined
@@ -716,9 +739,10 @@ export const finish = internalMutation({
     receiptRuleSet: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.null(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<null> => {
     const domain = await ctx.db.get("domains", args.id)
     if (!domain) throw new ConvexError("Domain not found")
+    if (domain.deleted) return null
     const now = Date.now()
     const phase = args.error ? "failed" : "ready"
     /* Only a provision can fail with nothing standing behind it. A refresh,
@@ -769,6 +793,8 @@ export const finish = internalMutation({
             ? "TLS policy updated"
             : "AWS and DNS state refreshed")
       )
+    if (domain.claimId || domain.transferClaimId)
+      await ctx.runMutation(internal.domainClaims.finish, { id: args.id })
     return null
   },
 })
@@ -973,3 +999,13 @@ export const saveDnsProvider = internalMutation({
     return null
   },
 })
+
+/** Placeholders never reserve an SES identity or receive mail. */
+export function activeName(ctx: QueryCtx, name: string) {
+  return ctx.db
+    .query("domains")
+    .withIndex("by_name_and_deleted_and_claimPending", (q) =>
+      q.eq("name", name).eq("deleted", false).eq("claimPending", undefined)
+    )
+    .take(2)
+}

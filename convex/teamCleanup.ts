@@ -48,6 +48,7 @@ export const TEAM_TABLES = [
   "smtpSettings",
   "receivedEmails",
   "inboundMessages",
+  "domainClaims",
   "domains",
   "sesTenants",
   "contactImports",

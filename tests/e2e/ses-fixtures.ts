@@ -441,3 +441,41 @@ export function seedExpiredEmailShare(organizationId: string, emailId: string) {
   })
   return token
 }
+
+/** Controlled DNS/state fixture, like domains:finish above. Preserve every other
+    claim; this helper can run only against the disposable e2e instance. */
+export function seedDomainClaimState(
+  id: string,
+  changes: Record<string, unknown>
+) {
+  assertTestOwnership()
+  const rows = backendRows<Record<string, unknown>>("domainClaims", 100)
+  if (rows.length >= 100 || !rows.some((row) => row._id === id))
+    throw new Error("Claim fixture must have a complete bounded snapshot")
+  const file = join(
+    process.env.OPENSEND_TEST_RESULTS!,
+    "domain-claims-fixture.jsonl"
+  )
+  writeFileSync(
+    file,
+    rows
+      .map((row) =>
+        JSON.stringify(row._id === id ? { ...row, ...changes } : row)
+      )
+      .join("\n") + "\n",
+    { mode: 0o600 }
+  )
+  execFileSync(
+    "node",
+    [
+      "scripts/backend.mjs",
+      "import",
+      "--table",
+      "domainClaims",
+      "--replace",
+      "--yes",
+      file,
+    ],
+    { stdio: "pipe", env: process.env }
+  )
+}

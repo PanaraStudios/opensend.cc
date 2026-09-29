@@ -12,6 +12,7 @@ export function asDomain(row: Doc<"domains">): Domain {
   return {
     id: row._id,
     name: row.name,
+    claiming: !!row.claimId,
     region: row.region,
     provider: row.dnsProvider,
     status: row.status,
@@ -52,6 +53,7 @@ export function asDomain(row: Doc<"domains">): Domain {
 export function useDomainCommands() {
   const workspace = useWorkspace()
   const create = useMutation(api.domains.create)
+  const claim = useMutation(api.domainClaims.create)
   const verify = useMutation(api.domains.verify)
   const remove = useMutation(api.domains.remove)
   const update = useMutation(api.domains.update)
@@ -67,6 +69,14 @@ export function useDomainCommands() {
     }) => {
       if (!workspace.activeTeamId) throw new Error("Create a team first")
       return create({ ...input, organizationId: workspace.activeTeamId })
+    },
+    claimDomain: (input: {
+      name: string
+      region: Domain["region"]
+      customReturnPath: string
+    }) => {
+      if (!workspace.activeTeamId) throw new Error("Create a team first")
+      return claim({ ...input, organizationId: workspace.activeTeamId })
     },
     verifyDomain: (id: string) => verify({ id: id as Id<"domains"> }),
     deleteDomain: (id: string) => remove({ id: id as Id<"domains"> }),

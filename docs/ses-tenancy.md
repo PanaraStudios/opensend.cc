@@ -182,3 +182,22 @@ failure semantics, produces an observable failure instead of an indefinite hold,
 and avoids stale transactional mail being delivered unexpectedly on resume.
 Resend's public docs describe failed events but do not specify paused queue retry
 behavior, so this queue policy is an explicit Opensend choice.
+
+## DNS ownership claims
+
+Domain names are reserved across the installation, independent of sending
+region. Claim placeholders have `claimPending: true` and never reserve an SES
+identity; inbound routing and tracking-host lookup exclude them. A team may
+resume its single current claim for a name. Legacy names with multiple active
+regional rows cannot be claimed until their owner resolves the ambiguity.
+
+After exact server-side TXT proof, one transaction checks for queued/scheduled
+mail and active domain operations, locks the old domain with `transferClaimId`,
+disables sending and starts the existing removal workflow. Email enqueue/send
+gates observe the same domain row, so new mail cannot cross that boundary.
+Removal's successful completion tombstones the old row and emits its normal
+event, then reserves the name for the placeholder and starts normal provisioning.
+Each failed SES step retains its operation and ownership lock for retry. Imported
+identities are blocked, because removal must preserve their external ownership.
+The existing revision 3 delete/associate/provision permissions suffice; the policy
+revision is unchanged. No AWS or deployment commands were run for this feature.

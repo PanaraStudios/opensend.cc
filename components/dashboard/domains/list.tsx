@@ -7,6 +7,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CopyIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -84,8 +86,9 @@ export function AddDomainDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addDomain } = useDomainCommands()
+  const { addDomain, claimDomain } = useDomainCommands()
   const installation = useQuery(api.installation.status)
+  const [inUse, setInUse] = React.useState(false)
   const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
   const [chosenRegion, setRegion] = React.useState<Region | undefined>()
@@ -95,6 +98,7 @@ export function AddDomainDialog({
   const [error, setError] = React.useState<string | null>(null)
 
   function reset() {
+    setInUse(false)
     setName("")
     setRegion(undefined)
     setReturnPath(DEFAULT_RETURN_PATH)
@@ -130,7 +134,36 @@ export function AddDomainDialog({
       onOpenChange(false)
       router.push(`/domains/${id}`)
     } catch (e) {
-      setError(actionError(e))
+      if (
+        e &&
+        typeof e === "object" &&
+        "data" in e &&
+        e.data &&
+        typeof e.data === "object" &&
+        "statusCode" in e.data &&
+        e.data.statusCode === 403
+      ) {
+        setInUse(true)
+        setError(null)
+      } else setError(actionError(e))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function claim() {
+    setPending(true)
+    try {
+      const result = await claimDomain({
+        name,
+        region,
+        customReturnPath: returnPath,
+      })
+      reset()
+      onOpenChange(false)
+      router.push(`/domains/${result.domain_id}`)
+    } catch (error) {
+      setError(actionError(error))
     } finally {
       setPending(false)
     }
@@ -161,6 +194,7 @@ export function AddDomainDialog({
                 id="domain-name"
                 value={name}
                 onChange={(event) => {
+                  setInUse(false)
                   setName(event.target.value)
                   setError(null)
                 }}
@@ -218,13 +252,32 @@ export function AddDomainDialog({
               </Field>
             </SetupDetails>
           </FieldGroup>
+          {inUse && (
+            <Alert variant="warning" className="mb-4">
+              <AlertTitle>Domain already in use</AlertTitle>
+              <AlertDescription>
+                This domain is registered by another team. If you own it, add a
+                TXT record to claim it.
+              </AlertDescription>
+            </Alert>
+          )}
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Adding…" : "Add domain"}
-            </Button>
+            {inUse ? (
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => void claim()}
+              >
+                {pending ? "Starting claim…" : "Claim domain"}
+              </Button>
+            ) : (
+              <Button type="submit" disabled={pending}>
+                {pending ? "Adding…" : "Add domain"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -355,7 +408,11 @@ export function DomainsView() {
                   </IconCell>
                 </TableCell>
                 <TableCell>
-                  <StatusBadge status={domain.status} />
+                  {domain.claiming ? (
+                    <Badge variant="secondary">Claim in progress</Badge>
+                  ) : (
+                    <StatusBadge status={domain.status} />
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <span className="flex items-center gap-1.5">
@@ -382,7 +439,8 @@ export function DomainsView() {
                         <CopyIcon />
                         Copy domain
                       </DropdownMenuItem>
-                      {domain.status === "verified" ? null : (
+                      {domain.status === "verified" ||
+                      domain.claiming ? null : (
                         <DropdownMenuItem
                           disabled={!canWrite || domain.checking}
                           onClick={() => void verify(domain.id)}

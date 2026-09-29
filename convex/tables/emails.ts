@@ -95,6 +95,7 @@ export const emailTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_domainId_and_status", ["domainId", "status"])
     .index("by_messageId", ["messageId"])
     .index("by_expiresAt", ["expiresAt"])
     .searchIndex("search_search", {

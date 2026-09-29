@@ -697,3 +697,55 @@ at expiry or when the email or team is deleted/retired; expired tokens are prune
 hourly in bounded batches. Creating another link does not revoke previous links.
 Dashboard members can create and copy links from **Share email** in either email
 detail menu.
+### Domain claims
+
+`POST /domains/claim` accepts `name`, optional `region`, `custom_return_path`
+(default `send`), `open_tracking`, `click_tracking`, and `tracking_subdomain`, as
+`resend.domains.claims.create()` sends them. It returns 201 for a new claim or
+200 when resuming that team's existing claim (retaining its original settings).
+`GET /domains/{domain_id}/claim` returns the latest claim for the placeholder
+id; `POST /domains/{domain_id}/claim/verify` returns 200 and starts asynchronous
+DNS verification. All three require full-access keys; foreign ids return 404.
+Both POSTs support `Idempotency-Key`.
+
+The response is `{ object: "domain_claim", id, name, status, domain_id, region,
+record: { type: "TXT", name, value, ttl: "Auto" }, blocked_reason, failure_reason,
+created_at, expires_at }`. Publish the returned `opensend-domain-verification=…`
+TXT value at the domain apex. The random token is case-sensitive; DNS string
+chunks are joined before comparison. Only server-side DNS lookups prove ownership.
+A placeholder is listed on the claiming team but cannot send, receive, adopt an
+SES identity, or run ordinary domain verification. `POST /domains` returns
+403 `validation_error` with `The <name> domain has been registered already`
+when another team reserves the name, including across regions.
+
+Claims wait in `pending`, pass through `verified` while SES transfers the domain,
+and reach `completed` after the new team's SES provisioning succeeds. Queued or
+scheduled mail blocks with `pending_scheduled_emails`; an active removal,
+provisioning/refresh operation, competing transfer, or imported SES identity
+blocks with `recent_owner_activity`. `failure_reason` explains what to resolve.
+An imported identity must be released by its owner: normal deletion restores its
+external configuration, which a claim must not silently adopt or destroy.
+There is no time-based owner-activity/grace-period heuristic. Blocked claims can
+retry verification after the condition clears.
+
+Pending/blocked claims expire after seven days, matching Resend's documented
+window. Creating again supersedes the expired placeholder with a new token.
+Deleting a pending/blocked/expired placeholder cancels its claim; a verified
+transfer cannot be canceled mid-operation. Once TXT proof is accepted, expiry
+no longer interrupts the transfer. An AWS failure leaves it `verified` with a
+`failure_reason`; verify again retries the failed step without releasing its lock.
+
+On transfer the old team's existing removal workflow detaches the tenant,
+removes receipt rules and the owned identity, and emits `domain.deleted`. Only
+then does the new team's ordinary provisioning run, producing fresh DKIM records
+and `domain.updated` (its placeholder already emitted `domain.created`). Fetch
+`GET /domains/{domain_id}`, add those new records, and run ordinary domain
+verification before sending. Historical email/domain ids remain with the old
+team. No administrator exemption or new IAM permissions are involved.
+
+The dashboard starts claims from **Add domain → Claim domain**, shows progress
+at `/domains/{domain_id}`, and supplies copyable TXT records, retries, renewal,
+and cancellation. Domain Connect's existing template handles sending records,
+not the claim token; claims use manual TXT setup. Resend's claim documentation
+specifies no owner notification email, so the audit trail uses the existing team
+event outbox rather than installation-sender mail.

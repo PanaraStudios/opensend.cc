@@ -174,7 +174,7 @@ export function DnsRecordsTable({
   domainName,
   showPriority = false,
 }: {
-  records: readonly DnsRecord[]
+  records: readonly Omit<DnsRecord, "kind">[]
   domainName: string
   showPriority?: boolean
 }) {

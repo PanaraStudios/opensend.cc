@@ -1,6 +1,6 @@
-# Resend parity — after wave 8 (8A existing routes, 8B webhooks/suppressions, 8C automations/imports/metrics)
+# Resend parity — after waves 8 and 9 (9A email share, 9B domain claims)
 
-The [Opensend contract](../openapi/opensend.yaml) serves **111 operations**: **109** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **94 are served**, **15 partial**, and **4 missing** (the three domain-claim operations and usage).
+The [Opensend contract](../openapi/opensend.yaml) serves **114 operations**: **112** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **97 are served**, **15 partial**, and **1 missing**.
 
 `served` means an operation exists with no identified resource-specific wire gap after the common differences below; `partial` means it exists with a documented field, status, validation or behavior gap; `missing` means no matching REST registration, even if the dashboard has a Convex function. Parameter placeholder spelling does not affect matching (`{email_id}` and `{id}` are the same URL pattern). The table uses upstream spellings; the contract uses actual handler spellings. This classification does not treat upstream missing `required` arrays as evidence that live Resend omits fields. Served rows can still share the documented self-hosted deviations below; this classification does not claim live provider equivalence.
 
@@ -44,15 +44,15 @@ Every method/path from the supplied snapshot appears exactly once. “No resourc
 | `GET` | `/emails/receiving/{email_id}/attachments` | **served** | Current docs intentionally omit per-item object and permit null disposition/content_id. One-hour signed downloads and P/R apply. |
 | `GET` | `/emails/receiving/{email_id}/attachments/{attachment_id}` | **served** | Current docs permit null disposition/content_id. Single retrieval ignores list parameters. One-hour signed downloads and R apply. |
 | `GET` | `/emails/metrics` | **partial** | Same metrics response shape, metric selection, comma/repeated lists, period/domain dimensions, domain_id filters, IANA timezone and hourly/daily/weekly/monthly grouping. Uses creation-cohort aggregates at 15-minute precision; at most 31 domain-period spans and one year. Email/broadcast dimensions/filters and opened/clicked repeat counts, unsubscribed/unsubscribe_rate return 422: historical aggregates do not retain those dimensions/events. Omitted metrics selects the 18 supported metrics. Rates are percentages, totals recomputed from counts; received counts retained email rows. |
-| `POST` | `/domains` | **partial** | 201; accepts tls and sending/receiving capabilities during creation using shared provisioning. Installation region default and SES regional readiness required. D remains: SES-specific DNS/status lifecycle and HTTP tracking. |
+| `POST` | `/domains` | **partial** | 201; 403 validation_error when reserved by another team; accepts tls and sending/receiving capabilities during creation using shared provisioning. Installation region default and SES regional readiness required. D remains: SES-specific DNS/status lifecycle and HTTP tracking. |
 | `GET` | `/domains` | **partial** | SDK-compatible fields including tracking_subdomain. D remains: SES-specific domain statuses. P applies. |
 | `GET` | `/domains/{domain_id}` | **partial** | SDK-compatible fields including tls. D remains: SES DNS/status values, DMARC and no TrackingCAA/CAA. |
 | `PATCH` | `/domains/{domain_id}` | **partial** | Same object/id response and inputs; only provisioned domain can change. tracking_subdomain cannot be removed. Receiving unavailable in unsupported SES receiving regions (422). D applies to HTTP-only tracking and infrastructure prerequisites. |
 | `DELETE` | `/domains/{domain_id}` | **partial** | Same object/id/deleted response; AWS deletion asynchronous. D applies to self-hosted lifecycle. |
 | `POST` | `/domains/{domain_id}/verify` | **partial** | Same object/id response; retries failed provisioning or starts asynchronous DNS refresh. One verification per domain per 10 seconds (validation_error/422 if too soon). |
-| `POST` | `/domains/claim` | **missing** | Needs new cross-team claim/DNS ownership-transfer workflow and persistent claim state. |
-| `GET` | `/domains/{domain_id}/claim` | **missing** | Needs domain claim backend. |
-| `POST` | `/domains/{domain_id}/claim/verify` | **missing** | Needs domain claim verification and safe ownership transfer. |
+| `POST` | `/domains/claim` | **served** | 201 new / 200 resumed; SDK request fields, seven-day TXT ownership claim and non-sending placeholder. Opaque ids and installation region default apply. |
+| `GET` | `/domains/{domain_id}/claim` | **served** | Latest domain_claim, team-scoped, including blocked_reason/failure_reason and expiry. |
+| `POST` | `/domains/{domain_id}/claim/verify` | **served** | Asynchronous server DNS verification; queued/scheduled sends and active operations block transfer. Existing SES removal then fresh provisioning; failed steps remain retryable. Imported identities must first be released by their owner. |
 | `POST` | `/api-keys` | **served** | 201 {id,token}; object removed to match SDK. os_ prefix intentional, shared member/key validation. Domain restriction applies to sending keys only. The token is disclosed once and only its hash is retained; any team member can create a key. |
 | `GET` | `/api-keys` | **served** | last_used_at is present and nullable in the current SDK; snapshot omission is stale. P applies. |
 | `PATCH` | `/api-keys/{api_key_id}` | **served** | Required name; shared patchKey helper. Returns {object:"api_key",id}. Full-access credentials and same-team id required. |
@@ -176,7 +176,7 @@ Wave 8 completed the existing-route wire corrections (8A), webhooks and suppress
 6. **Completed (8C): automations** (9) over the shared runtime; create/update are partial where the runtime rejects graph shapes.
 7. **Completed (8C): contact imports** (3) on the wave 7 durable jobs; creation is partial (job size limits, no boolean properties).
 8. **Metrics (8C, partial) and usage (missing):** `GET /emails/metrics` answers what the daily aggregates hold; `/usage` awaits a decision on honest self-hosted semantics.
-9. **Missing, awaiting a product decision: email share and domain claims** (1 + 3): new public expiring-share capabilities and cross-team DNS claim/ownership-transfer lifecycle. These require new backend/security behavior; keep last.
+9. **Completed (wave 9): email share (9A) and domain claims (9B)**, each with the dashboard flow Resend has. `/usage` is wave 9C.
 
 The 5 remaining missing snapshot operations are accounted for above. No IAM policy change is proposed by this contract lane. Reassess permissions when implementing features that actually call AWS. The spec has no dependency on the private marketing repository, and no dashboard design or interaction changed.
 

@@ -1,3 +1,10 @@
+import {
+  createClaim,
+  ownClaim,
+  present,
+  verifyClaim,
+  claimValue,
+} from "../domainClaims"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
@@ -138,6 +145,59 @@ export const change = internalMutation({
   },
 })
 
+export const claimCreate = internalMutation({
+  args: {
+    caller: callerValue,
+    name: v.string(),
+    region: v.optional(regionValue),
+    customReturnPath: v.string(),
+    ...trackingFields,
+  },
+  returns: v.object({ body: claimValue, status: v.number() }),
+  handler: async (ctx, { caller, region, ...args }) =>
+    idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        return createClaim(ctx, caller.organizationId, {
+          ...args,
+          region:
+            region ??
+            (await findInstallation(ctx))?.defaultRegion ??
+            "us-east-1",
+        })
+      },
+      (reply) => reply
+    ),
+})
+export const claimGet = internalQuery({
+  args: { caller: callerValue, id: v.string() },
+  returns: claimValue,
+  handler: async (ctx, { caller, id }) => {
+    await requireCaller(ctx, caller)
+    const claim = await ownClaim(ctx, caller.organizationId, id)
+    if (!claim) throw notFound("Domain claim")
+    return present(claim)
+  },
+})
+export const claimVerify = internalMutation({
+  args: { caller: callerValue, id: v.string() },
+  returns: claimValue,
+  handler: async (ctx, { caller, id }) =>
+    idempotent(
+      ctx,
+      caller,
+      async () => {
+        await requireCaller(ctx, caller)
+        const claim = await ownClaim(ctx, caller.organizationId, id)
+        if (!claim) throw notFound("Domain claim")
+        return verifyClaim(ctx, claim)
+      },
+      (body) => ({ body })
+    ),
+})
+
 const capability = (on: boolean) => (on ? "enabled" : "disabled")
 /** Our record kinds as Resend names them: its return-path MX is "SPF". */
 const recordName = (kind: Doc<"domains">["records"][number]["kind"]) =>
@@ -202,6 +262,44 @@ function tracking(body: Record<string, unknown>) {
 
 /** `/domains`, as Resend documents it. Ids are Convex ids, not UUIDs. */
 export function registerDomainRoutes(http: HttpRouter) {
+  apiRoute(http, {
+    method: "POST",
+    path: "/domains/claim",
+    permission: "full_access",
+    handler: async (ctx, { caller, body }) => {
+      const input = objectBody(body)
+      return ctx.runMutation(internal.api.domains.claimCreate, {
+        caller,
+        name: stringField(input, "name", true)!,
+        region: enumField(input, "region", regions),
+        customReturnPath:
+          stringField(input, "custom_return_path") ?? DEFAULT_RETURN_PATH,
+        ...tracking(input),
+      })
+    },
+  })
+  apiRoute(http, {
+    method: "GET",
+    path: "/domains/{id}/claim",
+    permission: "full_access",
+    handler: async (ctx, { caller, params }) => ({
+      body: await ctx.runQuery(internal.api.domains.claimGet, {
+        caller,
+        id: params.id,
+      }),
+    }),
+  })
+  apiRoute(http, {
+    method: "POST",
+    path: "/domains/{id}/claim/verify",
+    permission: "full_access",
+    handler: async (ctx, { caller, params }) => ({
+      body: await ctx.runMutation(internal.api.domains.claimVerify, {
+        caller,
+        id: params.id,
+      }),
+    }),
+  })
   const changed = (id: Id<"domains"> | null) => {
     if (!id) throw notFound("Domain")
     return { body: { object: "domain", id } }

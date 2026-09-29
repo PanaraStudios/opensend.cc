@@ -9,6 +9,7 @@ import {
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
 import { broadcastReceivedTests } from "./broadcast-received-flow"
 import { shareEmailTests } from "./share-email-flow"
+import { domainClaimTests } from "./domain-claim-flow"
 import { hardeningSearchTests } from "./hardening-search-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
@@ -944,6 +945,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   }))
 
   shareEmailTests(() => ({ owner, organizationId, sendingDomainId }))
+  domainClaimTests(() => ({ owner, organizationId }))
 
   test("renames teams, validates avatars, switches teams, and keeps slugs unique", async () => {
     await owner.goto("/settings/team")

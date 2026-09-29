@@ -116,8 +116,12 @@ export const ingest = internalMutation({
     for (const name of recipientDomains(mail.recipients).slice(0, 10)) {
       const domain = await ctx.db
         .query("domains")
-        .withIndex("by_name_and_region_and_deleted", (q) =>
-          q.eq("name", name).eq("region", inbound.region).eq("deleted", false)
+        .withIndex("by_name_and_region_and_deleted_and_claimPending", (q) =>
+          q
+            .eq("name", name)
+            .eq("region", inbound.region)
+            .eq("deleted", false)
+            .eq("claimPending", undefined)
         )
         .unique()
       if (
