@@ -81,7 +81,7 @@ export function TenantCleanup() {
               />
             </div>
           ))}
-          <ListPagination {...pagination} noun="tenant" />
+          <ListPagination {...pagination} embedded noun="tenant" />
         </div>
       </AlertDescription>
     </Alert>

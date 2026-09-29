@@ -234,9 +234,7 @@ function TeamsCard() {
             </Item>
           ))}
         </ItemGroup>
-        {query.status !== "LoadingFirstPage" && teams.length > 0 && (
-          <ListPagination {...pagination} noun="team" />
-        )}
+        <ListPagination {...pagination} embedded noun="team" />
       </SettingsCard>
       <TextFieldDialog
         open={renaming !== null}

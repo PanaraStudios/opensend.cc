@@ -143,7 +143,10 @@ export function WorkflowCanvas({
       <div
         ref={canvas}
         data-testid="workflow"
-        className="min-h-0 flex-1 cursor-grab touch-none overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing"
+        /* The graph is always larger than the frame (see below), so the
+           canvas always scrolls: dragging and the wheel move it, and its
+           scrollbars stay hidden. */
+        className="min-h-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
         onPointerDown={(event) => {
           if (event.button !== 0 || event.target !== event.currentTarget) return
           drag.current = { x: event.clientX, y: event.clientY }

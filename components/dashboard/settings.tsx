@@ -385,7 +385,7 @@ function TeamMembers({ team }: { team: Team }) {
                   })}
                 </TableBody>
               </Table>
-              <ListPagination {...pagination} noun="member" />
+              <ListPagination {...pagination} embedded noun="member" />
             </>
           )
         ) : (
@@ -510,7 +510,7 @@ function TeamInvitations({ team }: { team: Team }) {
               ))}
             </TableBody>
           </Table>
-          <ListPagination {...pagination} noun="invitation" />
+          <ListPagination {...pagination} embedded noun="invitation" />
         </>
       ) : (
         <EmptyState

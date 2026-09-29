@@ -187,7 +187,12 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
                               toggle([event], checked === true)
                             }
                           />
-                          <span className="font-mono text-[12px]">{event}</span>
+                          {/* The group row's line height, so every row is
+                              the same whole-pixel height and its box sits
+                              where the group's does. */}
+                          <span className="font-mono text-[12px] leading-5">
+                            {event}
+                          </span>
                         </label>
                       ))}
                     </div>

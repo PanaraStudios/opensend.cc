@@ -265,7 +265,7 @@ export function Observability({ automation }: { automation: Automation }) {
                   </TableRow>
                 ))}
               </ResourceTable>
-              <ListPagination {...pagination} noun="run" />
+              <ListPagination {...pagination} embedded noun="run" />
             </>
           )}
         </TabsContent>

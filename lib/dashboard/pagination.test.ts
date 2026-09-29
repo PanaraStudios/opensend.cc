@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import {
   canGoNext,
+  hasPages,
   knownTotal,
   lastLoadedPage,
   pageLabel,
@@ -78,6 +79,23 @@ describe("paging", () => {
     // Unknown size: another page may load.
     assert.equal(canGoNext(pager({})), true)
     assert.equal(canGoNext(pager({ loaded: 40, hasMore: false })), false)
+  })
+  it("knows when the list runs past one page", () => {
+    assert.equal(hasPages(pager({ total: 41 })), true)
+    assert.equal(hasPages(pager({ total: 40 })), false)
+    assert.equal(hasPages(pager({ loaded: 3, hasMore: false })), false)
+    assert.equal(hasPages(pager({ loaded: 0, hasMore: false })), false)
+    // Unknown size: a full page with more to load is more than one page.
+    assert.equal(hasPages(pager({})), true)
+    // The first page is still filling.
+    assert.equal(hasPages(pager({ loaded: 0 })), false)
+    assert.equal(hasPages(pager({ loaded: 12 })), false)
+    // A larger page that holds the whole list keeps the pager, whose size
+    // control is the way back to a smaller page.
+    assert.equal(
+      hasPages(pager({ pageSize: 80, loaded: 50, hasMore: false })),
+      true
+    )
   })
   it("never shows past the loaded rows", () => {
     assert.equal(lastLoadedPage({ loaded: 0, pageSize: 40 }), 0)

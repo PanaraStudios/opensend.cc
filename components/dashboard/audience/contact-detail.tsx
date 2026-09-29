@@ -423,9 +423,7 @@ function ContactPage({
                   ))}
                 </HistorySection>
               ) : null}
-              {emails.length > 0 || emailPagination.hasMore ? (
-                <ListPagination {...emailPagination} noun="email" />
-              ) : null}
+              <ListPagination {...emailPagination} embedded noun="email" />
               {broadcasts.length > 0 ? (
                 <HistorySection title="Broadcasts">
                   {broadcasts.map((broadcast) => (
@@ -448,6 +446,7 @@ function ContactPage({
                   ))}
                   <ListPagination
                     {...broadcastList.pagination}
+                    embedded
                     noun="broadcast"
                   />
                 </HistorySection>
@@ -473,9 +472,7 @@ function ContactPage({
                   ))}
                 </HistorySection>
               ) : null}
-              {received.length > 0 || replies.pagination.hasMore ? (
-                <ListPagination {...replies.pagination} noun="email" />
-              ) : null}
+              <ListPagination {...replies.pagination} embedded noun="email" />
             </div>
           )}
         </TabsContent>
