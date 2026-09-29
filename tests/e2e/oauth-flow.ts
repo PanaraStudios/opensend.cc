@@ -231,8 +231,9 @@ export async function oauthFlow(page: Page, teamId: string) {
     const next = await refreshed.json()
     expect(next.refresh_token).not.toBe(tokens.refresh_token)
     if (method === "client_secret_basic") {
-      const grant = rows.find(
-        (g: { application: string }) => g.application === `Example ${method}`
+      const grant = rows.data.find(
+        (g: { client: { name: string } }) =>
+          g.client.name === `Example ${method}`
       )
       expect(
         (
