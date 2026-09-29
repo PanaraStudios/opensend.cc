@@ -390,7 +390,8 @@ export function broadcastReceivedTests(state: () => State) {
       html: "<p>Hello {{{contact.first_name|friend}}}</p>",
     }
     const created = await owner.request.post(url, { headers, data: input })
-    expect(created.status()).toBe(200)
+    // Resend answers resource creates with 201 (email sends stay 200).
+    expect(created.status()).toBe(201)
     const { id } = await created.json()
     expect(id).toEqual(expect.any(String))
     const list = await owner.request.get(`${url}?limit=100`, { headers })
