@@ -2,8 +2,10 @@ import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs"
 import { resolve } from "node:path"
 import { parse, run } from "./lib.mjs"
+import { convexEnvEntries } from "./convex-env.mjs"
 const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
+for (const [key, value] of convexEnvEntries(process.env)) env[key] ||= value
 const defaults = {
   INSTANCE_NAME: "opensend",
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
@@ -12,6 +14,9 @@ const defaults = {
   SITE_URL: "http://localhost:3000",
   CONVEX_PUBLIC_URL: "http://localhost:3210",
   CONVEX_PUBLIC_SITE_URL: "http://localhost:3211",
+  APP_IMAGE: process.env.APP_IMAGE || "opensend-app:local",
+  MIGRATE_IMAGE: process.env.MIGRATE_IMAGE || "opensend-migrate:local",
+  SMTP_IMAGE: process.env.SMTP_IMAGE || "opensend-smtp:local",
 }
 for (const [key, value] of Object.entries(defaults)) env[key] ||= value
 /** A loopback origin rewritten to reach the host from inside a container, or
@@ -53,49 +58,54 @@ const compose = [
 console.log(
   `Target: self-hosted local deployment ${env.INSTANCE_NAME} (${env.CONVEX_PUBLIC_URL})`
 )
-run("docker", [...compose, "up", "-d", "--wait", "convex"])
 if (!env.CONVEX_SELF_HOSTED_ADMIN_KEY) {
+  const config = JSON.parse(
+    run("docker", [...compose, "config", "--format", "json"], {
+      stdio: ["ignore", "pipe", "inherit"],
+      encoding: "utf8",
+    })
+  )
   env.CONVEX_SELF_HOSTED_ADMIN_KEY = run(
     "docker",
-    [...compose, "exec", "-T", "convex", "./generate_admin_key.sh"],
+    [
+      "run",
+      "--rm",
+      "--entrypoint",
+      "./generate_key",
+      config.services.convex.image,
+      env.INSTANCE_NAME,
+      env.INSTANCE_SECRET,
+    ],
     { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" }
   )
   persist()
 }
-const cliEnv = {
-  ...process.env,
-  CONVEX_SELF_HOSTED_URL: `http://127.0.0.1:${env.CONVEX_PORT || 3210}`,
-  CONVEX_SELF_HOSTED_ADMIN_KEY: env.CONVEX_SELF_HOSTED_ADMIN_KEY,
-}
-delete cliEnv.CONVEX_DEPLOYMENT
-delete cliEnv.CONVEX_DEPLOY_KEY
-for (const key of [
-  "SITE_URL",
-  "BETTER_AUTH_SECRET",
-  "SSO_ENCRYPTION_KEY",
-  "SES_ENCRYPTION_KEY",
-  "SES_CALLBACK_ORIGIN",
-  "ALLOW_LOCAL_OIDC",
-  "LOG_AUTH_LINKS",
-  "DOMAIN_CONNECT_KEY",
-  "DOMAIN_CONNECT_PRIVATE_KEY",
-  "DOMAIN_CONNECT_SIGNER",
+const backendOnly = process.env.OPENSEND_BACKEND_ONLY === "1"
+run("docker", [
+  ...compose,
+  "up",
+  "-d",
+  ...(process.env.OPENSEND_SKIP_BUILD === "1" ? [] : ["--build"]),
+  // With app present, Compose recognizes migrate as a completed dependency.
+  // Backend-only has no dependent service, so wait for its exit separately.
+  ...(backendOnly ? [] : ["--wait"]),
+  "convex",
+  "migrate",
+  ...(backendOnly ? [] : ["app"]),
 ])
-  if (env[key])
-    run("pnpm", ["exec", "convex", "env", "set", `${key}=${env[key]}`], {
-      env: cliEnv,
-    })
-run("pnpm", ["exec", "convex", "deploy", "--yes"], { env: cliEnv })
-if (process.env.OPENSEND_BACKEND_ONLY !== "1")
-  run("docker", [
-    ...compose,
-    "up",
-    "-d",
-    ...(process.env.OPENSEND_SKIP_BUILD === "1" ? [] : ["--build"]),
-    "--wait",
-    "app",
-    "dashboard",
-  ])
+const migrateId = run("docker", [...compose, "ps", "-a", "-q", "migrate"], {
+  stdio: ["ignore", "pipe", "inherit"],
+  encoding: "utf8",
+})
+if (!migrateId) throw new Error("Migrate container was not created")
+const exitCode = run("docker", ["wait", migrateId], {
+  stdio: ["ignore", "pipe", "inherit"],
+  encoding: "utf8",
+})
+if (exitCode !== "0") {
+  run("docker", [...compose, "logs", "migrate"])
+  throw new Error(`Migrate container failed (${exitCode})`)
+}
 console.log(
   `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Its account links appear in Convex function logs until you choose an account sender.`
 )
