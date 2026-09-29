@@ -30,13 +30,13 @@ function buildCreateBroadcastInputSchema(
       .string()
       .optional()
       .describe(
-        "Plain text version of the email content. The following placeholders may be used to personalize the email content: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{RESEND_UNSUBSCRIBE_URL}}}. If omitted, HTML will be used to generate it. Pass an empty string to disable automatic text generation."
+        "Plain text version of the email content. The following placeholders may be used to personalize the email content: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{OPENSEND_UNSUBSCRIBE_URL}}} (the legacy {{{RESEND_UNSUBSCRIBE_URL}}} also works). If omitted, HTML will be used to generate it. Pass an empty string to disable automatic text generation."
       ),
     html: z
       .string()
       .optional()
       .describe(
-        `HTML version of the email content. Placeholders: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{RESEND_UNSUBSCRIBE_URL}}}.\n\n${EMAIL_HTML_RULES}`
+        `HTML version of the email content. Placeholders: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{OPENSEND_UNSUBSCRIBE_URL}}} (the legacy {{{RESEND_UNSUBSCRIBE_URL}}} also works).\n\n${EMAIL_HTML_RULES}`
       ),
     previewText: z.string().optional().describe("Preview text for the email"),
     ...(!senderEmailAddress

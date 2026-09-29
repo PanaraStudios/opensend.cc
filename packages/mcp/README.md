@@ -115,8 +115,10 @@ Kept tool names and input shapes match upstream; descriptions reflect Opensend.
   `post`/`patch` calls. No SDK source changes or other missing methods.
 - Opensend's [REST parity limits](../../docs/resend-parity.md) apply. Automation
   descriptions use `opensend:` lifecycle events and document unsupported step
-  options. Boolean contact-import properties are unsupported. The wire template
-  placeholder `RESEND_UNSUBSCRIBE_URL` stays unchanged (it is not an env setting).
+  options. Boolean contact-import properties are unsupported. Broadcast
+  descriptions point agents to `{{{OPENSEND_UNSUBSCRIBE_URL}}}`; Opensend also
+  fills the legacy `{{{RESEND_UNSUBSCRIBE_URL}}}` in broadcasts, and templates
+  keep it reserved.
 - MCP SDK packages remain at upstream 2.0.0; Zod is pinned to 4.6.1 to match
   their resolved types. Vitest uses the workspace's 3.2.4 with two workers.
 
