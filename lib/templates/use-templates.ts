@@ -1,9 +1,13 @@
 "use client"
 import * as React from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import type { TemplateInput } from "@/lib/dashboard/template"
@@ -62,11 +66,11 @@ export function useTemplateCommands() {
   return {
     organizationId: activeTeamId,
     addTemplate: async (input: TemplateInput): Promise<string> => {
-      if (!activeTeamId) throw new Error("Create a team first")
+      const organizationId = requireTeamId(activeTeamId)
       return create({
         ...wire(input),
         name: input.name,
-        organizationId: activeTeamId,
+        organizationId,
       })
     },
     updateTemplate: (id: string, patch: TemplatePatch) =>
@@ -98,10 +102,7 @@ export function useSaveAsTemplate() {
     loads, null when there is none. */
 export function useTemplate(id: string | undefined) {
   const { activeTeamId } = useWorkspace()
-  const row = useQuery(
-    api.templates.get,
-    activeTeamId && id ? { organizationId: activeTeamId, id } : "skip"
-  )
+  const row = useTeamQuery(api.templates.get, { id: id! }, { enabled: !!id })
   return React.useMemo(() => {
     if (!activeTeamId || !id) return null
     return row === undefined ? undefined : row && asTemplate(row.template, row)

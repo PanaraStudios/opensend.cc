@@ -1,7 +1,17 @@
 "use client"
 import { createContext, useContext, useEffect } from "react"
-import { useQuery, useMutation, useAction, useConvexAuth } from "convex/react"
-import type { FunctionReturnType } from "convex/server"
+import {
+  useQuery,
+  useMutation,
+  useAction,
+  useConvexAuth,
+  type OptionalRestArgsOrSkip,
+} from "convex/react"
+import type {
+  FunctionReturnType,
+  FunctionArgs,
+  FunctionReference,
+} from "convex/server"
 import { api } from "@/convex/_generated/api"
 import { authClient, authResult } from "@/lib/auth/client"
 import { AsyncForm, FormInput } from "./ui"
@@ -24,6 +34,41 @@ export function useWorkspace() {
   if (!value) throw new Error("Account data is not available")
   return value
 }
+/** A query scoped to the active team, skipped until that team is available. */
+export function useTeamQuery<
+  Q extends FunctionReference<"query", "public", { organizationId: string }>,
+>(
+  fn: Q,
+  ...[args, options]: Record<string, never> extends Omit<
+    FunctionArgs<Q>,
+    "organizationId"
+  >
+    ? [
+        args?: Omit<FunctionArgs<Q>, "organizationId">,
+        options?: { enabled?: boolean },
+      ]
+    : [
+        args: Omit<FunctionArgs<Q>, "organizationId">,
+        options?: { enabled?: boolean },
+      ]
+) {
+  const { activeTeamId } = useWorkspace()
+  return useQuery(
+    fn,
+    ...([
+      activeTeamId && (options?.enabled ?? true)
+        ? { ...args, organizationId: activeTeamId }
+        : "skip",
+    ] as OptionalRestArgsOrSkip<Q>)
+  )
+}
+
+/** Resolve the team when a command runs, preserving its missing-team error. */
+export function requireTeamId(activeTeamId: string | null | undefined): string {
+  if (!activeTeamId) throw new Error("Create a team first")
+  return activeTeamId
+}
+
 export function useTeams(): Team[] {
   return useWorkspace().teams.map((team) => ({ ...team, removable: true }))
 }

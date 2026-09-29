@@ -3,7 +3,11 @@ import { useAction, useMutation } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
+import {
+  useTeamRole,
+  useWorkspace,
+  requireTeamId,
+} from "@/components/auth/workspace"
 import type { ApiKey } from "@/lib/dashboard/types"
 
 type ApiKeyRow = FunctionReturnType<typeof api.apiKeys.list>["page"][number]
@@ -35,8 +39,8 @@ export function useApiKeyCommands() {
     canWrite,
     /** The token comes back once; only its hash is kept. */
     createApiKey: async (input: KeyValues) => {
-      if (!workspace.activeTeamId) throw new Error("Create a team first")
-      return create({ organizationId: workspace.activeTeamId, input })
+      const organizationId = requireTeamId(workspace.activeTeamId)
+      return create({ organizationId, input })
     },
     updateApiKey: (id: string, patch: KeyValues) =>
       update({ id: id as Id<"apiKeys">, patch }),

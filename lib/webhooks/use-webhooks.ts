@@ -3,7 +3,7 @@ import { useAction, useMutation } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
 import type {
   Webhook,
   WebhookDelivery,
@@ -51,8 +51,8 @@ export function useWebhookCommands() {
   return {
     organizationId: activeTeamId,
     createWebhook: (input: Pick<Webhook, "endpoint" | "events">) => {
-      if (!activeTeamId) throw new Error("Create a team first")
-      return create({ ...input, organizationId: activeTeamId })
+      const organizationId = requireTeamId(activeTeamId)
+      return create({ ...input, organizationId })
     },
     updateWebhook: (
       id: string,

@@ -1,12 +1,12 @@
 "use client"
 import * as React from "react"
-import { useQueries, useQuery } from "convex/react"
+import { useQueries } from "convex/react"
 import { eachDayOfInterval, startOfDay, endOfDay, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useWorkspace, useTeamQuery } from "@/components/auth/workspace"
 import { emptyEmailCounts, eventCount } from "@/lib/dashboard/metrics"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { rate } from "@/lib/dashboard/format"
@@ -65,12 +65,10 @@ export function useMetrics(
   const counts = chunks.every((chunk) => Array.isArray(chunk))
     ? (chunks as FunctionReturnType<typeof api.metrics.summary>[]).flat()
     : undefined
-  const domains = useQuery(
-    api.metrics.breakdown,
-    activeTeamId
-      ? { organizationId: activeTeamId, ...rangeBounds(range), domainId }
-      : "skip"
-  )
+  const domains = useTeamQuery(api.metrics.breakdown, {
+    ...rangeBounds(range),
+    domainId,
+  })
   if (failure instanceof Error) throw failure
   const totals = {
     ...emptyEmailCounts(),
