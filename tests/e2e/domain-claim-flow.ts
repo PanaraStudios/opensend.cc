@@ -1,7 +1,13 @@
 import { expect, test, type Page } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
-import { client, seedDomainClaimState, testBackend } from "./ses-fixtures"
+import {
+  client,
+  seedCallbackOrigin,
+  seedDomainClaimState,
+  seedTeamTenant,
+  testBackend,
+} from "./ses-fixtures"
 
 const shots = async (page: Page, name: string) => {
   for (const theme of ["light", "dark"] as const) {
@@ -22,6 +28,9 @@ export function domainClaimTests(
     const { owner, organizationId } = state()
     const backend = await client(owner)
     const name = "claim-wave9.example.test"
+    // Domain setup needs the public HTTPS callback; the connection flow left
+    // the stack's loopback origin behind.
+    await seedCallbackOrigin(owner, "https://callback.opensend.test")
     const original = await backend.mutation(api.domains.create, {
       organizationId,
       name,
@@ -49,6 +58,7 @@ export function domainClaimTests(
     const claimingTeam = await backend.mutation(api.teams.create, {
       name: "Domain claim fixture",
     })
+    await seedTeamTenant(owner, claimingTeam)
     await backend.mutation(api.teams.switchTeam, {
       organizationId: claimingTeam,
     })
@@ -199,6 +209,7 @@ export function domainClaimTests(
       organizationId: claimingTeam,
       leave: false,
     })
+    await seedCallbackOrigin(owner, process.env.OPENSEND_CALLBACK_ORIGIN!)
     await owner.goto("/domains")
   })
 }
