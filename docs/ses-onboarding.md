@@ -270,10 +270,36 @@ and/or CLICK. Links use SES's HTTP option (`HttpsPolicy: OPTIONAL`); HTTPS
 needs a CloudFront distribution and an ACM certificate, which the installation
 cannot create.
 
+## Moving to a new public URL
+
+The public URL (the backend's HTTPS origin) is where AWS delivers SES events
+(`/ses/events`) and inbound mail notifications (`/ses/inbound`), and where
+open/click tracking and unsubscribe links point. The wizard keeps it fixed once
+AWS resources exist. To move to a new one, for example from a temporary tunnel
+to a permanent host, open **Amazon SES** in the installation settings
+(`/instance/ses`) and choose **Change** under **Delivery updates**.
+
+1. Opensend checks the new URL the same way the wizard's connection check does:
+   it must be HTTPS without a port, path or query, and it must answer a fresh
+   challenge with this deployment's proof. Nothing changes if it does not.
+2. The URL is saved, then every region provisioned before runs its setup
+   again. That subscribes the new URL to the region's event topic (and to its
+   inbound topic when receiving is set up). Each region shows its delivery
+   updates as pending, and sending in it pauses, until SNS confirms the new
+   subscription, exactly as in first-time setup.
+3. Once every region has finished, every domain refreshes, so its tracking
+   record points at the new host. A domain with a tracking subdomain shows
+   that CNAME as pending until it is updated at the DNS provider. New emails
+   use the new URL for tracking and unsubscribe links.
+
+The change is refused while a region, inbound or domain operation is running.
+The IAM policy grants no `sns:Unsubscribe`, so the previous endpoint's
+subscription stays in Amazon SNS; you can delete it in the SNS console. Until
+then, SNS still tries each event there and, once its retries run out, moves it
+to the region's dead-letter queue.
+
 ## Operational limits
 
-- Changing callback/app origins after AWS resources exist needs an explicit
-  subscription migration; the wizard refuses that change for now.
 - Enabled regions cannot yet be removed while resources may reference them.
 - SNS signatures and topic ownership are checked before confirming subscriptions
   or storing events. Notifications are deduplicated. Recipient feedback processing

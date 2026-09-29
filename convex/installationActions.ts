@@ -43,6 +43,42 @@ export const initialize = action({
     return null
   },
 })
+/** Throws unless the origin reaches this exact deployment: it must answer a
+    fresh challenge with this deployment's proof. */
+async function proveCallbackOrigin(callbackOrigin: string) {
+  const challenge = crypto.randomUUID()
+  const response = await publicFetch(
+    `${callbackOrigin}/ses/health?challenge=${challenge}`,
+    { timeoutMs: 10000, localOrigin: localHttpOrigin(callbackOrigin) }
+  )
+  const body: unknown = await response.json()
+  const expected = await setupProof(challenge)
+  if (
+    !response.ok ||
+    !body ||
+    typeof body !== "object" ||
+    !("challenge" in body) ||
+    body.challenge !== challenge ||
+    !("proof" in body) ||
+    body.proof !== expected
+  )
+    throw new Error("The callback URL did not reach this Opensend deployment")
+}
+/** A public URL check's failure, as the message the dashboard shows. */
+function callbackError(e: unknown) {
+  if (e && typeof e === "object" && "data" in e && typeof e.data === "string")
+    return new ConvexError(e.data)
+  if (
+    e instanceof Error &&
+    (e.message === "fetch failed" || e.name === "TimeoutError")
+  )
+    return new ConvexError(
+      "Could not reach this backend URL. Keep your tunnel running and try again."
+    )
+  return new ConvexError(
+    e instanceof Error ? e.message : "Environment check failed"
+  )
+}
 export const checkEnvironment = action({
   args: { callbackOrigin: v.string() },
   returns: v.null(),
@@ -51,49 +87,37 @@ export const checkEnvironment = action({
     try {
       const siteUrl = installationUrl(process.env.SITE_URL ?? "", true)
       const callbackOrigin = installationUrl(args.callbackOrigin, true)
-      // A challenge confirms the configured URL reaches this exact deployment.
-      const challenge = crypto.randomUUID()
-      const response = await publicFetch(
-        `${callbackOrigin}/ses/health?challenge=${challenge}`,
-        { timeoutMs: 10000, localOrigin: localHttpOrigin(callbackOrigin) }
-      )
-      const body: unknown = await response.json()
-      const expected = await setupProof(challenge)
-      if (
-        !response.ok ||
-        !body ||
-        typeof body !== "object" ||
-        !("challenge" in body) ||
-        body.challenge !== challenge ||
-        !("proof" in body) ||
-        body.proof !== expected
-      )
-        throw new Error(
-          "The callback URL did not reach this Opensend deployment"
-        )
+      await proveCallbackOrigin(callbackOrigin)
       await ctx.runMutation(internal.installation.saveEnvironment, {
         siteUrl,
         callbackOrigin,
       })
       return null
     } catch (e) {
-      if (
-        e &&
-        typeof e === "object" &&
-        "data" in e &&
-        typeof e.data === "string"
-      )
-        throw new ConvexError(e.data)
-      if (
-        e instanceof Error &&
-        (e.message === "fetch failed" || e.name === "TimeoutError")
-      )
-        throw new ConvexError(
-          "Could not reach this backend URL. Keep your tunnel running and try again."
-        )
-      throw new ConvexError(
-        e instanceof Error ? e.message : "Environment check failed"
-      )
+      throw callbackError(e)
+    }
+  },
+})
+/** Moves a provisioned installation to a new public URL, once the URL is
+    proven to reach this deployment. AWS then subscribes the new URL and
+    domains refresh; see `installation.moveCallbackOrigin`. */
+export const changeCallbackOrigin = action({
+  args: { callbackOrigin: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runQuery(internal.installation.adminContext, {})
+    try {
+      const callbackOrigin = installationUrl(args.callbackOrigin.trim(), true)
+      await ctx.runQuery(internal.installation.checkCallbackMove, {
+        callbackOrigin,
+      })
+      await proveCallbackOrigin(callbackOrigin)
+      await ctx.runMutation(internal.installation.moveCallbackOrigin, {
+        callbackOrigin,
+      })
+      return null
+    } catch (e) {
+      throw callbackError(e)
     }
   },
 })

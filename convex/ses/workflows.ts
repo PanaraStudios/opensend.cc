@@ -2,13 +2,15 @@ import {
   WorkflowManager,
   vResultValidator,
   vWorkflowId,
+  type WorkflowCtx,
   type WorkflowId,
 } from "@convex-dev/workflow"
 import { v } from "convex/values"
 import type { FunctionArgs, FunctionReference } from "convex/server"
 import { components, internal } from "../_generated/api"
 import { internalMutation, type MutationCtx } from "../_generated/server"
-import type { Doc } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
+import { regionValue } from "./contracts"
 export const workflow = new WorkflowManager(components.workflow)
 /** Every workflow is started with `cleanup`, so no journal outlives its run. */
 export function startWorkflow<
@@ -56,22 +58,58 @@ export const tenantOperation = workflow
     }
     return null
   })
+/** Provisions one region; a run that stops marks the region failed. */
+async function provisionRegionStep(
+  step: WorkflowCtx,
+  regionId: Id<"sesRegions">
+) {
+  try {
+    await step.runAction(
+      internal.ses.provision.region,
+      { regionId },
+      { retry: false }
+    )
+  } catch {
+    await step.runMutation(internal.ses.state.patchRegion, {
+      id: regionId,
+      changes: {
+        phase: "failed",
+        error:
+          "Provisioning stopped. Check AWS permissions and retry; existing owned resources will be reused.",
+      },
+    })
+  }
+}
 export const provisionRegion = workflow
   .define({ args: { regionId: v.id("sesRegions") }, returns: v.null() })
   .handler(async (step, args): Promise<null> => {
-    try {
-      await step.runAction(internal.ses.provision.region, args, {
-        retry: false,
-      })
-    } catch {
-      await step.runMutation(internal.ses.state.patchRegion, {
-        id: args.regionId,
-        changes: {
-          phase: "failed",
-          error:
-            "Provisioning stopped. Check AWS permissions and retry; existing owned resources will be reused.",
-        },
-      })
+    await provisionRegionStep(step, args.regionId)
+    return null
+  })
+/** After the public URL moved: provisions every region again, which
+    subscribes the new URL to its topic, then refreshes every domain so its
+    tracking records follow. Domain refreshes need their region ready, so
+    they start once every region has finished. */
+export const moveCallbackOrigin = workflow
+  .define({
+    args: {
+      regionIds: v.array(v.id("sesRegions")),
+      regions: v.array(regionValue),
+    },
+    returns: v.null(),
+  })
+  .handler(async (step, args): Promise<null> => {
+    await Promise.all(
+      args.regionIds.map((regionId) => provisionRegionStep(step, regionId))
+    )
+    for (const region of args.regions) {
+      let cursor: string | null = null
+      do {
+        cursor = await step.runMutation(internal.domains.refreshForNewOrigin, {
+          region,
+          cursor,
+        })
+      } while (cursor)
     }
     return null
   })

@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
-import { KeyRoundIcon, ShieldIcon } from "lucide-react"
+import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ import {
 import { AwsConnectionForm } from "@/components/ses/connection-form"
 import { DownloadIamPolicyButton } from "@/components/ses/credentials-help"
 import { SesRegions } from "@/components/ses/regions"
+import { ChangePublicUrlDialog } from "@/components/ses/public-url-dialog"
 import { TenantReputation } from "@/components/ses/reputation"
 import { SystemSender } from "@/components/ses/system-sender"
 import { TenantCleanup } from "@/components/onboarding/team-ses-status"
@@ -32,6 +33,7 @@ export function SettingsSes() {
   const status = useQuery(api.installation.status)
   const check = useAction(api.installationActions.checkEnvironment)
   const [editing, setEditing] = React.useState(false)
+  const [moving, setMoving] = React.useState(false)
   if (!status) return <Skeleton className="h-64 max-w-3xl" />
   if (!status.admin)
     return (
@@ -105,11 +107,19 @@ export function SettingsSes() {
         description="AWS sends delivery and bounce events to this address."
         footer={
           callbackOrigin ? (
-            <AsyncForm
-              submitLabel="Check connection"
-              success="Connection checked"
-              onSubmit={() => check({ callbackOrigin })}
-            />
+            <div className="flex flex-wrap items-start gap-2">
+              <AsyncForm
+                submitLabel="Check connection"
+                success="Connection checked"
+                onSubmit={() => check({ callbackOrigin })}
+              />
+              {connected && (
+                <Button variant="outline" onClick={() => setMoving(true)}>
+                  <PencilIcon data-icon="inline-start" />
+                  Change
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       >
@@ -127,6 +137,7 @@ export function SettingsSes() {
       <SystemSender />
       <TenantReputation />
       <TenantCleanup />
+      <ChangePublicUrlDialog open={moving} onOpenChange={setMoving} />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
