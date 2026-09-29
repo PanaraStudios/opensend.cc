@@ -3,7 +3,8 @@ import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc } from "@/convex/_generated/dataModel"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { CircleCheckIcon } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -68,6 +69,11 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
         backLabel="Domains"
         title={domain.name}
         icon={DomainIcon}
+        badge={
+          <Badge variant="secondary" className="capitalize">
+            {claim?.status ?? "Unavailable"}
+          </Badge>
+        }
         actions={
           <Button
             variant="outline"
@@ -78,31 +84,37 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
           </Button>
         }
       />
-      <Alert
-        variant={
-          claim?.status === "blocked" || claim?.status === "expired"
-            ? "warning"
-            : "default"
-        }
-      >
-        <AlertTitle>
-          Claim domain{" "}
-          <Badge variant="secondary">{claim?.status ?? "Unavailable"}</Badge>
-        </AlertTitle>
-        <AlertDescription>
-          {claim?.failure_reason ??
-            (claim?.status === "expired"
-              ? "This claim expired. Start a new claim and replace the TXT record."
-              : transferring
-                ? "Ownership verified. The domain is being released from the previous team and set up for your team."
-                : "This domain is already in use by another team. Add this TXT record at your DNS provider to prove ownership.")}
-        </AlertDescription>
-      </Alert>
       {claim && (
         <Surface className="flex flex-col gap-5 p-5">
+          {/* Resend's claim step: warning, the TXT record, then the check. */}
           <DomainSection
-            title="Verify domain ownership"
-            description={`This claim expires ${formatDateTime(Date.parse(claim.expires_at))}. After the transfer, add the new sending records to finish setup.`}
+            title="Claim domain"
+            description="Add the DNS record below to verify ownership"
+            docLabel="How to add records"
+          >
+            <Alert variant="warning">
+              <AlertDescription>
+                {claim.failure_reason ??
+                  (claim.status === "expired" ? (
+                    "This claim expired. Start a new claim and replace the TXT record."
+                  ) : transferring ? (
+                    "Ownership verified. The domain is being released from the previous team and set up for yours."
+                  ) : (
+                    <>
+                      <strong className="font-medium text-foreground">
+                        {domain.name}
+                      </strong>{" "}
+                      is in use by another team. Verifying ownership will
+                      transfer the domain to your team and revoke their
+                      access.
+                    </>
+                  ))}
+              </AlertDescription>
+            </Alert>
+          </DomainSection>
+          <DomainSection
+            title="Domain verification"
+            description={`This claim expires ${formatDateTime(Date.parse(claim.expires_at))}. After the transfer, add the sending records shown for your team.`}
           >
             <DnsRecordsTable
               domainName={domain.name}
@@ -122,6 +134,9 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
             }
             onClick={() => void check()}
           >
+            {claim.status === "expired" || claim.failure_reason ? null : (
+              <CircleCheckIcon data-icon="inline-start" />
+            )}
             {pending
               ? "Checking…"
               : claim.status === "expired"

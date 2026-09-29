@@ -79,6 +79,11 @@ export function domainClaimTests(
       owner.getByText(claim.record.value, { exact: true })
     ).toBeVisible()
     await expect(
+      owner.getByText(
+        "is in use by another team. Verifying ownership will transfer the domain to your team and revoke their access."
+      )
+    ).toBeVisible()
+    await expect(
       owner.getByRole("button", { name: "I've added the records" })
     ).toBeEnabled()
     await shots(owner, "pending")
