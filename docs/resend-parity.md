@@ -1,6 +1,6 @@
-# Resend parity — after waves 8 and 9 (9A email share, 9B domain claims)
+# Resend parity — after waves 8 and 9 (9A email share, 9B domain claims, 9C usage)
 
-The [Opensend contract](../openapi/opensend.yaml) serves **114 operations**: **112** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **97 are served**, **15 partial**, and **1 missing**.
+The [Opensend contract](../openapi/opensend.yaml) serves **115 operations**: **113** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **97 are served**, **16 partial**, and **none missing**.
 
 `served` means an operation exists with no identified resource-specific wire gap after the common differences below; `partial` means it exists with a documented field, status, validation or behavior gap; `missing` means no matching REST registration, even if the dashboard has a Convex function. Parameter placeholder spelling does not affect matching (`{email_id}` and `{id}` are the same URL pattern). The table uses upstream spellings; the contract uses actual handler spellings. This classification does not treat upstream missing `required` arrays as evidence that live Resend omits fields. Served rows can still share the documented self-hosted deviations below; this classification does not claim live provider equivalence.
 
@@ -142,7 +142,7 @@ Every method/path from the supplied snapshot appears exactly once. “No resourc
 | `POST` | `/suppressions/batch/remove` | **served** | 200 data array with object/id/deleted; exactly one of emails/ids, 1–100, atomic and idempotent. Missing/foreign entries refuse the whole batch. SES tenant cleanup uses shared helper. |
 | `GET` | `/suppressions/{suppression}` | **partial** | ID or URL-encoded normalized email, object/id/email/origin/source_id/created_at. Pre-wave-8 automatic rows lack source_id (null); new SES records retain it. |
 | `DELETE` | `/suppressions/{suppression}` | **served** | ID or email; object/id/deleted; shared suppression.removed event and SES tenant cleanup for bounce/complaint. |
-| `GET` | `/usage` | **missing** | SES quota/metrics exist; Resend billing-plan and usage windows do not map directly to self-hosting. Define semantics first. |
+| `GET` | `/usage` | **partial** | Implemented with full-access auth and bounded team aggregates. UTC calendar day/month counts by actual send/receipt time; daily limit is stored SES Max24HourSend in the installation default region, shared across teams (SES enforces a rolling sending window). Monthly email, contact and automation-run limits are null rather than Resend plan integers. Segments use the enforced 500 cap; broadcasts/domains are unlimited; AI credits are 0/0 with no next increase; API rate is 10/1000ms. Usage survives retention from this upgrade onward; run the usage count backfills for existing rows. Historical records already pruned cannot be recovered. See docs/rest-api.md. |
 
 The only extra REST operations outside the snapshot are `POST /smtp/auth` (empty body, `{authenticated:true}`) and `POST /smtp/emails` (send response `{id}`). Both require an `os_` key and enabled SMTP, share REST rate limits/logs/idempotency, and refuse OAuth. SMTP enablement is checked again before replay and queueing, and sends are logged with source `smtp`; authentication requires an empty HTTP body. SMTP accepts omitted `to` when cc/bcc supplies recipients. Authentication and OAuth protocol endpoints (apart from the two grant resource operations), SES callbacks, tracking pixels/redirects, unsubscribe pages, and signed `/receiving-files/` and `/email-files/` downloads are separate protocols, not bearer REST operations; they are outside this spec. The registration test captures every call to `apiRoute` from the full application entry, including future modules outside `convex/api/`.
 
@@ -175,10 +175,10 @@ Wave 8 completed the existing-route wire corrections (8A), webhooks and suppress
 5. **Completed: outbound attachments and broadcast reporting** (2 + 2): stable ids/signed downloads, recipient reports and incremental URL click/unique-click aggregates are served. Broadcast send/cancel/duplicate and template publish/duplicate are already served at this base; do not rebuild them.
 6. **Completed (8C): automations** (9) over the shared runtime; create/update are partial where the runtime rejects graph shapes.
 7. **Completed (8C): contact imports** (3) on the wave 7 durable jobs; creation is partial (job size limits, no boolean properties).
-8. **Metrics (8C, partial) and usage (missing):** `GET /emails/metrics` answers what the daily aggregates hold; `/usage` awaits a decision on honest self-hosted semantics.
-9. **Completed (wave 9): email share (9A) and domain claims (9B)**, each with the dashboard flow Resend has. `/usage` is wave 9C.
+8. **Metrics (8C, partial) and usage (9C, partial):** `GET /emails/metrics` answers what the daily aggregates hold. `/usage` exposes honest self-hosted limits and UTC usage with intentional plan differences; see its parity row.
+9. **Completed (wave 9): email share (9A), domain claims (9B) and usage (9C)**, each with the dashboard screen Resend has.
 
-The 5 remaining missing snapshot operations are accounted for above. No IAM policy change is proposed by this contract lane. Reassess permissions when implementing features that actually call AWS. The spec has no dependency on the private marketing repository, and no dashboard design or interaction changed.
+Every snapshot operation is now served or partial. No IAM policy change is proposed by this contract lane. Reassess permissions when implementing features that actually call AWS. The spec has no dependency on the private marketing repository. Wave 9C adds Settings → Usage using the existing dashboard components.
 
 
 ## Wave 8A verification and remaining differences

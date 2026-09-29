@@ -1,3 +1,4 @@
+import { registerUsageRoutes } from "./usage"
 import { registerSuppressionRoutes } from "./suppressions"
 import { registerWebhookRoutes } from "./webhooks"
 import { registerAutomationRoutes } from "./automations"
@@ -17,6 +18,7 @@ import { registerLogRoutes } from "./logs"
 /** The public REST API. Each resource registers its routes with `apiRoute`
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
+  registerUsageRoutes(http)
   registerAutomationRoutes(http)
   registerImportRoutes(http)
   registerMetricsRoutes(http)

@@ -891,3 +891,13 @@ describe("OpenAPI contract", () => {
     expect(validate({ object: "contact", id: "opaque" })).toBe(true)
   })
 })
+
+test("GET /usage validates the self-hosted usage response", async () => {
+  const { call } = await setup()
+  const body = await response("/usage", "GET", await call("/usage"))
+  expect(body).toMatchObject({
+    object: "usage",
+    emails: { daily: { limit: 200 }, monthly: { limit: null } },
+    segments: { limit: 500 },
+  })
+})

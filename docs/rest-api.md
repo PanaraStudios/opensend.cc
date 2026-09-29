@@ -697,6 +697,7 @@ at expiry or when the email or team is deleted/retired; expired tokens are prune
 hourly in bounded batches. Creating another link does not revoke previous links.
 Dashboard members can create and copy links from **Share email** in either email
 detail menu.
+
 ### Domain claims
 
 `POST /domains/claim` accepts `name`, optional `region`, `custom_return_path`
@@ -749,3 +750,36 @@ and cancellation. Domain Connect's existing template handles sending records,
 not the claim token; claims use manual TXT setup. Resend's claim documentation
 specifies no owner notification email, so the audit trail uses the existing team
 event outbox rather than installation-sender mail.
+
+## Usage
+
+`GET /usage` requires a full-access key (sending keys return `401 restricted_api_key`). It returns the calling team's usage; there are no request parameters. The dashboard at **Settings → Usage** (`/settings/usage`) reads the same aggregates.
+
+```json
+{
+  "object": "usage",
+  "emails": {
+    "daily": { "used": 15, "limit": 200, "sent": 12, "received": 3, "resets_at": "2026-10-01T00:00:00.000Z" },
+    "monthly": { "used": 120, "limit": null, "sent": 100, "received": 20, "resets_at": "2026-10-01T00:00:00.000Z" }
+  },
+  "contacts": { "used": 42, "limit": null },
+  "segments": { "used": 2, "limit": 500 },
+  "broadcasts": { "used": 4, "limit": null },
+  "ai_credits": { "used": 0, "limit": 0, "next_increase_at": null },
+  "automation_runs": { "used": 8, "limit": null, "resets_at": "2026-10-01T00:00:00.000Z" },
+  "domains": { "used": 1, "limit": null },
+  "rate_limit": { "limit": 10, "duration": "1000ms" }
+}
+```
+
+Self-hosted semantics:
+
+- Email counters use UTC calendar days/months, with `used = sent + received`. A send counts once when accepted by SES, by its send time (not creation or scheduling time); received mail counts by receipt time. System/account emails, queued/scheduled/failed-before-send emails, and other teams' emails are excluded. Retries and later delivery/open/click milestones do not add sends. Totals span all regions used by the team.
+- The daily `limit` is the last stored SES `Max24HourSend` in the installation default region (teams inherit that region). It is **shared by every team**, never a team allocation. SES enforces a rolling 24-hour **sending** quota; this API's UTC sent-plus-received counter is not remaining SES capacity, and midnight does not reset SES's window. No AWS request is made. Missing stored quota/default region returns `null`; the dashboard explains why and links installation admins to Amazon SES settings. A stored zero is returned as zero. Check/refresh SES settings for current quota data.
+- There is no billing plan: monthly email, contacts, automation runs, broadcasts and domains have `limit: null`. The first three intentionally differ from the numeric limits in Resend's current OpenAPI/resend-node types. Contacts include unsubscribed contacts; segments use the enforced per-team limit (`500`); broadcasts count existing sent broadcasts; domains count active domains. Automation runs count starts this UTC calendar month. API rate limits remain 10 requests per 1000ms per team.
+- All current resend-node usage fields are returned. AI credits are unsupported and use `used: 0`, `limit: 0`, `next_increase_at: null`; there is no synthetic billing period or credit allowance.
+- Reads use aggregate counts and indexed singleton quota lookups, never email/contact scans. Usage counters retain only aggregate keys/IDs after email content or automation runs expire, so day 31 does not lose day 1. Deleting a team clears its usage namespaces.
+
+**Upgrade:** after deployment, run the existing `migrations:backfillCounts` runner, which now includes the separately named `countUsageSent`, `countUsageReceived`, and `countUsageAutomationRuns` migrations. They are idempotent and can run alongside writes. They populate usage from surviving sent milestones, received emails and automation runs. Counts are incomplete until backfill finishes; already-pruned historical records cannot be reconstructed. No new IAM permission is needed.
+
+References: [Resend usage limits](https://resend.com/docs/api-reference/rate-limit), [resend-node usage types](https://github.com/resend/resend-node/blob/canary/src/usage/interfaces/get-usage.interface.ts).
