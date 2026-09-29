@@ -402,7 +402,7 @@ not follow redirects. Each team can register 100 webhooks.
 | --- | --- | --- |
 | `POST /webhooks` | 201 | `{endpoint, events}` → `{object:"webhook", id, signing_secret}` |
 | `GET /webhooks` | 200 | `{object:"list", has_more, data:[{id, endpoint, events, status, created_at}]}` |
-| `GET /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, endpoint, events, status, created_at}` |
+| `GET /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, endpoint, events, status, created_at, signing_secret}` |
 | `PATCH /webhooks/{webhook_id}` | 200 | Optional `endpoint`, `events`, `status` (`enabled`/`disabled`) → `{object:"webhook", id}` |
 | `DELETE /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, deleted:true}` |
 | `POST /webhooks/{webhook_id}/signing-secret/rotate` | 200 | `{object:"webhook", id, signing_secret}` |
@@ -417,10 +417,10 @@ IDs are opaque; an event must belong to the webhook in the URL. An inaccessible
 or deleted resource returns 404 `not_found`. Event states are `pending`,
 `attempting`, `success` and `failed`; event and attempt timestamps are ISO UTC.
 
-Secrets are returned on create and rotation only, including a replay of that
-POST's `Idempotency-Key`. This lane's disclosure requirement differs from the
-current [Resend GET response](https://resend.com/docs/api-reference/webhooks/get-webhook.md),
-which also includes the secret. Secrets remain encrypted in webhook storage and are redacted from request logs.
+Create, rotation (including a replay of that POST's `Idempotency-Key`) and
+`GET /webhooks/{webhook_id}` return the secret, as the
+[Resend GET response](https://resend.com/docs/api-reference/webhooks/get-webhook.md)
+does; the list omits it. Secrets remain encrypted in webhook storage and are redacted from request logs.
 Rotation signs each new attempt with both the new and immediately preceding
 secret for 24 hours, using space-separated Svix signatures. After that window,
 only the new secret signs; repeated rotations replace the preceding key.

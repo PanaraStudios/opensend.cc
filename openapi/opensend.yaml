@@ -3871,8 +3871,8 @@ paths:
           $ref: '#/components/responses/Error500'
       x-opensend-permission: full_access
       description: >-
-        Retrieve a webhook’s endpoint, events, and status (requires full access). The signing secret is only
-        returned when creating the webhook or rotating the secret.
+        Retrieve a webhook’s endpoint, events, status, and signing secret (requires full access). The list
+        omits the secret.
     patch:
       operationId: webhooks/update
       tags:
