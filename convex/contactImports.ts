@@ -10,6 +10,8 @@ import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import { retirement } from "./teamLifecycle"
 import {
+  BATCH,
+  MEMBERSHIP_BATCH,
   listProperties,
   teamRow,
   upsertContact,
@@ -49,12 +51,14 @@ export const step = internalMutation({
     for (const segmentId of job.segmentIds)
       await teamRow(ctx, "segments", job.organizationId, segmentId)
     const properties = await listProperties(ctx, job.organizationId)
+    // Each contact's memberships past its own share join in scheduled steps.
     const size = Math.min(
-      100,
+      BATCH,
       Math.max(
         1,
         Math.floor(
-          500 / Math.max(1, job.segmentIds.length + (job.topics?.length ?? 0))
+          MEMBERSHIP_BATCH /
+            Math.max(1, job.segmentIds.length + (job.topics?.length ?? 0))
         )
       )
     )

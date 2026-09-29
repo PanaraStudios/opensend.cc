@@ -170,18 +170,18 @@ export async function selectedOption<
   return row?.organizationId === organizationId ? row : null
 }
 
-/** Configuration tables have enforced per-team write limits. */
-export function configurationRows<T extends "segments" | "topics">(
+/** Topics have an enforced per-team write limit, so they load whole. */
+export function configurationRows(
   ctx: QueryCtx,
-  table: T,
+  table: "topics",
   organizationId: string,
   limit: number
 ) {
   return ctx.db
-    .query(table as "segments" | "topics")
+    .query(table)
     .withIndex("by_organizationId", (q) =>
       q.eq("organizationId", organizationId)
     )
     .order("desc")
-    .take(limit) as unknown as Promise<Doc<T>[]>
+    .take(limit)
 }

@@ -717,14 +717,16 @@ test("import job batches include topic fan-out and normalize mapped property key
     id: created.id,
     offset: 0,
   })
+  // 12 topic choices per contact: floor(200 / 12) contacts per transaction.
   expect(await json(f.call(`/contacts/imports/${created.id}`))).toMatchObject({
     status: "in_progress",
-    counts: { total: 41, created: 41, failed: 0 },
+    counts: { total: 16, created: 16, failed: 0 },
   })
-  await f.t.mutation(internal.contactImports.step, {
-    id: created.id,
-    offset: 41,
-  })
+  for (const offset of [16, 32, 48])
+    await f.t.mutation(internal.contactImports.step, {
+      id: created.id,
+      offset,
+    })
   expect(await json(f.call(`/contacts/imports/${created.id}`))).toMatchObject({
     status: "completed",
     counts: { total: 50, created: 50, failed: 0 },

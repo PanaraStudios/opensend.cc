@@ -2,7 +2,6 @@ import { v, type Infer } from "convex/values"
 import { query, type QueryCtx } from "./_generated/server"
 import { findInstallation, findRegion, requireTeam } from "./access"
 import { counters } from "./counts"
-import { LIMITS } from "./audience"
 import { API_RATE } from "./api/state"
 
 const limit = v.union(v.number(), v.null())
@@ -79,7 +78,7 @@ export async function readUsage(ctx: QueryCtx, organizationId: string) {
       monthly: { ...periods[1], limit: null, resets_at: monthlyReset },
     },
     contacts: { used: contacts!, limit: null },
-    segments: { used: segments!, limit: LIMITS.segments },
+    segments: { used: segments!, limit: null },
     broadcasts: { used: broadcasts!, limit: null },
     ai_credits: { used: 0, limit: 0, next_increase_at: null },
     automation_runs: { used: runs!, limit: null, resets_at: monthlyReset },

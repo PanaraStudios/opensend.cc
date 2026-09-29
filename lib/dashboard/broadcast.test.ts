@@ -8,7 +8,6 @@ import {
   emailEditorMode,
   broadcastEventRows,
   emailFrom,
-  broadcastRecipients,
   broadcastUpdatedAt,
   emptyBroadcastStats,
   fromAddresses,
@@ -249,24 +248,5 @@ describe("fromAddresses", () => {
       "Opensend <hello@a.dev>"
     )
     assert.equal(emailFrom({}, domains), "Opensend <hello@a.dev>")
-  })
-})
-
-describe("broadcastRecipients", () => {
-  const contacts = FIXTURE.contacts
-
-  it("reaches everyone subscribed when there is no segment", () => {
-    const all = broadcastRecipients(contacts, { segmentId: null })
-    assert.equal(
-      all.length,
-      contacts.filter((contact) => !contact.unsubscribed).length
-    )
-  })
-
-  it("narrows to the segment and still skips the unsubscribed", () => {
-    const segmentId = FIXTURE.segments[0]!.id
-    const some = broadcastRecipients(contacts, { segmentId })
-    assert.ok(some.every((contact) => contact.segmentIds.includes(segmentId)))
-    assert.ok(some.every((contact) => !contact.unsubscribed))
   })
 })

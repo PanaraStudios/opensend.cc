@@ -3,6 +3,7 @@ import * as React from "react"
 import {
   useMutation,
   useConvex,
+  usePaginatedQuery,
   useQuery,
   type OptionalRestArgsOrSkip,
 } from "convex/react"
@@ -14,7 +15,11 @@ import type {
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import { useWorkspace } from "@/components/auth/workspace"
-import { useTeamList } from "@/components/dashboard/primitives"
+import {
+  useLoadedPagination,
+  useTeamList,
+} from "@/components/dashboard/primitives"
+import { PAGE_SIZES } from "@/lib/dashboard/pagination"
 import type { ContactInput } from "@/lib/dashboard/contacts"
 import type {
   Contact,
@@ -37,7 +42,6 @@ export function asContact(row: ContactRow | ContactDetailRow): Contact {
     lastName: row.lastName,
     createdAt: row._creationTime,
     unsubscribed: row.unsubscribed,
-    segmentIds: row.segmentIds,
     topics: "topics" in row ? row.topics : [],
     properties: row.properties,
   }
@@ -137,12 +141,23 @@ export function useTopicOptions(selectedId?: string | null, search?: string) {
   return React.useMemo(() => rows?.map(asTopic), [rows])
 }
 
-/* Each whole list (capped per team), for pickers, or undefined while
-   loading. The list screens page theirs. */
-export function useSegments() {
-  const rows = useTeamQuery(api.segments.definitions)
-  return React.useMemo(() => rows?.map(asSegment), [rows])
+/** Whether the team has any segment yet, or undefined while loading. */
+export function useHasSegments() {
+  const counted = useTeamQuery(api.segments.count)
+  return counted === undefined ? undefined : (counted.total ?? 0) > 0
 }
+/** A contact's segments, most recently joined first, a page at a time. */
+export function useContactSegments(contactId: string) {
+  const query = usePaginatedQuery(
+    api.contacts.segments,
+    { id: contactId as Id<"contacts"> },
+    { initialNumItems: PAGE_SIZES[0] }
+  )
+  return { ...query, ...useLoadedPagination(query.results, query) }
+}
+
+/* Each whole list (capped per team), for pickers, or undefined while
+   loading. The list screens page theirs; segments are never loaded whole. */
 export function useTopics() {
   const rows = useTeamQuery(api.topics.definitions)
   return React.useMemo(() => rows?.map(asTopic), [rows])
@@ -201,16 +216,8 @@ export function useAudienceCommands() {
         errors: [] as string[],
       }
       const pending: Id<"contactImports">[] = []
-      const size = Math.min(
-        AUDIENCE_BATCH,
-        Math.max(1, Math.floor(500 / Math.max(1, segmentIds.length)))
-      )
-      const batches = csvImport
-        ? chunks(inputs)
-        : Array.from({ length: Math.ceil(inputs.length / size) }, (_, i) =>
-            inputs.slice(i * size, (i + 1) * size)
-          )
-      for (const batch of batches) {
+      // The server joins memberships past one transaction's share in steps.
+      for (const batch of chunks(inputs)) {
         const result = await upsert({
           organizationId: team(),
           contacts: batch,

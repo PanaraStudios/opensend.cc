@@ -172,8 +172,10 @@ once per export. Failed, expired and small exports send no notification. Without
 a sender, no notification is sent or logged; the existing completion toast directs
 the user to Settings → Exports. Files remain available for seven days from creation.
 
-Dropdowns have no page controls. Segments and custom properties use their existing
-team limits (500 and 100). Contacts, custom events and domains offer up to 100
+Dropdowns have no page controls. Custom properties use their existing team limit
+(100). Segments have no team limit: segment pickers suggest the 20 newest or the
+best name matches from the server, and always resolve the selected segment by id.
+A contact's segments page on its detail screen. Contacts, custom events and domains offer up to 100
 prefix matches; templates offer up to 100 search matches by name/alias. Search
 reads the whole team's index, so older options remain reachable beyond the initial
 100. The metrics chart's compact domain breakdown shows up to 100 domains in name
@@ -204,8 +206,13 @@ email address. Keep the returned link private. This does not bypass MFA or SSO.
 ## Background processing and retention
 
 CSV imports enqueue durable jobs of up to 100 contacts each. Each transaction
-processes at most 100 contacts and 500 contact/segment combinations; rows with
-invalid contact fields are skipped. The existing dialog remains pending until
+processes at most 100 contacts and writes at most 200 segment memberships; a
+contact's remaining memberships join in scheduled steps moments later (the same
+applies to adding contacts to segments from the dashboard or the API). A request
+names at most 1,000 segments. Rows with invalid contact fields are skipped.
+Contact webhooks' `segment_ids` list at most 100 of the contact's segments, most
+recently joined first: each event is one stored document, and bulk writes emit
+one per contact. The existing dialog remains pending until
 its jobs finish. Accepted jobs continue if the browser disconnects. Completed
 job metadata is kept seven days; retrying a CSV merges contacts by email.
 

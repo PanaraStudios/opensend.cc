@@ -188,13 +188,15 @@ test("combined contact and segment cost reduces each job transaction", async () 
     id: result.jobId!,
     offset: 0,
   })
+  // Ten segments per contact: floor(200 / 10) contacts per transaction.
   expect(
     await f.owner.client.query(api.contactImports.get, { id: result.jobId! })
-  ).toMatchObject({ offset: 50, status: "processing", result: { created: 50 } })
-  await f.t.mutation(internal.contactImports.step, {
-    id: result.jobId!,
-    offset: 50,
-  })
+  ).toMatchObject({ offset: 20, status: "processing", result: { created: 20 } })
+  for (const offset of [20, 40, 60, 80])
+    await f.t.mutation(internal.contactImports.step, {
+      id: result.jobId!,
+      offset,
+    })
   expect(
     await f.owner.client.query(api.contactImports.get, { id: result.jobId! })
   ).toMatchObject({

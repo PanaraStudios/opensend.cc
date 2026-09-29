@@ -32,6 +32,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
@@ -80,8 +81,9 @@ import { useExportDialog } from "@/components/dashboard/export-dialog"
 import {
   useAudienceCommands,
   useContactList,
+  useHasSegments,
   useProperties,
-  useSegments,
+  useSegmentOptions,
   useTopics,
 } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
@@ -104,6 +106,42 @@ function segmentOptions(segments: { id: string; name: string }[]) {
   ]
 }
 
+/** The optional segment new contacts join, once the team has one. Suggests
+    from the server as it is searched: a team has any number of segments. */
+function SegmentField({
+  id,
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  children?: React.ReactNode
+}) {
+  const hasSegments = useHasSegments()
+  const [search, setSearch] = React.useState("")
+  const segments =
+    useSegmentOptions(value === "none" ? null : value, search) ?? []
+  if (!hasSegments) return null
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <OptionSelect
+        id={id}
+        className="w-full"
+        value={value}
+        onChange={onChange}
+        search={{ onChange: setSearch }}
+        items={segmentOptions(segments)}
+      />
+      {children}
+    </Field>
+  )
+}
+
 function AddManuallyDialog({
   open,
   onOpenChange,
@@ -113,7 +151,6 @@ function AddManuallyDialog({
 }) {
   const router = useRouter()
   const { upsertContacts } = useAudienceCommands()
-  const segments = useSegments() ?? []
   const [pending, setPending] = React.useState(false)
   const [emails, setEmails] = React.useState("")
   const [segmentId, setSegmentId] = React.useState("none")
@@ -194,21 +231,16 @@ function AddManuallyDialog({
               />
               {error ? <FieldError>{error}</FieldError> : null}
             </Field>
-            {segments.length > 0 ? (
-              <Field>
-                <FieldLabel htmlFor="manual-segment">Segment</FieldLabel>
-                <OptionSelect
-                  id="manual-segment"
-                  className="w-full"
-                  value={segmentId}
-                  onChange={setSegmentId}
-                  items={segmentOptions(segments)}
-                />
-                <FieldDescription>
-                  Optional. You can assign more segments from the contact page.
-                </FieldDescription>
-              </Field>
-            ) : null}
+            <SegmentField
+              id="manual-segment"
+              label="Segment"
+              value={segmentId}
+              onChange={setSegmentId}
+            >
+              <FieldDescription>
+                Optional. You can assign more segments from the contact page.
+              </FieldDescription>
+            </SegmentField>
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>
@@ -233,7 +265,6 @@ function ImportCsvDialog({
 }) {
   const { upsertContacts } = useAudienceCommands()
   const properties = useProperties() ?? []
-  const segments = useSegments() ?? []
   const [pending, setPending] = React.useState(false)
   const [fileName, setFileName] = React.useState<string | null>(null)
   const [headers, setHeaders] = React.useState<string[]>([])
@@ -411,18 +442,12 @@ function ImportCsvDialog({
                 </div>
               </Field>
             ) : null}
-            {segments.length > 0 ? (
-              <Field>
-                <FieldLabel htmlFor="import-segment">Add to segment</FieldLabel>
-                <OptionSelect
-                  id="import-segment"
-                  className="w-full"
-                  value={segmentId}
-                  onChange={setSegmentId}
-                  items={segmentOptions(segments)}
-                />
-              </Field>
-            ) : null}
+            <SegmentField
+              id="import-segment"
+              label="Add to segment"
+              value={segmentId}
+              onChange={setSegmentId}
+            />
             {error ? <FieldError>{error}</FieldError> : null}
           </FieldGroup>
           <DialogFooter>
@@ -454,14 +479,20 @@ function BulkEditDialog({
 }) {
   const { addContactsToSegments, subscribeContactsToTopics } =
     useAudienceCommands()
-  const segments = useSegments() ?? []
+  const [search, setSearch] = React.useState("")
+  const segments =
+    useSegmentOptions(null, useDebouncedValue(search.trim())) ?? []
   const topics = useTopics() ?? []
   const [pending, setPending] = React.useState(false)
-  const [picked, setPicked] = React.useState<string[]>([])
+  /* Segments are suggested as they are searched, so picks remember their
+     names for when a later search no longer lists them. */
+  const [picked, setPicked] = React.useState<{ id: string; name: string }[]>([])
 
-  function toggle(id: string, checked: boolean) {
+  function toggle(item: { id: string; name: string }, checked: boolean) {
     setPicked((current) =>
-      checked ? [...current, id] : current.filter((item) => item !== id)
+      checked
+        ? [...current, item]
+        : current.filter((other) => other.id !== item.id)
     )
   }
 
@@ -470,14 +501,16 @@ function BulkEditDialog({
     if (picked.length === 0 || pending) return
     setPending(true)
     try {
+      const ids = picked.map((item) => item.id)
       if (mode === "segments") {
-        await addContactsToSegments(selectedIds, picked)
+        await addContactsToSegments(selectedIds, ids)
         toast.add({ type: "success", title: "Added to segments" })
       } else {
-        await subscribeContactsToTopics(selectedIds, picked)
+        await subscribeContactsToTopics(selectedIds, ids)
         toast.add({ type: "success", title: "Subscribed to topics" })
       }
       setPicked([])
+      setSearch("")
       onOpenChange(false)
       onApplied()
     } catch (caught) {
@@ -487,16 +520,26 @@ function BulkEditDialog({
     }
   }
 
-  const options = (mode === "segments" ? segments : topics).map((item) => ({
+  const suggested = (mode === "segments" ? segments : topics).map((item) => ({
     id: item.id,
     name: item.name,
   }))
+  const options = [
+    ...picked.filter((item) => !suggested.some((row) => row.id === item.id)),
+    ...suggested,
+  ]
+  const hasSegments = useHasSegments()
+  const empty =
+    mode === "segments" ? hasSegments === false : topics.length === 0
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setPicked([])
+        if (!next) {
+          setPicked([])
+          setSearch("")
+        }
         onOpenChange(next)
       }}
     >
@@ -511,29 +554,45 @@ function BulkEditDialog({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
-            {options.length === 0 ? (
+            {empty ? (
               <p className="text-sm text-muted-foreground">
                 {mode === "segments"
                   ? "Create a segment first."
                   : "Create a topic first."}
               </p>
             ) : (
-              <div className="space-y-2 rounded-lg border border-border p-3">
-                {options.map((item) => (
-                  <label
-                    key={item.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <Checkbox
-                      checked={picked.includes(item.id)}
-                      onCheckedChange={(checked) =>
-                        toggle(item.id, checked === true)
-                      }
-                    />
-                    {item.name}
-                  </label>
-                ))}
-              </div>
+              <>
+                {mode === "segments" ? (
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search segments…"
+                    aria-label="Search segments"
+                  />
+                ) : null}
+                {options.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No results found.
+                  </p>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-border p-3">
+                    {options.map((item) => (
+                      <label
+                        key={item.id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={picked.some((other) => other.id === item.id)}
+                          onCheckedChange={(checked) =>
+                            toggle(item, checked === true)
+                          }
+                        />
+                        {item.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </FieldGroup>
           <DialogFooter>
@@ -552,10 +611,14 @@ function BulkEditDialog({
 
 export function ContactsView() {
   const { deleteContacts } = useAudienceCommands()
-  const segments = useSegments()
   const [query, setQuery] = React.useState("")
   const [subscribed, setSubscribed] = React.useState("all")
   const [segment, setSegment] = React.useState("all")
+  const [segmentSearch, setSegmentSearch] = React.useState("")
+  const segments = useSegmentOptions(
+    segment === "all" ? null : segment,
+    segmentSearch
+  )
   const [range, setRange] = React.useState<DateRange | undefined>(undefined)
   const now = useClock() ?? undefined
   const [manualOpen, setManualOpen] = React.useState(false)
@@ -648,6 +711,7 @@ export function ContactsView() {
             value: segment,
             onChange: setSegment,
             items: segmentItems(segments ?? []),
+            search: { onChange: setSegmentSearch },
             "aria-label": "Filter by segment",
           },
         ]}

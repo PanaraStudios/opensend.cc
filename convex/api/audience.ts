@@ -12,6 +12,7 @@ import type { Doc } from "../_generated/dataModel"
 import schema from "../schema"
 import { effectiveTopicSubscription } from "../../lib/dashboard/contacts"
 import {
+  SEGMENT_INPUT_LIMIT,
   deleteContact,
   emitContact,
   findTopicChoice,
@@ -230,21 +231,22 @@ export const create = internalMutation({
             "api"
           )
         }
-        const segments = await Promise.all(
-          array(
-            input.segments ??
-              (input.audience_id ? [{ id: input.audience_id }] : []),
-            "segments",
-            500
-          ).map((segment) =>
-            own(
+        // One read at a time: a long list must not exceed the concurrent I/O limit.
+        const segments = []
+        for (const segment of array(
+          input.segments ??
+            (input.audience_id ? [{ id: input.audience_id }] : []),
+          "segments",
+          SEGMENT_INPUT_LIMIT
+        ))
+          segments.push(
+            await own(
               ctx,
               "segments",
               organizationId,
               stringField(segment, "id", true)!
             )
           )
-        )
         const topics = await Promise.all(
           array(input.topics ?? [], "topics", 100).map(async (topic) => {
             const subscription = enumField(topic, "subscription", [
@@ -273,7 +275,7 @@ export const create = internalMutation({
           },
           {
             properties: await listProperties(ctx, organizationId),
-            segmentIds: segments.map((segment) => segment._id),
+            segmentIds: [...new Set(segments.map((segment) => segment._id))],
           }
         )
         const contact = (await ctx.db.get("contacts", result.id))!
@@ -639,49 +641,49 @@ export const relations = internalQuery({
       }
     }
     const contact = await own(ctx, "contacts", org, id)
-    const result = await cursorPage<Doc<"segments"> | Doc<"topics">>(
-      page,
-      async (value) => {
-        const row = await own(ctx, kind, org, value)
-        if (kind === "segments") {
-          const membership = await ctx.db
+    if (kind === "segments") {
+      // Resend's contact segments page by membership, newest joined first;
+      // `created_at` is when the contact joined.
+      const result = await cursorPage(
+        page,
+        async (value) => {
+          const segment = await own(ctx, "segments", org, value)
+          return ctx.db
             .query("segmentMembers")
             .withIndex("by_contactId_and_segmentId", (q) =>
-              q
-                .eq("contactId", contact._id)
-                .eq("segmentId", row._id as Doc<"segments">["_id"])
+              q.eq("contactId", contact._id).eq("segmentId", segment._id)
             )
             .unique()
-          if (!membership) return null
-        }
-        return row
-      },
-      async (order) => {
-        if (kind === "topics")
-          return stream(ctx.db, schema)
-            .query("topics")
-            .withIndex("by_organizationId", (q) => {
-              return q.eq("organizationId", org)
+        },
+        (order) =>
+          stream(ctx.db, schema)
+            .query("segmentMembers")
+            .withIndex("by_contactId", (q) => {
+              return q.eq("contactId", contact._id)
             })
             .order(order)
-        // At most 500 segments exist per team, so hydration is bounded.
-        const members = await ctx.db
-          .query("segmentMembers")
-          .withIndex("by_contactId_and_segmentId", (q) =>
-            q.eq("contactId", contact._id)
-          )
-          .take(500)
-        return (
-          await Promise.all(
-            members.map((member) => ctx.db.get("segments", member.segmentId))
-          )
-        ).filter((row): row is Doc<"segments"> => row !== null)
+      )
+      const data = []
+      for (const member of result.data) {
+        const segment = await ctx.db.get("segments", member.segmentId)
+        if (segment)
+          data.push({ ...segment, _creationTime: member._creationTime })
       }
+      return { ...result, data }
+    }
+    const result = await cursorPage<Doc<"topics">>(
+      page,
+      (value) => own(ctx, kind, org, value),
+      (order) =>
+        stream(ctx.db, schema)
+          .query("topics")
+          .withIndex("by_organizationId", (q) => {
+            return q.eq("organizationId", org)
+          })
+          .order(order)
     )
-    if (kind !== "topics") return result
     const subscriptions = await Promise.all(
-      result.data.map(async (row) => {
-        const topic = row as Doc<"topics">
+      result.data.map(async (topic) => {
         const choice = await findTopicChoice(ctx, contact._id, topic._id)
         return effectiveTopicSubscription(choice?.subscription, topic) ===
           "subscribed"

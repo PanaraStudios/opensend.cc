@@ -48,6 +48,7 @@ import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
@@ -281,6 +282,19 @@ function SegmentPage({
   const title = name.draft.trim() || segment.name
   const candidates = useContactList({ search })
   const { pageRows, pagination } = candidates
+  /* Membership is checked for the page on view: a contact can be in any
+     number of segments, so list rows do not carry them. */
+  const members = new Set<string>(
+    useQuery(
+      api.segments.memberIds,
+      pageRows.length
+        ? {
+            id: segment.id as Id<"segments">,
+            contactIds: pageRows.map((contact) => contact.id as Id<"contacts">),
+          }
+        : "skip"
+    ) ?? []
+  )
 
   return (
     <>
@@ -343,7 +357,7 @@ function SegmentPage({
                 <TableRow key={contact.id}>
                   <TableCell>
                     <Checkbox
-                      checked={contact.segmentIds.includes(segment.id)}
+                      checked={members.has(contact.id)}
                       onCheckedChange={(checked) => {
                         setContactSegment(
                           contact.id,

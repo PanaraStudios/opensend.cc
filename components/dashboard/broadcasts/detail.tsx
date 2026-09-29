@@ -64,7 +64,7 @@ import {
   useBroadcastCommands,
 } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainByName } from "@/lib/domains/use-domains"
-import { useSegments, useTopics } from "@/lib/audience/use-audience"
+import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
@@ -274,7 +274,6 @@ function BroadcastReport({ item }: { item: Broadcast }) {
 export function BroadcastDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const segments = useSegments() ?? []
   const topics = useTopics() ?? []
   const {
     updateBroadcast,
@@ -287,6 +286,8 @@ export function BroadcastDetail() {
     toast.add({ type: "error", title: actionError(error) })
   const saveAsTemplate = useSaveAsTemplate()
   const item = useBroadcast(id)
+  // The broadcast's own segment resolves wherever it falls in the team's list.
+  const segments = useSegmentOptions(item?.segmentId) ?? []
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
   const [renameOpen, setRenameOpen] = React.useState(false)

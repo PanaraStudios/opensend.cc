@@ -176,8 +176,12 @@ Audience compatibility details:
   property strings clear the value and use its default, like the dashboard.
 - REST property keys preserve alphanumeric/underscore spelling (1–50 characters);
   reserved contact fields remain unavailable. String fallbacks preserve whitespace
-  and empty strings on both create and update. The dashboard keeps its normalization. Teams have at most 100 properties, 500 segments and
-  100 topics. Create-contact relationship arrays share those limits.
+  and empty strings on both create and update. The dashboard keeps its normalization. Teams have at most 100 properties and
+  100 topics, and any number of segments. Create-contact `topics` holds at most 100
+  items and `segments` at most 1,000; memberships past the first 200 join moments
+  later in the background. `GET /contacts/{id}/segments` pages by membership, newest
+  joined first, and its `created_at` is when the contact joined (as in Resend).
+  Contact webhooks' `segment_ids` list at most 100 segments, most recently joined first.
 - Resend's wire `default_subscription: "opt_in"` means subscribed by default;
   `"opt_out"` means unsubscribed. The existing dashboard names the consent mode
   inversely (its "Opt-out" subscribes new contacts). The API translates both ways
@@ -556,7 +560,7 @@ curl "$OPENSEND_API_URL/contacts/imports" \
 Success is 201 `{object:"contact_import",id}`. Multipart replay hashes the
 sorted decoded form fields, including CSV contents, so fresh boundary strings
 do not create duplicate jobs. The request limit is 1 MiB; each durable import
-accepts 1–500 rows and at most 500 KB of parsed job data, plus up to 100 segment
+accepts 1–500 rows and at most 500 KB of parsed job data, plus up to 1,000 segment
 and 100 topic references. Larger files must be split into smaller imports.
 Malformed CSV/maps and unsupported property types return 422; malformed
 multipart returns 400. Neither URLs nor inline JSON contact lists are accepted.
@@ -763,7 +767,7 @@ event outbox rather than installation-sender mail.
     "monthly": { "used": 120, "limit": null, "sent": 100, "received": 20, "resets_at": "2026-10-01T00:00:00.000Z" }
   },
   "contacts": { "used": 42, "limit": null },
-  "segments": { "used": 2, "limit": 500 },
+  "segments": { "used": 2, "limit": null },
   "broadcasts": { "used": 4, "limit": null },
   "ai_credits": { "used": 0, "limit": 0, "next_increase_at": null },
   "automation_runs": { "used": 8, "limit": null, "resets_at": "2026-10-01T00:00:00.000Z" },
@@ -776,7 +780,7 @@ Self-hosted semantics:
 
 - Email counters use UTC calendar days/months, with `used = sent + received`. A send counts once when accepted by SES, by its send time (not creation or scheduling time); received mail counts by receipt time. System/account emails, queued/scheduled/failed-before-send emails, and other teams' emails are excluded. Retries and later delivery/open/click milestones do not add sends. Totals span all regions used by the team.
 - The daily `limit` is the last stored SES `Max24HourSend` in the installation default region (teams inherit that region). It is **shared by every team**, never a team allocation. SES enforces a rolling 24-hour **sending** quota; this API's UTC sent-plus-received counter is not remaining SES capacity, and midnight does not reset SES's window. No AWS request is made. Missing stored quota/default region returns `null`; the dashboard explains why and links installation admins to Amazon SES settings. A stored zero is returned as zero. Check/refresh SES settings for current quota data.
-- There is no billing plan: monthly email, contacts, automation runs, broadcasts and domains have `limit: null`. The first three intentionally differ from the numeric limits in Resend's current OpenAPI/resend-node types. Contacts include unsubscribed contacts; segments use the enforced per-team limit (`500`); broadcasts count existing sent broadcasts; domains count active domains. Automation runs count starts this UTC calendar month. API rate limits remain 10 requests per 1000ms per team.
+- There is no billing plan: monthly email, contacts, automation runs, broadcasts and domains have `limit: null`. The first three intentionally differ from the numeric limits in Resend's current OpenAPI/resend-node types. Contacts include unsubscribed contacts; segments have no team limit (`null`, as Resend returns with a contacts subscription); broadcasts count existing sent broadcasts; domains count active domains. Automation runs count starts this UTC calendar month. API rate limits remain 10 requests per 1000ms per team.
 - All current resend-node usage fields are returned. AI credits are unsupported and use `used: 0`, `limit: 0`, `next_increase_at: null`; there is no synthetic billing period or credit allowance.
 - Reads use aggregate counts and indexed singleton quota lookups, never email/contact scans. Usage counters retain only aggregate keys/IDs after email content or automation runs expire, so day 31 does not lose day 1. Deleting a team clears its usage namespaces.
 

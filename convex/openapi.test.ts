@@ -898,6 +898,6 @@ test("GET /usage validates the self-hosted usage response", async () => {
   expect(body).toMatchObject({
     object: "usage",
     emails: { daily: { limit: 200 }, monthly: { limit: null } },
-    segments: { limit: 500 },
+    segments: { limit: null },
   })
 })

@@ -16,11 +16,21 @@ import type { Doc, Id } from "./_generated/dataModel"
 /* The audience's write rules live here, keyed by team rather than by session,
    so the dashboard's mutations and the REST API share them. */
 
-/** Per team. They also bound each contact's child rows (one membership per
-    segment, one choice per topic) and every list the screens load whole. */
-export const LIMITS = { segments: 500, topics: 100, properties: 100 }
+/** Per team. They also bound each contact's topic choices and the topic and
+    property lists the screens load whole. Segments have no limit: nothing
+    reads all of a team's segments, or all of a contact's, in one transaction. */
+export const LIMITS = { topics: 100, properties: 100 }
 /** Contacts or ids one mutation accepts; screens send larger sets in batches. */
 export const BATCH = 100
+/** Segment ids one request names. Each is checked with its own read, and a
+    transaction reads at most 4,096 ranges
+    (https://docs.convex.dev/production/state/limits#transactions). */
+export const SEGMENT_INPUT_LIMIT = 1000
+/** Memberships one transaction writes; the rest follow in scheduled steps. */
+export const MEMBERSHIP_BATCH = 200
+/** Segment ids a contact webhook carries, most recently joined first. The
+    event is one stored document, and bulk writes emit one per contact. */
+export const EVENT_SEGMENT_IDS = 100
 /** Child rows a cleanup pass deletes before handing on to the next. */
 export const CLEANUP_BATCH = 500
 
@@ -60,20 +70,28 @@ export const listProperties = async (ctx: Ctx, organizationId: string) => {
   return properties
 }
 
-export const contactSegmentIds = async (ctx: Ctx, contactId: Id<"contacts">) =>
-  (
-    await ctx.db
-      .query("segmentMembers")
-      .withIndex("by_contactId_and_segmentId", (q) =>
-        q.eq("contactId", contactId)
-      )
-      .take(LIMITS.segments)
-  ).map((row) => row.segmentId)
+/** A contact's memberships, most recently joined first. */
+export const contactMemberships = (ctx: Ctx, contactId: Id<"contacts">) =>
+  ctx.db
+    .query("segmentMembers")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+    .order("desc")
 
-export const withSegments = async (ctx: Ctx, contact: Doc<"contacts">) => ({
-  ...contact,
-  segmentIds: await contactSegmentIds(ctx, contact._id),
-})
+/** The segment ids a contact webhook carries; see `EVENT_SEGMENT_IDS`. */
+export const eventSegmentIds = async (ctx: Ctx, contactId: Id<"contacts">) =>
+  (await contactMemberships(ctx, contactId).take(EVENT_SEGMENT_IDS)).map(
+    (row) => row.segmentId
+  )
+
+/** Deduplicates the segment ids a request names; see `SEGMENT_INPUT_LIMIT`. */
+export function segmentInput(ids: Id<"segments">[]) {
+  const unique = [...new Set(ids)]
+  if (unique.length > SEGMENT_INPUT_LIMIT)
+    throw new ConvexError(
+      `Choose at most ${SEGMENT_INPUT_LIMIT} segments at a time`
+    )
+  return unique
+}
 
 const searchText = (contact: Pick<Doc<"contacts">, "email" | ContactName>) =>
   [
@@ -112,7 +130,8 @@ export async function emitContact(
     type,
     contactEventData(
       contact,
-      segmentIds ?? (await contactSegmentIds(ctx, contact._id))
+      segmentIds?.slice(0, EVENT_SEGMENT_IDS) ??
+        (await eventSegmentIds(ctx, contact._id))
     )
   )
 }
@@ -141,25 +160,57 @@ export async function setMembership(
   return true
 }
 
+/** How many memberships the current transaction may still write. */
+export type MembershipBudget = { left: number }
+export const membershipBudget = (): MembershipBudget => ({
+  left: MEMBERSHIP_BATCH,
+})
+
+/** Joins the contact to the segments while `budget` lasts, then hands the
+    rest to a scheduled step, so any number of segments stays within one
+    transaction's limits. Once the last segment is joined, emits one
+    `contact.updated` if `changed` (the caller changed the contact) or a
+    membership changed. With `recheck`, segments deleted since the ids were
+    checked are skipped; otherwise they must be the team's. */
+export async function joinContact(
+  ctx: MutationCtx,
+  contact: Doc<"contacts">,
+  segmentIds: Id<"segments">[],
+  budget: MembershipBudget,
+  options: { emit: boolean; changed?: boolean; recheck?: boolean }
+) {
+  let changed = options.changed ?? false
+  let index = 0
+  for (; index < segmentIds.length && budget.left > 0; index++) {
+    budget.left--
+    const segmentId = segmentIds[index]
+    if (options.recheck) {
+      const segment = await ctx.db.get("segments", segmentId)
+      if (segment?.organizationId !== contact.organizationId) continue
+    }
+    if (await setMembership(ctx, contact, segmentId, true)) changed = true
+  }
+  if (index < segmentIds.length)
+    await ctx.scheduler.runAfter(0, internal.contacts.joinRest, {
+      contactId: contact._id,
+      segmentIds: segmentIds.slice(index),
+      changed,
+      emit: options.emit,
+    })
+  else if (changed && options.emit)
+    await emitContact(ctx, "contact.updated", contact)
+}
+
 /** Joins every contact to every segment, emitting `contact.updated` for each
     contact whose segments changed. The ids must be the team's. */
 export async function joinSegments(
   ctx: MutationCtx,
   contacts: Doc<"contacts">[],
-  segmentIds: Id<"segments">[],
-  emit = true
+  segmentIds: Id<"segments">[]
 ) {
-  const changed: Doc<"contacts">[] = []
-  for (const contact of contacts) {
-    let any = false
-    for (const segmentId of segmentIds)
-      if (await setMembership(ctx, contact, segmentId, true)) any = true
-    if (any) changed.push(contact)
-  }
-  if (emit)
-    for (const contact of changed)
-      await emitContact(ctx, "contact.updated", contact)
-  return changed
+  const budget = membershipBudget()
+  for (const contact of contacts)
+    await joinContact(ctx, contact, segmentIds, budget, { emit: true })
 }
 
 export const findTopicChoice = (
@@ -235,8 +286,11 @@ export async function upsertContact(
     segmentIds: Id<"segments">[]
     skipExisting?: boolean
     emit?: boolean
+    /** Shared by a batch of contacts; memberships past it are scheduled. */
+    budget?: MembershipBudget
   }
 ): Promise<{ id: Id<"contacts">; result: "created" | "updated" | "skipped" }> {
+  const budget = options.budget ?? membershipBudget()
   const email = normalizeEmail(input.email)
   const error =
     contactEmailError(email) ?? contactFieldsError(input, options.properties)
@@ -258,9 +312,10 @@ export async function upsertContact(
     const contact = changed
       ? await patchContact(ctx, existing, fields, now)
       : existing
-    const joined = await joinSegments(ctx, [contact], options.segmentIds, false)
-    if (options.emit !== false && (changed || joined.length))
-      await emitContact(ctx, "contact.updated", contact)
+    await joinContact(ctx, contact, options.segmentIds, budget, {
+      emit: options.emit !== false,
+      changed,
+    })
     return { id: existing._id, result: "updated" }
   }
   const fields = {
@@ -277,7 +332,7 @@ export async function upsertContact(
     updatedAt: now,
   })
   const contact = (await ctx.db.get("contacts", id))!
-  await joinSegments(ctx, [contact], options.segmentIds, false)
+  await joinContact(ctx, contact, options.segmentIds, budget, { emit: false })
   if (options.emit !== false)
     await emitContact(ctx, "contact.created", contact, options.segmentIds)
   return { id, result: "created" }
@@ -340,7 +395,7 @@ export async function deleteContact(
   ctx: MutationCtx,
   contact: Doc<"contacts">
 ) {
-  const segmentIds = await contactSegmentIds(ctx, contact._id)
+  const segmentIds = await eventSegmentIds(ctx, contact._id)
   await deleteRow(ctx, "contacts", contact._id)
   await emitContact(
     ctx,
@@ -379,7 +434,7 @@ export async function purgeContactRows(
 /** Refuses a list that is already at its per-team limit. */
 export async function requireRoom(
   ctx: MutationCtx,
-  table: "segments" | "topics",
+  table: "topics",
   organizationId: string
 ) {
   const rows = await ctx.db

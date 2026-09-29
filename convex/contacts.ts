@@ -11,24 +11,27 @@ import {
 import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
+import { retirement } from "./teamLifecycle"
 import schema from "./schema"
 import { BOOLEANS, countValue, counters } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
 import {
   BATCH,
   CLEANUP_BATCH,
-  LIMITS,
+  contactMemberships,
   deleteContact,
   emitContact,
+  joinContact,
   joinSegments,
   listProperties,
+  membershipBudget,
   purgeContactRows,
+  segmentInput,
   setMembership,
   setTopicChoices,
   teamRow,
   updateContact,
   upsertContact,
-  withSegments,
 } from "./audience"
 import {
   contactInputValue,
@@ -37,10 +40,6 @@ import {
 } from "./tables/audience"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-
-const contactWithSegments = schema
-  .doc("contacts")
-  .extend({ segmentIds: v.array(v.id("segments")) })
 
 const inBatch = <T>(items: T[]) => {
   if (items.length > BATCH)
@@ -58,11 +57,10 @@ const contactFilters = v.object({
   to: v.optional(v.number()),
 })
 
-// Scan 1024 contacts; each kept row reserves 500 bounded membership reads at 1 KiB each.
+// Scan 1024 contacts; list rows hydrate nothing, so kept rows reserve nothing.
 export const CONTACT_SEARCH_BUDGET = {
   rows: 1024,
   bytes: 8 * 1024 * 1024,
-  bytesPerMatch: LIMITS.segments * 1024,
 }
 
 /** Newest first; substring search filters each bounded index page. */
@@ -140,13 +138,30 @@ export async function contactPage(
 }
 export const list = query({
   args: { ...contactFilters.fields, paginationOpts: paginationOptsValidator },
-  returns: paginationResultValidator(contactWithSegments),
+  returns: paginationResultValidator(schema.doc("contacts")),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const result = await contactPage(ctx, args)
+    return contactPage(ctx, args)
+  },
+})
+
+/** The contact's segments, most recently joined first, a page at a time. */
+export const segments = query({
+  args: { id: v.id("contacts"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(
+    schema.doc("segments").pick("_id", "name")
+  ),
+  handler: async (ctx, { id, paginationOpts }) => {
+    const contact = await ctx.db.get("contacts", id)
+    if (!contact) return { page: [], isDone: true, continueCursor: "" }
+    await requireTeam(ctx, contact.organizationId)
+    const result = await contactMemberships(ctx, id).paginate(paginationOpts)
     const page = []
-    for (const contact of result.page)
-      page.push(await withSegments(ctx, contact))
+    // A segment deleted a moment ago may still have memberships to purge.
+    for (const member of result.page) {
+      const segment = await ctx.db.get("segments", member.segmentId)
+      if (segment) page.push({ _id: segment._id, name: segment.name })
+    }
     return { ...result, page }
   },
 })
@@ -181,7 +196,7 @@ export const get = query({
   args: { id: v.string() },
   returns: v.union(
     v.null(),
-    contactWithSegments.extend({
+    schema.doc("contacts").extend({
       topics: v.array(
         v.object({
           topicId: v.id("topics"),
@@ -202,7 +217,7 @@ export const get = query({
       )
       .take(200)
     return {
-      ...(await withSegments(ctx, contact)),
+      ...contact,
       topics: choices.map(({ topicId, subscription }) => ({
         topicId,
         subscription,
@@ -229,9 +244,7 @@ export const upsert = mutation({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
     const inputs = inBatch(args.contacts)
-    const segmentIds = [...new Set(args.segmentIds)]
-    if (segmentIds.length > LIMITS.segments)
-      throw new ConvexError("Too many segments")
+    const segmentIds = segmentInput(args.segmentIds)
     for (const id of segmentIds)
       await teamRow(ctx, "segments", args.organizationId, id)
     if (args.csvImport) {
@@ -242,10 +255,6 @@ export const upsert = mutation({
         skipExisting: args.skipExisting ?? false,
       })
     }
-    if (inputs.length * Math.max(1, segmentIds.length) > 500)
-      throw new ConvexError(
-        "Too many contact and segment combinations. Use smaller batches."
-      )
     const properties = await listProperties(ctx, args.organizationId)
     const out = {
       created: 0,
@@ -254,6 +263,8 @@ export const upsert = mutation({
       createdIds: [] as Id<"contacts">[],
       errors: [] as string[],
     }
+    // Memberships past one transaction's share join in scheduled steps.
+    const budget = membershipBudget()
     for (const input of inputs) {
       try {
         const { id, result } = await upsertContact(
@@ -265,6 +276,7 @@ export const upsert = mutation({
             segmentIds,
             skipExisting: args.skipExisting,
             emit: !args.csvImport,
+            budget,
           }
         )
         out[result] += 1
@@ -360,7 +372,7 @@ export const addToSegments = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
-    const segmentIds = [...new Set(args.segmentIds)]
+    const segmentIds = segmentInput(args.segmentIds)
     for (const id of segmentIds)
       await teamRow(ctx, "segments", args.organizationId, id)
     await joinSegments(
@@ -411,6 +423,28 @@ export const subscribeToTopics = mutation({
         contact,
         topicIds.map((topicId) => ({ topicId, subscription: "subscribed" }))
       )
+    return null
+  },
+})
+
+/** Joins a contact to the rest of a request's segments; see `joinContact`. */
+export const joinRest = internalMutation({
+  args: {
+    contactId: v.id("contacts"),
+    segmentIds: v.array(v.id("segments")),
+    changed: v.boolean(),
+    emit: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { contactId, segmentIds, changed, emit }) => {
+    const contact = await ctx.db.get("contacts", contactId)
+    // The contact, or its whole team, was deleted in between.
+    if (!contact || (await retirement(ctx, contact.organizationId))) return null
+    await joinContact(ctx, contact, segmentIds, membershipBudget(), {
+      emit,
+      changed,
+      recheck: true,
+    })
     return null
   },
 })

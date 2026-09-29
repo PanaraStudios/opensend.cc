@@ -1,4 +1,5 @@
-import { includeSelected, matchingOptions } from "../lib/dashboard/options"
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { PAGE_SIZES } from "../lib/dashboard/pagination"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -8,14 +9,9 @@ import { query, mutation, internalMutation } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import schema from "./schema"
-import { CLEANUP_BATCH, LIMITS, requireRoom } from "./audience"
+import { CLEANUP_BATCH } from "./audience"
 import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
-import {
-  matchesSearch,
-  teamPage,
-  selectedOption,
-  configurationRows,
-} from "./lists"
+import { matchesSearch, teamPage, selectedOption } from "./lists"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -87,23 +83,9 @@ export const count = query({
   },
 })
 
-/** Every segment of the team, newest first, for pickers; the per-team
-    limit keeps it one read. */
-export const definitions = query({
-  args: { organizationId: v.string() },
-  returns: v.array(segmentValue),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId)
-    const segments = await configurationRows(
-      ctx,
-      "segments",
-      organizationId,
-      LIMITS.segments
-    )
-    return withSizes(ctx, segments)
-  },
-})
-
+/** Up to twenty segments for a picker, newest first or matching `search`,
+    plus the selected one wherever it falls. Never the whole list: a team
+    has any number of segments. */
 export const options = query({
   args: {
     organizationId: v.string(),
@@ -113,24 +95,55 @@ export const options = query({
   returns: v.array(segmentValue),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
-    const rows = await configurationRows(
-      ctx,
-      "segments",
-      organizationId,
-      LIMITS.segments
-    )
+    const rows = search?.trim()
+      ? await ctx.db
+          .query("segments")
+          .withSearchIndex("search_name", (q) =>
+            q.search("name", search.trim()).eq("organizationId", organizationId)
+          )
+          .take(OPTION_LIMIT)
+      : await ctx.db
+          .query("segments")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId)
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
     const selected = await selectedOption(
       ctx,
       "segments",
       organizationId,
       selectedId
     )
-    const choices = includeSelected(
-      matchingOptions(rows, search, (row) => [row.name]),
-      selected,
-      (row) => row._id
+    return withSizes(
+      ctx,
+      includeSelected(rows, selected, (row) => row._id)
     )
-    return withSizes(ctx, choices)
+  },
+})
+
+/** Which of `contactIds` (one list page) are in the segment. */
+export const memberIds = query({
+  args: { id: v.id("segments"), contactIds: v.array(v.id("contacts")) },
+  returns: v.array(v.id("contacts")),
+  handler: async (ctx, { id, contactIds }) => {
+    const segment = await ctx.db.get("segments", id)
+    if (!segment) return []
+    await requireTeam(ctx, segment.organizationId)
+    if (contactIds.length > Math.max(...PAGE_SIZES))
+      throw new ConvexError("Check one page of contacts at a time")
+    const members = []
+    for (const contactId of new Set(contactIds))
+      if (
+        await ctx.db
+          .query("segmentMembers")
+          .withIndex("by_contactId_and_segmentId", (q) =>
+            q.eq("contactId", contactId).eq("segmentId", id)
+          )
+          .unique()
+      )
+        members.push(contactId)
+    return members
   },
 })
 
@@ -206,7 +219,6 @@ export async function createSegment(
   args: { organizationId: string; name: string }
 ) {
   const name = segmentName(args.name)
-  await requireRoom(ctx, "segments", args.organizationId)
   return insertRow(ctx, "segments", {
     organizationId: args.organizationId,
     name,

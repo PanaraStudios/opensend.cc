@@ -104,7 +104,13 @@ export const audienceTables = {
     /** Deprecated: sizes come from the segment member counts. Cleared by
         `migrations:backfillCounts`; drop once every install has run it. */
     memberCount: v.optional(v.number()),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    /** Picker suggestions: a team has any number of segments. */
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    }),
   segmentMembers: defineTable({
     organizationId: v.string(),
     segmentId: v.id("segments"),
@@ -112,6 +118,8 @@ export const audienceTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_segmentId", ["segmentId"])
+    /** A contact's segments in the order it joined them. */
+    .index("by_contactId", ["contactId"])
     .index("by_contactId_and_segmentId", ["contactId", "segmentId"]),
   topics: defineTable({
     organizationId: v.string(),

@@ -13,7 +13,6 @@ import {
   type IndexKey,
 } from "convex-helpers/server/stream"
 import schema from "./schema"
-import { CONTACT_SEARCH_BUDGET } from "./contacts"
 import { TEMPLATE_SEARCH_BUDGET } from "./templates"
 import { LOG_SEARCH_BUDGET } from "./logs"
 import { filteredPage, matchesSearch } from "./lists"
@@ -203,12 +202,13 @@ test("hydration reservations bound dense matches even when endCursor overrides n
     rows,
     opts,
     () => true,
-    CONTACT_SEARCH_BUDGET,
+    TEMPLATE_SEARCH_BUDGET,
     "row"
   )
   expect(result.page).toHaveLength(
     Math.ceil(
-      CONTACT_SEARCH_BUDGET.bytes / (CONTACT_SEARCH_BUDGET.bytesPerMatch + 100)
+      TEMPLATE_SEARCH_BUDGET.bytes /
+        (TEMPLATE_SEARCH_BUDGET.bytesPerMatch + 100)
     )
   )
   expect(result.isDone).toBe(false)
@@ -218,20 +218,26 @@ test("hydration reservations bound dense matches even when endCursor overrides n
     rows,
     { ...opts, endCursor: result.splitCursor },
     () => true,
-    CONTACT_SEARCH_BUDGET,
+    TEMPLATE_SEARCH_BUDGET,
     "row"
   )
   const right = await filteredPage(
     rows,
     { ...opts, cursor: result.splitCursor!, endCursor: result.continueCursor },
     () => true,
-    CONTACT_SEARCH_BUDGET,
+    TEMPLATE_SEARCH_BUDGET,
     "row"
   )
   expect([...left.page, ...right.page]).toEqual(result.page)
   // Repeated splits/continuations must never lose or repeat a kept row.
   const loaded = await allPages((paginationOpts) =>
-    filteredPage(rows, paginationOpts, () => true, CONTACT_SEARCH_BUDGET, "row")
+    filteredPage(
+      rows,
+      paginationOpts,
+      () => true,
+      TEMPLATE_SEARCH_BUDGET,
+      "row"
+    )
   )
   expect(loaded).toEqual(Array.from({ length: 100 }, (_, i) => `row${i}`))
 })
@@ -713,7 +719,7 @@ test("key permission and template status filters still intersect substring searc
   expect(templates.map((template) => template.status)).toEqual(["published"])
 })
 
-test("rare contact among 10000 rows takes ten bounded scans and hydrates only the match", async () => {
+test("rare contact among 10000 rows takes ten bounded scans", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
     for (let i = 0; i < 10000; i++)
@@ -728,8 +734,6 @@ test("rare contact among 10000 rows takes ten bounded scans and hydrates only th
         updatedAt: 0,
       })
   })
-  const audience = await import("./audience")
-  const hydrate = vi.spyOn(audience, "withSegments")
   let requests = 0
   const rows = await allPages((paginationOpts) => {
     requests++
@@ -741,71 +745,6 @@ test("rare contact among 10000 rows takes ten bounded scans and hydrates only th
   })
   expect(rows.map((row) => row.email)).toEqual(["rare0@example.test"])
   expect(requests).toBe(10)
-  expect(hydrate).toHaveBeenCalledTimes(1)
-}, 20000)
-
-test("dense contact matches keep every membership while bounding hydration to 17 contacts", async () => {
-  const f = await fixture()
-  const { getDocumentSize } = await import("convex/values")
-  const { LIMITS } = await import("./audience")
-  await f.t.run(async (ctx) => {
-    const segments = []
-    for (let i = 0; i < LIMITS.segments; i++)
-      segments.push(
-        await ctx.db.insert("segments", {
-          organizationId: f.owner.team,
-          name: `Segment ${i}`,
-        })
-      )
-    for (let i = 0; i < 24; i++) {
-      const contactId = await ctx.db.insert("contacts", {
-        organizationId: f.owner.team,
-        email: `dense${i}@example.test`,
-        firstName: "",
-        lastName: "",
-        unsubscribed: false,
-        properties: {},
-        search: "",
-        updatedAt: 0,
-      })
-      for (const segmentId of segments)
-        await ctx.db.insert("segmentMembers", {
-          organizationId: f.owner.team,
-          contactId,
-          segmentId,
-        })
-    }
-    expect(
-      getDocumentSize((await ctx.db.query("segmentMembers").first())!)
-    ).toBeLessThan(1024)
-  })
-  await expect(
-    f.owner.client.mutation(api.segments.create, {
-      organizationId: f.owner.team,
-      name: "One too many",
-    })
-  ).rejects.toThrow("up to 500 segments")
-  const first = await f.owner.client.query(api.contacts.list, {
-    organizationId: f.owner.team,
-    search: "dense",
-    paginationOpts: { ...firstPage, numItems: 10000 },
-  })
-  expect(first.page).toHaveLength(17)
-  expect(
-    first.page.every((row) => row.segmentIds.length === LIMITS.segments)
-  ).toBe(true)
-  const rows = await allPages((paginationOpts) =>
-    f.owner.client.query(api.contacts.list, {
-      organizationId: f.owner.team,
-      search: "dense",
-      paginationOpts,
-    })
-  )
-  expect(rows).toHaveLength(24)
-  expect(new Set(rows.map((row) => row._id)).size).toBe(24)
-  expect(rows.every((row) => row.segmentIds.length === LIMITS.segments)).toBe(
-    true
-  )
 }, 20000)
 
 test("large source documents stop at the byte budget before the row budget", async () => {

@@ -4,7 +4,6 @@ import type {
   Broadcast,
   BroadcastStats,
   BroadcastStatus,
-  Contact,
   DashboardState,
   Domain,
   Segment,
@@ -149,18 +148,6 @@ export function emailFrom(
 ): string {
   const options = fromAddresses(domains)
   return item.from && options.includes(item.from) ? item.from : options[0]!
-}
-
-/** Who a send reaches: the segment (or everyone), minus the unsubscribed. */
-export function broadcastRecipients(
-  contacts: Contact[],
-  item: Pick<Broadcast, "segmentId">
-): Contact[] {
-  return contacts.filter(
-    (contact) =>
-      !contact.unsubscribed &&
-      (item.segmentId === null || contact.segmentIds.includes(item.segmentId))
-  )
 }
 
 /** Backfill for records persisted before `updatedAt` existed. */
