@@ -4,8 +4,8 @@ import { internalQuery } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { checkSpans, countsFor, type Counts } from "../metrics"
 import type { Id } from "../_generated/dataModel"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
-import { apiRoute } from "./route"
+import { callerValue, notFound, requireCaller, invalid } from "./caller"
+import { apiRoute, queryValues } from "./route"
 
 // Historical aggregates retain unique milestones, not repeated engagements or unsubscriptions.
 export const supportedMetrics = [
@@ -28,15 +28,6 @@ export const supportedMetrics = [
   "bounce_rate",
   "complaint_rate",
 ] as const
-const invalid = (message: string) => apiError(422, "validation_error", message)
-const values = (query: URLSearchParams, key: string) => [
-  ...new Set(
-    query
-      .getAll(key)
-      .flatMap((v) => v.split(","))
-      .filter(Boolean)
-  ),
-]
 const zero = (): Counts => ({
   sent: 0,
   delivered: 0,
@@ -134,25 +125,25 @@ export function metricsRequest(query: URLSearchParams) {
   const granularity = query.get("granularity") ?? "daily"
   if (!["hourly", "daily", "weekly", "monthly"].includes(granularity))
     throw invalid("Invalid granularity.")
-  const dimensions = values(query, "dimensions")
+  const dimensions = queryValues(query, "dimensions")
   for (const d of dimensions)
     if (!["period", "domain"].includes(d))
       throw invalid(
         `Unsupported metrics dimension: ${d}. Available dimensions are period and domain.`
       )
   for (const key of ["email_id", "broadcast_id"])
-    if (values(query, key).length)
+    if (queryValues(query, key).length)
       throw invalid(
         `Unsupported metrics filter: ${key}; historical aggregates are scoped by team and domain.`
       )
-  const requested = values(query, "metrics")
+  const requested = queryValues(query, "metrics")
   const metrics = requested.length ? requested : [...supportedMetrics]
   for (const metric of metrics)
     if (!(supportedMetrics as readonly string[]).includes(metric))
       throw invalid(
         `Unsupported metric: ${metric}. Historical aggregates retain unique opens/clicks; repeated events and unsubscriptions are unavailable.`
       )
-  const domains = values(query, "domain_id")
+  const domains = queryValues(query, "domain_id")
   if (domains.length > 100) throw invalid("At most 100 domain IDs are allowed.")
   const now = Date.now()
   const end = Math.min(date(query.get("end_date"), now), now)

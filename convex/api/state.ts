@@ -7,7 +7,7 @@ import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
 import { components, internal } from "../_generated/api"
 import { internalMutation } from "../_generated/server"
 import { apiKeyPermissionValue, httpMethodValue } from "../tables/api"
-import { callerValue, type Caller } from "./caller"
+import { callerValue, type Caller, callerProblem } from "./caller"
 import { touchKey } from "../apiKeys"
 import { patchEmail } from "../emailRows"
 import { writeLog } from "../logs"
@@ -133,10 +133,8 @@ export const begin = internalMutation({
         `Too many requests. You can only make ${API_RATE} requests per second. See rate limit response headers for more information.`,
         Math.max(1, Math.ceil(limit.retryAfter / 1000))
       )
-    if (
-      args.permission === "full_access" &&
-      caller.permission !== "full_access"
-    )
+    const problem = await callerProblem(ctx, caller, args.permission)
+    if (problem === "permission")
       return caller.apiKeyId
         ? fail(
             401,
@@ -148,19 +146,12 @@ export const begin = internalMutation({
             "invalid_permission",
             "Access token is missing required scopes."
           )
-    if (caller.domainId) {
-      const domain = await ctx.db.get("domains", caller.domainId)
-      if (
-        !domain ||
-        domain.deleted ||
-        domain.organizationId !== caller.organizationId
+    if (problem === "domain")
+      return fail(
+        403,
+        "restricted_api_key",
+        "The domain this API key sends from was removed, so it can no longer send email."
       )
-        return fail(
-          403,
-          "restricted_api_key",
-          "The domain this API key sends from was removed, so it can no longer send email."
-        )
-    }
     if (args.smtp) {
       if (!caller.apiKeyId)
         return fail(403, "invalid_api_key", "SMTP requires an API key")
@@ -236,12 +227,7 @@ export const finish = internalMutation({
       apiKeyId: caller.apiKeyId,
       oauthGrantId: caller.oauthGrantId,
     })
-    if (
-      log.emailId &&
-      log.method === "POST" &&
-      (log.path === "/emails" || log.path === "/smtp/emails") &&
-      log.status < 300
-    ) {
+    if (log.emailId && log.method === "POST" && log.status < 300) {
       const id = ctx.db.normalizeId("emails", log.emailId)
       const email = id ? await ctx.db.get("emails", id) : null
       if (email?.organizationId === caller.organizationId && !email.apiLogId)

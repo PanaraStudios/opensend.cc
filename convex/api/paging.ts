@@ -1,6 +1,6 @@
 import { v, type Value } from "convex/values"
 import { QueryStream } from "convex-helpers/server/stream"
-import { apiError } from "./caller"
+import { invalid } from "./caller"
 
 export const listArgs = {
   limit: v.number(),
@@ -20,8 +20,7 @@ export async function cursorPage<T extends Row>(
 ) {
   const cursor = page.before ?? page.after
   const row = cursor === undefined ? undefined : await anchor(cursor)
-  if (row === null)
-    throw apiError(422, "validation_error", `No item has the id ${cursor}.`)
+  if (row === null) throw invalid(`No item has the id ${cursor}.`)
   const before = page.before !== undefined
   const source = await scan(before ? "asc" : "desc")
   let rows: T[]

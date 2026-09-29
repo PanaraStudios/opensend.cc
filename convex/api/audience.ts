@@ -29,9 +29,10 @@ import {
   removeProperty,
   updateProperty,
 } from "../contactProperties"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import { callerValue, requireCaller, invalid, requireTeamRow } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   booleanField,
@@ -60,7 +61,6 @@ const rowValue = v.union(
   schema.doc("topics"),
   schema.doc("contactProperties")
 )
-const invalid = (message: string) => apiError(422, "validation_error", message)
 
 export async function own<T extends Resource>(
   ctx: QueryCtx,
@@ -68,26 +68,20 @@ export async function own<T extends Resource>(
   organizationId: string,
   value: string
 ): Promise<Doc<T>> {
-  const id = ctx.db.normalizeId(table, value)
-  const row = id
-    ? await ctx.db.get(table, id)
-    : table === "contacts"
-      ? await ctx.db
-          .query("contacts")
-          .withIndex("by_organizationId_and_email", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("email", value.trim().toLowerCase())
-          )
-          .unique()
-      : null
-  if (
-    !row ||
-    row.organizationId !== organizationId ||
-    ("deleting" in row && row.deleting)
-  )
-    throw notFound(nouns[table])
-  return row as Doc<T>
+  return requireTeamRow(ctx, table, organizationId, value, nouns[table], {
+    keep: (row) => !("deleting" in row && row.deleting),
+    fallback: async () =>
+      table === "contacts"
+        ? ((await ctx.db
+            .query("contacts")
+            .withIndex("by_organizationId_and_email", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("email", value.trim().toLowerCase())
+            )
+            .unique()) as Doc<T> | null)
+        : null,
+  })
 }
 
 export const list = internalQuery({
@@ -459,7 +453,7 @@ export function registerAudienceRoutes(http: HttpRouter) {
               ...listParams(query),
             })
         return {
-          body: { object: "list", ...page, data: page.data.map(summary) },
+          body: listBody(page, summary),
         }
       },
     })
@@ -711,23 +705,19 @@ function registerRelations(http: HttpRouter) {
           ...listParams(query),
         })
         return {
-          body: {
-            object: "list",
-            has_more: result.has_more,
-            data: result.data.map((row, index) =>
-              kind === "topics" && "description" in row
-                ? {
-                    id: row._id,
-                    name: row.name,
-                    description: row.description,
-                    subscription:
-                      "subscriptions" in result
-                        ? result.subscriptions[index]
-                        : undefined,
-                  }
-                : summary(row)
-            ),
-          },
+          body: listBody(result, (row, index) =>
+            kind === "topics" && "description" in row
+              ? {
+                  id: row._id,
+                  name: row.name,
+                  description: row.description,
+                  subscription:
+                    "subscriptions" in result
+                      ? result.subscriptions[index]
+                      : undefined,
+                }
+              : summary(row)
+          ),
         }
       },
     })

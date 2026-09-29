@@ -1,9 +1,15 @@
-import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { includeSelected } from "../lib/dashboard/options"
 import { broadcastRecipientProblem } from "./broadcastMetrics"
 import { prepareTracking } from "./tracking"
 import { retirement } from "./teamLifecycle"
 import { countValue, counters, deleteRow } from "./counts"
-import { filteredPage, matchesSearch, selectedOption } from "./lists"
+import {
+  filteredPage,
+  matchesSearch,
+  selectedOption,
+  readTeamRow,
+  searchOptions,
+} from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { EMAIL_STATUSES } from "./tables/emails"
 import { v, ConvexError, type Infer } from "convex/values"
@@ -26,7 +32,7 @@ import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { findRegion, requireTeam } from "./access"
-import { apiError } from "./api/caller"
+import { apiError, invalid, missing } from "./api/caller"
 import { emitEvent } from "./events"
 import {
   deleteEmailContent,
@@ -104,9 +110,6 @@ export const newEmailValue = v.object({
 })
 export type NewEmail = Infer<typeof newEmailValue>
 
-const invalid = (message: string) => apiError(422, "validation_error", message)
-const missing = (field: string) =>
-  apiError(422, "missing_required_field", `Missing \`${field}\` field.`)
 const bytes = (value: string | undefined) =>
   value ? new TextEncoder().encode(value).length : 0
 /** The message of a thrown error, plain or Resend-shaped. */
@@ -902,22 +905,7 @@ export const options = query({
   returns: v.array(schema.doc("emails")),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
-    const rows = search?.trim()
-      ? await ctx.db
-          .query("emails")
-          .withSearchIndex("search_search", (q) =>
-            q
-              .search("search", search.trim())
-              .eq("organizationId", organizationId)
-          )
-          .take(OPTION_LIMIT)
-      : await ctx.db
-          .query("emails")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
+    const rows = await searchOptions(ctx, "emails", organizationId, search)
     return includeSelected(
       rows,
       await selectedOption(ctx, "emails", organizationId, selectedId),
@@ -1045,10 +1033,10 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const emailId = ctx.db.normalizeId("emails", id)
-    const email = emailId ? await ctx.db.get("emails", emailId) : null
-    if (!email || email.organizationId === SYSTEM_SCOPE) return null
-    await requireTeam(ctx, email.organizationId)
+    const email = await readTeamRow(ctx, "emails", id, {
+      beforeAccess: (row) => row.organizationId !== SYSTEM_SCOPE,
+    })
+    if (!email) return null
     const content = await ctx.db
       .query("emailContents")
       .withIndex("by_emailId", (q) => q.eq("emailId", email._id))

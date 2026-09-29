@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -13,18 +14,16 @@ import {
   callerValue,
   requireCaller,
   notFound,
-  apiError,
   type Caller,
+  invalid,
 } from "./caller"
 import { cursorPage, listArgs } from "./paging"
-import { apiRoute, listParams } from "./route"
+import { listBody, apiRoute, listParams } from "./route"
 import { attachmentMetadata, MAX_RECEIVED_ATTACHMENTS } from "../received"
 import { downloadLink } from "../receivedDownloads"
 
-async function own(ctx: QueryCtx, caller: Caller, id: string) {
-  const normalized = ctx.db.normalizeId("receivedEmails", id)
-  const row = normalized ? await ctx.db.get("receivedEmails", normalized) : null
-  return row?.organizationId === caller.organizationId ? row : null
+function own(ctx: QueryCtx, caller: Caller, id: string) {
+  return teamRow(ctx, "receivedEmails", caller.organizationId, id)
 }
 const files = (ctx: QueryCtx, emailId: Doc<"receivedEmails">["_id"]) =>
   ctx.db
@@ -183,13 +182,9 @@ export function registerReceivedRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(({ email, attachments }) =>
-            summary(email, attachments)
-          ),
-        },
+        body: listBody(result, ({ email, attachments }) =>
+          summary(email, attachments)
+        ),
       }
     },
   })
@@ -200,7 +195,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
     handler: async (ctx, { caller, params, query }) => {
       const format = query.get("html_format") ?? "data_uri"
       if (format !== "cid" && format !== "data_uri")
-        throw apiError(422, "validation_error", "Invalid html_format")
+        throw invalid("Invalid html_format")
       const result = await ctx.runQuery(internal.api.received.get, {
         caller,
         id: params.id,

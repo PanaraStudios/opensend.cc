@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -7,7 +8,7 @@ import type { Doc } from "../_generated/dataModel"
 import schema from "../schema"
 import { callerValue, notFound, requireCaller } from "./caller"
 import { cursorPage, listArgs } from "./paging"
-import { apiRoute, apiTime, listParams } from "./route"
+import { listBody, apiRoute, apiTime, listParams } from "./route"
 import { responseForLog } from "../logs"
 import { storedBody } from "../../lib/dashboard/logs"
 
@@ -23,9 +24,7 @@ export const list = internalQuery({
     return cursorPage(
       page,
       async (id) => {
-        const logId = ctx.db.normalizeId("apiLogs", id)
-        const log = logId ? await ctx.db.get("apiLogs", logId) : null
-        return log?.organizationId === org ? log : null
+        return teamRow(ctx, "apiLogs", org, id)
       },
       (order) =>
         stream(ctx.db, schema)
@@ -46,9 +45,8 @@ export const get = internalQuery({
   ),
   handler: async (ctx, { caller, id }) => {
     await requireCaller(ctx, caller)
-    const logId = ctx.db.normalizeId("apiLogs", id)
-    const log = logId ? await ctx.db.get("apiLogs", logId) : null
-    if (!log || log.organizationId !== caller.organizationId) return null
+    const log = await teamRow(ctx, "apiLogs", caller.organizationId, id)
+    if (!log) return null
     const body = await ctx.db
       .query("apiLogBodies")
       .withIndex("by_logId", (q) => q.eq("logId", log._id))
@@ -89,11 +87,7 @@ export function registerLogRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: page.has_more,
-          data: page.data.map(summary),
-        },
+        body: listBody(page, summary),
       }
     },
   })

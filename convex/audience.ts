@@ -1,3 +1,4 @@
+import { teamRow as findTeamRow } from "./lists"
 import { ConvexError } from "convex/values"
 import { internal } from "./_generated/api"
 import { emitEvent } from "./events"
@@ -43,9 +44,8 @@ export async function teamRow<T extends "contacts" | "segments" | "topics">(
   organizationId: string,
   id: Id<T>
 ) {
-  const row = (await ctx.db.get(table, id)) as Doc<T> | null
-  if (!row || row.organizationId !== organizationId)
-    throw new ConvexError(`${NOUN[table]} not found`)
+  const row = await findTeamRow(ctx, table, organizationId, id)
+  if (!row) throw new ConvexError(`${NOUN[table]} not found`)
   return row
 }
 const NOUN = { contacts: "Contact", segments: "Segment", topics: "Topic" }

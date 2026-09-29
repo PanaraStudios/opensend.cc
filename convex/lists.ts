@@ -1,3 +1,4 @@
+import { OPTION_LIMIT } from "../lib/dashboard/options"
 import type { PaginationOptions, PaginationResult } from "convex/server"
 import {
   QueryStream,
@@ -7,7 +8,8 @@ import {
 } from "convex-helpers/server/stream"
 import schema from "./schema"
 import type { QueryCtx } from "./_generated/server"
-import type { Doc } from "./_generated/dataModel"
+import { requireTeam } from "./access"
+import type { Doc, TableNames } from "./_generated/dataModel"
 import { matchesNeedle, searchNeedle } from "../lib/dashboard/search"
 
 /* Shared by the dashboard's list queries. A list whose filters no index
@@ -147,27 +149,73 @@ export async function teamPage<T extends TeamTable>(
   )
 }
 
+export type TeamRowTable = {
+  [T in TableNames]: Doc<T> extends { organizationId: string } ? T : never
+}[TableNames]
+export type TeamRowOptions<T extends TeamRowTable> = {
+  keep?: (row: Doc<T>) => boolean
+  fallback?: () => Promise<Doc<T> | null>
+  /** Aliases usually apply only when the value is not a document ID. */
+  fallbackOnMissing?: boolean
+}
+
+export async function teamRow<T extends TeamRowTable>(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  id: string | undefined,
+  options: TeamRowOptions<T> = {}
+): Promise<Doc<T> | null> {
+  if (id === undefined) return null
+  const normalized = ctx.db.normalizeId(table, id)
+  let row = normalized ? await ctx.db.get(table, normalized) : null
+  if (row?.organizationId !== organizationId) row = null
+  if ((!normalized || (!row && options.fallbackOnMissing)) && options.fallback)
+    row = await options.fallback()
+  return row?.organizationId === organizationId &&
+    (!options.keep || options.keep(row))
+    ? row
+    : null
+}
+
 /** Resolve the current selection independently of the bounded suggestions. */
-export async function selectedOption<
-  T extends
-    | "emails"
-    | "contacts"
-    | "segments"
-    | "topics"
-    | "contactProperties"
-    | "templates"
-    | "automationEvents"
-    | "domains",
->(
+export function selectedOption<T extends TeamRowTable>(
   ctx: QueryCtx,
   table: T,
   organizationId: string,
   id: string | undefined
+) {
+  return teamRow(ctx, table, organizationId, id || undefined)
+}
+
+/** Dashboard detail access is checked after resolving the document's team. */
+export async function readTeamRow<T extends TeamRowTable>(
+  ctx: QueryCtx,
+  table: T,
+  id: string,
+  options: { beforeAccess?: (row: Doc<T>) => boolean } = {}
 ): Promise<Doc<T> | null> {
-  if (!id) return null
   const normalized = ctx.db.normalizeId(table, id)
   const row = normalized ? await ctx.db.get(table, normalized) : null
-  return row?.organizationId === organizationId ? row : null
+  if (!row || (options.beforeAccess && !options.beforeAccess(row))) return null
+  await requireTeam(ctx, row.organizationId)
+  return row
+}
+
+export async function hasTeamRows(
+  ctx: QueryCtx,
+  table: "webhooks" | "apiLogs" | "templates" | "apiKeys",
+  organizationId: string
+) {
+  await requireTeam(ctx, organizationId)
+  return (
+    (await ctx.db
+      .query(table)
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .first()) !== null
+  )
 }
 
 /** Topics have an enforced per-team write limit, so they load whole. */
@@ -184,4 +232,94 @@ export function configurationRows(
     )
     .order("desc")
     .take(limit)
+}
+
+/** Bounded full-text suggestions, otherwise the team's newest rows. */
+export function searchOptions<T extends "segments" | "templates" | "emails">(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  search?: string
+): Promise<Doc<T>[]>
+export async function searchOptions(
+  ctx: QueryCtx,
+  table: "segments" | "templates" | "emails",
+  organizationId: string,
+  search?: string
+) {
+  const needle = search?.trim()
+  const rows = needle
+    ? table === "segments"
+      ? ctx.db
+          .query("segments")
+          .withSearchIndex("search_name", (q) =>
+            q.search("name", needle).eq("organizationId", organizationId)
+          )
+      : table === "templates"
+        ? ctx.db
+            .query("templates")
+            .withSearchIndex("search_searchText", (q) =>
+              q
+                .search("searchText", needle)
+                .eq("organizationId", organizationId)
+            )
+        : ctx.db
+            .query("emails")
+            .withSearchIndex("search_search", (q) =>
+              q.search("search", needle).eq("organizationId", organizationId)
+            )
+    : ctx.db
+        .query(table)
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId)
+        )
+        .order("desc")
+  return rows.take(OPTION_LIMIT)
+}
+
+/** Prefix suggestions retain the caller's case normalization and index order. */
+export function prefixOptions<
+  T extends "contacts" | "automationEvents" | "domains",
+>(
+  ctx: QueryCtx,
+  table: T,
+  organizationId: string,
+  prefix: string
+): Promise<Doc<T>[]>
+export async function prefixOptions(
+  ctx: QueryCtx,
+  table: "contacts" | "automationEvents" | "domains",
+  organizationId: string,
+  prefix: string
+) {
+  const rows = prefix
+    ? table === "contacts"
+      ? ctx.db.query("contacts").withIndex("by_organizationId_and_email", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .gte("email", prefix)
+            .lt("email", prefix + "\uffff")
+        )
+      : table === "automationEvents"
+        ? ctx.db
+            .query("automationEvents")
+            .withIndex("by_organizationId_and_name", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("name", prefix)
+                .lt("name", prefix + "\uffff")
+            )
+        : ctx.db.query("domains").withIndex("by_organizationId_and_name", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .gte("name", prefix)
+              .lt("name", prefix + "\uffff")
+          )
+    : ctx.db
+        .query(table)
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId)
+        )
+        .order("desc")
+  return rows.take(OPTION_LIMIT)
 }

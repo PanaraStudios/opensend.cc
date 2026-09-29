@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
@@ -27,9 +28,20 @@ import {
   notFound,
   requireCaller,
   type Caller,
+  invalid,
 } from "./caller"
 import { cursorPage, listArgs } from "./paging"
-import { apiRoute, apiTime, listParams, objectBody, stringField } from "./route"
+import {
+  listBody,
+  apiRoute,
+  apiTime,
+  listParams,
+  objectBody,
+  stringField,
+  objectField,
+  arrayField,
+  stringListField,
+} from "./route"
 import {
   attachmentContentType,
   parseScheduledAt,
@@ -43,10 +55,8 @@ const MAX_ATTACHMENTS = 40 * 1024 * 1024
 export const MAX_SEND_BODY = MAX_ATTACHMENTS + 2 * 1024 * 1024
 
 /** A team email the caller may see, or null. */
-async function own(ctx: QueryCtx, caller: Caller, id: string) {
-  const emailId = ctx.db.normalizeId("emails", id)
-  const email = emailId ? await ctx.db.get("emails", emailId) : null
-  return email?.organizationId === caller.organizationId ? email : null
+function own(ctx: QueryCtx, caller: Caller, id: string) {
+  return teamRow(ctx, "emails", caller.organizationId, id)
 }
 
 export const authorizeSending = internalQuery({
@@ -217,34 +227,6 @@ export const change = internalMutation({
 
 /* ---------------------------------------------------------- the request */
 
-const invalid = (message: string) => apiError(422, "validation_error", message)
-
-/** A string or an array of strings, as Resend takes recipients. */
-function addresses(body: Record<string, unknown>, name: string) {
-  const value = body[name]
-  if (value === undefined || value === null) return []
-  const list = Array.isArray(value) ? value : [value]
-  if (!list.every((item) => typeof item === "string"))
-    throw invalid(
-      `The \`${name}\` field must be a string or an array of strings.`
-    )
-  return list as string[]
-}
-function objectField(body: Record<string, unknown>, name: string) {
-  const value = body[name]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "object" || Array.isArray(value))
-    throw invalid(`The \`${name}\` field must be an object.`)
-  return value as Record<string, unknown>
-}
-function arrayField(body: Record<string, unknown>, name: string) {
-  const value = body[name]
-  if (value === undefined || value === null) return []
-  if (!Array.isArray(value))
-    throw invalid(`The \`${name}\` field must be an array.`)
-  return value as unknown[]
-}
-
 type Attachment = {
   bytes?: Uint8Array
   path?: string
@@ -356,10 +338,10 @@ function parseEmail(item: unknown, now: number, batch: boolean) {
   const input: Omit<NewEmail, "attachments"> = {
     topicId: stringField(body, "topic_id"),
     from: stringField(body, "from"),
-    to: addresses(body, "to"),
-    cc: addresses(body, "cc"),
-    bcc: addresses(body, "bcc"),
-    replyTo: addresses(body, "reply_to"),
+    to: stringListField(body, "to") ?? [],
+    cc: stringListField(body, "cc") ?? [],
+    bcc: stringListField(body, "bcc") ?? [],
+    replyTo: stringListField(body, "reply_to") ?? [],
     subject: stringField(body, "subject"),
     html: stringField(body, "html"),
     text: stringField(body, "text"),
@@ -512,6 +494,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/emails/batch",
+    idempotencyHeaders: { "x-batch-validation": "strict" },
     permission: "sending",
     handler: async (ctx, { caller, body, headers }) => {
       const mode = headers.get("x-batch-validation") ?? "strict"
@@ -538,11 +521,7 @@ export function registerEmailRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: page.has_more,
-          data: page.data.map(summary),
-        },
+        body: listBody(page, summary),
       }
     },
   })

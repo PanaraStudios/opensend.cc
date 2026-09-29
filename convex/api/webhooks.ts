@@ -20,23 +20,29 @@ import {
   replayDelivery,
 } from "../webhooks"
 import { createWebhookSecret } from "../../lib/dashboard/ids"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import {
+  callerValue,
+  notFound,
+  requireCaller,
+  invalid,
+  missing,
+  requireTeamRow,
+} from "./caller"
 import { idempotent } from "./idempotency"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
   listParams,
   objectBody,
   stringField,
+  stringListField,
 } from "./route"
 
-async function own(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("webhooks", value)
-  const row = id ? await ctx.db.get("webhooks", id) : null
-  if (!row || row.organizationId !== organizationId) throw notFound("Webhook")
-  return row
+function own(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(ctx, "webhooks", organizationId, value, "Webhook")
 }
 async function event(ctx: QueryCtx, webhookId: Id<"webhooks">, value: string) {
   const id = ctx.db.normalizeId("webhookDeliveries", value)
@@ -47,19 +53,11 @@ async function event(ctx: QueryCtx, webhookId: Id<"webhooks">, value: string) {
 }
 function input(body: unknown, required = false) {
   const value = objectBody(body)
-  const events = value.events
-  if (required && events === undefined)
-    throw apiError(422, "missing_required_field", "Missing `events` field.")
-  if (
-    events !== undefined &&
-    (!Array.isArray(events) ||
-      !events.every((x): x is string => typeof x === "string"))
-  )
-    throw apiError(
-      422,
-      "validation_error",
-      "The `events` field must be an array of strings."
-    )
+  if (required && value.events === undefined) throw missing("events")
+  const events = stringListField(value, "events", {
+    arrayOnly: true,
+    rejectNull: true,
+  })
   const status = required
     ? undefined
     : enumField(value, "status", ["enabled", "disabled"])
@@ -137,7 +135,7 @@ export const change = internalMutation({
         }
         if (operation === "rotate") {
           if (!secret || !signingSecret)
-            throw apiError(422, "validation_error", "Missing signing secret.")
+            throw invalid("Missing signing secret.")
           await rotateWebhookSecret(ctx, row, secret)
           return { ...ref(row._id), signing_secret: signingSecret }
         }
@@ -312,11 +310,7 @@ const projectEvent = (row: Doc<"webhookDeliveries">) => ({
 })
 function forwardPage(query: URLSearchParams) {
   if (query.has("before"))
-    throw apiError(
-      422,
-      "validation_error",
-      "The `before` parameter is not supported for this endpoint."
-    )
+    throw invalid("The `before` parameter is not supported for this endpoint.")
   return listParams(query)
 }
 async function secret() {
@@ -356,7 +350,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
         caller,
         ...listParams(query),
       })
-      return { body: { object: "list", ...page, data: page.data.map(project) } }
+      return { body: listBody(page, project) }
     },
   })
   apiRoute(http, {
@@ -426,7 +420,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
         ...forwardPage(query),
       })
       return {
-        body: { object: "list", ...page, data: page.data.map(projectEvent) },
+        body: listBody(page, projectEvent),
       }
     },
   })
@@ -478,16 +472,12 @@ export function registerWebhookRoutes(http: HttpRouter) {
         ...forwardPage(query),
       })
       return {
-        body: {
-          object: "list",
-          ...page,
-          data: page.data.map((row) => ({
-            id: row._id,
-            http_status_code: row.httpStatusCode,
-            response: row.response,
-            sent_at: new Date(row.sentAt).toISOString(),
-          })),
-        },
+        body: listBody(page, (row) => ({
+          id: row._id,
+          http_status_code: row.httpStatusCode,
+          response: row.response,
+          sent_at: new Date(row.sentAt).toISOString(),
+        })),
       }
     },
   })

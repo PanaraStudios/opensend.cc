@@ -1,3 +1,4 @@
+import { teamRow } from "../lists"
 import { flattenSteps } from "../../lib/dashboard/automation"
 import { readGraph } from "../automationDefinition"
 import { aliasOwner } from "../templates"
@@ -22,27 +23,37 @@ import {
 } from "../automations"
 import { automationStatus, runStatus } from "../tables/automations"
 import { patchRow } from "../counts"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
 import {
+  callerValue,
+  notFound,
+  requireCaller,
+  invalid,
+  requireTeamRow,
+} from "./caller"
+import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
   listParams,
   objectBody,
   stringField,
+  queryValues,
 } from "./route"
 import { listArgs, cursorPage } from "./paging"
 import { idempotent } from "./idempotency"
 import { automationGraph, parseAutomationGraph } from "./automationGraph"
 
-async function own(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("automations", value)
-  const row = id ? await ctx.db.get("automations", id) : null
-  if (!row || row.organizationId !== organizationId || row.deleted)
-    throw notFound("Automation")
-  return row
+function own(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(
+    ctx,
+    "automations",
+    organizationId,
+    value,
+    "Automation",
+    { keep: (row) => !row.deleted }
+  )
 }
-const invalid = (message: string) => apiError(422, "validation_error", message)
 const reply = (id: string, kind: string) => ({
   object: "automation",
   id,
@@ -177,12 +188,13 @@ export const list = internalQuery({
     return cursorPage(
       page,
       async (value) => {
-        const id = ctx.db.normalizeId("automations", value)
-        const row = id ? await ctx.db.get("automations", id) : null
-        return row &&
-          row.organizationId === caller.organizationId &&
-          !row.deleted &&
-          (!status || row.status === status)
+        const row = await teamRow(
+          ctx,
+          "automations",
+          caller.organizationId,
+          value
+        )
+        return row && !row.deleted && (!status || row.status === status)
           ? row
           : null
       },
@@ -197,7 +209,9 @@ export const list = internalQuery({
                   .eq("status", status)
               )
             : rows.withIndex("by_organizationId_and_deleted", (q) =>
-                q.eq("organizationId", caller.organizationId).eq("deleted", false)
+                q
+                  .eq("organizationId", caller.organizationId)
+                  .eq("deleted", false)
               )
         ).order(order)
       }
@@ -221,10 +235,14 @@ export const runs = internalQuery({
     return cursorPage(
       page,
       async (value) => {
-        const rid = ctx.db.normalizeId("automationRuns", value)
-        const row = rid ? await ctx.db.get("automationRuns", rid) : null
+        const row = await teamRow(
+          ctx,
+          "automationRuns",
+          caller.organizationId,
+          value
+        )
         anchor =
-          row?.organizationId === caller.organizationId &&
+          row &&
           row.automationId === automation._id &&
           (!status || status.includes(row.status))
             ? row
@@ -296,13 +314,13 @@ export const run = internalQuery({
   handler: async (ctx, { caller, id, runId }) => {
     await requireCaller(ctx, caller)
     const automation = await own(ctx, caller.organizationId, id)
-    const rid = ctx.db.normalizeId("automationRuns", runId)
-    const row = rid ? await ctx.db.get("automationRuns", rid) : null
-    if (
-      !row ||
-      row.organizationId !== caller.organizationId ||
-      row.automationId !== automation._id
+    const row = await teamRow(
+      ctx,
+      "automationRuns",
+      caller.organizationId,
+      runId
     )
+    if (!row || row.automationId !== automation._id)
       throw notFound("Automation run")
     const steps = await ctx.db
       .query("automationRunSteps")
@@ -328,9 +346,7 @@ const runSummary = (row: Doc<"automationRuns">) => ({
   created_at: apiTime(row._creationTime),
 })
 function runStatuses(query: URLSearchParams) {
-  const values = [
-    ...new Set(query.getAll("status").flatMap((v) => v.split(","))),
-  ]
+  const values = queryValues(query, "status", true)
   return values.length
     ? values.map((status) =>
         enumField({ status }, "status", [
@@ -386,11 +402,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
         ),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(summary),
-        },
+        body: listBody(result, summary),
       }
     },
   })
@@ -424,11 +436,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
         status: runStatuses(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(runSummary),
-        },
+        body: listBody(result, runSummary),
       }
     },
   })

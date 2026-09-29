@@ -22,40 +22,32 @@ import {
   updateTemplate,
   type Input,
 } from "../templates"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import { callerValue, requireCaller, invalid, requireTeamRow } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
   listParams,
   objectBody,
   stringField,
+  stringListField,
 } from "./route"
 import type { Doc } from "../_generated/dataModel"
 
-async function own(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("templates", value)
-  const row = id
-    ? await ctx.db.get("templates", id)
-    : await aliasOwner(ctx, organizationId, value)
-  if (!row || row.organizationId !== organizationId) throw notFound("Template")
-  return row
+function own(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(ctx, "templates", organizationId, value, "Template", {
+    fallback: () => aliasOwner(ctx, organizationId, value),
+  })
 }
-const invalid = (message: string) => apiError(422, "validation_error", message)
 function inputFields(body: string, required = false): Input {
   const input = objectBody(JSON.parse(body))
-  const reply = input.reply_to
-  let replyToAddresses: string[] | undefined
-  if (reply !== undefined) {
-    if (typeof reply === "string") replyToAddresses = reply ? [reply] : []
-    else if (
-      Array.isArray(reply) &&
-      reply.every((address): address is string => typeof address === "string")
-    )
-      replyToAddresses = reply
-    else throw invalid("Invalid `reply_to` field.")
-  }
+  const replyToAddresses = stringListField(input, "reply_to", {
+    rejectNull: true,
+    message: "Invalid `reply_to` field.",
+    emptyString: true,
+  })
   let variableDefinitions: Input["variableDefinitions"]
   if (input.variables !== undefined) {
     if (!Array.isArray(input.variables) || input.variables.length > 50)
@@ -219,11 +211,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
         ...listParams(query),
       })
       return {
-        body: {
-          object: "list",
-          has_more: result.has_more,
-          data: result.data.map(summary),
-        },
+        body: listBody(result, summary),
       }
     },
   })

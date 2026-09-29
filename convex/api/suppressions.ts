@@ -16,10 +16,17 @@ import {
 } from "../suppressions"
 import { suppressionReasonValue } from "../tables/emails"
 import { isEmail } from "../../lib/dashboard/format"
-import { apiError, callerValue, notFound, requireCaller } from "./caller"
+import {
+  callerValue,
+  requireCaller,
+  invalid,
+  missing,
+  requireTeamRow,
+} from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import { idempotent } from "./idempotency"
 import {
+  listBody,
   apiRoute,
   apiTime,
   enumField,
@@ -28,16 +35,19 @@ import {
   stringField,
 } from "./route"
 
-async function own(ctx: QueryCtx, organizationId: string, value: string) {
-  const id = ctx.db.normalizeId("suppressions", value)
-  const row = id
-    ? await ctx.db.get("suppressions", id)
-    : await findSuppression(ctx, organizationId, value.trim().toLowerCase())
-  if (!row || row.organizationId !== organizationId)
-    throw notFound("Suppression")
-  return row
+function own(ctx: QueryCtx, organizationId: string, value: string) {
+  return requireTeamRow(
+    ctx,
+    "suppressions",
+    organizationId,
+    value,
+    "Suppression",
+    {
+      fallback: () =>
+        findSuppression(ctx, organizationId, value.trim().toLowerCase()),
+    }
+  )
 }
-const invalid = (message: string) => apiError(422, "validation_error", message)
 function email(value: string) {
   const normalized = value.trim().toLowerCase()
   if (!isEmail(normalized)) throw invalid("Invalid email address.")
@@ -49,8 +59,7 @@ function batch(body: unknown, remove = false) {
     throw invalid("Provide either `emails` or `ids`, but not both.")
   const field = remove && input.ids !== undefined ? "ids" : "emails"
   const values = input[field]
-  if (values === undefined)
-    throw apiError(422, "missing_required_field", `Missing \`${field}\` field.`)
+  if (values === undefined) throw missing(field)
   if (
     !Array.isArray(values) ||
     values.length < 1 ||
@@ -152,7 +161,9 @@ export const list = internalQuery({
         return (
           reason
             ? rows.withIndex("by_organizationId_and_reason", (q) =>
-                q.eq("organizationId", caller.organizationId).eq("reason", reason)
+                q
+                  .eq("organizationId", caller.organizationId)
+                  .eq("reason", reason)
               )
             : rows.withIndex("by_organizationId", (q) =>
                 q.eq("organizationId", caller.organizationId)
@@ -220,7 +231,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
               ? "complained"
               : origin,
       })
-      return { body: { object: "list", ...page, data: page.data.map(project) } }
+      return { body: listBody(page, project) }
     },
   })
   apiRoute(http, {

@@ -1,6 +1,6 @@
 import { enqueueImport } from "./contactImports"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
-import { selectedOption } from "./lists"
+import { selectedOption, readTeamRow, prefixOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -206,10 +206,8 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const normalized = ctx.db.normalizeId("contacts", id)
-    const contact = normalized ? await ctx.db.get("contacts", normalized) : null
+    const contact = await readTeamRow(ctx, "contacts", id)
     if (!contact) return null
-    await requireTeam(ctx, contact.organizationId)
     const choices = await ctx.db
       .query("topicSubscriptions")
       .withIndex("by_contactId_and_topicId", (q) =>
@@ -472,23 +470,7 @@ export const options = query({
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
     const prefix = search?.trim().toLowerCase() ?? ""
-    let rows = prefix
-      ? await ctx.db
-          .query("contacts")
-          .withIndex("by_organizationId_and_email", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .gte("email", prefix)
-              .lt("email", prefix + "\uffff")
-          )
-          .take(OPTION_LIMIT)
-      : await ctx.db
-          .query("contacts")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
+    let rows = await prefixOptions(ctx, "contacts", organizationId, prefix)
     if (prefix && rows.length < OPTION_LIMIT) {
       const names = await ctx.db
         .query("contacts")

@@ -17,7 +17,7 @@ import { internal } from "./_generated/api"
 import schema from "./schema"
 import { requireTeam } from "./access"
 import { countValue, counters, insertRow, deleteRow } from "./counts"
-import { filteredPage, matchesSearch } from "./lists"
+import { filteredPage, matchesSearch, readTeamRow } from "./lists"
 import {
   receivedMetadata,
   receivedContent,
@@ -108,12 +108,8 @@ export const get = query({
     })
   ),
   handler: async (ctx, { id }) => {
-    const normalized = ctx.db.normalizeId("receivedEmails", id)
-    const email = normalized
-      ? await ctx.db.get("receivedEmails", normalized)
-      : null
+    const email = await readTeamRow(ctx, "receivedEmails", id)
     if (!email) return null
-    await requireTeam(ctx, email.organizationId, "read")
     const content = await ctx.db
       .query("receivedContents")
       .withIndex("by_emailId", (q) => q.eq("emailId", email._id))

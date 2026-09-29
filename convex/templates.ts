@@ -1,5 +1,5 @@
-import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
-import { selectedOption } from "./lists"
+import { includeSelected } from "../lib/dashboard/options"
+import { selectedOption, hasTeamRows, teamRow, searchOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
 import {
@@ -299,16 +299,8 @@ export const count = query({
 export const hasAny = query({
   args: { organizationId: v.string() },
   returns: v.boolean(),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId)
-    const first = await ctx.db
-      .query("templates")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .first()
-    return first !== null
-  },
+  handler: (ctx, { organizationId }) =>
+    hasTeamRows(ctx, "templates", organizationId),
 })
 
 /** The team's newest templates, without their bodies: for pickers on other
@@ -322,22 +314,7 @@ export const options = query({
   returns: v.array(schema.doc("templates")),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
-    const rows = search?.trim()
-      ? await ctx.db
-          .query("templates")
-          .withSearchIndex("search_searchText", (q) =>
-            q
-              .search("searchText", search.trim())
-              .eq("organizationId", organizationId)
-          )
-          .take(OPTION_LIMIT)
-      : await ctx.db
-          .query("templates")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
+    const rows = await searchOptions(ctx, "templates", organizationId, search)
     return includeSelected(
       rows,
       await selectedOption(ctx, "templates", organizationId, selectedId),
@@ -359,11 +336,8 @@ export const get = query({
   ),
   handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId)
-    const normalized = ctx.db.normalizeId("templates", id)
-    const template = normalized
-      ? await ctx.db.get("templates", normalized)
-      : null
-    if (!template || template.organizationId !== organizationId) return null
+    const template = await teamRow(ctx, "templates", organizationId, id)
+    if (!template) return null
     const draft = await findDraft(ctx, template._id)
     return { template, html: draft?.html ?? "", content: draft?.content }
   },

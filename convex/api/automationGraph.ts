@@ -1,12 +1,9 @@
 import type { AutomationStep, AutomationRule } from "../../lib/dashboard/types"
 import { AUTOMATION_RULE_OPERATORS } from "../../lib/dashboard/types"
 import { readGraph } from "../automationDefinition"
-import { apiError } from "./caller"
+import { invalid } from "./caller"
 import { objectBody, stringField } from "./route"
 
-const invalid = (message: string): never => {
-  throw apiError(422, "validation_error", message)
-}
 const text = (o: Record<string, unknown>, key: string) =>
   stringField(o, key, true)!
 type WireStep = { key: string; type: string; config: Record<string, unknown> }
@@ -22,29 +19,29 @@ const valueText = (value: unknown): string => {
     const ref = (value as Record<string, unknown>).var
     if (typeof ref === "string" && /^(event|contact)\./.test(ref)) return ref
   }
-  return invalid(
+  throw invalid(
     "Unsupported automation value; use a scalar or an event/contact variable."
   )
 }
 function rule(value: unknown): AutomationRule {
   const r = objectBody(value)
   if (r.type !== "rule")
-    return invalid(
+    throw invalid(
       "Unsupported condition step: nested rule groups are not supported."
     )
   const operator = text(r, "operator")
   if (!(AUTOMATION_RULE_OPERATORS as readonly string[]).includes(operator))
-    return invalid(`Unsupported condition operator: ${operator}.`)
+    throw invalid(`Unsupported condition operator: ${operator}.`)
   if (
     ["gt", "gte", "lt", "lte"].includes(operator) &&
     (typeof r.value !== "number" || !Number.isFinite(r.value))
   )
-    return invalid("Numeric condition operators require a numeric value.")
+    throw invalid("Numeric condition operators require a numeric value.")
   if (
     ["contains", "starts_with", "ends_with"].includes(operator) &&
     typeof r.value !== "string"
   )
-    return invalid("Text condition operators require a string value.")
+    throw invalid("Text condition operators require a string value.")
   return {
     field: text(r, "field"),
     operator: operator as AutomationRule["operator"],
@@ -62,13 +59,13 @@ export function parseAutomationGraph(
     !stepsValue.length ||
     stepsValue.length > 101
   )
-    return invalid("Automations support a trigger and at most 100 steps.")
+    throw invalid("Automations support a trigger and at most 100 steps.")
   if (!Array.isArray(connectionsValue) || connectionsValue.length > 200)
-    return invalid("Invalid automation connections.")
+    throw invalid("Invalid automation connections.")
   const steps: WireStep[] = stepsValue.map((value) => {
     const row = objectBody(value)
     if (row.config === undefined || row.config === null)
-      return invalid("Every automation step requires a config object.")
+      throw invalid("Every automation step requires a config object.")
     if (
       ![
         "trigger",
@@ -81,7 +78,7 @@ export function parseAutomationGraph(
         "add_to_segment",
       ].includes(String(row.type))
     )
-      return invalid(`Unsupported automation step type: ${String(row.type)}.`)
+      throw invalid(`Unsupported automation step type: ${String(row.type)}.`)
     return {
       key: text(row, "key"),
       type: text(row, "type"),
@@ -93,15 +90,15 @@ export function parseAutomationGraph(
     byKey.size !== steps.length ||
     steps.some((s) => !s.key || s.key.length > 128)
   )
-    return invalid(
+    throw invalid(
       "Step keys must be unique nonempty strings of at most 128 characters."
     )
   const triggers = steps.filter((s) => s.type === "trigger")
   if (triggers.length !== 1)
-    return invalid("An automation must have exactly one trigger step.")
+    throw invalid("An automation must have exactly one trigger step.")
   const trigger = triggers[0]
   if (steps.some((s) => s.key === "start" && s !== trigger))
-    return invalid("The start key is reserved for the trigger.")
+    throw invalid("The start key is reserved for the trigger.")
   const connections: Connection[] = connectionsValue.map((value) => {
     const c = objectBody(value)
     return {
@@ -115,7 +112,7 @@ export function parseAutomationGraph(
   for (const c of connections) {
     const source = byKey.get(c.from)
     if (!source || !byKey.has(c.to) || c.to === trigger.key)
-      return invalid(
+      throw invalid(
         "Connections must reference existing steps and cannot target the trigger."
       )
     const allowed =
@@ -125,10 +122,10 @@ export function parseAutomationGraph(
           ? ["event_received", "timeout"]
           : ["default"]
     if (!allowed.includes(c.type))
-      return invalid(`Invalid connection type for ${source.type}: ${c.type}.`)
+      throw invalid(`Invalid connection type for ${source.type}: ${c.type}.`)
     const edges = outgoing.get(c.from) ?? new Map<string, string>()
     if (edges.has(c.type) || incoming.has(c.to))
-      return invalid(
+      throw invalid(
         "Unsupported automation graph: branching requires condition/wait steps; joins are not supported."
       )
     incoming.add(c.to)
@@ -139,7 +136,7 @@ export function parseAutomationGraph(
   const walk = (key: string | undefined, depth = 0): AutomationStep[] => {
     if (key === undefined) return []
     if (seen.has(key) || depth > 100)
-      return invalid("Automation graph contains a cycle or is too deep.")
+      throw invalid("Automation graph contains a cycle or is too deep.")
     seen.add(key)
     const s = byKey.get(key)!
     const c = s.config
@@ -157,9 +154,7 @@ export function parseAutomationGraph(
         break
       case "send_email": {
         if (c.subject !== undefined)
-          return invalid(
-            "Unsupported send_email step option: subject override."
-          )
+          throw invalid("Unsupported send_email step option: subject override.")
         const template = objectBody(c.template)
         const variables = Object.fromEntries(
           Object.entries(objectBody(template.variables)).map(([k, value]) => [
@@ -179,7 +174,7 @@ export function parseAutomationGraph(
       }
       case "wait_for_event":
         if (c.filter_rule !== undefined)
-          return invalid("Unsupported wait_for_event step option: filter_rule.")
+          throw invalid("Unsupported wait_for_event step option: filter_rule.")
         node = {
           key,
           type: s.type,
@@ -196,7 +191,8 @@ export function parseAutomationGraph(
             ? [rule(c)]
             : (c.type === "and" || c.type === "or") && Array.isArray(c.rules)
               ? c.rules.map(rule)
-              : invalid("Invalid condition step rule tree.")
+              : null
+        if (!rules) throw invalid("Invalid condition step rule tree.")
         node = {
           key,
           type: s.type,
@@ -214,7 +210,7 @@ export function parseAutomationGraph(
             ([k]) => !["first_name", "last_name", "unsubscribed"].includes(k)
           )
         )
-          return invalid("Invalid contact_update step field.")
+          throw invalid("Invalid contact_update step field.")
         entries.push(...Object.entries(objectBody(c.properties)))
         node = {
           key,
@@ -228,20 +224,20 @@ export function parseAutomationGraph(
         break
       }
       default:
-        return invalid(`Unsupported automation step type: ${s.type}.`)
+        throw invalid(`Unsupported automation step type: ${s.type}.`)
     }
     return [node, ...walk(next?.get("default"), depth + 1)]
   }
   const graph = JSON.stringify(walk(outgoing.get(trigger.key)?.get("default")))
   if (seen.size !== steps.length)
-    return invalid("Every automation step must be reachable from the trigger.")
+    throw invalid("Every automation step must be reachable from the trigger.")
   readGraph(graph)
   if (
     new TextEncoder().encode(JSON.stringify({ steps, connections }))
       .byteLength >
     64 * 1024
   )
-    return invalid("Automation definitions support at most 64 KiB.")
+    throw invalid("Automation definitions support at most 64 KiB.")
   return {
     trigger: text(trigger.config, "event_name"),
     graph,

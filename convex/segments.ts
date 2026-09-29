@@ -1,4 +1,4 @@
-import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
+import { includeSelected } from "../lib/dashboard/options"
 import { PAGE_SIZES } from "../lib/dashboard/pagination"
 import { v, ConvexError } from "convex/values"
 import {
@@ -11,7 +11,13 @@ import { requireTeam } from "./access"
 import schema from "./schema"
 import { CLEANUP_BATCH } from "./audience"
 import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
-import { matchesSearch, teamPage, selectedOption } from "./lists"
+import {
+  matchesSearch,
+  teamPage,
+  selectedOption,
+  readTeamRow,
+  searchOptions,
+} from "./lists"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 
@@ -95,20 +101,7 @@ export const options = query({
   returns: v.array(segmentValue),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
-    const rows = search?.trim()
-      ? await ctx.db
-          .query("segments")
-          .withSearchIndex("search_name", (q) =>
-            q.search("name", search.trim()).eq("organizationId", organizationId)
-          )
-          .take(OPTION_LIMIT)
-      : await ctx.db
-          .query("segments")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId)
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
+    const rows = await searchOptions(ctx, "segments", organizationId, search)
     const selected = await selectedOption(
       ctx,
       "segments",
@@ -151,10 +144,8 @@ export const get = query({
   args: { id: v.string() },
   returns: v.union(v.null(), segmentValue),
   handler: async (ctx, { id }) => {
-    const normalized = ctx.db.normalizeId("segments", id)
-    const segment = normalized ? await ctx.db.get("segments", normalized) : null
+    const segment = await readTeamRow(ctx, "segments", id)
     if (!segment) return null
-    await requireTeam(ctx, segment.organizationId)
     return (await withSizes(ctx, [segment]))[0]
   },
 })
