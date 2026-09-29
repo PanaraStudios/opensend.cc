@@ -32,6 +32,7 @@ export type ApiRouteOptions = {
   permission: "full_access" | "sending"
   /** Largest accepted request body, in bytes. Default 1 MB. */
   maxBody?: number
+  bodyFormat?: "multipart"
   source?: "smtp"
   handler: (ctx: ActionCtx, request: ApiRequest) => Promise<ApiReply>
 }
@@ -222,12 +223,43 @@ function dispatch(patterns: Pattern[]) {
     let body: unknown
     if (text.trim())
       try {
-        body = JSON.parse(text)
+        if (options.bodyFormat === "multipart") {
+          const contentType = request.headers.get("content-type") ?? ""
+          if (!contentType.toLowerCase().startsWith("multipart/form-data;"))
+            throw new Error("Expected multipart/form-data")
+          const form = await new Request(request.url, {
+            method: "POST",
+            headers: { "content-type": contentType },
+            body: text,
+          }).formData()
+          const fields: Record<string, unknown> = {}
+          const entries: [string, FormDataEntryValue][] = []
+          form.forEach((value, key) => entries.push([key, value]))
+          for (const [key, value] of entries.sort(([a], [b]) =>
+            a.localeCompare(b)
+          )) {
+            if (Object.hasOwn(fields, key))
+              throw new Error("Duplicate form field")
+            if (typeof value === "string") {
+              if (key === "file") throw new Error("Expected CSV file")
+              fields[key] = value
+            } else {
+              if (key !== "file") throw new Error("Unexpected file field")
+              fields.file = await value.text()
+            }
+          }
+          body = fields
+          // Multipart boundaries change between retries; hash the actual fields.
+          text = JSON.stringify(fields)
+        } else body = JSON.parse(text)
       } catch {
         problem = {
           statusCode: 400,
           name: "validation_error",
-          message: "The request body is not valid JSON.",
+          message:
+            options.bodyFormat === "multipart"
+              ? "The request body is not valid multipart form data."
+              : "The request body is not valid JSON.",
         }
       }
     const idempotencyKey =

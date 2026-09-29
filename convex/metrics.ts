@@ -38,12 +38,16 @@ export const metricsCountValue = v.object({
   Transient: v.number(),
   Undetermined: v.number(),
 })
-type Counts = Infer<typeof metricsCountValue>
+export type Counts = Infer<typeof metricsCountValue> & {
+  delivery_delayed?: number
+  failed?: number
+  suppressed?: number
+}
 
 /** Each span costs one aggregate read per counter whatever its length, so
     the span count is what bounds a query (the client asks for 31 days at a
     time); the overall range is kept to a year. */
-function checkSpans(spans: Infer<typeof span>[]) {
+export function checkSpans(spans: Infer<typeof span>[]) {
   if (!spans.length || spans.length > 31)
     throw new ConvexError(
       "Metrics support up to 31 days per query. Choose a shorter date range."
@@ -66,11 +70,15 @@ function checkSpans(spans: Infer<typeof span>[]) {
   }
 }
 
-async function countsFor(
+export async function countsFor(
   ctx: QueryCtx,
   args: { organizationId: string; domainId?: Id<"domains"> },
-  spans: Infer<typeof span>[]
+  spans: Infer<typeof span>[],
+  includeRest = false
 ): Promise<Counts[]> {
+  const types = includeRest
+    ? [...milestoneTypes, "delivery_delayed", "failed", "suppressed"]
+    : milestoneTypes
   const namespace = args.domainId
     ? JSON.stringify([args.organizationId, args.domainId])
     : args.organizationId
@@ -94,9 +102,7 @@ async function countsFor(
     ),
     metricCounter.aggregate.countBatch(
       ctx,
-      spans.flatMap((range) =>
-        milestoneTypes.map((type) => bounds(type, range))
-      )
+      spans.flatMap((range) => types.map((type) => bounds(type, range)))
     ),
   ])
   return spans.map((_, i) => {
@@ -107,10 +113,7 @@ async function countsFor(
       ])
     )
     const reached = Object.fromEntries(
-      milestoneTypes.map((type, j) => [
-        type,
-        milestones[i * milestoneTypes.length + j],
-      ])
+      types.map((type, j) => [type, milestones[i * types.length + j]])
     ) as Omit<Counts, "status">
     // Like Resend, rates are out of emails actually sent: a suppressed,
     // failed, canceled or still-queued email never reached SES.

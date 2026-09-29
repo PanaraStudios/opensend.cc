@@ -201,7 +201,8 @@ export async function setTopicChoices(
   choices: {
     topicId: Id<"topics">
     subscription: Doc<"topicSubscriptions">["subscription"]
-  }[]
+  }[],
+  options: { emit?: boolean } = {}
 ) {
   let changed = false
   for (const choice of choices) {
@@ -213,7 +214,7 @@ export async function setTopicChoices(
     const next = await patchRow(ctx, "contacts", contact._id, {
       updatedAt: Date.now(),
     })
-    await emitContact(ctx, "contact.updated", next)
+    if (options.emit !== false) await emitContact(ctx, "contact.updated", next)
   }
   return changed
 }

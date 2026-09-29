@@ -11,6 +11,8 @@
 import type * as access from "../access.js";
 import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
+import type * as api_automationGraph from "../api/automationGraph.js";
+import type * as api_automations from "../api/automations.js";
 import type * as api_broadcasts from "../api/broadcasts.js";
 import type * as api_caller from "../api/caller.js";
 import type * as api_domains from "../api/domains.js";
@@ -18,8 +20,10 @@ import type * as api_emails from "../api/emails.js";
 import type * as api_events from "../api/events.js";
 import type * as api_http from "../api/http.js";
 import type * as api_idempotency from "../api/idempotency.js";
+import type * as api_imports from "../api/imports.js";
 import type * as api_keys from "../api/keys.js";
 import type * as api_logs from "../api/logs.js";
+import type * as api_metrics from "../api/metrics.js";
 import type * as api_paging from "../api/paging.js";
 import type * as api_received from "../api/received.js";
 import type * as api_route from "../api/route.js";
@@ -152,6 +156,8 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;
+  "api/automationGraph": typeof api_automationGraph;
+  "api/automations": typeof api_automations;
   "api/broadcasts": typeof api_broadcasts;
   "api/caller": typeof api_caller;
   "api/domains": typeof api_domains;
@@ -159,8 +165,10 @@ declare const fullApi: ApiFromModules<{
   "api/events": typeof api_events;
   "api/http": typeof api_http;
   "api/idempotency": typeof api_idempotency;
+  "api/imports": typeof api_imports;
   "api/keys": typeof api_keys;
   "api/logs": typeof api_logs;
+  "api/metrics": typeof api_metrics;
   "api/paging": typeof api_paging;
   "api/received": typeof api_received;
   "api/route": typeof api_route;
@@ -317,6 +325,7 @@ export declare const components: {
   inboundPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"inboundPool">;
   sendPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"sendPool">;
   webhookPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"webhookPool">;
+  contactImportCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"contactImportCounts">;
   contactCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"contactCounts">;
   segmentCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"segmentCounts">;
   segmentMemberCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"segmentMemberCounts">;

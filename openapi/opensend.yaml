@@ -3775,6 +3775,684 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/OAuthInsufficientScope"
+  "/emails/metrics":
+    get:
+      operationId: emails/metrics
+      tags:
+      - Emails
+      summary: Retrieve account-level email metrics
+      parameters:
+      - name: start_date
+        in: query
+        schema:
+          type: string
+        description: The start of the date range, as an ISO 8601 date or datetime. Must
+          be on or before `end_date`. Defaults to 6 days before `end_date`.
+      - name: end_date
+        in: query
+        schema:
+          type: string
+        description: The end of the date range, as an ISO 8601 date or datetime. Values
+          in the future are clamped to the current time. Defaults to now.
+      - name: timezone
+        in: query
+        schema:
+          type: string
+          default: UTC
+        description: The IANA timezone (e.g. `America/New_York`) used to bucket periods
+          when `period` is in `dimensions`.
+      - name: granularity
+        in: query
+        schema:
+          type: string
+          enum:
+          - hourly
+          - daily
+          - weekly
+          - monthly
+          default: daily
+        description: The bucket size used when `period` is in `dimensions`. The date
+          range can't produce more than 10,000 periods at the chosen granularity.
+      - name: metrics
+        in: query
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - received
+            - delivered
+            - complained
+            - suppressed
+            - bounced
+            - bounced_transient
+            - bounced_permanent
+            - bounced_undetermined
+            - opened
+            - clicked
+            - unsubscribed
+            - delivery_delayed
+            - failed
+            - sent
+            - unique_opened
+            - unique_clicked
+            - delivery_rate
+            - open_rate
+            - click_rate
+            - bounce_rate
+            - complaint_rate
+            - unsubscribe_rate
+        description: List of metrics to include in the response. Defaults to all metrics.
+          Accepts a comma-separated value, the parameter repeated, or a mix of both.
+      - name: dimensions
+        in: query
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - period
+            - domain
+            - email
+            - broadcast
+        description: List of dimensions to break the response down by. `email` cannot
+          be combined with `broadcast`. Defaults to `[]`, returning a single `totals`
+          row for the whole range, with no `data`. Accepts a comma-separated value,
+          the parameter repeated, or a mix of both.
+      - name: domain_id
+        in: query
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+        description: List of sending domain IDs to restrict the response to, up to 100.
+          Accepts a comma-separated value, the parameter repeated, or a mix of both.
+      - name: email_id
+        in: query
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+        description: List of email IDs to restrict the response to, up to 100. Cannot
+          be combined with the `broadcast` dimension or `broadcast_id`. Accepts a comma-separated
+          value, the parameter repeated, or a mix of both.
+      - name: broadcast_id
+        in: query
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+        description: List of broadcast IDs to restrict the response to, up to 100. Cannot
+          be combined with the `email` dimension or `email_id`. Accepts a comma-separated
+          value, the parameter repeated, or a mix of both.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GetEmailsMetricsResponse"
+          headers: &1
+            ratelimit-limit:
+              "$ref": "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              "$ref": "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              "$ref": "#/components/headers/ratelimit_reset"
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+      description: Existing team/domain aggregates at 15-minute precision, at most 31
+        domain-period spans and a one-year range. Supports period/domain dimensions,
+        domain_id filters and unique milestones. Email/broadcast breakdowns and filters,
+        repeated opened/clicked events, delivery_delayed and unsubscribe metrics return
+        422. Omitted metrics selects all supported metrics. See docs/rest-api.md.
+  "/contacts/imports":
+    post:
+      operationId: contacts/create-import
+      tags:
+      - Contacts
+      summary: Create a contact import
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              "$ref": "#/components/schemas/CreateContactImportOptions"
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CreateContactImportResponseSuccess"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+      parameters:
+      - "$ref": "#/components/parameters/IdempotencyKey"
+      description: Accepts multipart CSV. Uses durable dashboard jobs with webhook suppression.
+        Defaults to upsert per current Resend docs (the snapshot said skip). Existing
+        self-hosted job limits apply.
+    get:
+      operationId: contacts/list-imports
+      tags:
+      - Contacts
+      summary: Retrieve a list of contact imports
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - queued
+          - in_progress
+          - completed
+          - failed
+        description: Filter contact imports by status.
+      - "$ref": "#/components/parameters/PaginationLimit"
+      - "$ref": "#/components/parameters/PaginationAfter"
+      - "$ref": "#/components/parameters/PaginationBefore"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListContactImportsResponseSuccess"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/contacts/imports/{id}":
+    get:
+      operationId: contacts/get-import
+      tags:
+      - Contacts
+      summary: Retrieve a single contact import
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The Contact Import ID.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GetContactImportResponseSuccess"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations":
+    post:
+      operationId: automations/create
+      tags:
+      - Automations
+      summary: Create an automation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateAutomationRequest"
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CreateAutomationResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+      parameters:
+      - "$ref": "#/components/parameters/IdempotencyKey"
+      description: 'Uses the dashboard runtime: at most 100 steps plus one trigger,
+        64 KiB graph and depth 12. Unsupported step types/options, cycles and graph
+        joins return 422. See docs/rest-api.md.'
+    get:
+      operationId: automations/list
+      tags:
+      - Automations
+      summary: Retrieve a list of automations
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - enabled
+          - disabled
+        description: Filter automations by status.
+      - "$ref": "#/components/parameters/PaginationLimit"
+      - "$ref": "#/components/parameters/PaginationAfter"
+      - "$ref": "#/components/parameters/PaginationBefore"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListAutomationsResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations/{automation_id}":
+    get:
+      operationId: automations/get
+      tags:
+      - Automations
+      summary: Retrieve a single automation
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Automation"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+    patch:
+      operationId: automations/update
+      tags:
+      - Automations
+      summary: Update an automation
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/PatchAutomationRequest"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PatchAutomationResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+    delete:
+      operationId: automations/remove
+      tags:
+      - Automations
+      summary: Delete an automation
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeleteAutomationResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations/{automation_id}/duplicate":
+    post:
+      operationId: automations/duplicate
+      tags:
+      - Automations
+      summary: Duplicate an automation
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      - "$ref": "#/components/parameters/IdempotencyKey"
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DuplicateAutomationResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations/{automation_id}/stop":
+    post:
+      operationId: automations/stop
+      tags:
+      - Automations
+      summary: Stop an automation
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      - "$ref": "#/components/parameters/IdempotencyKey"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/StopAutomationResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations/{automation_id}/runs":
+    get:
+      operationId: automations/list-runs
+      tags:
+      - Automations
+      summary: Retrieve a list of automation runs
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Filter runs by status. Comma-separated list of: running, completed,
+          failed, cancelled.'
+      - "$ref": "#/components/parameters/PaginationLimit"
+      - "$ref": "#/components/parameters/PaginationAfter"
+      - "$ref": "#/components/parameters/PaginationBefore"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListAutomationRunsResponse"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
+  "/automations/{automation_id}/runs/{run_id}":
+    get:
+      operationId: automations/get-run
+      tags:
+      - Automations
+      summary: Retrieve a single automation run
+      parameters:
+      - name: automation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation.
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The ID of the automation run.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AutomationRun"
+          headers: *1
+        '400':
+          "$ref": "#/components/responses/Error400"
+        '401':
+          "$ref": "#/components/responses/Error401"
+        '403':
+          "$ref": "#/components/responses/Error403"
+        '404':
+          "$ref": "#/components/responses/Error404"
+        '409':
+          "$ref": "#/components/responses/Error409"
+        '413':
+          "$ref": "#/components/responses/Error413"
+        '422':
+          "$ref": "#/components/responses/Error422"
+        '429':
+          "$ref": "#/components/responses/Error429"
+        '500':
+          "$ref": "#/components/responses/Error500"
+      x-opensend-permission: full_access
 components:
   headers:
     ratelimit_limit:
@@ -7913,4 +8591,726 @@ components:
           - insufficient_scope
       required:
       - error
+      additionalProperties: false
+    GetEmailsMetricsResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: metrics
+        start_date:
+          type: string
+          description: The start of the requested date range, as an ISO 8601 datetime.
+          example: '2026-07-01T00:00:00.000Z'
+        end_date:
+          type: string
+          description: The end of the requested date range, as an ISO 8601 datetime.
+          example: '2026-07-08T00:00:00.000Z'
+        metrics:
+          type: array
+          description: The metrics included in the response.
+          items:
+            type: string
+        dimensions:
+          type: array
+          description: The dimensions the response is broken down by.
+          items:
+            type: string
+            enum:
+            - period
+            - domain
+            - email
+            - broadcast
+        granularity:
+          type: string
+          enum:
+          - hourly
+          - daily
+          - weekly
+          - monthly
+          description: The bucket size used when `period` is in `dimensions`.
+        totals:
+          type: object
+          description: The requested metrics, totaled over the whole date range.
+          additionalProperties:
+            type: number
+        data:
+          type: array
+          description: One row per unique combination of the requested `dimensions`. Omitted
+            when `dimensions` is empty.
+          items:
+            "$ref": "#/components/schemas/EmailMetricsDataRow"
+      required:
+      - object
+      - start_date
+      - end_date
+      - metrics
+      - dimensions
+      - granularity
+      - totals
+      additionalProperties: false
+    EmailMetricsDataRow:
+      type: object
+      description: A single breakdown row. Which dimension fields are present depends
+        on the requested `dimensions`; which metric fields are present depends on the
+        requested `metrics`.
+      properties:
+        period:
+          type: string
+          description: Present when `period` is in `dimensions`.
+        domain_id:
+          type: string
+          description: Present when `domain` is in `dimensions`.
+        domain_name:
+          type: string
+          description: Present when `domain` is in `dimensions`.
+        email_id:
+          type: string
+          description: Present when `email` is in `dimensions`.
+        broadcast_id:
+          type: string
+          description: Present when `broadcast` is in `dimensions`.
+        broadcast_name:
+          type: string
+          description: Present when `broadcast` is in `dimensions`.
+      additionalProperties:
+        type: number
+    CreateContactImportOptions:
+      type: object
+      required:
+      - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Multipart CSV file; 1 MiB request limit, at most 500 rows and 500
+            KB parsed job data.
+        column_map:
+          type: string
+          description: JSON-encoded field-to-column map. Custom properties support string
+            and number; boolean is not supported by the shared contact model.
+          example: '{"email":"Email","first_name":"First Name","last_name":"Last Name","unsubscribed":"Unsubscribed","properties":{"plan":{"column":"Plan","type":"string"}}}'
+        on_conflict:
+          type: string
+          enum:
+          - upsert
+          - skip
+          default: upsert
+          description: Strategy to use when an imported contact already exists.
+          example: skip
+        segments:
+          type: string
+          description: JSON-encoded array of segments to add imported contacts to.
+          example: '[{"id":"78261eea-8f8b-4381-83c6-79fa7120f1cf"}]'
+        topics:
+          type: string
+          description: JSON-encoded array of topic subscriptions to apply to imported
+            contacts. Each `subscription` must be `opt_in` or `opt_out`.
+          example: '[{"id":"b6d24b8e-af0b-4c3c-be0c-359bbd97381e","subscription":"opt_in"}]'
+    CreateContactImportResponseSuccess:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: contact_import
+        id:
+          type: string
+          description: Unique identifier for the created contact import.
+          example: 479e3145-dd38-476b-932c-529ceb705947
+      required:
+      - object
+      - id
+      additionalProperties: false
+    ListContactImportsResponseSuccess:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: list
+        has_more:
+          type: boolean
+          description: Indicates if there are more results available.
+          example: false
+        data:
+          type: array
+          description: Array containing contact imports.
+          items:
+            "$ref": "#/components/schemas/ContactImport"
+      required:
+      - object
+      - has_more
+      - data
+      additionalProperties: false
+    ContactImport:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: contact_import
+        id:
+          type: string
+          description: Unique identifier for the contact import.
+          example: 479e3145-dd38-476b-932c-529ceb705947
+        status:
+          type: string
+          enum:
+          - queued
+          - in_progress
+          - completed
+          - failed
+          description: Current status of the contact import.
+          example: completed
+        created_at:
+          type: string
+          description: Timestamp indicating when the contact import was created.
+          example: '2023-10-06 23:47:56.678+00'
+        completed_at:
+          type:
+          - string
+          - 'null'
+          description: Timestamp indicating when the contact import completed.
+          example: '2023-10-06 23:50:56.678+00'
+        counts:
+          "$ref": "#/components/schemas/ContactImportCounts"
+      required:
+      - object
+      - id
+      - status
+      - created_at
+      - completed_at
+      - counts
+      additionalProperties: false
+    ContactImportCounts:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Total number of rows processed by the import.
+          example: 100
+        created:
+          type: integer
+          description: Number of contacts created by the import.
+          example: 80
+        updated:
+          type: integer
+          description: Number of contacts updated by the import.
+          example: 10
+        skipped:
+          type: integer
+          description: Number of rows skipped by the import.
+          example: 5
+        failed:
+          type: integer
+          description: Number of rows that failed during the import.
+          example: 5
+      required:
+      - total
+      - created
+      - updated
+      - skipped
+      - failed
+      additionalProperties: false
+    GetContactImportResponseSuccess:
+      allOf:
+      - "$ref": "#/components/schemas/ContactImport"
+    CreateAutomationRequest:
+      type: object
+      required:
+      - name
+      - steps
+      - connections
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The name of the automation.
+        status:
+          type: string
+          enum:
+          - enabled
+          - disabled
+          default: disabled
+          description: The initial status of the automation. Defaults to `disabled`.
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 101
+          description: The steps that compose the automation workflow. Must include at
+            least one `trigger` step.
+          items:
+            "$ref": "#/components/schemas/AutomationStep"
+        connections:
+          type: array
+          description: The connections between steps in the automation graph.
+          items:
+            "$ref": "#/components/schemas/AutomationConnection"
+    AutomationStep:
+      type: object
+      description: A step in an automation workflow. The `config` object varies based
+        on the step `type`.
+      required:
+      - key
+      - type
+      - config
+      properties:
+        key:
+          type: string
+          description: A unique key for this step within the automation graph.
+        type:
+          type: string
+          enum:
+          - trigger
+          - send_email
+          - delay
+          - wait_for_event
+          - condition
+          - contact_update
+          - contact_delete
+          - add_to_segment
+          description: The type of automation step.
+        config:
+          type: object
+          description: 'Configuration for the step. Shape depends on `type`: - **trigger**:
+            `{ event_name: string }` - **send_email**: `{ template: { id: string, variables?:
+            object }, subject?: string, from?: string, reply_to?: string }` - **delay**:
+            `{ duration: string }` — a human-readable duration (e.g. `"30 minutes"`) -
+            **wait_for_event**: `{ event_name: string, timeout?: string, filter_rule?:
+            object }` — `timeout` is a human-readable duration (e.g. `"1 hour"`) - **condition**:
+            A rule tree with `type` (`rule`, `and`, `or`), `field`, `operator`, and `value`
+            - **contact_update**: `{ first_name?: string|object, last_name?: string|object,
+            unsubscribed?: boolean|object, properties?: object }` - **contact_delete**:
+            `{}` - **add_to_segment**: `{ segment_id: string }`
+
+            '
+    AutomationConnection:
+      type: object
+      description: A connection between two steps in the automation graph.
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: string
+          description: The `key` of the source step.
+        to:
+          type: string
+          description: The `key` of the target step.
+        type:
+          type: string
+          enum:
+          - default
+          - condition_met
+          - condition_not_met
+          - timeout
+          - event_received
+          default: default
+          description: The type of connection. Defaults to `default`.
+    CreateAutomationResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the created automation.
+      required:
+      - object
+      - id
+      additionalProperties: false
+    ListAutomationsResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: list
+        has_more:
+          type: boolean
+          description: Indicates if there are more results available.
+        data:
+          type: array
+          description: Array of automations.
+          items:
+            "$ref": "#/components/schemas/AutomationListItem"
+      required:
+      - object
+      - has_more
+      - data
+      additionalProperties: false
+    AutomationListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the automation.
+        name:
+          type: string
+          description: The name of the automation.
+        status:
+          type: string
+          enum:
+          - enabled
+          - disabled
+          description: The current status of the automation.
+        created_at:
+          type: string
+          description: The date and time the automation was created.
+          example: '2023-10-06 23:47:56.678+00'
+        updated_at:
+          type: string
+          description: The date and time the automation was last updated.
+          example: '2023-10-06 23:47:56.678+00'
+      required:
+      - id
+      - name
+      - status
+      - created_at
+      - updated_at
+      additionalProperties: false
+    Automation:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the automation.
+        name:
+          type: string
+          description: The name of the automation.
+        status:
+          type: string
+          enum:
+          - enabled
+          - disabled
+          description: The current status of the automation.
+        created_at:
+          type: string
+          description: The date and time the automation was created.
+          example: '2023-10-06 23:47:56.678+00'
+        updated_at:
+          type: string
+          description: The date and time the automation was last updated.
+          example: '2023-10-06 23:47:56.678+00'
+        steps:
+          type: array
+          description: The steps in the active version of the automation.
+          items:
+            "$ref": "#/components/schemas/AutomationStepResponse"
+        connections:
+          type: array
+          description: The connections between steps in the active version of the automation.
+          items:
+            "$ref": "#/components/schemas/AutomationConnection"
+      required:
+      - object
+      - id
+      - name
+      - status
+      - created_at
+      - updated_at
+      - steps
+      - connections
+      additionalProperties: false
+    AutomationStepResponse:
+      type: object
+      description: A step as returned when retrieving an automation.
+      properties:
+        key:
+          type: string
+          description: The unique key of this step within the automation graph.
+        type:
+          type: string
+          enum:
+          - trigger
+          - send_email
+          - delay
+          - wait_for_event
+          - condition
+          - contact_update
+          - contact_delete
+          - add_to_segment
+          description: The type of automation step.
+        config:
+          type: object
+          description: 'Configuration for the step. Shape depends on `type`. For `delay`
+            steps, config contains `{ duration: string }` with a human-readable duration
+            (e.g. `"30 minutes"`). For `wait_for_event` steps, config contains `{ event_name:
+            string, timeout?: string, filter_rule?: object }` where `timeout` is a human-readable
+            duration.
+
+            '
+      required:
+      - key
+      - type
+      - config
+      additionalProperties: false
+    PatchAutomationRequest:
+      type: object
+      description: 'At least one of `name`, `status`, or `steps` and `connections` must
+        be provided. When updating the workflow graph, both `steps` and `connections`
+        must be provided together.
+
+        '
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The name of the automation.
+        status:
+          type: string
+          enum:
+          - enabled
+          - disabled
+          description: The status of the automation.
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 101
+          description: The steps that compose the automation workflow. Must be provided
+            together with `connections`.
+          items:
+            "$ref": "#/components/schemas/AutomationStep"
+        connections:
+          type: array
+          description: The connections between steps in the automation graph. Must be
+            provided together with `steps`.
+          items:
+            "$ref": "#/components/schemas/AutomationConnection"
+    PatchAutomationResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the updated automation.
+      required:
+      - object
+      - id
+      additionalProperties: false
+    DeleteAutomationResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the deleted automation.
+        deleted:
+          type: boolean
+          description: Indicates whether the automation was successfully deleted.
+          example: true
+      required:
+      - object
+      - id
+      - deleted
+      additionalProperties: false
+    DuplicateAutomationResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the duplicated automation.
+      required:
+      - object
+      - id
+      additionalProperties: false
+    StopAutomationResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation
+        id:
+          type: string
+          description: The ID of the stopped automation.
+        status:
+          type: string
+          description: The status of the automation after stopping.
+          example: disabled
+      required:
+      - object
+      - id
+      - status
+      additionalProperties: false
+    ListAutomationRunsResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: list
+        has_more:
+          type: boolean
+          description: Indicates if there are more results available.
+        data:
+          type: array
+          description: Array of automation runs.
+          items:
+            "$ref": "#/components/schemas/AutomationRunListItem"
+      required:
+      - object
+      - has_more
+      - data
+      additionalProperties: false
+    AutomationRunListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the automation run.
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - failed
+          - cancelled
+          description: The current status of the automation run.
+        started_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the run started.
+          example: '2023-10-06 23:47:56.678+00'
+        completed_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the run completed.
+          example: '2023-10-06 23:47:56.678+00'
+        created_at:
+          type: string
+          description: The date and time the run was created.
+          example: '2023-10-06 23:47:56.678+00'
+      required:
+      - id
+      - status
+      - started_at
+      - completed_at
+      - created_at
+      additionalProperties: false
+    AutomationRun:
+      type: object
+      properties:
+        object:
+          type: string
+          description: Type of the response object.
+          example: automation_run
+        id:
+          type: string
+          description: The ID of the automation run.
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - failed
+          - cancelled
+          description: The current status of the automation run.
+        started_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the run started.
+          example: '2023-10-06 23:47:56.678+00'
+        completed_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the run completed.
+          example: '2023-10-06 23:47:56.678+00'
+        created_at:
+          type: string
+          description: The date and time the run was created.
+          example: '2023-10-06 23:47:56.678+00'
+        steps:
+          type: array
+          description: The steps executed in this run, sorted in graph order.
+          items:
+            "$ref": "#/components/schemas/AutomationRunStep"
+      required:
+      - object
+      - id
+      - status
+      - started_at
+      - completed_at
+      - created_at
+      - steps
+      additionalProperties: false
+    AutomationRunStep:
+      type: object
+      description: A step execution within an automation run.
+      properties:
+        key:
+          type: string
+          description: The key of the automation step.
+        type:
+          type: string
+          enum:
+          - trigger
+          - send_email
+          - delay
+          - wait_for_event
+          - condition
+          - contact_update
+          - contact_delete
+          - add_to_segment
+          description: The type of automation step.
+        status:
+          type: string
+          description: The execution status of this step.
+        started_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the step started executing.
+          example: '2023-10-06 23:47:56.678+00'
+        completed_at:
+          type:
+          - string
+          - 'null'
+          description: The date and time the step completed executing.
+          example: '2023-10-06 23:47:56.678+00'
+        output:
+          type:
+          - object
+          - 'null'
+          description: The output produced by the step, if any.
+        error:
+          type:
+          - object
+          - 'null'
+          description: The error produced by the step, if any.
+        created_at:
+          type: string
+          description: The date and time the step record was created.
+          example: '2023-10-06 23:47:56.678+00'
+      required:
+      - key
+      - type
+      - status
+      - started_at
+      - completed_at
+      - output
+      - error
+      - created_at
       additionalProperties: false
