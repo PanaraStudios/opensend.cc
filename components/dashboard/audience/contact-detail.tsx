@@ -144,9 +144,7 @@ function SegmentMembership({ contactId }: { contactId: string }) {
               ))}
             </ul>
           )}
-          {pagination.hasMore || pagination.loaded > pagination.pageSize ? (
-            <ListPagination {...pagination} noun="segment" />
-          ) : null}
+          <ListPagination {...pagination} embedded noun="segment" />
           {!search &&
           available.length === 0 &&
           suggested.length < OPTION_LIMIT ? (
