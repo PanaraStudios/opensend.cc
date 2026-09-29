@@ -17,7 +17,6 @@ Usage: install.sh [install|upgrade [version]|uninstall|help] [options]
   --api-domain HOST    API hostname (OPENSEND_API_DOMAIN; api.<domain>)
   --hooks-domain HOST  Callback hostname (OPENSEND_HOOKS_DOMAIN; hooks.<domain>)
   --caddy yes|no       HTTPS proxy (OPENSEND_CADDY; yes)
-  --email EMAIL        Optional ACME email (OPENSEND_EMAIL)
   --yes                Accept defaults (OPENSEND_YES=1)
   --local              Localhost URLs without Caddy (OPENSEND_LOCAL=1)
   --source-url URL     Compose asset base URL (OPENSEND_SOURCE_URL)
@@ -37,7 +36,6 @@ domain=${OPENSEND_DOMAIN:-}
 api_domain=${OPENSEND_API_DOMAIN:-}
 hooks_domain=${OPENSEND_HOOKS_DOMAIN:-}
 caddy=${OPENSEND_CADDY:-yes}
-email=${OPENSEND_EMAIL:-}
 yes=${OPENSEND_YES:-0}
 local=${OPENSEND_LOCAL:-0}
 source_url=${OPENSEND_SOURCE_URL:-}
@@ -51,12 +49,12 @@ if [ "$command" = upgrade ] && [ "$#" -gt 0 ]; then
 fi
 while [ "$#" -gt 0 ]; do
   case $1 in
-    --dir|--version|--domain|--api-domain|--hooks-domain|--caddy|--email|--source-url)
+    --dir|--version|--domain|--api-domain|--hooks-domain|--caddy|--source-url)
       [ "$#" -ge 2 ] || die "Missing value for $1"
       case $1 in
         --dir) dir=$2 ;; --version) version=$2 ;; --domain) domain=$2 ;;
         --api-domain) api_domain=$2 ;; --hooks-domain) hooks_domain=$2 ;;
-        --caddy) caddy=$2 ;; --email) email=$2 ;; --source-url) source_url=$2 ;;
+        --caddy) caddy=$2 ;; --source-url) source_url=$2 ;;
       esac
       shift 2 ;;
     --yes) yes=1; shift ;; --local) local=1; shift ;;
@@ -201,8 +199,6 @@ if [ "$local" != 1 ]; then
   done
 fi
 if [ "$caddy" = yes ]; then
-  prompt 'ACME email (optional)' "$email"; email=$answer
-  [ -z "$email" ] || warn 'The release Caddyfile does not support an ACME email override; using its default account settings.'
   if command -v ss >/dev/null 2>&1; then
     listeners=$(ss -ltn 2>/dev/null || true)
   elif command -v lsof >/dev/null 2>&1; then

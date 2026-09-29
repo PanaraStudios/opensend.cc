@@ -29,8 +29,7 @@ directory, read its verification links with `docker compose run --rm migrate log
 Use `--dir PATH`, `--version TAG` to pin a release, `--caddy no` for an existing
 HTTPS proxy, `--local` for localhost testing without Caddy, or `--no-start` to
 prepare configuration. `--source-url URL` overrides the release asset base URL.
-`--email` is accepted, but the current Caddyfile uses its default ACME account
-settings and has no email override. `help` lists the corresponding `OPENSEND_*`
+`help` lists the corresponding `OPENSEND_*`
 environment variables. Image overrides (`APP_IMAGE`, `MIGRATE_IMAGE`, `SMTP_IMAGE`,
 `CONVEX_IMAGE`), ports (`APP_PORT`, `CONVEX_PORT`, `CONVEX_SITE_PORT`) and
 `COMPOSE_PROJECT_NAME` are saved in `.env`.
