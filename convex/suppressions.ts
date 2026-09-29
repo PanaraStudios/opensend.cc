@@ -17,7 +17,8 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
+import { emitEvent } from "./events"
+import type { Doc, Id } from "./_generated/dataModel"
 import { findTenant, requireTeam } from "./access"
 import schema from "./schema"
 import { regions, tenantProvisioned } from "./ses/contracts"
@@ -29,7 +30,7 @@ type Reason = Infer<typeof suppressionReasonValue>
 
 /* ------------------------------------------------ writes (the only ones) */
 
-const findSuppression = (
+export const findSuppression = (
   ctx: QueryCtx,
   organizationId: string,
   email: string
@@ -46,26 +47,76 @@ export async function upsertSuppression(
   ctx: MutationCtx,
   organizationId: string,
   address: string,
-  reason: Reason
+  reason: Reason,
+  sourceId?: Id<"emails">
 ) {
   const email = address.trim().toLowerCase()
   if (!isEmail(email)) throw new ConvexError("Enter a valid email")
   const existing = await findSuppression(ctx, organizationId, email)
   if (existing) {
     if (existing.reason !== reason)
-      await patchRow(ctx, "suppressions", existing._id, { reason })
+      await patchRow(ctx, "suppressions", existing._id, { reason, sourceId })
     return existing._id
   }
-  return insertRow(ctx, "suppressions", {
+  const id = await insertRow(ctx, "suppressions", {
     organizationId,
     email,
     reason,
+    sourceId,
     search: searchWords(email),
   })
+  const row = (await ctx.db.get("suppressions", id))!
+  await emitEvent(
+    ctx,
+    organizationId,
+    "suppression.added",
+    suppressionData(row)
+  )
+  return id
 }
 
-export const deleteSuppression = (ctx: MutationCtx, id: Id<"suppressions">) =>
-  deleteRow(ctx, "suppressions", id)
+export function suppressionData(row: Doc<"suppressions">) {
+  return {
+    id: row._id,
+    email: row.email,
+    origin:
+      row.reason === "bounced"
+        ? "bounce"
+        : row.reason === "complained"
+          ? "complaint"
+          : "manual",
+    source_id: row.sourceId ?? null,
+    created_at: new Date(row._creationTime).toISOString(),
+  }
+}
+
+export async function deleteSuppression(
+  ctx: MutationCtx,
+  id: Id<"suppressions">
+) {
+  const row = await ctx.db.get("suppressions", id)
+  if (!row) return
+  await deleteRow(ctx, "suppressions", id)
+  await emitEvent(
+    ctx,
+    row.organizationId,
+    "suppression.removed",
+    suppressionData(row)
+  )
+}
+
+export async function removeSuppression(
+  ctx: MutationCtx,
+  row: Doc<"suppressions">
+) {
+  await deleteSuppression(ctx, row._id)
+  if (row.reason !== "manual")
+    await ctx.scheduler.runAfter(0, internal.emailSend.releaseSuppression, {
+      organizationId: row.organizationId,
+      email: row.email,
+    })
+  return null
+}
 
 /* ---------------------------------------------------------------- reads */
 
@@ -192,13 +243,7 @@ export const remove = mutation({
     const row = await ctx.db.get("suppressions", id)
     if (!row) return null
     await requireTeam(ctx, row.organizationId, "write")
-    await deleteSuppression(ctx, id)
-    if (row.reason !== "manual")
-      await ctx.scheduler.runAfter(0, internal.emailSend.releaseSuppression, {
-        organizationId: row.organizationId,
-        email: row.email,
-      })
-    return null
+    return removeSuppression(ctx, row)
   },
 })
 
@@ -208,10 +253,11 @@ export const record = internalMutation({
     organizationId: v.string(),
     email: v.string(),
     reason: suppressionReasonValue,
+    sourceId: v.optional(v.id("emails")),
   },
   returns: v.id("suppressions"),
-  handler: (ctx, { organizationId, email, reason }) =>
-    upsertSuppression(ctx, organizationId, email, reason),
+  handler: (ctx, { organizationId, email, reason, sourceId }) =>
+    upsertSuppression(ctx, organizationId, email, reason, sourceId),
 })
 
 /** The team's provisioned tenants, one per region at most. */

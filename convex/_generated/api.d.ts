@@ -24,7 +24,9 @@ import type * as api_paging from "../api/paging.js";
 import type * as api_received from "../api/received.js";
 import type * as api_route from "../api/route.js";
 import type * as api_state from "../api/state.js";
+import type * as api_suppressions from "../api/suppressions.js";
 import type * as api_templates from "../api/templates.js";
+import type * as api_webhooks from "../api/webhooks.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as audience from "../audience.js";
 import type * as auth from "../auth.js";
@@ -165,7 +167,9 @@ declare const fullApi: ApiFromModules<{
   "api/received": typeof api_received;
   "api/route": typeof api_route;
   "api/state": typeof api_state;
+  "api/suppressions": typeof api_suppressions;
   "api/templates": typeof api_templates;
+  "api/webhooks": typeof api_webhooks;
   apiKeys: typeof apiKeys;
   audience: typeof audience;
   auth: typeof auth;
@@ -328,6 +332,7 @@ export declare const components: {
   apiKeyLogCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"apiKeyLogCounts">;
   webhookCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"webhookCounts">;
   deliveryCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"deliveryCounts">;
+  webhookAttemptCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"webhookAttemptCounts">;
   domainCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"domainCounts">;
   exportCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"exportCounts">;
   emailCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"emailCounts">;

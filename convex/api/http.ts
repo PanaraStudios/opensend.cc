@@ -1,3 +1,5 @@
+import { registerSuppressionRoutes } from "./suppressions"
+import { registerWebhookRoutes } from "./webhooks"
 import { registerReceivedRoutes } from "./received"
 import type { HttpRouter } from "convex/server"
 import { registerAudienceRoutes } from "./audience"
@@ -19,4 +21,6 @@ export function registerApiRoutes(http: HttpRouter) {
   registerLogRoutes(http)
   registerAudienceRoutes(http)
   registerTemplateRoutes(http)
+  registerSuppressionRoutes(http)
+  registerWebhookRoutes(http)
 }

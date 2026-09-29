@@ -28,6 +28,7 @@ async function post(target: {
   messageId: string
   payload: Record<string, unknown>
   secret: string
+  previousSecret?: string
 }) {
   const problem = webhookEndpointError(target.endpoint)
   if (problem) throw new Error(problem)
@@ -40,6 +41,7 @@ async function post(target: {
       timestamp: Math.floor(Date.now() / 1000),
       body,
       secret: target.secret,
+      previousSecret: target.previousSecret,
     }),
     body,
     // Svix counts a redirect as a failure; following one could also lead

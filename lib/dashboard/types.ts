@@ -78,6 +78,8 @@ export const WEBHOOK_EVENTS = [
   "domain.created",
   "domain.updated",
   "domain.deleted",
+  "suppression.added",
+  "suppression.removed",
 ] as const
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]

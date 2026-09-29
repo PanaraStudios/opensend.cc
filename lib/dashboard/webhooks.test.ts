@@ -28,9 +28,13 @@ function delivery(patch: Partial<WebhookDelivery>): WebhookDelivery {
 }
 
 describe("WEBHOOK_EVENT_GROUPS", () => {
-  it("puts every event in exactly one group", () => {
+  it("keeps the existing dashboard groups while REST also supports suppression events", () => {
     const grouped = WEBHOOK_EVENT_GROUPS.flatMap((group) => group.events)
-    assert.deepEqual([...grouped].sort(), [...WEBHOOK_EVENTS].sort())
+    // Wave 8 adds backend subscriptions without changing the dashboard UI.
+    const visible = WEBHOOK_EVENTS.filter(
+      (event) => !event.startsWith("suppression.")
+    )
+    assert.deepEqual([...grouped].sort(), [...visible].sort())
   })
 })
 

@@ -49,6 +49,7 @@ export const TEAM_TABLES = [
   "domains",
   "sesTenants",
   "contactImports",
+  "webhookAttempts",
 ] as const
 
 export const CHILD_TABLES = [

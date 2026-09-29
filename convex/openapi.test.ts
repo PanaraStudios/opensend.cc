@@ -14,7 +14,7 @@ import {
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import type { ApiRouteOptions } from "./api/route"
-import { api, components } from "./_generated/api"
+import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { patchRow } from "./counts"
 
@@ -409,6 +409,111 @@ describe("OpenAPI contract", () => {
       400
     )
     expect(revoked.error).toBe("invalid_request")
+  })
+
+  test("all webhook and suppression endpoints validate their real response bodies", async () => {
+    vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-encryption-key-".repeat(3))
+    const f = await setup()
+    const hook = await response(
+      "/webhooks",
+      "POST",
+      await f.call("/webhooks", "POST", {
+        endpoint: "https://hooks.example.com/events",
+        events: ["email.sent"],
+      }),
+      201
+    )
+    await response("/webhooks", "GET", await f.call("/webhooks"))
+    await response(
+      "/webhooks/{webhook_id}",
+      "GET",
+      await f.call(`/webhooks/${hook.id}`)
+    )
+    await response(
+      "/webhooks/{webhook_id}",
+      "PATCH",
+      await f.call(`/webhooks/${hook.id}`, "PATCH", {
+        events: ["email.sent", "suppression.added"],
+      })
+    )
+    await response(
+      "/webhooks/{webhook_id}/signing-secret/rotate",
+      "POST",
+      await f.call(`/webhooks/${hook.id}/signing-secret/rotate`, "POST")
+    )
+    const eventId = await f.t.run((ctx) =>
+      ctx.db.insert("events", {
+        organizationId: f.owner.team,
+        type: "email.sent",
+        data: { email_id: "mail" },
+      })
+    )
+    await f.t.mutation(internal.webhooks.deliverEvent, { id: eventId })
+    const events = await response(
+      "/webhooks/{webhook_id}/events",
+      "GET",
+      await f.call(`/webhooks/${hook.id}/events`)
+    )
+    const id = events.data[0].id
+    await response(
+      "/webhooks/{webhook_id}/events/{event_id}",
+      "GET",
+      await f.call(`/webhooks/${hook.id}/events/${id}`)
+    )
+    await f.t.mutation(internal.webhooks.recordAttempt, {
+      id,
+      attempt: 0,
+      status: 200,
+      durationMs: 10,
+      response: "OK",
+    })
+    await response(
+      "/webhooks/{webhook_id}/events/{event_id}/attempts",
+      "GET",
+      await f.call(`/webhooks/${hook.id}/events/${id}/attempts`)
+    )
+    await response(
+      "/webhooks/{webhook_id}/events/{event_id}/replay",
+      "POST",
+      await f.call(`/webhooks/${hook.id}/events/${id}/replay`, "POST")
+    )
+    await response(
+      "/webhooks/{webhook_id}",
+      "DELETE",
+      await f.call(`/webhooks/${hook.id}`, "DELETE")
+    )
+    const suppression = await response(
+      "/suppressions",
+      "POST",
+      await f.call("/suppressions", "POST", { email: "contract@example.com" }),
+      201
+    )
+    await response("/suppressions", "GET", await f.call("/suppressions"))
+    await response(
+      "/suppressions/{suppression}",
+      "GET",
+      await f.call(`/suppressions/${suppression.id}`)
+    )
+    await response(
+      "/suppressions/{suppression}",
+      "DELETE",
+      await f.call("/suppressions/contract%40example.com", "DELETE")
+    )
+    const batch = await response(
+      "/suppressions/batch/add",
+      "POST",
+      await f.call("/suppressions/batch/add", "POST", {
+        emails: ["batch@example.com"],
+      }),
+      201
+    )
+    await response(
+      "/suppressions/batch/remove",
+      "POST",
+      await f.call("/suppressions/batch/remove", "POST", {
+        ids: [batch.data[0].id],
+      })
+    )
   })
 
   test("response schemas reject missing required fields, wrong types and undocumented fields", () => {

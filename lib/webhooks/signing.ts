@@ -22,17 +22,25 @@ async function sign(secret: string, content: string) {
 }
 
 /** The `svix-signature` header: `v1,<base64 HMAC-SHA256>` over
-    `${id}.${timestamp}.${body}`. A rotation replaces the secret at once, so
-    there is only ever one signature. */
+    `${id}.${timestamp}.${body}`, including the previous key during rotation. */
 export async function webhookSignature(input: {
   id: string
   /** Unix seconds, as sent in `svix-timestamp`. */
   timestamp: number
   body: string
   secret: string
+  previousSecret?: string
 }) {
   const content = `${input.id}.${input.timestamp}.${input.body}`
-  return `v1,${await sign(input.secret, content)}`
+  const secrets = [
+    input.secret,
+    ...(input.previousSecret ? [input.previousSecret] : []),
+  ]
+  return (
+    await Promise.all(
+      secrets.map(async (secret) => `v1,${await sign(secret, content)}`)
+    )
+  ).join(" ")
 }
 
 /** The headers Svix sends with every attempt. The id stays the same across
@@ -43,6 +51,7 @@ export async function webhookHeaders(input: {
   timestamp: number
   body: string
   secret: string
+  previousSecret?: string
 }) {
   return {
     "content-type": "application/json",

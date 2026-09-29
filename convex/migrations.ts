@@ -65,6 +65,7 @@ export const countApiKeys = backfill("apiKeys")
 export const countApiLogs = backfill("apiLogs")
 export const countWebhooks = backfill("webhooks")
 export const countWebhookDeliveries = backfill("webhookDeliveries")
+export const countWebhookAttempts = backfill("webhookAttempts")
 export const countDomains = backfill("domains")
 /** Segments also drop the member count their aggregate replaced. */
 export const countSegments = migrations.define({
@@ -110,6 +111,7 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countApiLogs,
   internal.migrations.countWebhooks,
   internal.migrations.countWebhookDeliveries,
+  internal.migrations.countWebhookAttempts,
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
 ])

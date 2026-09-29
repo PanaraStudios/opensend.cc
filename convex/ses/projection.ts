@@ -166,6 +166,7 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
           organizationId: current.organizationId,
           email: address,
           reason: "bounced",
+          sourceId: current._id,
         })
   }
   if (status === "complained") {
@@ -176,6 +177,7 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
           organizationId: current.organizationId,
           email: address,
           reason: "complained",
+          sourceId: current._id,
         })
   }
   if (status === "failed")

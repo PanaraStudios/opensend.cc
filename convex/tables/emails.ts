@@ -130,6 +130,7 @@ export const emailTables = {
     /** Lowercased; one row per team and address. */
     email: v.string(),
     reason: suppressionReasonValue,
+    sourceId: v.optional(v.id("emails")),
     /** The address as words, for the list's search. */
     search: v.string(),
   })
