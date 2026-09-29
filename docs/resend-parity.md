@@ -1,6 +1,6 @@
 # Resend parity — after wave 8 (8A existing routes, 8B webhooks/suppressions, 8C automations/imports/metrics)
 
-The [Opensend contract](../openapi/opensend.yaml) serves **110 operations**: **108** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **92 are served**, **16 partial**, and **5 missing** (email share, the three domain-claim operations and usage, each awaiting a product decision).
+The [Opensend contract](../openapi/opensend.yaml) serves **110 operations**: **108** overlap the supplied Resend snapshot and **2** are SMTP bridge extensions. Of the snapshot’s **113 operations**, **93 are served**, **15 partial**, and **5 missing** (email share, the three domain-claim operations and usage, each awaiting a product decision).
 
 `served` means an operation exists with no identified resource-specific wire gap after the common differences below; `partial` means it exists with a documented field, status, validation or behavior gap; `missing` means no matching REST registration, even if the dashboard has a Convex function. Parameter placeholder spelling does not affect matching (`{email_id}` and `{id}` are the same URL pattern). The table uses upstream spellings; the contract uses actual handler spellings. This classification does not treat upstream missing `required` arrays as evidence that live Resend omits fields. Served rows can still share the documented self-hosted deviations below; this classification does not claim live provider equivalence.
 
@@ -90,7 +90,7 @@ Every method/path from the supplied snapshot appears exactly once. “No resourc
 | `GET` | `/broadcasts/{id}/clicked-links` | **served** | Ranks URLs by clicks descending; id/url/clicks/unique_clicks and bidirectional id cursors, with id tie-breaks. Unique counts are distinct recipient messages (one address per broadcast). Migration backfills retained events; settled reports expire after 30 days. |
 | `POST` | `/webhooks` | **served** | 201 object/id/signing_secret. Shared validation and subscriptions; HTTPS public hosts only, max 100/team. Idempotent response includes the same secret. |
 | `GET` | `/webhooks` | **served** | Resend endpoint/events/status/created_at projection; no secrets. P applies. |
-| `GET` | `/webhooks/{webhook_id}` | **partial** | Lane requirement reveals signing_secret only on create/rotate; current Resend docs and SDK also return it on GET. Other fields match. |
+| `GET` | `/webhooks/{webhook_id}` | **served** | Returns the webhook with its `signing_secret`, as current Resend docs and SDK do; lists omit it. The dashboard reveals the same secret to any member. |
 | `PATCH` | `/webhooks/{webhook_id}` | **served** | endpoint/events/status use shared dashboard updates and subscription indexes. |
 | `DELETE` | `/webhooks/{webhook_id}` | **served** | object/id/deleted; stops deliveries immediately and purges history in bounded batches. |
 | `POST` | `/webhooks/{webhook_id}/signing-secret/rotate` | **served** | object/id/signing_secret; new and immediately preceding secrets sign deliveries for 24 hours. Both dashboard and REST rotate through the same helper. |
@@ -171,7 +171,7 @@ Wave 8 completed the existing-route wire corrections (8A), webhooks and suppress
 1. **Completed: API-key update and deprecated audience aliases** (1 + 4 snapshot operations), with shared dashboard helpers, REST authorization and response projections. Include older audience contact overload routes separately if SDK compatibility requires them; they are absent from the snapshot inventory.
 2. **Completed: OAuth grant REST adapters.** Both now use apiRoute; the historical revocation metadata limitation is documented above.
 3. **Completed (8B): suppressions** (6), with legacy source-id limitations noted in their rows.
-4. **Completed (8B): webhooks** (10), including rotation overlap and durable attempt history; see rows for the secret-disclosure difference.
+4. **Completed (8B): webhooks** (10), including rotation overlap and durable attempt history; the single-webhook retrieve returns `signing_secret`, as Resend does.
 5. **Completed: outbound attachments and broadcast reporting** (2 + 2): stable ids/signed downloads, recipient reports and incremental URL click/unique-click aggregates are served. Broadcast send/cancel/duplicate and template publish/duplicate are already served at this base; do not rebuild them.
 6. **Completed (8C): automations** (9) over the shared runtime; create/update are partial where the runtime rejects graph shapes.
 7. **Completed (8C): contact imports** (3) on the wave 7 durable jobs; creation is partial (job size limits, no boolean properties).

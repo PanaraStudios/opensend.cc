@@ -12,6 +12,7 @@ import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import schema from "../schema"
 import {
+  decryptSecret,
   insertWebhook,
   updateWebhook,
   removeWebhook,
@@ -163,6 +164,16 @@ export const get = internalQuery({
   handler: async (ctx, { caller, id }) => {
     await requireCaller(ctx, caller)
     return shown(await own(ctx, caller.organizationId, id))
+  },
+})
+/** Resend returns the signing secret with the webhook; the dashboard also
+    reveals it to any member, so a full-access key sees no more than that. */
+export const signingSecret = internalQuery({
+  args: { caller: callerValue, id: v.string() },
+  returns: v.string(),
+  handler: async (ctx, { caller, id }) => {
+    await requireCaller(ctx, caller)
+    return decryptSecret((await own(ctx, caller.organizationId, id)).secret)
   },
 })
 export const list = internalQuery({
@@ -352,17 +363,19 @@ export function registerWebhookRoutes(http: HttpRouter) {
     method: "GET",
     path: "/webhooks/{webhook_id}",
     permission: "full_access",
-    handler: async (ctx, { caller, params }) => ({
-      body: {
-        object: "webhook",
-        ...project(
-          await ctx.runQuery(internal.api.webhooks.get, {
-            caller,
-            id: params.webhook_id,
-          })
-        ),
-      },
-    }),
+    handler: async (ctx, { caller, params }) => {
+      const args = { caller, id: params.webhook_id }
+      return {
+        body: {
+          object: "webhook",
+          ...project(await ctx.runQuery(internal.api.webhooks.get, args)),
+          signing_secret: await ctx.runQuery(
+            internal.api.webhooks.signingSecret,
+            args
+          ),
+        },
+      }
+    },
   })
   apiRoute(http, {
     method: "PATCH",

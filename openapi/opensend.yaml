@@ -10283,6 +10283,10 @@ components:
           type: string
           description: Timestamp indicating when the webhook was created.
           example: '2023-10-06 23:47:56.678+00'
+        signing_secret:
+          type: string
+          description: The secret used to verify webhook payloads.
+          example: whsec_...
       required:
         - object
         - id
@@ -10290,6 +10294,7 @@ components:
         - events
         - status
         - created_at
+        - signing_secret
       additionalProperties: false
     UpdateWebhookRequest:
       type: object

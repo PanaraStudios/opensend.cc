@@ -88,7 +88,7 @@ const shown = ({
 
 const encrypt = (data: string) =>
   symmetricEncrypt({ key: env.SSO_ENCRYPTION_KEY, data })
-const decryptSecret = (data: string) =>
+export const decryptSecret = (data: string) =>
   symmetricDecrypt({ key: env.SSO_ENCRYPTION_KEY, data })
 
 function validated(endpoint: string, events: string[]) {

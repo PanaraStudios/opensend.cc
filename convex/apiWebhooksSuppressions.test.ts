@@ -95,7 +95,7 @@ async function setup() {
 }
 
 describe("webhook REST parity", () => {
-  test("plain member CRUD, create idempotency, secrets only on create/rotate, newest-first paging", async () => {
+  test("plain member CRUD, create idempotency, signing secret on create, retrieve and rotate, newest-first paging", async () => {
     const f = await setup()
     const input = {
       endpoint: "https://hooks.example.com/events",
@@ -139,7 +139,10 @@ describe("webhook REST parity", () => {
       status: "enabled",
       events: ["email.sent"],
     })
-    expect((await f.call(url)).body).not.toHaveProperty("signing_secret")
+    // Resend returns the signing secret with a single webhook, not in lists.
+    expect((await f.call(url)).body.signing_secret).toBe(
+      first.body.signing_secret
+    )
     expect(
       (
         await f.call(url, "PATCH", {
