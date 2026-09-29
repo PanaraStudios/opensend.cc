@@ -4,7 +4,8 @@ import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { acceptEmail, emailEventData, tagSafe } from "../emails"
 import { insertEmailEvent, patchEmail } from "../emailRows"
-import { recordMetric, emailAddresses } from "../metricRows"
+import { recordMetric, emailAddresses, loadMetricContext } from "../metricRows"
+import { upsertSuppression } from "../suppressions"
 import { emitEvent } from "../events"
 import { retirement } from "../teamLifecycle"
 
@@ -137,8 +138,14 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
     !recipients.length
   )
     return
-  await acceptEmail(ctx, email, messageId, time(mail.timestamp, at))
-  const current = (await ctx.db.get("emails", email._id))!
+  const context = await loadMetricContext(ctx, email, domain)
+  const current = await acceptEmail(
+    ctx,
+    email,
+    messageId,
+    time(mail.timestamp, at),
+    context
+  )
   /* Sent is stamped on our clock when SES's response arrives, a little after
      SES accepted the message; a fast bounce can carry an earlier SES time.
      The timeline stays in lifecycle order; metrics and `details` keep SES's
@@ -159,26 +166,28 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
         .filter(Boolean)
         .join("; "),
     }
-    await recordMetric(ctx, current, type, at, recipients)
+    await recordMetric(ctx, current, type, at, recipients, context)
     if (type === "Permanent" && current.source !== "system")
       for (const address of recipients)
-        await ctx.runMutation(internal.suppressions.record, {
-          organizationId: current.organizationId,
-          email: address,
-          reason: "bounced",
-          sourceId: current._id,
-        })
+        await upsertSuppression(
+          ctx,
+          current.organizationId,
+          address,
+          "bounced",
+          current._id
+        )
   }
   if (status === "complained") {
-    await recordMetric(ctx, current, "delivered", at, recipients)
+    await recordMetric(ctx, current, "delivered", at, recipients, context)
     if (current.source !== "system")
       for (const address of recipients)
-        await ctx.runMutation(internal.suppressions.record, {
-          organizationId: current.organizationId,
-          email: address,
-          reason: "complained",
-          sourceId: current._id,
-        })
+        await upsertSuppression(
+          ctx,
+          current.organizationId,
+          address,
+          "complained",
+          current._id
+        )
   }
   if (status === "failed")
     extra.failed = {
@@ -195,11 +204,18 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
   // The sender owns the single sent entry and webhook, including the race
   // where SNS is the first evidence that SES accepted the message.
   if (status !== "sent") {
-    await insertEmailEvent(ctx, current._id, status, eventAt, {
-      sesEventId: event._id,
-      recipients,
-      details: { ...detail, recipients: recipientData },
-    })
+    await insertEmailEvent(
+      ctx,
+      current,
+      status,
+      eventAt,
+      {
+        sesEventId: event._id,
+        recipients,
+        details: { ...detail, recipients: recipientData },
+      },
+      context
+    )
     if (current.source !== "system") {
       const addressed = [
         "bounced",
@@ -252,19 +268,27 @@ export async function projectEngagement(
 ) {
   const at = Date.now()
   const recipients = emailAddresses(email)
-  await recordMetric(ctx, email, "delivered", at, recipients)
+  const context = await loadMetricContext(ctx, email)
+  await recordMetric(ctx, email, "delivered", at, recipients, context)
   if (status === "clicked")
-    await recordMetric(ctx, email, "opened", at, recipients)
+    await recordMetric(ctx, email, "opened", at, recipients, context)
   if (RANK[status] > RANK[email.status])
     await patchEmail(ctx, email._id, {
       status,
       error: undefined,
       expiresAt: email.expiresAt ?? at + 30 * 86_400_000,
     })
-  await insertEmailEvent(ctx, email._id, status, at, {
-    recipients,
-    details: detail,
-  })
+  await insertEmailEvent(
+    ctx,
+    email,
+    status,
+    at,
+    {
+      recipients,
+      details: detail,
+    },
+    context
+  )
   if (email.source !== "system")
     await emitEvent(ctx, email.organizationId, `email.${status}`, {
       ...emailEventData(email),
