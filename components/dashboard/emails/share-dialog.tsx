@@ -1,6 +1,10 @@
 "use client"
 
 import * as React from "react"
+import {
+  useConfirmShortcut,
+  useShortcutModifier,
+} from "@/lib/dashboard/use-shortcut"
 import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -70,6 +74,11 @@ export function useShareEmail(id: string) {
     }
   }
 
+  const { scope: confirmScope, button: confirmButton } = useConfirmShortcut(
+    open && !share
+  )
+  const modifier = useShortcutModifier()
+
   return {
     canWrite,
     open: () => {
@@ -80,15 +89,7 @@ export function useShareEmail(id: string) {
     },
     dialog: (
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className="sm:max-w-md"
-          onKeyDown={(event) => {
-            if (!share && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void generate()
-            }
-          }}
-        >
+        <DialogContent className="sm:max-w-md" ref={confirmScope}>
           <DialogHeader>
             <DialogTitle>Share email</DialogTitle>
             <DialogDescription>
@@ -146,11 +147,14 @@ export function useShareEmail(id: string) {
                 </DialogClose>
                 <Button
                   disabled={pending || !canWrite}
-                  aria-keyshortcuts="Meta+Enter Control+Enter"
+                  ref={confirmButton}
+                  aria-keyshortcuts={
+                    modifier === "⌘" ? "Meta+Enter" : "Control+Enter"
+                  }
                   onClick={() => void generate()}
                 >
                   {pending ? "Generating…" : "Generate link"}
-                  <Kbd>⌘↵</Kbd>
+                  <Kbd aria-hidden="true">{modifier} Enter</Kbd>
                 </Button>
               </>
             )}

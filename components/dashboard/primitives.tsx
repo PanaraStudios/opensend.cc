@@ -1,6 +1,14 @@
 "use client"
 
 import * as React from "react"
+import {
+  ShortcutAction,
+  useShortcut,
+  useConfirmShortcut,
+  useShortcutModifier,
+} from "@/lib/dashboard/use-shortcut"
+import { useTableShortcuts } from "@/lib/dashboard/use-table-shortcuts"
+import { Kbd } from "@/components/ui/kbd"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -213,7 +221,7 @@ export function PageHeader({
       </div>
       {children ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {children}
+          <ShortcutAction value="create">{children}</ShortcutAction>
         </div>
       ) : null}
     </div>
@@ -430,9 +438,12 @@ export function DetailHeader({
   badge?: React.ReactNode
   actions?: React.ReactNode
 }) {
+  const router = useRouter()
+  useShortcut("Escape", () => router.push(backHref))
   return (
     <div className="flex flex-col gap-4">
       <Button
+        aria-keyshortcuts="Escape"
         variant="ghost"
         size="sm"
         nativeButton={false}
@@ -459,7 +470,7 @@ export function DetailHeader({
         </div>
         {actions ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {actions}
+            <ShortcutAction value="edit">{actions}</ShortcutAction>
           </div>
         ) : null}
       </div>
@@ -646,8 +657,9 @@ export function ResourceTable({
   children: React.ReactNode
   className?: string
 }) {
+  const ref = useTableShortcuts()
   return (
-    <div className={cn("frame", className)}>
+    <div ref={ref} className={cn("frame", className)}>
       <div className="panel overflow-hidden p-0">
         <Table>
           <TableHeader>
@@ -1348,6 +1360,7 @@ export function SelectionBar({
   onClear: () => void
   children: React.ReactNode
 }) {
+  useShortcut("Escape", onClear, { enabled: count > 0, priority: 20 })
   if (count === 0) return null
   return (
     <div className="pointer-events-none sticky bottom-6 z-40 order-last mt-auto flex h-0 items-end justify-center">
@@ -1360,12 +1373,13 @@ export function SelectionBar({
           {count} selected
         </p>
         <Separator orientation="vertical" className="h-5 self-center" />
-        {children}
+        <ShortcutAction value="delete">{children}</ShortcutAction>
         <Separator orientation="vertical" className="h-5 self-center" />
         <Button
           variant="ghost"
           size="icon"
           aria-label="Clear selection"
+          aria-keyshortcuts="Escape"
           onClick={onClear}
         >
           <XIcon />
@@ -1390,6 +1404,9 @@ export function ConfirmDialog({
   confirmLabel?: string
   onConfirm: () => unknown | Promise<unknown>
 }) {
+  const { scope: confirmScope, button: confirmButton } =
+    useConfirmShortcut(open)
+  const modifier = useShortcutModifier()
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState("")
   return (
@@ -1399,7 +1416,7 @@ export function ConfirmDialog({
         if (!pending) onOpenChange(next)
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent ref={confirmScope}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -1412,6 +1429,10 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <Button
+            ref={confirmButton}
+            aria-keyshortcuts={
+              modifier === "⌘" ? "Meta+Enter" : "Control+Enter"
+            }
             variant="destructive"
             disabled={pending}
             onClick={async () => {
@@ -1427,7 +1448,7 @@ export function ConfirmDialog({
               }
             }}
           >
-            {confirmLabel}
+            {confirmLabel} <Kbd aria-hidden="true">{modifier} Enter</Kbd>
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1468,6 +1489,9 @@ function TypeToConfirmForm({
   onConfirm,
   children,
 }: React.ComponentProps<typeof TypeToConfirmDialog>) {
+  const { scope: confirmScope, button: confirmButton } =
+    useConfirmShortcut(true)
+  const modifier = useShortcutModifier()
   const id = React.useId()
   const [typed, setTyped] = React.useState("")
   const [acknowledged, setAcknowledged] = React.useState(false)
@@ -1476,7 +1500,7 @@ function TypeToConfirmForm({
   const ready = typed === phrase && (acknowledged || !acknowledgement)
 
   return (
-    <AlertDialogContent size="md">
+    <AlertDialogContent size="md" ref={confirmScope}>
       <form
         className="contents"
         onSubmit={async (event) => {
@@ -1536,11 +1560,15 @@ function TypeToConfirmForm({
         <AlertDialogFooter>
           <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
           <Button
+            ref={confirmButton}
+            aria-keyshortcuts={
+              modifier === "⌘" ? "Meta+Enter" : "Control+Enter"
+            }
             type="submit"
             variant="destructive"
             disabled={!ready || pending}
           >
-            {confirmLabel}
+            {confirmLabel} <Kbd aria-hidden="true">{modifier} Enter</Kbd>
           </Button>
         </AlertDialogFooter>
       </form>
@@ -2147,6 +2175,8 @@ export function ListToolbar({
   onExport?: (summary: ExportFilterLine[]) => void
   children?: React.ReactNode
 }) {
+  const search = React.useRef<HTMLInputElement>(null)
+  useShortcut("/", () => search.current?.focus())
   return (
     <div className="flex flex-wrap items-center gap-2">
       <InputGroup className="h-8! w-full max-w-full overflow-hidden sm:max-w-xs">
@@ -2154,6 +2184,8 @@ export function ListToolbar({
           <SearchIcon />
         </InputGroupAddon>
         <InputGroupInput
+          ref={search}
+          aria-keyshortcuts="/"
           className="h-full! min-w-0"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
