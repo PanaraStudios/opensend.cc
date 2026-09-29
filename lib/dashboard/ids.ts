@@ -1,8 +1,3 @@
-export function createId(prefix: string): string {
-  const entropy = crypto.randomUUID().replace(/-/g, "").slice(0, 16)
-  return `${prefix}_${entropy}`
-}
-
 export function createToken(): string {
   const bytes = new Uint8Array(24)
   crypto.getRandomValues(bytes)

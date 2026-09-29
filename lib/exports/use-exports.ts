@@ -14,6 +14,7 @@ import { actionError } from "@/lib/action-error"
 import { exportOutcome, type ExportFilterLine } from "@/lib/dashboard/exports"
 import { useTeamList } from "@/components/dashboard/primitives"
 import type { ExportJob } from "@/lib/dashboard/types"
+import { downloadBlob } from "@/lib/dashboard/download"
 
 type ExportRow = NonNullable<FunctionReturnType<typeof api.exports.get>>
 
@@ -47,12 +48,7 @@ async function download(
   if (!url) throw new Error("This export is no longer available")
   const response = await fetch(url)
   if (!response.ok) throw new Error("The download failed. Try again.")
-  const href = URL.createObjectURL(await response.blob())
-  const anchor = document.createElement("a")
-  anchor.href = href
-  anchor.download = fileName
-  anchor.click()
-  URL.revokeObjectURL(href)
+  downloadBlob(fileName, await response.blob())
 }
 
 export function useDownloadExport() {
@@ -135,11 +131,9 @@ export function useStartExport() {
   }
 }
 
-const asExportJob = (row: ExportRow): ExportJob => asExport(row)
-
 /** The team's server exports, newest first, a page at a time. */
 export function useExportList() {
-  return useTeamList(api.exports.list, api.exports.count, {}, asExportJob)
+  return useTeamList(api.exports.list, api.exports.count, {}, asExport)
 }
 
 /** One export for its page: undefined while loading, null if not found. */

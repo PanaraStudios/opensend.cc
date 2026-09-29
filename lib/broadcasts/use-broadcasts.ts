@@ -1,9 +1,13 @@
 "use client"
 import * as React from "react"
-import { useConvex, useMutation, useQuery } from "convex/react"
+import { useConvex, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import { useTeamList } from "@/components/dashboard/primitives"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { emptyBroadcastStats } from "@/lib/dashboard/broadcast"
@@ -49,16 +53,11 @@ function wire(patch: BroadcastPatch) {
   }
 }
 export function useBroadcast(id: string) {
-  const { activeTeamId } = useWorkspace()
-  const result = useQuery(
-    api.broadcasts.get,
-    activeTeamId ? { organizationId: activeTeamId, id } : "skip"
-  )
-  const stats = useQuery(
+  const result = useTeamQuery(api.broadcasts.get, { id })
+  const stats = useTeamQuery(
     api.broadcastMetrics.stats,
-    activeTeamId && result
-      ? { organizationId: activeTeamId, id: result.row._id }
-      : "skip"
+    { id: result ? result.row._id : (id as Id<"broadcasts">) },
+    { enabled: !!result }
   )
   return React.useMemo(
     () =>
@@ -85,9 +84,9 @@ export function useBroadcastCommands() {
   const ref = (id: string) => ({ id: id as Id<"broadcasts"> })
   return {
     addBroadcast: async (input: BroadcastPatch) => {
-      if (!activeTeamId) throw new Error("Create a team first")
+      const organizationId = requireTeamId(activeTeamId)
       return {
-        id: await create({ organizationId: activeTeamId, ...wire(input) }),
+        id: await create({ organizationId, ...wire(input) }),
       }
     },
     updateBroadcast: (id: string, patch: BroadcastPatch) =>
@@ -100,9 +99,9 @@ export function useBroadcastCommands() {
       send({ ...ref(id), scheduledAt }),
     cancelBroadcast: (id: string) => cancel(ref(id)),
     readBroadcast: async (id: string) => {
-      if (!activeTeamId) throw new Error("Create a team first")
+      const organizationId = requireTeamId(activeTeamId)
       const result = await convex.query(api.broadcasts.get, {
-        organizationId: activeTeamId,
+        organizationId,
         id,
       })
       if (!result) throw new Error("Broadcast not found")

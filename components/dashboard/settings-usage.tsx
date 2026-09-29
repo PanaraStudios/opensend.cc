@@ -1,4 +1,5 @@
 "use client"
+import { formatNumber } from "@/lib/dashboard/format"
 
 import Link from "next/link"
 import { useQuery } from "convex/react"
@@ -13,7 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useClock } from "@/lib/time/use-clock"
 import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
 
-const number = (value: number) => value.toLocaleString("en-US")
 const resetTime = (value: string) =>
   new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -40,7 +40,7 @@ function UsageCard({
   reset?: string
   unknown?: boolean
 }) {
-  const label = `${number(used)} / ${limit === null ? (unknown ? "Unavailable" : "Unlimited") : number(limit)}`
+  const label = `${formatNumber(used)} / ${limit === null ? (unknown ? "Unavailable" : "Unlimited") : formatNumber(limit)}`
   return (
     <section aria-label={title}>
       <SettingsCard title={title} description={description}>
@@ -128,13 +128,13 @@ export function SettingsUsage() {
         {...daily}
         reset={daily.resets_at}
         unknown
-        description={`${number(daily.sent)} sent · ${number(daily.received)} received`}
+        description={`${formatNumber(daily.sent)} sent · ${formatNumber(daily.received)} received`}
       />
       <UsageCard
         title="Emails this month"
         {...monthly}
         reset={monthly.resets_at}
-        description={`${number(monthly.sent)} sent · ${number(monthly.received)} received`}
+        description={`${formatNumber(monthly.sent)} sent · ${formatNumber(monthly.received)} received`}
       />
       <UsageCard
         title="Contacts"

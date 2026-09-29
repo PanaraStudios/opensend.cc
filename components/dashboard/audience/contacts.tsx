@@ -49,6 +49,7 @@ import {
   SelectionBar,
   Th,
   useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -611,7 +612,7 @@ function BulkEditDialog({
 
 export function ContactsView() {
   const { deleteContacts } = useAudienceCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [subscribed, setSubscribed] = React.useState("all")
   const [segment, setSegment] = React.useState("all")
   const [segmentSearch, setSegmentSearch] = React.useState("")
@@ -630,7 +631,6 @@ export function ContactsView() {
     null
   )
 
-  const search = useDebouncedValue(query)
   const filters = {
     search,
     ...(subscribed !== "all"

@@ -4,7 +4,11 @@ import { useMutation, useQuery } from "convex/react"
 import { usePagedList, useTeamList } from "@/components/dashboard/primitives"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import type {
   EmailStatus,
   SentEmail,
@@ -46,23 +50,17 @@ export function asSuppression(row: Doc<"suppressions">): Suppression {
   }
 }
 
-const asEmailRow = (row: Doc<"emails">) => asEmail(row)
-
 type Range = { from?: number; to?: number }
 
 export function useEmailList(
   filters: Range & { status?: EmailStatus; search?: string }
 ) {
-  return useTeamList(api.emails.list, api.emails.count, filters, asEmailRow)
+  return useTeamList(api.emails.list, api.emails.count, filters, asEmail)
 }
 
 /** Bounded, relevance-ranked server suggestions for the command menu. */
 export function useEmailSearch(search: string, enabled = true) {
-  const { activeTeamId } = useWorkspace()
-  const rows = useQuery(
-    api.emails.options,
-    enabled && activeTeamId ? { organizationId: activeTeamId, search } : "skip"
-  )
+  const rows = useTeamQuery(api.emails.options, { search }, { enabled })
   return React.useMemo(() => rows?.map((row) => asEmail(row)) ?? [], [rows])
 }
 
@@ -72,7 +70,7 @@ export function useRecipientEmails(address: string) {
     api.emails.byRecipient,
     api.emails.byRecipientCount,
     { address },
-    asEmailRow
+    asEmail
   )
 }
 
@@ -110,8 +108,8 @@ export function useEmailCommands() {
   return {
     cancelEmail: (id: string) => cancel({ id: id as Id<"emails"> }),
     addSuppression: (input: { email: string; reason: SuppressionReason }) => {
-      if (!activeTeamId) throw new Error("Create a team first")
-      return add({ ...input, organizationId: activeTeamId })
+      const organizationId = requireTeamId(activeTeamId)
+      return add({ ...input, organizationId })
     },
     removeSuppression: (id: string) => remove({ id: id as Id<"suppressions"> }),
   }

@@ -43,8 +43,8 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  useDebouncedValue,
   useLoadedPagination,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   AutomationsChrome,
@@ -70,7 +70,7 @@ const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
 
 export function AutomationEventsView() {
   const { organizationId, deleteAutomationEvent } = useAutomationEventCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   /* The event in the form: one being edited, or "new". */
   const [editing, setEditing] = React.useState<AutomationEvent | "new" | null>(
     null
@@ -83,7 +83,6 @@ export function AutomationEventsView() {
       ? { organizationId, name: deleting.name }
       : "skip"
   )
-  const search = useDebouncedValue(query)
   const events = usePaginatedQuery(
     api.automationEvents.list,
     organizationId ? { organizationId, search } : "skip",

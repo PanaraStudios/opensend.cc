@@ -1,20 +1,14 @@
 "use client"
 import * as React from "react"
-import {
-  useMutation,
-  useConvex,
-  usePaginatedQuery,
-  useQuery,
-  type OptionalRestArgsOrSkip,
-} from "convex/react"
-import type {
-  FunctionArgs,
-  FunctionReference,
-  FunctionReturnType,
-} from "convex/server"
+import { useMutation, useConvex, usePaginatedQuery } from "convex/react"
+import type { FunctionArgs, FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import {
   useLoadedPagination,
   useTeamList,
@@ -71,17 +65,6 @@ export const asProperty = (row: Doc<"contactProperties">): ContactProperty => ({
   createdAt: row._creationTime,
 })
 
-function useTeamQuery<
-  Q extends FunctionReference<"query", "public", { organizationId: string }>,
->(fn: Q) {
-  const { activeTeamId } = useWorkspace()
-  return useQuery(
-    fn,
-    ...((activeTeamId
-      ? [{ organizationId: activeTeamId }]
-      : ["skip"]) as OptionalRestArgsOrSkip<Q>)
-  )
-}
 /** The team's contacts, newest first, a page at a time. */
 export const useContactList = (
   filters: Omit<
@@ -95,11 +78,7 @@ export const useTopicList = (search: string) =>
   useTeamList(api.topics.list, api.topics.count, { search }, asTopic)
 /** Bounded server suggestions for the command menu. */
 export function useContactSearch(search: string, enabled = true) {
-  const { activeTeamId } = useWorkspace()
-  const rows = useQuery(
-    api.contacts.options,
-    enabled && activeTeamId ? { organizationId: activeTeamId, search } : "skip"
-  )
+  const rows = useTeamQuery(api.contacts.options, { search }, { enabled })
   return React.useMemo(
     () =>
       rows?.map((row) => ({
@@ -113,31 +92,17 @@ export function useContactSearch(search: string, enabled = true) {
 }
 
 export function useSegmentOptions(selectedId?: string | null, search?: string) {
-  const { activeTeamId } = useWorkspace()
-  const rows = useQuery(
-    api.segments.options,
-    activeTeamId
-      ? {
-          organizationId: activeTeamId,
-          search,
-          selectedId: selectedId ? (selectedId as Id<"segments">) : undefined,
-        }
-      : "skip"
-  )
+  const rows = useTeamQuery(api.segments.options, {
+    search,
+    selectedId: selectedId ? (selectedId as Id<"segments">) : undefined,
+  })
   return React.useMemo(() => rows?.map(asSegment), [rows])
 }
 export function useTopicOptions(selectedId?: string | null, search?: string) {
-  const { activeTeamId } = useWorkspace()
-  const rows = useQuery(
-    api.topics.options,
-    activeTeamId
-      ? {
-          organizationId: activeTeamId,
-          search,
-          selectedId: selectedId ? (selectedId as Id<"topics">) : undefined,
-        }
-      : "skip"
-  )
+  const rows = useTeamQuery(api.topics.options, {
+    search,
+    selectedId: selectedId ? (selectedId as Id<"topics">) : undefined,
+  })
   return React.useMemo(() => rows?.map(asTopic), [rows])
 }
 
@@ -194,10 +159,7 @@ export function useAudienceCommands() {
   const removeTopic = useMutation(api.topics.remove)
   const createProperty = useMutation(api.contactProperties.create)
   const removeProperty = useMutation(api.contactProperties.remove)
-  const team = () => {
-    if (!activeTeamId) throw new Error("Create a team first")
-    return activeTeamId
-  }
+  const team = () => requireTeamId(activeTeamId)
   const contactIds = (ids: string[]) => ids as Id<"contacts">[]
   return {
     /** Creates or merges by email, in batches. With `skipExisting`, known

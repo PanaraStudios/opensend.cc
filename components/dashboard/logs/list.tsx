@@ -15,9 +15,9 @@ import {
   ListToolbar,
   PageHeader,
   ResourceTable,
-  useDebouncedValue,
   useTeamList,
   type SelectOption,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   LOG_TABLE_HEADERS,
@@ -52,7 +52,7 @@ export function LogsView() {
   const emailFilter = useSearchParams().get("email")
   /* The real clock, read once: the presets and the default range use it. */
   const [now] = React.useState(() => Date.now())
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [userAgent, setUserAgent] = React.useState("all")
   const [source, setSource] = React.useState("all")
@@ -60,7 +60,6 @@ export function LogsView() {
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     emailFilter ? undefined : defaultEmailRange(now)
   )
-  const search = useDebouncedValue(query)
 
   const filters = {
     statusClass: status === "all" ? undefined : (status as LogStatusClass),

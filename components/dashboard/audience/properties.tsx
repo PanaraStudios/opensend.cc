@@ -37,8 +37,8 @@ import {
   OptionSelect,
   ResourceTable,
   Th,
-  useDebouncedValue,
   useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
@@ -48,8 +48,8 @@ import { DatabaseIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import {
   normalizePropertyKey,
   propertyKeyError,
+  DEFAULT_CONTACT_PROPERTIES,
 } from "@/lib/dashboard/contacts"
-import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/contacts"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate } from "@/lib/dashboard/format"
 import {
@@ -196,11 +196,10 @@ function AddPropertyDialog({
 
 export function PropertiesView() {
   const { deleteProperty } = useAudienceCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [open, setOpen] = React.useState(false)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const search = useDebouncedValue(query)
   /* The built-in fields lead the first page, then the team's own. */
   const defaults = React.useMemo(() => {
     const needle = searchNeedle(search)

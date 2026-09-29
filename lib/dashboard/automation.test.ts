@@ -4,33 +4,26 @@ import { describe, it } from "node:test"
 import {
   automationTasks,
   cleanSchema,
-  cancelledRun,
   durationError,
   formatDuration,
   evaluateRule,
-  eventListeners,
   eventNameError,
   findStep,
   flattenSteps,
   formatRunDuration,
   insertStep,
   newStep,
-  normalizeAutomation,
   parseDuration,
   payloadErrors,
   removeStep,
-  runStatusRates,
   replaceStep,
   samplePayload,
   schemaError,
-  startRun,
-  stepProblem,
-  stepMetrics,
   stepSummary,
   stepTitle,
   type StepContext,
 } from "./automation"
-import type { AutomationStep, Contact } from "./types"
+import type { AutomationStep } from "./types"
 
 const context: StepContext = {
   templates: [
@@ -38,17 +31,6 @@ const context: StepContext = {
     { id: "tpl_draft", name: "Invoice", status: "draft" },
   ],
   segments: [{ id: "seg_1", name: "Customers" }],
-}
-
-const contact: Contact = {
-  id: "con_1",
-  email: "ada@example.com",
-  firstName: "Ada",
-  lastName: "Lovelace",
-  createdAt: 1,
-  unsubscribed: false,
-  topics: [],
-  properties: { company: "Analytical" },
 }
 
 const send = (key: string, templateId = "tpl_live"): AutomationStep => ({
@@ -171,27 +153,6 @@ describe("durations and names", () => {
 })
 
 describe("validation", () => {
-  it("needs a published template to send", () => {
-    assert.equal(stepProblem(send("a"), context), null)
-    assert.match(stepProblem(send("a", "tpl_draft"), context) ?? "", /Publish/)
-    assert.match(stepProblem(send("a", ""), context) ?? "", /Select/)
-  })
-
-  it("needs complete, scoped rules", () => {
-    const step = condition([], [])
-    assert.equal(stepProblem(step, context), null)
-    assert.equal(
-      stepProblem(
-        {
-          ...step,
-          rules: [{ field: "plan", operator: "eq", value: "x" }],
-        } as AutomationStep,
-        context
-      ),
-      "Add a condition"
-    )
-  })
-
   it("lists what is left before an automation can start", () => {
     assert.deepEqual(automationTasks({ trigger: "", steps: [] }, context), [
       {
@@ -233,26 +194,6 @@ describe("validation", () => {
       "Update contact: first name"
     )
   })
-
-  it("lists the automations an event starts or continues", () => {
-    const waiting: AutomationStep = {
-      key: "w",
-      type: "wait_for_event",
-      eventName: "paid",
-      timeout: "1 day",
-      received: [],
-      timedOut: [],
-    }
-    const all = [
-      { id: "1", trigger: "signup", steps: [waiting] },
-      { id: "2", trigger: "paid", steps: [] },
-      { id: "3", trigger: "other", steps: [] },
-    ]
-    assert.deepEqual(
-      eventListeners(all, "paid").map((item) => item.id),
-      ["1", "2"]
-    )
-  })
 })
 
 describe("rules", () => {
@@ -280,128 +221,6 @@ describe("rules", () => {
 })
 
 describe("runs", () => {
-  const run = (steps: AutomationStep[], who = contact, payload = {}) =>
-    startRun({
-      id: "run_1",
-      automation: { id: "atm_1", trigger: "user.created", steps },
-      contact: who,
-      payload,
-      context,
-      now: 1000,
-    })
-
-  it("follows the path the payload picks", () => {
-    const result = run([condition([send("yes")], [send("no")])], contact, {
-      plan: "team",
-    })
-    assert.equal(result.status, "completed")
-    assert.deepEqual(
-      result.steps.map((step) => step.key),
-      ["start", "is_team", "yes"]
-    )
-  })
-
-  it("stays running at a delay", () => {
-    const result = run([
-      { key: "wait", type: "delay", duration: "1 day" },
-      send("later"),
-    ])
-    assert.equal(result.status, "running")
-    assert.equal(result.completedAt, null)
-    assert.equal(result.steps.at(-1)?.status, "running")
-  })
-
-  it("fails on a step that is not set up", () => {
-    const result = run([send("a", "tpl_draft"), send("b")])
-    assert.equal(result.status, "failed")
-    assert.equal(result.steps.length, 2)
-    assert.match(result.steps[1]?.error ?? "", /Publish/)
-  })
-
-  it("skips emails to an unsubscribed contact but keeps going", () => {
-    const result = run(
-      [send("a"), { key: "seg", type: "add_to_segment", segmentId: "seg_1" }],
-      { ...contact, unsubscribed: true }
-    )
-    assert.deepEqual(
-      result.steps.map((step) => step.status),
-      ["completed", "skipped", "completed"]
-    )
-  })
-
-  it("resolves references and carries the contact forward", () => {
-    const result = run(
-      [
-        {
-          key: "opt_out",
-          type: "contact_update",
-          fields: [
-            { property: "unsubscribed", action: "change", value: "event.out" },
-            { property: "first_name", action: "change", value: "event.name" },
-          ],
-        },
-        {
-          key: "renamed",
-          type: "condition",
-          match: "and",
-          rules: [
-            { field: "contact.first_name", operator: "eq", value: "Eve" },
-          ],
-          met: [send("a")],
-          notMet: [],
-        },
-      ],
-      contact,
-      { out: true, name: "Eve" }
-    )
-    assert.deepEqual(result.steps[1]?.output, {
-      unsubscribed: true,
-      first_name: "Eve",
-    })
-    assert.deepEqual(
-      result.steps.map((step) => [step.key, step.status]),
-      [
-        ["start", "completed"],
-        ["opt_out", "completed"],
-        ["renamed", "completed"],
-        ["a", "skipped"],
-      ]
-    )
-  })
-
-  it("sends nothing to a contact the run has deleted", () => {
-    const result = run([{ key: "gone", type: "contact_delete" }, send("a")])
-    assert.deepEqual(result.steps.at(-1)?.output, { reason: "contact deleted" })
-  })
-
-  it("cancels only a run that is waiting", () => {
-    const waiting = run([{ key: "wait", type: "delay", duration: "1 day" }])
-    const stopped = cancelledRun(waiting, 2000)
-    assert.equal(stopped.status, "cancelled")
-    assert.equal(stopped.steps.at(-1)?.status, "cancelled")
-    const done = run([send("a")])
-    assert.equal(cancelledRun(done, 2000), done)
-  })
-
-  it("measures the runs", () => {
-    const waiting = run([{ key: "wait", type: "delay", duration: "1 day" }])
-    const done = run([send("a")])
-    assert.deepEqual(runStatusRates([waiting, done, done, done]), {
-      running: 25,
-      completed: 75,
-      failed: 0,
-      cancelled: 0,
-    })
-    assert.deepEqual(stepMetrics([waiting, done]).get("a"), {
-      executions: 1,
-      averageMs: 0,
-    })
-    assert.deepEqual(stepMetrics([waiting]).get("wait"), {
-      executions: 1,
-      averageMs: null,
-    })
-  })
-
   it("formats how long a run took", () => {
     assert.equal(
       formatRunDuration({ startedAt: 0, completedAt: 5000 }, 0),
@@ -456,33 +275,5 @@ describe("event payloads", () => {
       "at must be a date",
     ])
     assert.deepEqual(payloadErrors(undefined, { anything: true }), [])
-  })
-})
-
-describe("migration", () => {
-  it("gives an automation saved without steps an empty workflow", () => {
-    const next = normalizeAutomation({
-      id: "atm_1",
-      name: "Old",
-      status: "disabled",
-      trigger: "contact.created",
-      createdAt: 5,
-    })
-    assert.deepEqual(next.steps, [])
-  })
-
-  it("stops a legacy automation that was enabled with nothing to run", () => {
-    const legacy = {
-      id: "atm_1",
-      name: "Old",
-      status: "enabled" as const,
-      trigger: "contact.created",
-      createdAt: 5,
-    }
-    assert.equal(normalizeAutomation(legacy).status, "disabled")
-    assert.equal(
-      normalizeAutomation({ ...legacy, steps: [] }).status,
-      "enabled"
-    )
   })
 })

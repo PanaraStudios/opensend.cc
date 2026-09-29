@@ -50,7 +50,7 @@ import {
   StatusBadge,
   Th,
   copyToClipboard,
-  useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   DOMAIN_STATUS_ITEMS,
@@ -286,12 +286,11 @@ export function AddDomainDialog({
 
 export function DomainsView() {
   const { organizationId, canWrite, deleteDomain } = useDomainCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [region, setRegion] = React.useState("all")
   const [addOpen, setAddOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-  const search = useDebouncedValue(query)
 
   const exporting = useExportDialog({
     resource: "domains",

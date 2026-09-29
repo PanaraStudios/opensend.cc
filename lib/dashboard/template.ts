@@ -129,24 +129,6 @@ export function publishedAtAfterEdit(
   return live && !sent ? now : item.publishedAt
 }
 
-/** Backfill for records persisted before templates opened in the editor. */
-export function normalizeTemplates(
-  templates: readonly EmailTemplate[]
-): EmailTemplate[] {
-  const out: EmailTemplate[] = []
-  for (const item of templates) {
-    out.push({
-      ...item,
-      alias: item.alias || uniqueTemplateAlias(item.name, out),
-      preview: item.preview ?? "",
-      publishedAt:
-        item.publishedAt ??
-        (item.status === "published" ? item.updatedAt : null),
-    })
-  }
-  return out
-}
-
 export type TemplateInput = Pick<EmailTemplate, "name" | "subject"> &
   Partial<
     Pick<EmailTemplate, "preview" | "html" | "content" | "from" | "replyTo">

@@ -18,7 +18,7 @@ import {
   ResourceTable,
   Th,
   useTeamList,
-  useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   AUTOMATION_STATUS_ITEMS,
@@ -39,10 +39,9 @@ import {
 export function AutomationsView() {
   const router = useRouter()
   const { organizationId, addAutomation } = useAutomationCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
 
-  const search = useDebouncedValue(query)
   const {
     rows,
     pageRows,

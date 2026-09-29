@@ -8,11 +8,11 @@ import type {
   DnsProvider,
   DnsRecord,
   Domain,
-  DomainEvent,
   DomainEventType,
   DomainStatus,
   Region,
 } from "./types"
+import { REGION_DETAILS } from "./types"
 
 export const DEFAULT_RETURN_PATH = "send"
 export const DEFAULT_TRACKING_SUBDOMAIN = "links"
@@ -55,15 +55,8 @@ export function providerUrl(provider: DnsProvider | undefined): string | null {
   return url === "" ? null : url
 }
 
-const REGION_FLAGS: Record<Region, string> = {
-  "us-east-1": "🇺🇸",
-  "eu-west-1": "🇮🇪",
-  "sa-east-1": "🇧🇷",
-  "ap-northeast-1": "🇯🇵",
-}
-
 export function regionFlag(region: Region): string {
-  return REGION_FLAGS[region] ?? "🌐"
+  return REGION_DETAILS[region]?.flag ?? "🌐"
 }
 
 /* ------------------------------------------------------------ validation */
@@ -208,53 +201,6 @@ export function deriveDomainStatus(
   return "pending"
 }
 
-/* ---------------------------------------------------------------- events */
-
-/** The status milestones. A domain sits at no more than one at a time. */
-const STATUS_MILESTONES: DomainEventType[] = ["partially_verified", "verified"]
-
-/** Milestones this domain has reached, newest last. "Domain added" and "DNS
-    verified" are one-time facts, but the two status milestones are exclusive:
-    turning receiving on drops a verified domain back to partially verified, so
-    its verified event is no longer true and goes away. Re-verifying stamps a
-    fresh time, which keeps the trail in order. */
-function domainEvents(
-  domain: Domain,
-  status: DomainStatus,
-  records: DnsRecord[],
-  now: number
-): DomainEvent[] {
-  const milestone = STATUS_MILESTONES.find((type) => type === status) ?? null
-  const events = (domain.events ?? []).filter(
-    (event) =>
-      !STATUS_MILESTONES.includes(event.type) || event.type === milestone
-  )
-  if (!events.some((event) => event.type === "added")) {
-    events.unshift({ type: "added", at: domain.createdAt })
-  }
-  const dkimVerified = records.some(
-    (item) => item.kind === "DKIM" && item.status === "verified"
-  )
-  if (dkimVerified && !events.some((event) => event.type === "dns_verified")) {
-    events.push({ type: "dns_verified", at: now })
-  }
-  if (!milestone) return events
-
-  const reached = events.find((event) => event.type === milestone)
-  const latestOther = events.reduce(
-    (latest, event) =>
-      event.type === milestone ? latest : Math.max(latest, event.at),
-    0
-  )
-  /* Kept if it is still the latest thing that happened, re-stamped when an
-     earlier milestone has since been overtaken by a later one. */
-  if (reached && reached.at >= latestOther) return events
-  return [
-    ...events.filter((event) => event.type !== milestone),
-    { type: milestone, at: now },
-  ]
-}
-
 export type DomainEventStep = {
   type: DomainEventType
   label: string
@@ -264,17 +210,18 @@ export type DomainEventStep = {
 /** The four-step trail under the meta strip. A step without a time is one
     this domain has not reached, and renders dimmed. */
 export function domainEventSteps(domain: Domain): DomainEventStep[] {
-  const events = domain.events ?? []
-  const at = (type: DomainEventType) =>
-    events.find((event) => event.type === type)?.at
-  const partial = at("partially_verified")
+  const partial = domain.partiallyVerifiedAt || undefined
   return [
     {
       type: "added",
       label: "Domain added",
-      at: at("added") ?? domain.createdAt,
+      at: domain.createdAt,
     },
-    { type: "dns_verified", label: "DNS verified", at: at("dns_verified") },
+    {
+      type: "dns_verified",
+      label: "DNS verified",
+      at: domain.dnsVerifiedAt || undefined,
+    },
     ...(partial !== undefined || domain.status === "partially_verified"
       ? [
           {
@@ -284,32 +231,12 @@ export function domainEventSteps(domain: Domain): DomainEventStep[] {
           },
         ]
       : []),
-    { type: "verified", label: "Domain verified", at: at("verified") },
+    {
+      type: "verified",
+      label: "Domain verified",
+      at: domain.verifiedAt || undefined,
+    },
   ]
-}
-
-/* -------------------------------------------------------------- lifecycle */
-
-/** Records, status, and events brought back in line with the switches.
-    Every write to a domain goes through here. */
-export function reconcileDomain(domain: Domain, now: number): Domain {
-  const records = domainRecords(domain)
-  const status = deriveDomainStatus(domain, records)
-  return {
-    ...domain,
-    sending: sendingEnabled(domain),
-    customReturnPath: domain.customReturnPath || DEFAULT_RETURN_PATH,
-    trackingSubdomain: domain.trackingSubdomain ?? "",
-    records,
-    status,
-    events: domainEvents(domain, status, records, now),
-  }
-}
-
-/** Backfill for a workspace parsed out of localStorage. Deterministic, so a
-    seeded domain reconciles to itself and hydration stays quiet. */
-export function normalizeDomain(domain: Domain): Domain {
-  return reconcileDomain(domain, domain.createdAt)
 }
 
 /* -------------------------------------------------------------- sections */

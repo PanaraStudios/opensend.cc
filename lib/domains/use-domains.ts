@@ -3,7 +3,12 @@ import * as React from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
+import {
+  useTeamRole,
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
 import { domainCheckResult } from "@/lib/dashboard/domains"
 import type { Domain } from "@/lib/dashboard/types"
@@ -36,18 +41,9 @@ export function asDomain(row: Doc<"domains">): Domain {
           },
         }
       : {}),
-    events: [
-      { type: "added", at: row._creationTime },
-      ...(row.dnsVerifiedAt
-        ? [{ type: "dns_verified" as const, at: row.dnsVerifiedAt }]
-        : []),
-      ...(row.partiallyVerifiedAt
-        ? [{ type: "partially_verified" as const, at: row.partiallyVerifiedAt }]
-        : []),
-      ...(row.verifiedAt
-        ? [{ type: "verified" as const, at: row.verifiedAt }]
-        : []),
-    ],
+    dnsVerifiedAt: row.dnsVerifiedAt,
+    partiallyVerifiedAt: row.partiallyVerifiedAt,
+    verifiedAt: row.verifiedAt,
   }
 }
 export function useDomainCommands() {
@@ -67,16 +63,16 @@ export function useDomainCommands() {
       region: Domain["region"]
       customReturnPath: string
     }) => {
-      if (!workspace.activeTeamId) throw new Error("Create a team first")
-      return create({ ...input, organizationId: workspace.activeTeamId })
+      const organizationId = requireTeamId(workspace.activeTeamId)
+      return create({ ...input, organizationId })
     },
     claimDomain: (input: {
       name: string
       region: Domain["region"]
       customReturnPath: string
     }) => {
-      if (!workspace.activeTeamId) throw new Error("Create a team first")
-      return claim({ ...input, organizationId: workspace.activeTeamId })
+      const organizationId = requireTeamId(workspace.activeTeamId)
+      return claim({ ...input, organizationId })
     },
     verifyDomain: (id: string) => verify({ id: id as Id<"domains"> }),
     deleteDomain: (id: string) => remove({ id: id as Id<"domains"> }),
@@ -129,16 +125,7 @@ export function useDomainOptions(
   } = {},
   enabled = true
 ) {
-  const { activeTeamId } = useWorkspace()
-  const page = useQuery(
-    api.domains.options,
-    activeTeamId && enabled
-      ? {
-          organizationId: activeTeamId,
-          ...filters,
-        }
-      : "skip"
-  )
+  const page = useTeamQuery(api.domains.options, filters, { enabled })
   return React.useMemo(() => page?.map(asDomain) ?? [], [page])
 }
 export function useDomain(id: string | null | undefined) {
@@ -146,10 +133,10 @@ export function useDomain(id: string | null | undefined) {
   return row ? asDomain(row.domain) : row
 }
 export function useDomainByName(name: string | undefined) {
-  const { activeTeamId } = useWorkspace()
-  const row = useQuery(
+  const row = useTeamQuery(
     api.domains.byName,
-    activeTeamId && name ? { organizationId: activeTeamId, name } : "skip"
+    { name: name! },
+    { enabled: !!name }
   )
   return row ? asDomain(row) : row
 }

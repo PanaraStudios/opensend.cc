@@ -20,8 +20,8 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  useDebouncedValue,
   useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   WEBHOOK_STATUS_ITEMS,
@@ -37,14 +37,14 @@ import { asWebhook, useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 export function WebhooksView() {
   const router = useRouter()
   const { organizationId, createWebhook } = useWebhookCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [adding, setAdding] = React.useState(false)
   const webhooks = useTeamList(
     api.webhooks.list,
     api.webhooks.count,
     {
-      search: useDebouncedValue(query),
+      search: search,
       ...(status !== "all" ? { enabled: status === "enabled" } : {}),
     },
     asWebhook

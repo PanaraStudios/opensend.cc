@@ -281,8 +281,7 @@ export function useDraftValue(value: string, commit: (next: string) => void) {
   }
 }
 
-/** Local draft for a store-backed text field. Commits on blur so typing does
-    not write localStorage and re-render every consumer per keystroke. */
+/** Local draft for a stored text field. Commits on blur. */
 export function useDraft(
   value: string,
   commit: (next: string) => void,
@@ -691,6 +690,12 @@ export function useDebouncedValue<T>(value: T, delay = 250) {
   return settled
 }
 
+export function useListSearch() {
+  const [query, setQuery] = React.useState("")
+  const search = useDebouncedValue(query)
+  return { query, setQuery, search }
+}
+
 /* ------------------------------------------------------------- pagination */
 
 export { PAGE_SIZES }
@@ -752,10 +757,6 @@ function usePager<T>(
   }
 }
 
-/** Paging over a list already loaded whole. */
-export const usePagination = <T,>(rows: readonly T[]) =>
-  usePager(rows, { hasMore: false, loading: false, total: rows.length })
-
 /** Paging over the rows a `usePaginatedQuery` has loaded so far. `total`
     is the list's count query for the same filters, when it has one. */
 export function useLoadedPagination<T>(
@@ -780,11 +781,14 @@ export function useLoadedPagination<T>(
     before the server's (built-in entries, say) and count with them. Every
     Convex-backed list uses this, then spreads `pagination` into
     `ListPagination`. Optional `tail` rows follow once the server list ends. */
-export function usePagedList<Query extends PaginatedQueryReference, Row>(
+export function usePagedList<
+  Query extends PaginatedQueryReference,
+  Row = PaginatedQueryItem<Query>,
+>(
   list: Query,
   count: CountQuery<Query>,
   args: PaginatedQueryArgs<Query> | "skip",
-  map: (item: PaginatedQueryItem<Query>) => Row,
+  map: (item: PaginatedQueryItem<Query>) => Row = identity,
   lead: readonly Row[] = NO_ROWS,
   tail: readonly Row[] = NO_ROWS
 ) {
@@ -809,6 +813,7 @@ export function usePagedList<Query extends PaginatedQueryReference, Row>(
       : { total: counted.total + lead.length + tail.length }
   return { ...query, rows, ...useLoadedPagination(rows, query, total) }
 }
+const identity = <T,>(item: T) => item
 const NO_ROWS: readonly never[] = []
 /** A list's count query: its filters, without the page. */
 type CountQuery<Query extends PaginatedQueryReference> = FunctionReference<
@@ -820,11 +825,14 @@ type CountQuery<Query extends PaginatedQueryReference> = FunctionReference<
 
 /** `usePagedList` for the active team: `filters` are the list's arguments
     besides the team and the page. */
-export function useTeamList<Query extends PaginatedQueryReference, Row>(
+export function useTeamList<
+  Query extends PaginatedQueryReference,
+  Row = PaginatedQueryItem<Query>,
+>(
   list: Query,
   count: CountQuery<Query>,
   filters: Omit<PaginatedQueryArgs<Query>, "organizationId"> | "skip",
-  map: (item: PaginatedQueryItem<Query>) => Row,
+  map: (item: PaginatedQueryItem<Query>) => Row = identity,
   lead?: readonly Row[],
   tail?: readonly Row[]
 ) {

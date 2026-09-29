@@ -1,14 +1,4 @@
-import type { ApiLog, LogSource } from "./types"
-
-export const DASHBOARD_USER_AGENT = "Opensend Dashboard"
-
-export const LOG_USER_AGENTS = [
-  "opensend-node:1.4.0",
-  "opensend-python:0.9.2",
-  "curl/8.7.1",
-  "Opensend SMTP",
-  DASHBOARD_USER_AGENT,
-] as const
+import type { LogSource } from "./types"
 
 const LOG_SOURCE_LABEL: Record<LogSource, string> = {
   api: "API",
@@ -30,16 +20,6 @@ export function logStatusClass(status: number): LogStatusClass {
   if (status >= 400) return "4xx"
   if (status >= 300) return "3xx"
   return "2xx"
-}
-
-/** Backfill fields added after a log was persisted. */
-export function normalizeLog(log: ApiLog): ApiLog {
-  return {
-    ...log,
-    userAgent: log.userAgent ?? DASHBOARD_USER_AGENT,
-    source: log.source ?? "dashboard",
-    apiKeyId: log.apiKeyId ?? null,
-  }
 }
 
 /** A stored request or response body for display: JSON when it parses,

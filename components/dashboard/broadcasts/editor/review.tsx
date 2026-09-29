@@ -38,7 +38,7 @@ import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainOptions } from "@/lib/domains/use-domains"
 import { useSegmentOptions } from "@/lib/audience/use-audience"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
@@ -166,9 +166,9 @@ export function TestEmailDialog({
               .then(async (html) => {
                 /* The export failed and said so; there is nothing to send. */
                 if (html === null) return
-                if (!activeTeamId) throw new Error("Create a team first")
+                const organizationId = requireTeamId(activeTeamId)
                 await sendEmail({
-                  organizationId: activeTeamId,
+                  organizationId,
                   templateId: templateId as Id<"templates"> | undefined,
                   from: item.from || emailFrom(item, domains),
                   to,

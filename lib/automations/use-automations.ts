@@ -1,8 +1,8 @@
 "use client"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useWorkspace, useTeamQuery } from "@/components/auth/workspace"
 import type {
   Automation,
   AutomationRun,
@@ -13,30 +13,23 @@ import type {
 import { flattenSteps } from "@/lib/dashboard/automation"
 
 export function useStepContext(steps: AutomationStep[]) {
-  const { activeTeamId } = useWorkspace()
   const flat = flattenSteps(steps)
-  return useQuery(
-    api.automations.stepContext,
-    activeTeamId
-      ? {
-          organizationId: activeTeamId,
-          templateIds: [
-            ...new Set(
-              flat.flatMap((step) =>
-                step.type === "send_email" ? [step.templateId] : []
-              )
-            ),
-          ],
-          segmentIds: [
-            ...new Set(
-              flat.flatMap((step) =>
-                step.type === "add_to_segment" ? [step.segmentId] : []
-              )
-            ),
-          ],
-        }
-      : "skip"
-  )
+  return useTeamQuery(api.automations.stepContext, {
+    templateIds: [
+      ...new Set(
+        flat.flatMap((step) =>
+          step.type === "send_email" ? [step.templateId] : []
+        )
+      ),
+    ],
+    segmentIds: [
+      ...new Set(
+        flat.flatMap((step) =>
+          step.type === "add_to_segment" ? [step.segmentId] : []
+        )
+      ),
+    ],
+  })
 }
 
 export function asAutomation(row: Doc<"automations">): Automation {
@@ -76,11 +69,7 @@ export function asRunStep(row: Doc<"automationRunSteps">): AutomationRunStep {
   }
 }
 export function useAutomation(id: string) {
-  const { activeTeamId } = useWorkspace()
-  const row = useQuery(
-    api.automations.get,
-    activeTeamId ? { organizationId: activeTeamId, id } : "skip"
-  )
+  const row = useTeamQuery(api.automations.get, { id })
   return row === undefined ? undefined : row ? asAutomation(row) : null
 }
 export function useAutomationCommands() {

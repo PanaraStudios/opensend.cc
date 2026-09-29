@@ -55,13 +55,13 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
         reset()
         return
       }
-      // A closing overlay stays mounted until its exit animation ends.
-      const overlays = Array.from(
-        document.querySelectorAll<HTMLElement>(OVERLAYS)
-      ).filter(
-        (overlay) => isVisible(overlay) && !overlay.closest("[data-closed]")
-      )
       const typing = isTypingTarget(event.target)
+      // A closing overlay stays mounted until its exit animation ends.
+      const overlays = typing
+        ? []
+        : Array.from(document.querySelectorAll<HTMLElement>(OVERLAYS)).filter(
+            (overlay) => isVisible(overlay) && !overlay.closest("[data-closed]")
+          )
       if (overlays.length || typing) reset()
       const ordered = [...bindings].sort(
         (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
