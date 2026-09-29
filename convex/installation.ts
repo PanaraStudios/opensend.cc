@@ -25,7 +25,6 @@ import {
   tenantProvisioned,
   trackingTarget,
 } from "./ses/contracts"
-import { limitPermissionCheck } from "./ses/limits"
 import { internal } from "./_generated/api"
 import { startWorkflow } from "./ses/workflows"
 import { resubscribe } from "./ses/inboundRegions"
@@ -184,22 +183,6 @@ export const connection = internalQuery({
   args: {},
   returns: schema.doc("installation"),
   handler: (ctx) => requireConnection(ctx),
-})
-/** The connection and its regions for one paced AWS permission check. */
-export const beginPermissionCheck = internalMutation({
-  args: {},
-  returns: v.object({
-    installation: schema.doc("installation"),
-    regions: v.array(regionValue),
-  }),
-  handler: async (ctx) => {
-    await requireInstallationAdmin(ctx)
-    const installation = await requireConnection(ctx)
-    const regions = await listRegions(ctx)
-    if (!regions.length) throw new ConvexError("Enable an AWS region first")
-    await limitPermissionCheck(ctx)
-    return { installation, regions: regions.map((region) => region.region) }
-  },
 })
 export const recordPolicyRevision = internalMutation({
   args: { credentialRevision: v.number(), policyRevision: v.number() },

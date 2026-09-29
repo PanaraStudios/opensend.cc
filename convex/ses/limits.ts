@@ -14,19 +14,8 @@ const limiter = new RateLimiter(components.rateLimiter, {
   },
   // One manual status check per domain at a time, however often it is asked.
   domainCheck: { kind: "token bucket", rate: 1, period: 10000, capacity: 1 },
-  // Each check makes AWS calls with the installation's credentials.
-  permissionCheck: {
-    kind: "token bucket",
-    rate: 1,
-    period: 10000,
-    capacity: 1,
-  },
 })
-async function limitCheck(
-  ctx: MutationCtx,
-  name: "domainCheck" | "permissionCheck",
-  key: string
-) {
+async function limitCheck(ctx: MutationCtx, name: "domainCheck", key: string) {
   const result = await limiter.limit(ctx, name, { key })
   if (!result.ok)
     throw new ConvexError(
@@ -35,8 +24,6 @@ async function limitCheck(
 }
 export const limitDomainCheck = (ctx: MutationCtx, domainId: Id<"domains">) =>
   limitCheck(ctx, "domainCheck", domainId)
-export const limitPermissionCheck = (ctx: MutationCtx) =>
-  limitCheck(ctx, "permissionCheck", "installation")
 export const reserve = internalMutation({
   args: { region: regionValue },
   returns: v.number(),
