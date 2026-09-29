@@ -54,16 +54,10 @@ export function clients(
   beforeSesCall?: () => Promise<void>
 ) {
   const config = clientConfig(region, credentials)
-  const result = {
-    ses: new SESv2Client(config),
-    // Receipt rules exist only in the classic SES API.
-    sesClassic: new SESClient(config),
-    s3: new S3Client(config),
-    sns: new SNSClient(config),
-    sqs: new SQSClient(config),
-    sts: new STSClient(config),
-  }
-  for (const client of Object.values(result)) {
+  function configure<T extends { middlewareStack: unknown }>(
+    client: T,
+    paced = false
+  ): T {
     const stack = client.middlewareStack as SESv2Client["middlewareStack"]
     stack.add(
       (next, context) => async (args) => {
@@ -78,12 +72,8 @@ export function clients(
       },
       { step: "initialize", name: "opensendOperation" }
     )
-  }
-  // Placed inside the SDK's retry loop, so every attempt, retries included,
-  // waits its turn in the region's pacer.
-  // Receipt rules share the region's SES management call budget.
-  if (beforeSesCall)
-    for (const client of [result.ses, result.sesClassic])
+    // Placed inside the retry loop so each SES attempt waits for the pacer.
+    if (paced && beforeSesCall)
       (client.middlewareStack as SESv2Client["middlewareStack"]).addRelativeTo(
         <Args, Output>(next: (args: Args) => Promise<Output>) =>
           async (args: Args) => {
@@ -96,7 +86,35 @@ export function clients(
           name: "opensendPacer",
         }
       )
-  return result
+    return client
+  }
+  let ses: SESv2Client | undefined
+  let sesClassic: SESClient | undefined
+  let s3: S3Client | undefined
+  let sns: SNSClient | undefined
+  let sqs: SQSClient | undefined
+  let sts: STSClient | undefined
+  return {
+    get ses() {
+      return (ses ??= configure(new SESv2Client(config), true))
+    },
+    // Receipt rules exist only in the classic SES API.
+    get sesClassic() {
+      return (sesClassic ??= configure(new SESClient(config), true))
+    },
+    get s3() {
+      return (s3 ??= configure(new S3Client(config)))
+    },
+    get sns() {
+      return (sns ??= configure(new SNSClient(config)))
+    },
+    get sqs() {
+      return (sqs ??= configure(new SQSClient(config)))
+    },
+    get sts() {
+      return (sts ??= configure(new STSClient(config)))
+    },
+  }
 }
 export function connectionClients(
   installation: Doc<"installation">,

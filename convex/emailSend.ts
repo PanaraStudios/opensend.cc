@@ -51,10 +51,9 @@ export const deliver = internalAction({
           }
         })
       )
-      const installation = await ctx.runQuery(
-        internal.installation.connection,
-        {}
-      )
+      const { installation } = message
+      if (!installation?.accountId || !installation.credentialKind)
+        throw new ConvexError("Connect AWS first")
       const { ses } = connectionClients(installation, message.region)
       const utf8 = (Data: string) => ({ Data, Charset: "UTF-8" })
       const result = await ses.send(

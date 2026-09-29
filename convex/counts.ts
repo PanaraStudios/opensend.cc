@@ -150,6 +150,14 @@ class Counter<T extends TableNames, N extends Value> {
     )
     return counts.reduce((sum, count) => sum + count, 0)
   }
+  /** One count per key prefix in the same namespace, in one component call. */
+  async prefixTotals(ctx: QueryCtx, namespace: N, prefixes: Key[]) {
+    return this.aggregate.countBatch(
+      ctx,
+      // Aggregate's tuple prefix type cannot describe variable-length keys.
+      prefixes.map((prefix) => ({ namespace, bounds: { prefix } })) as never
+    )
+  }
   /** One total per namespace, in one call: e.g. each listed segment's size. */
   async totals(ctx: QueryCtx, namespaces: N[]) {
     if (!namespaces.length) return []
@@ -453,17 +461,38 @@ export type CountedTable =
   | "domains"
 export const COUNTED_TABLES = Object.keys(COUNTED) as CountedTable[]
 
-export async function insertRow<T extends CountedTable>(
+// A database writer belongs to one transaction; never reuse checks across calls.
+const activeTeams = new WeakMap<MutationCtx["db"], Set<string>>()
+
+export function insertRow<T extends CountedTable>(
+  ctx: MutationCtx,
+  table: T,
+  value: WithoutSystemFields<Doc<T>>,
+  returnDoc: true
+): Promise<Doc<T>>
+export function insertRow<T extends CountedTable>(
   ctx: MutationCtx,
   table: T,
   value: WithoutSystemFields<Doc<T>>
-): Promise<Id<T>> {
-  if ("organizationId" in value && typeof value.organizationId === "string")
-    await requireActiveTeam(ctx, value.organizationId)
+): Promise<Id<T>>
+export async function insertRow<T extends CountedTable>(
+  ctx: MutationCtx,
+  table: T,
+  value: WithoutSystemFields<Doc<T>>,
+  returnDoc = false
+): Promise<Id<T> | Doc<T>> {
+  if ("organizationId" in value && typeof value.organizationId === "string") {
+    let checked = activeTeams.get(ctx.db)
+    if (!checked) activeTeams.set(ctx.db, (checked = new Set()))
+    if (!checked.has(value.organizationId)) {
+      await requireActiveTeam(ctx, value.organizationId)
+      checked.add(value.organizationId)
+    }
+  }
   const id = await ctx.db.insert(table, value)
   const doc = (await ctx.db.get(table, id))!
   for (const counter of COUNTED[table]) await counter.insert(ctx, doc)
-  return id
+  return returnDoc ? doc : id
 }
 
 /** Patches the row and returns it as written. */

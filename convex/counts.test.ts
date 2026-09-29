@@ -4,7 +4,7 @@ import { runToCompletion } from "@convex-dev/migrations"
 import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import type { ActionCtx } from "./_generated/server"
-import { COUNTED_TABLES, counters, patchRow } from "./counts"
+import { COUNTED_TABLES, counters, insertRow, patchRow } from "./counts"
 import { writeLog } from "./logs"
 import { fixture } from "./testHelpers/ses.fixture"
 
@@ -447,4 +447,35 @@ describe("backfill", () => {
     await f.t.action(backfill)
     expect(await totals()).toEqual({ ...expected, contacts: 3 })
   })
+})
+
+test("counted inserts return stored documents and retirement checks stay transaction scoped", async () => {
+  const f = await fixture()
+  const value = {
+    organizationId: f.owner.team,
+    email: "first@example.com",
+    firstName: "",
+    lastName: "",
+    unsubscribed: false,
+    properties: {},
+    search: "first",
+    updatedAt: Date.now(),
+  }
+  await f.t.run(async (ctx) => {
+    const row = await insertRow(ctx, "contacts", value, true)
+    expect(row).toEqual(await ctx.db.get("contacts", row._id))
+    await insertRow(ctx, "contacts", { ...value, email: "second@example.com" })
+    expect(await counters.contacts.total(ctx, f.owner.team)).toBe(2)
+  })
+  await f.t.run((ctx) =>
+    ctx.db.insert("teamRetirements", { teamId: f.owner.team })
+  )
+  await expect(
+    f.t.run((ctx) =>
+      insertRow(ctx, "contacts", {
+        ...value,
+        email: "retired@example.com",
+      })
+    )
+  ).rejects.toThrow("Team not found")
 })

@@ -11,14 +11,14 @@ import { emptyBroadcastStats } from "../lib/dashboard/broadcast"
 export async function finishBroadcast(ctx: MutationCtx, id: Id<"broadcasts">) {
   const row = await ctx.db.get("broadcasts", id)
   if (!row || row.status !== "queued" || !row.audienceDone) return
-  const pending = await counters.broadcastRecipients.total(ctx, id, [
-    { is: false, among: [true, false] },
-  ])
+  const [pending, failedSettled, failedPending] =
+    await counters.broadcastRecipients.prefixTotals(ctx, id, [
+      [false],
+      [true, true],
+      [false, true],
+    ])
   if (pending) return
-  const failed = await counters.broadcastRecipients.total(ctx, id, [
-    { among: [true, false] },
-    { is: true, among: [true, false] },
-  ])
+  const failed = failedSettled + failedPending
   await patchRow(ctx, "broadcasts", id, {
     status: failed ? "failed" : "sent",
     sentAt: Date.now(),
@@ -26,20 +26,40 @@ export async function finishBroadcast(ctx: MutationCtx, id: Id<"broadcasts">) {
     updatedAt: Date.now(),
   })
 }
+export type BroadcastContext = {
+  recipient: Doc<"broadcastRecipients"> | null
+  broadcast: Doc<"broadcasts"> | null
+}
+
+export async function loadBroadcastContext(
+  ctx: QueryCtx,
+  email: Doc<"emails">
+): Promise<BroadcastContext> {
+  const recipient = email.broadcastId
+    ? await ctx.db
+        .query("broadcastRecipients")
+        .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+        .unique()
+    : null
+  return {
+    recipient,
+    broadcast: recipient
+      ? await ctx.db.get("broadcasts", recipient.broadcastId)
+      : null,
+  }
+}
+
 /** Retained independently of email retention, once per recipient milestone. */
 export async function broadcastMetric(
   ctx: MutationCtx,
   email: Doc<"emails">,
-  type: string
+  type: string,
+  loaded?: BroadcastContext
 ) {
   if (!email.broadcastId) return
-  const recipient = await ctx.db
-    .query("broadcastRecipients")
-    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
-    .unique()
-  if (!recipient) return
-  if ((await ctx.db.get("broadcasts", recipient.broadcastId))?.retainedStats)
-    return
+  const context = loaded ?? (await loadBroadcastContext(ctx, email))
+  const { recipient, broadcast } = context
+  if (!recipient || broadcast?.retainedStats) return
   const supported = [
     "delivered",
     "opened",
@@ -65,18 +85,21 @@ export async function broadcastMetric(
         type,
       })
   }
-  if (type === "sent" && !recipient.sent)
-    await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
-  if (
+  const sent = type === "sent" && !recipient.sent
+  const settled =
     !recipient.settled &&
     ["sent", "failed", "suppressed", "canceled"].includes(type)
-  ) {
-    await patchRow(ctx, "broadcastRecipients", recipient._id, {
-      settled: true,
-      failed: type === "failed",
-    })
-    await finishBroadcast(ctx, recipient.broadcastId)
-  }
+  if (sent || settled)
+    context.recipient = await patchRow(
+      ctx,
+      "broadcastRecipients",
+      recipient._id,
+      {
+        ...(sent ? { sent: true } : {}),
+        ...(settled ? { settled: true, failed: type === "failed" } : {}),
+      }
+    )
+  if (settled) await finishBroadcast(ctx, recipient.broadcastId)
 }
 export const stats = query({
   args: { organizationId: v.string(), id: v.id("broadcasts") },
@@ -93,8 +116,7 @@ export const stats = query({
 
 export async function readBroadcastStats(ctx: QueryCtx, id: Id<"broadcasts">) {
   const stats = emptyBroadcastStats()
-  stats.recipients = (await counters.broadcastRecipients.total(ctx, id)) ?? 0
-  for (const key of [
+  const keys = [
     "delivered",
     "opened",
     "clicked",
@@ -102,11 +124,19 @@ export async function readBroadcastStats(ctx: QueryCtx, id: Id<"broadcasts">) {
     "suppressed",
     "complained",
     "unsubscribed",
-  ] as const)
-    stats[key] =
-      (await counters.broadcastEvents.total(ctx, id, [
-        { is: key, among: [] },
-      ])) ?? 0
+  ] as const
+  const [recipients, counts] = await Promise.all([
+    counters.broadcastRecipients.total(ctx, id),
+    counters.broadcastEvents.prefixTotals(
+      ctx,
+      id,
+      keys.map((key) => [key])
+    ),
+  ])
+  stats.recipients = recipients ?? 0
+  keys.forEach((key, index) => {
+    stats[key] = counts[index]
+  })
   return stats
 }
 
@@ -156,20 +186,20 @@ export async function broadcastRecipientProblem(
 export async function recordBroadcastReport(
   ctx: MutationCtx,
   email: Doc<"emails">,
-  event: Doc<"emailEvents">
+  event: Doc<"emailEvents">,
+  loaded?: BroadcastContext
 ) {
   if (!email.broadcastId || event.broadcastReported) return
-  const recipient = await ctx.db
-    .query("broadcastRecipients")
-    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
-    .unique()
-  if (
-    !recipient ||
-    (await ctx.db.get("broadcasts", recipient.broadcastId))?.retainedStats
-  )
-    return
+  const context = loaded ?? (await loadBroadcastContext(ctx, email))
+  const { recipient, broadcast } = context
+  if (!recipient || broadcast?.retainedStats) return
   if (event.type === "sent" && !recipient.sent)
-    await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
+    context.recipient = await patchRow(
+      ctx,
+      "broadcastRecipients",
+      recipient._id,
+      { sent: true }
+    )
   const milestone = await ctx.db
     .query("broadcastEvents")
     .withIndex("by_emailId_and_type", (q) =>

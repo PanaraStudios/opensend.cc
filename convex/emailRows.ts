@@ -1,5 +1,9 @@
 import { recordBroadcastReport } from "./broadcastMetrics"
-import { recordMetric } from "./metricRows"
+import {
+  recordMetric,
+  loadMetricContext,
+  type MetricContext,
+} from "./metricRows"
 import { insertRow, patchRow } from "./counts"
 import type { WithoutSystemFields } from "convex/server"
 import type { MutationCtx } from "./_generated/server"
@@ -17,7 +21,8 @@ export async function insertEmail(
   content: Omit<WithoutSystemFields<Doc<"emailContents">>, "emailId">,
   recipients: readonly string[]
 ) {
-  const emailId = await insertRow(ctx, "emails", row)
+  const email = await insertRow(ctx, "emails", row, true)
+  const emailId = email._id
   await ctx.db.insert("emailContents", { ...content, emailId })
   for (const address of new Set(recipients))
     await insertRow(ctx, "emailRecipients", {
@@ -25,7 +30,7 @@ export async function insertEmail(
       emailId,
       address,
     })
-  await insertEmailEvent(ctx, emailId, row.status)
+  await insertEmailEvent(ctx, email, row.status)
   return emailId
 }
 
@@ -37,27 +42,34 @@ export const patchEmail = (
 
 export async function insertEmailEvent(
   ctx: MutationCtx,
-  emailId: Id<"emails">,
+  emailOrId: Doc<"emails"> | Id<"emails">,
   type: EmailStatus,
   at = Date.now(),
   detail: Partial<
     Pick<Doc<"emailEvents">, "sesEventId" | "recipients" | "details">
-  > = {}
+  > = {},
+  loaded?: MetricContext
 ) {
-  const id = await insertRow(ctx, "emailEvents", {
-    emailId,
-    type,
-    at,
-    ...detail,
-  })
-  const email = (await ctx.db.get("emails", emailId))!
-  await recordMetric(ctx, email, type, at, detail.recipients)
-  await recordBroadcastReport(
+  const emailId = typeof emailOrId === "string" ? emailOrId : emailOrId._id
+  const event = await insertRow(
     ctx,
-    email,
-    (await ctx.db.get("emailEvents", id))!
+    "emailEvents",
+    {
+      emailId,
+      type,
+      at,
+      ...detail,
+    },
+    true
   )
-  return id
+  const email =
+    typeof emailOrId === "string"
+      ? (await ctx.db.get("emails", emailId))!
+      : emailOrId
+  const context = loaded ?? (await loadMetricContext(ctx, email))
+  await recordMetric(ctx, email, type, at, detail.recipients, context)
+  await recordBroadcastReport(ctx, email, event, context.broadcast)
+  return event._id
 }
 
 /** Moves an email to `status` and adds it to the timeline. SES event
@@ -68,8 +80,8 @@ export async function recordEmailStatus(
   status: EmailStatus,
   patch: Partial<WithoutSystemFields<Doc<"emails">>> = {}
 ) {
-  await patchEmail(ctx, id, { ...patch, status })
-  await insertEmailEvent(ctx, id, status)
+  const email = await patchEmail(ctx, id, { ...patch, status })
+  await insertEmailEvent(ctx, email, status)
 }
 
 /** Drops an email's body and attachments, keeping its row and timeline. */

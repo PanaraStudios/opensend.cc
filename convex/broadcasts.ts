@@ -423,37 +423,47 @@ export async function recipientPage(
   cursor: string | null,
   before?: number,
   size = 100,
-  sending = false
+  sending = false,
+  loadedTopic?: Doc<"topics"> | null
 ) {
-  const topic = await audience(ctx, row)
-  const page = await ctx.db
-    .query("contacts")
-    .withIndex("by_organizationId", (q) =>
-      q
-        .eq("organizationId", row.organizationId)
-        .lte("_creationTime", before ?? Number.MAX_SAFE_INTEGER)
+  const topic =
+    loadedTopic === undefined ? await audience(ctx, row) : loadedTopic
+  const page = row.segmentId
+    ? await ctx.db
+        .query("segmentMembers")
+        .withIndex("by_segmentId", (q) => q.eq("segmentId", row.segmentId!))
+        .paginate({ numItems: size, cursor })
+    : await ctx.db
+        .query("contacts")
+        .withIndex("by_organizationId", (q) =>
+          q
+            .eq("organizationId", row.organizationId)
+            .lte("_creationTime", before ?? Number.MAX_SAFE_INTEGER)
+        )
+        .paginate({ numItems: size, cursor })
+  const candidates: Doc<"contacts">[] = []
+  for (const entry of page.page) {
+    const contact =
+      "contactId" in entry
+        ? await ctx.db.get("contacts", entry.contactId)
+        : entry
+    if (
+      contact &&
+      contact.organizationId === row.organizationId &&
+      contact._creationTime <= (before ?? Number.MAX_SAFE_INTEGER)
     )
-    .paginate({ numItems: size, cursor })
+      candidates.push(contact)
+  }
   const suppressed = sending
     ? new Set<string>()
     : await suppressedAmong(
         ctx,
         row.organizationId,
-        page.page.map((c) => c.email)
+        candidates.map((c) => c.email)
       )
   const contacts = []
-  for (const contact of page.page) {
+  for (const contact of candidates) {
     if (contact.unsubscribed || suppressed.has(contact.email)) continue
-    if (
-      row.segmentId &&
-      !(await ctx.db
-        .query("segmentMembers")
-        .withIndex("by_contactId_and_segmentId", (q) =>
-          q.eq("contactId", contact._id).eq("segmentId", row.segmentId!)
-        )
-        .unique())
-    )
-      continue
     if (
       topic &&
       effectiveTopicSubscription(

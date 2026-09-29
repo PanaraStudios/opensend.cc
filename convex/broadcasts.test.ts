@@ -5,7 +5,8 @@ import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent } from "./emailRows"
-import { patchRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
+import { recipientPage } from "./broadcasts"
 import { EXPORT_SOURCES } from "./exportSources"
 import { readUnsubscribeToken } from "../lib/unsubscribe/token"
 
@@ -802,4 +803,83 @@ test("REST full-access permission and POST idempotency protect broadcast writes"
       })
     ).total
   ).toBe(1)
+})
+
+test("segment pages preserve contact cutoff and skip missing or foreign contacts", async () => {
+  const f = await setup()
+  const segmentId = await f.owner.client.mutation(api.segments.create, {
+    organizationId: f.org,
+    name: "Members",
+  })
+  const [older] = await f.contacts([{ email: "older@example.com" }])
+  const [deleted] = await f.contacts(
+    [{ email: "deleted@example.com" }],
+    [segmentId]
+  )
+  const before = await f.t.run(
+    async (ctx) => (await ctx.db.get("contacts", deleted))!._creationTime
+  )
+  vi.setSystemTime(Date.now() + 1000)
+  // The contact cutoff must not be applied to the membership's creation time.
+  await f.contacts([{ email: "older@example.com" }], [segmentId])
+  await f.contacts([{ email: "newer@example.com" }], [segmentId])
+  await f.t.run(async (ctx) => {
+    await ctx.db.delete("contacts", deleted)
+    const foreign = await insertRow(ctx, "contacts", {
+      organizationId: f.outsider.team,
+      email: "foreign@example.com",
+      firstName: "",
+      lastName: "",
+      unsubscribed: false,
+      properties: {},
+      search: "foreign",
+      updatedAt: Date.now(),
+    })
+    await insertRow(ctx, "segmentMembers", {
+      organizationId: f.org,
+      segmentId,
+      contactId: foreign,
+    })
+  })
+  let cursor: string | null = null
+  const found: Id<"contacts">[] = []
+  for (;;) {
+    const result = await f.t.run((ctx) =>
+      recipientPage(
+        ctx,
+        { organizationId: f.org, segmentId, topicId: null },
+        cursor,
+        before,
+        1
+      )
+    )
+    found.push(...result.page.map((contact) => contact._id))
+    if (result.isDone) break
+    cursor = result.continueCursor
+  }
+  expect(found).toEqual([older])
+})
+
+test("segment review and sending span membership pages", async () => {
+  const f = await setup()
+  const segmentId = await f.owner.client.mutation(api.segments.create, {
+    organizationId: f.org,
+    name: "Paged members",
+  })
+  for (let batch = 0; batch < 2; batch++)
+    await f.contacts(
+      Array.from({ length: 55 }, (_, i) => ({
+        email: `member${batch * 55 + i}@example.com`,
+      })),
+      [segmentId]
+    )
+  await f.contacts([{ email: "outside@example.com" }])
+  expect(
+    await f.owner.client.action(api.broadcasts.review, {
+      organizationId: f.org,
+      segmentId,
+      topicId: null,
+    })
+  ).toBe(110)
+  expect(await f.fanout(await f.create({ segmentId }))).toHaveLength(110)
 })

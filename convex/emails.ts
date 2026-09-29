@@ -1,5 +1,6 @@
 import { includeSelected } from "../lib/dashboard/options"
 import { broadcastRecipientProblem } from "./broadcastMetrics"
+import type { MetricContext } from "./metricRows"
 import { prepareTracking } from "./tracking"
 import { retirement } from "./teamLifecycle"
 import { countValue, counters, deleteRow } from "./counts"
@@ -31,7 +32,7 @@ import {
 import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
-import { findRegion, requireTeam } from "./access"
+import { findInstallation, findRegion, requireTeam } from "./access"
 import { apiError, invalid, missing } from "./api/caller"
 import { emitEvent } from "./events"
 import {
@@ -475,6 +476,7 @@ type SendBinding = {
 const claimResult = v.union(
   v.null(),
   v.object({
+    installation: v.union(schema.doc("installation"), v.null()),
     TenantName: v.string(),
     ConfigurationSetName: v.string(),
     region: regionValue,
@@ -651,6 +653,7 @@ export const claim = internalMutation({
       .withIndex("by_emailId", (q) => q.eq("emailId", id))
       .unique()
     return {
+      installation: await findInstallation(ctx),
       TenantName: binding.TenantName,
       ConfigurationSetName: binding.ConfigurationSetName,
       region: binding.region,
@@ -688,10 +691,11 @@ export async function acceptEmail(
   ctx: MutationCtx,
   email: Doc<"emails">,
   messageId: string,
-  at: number
+  at: number,
+  loaded?: MetricContext
 ) {
-  if (email.sentAt !== undefined) return
-  await patchEmail(ctx, email._id, {
+  if (email.sentAt !== undefined) return email
+  const current = await patchEmail(ctx, email._id, {
     messageId,
     sentAt: at,
     claimed: false,
@@ -700,10 +704,11 @@ export async function acceptEmail(
       ? { status: "sent" as const }
       : {}),
   })
-  await insertEmailEvent(ctx, email._id, "sent", at)
+  await insertEmailEvent(ctx, current, "sent", at, {}, loaded)
   await emitEmail(ctx, email._id, "email.sent")
   if (email.organizationId === SYSTEM_SCOPE)
     await deleteEmailContent(ctx, email._id)
+  return current
 }
 
 /** Settles one run: sent, retried later, or failed for good. */
@@ -1006,12 +1011,12 @@ export const timelineCount = query({
   handler: async (ctx, { id, insights }) => {
     await readableEmail(ctx, id)
     const total = insights
-      ? (await counters.emailEvents.total(ctx, id, [
-          { is: "opened", among: EMAIL_STATUSES },
-        ]))! +
-        (await counters.emailEvents.total(ctx, id, [
-          { is: "clicked", among: EMAIL_STATUSES },
-        ]))!
+      ? (
+          await counters.emailEvents.prefixTotals(ctx, id, [
+            ["opened"],
+            ["clicked"],
+          ])
+        ).reduce((sum, count) => sum + count, 0)
       : await counters.emailEvents.total(ctx, id)
     return { total }
   },

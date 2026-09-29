@@ -16,16 +16,24 @@ function fromBase64url(value: string) {
   }
 }
 
+let cachedKey: { secret: string; key: Promise<CryptoKey> } | undefined
+
 function hmacKey(secret: string, validate = true) {
   if (validate && secret.length < 32)
     throw new Error("The installation server secret is unavailable")
-  return crypto.subtle.importKey(
+  if (cachedKey?.secret === secret) return cachedKey.key
+  const key = crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"]
   )
+  cachedKey = { secret, key }
+  void key.catch(() => {
+    if (cachedKey?.key === key) cachedKey = undefined
+  })
+  return key
 }
 
 export async function signToken(

@@ -1,4 +1,8 @@
-import { broadcastMetric } from "./broadcastMetrics"
+import {
+  broadcastMetric,
+  loadBroadcastContext,
+  type BroadcastContext,
+} from "./broadcastMetrics"
 import type { Infer } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx } from "./_generated/server"
@@ -17,16 +21,37 @@ export function emailAddresses(email: Doc<"emails">) {
   ].filter((address) => !email.suppressed?.includes(address))
 }
 
+export type MetricContext = {
+  domain: Doc<"domains"> | null
+  broadcast: BroadcastContext
+}
+
+export async function loadMetricContext(
+  ctx: MutationCtx,
+  email: Doc<"emails">,
+  domain?: Doc<"domains"> | null
+): Promise<MetricContext> {
+  return {
+    domain:
+      domain === undefined && email.source !== "system"
+        ? await ctx.db.get("domains", email.domainId)
+        : (domain ?? null),
+    broadcast: await loadBroadcastContext(ctx, email),
+  }
+}
+
 export async function recordMetric(
   ctx: MutationCtx,
   email: Doc<"emails">,
   type: Infer<typeof metricType>,
   at: number,
-  recipients = emailAddresses(email)
+  recipients = emailAddresses(email),
+  loaded?: MetricContext
 ) {
   if (email.source === "system") return
-  await broadcastMetric(ctx, email, type)
-  const domain = await ctx.db.get("domains", email.domainId)
+  const context = loaded ?? (await loadMetricContext(ctx, email))
+  await broadcastMetric(ctx, email, type, context.broadcast)
+  const { domain } = context
   if (
     domain?.tenantId &&
     (type === "sent" || type === "Permanent" || type === "complained")

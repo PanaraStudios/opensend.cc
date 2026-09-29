@@ -12,7 +12,7 @@ import { patchRow, insertRow } from "./counts"
 import { audience, draft, recipientPage } from "./broadcasts"
 import { createEmail } from "./emails"
 import { finishBroadcast } from "./broadcastMetrics"
-import { unsubscribeLinks } from "./unsubscribe"
+import { unsubscribeLinks, unsubscribeContext } from "./unsubscribe"
 import { renderEmail } from "./email/render"
 import { listProperties } from "./audience"
 import { retirement } from "./teamLifecycle"
@@ -71,7 +71,7 @@ export const batch = internalMutation({
       (await retirement(ctx, row.organizationId))
     )
       return true
-    await audience(ctx, row)
+    const topic = await audience(ctx, row)
     const body = await draft(ctx, id)
     if (!body) throw new Error("Broadcast not found")
     const page = await recipientPage(
@@ -80,9 +80,11 @@ export const batch = internalMutation({
       row.cursor ?? null,
       row.audienceBefore,
       10,
-      true
+      true,
+      topic
     )
     const properties = await listProperties(ctx, row.organizationId)
+    let linksContext: Awaited<ReturnType<typeof unsubscribeContext>> | undefined
     for (const contact of page.page) {
       const previous = await ctx.db
         .query("broadcastRecipients")
@@ -91,12 +93,17 @@ export const batch = internalMutation({
         )
         .unique()
       if (previous) continue
-      const links = await unsubscribeLinks(ctx, {
-        organizationId: row.organizationId,
-        contactId: contact._id,
-        topicId: row.topicId ?? undefined,
-        broadcastId: id,
-      })
+      linksContext ??= await unsubscribeContext(ctx)
+      const links = await unsubscribeLinks(
+        ctx,
+        {
+          organizationId: row.organizationId,
+          contactId: contact._id,
+          topicId: row.topicId ?? undefined,
+          broadcastId: id,
+        },
+        { ...linksContext, contact, topic }
+      )
       const values: Record<string, string | undefined> = {
         FIRST_NAME: contact.firstName || undefined,
         LAST_NAME: contact.lastName || undefined,

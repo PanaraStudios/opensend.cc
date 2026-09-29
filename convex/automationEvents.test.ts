@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
+import { emitEvent } from "./events"
 import { customEventName, customEventType } from "./automationEvents"
 
 beforeEach(() => {
@@ -566,5 +567,36 @@ describe("the /events definitions API", () => {
       status: 401,
       body: { name: "restricted_api_key" },
     })
+  })
+})
+
+test("outbox schedules only the consumer for each event type", async () => {
+  const f = await fixture()
+  await f.t.run(async (ctx) => {
+    for (const [type, consumer] of [
+      ["email.sent", "webhooks:deliverEvent"],
+      ["contact.updated", "webhooks:deliverEvent"],
+      ["custom:email.sent", "automationRuntime:consume"],
+    ]) {
+      const id = await emitEvent(ctx, f.owner.team, type, { marker: type })
+      const jobs = (
+        await ctx.db.system.query("_scheduled_functions").collect()
+      ).filter((job) =>
+        job.args.some(
+          (arg) =>
+            typeof arg === "object" &&
+            arg !== null &&
+            "id" in arg &&
+            arg.id === id
+        )
+      )
+      expect(jobs).toHaveLength(1)
+      expect(jobs[0].name).toBe(consumer)
+      expect(await ctx.db.get("events", id)).toMatchObject({
+        organizationId: f.owner.team,
+        type,
+        data: { marker: type },
+      })
+    }
   })
 })
