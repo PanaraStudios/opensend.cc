@@ -54,12 +54,11 @@ import {
   useBroadcastCommands,
 } from "@/lib/broadcasts/use-broadcasts"
 import type { Broadcast, BroadcastStatus } from "@/lib/dashboard/types"
-import { useSegments } from "@/lib/audience/use-audience"
+import { useSegmentOptions } from "@/lib/audience/use-audience"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 export function BroadcastsView() {
   const router = useRouter()
-  const segments = useSegments() ?? []
   const {
     addBroadcast,
     updateBroadcast,
@@ -73,6 +72,12 @@ export function BroadcastsView() {
   const [query, setQuery] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [audience, setAudience] = React.useState("all")
+  const [audienceSearch, setAudienceSearch] = React.useState("")
+  const segments =
+    useSegmentOptions(
+      audience === "all" || audience === "everyone" ? null : audience,
+      audienceSearch
+    ) ?? []
   const [renaming, setRenaming] = React.useState<Broadcast | null>(null)
   const [deleting, setDeleting] = React.useState<Broadcast | null>(null)
 
@@ -145,6 +150,7 @@ export function BroadcastsView() {
             selectedItem: audienceFilterItems(segments).find(
               (item) => item.value === audience
             ),
+            search: { onChange: setAudienceSearch },
             "aria-label": "Filter by audience",
           },
         ]}

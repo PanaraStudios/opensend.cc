@@ -128,7 +128,6 @@ export type Contact = {
   lastName: string
   createdAt: number
   unsubscribed: boolean
-  segmentIds: string[]
   topics: { topicId: string; subscription: TopicSubscription }[]
   properties: Record<string, string>
 }

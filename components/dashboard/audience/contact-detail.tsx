@@ -8,12 +8,6 @@ import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -36,6 +30,7 @@ import {
   ListPagination,
   NotFoundState,
   ResourceTable,
+  SearchableSelect,
   Surface,
   Th,
   useAutosaveDraft,
@@ -50,10 +45,13 @@ import { useReceivedList } from "@/lib/received/use-received"
 import {
   asContact,
   useAudienceCommands,
+  useContactSegments,
+  useHasSegments,
   useProperties,
-  useSegments,
+  useSegmentOptions,
   useTopics,
 } from "@/lib/audience/use-audience"
+import { OPTION_LIMIT } from "@/lib/dashboard/options"
 import { actionError } from "@/lib/action-error"
 import { useRecipientEmails } from "@/lib/emails/use-emails"
 import type { Contact } from "@/lib/dashboard/types"
@@ -81,21 +79,20 @@ function HistorySection({
   )
 }
 
-function SegmentMembership({
-  contactId,
-  segmentIds,
-}: {
-  contactId: string
-  segmentIds: string[]
-}) {
+function SegmentMembership({ contactId }: { contactId: string }) {
   const { setContactSegment } = useAudienceCommands()
-  const segments = useSegments() ?? []
-  const assigned = segments.filter((segment) => segmentIds.includes(segment.id))
-  const available = segments.filter(
-    (segment) => !segmentIds.includes(segment.id)
+  const hasSegments = useHasSegments()
+  /* A contact can be in any number of segments, and a team can have any
+     number: both lists come from the server a page at a time. */
+  const assigned = useContactSegments(contactId)
+  const [search, setSearch] = React.useState("")
+  const suggested = useSegmentOptions(null, search) ?? []
+  const available = suggested.filter(
+    (segment) => !assigned.results.some((row) => row._id === segment.id)
   )
   const toggle = (segmentId: string, member: boolean) =>
     setContactSegment(contactId, segmentId, member).catch(reportError)
+  const { pageRows, pagination } = assigned
 
   return (
     <Surface>
@@ -106,7 +103,9 @@ function SegmentMembership({
           see these names.
         </p>
       </div>
-      {segments.length === 0 ? (
+      {hasSegments === undefined || assigned.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-8 w-full" />
+      ) : !hasSegments ? (
         <p className="text-sm text-muted-foreground">
           No segments yet.{" "}
           <Link href="/segments" className="underline underline-offset-4">
@@ -116,17 +115,17 @@ function SegmentMembership({
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {assigned.length === 0 ? (
+          {pageRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Not in any segments yet.
             </p>
           ) : (
             <ul className="flex flex-wrap gap-2">
-              {assigned.map((segment) => (
-                <li key={segment.id}>
+              {pageRows.map((segment) => (
+                <li key={segment._id}>
                   <Badge variant="secondary" size="lg" className="pr-1">
                     <Link
-                      href={`/segments/${segment.id}`}
+                      href={`/segments/${segment._id}`}
                       className="hover:underline"
                     >
                       {segment.name}
@@ -136,7 +135,7 @@ function SegmentMembership({
                       variant="ghost"
                       size="icon-xs"
                       aria-label={`Remove from ${segment.name}`}
-                      onClick={() => toggle(segment.id, false)}
+                      onClick={() => toggle(segment._id, false)}
                     >
                       <XIcon />
                     </Button>
@@ -145,34 +144,35 @@ function SegmentMembership({
               ))}
             </ul>
           )}
-          {available.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" className="w-fit" />
-                }
-              >
-                <PlusIcon data-icon="inline-start" />
-                Add to segment
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-44">
-                {available.map((segment) => (
-                  <DropdownMenuItem
-                    key={segment.id}
-                    onClick={() => toggle(segment.id, true)}
-                  >
-                    {segment.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
+          {pagination.hasMore || pagination.loaded > pagination.pageSize ? (
+            <ListPagination {...pagination} noun="segment" />
+          ) : null}
+          {!search &&
+          available.length === 0 &&
+          suggested.length < OPTION_LIMIT ? (
             <p className="text-sm text-muted-foreground">
               In every segment.{" "}
               <Link href="/segments" className="underline underline-offset-4">
                 Manage segments
               </Link>
             </p>
+          ) : (
+            <SearchableSelect
+              value=""
+              onChange={(segmentId) => toggle(segmentId, true)}
+              items={available.map((segment) => ({
+                value: segment.id,
+                label: segment.name,
+              }))}
+              search={{ onChange: setSearch, placeholder: "Search segments…" }}
+              contentClassName="min-w-44"
+              trigger={() => (
+                <Button variant="outline" size="sm" className="w-fit">
+                  <PlusIcon data-icon="inline-start" />
+                  Add to segment
+                </Button>
+              )}
+            />
           )}
         </div>
       )}
@@ -196,17 +196,11 @@ function AutosaveInput({
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const stored = useQuery(api.contacts.get, { id })
-  const segments = useSegments()
   const topics = useTopics()
   const properties = useProperties()
   const { leaving, deleteAndLeave } = useDeleteRecord("/contacts")
 
-  if (
-    stored === undefined ||
-    segments === undefined ||
-    topics === undefined ||
-    properties === undefined
-  )
+  if (stored === undefined || topics === undefined || properties === undefined)
     return <Skeleton className="h-64 w-full" />
   if (!stored) {
     if (leaving) return null
@@ -322,10 +316,7 @@ function ContactPage({
               ) : null}
             </Surface>
 
-            <SegmentMembership
-              contactId={contact.id}
-              segmentIds={contact.segmentIds}
-            />
+            <SegmentMembership contactId={contact.id} />
 
             <Surface className="lg:col-span-2">
               <h2 className="text-sm font-medium">Topics</h2>

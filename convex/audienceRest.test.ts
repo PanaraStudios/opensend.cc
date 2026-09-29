@@ -5,6 +5,8 @@ import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { renderTemplate } from "./templates"
+import { insertRow } from "./counts"
+import { MEMBERSHIP_BATCH, SEGMENT_INPUT_LIMIT } from "./audience"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -370,6 +372,55 @@ describe("audience and template REST resources", () => {
         `/contacts/${contact.id}/topics?limit=1&after=${otherTopic.id}`
       )
     ).toMatchObject({ data: [{ id: topic.id }] })
+  })
+
+  test("contact segments page by membership, newest joined first, past one transaction's share", async () => {
+    const f = await setup()
+    const segments = await f.t.run(async (ctx) => {
+      const ids: Id<"segments">[] = []
+      for (let i = 0; i < MEMBERSHIP_BATCH + 50; i++)
+        ids.push(
+          await insertRow(ctx, "segments", {
+            organizationId: f.owner.team,
+            name: `Segment ${i}`,
+          })
+        )
+      return ids
+    })
+    const { id } = await f.ok("/contacts", "POST", {
+      email: "paged@example.com",
+      segments: segments.map((segment) => ({ id: segment })),
+    })
+    // Memberships past the first transaction's share join in scheduled steps.
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+    const seen: { id: string; created_at: string }[] = []
+    let after: string | undefined
+    for (;;) {
+      const page = await f.ok(
+        `/contacts/${id}/segments?limit=100${after ? `&after=${after}` : ""}`
+      )
+      seen.push(...page.data)
+      if (!page.has_more) break
+      after = page.data.at(-1).id
+    }
+    expect(new Set(seen.map((row) => row.id)).size).toBe(segments.length)
+    const joined = seen.map((row) => Date.parse(row.created_at))
+    expect([...joined].sort((a, b) => b - a)).toEqual(joined)
+    expect(
+      (
+        await f.ok(`/contacts/${id}/segments?limit=100&before=${seen[100].id}`)
+      ).data.map((row: { id: string }) => row.id)
+    ).toEqual(seen.slice(0, 100).map((row) => row.id))
+    expect(
+      (
+        await f.call("/contacts", "POST", {
+          email: "limit@example.com",
+          segments: Array.from({ length: SEGMENT_INPUT_LIMIT + 1 }, () => ({
+            id: segments[0],
+          })),
+        })
+      ).status
+    ).toBe(422)
   })
 
   test("publish and duplicate use draft snapshots, aliases, typed fallbacks and permission checks", async () => {

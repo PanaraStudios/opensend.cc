@@ -37,7 +37,7 @@ import { isEmail, pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainOptions } from "@/lib/domains/use-domains"
-import { useSegments } from "@/lib/audience/use-audience"
+import { useSegmentOptions } from "@/lib/audience/use-audience"
 import { useWorkspace } from "@/components/auth/workspace"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
@@ -362,7 +362,7 @@ function ReviewBody({
 }) {
   const router = useRouter()
   const domains = useDomainOptions({ status: "verified" })
-  const segments = useSegments() ?? []
+  const segments = useSegmentOptions(item.segmentId) ?? []
   const { sendBroadcast, updateBroadcast } = useBroadcastCommands()
   const { activeTeamId } = useWorkspace()
   const review = useAction(api.broadcasts.review)

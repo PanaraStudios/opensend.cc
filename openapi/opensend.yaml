@@ -913,7 +913,7 @@ paths:
       tags:
         - Segments
       summary: Create Segment
-      description: Create a segment to organize contacts (requires full access). Your team can have up to 500 segments.
+      description: Create a segment to organize contacts (requires full access). A team can have any number of segments.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2906,8 +2906,8 @@ paths:
         - Contacts
       summary: List Contact Segments
       description: >-
-        List segments for a contact, ordered by segment creation time rather than when the contact joined
-        (requires full access).
+        List segments for a contact, most recently joined first; each item's `created_at` is when the contact
+        joined the segment (requires full access).
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -7654,9 +7654,11 @@ components:
                     type: string
                 required:
                   - id
-              maxItems: 500
+              maxItems: 1000
             - type: 'null'
-          description: Array of segment IDs to add the contact to.
+          description: >-
+            Array of segment IDs to add the contact to, at most 1000 per request. Memberships beyond the first
+            200 are added moments later in the background.
         topics:
           anyOf:
             - type: array
@@ -10897,7 +10899,7 @@ components:
           example: skip
         segments:
           type: string
-          description: JSON-encoded array of segments to add imported contacts to.
+          description: JSON-encoded array of at most 1000 segments to add imported contacts to.
           example: '[{"id":"78261eea-8f8b-4381-83c6-79fa7120f1cf"}]'
         topics:
           type: string
@@ -11921,7 +11923,7 @@ components:
               type:
                 - integer
                 - 'null'
-              description: The enforced per-team segment cap (500).
+              description: Always null; a team can have any number of segments.
           required:
             - used
             - limit

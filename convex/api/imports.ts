@@ -11,7 +11,7 @@ import schema from "../schema"
 import type { Doc } from "../_generated/dataModel"
 import { enqueueImport } from "../contactImports"
 import { createProperty } from "../contactProperties"
-import { listProperties } from "../audience"
+import { listProperties, SEGMENT_INPUT_LIMIT } from "../audience"
 import { parseCsv, parseUnsubscribed } from "../../lib/dashboard/csv"
 import { own } from "./audience"
 import { apiError, callerValue, notFound, requireCaller } from "./caller"
@@ -115,11 +115,13 @@ export const create = internalMutation({
         const topics = jsonField(input, "topics", [])
         if (
           !Array.isArray(segments) ||
-          segments.length > 100 ||
+          segments.length > SEGMENT_INPUT_LIMIT ||
           !Array.isArray(topics) ||
           topics.length > 100
         )
-          throw invalid("Imports support at most 100 segments and 100 topics.")
+          throw invalid(
+            `Imports support at most ${SEGMENT_INPUT_LIMIT} segments and 100 topics.`
+          )
         const segmentIds = []
         for (const value of segments)
           segmentIds.push(

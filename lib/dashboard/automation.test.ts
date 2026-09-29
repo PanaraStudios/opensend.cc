@@ -47,7 +47,6 @@ const contact: Contact = {
   lastName: "Lovelace",
   createdAt: 1,
   unsubscribed: false,
-  segmentIds: [],
   topics: [],
   properties: { company: "Analytical" },
 }

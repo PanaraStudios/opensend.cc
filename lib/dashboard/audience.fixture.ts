@@ -12,7 +12,6 @@ export const CONTACTS: Contact[] = [
   lastName: "",
   createdAt: FIXTURE_NOW,
   unsubscribed: index === 2,
-  segmentIds: index === 1 ? [] : ["seg_newsletter"],
   topics: [],
   properties: {},
 }))

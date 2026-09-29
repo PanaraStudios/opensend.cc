@@ -214,7 +214,7 @@ test("counts current contacts, segments and sent broadcasts with honest plan lim
   })
   expect((await get(f)).usage).toMatchObject({
     contacts: { used: 2, limit: null },
-    segments: { used: 1, limit: 500 },
+    segments: { used: 1, limit: null },
     broadcasts: { used: 1, limit: null },
     ai_credits: { used: 0, limit: 0, next_increase_at: null },
     rate_limit: { limit: 10, duration: "1000ms" },
