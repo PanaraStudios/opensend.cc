@@ -1,3 +1,4 @@
+import schema from "./schema"
 import { retirement } from "./teamLifecycle"
 import { ConvexError, v } from "convex/values"
 import {
@@ -63,20 +64,25 @@ export async function startRun(
       .unique()
     if (existing) return existing._id
   }
-  const id = await insertRow(ctx, "automationRuns", {
-    organizationId: automation.organizationId,
-    automationId: automation._id,
-    contactId: contact._id,
-    contactEmail: contact.email,
-    payload,
-    graph: automation.graph,
-    apiDefinition: automation.apiDefinition,
-    trigger: automation.trigger,
-    status: "running",
-    sent: 0,
-    ...(eventId ? { eventId, lastSignalEventId: eventId } : {}),
-  })
-  const run = (await ctx.db.get("automationRuns", id))!
+  const run = await insertRow(
+    ctx,
+    "automationRuns",
+    {
+      organizationId: automation.organizationId,
+      automationId: automation._id,
+      contactId: contact._id,
+      contactEmail: contact.email,
+      payload,
+      graph: automation.graph,
+      apiDefinition: automation.apiDefinition,
+      trigger: automation.trigger,
+      status: "running",
+      sent: 0,
+      ...(eventId ? { eventId, lastSignalEventId: eventId } : {}),
+    },
+    true
+  )
+  const id = run._id
   await insertRow(ctx, "automationRunSteps", {
     organizationId: run.organizationId,
     automationId: automation._id,
@@ -202,8 +208,8 @@ export const perform = internalMutation({
       // A subtransaction prevents a caught validation failure from committing
       // partial audience changes or a queued email.
       const result = await ctx.runMutation(internal.automationRuntime.effect, {
-        id,
-        key,
+        run,
+        node: JSON.stringify(node),
       })
       if (result.waiting) return { stopped: false }
       await patchRow(ctx, "automationRunSteps", stepId, {
@@ -232,7 +238,7 @@ export const perform = internalMutation({
   },
 })
 export const effect = internalMutation({
-  args: { id: v.id("automationRuns"), key: v.string() },
+  args: { run: schema.doc("automationRuns"), node: v.string() },
   returns: v.object({
     output: payloadValue,
     skipped: v.optional(v.boolean()),
@@ -240,15 +246,16 @@ export const effect = internalMutation({
   }),
   handler: async (
     ctx,
-    { id, key }
+    { run, node: serializedNode }
   ): Promise<{
     output: Record<string, unknown>
     skipped?: boolean
     waiting?: boolean
   }> => {
-    const run = await active(ctx, id)
-    if (!run) throw new ConvexError("Run stopped")
-    const node = findStep(readGraph(run.graph), key)!
+    // Only perform calls this subtransaction, after validating this snapshot.
+    const node = JSON.parse(serializedNode) as AutomationStep
+    const id = run._id
+    const key = node.key
     const contact = await ctx.db.get("contacts", run.contactId)
     const scope = {
       event: run.payload,
@@ -431,15 +438,21 @@ async function signal(
   ctx: MutationCtx,
   run: Doc<"automationRuns">,
   received: boolean,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
+  lastSignalEventId?: Id<"events">
 ) {
-  if (!run.workflowId || !run.waitingKey || run.status !== "running") return
+  if (!run.workflowId || !run.waitingKey || run.status !== "running") {
+    if (lastSignalEventId)
+      await patchRow(ctx, "automationRuns", run._id, { lastSignalEventId })
+    return
+  }
   await sendEvent(ctx, components.workflow, {
     workflowId: run.workflowId as WorkflowId,
     name: run.waitingKey,
     value: { received, ...(payload ? { payload } : {}) },
   })
   await patchRow(ctx, "automationRuns", run._id, {
+    ...(lastSignalEventId ? { lastSignalEventId } : {}),
     waitingName: undefined,
     waitingKey: undefined,
     waitingAt: undefined,
@@ -478,6 +491,7 @@ export const completed = internalMutation({
             : "failed"
       await patchRow(ctx, "automationRuns", run._id, {
         status,
+        workflowId: undefined,
         completedAt: Date.now(),
         waitingName: undefined,
         waitingKey: undefined,
@@ -499,7 +513,8 @@ export const completed = internalMutation({
           })
     }
     await cleanup(ctx, components.workflow, workflowId)
-    await patchRow(ctx, "automationRuns", run._id, { workflowId: undefined })
+    if (run.status !== "running")
+      await patchRow(ctx, "automationRuns", run._id, { workflowId: undefined })
     return null
   },
 })
@@ -591,10 +606,7 @@ export const dispatch = internalMutation({
             event._creationTime >= run.waitingAt! &&
             event._creationTime <= run.deadline!
           ) {
-            await signal(ctx, run, true, payload)
-            await patchRow(ctx, "automationRuns", run._id, {
-              lastSignalEventId: id,
-            })
+            await signal(ctx, run, true, payload, id)
           }
         }
         if (!page.isDone) {
