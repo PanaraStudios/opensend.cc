@@ -70,7 +70,10 @@ export function EditorTopBar({
           aria-label={`${sentenceCase(noun)} name`}
           data-testid="editor-name"
           placeholder="Untitled"
-          className="max-w-64 min-w-0 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
+          /* A long name ends in an ellipsis until the field is focused, when
+             it scrolls as it is edited; hovering shows the whole of it. */
+          title={draft}
+          className="max-w-64 min-w-0 truncate rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
         />
         {badge}
       </div>

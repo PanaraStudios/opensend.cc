@@ -217,6 +217,7 @@ export function WebhookDetail() {
             </ResourceTable>
             <ListPagination
               {...pagination}
+              embedded
               noun="delivery"
               plural="deliveries"
             />

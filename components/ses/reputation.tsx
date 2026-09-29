@@ -49,74 +49,77 @@ export function TenantReputation() {
     <SettingsCard
       title="Team sending"
       description="Per-region sending status. Volume and recipient bounce and complaint rates are calculated from Opensend events over the last 24 hours; AWS uses its own evaluation window."
-      footer={<ListPagination noun="tenant" {...list.pagination} />}
     >
       {list.status === "LoadingFirstPage" ? (
         <Skeleton className="h-64 w-full" />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Team</Th>
-              <Th>Status</Th>
-              <Th>Volume</Th>
-              <Th>Bounce rate</Th>
-              <Th>Complaint rate</Th>
-              <Th className="w-12" />
-            </>
-          }
-        >
-          {list.pageRows.map((row) => (
-            <TableRow key={row.tenant._id}>
-              <TableCell>
-                <div>{row.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {row.tenant.region}
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    TENANT_STATUS_TONE[row.tenant.sendingStatus ?? "UNKNOWN"] ??
-                    "warning"
-                  }
-                  dot
-                >
-                  {tenantStatusLabel(row.tenant.sendingStatus)}
-                </Badge>
-              </TableCell>
-              <TableCell className="tabular-nums">{row.volume}</TableCell>
-              <TableCell className="tabular-nums">
-                {percent(row.bounced, row.volume, 2)}
-              </TableCell>
-              <TableCell className="tabular-nums">
-                {percent(row.complained, row.volume, 2)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      disabled={
-                        row.tenant.phase !== "ready" ||
-                        (!!row.tenant.statusOperation &&
-                          (now ?? 0) - (row.tenant.statusOperationAt ?? 0) <
-                            300000)
-                      }
-                      onClick={() => setPending(row)}
-                    >
-                      {enabled(row.tenant.sendingStatus) ? (
-                        <PauseIcon />
-                      ) : (
-                        <PlayIcon />
-                      )}
-                      {enabled(row.tenant.sendingStatus) ? "Pause" : "Resume"}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Team</Th>
+                <Th>Status</Th>
+                <Th>Volume</Th>
+                <Th>Bounce rate</Th>
+                <Th>Complaint rate</Th>
+                <Th className="w-12" />
+              </>
+            }
+          >
+            {list.pageRows.map((row) => (
+              <TableRow key={row.tenant._id}>
+                <TableCell>
+                  <div>{row.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.tenant.region}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      TENANT_STATUS_TONE[
+                        row.tenant.sendingStatus ?? "UNKNOWN"
+                      ] ?? "warning"
+                    }
+                    dot
+                  >
+                    {tenantStatusLabel(row.tenant.sendingStatus)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="tabular-nums">{row.volume}</TableCell>
+                <TableCell className="tabular-nums">
+                  {percent(row.bounced, row.volume, 2)}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {percent(row.complained, row.volume, 2)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        disabled={
+                          row.tenant.phase !== "ready" ||
+                          (!!row.tenant.statusOperation &&
+                            (now ?? 0) - (row.tenant.statusOperationAt ?? 0) <
+                              300000)
+                        }
+                        onClick={() => setPending(row)}
+                      >
+                        {enabled(row.tenant.sendingStatus) ? (
+                          <PauseIcon />
+                        ) : (
+                          <PlayIcon />
+                        )}
+                        {enabled(row.tenant.sendingStatus) ? "Pause" : "Resume"}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination noun="tenant" embedded {...list.pagination} />
+        </>
       )}
       <ConfirmDialog
         open={!!pending}

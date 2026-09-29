@@ -254,9 +254,8 @@ function EmailBodyTabs({
               ))}
             </ItemGroup>
           )}
-          {emailId &&
-          (insightPage.rows.length > 0 || insightPage.pagination.hasMore) ? (
-            <ListPagination {...insightPage.pagination} noun="event" />
+          {emailId ? (
+            <ListPagination {...insightPage.pagination} embedded noun="event" />
           ) : null}
         </TabsContent>
       ) : null}
@@ -368,9 +367,7 @@ export function EmailDetail() {
         </Item>
       ) : null}
       <EmailEventsRow events={timeline.pageRows} />
-      {timeline.rows.length > 0 || timeline.pagination.hasMore ? (
-        <ListPagination {...timeline.pagination} noun="event" />
-      ) : null}
+      <ListPagination {...timeline.pagination} embedded noun="event" />
       <EmailBodyTabs
         from={email.from}
         to={email.to}

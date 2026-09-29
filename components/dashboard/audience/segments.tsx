@@ -389,7 +389,7 @@ function SegmentPage({
                 </TableRow>
               ))}
             </ResourceTable>
-            <ListPagination {...pagination} noun="contact" />
+            <ListPagination {...pagination} embedded noun="contact" />
           </>
         )}
       </section>

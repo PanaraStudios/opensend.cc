@@ -36,6 +36,16 @@ export const lastLoadedPage = ({
 export const canGoNext = (pager: Pager) =>
   (pager.page + 1) * pager.pageSize < (knownTotal(pager) ?? Infinity)
 
+/** Whether the list runs past one page: its known size says so, or, while
+    the size is unknown, a full first page has loaded with more behind it.
+    Measured against the smallest page size, so a larger choice that fits
+    the list on one page never hides the control that undoes it. */
+export function hasPages(pager: Pager) {
+  const pageSize = Math.min(pager.pageSize, PAGE_SIZES[0])
+  const total = knownTotal(pager)
+  return total === null ? pager.loaded >= pageSize : total > pageSize
+}
+
 const number = (value: number) => value.toLocaleString("en-US")
 
 /** Resend's pager label: "Page 1 – 3 of 120 contacts". While the size is

@@ -178,6 +178,7 @@ import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
 import {
   PAGE_SIZES,
   canGoNext,
+  hasPages,
   lastLoadedPage,
   pageLabel,
   type Pager,
@@ -512,7 +513,8 @@ export function Surface({
 /** One framed block of a settings page: what it is about, its controls, and
     a footer for the button that saves them. `heading` replaces the title
     when the block has tabs of its own; `flush` is for a table or an empty
-    state, which bring their own inset. */
+    state, which bring their own inset, and puts a table's pager right under
+    its last row. */
 export function SettingsCard({
   title,
   heading,
@@ -545,7 +547,9 @@ export function SettingsCard({
           {actions ? <CardAction>{actions}</CardAction> : null}
         </CardHeader>
         {children ? (
-          <CardContent className={cn("flex flex-col gap-5", flush && "px-2")}>
+          <CardContent
+            className={cn("flex flex-col", flush ? "px-2" : "gap-5")}
+          >
             {children}
           </CardContent>
         ) : null}
@@ -840,7 +844,11 @@ export function useTeamList<Query extends PaginatedQueryReference, Row>(
   )
 }
 
-/** Footer for a paged list: position, page size, and the two step buttons. */
+/** Footer for a paged list: position, page size, and the two step buttons.
+    A top-level list keeps it, as Resend does, even on one page; a list
+    `embedded` in a record's page or a card shows it only once the list
+    runs past one page. Inside a card it closes the table like a row: a
+    divider above, the cells' inset, and the card's padding gone below. */
 export function ListPagination({
   noun,
   plural,
@@ -849,6 +857,7 @@ export function ListPagination({
   previousLabel = "Previous",
   nextLabel = "Next",
   loading,
+  embedded = false,
   ...pager
 }: PaginationState & {
   noun: string
@@ -856,10 +865,15 @@ export function ListPagination({
   plural?: string
   previousLabel?: string
   nextLabel?: string
+  embedded?: boolean
 }) {
   const { page, pageSize } = pager
+  if (embedded && !hasPages(pager)) return null
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div
+      data-slot="list-pagination"
+      className="flex w-full flex-wrap items-center justify-between gap-2 in-data-[slot=card-content]:border-t in-data-[slot=card-content]:border-table-divider in-data-[slot=card-content]:py-2 [[data-slot=table-container]+&]:px-4"
+    >
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
         <span>{pageLabel(pager, noun, plural)}</span>
         <span aria-hidden>–</span>

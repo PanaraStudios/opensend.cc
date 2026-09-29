@@ -139,6 +139,7 @@ export function ApiKeyDetail() {
             </ResourceTable>
             <ListPagination
               {...recent.pagination}
+              embedded
               noun="request"
               previousLabel="Newer"
               nextLabel="Older"
