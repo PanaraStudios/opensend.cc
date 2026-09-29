@@ -103,6 +103,19 @@ export const send = internalMutation({
   },
 })
 
+/** Called only inside an authorized batch; each item has its own rollback. */
+export const createBatchItem = internalMutation({
+  args: { caller: callerValue, email: newEmailValue },
+  returns: v.id("emails"),
+  handler: (ctx, { caller, email }) =>
+    createEmail(ctx, email, {
+      organizationId: caller.organizationId,
+      source: "api",
+      apiKeyId: caller.apiKeyId,
+      onlyDomain: caller.domainId,
+    }),
+})
+
 export const batchSend = internalMutation({
   args: { caller: callerValue, body: v.string(), permissive: v.boolean() },
   returns: v.object({
@@ -134,10 +147,13 @@ export const batchSend = internalMutation({
           try {
             const { input } = parseEmail(item, Date.now(), true)
             // The child transaction rolls back all writes for a refused item.
-            const [id] = await ctx.runMutation(internal.api.emails.send, {
-              caller: { ...caller, idempotencyId: undefined },
-              emails: [{ ...input, attachments: [] }],
-            })
+            const id = await ctx.runMutation(
+              internal.api.emails.createBatchItem,
+              {
+                caller,
+                email: { ...input, attachments: [] },
+              }
+            )
             data.push({ id })
           } catch (error) {
             const message = errorMessage(error)

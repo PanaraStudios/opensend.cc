@@ -176,6 +176,7 @@ export const recipientPage = internalQuery({
     bounceType: v.optional(v.string()),
     cursor: v.optional(v.string()),
     before: v.boolean(),
+    limit: v.optional(v.number()),
   },
   returns: v.object({
     done: v.boolean(),
@@ -184,7 +185,7 @@ export const recipientPage = internalQuery({
   }),
   handler: async (
     ctx,
-    { caller, id, type, email, bounceType, cursor, before }
+    { caller, id, type, email, bounceType, cursor, before, limit = 100 }
   ) => {
     await requireCaller(ctx, caller)
     const broadcast = await own(ctx, caller.organizationId, id)
@@ -237,6 +238,7 @@ export const recipientPage = internalQuery({
           ? (row.bounceType ?? "undetermined")
           : "undetermined"
       if (bounceType && classification !== bounceType) continue
+      if (data.length >= limit) break
       const contact = await ctx.db
         .query("contacts")
         .withIndex("by_organizationId_and_email", (q) =>
@@ -461,6 +463,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
           bounceType,
           cursor,
           before: !!before,
+          limit: limit + 1 - data.length,
         })
         data.push(...page.data)
         if (page.done) break
