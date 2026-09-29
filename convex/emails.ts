@@ -318,7 +318,11 @@ export async function createEmail(
   if (scheduledAt !== undefined && scheduledAt <= now) scheduledAt = undefined
 
   const senderDomain = senderDomainOf(sender.mailbox)
-  const resolved = meta.sender ?? meta.senders?.get(senderDomain)
+  const cached = meta.sender ?? meta.senders?.get(senderDomain)
+  // A reused sender must still be this team's; only the lookup below is
+  // scoped to it.
+  const resolved =
+    cached?.domain.organizationId === meta.organizationId ? cached : undefined
   const domain =
     resolved?.domain ??
     (meta.systemDomain
@@ -374,7 +378,8 @@ export async function createEmail(
       ...(input.headers.length ? { headers: input.headers } : {}),
       ...(input.attachments.length ? { attachments: input.attachments } : {}),
     },
-    [...to, ...cc, ...bcc].map((m) => m.key)
+    [...to, ...cc, ...bcc].map((m) => m.key),
+    domain
   )
   if (scheduledAt === undefined) await enqueue(ctx, id, 0, 0)
   else {

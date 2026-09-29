@@ -7,7 +7,12 @@ import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
 import { components, internal } from "../_generated/api"
 import { internalMutation } from "../_generated/server"
 import { apiKeyPermissionValue, httpMethodValue } from "../tables/api"
-import { callerValue, type Caller, callerProblem } from "./caller"
+import {
+  callerValue,
+  type Caller,
+  domainRevoked,
+  lacksPermission,
+} from "./caller"
 import { touchKey } from "../apiKeys"
 import { patchEmail } from "../emailRows"
 import { writeLog } from "../logs"
@@ -133,8 +138,7 @@ export const begin = internalMutation({
         `Too many requests. You can only make ${API_RATE} requests per second. See rate limit response headers for more information.`,
         Math.max(1, Math.ceil(limit.retryAfter / 1000))
       )
-    const problem = await callerProblem(ctx, caller, args.permission)
-    if (problem === "permission")
+    if (lacksPermission(caller, args.permission))
       return caller.apiKeyId
         ? fail(
             401,
@@ -146,7 +150,7 @@ export const begin = internalMutation({
             "invalid_permission",
             "Access token is missing required scopes."
           )
-    if (problem === "domain")
+    if (await domainRevoked(ctx, caller.organizationId, caller.domainId))
       return fail(
         403,
         "restricted_api_key",

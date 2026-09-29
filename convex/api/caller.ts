@@ -51,17 +51,7 @@ export async function requireCaller(
     (key.permission !== caller.permission || key.domainId !== caller.domainId)
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (
-    await callerProblem(
-      ctx,
-      {
-        ...caller,
-        organizationId: key?.organizationId ?? caller.organizationId,
-        domainId: key?.domainId,
-      },
-      "sending"
-    )
-  )
+  if (key && (await domainRevoked(ctx, key.organizationId, key.domainId)))
     throw apiError(403, "invalid_api_key", "API key is invalid")
   const live = caller.apiKeyId
     ? key?.organizationId
@@ -77,7 +67,7 @@ export async function requireCaller(
     (await retirement(ctx, caller.organizationId))
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (await callerProblem(ctx, caller, permission, false))
+  if (lacksPermission(caller, permission))
     throw apiError(
       401,
       "restricted_api_key",
@@ -98,23 +88,20 @@ export async function requireTeamRow<T extends TeamRowTable>(
   return row
 }
 
-/** Return policy failures so each entry point retains its own wire errors. */
-export async function callerProblem(
+/* Policy checks shared by `begin` and `requireCaller`; each entry point keeps
+   its own wire error. */
+export const lacksPermission = (
+  caller: Pick<Caller, "permission">,
+  permission: "full_access" | "sending"
+) => permission === "full_access" && caller.permission !== "full_access"
+
+/** A domain-limited key whose domain was removed or left the team. */
+export async function domainRevoked(
   ctx: QueryCtx,
-  caller: Caller,
-  permission: "full_access" | "sending",
-  checkDomain = true
-): Promise<"permission" | "domain" | null> {
-  if (permission === "full_access" && caller.permission !== "full_access")
-    return "permission"
-  if (checkDomain && caller.domainId) {
-    const domain = await ctx.db.get("domains", caller.domainId)
-    if (
-      !domain ||
-      domain.deleted ||
-      domain.organizationId !== caller.organizationId
-    )
-      return "domain"
-  }
-  return null
+  organizationId: string,
+  domainId: Caller["domainId"]
+) {
+  if (!domainId) return false
+  const domain = await ctx.db.get("domains", domainId)
+  return !domain || domain.deleted || domain.organizationId !== organizationId
 }

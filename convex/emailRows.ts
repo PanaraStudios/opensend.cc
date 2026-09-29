@@ -19,7 +19,9 @@ export async function insertEmail(
   ctx: MutationCtx,
   row: WithoutSystemFields<Doc<"emails">>,
   content: Omit<WithoutSystemFields<Doc<"emailContents">>, "emailId">,
-  recipients: readonly string[]
+  recipients: readonly string[],
+  /** The sending domain the caller already resolved. */
+  domain?: Doc<"domains">
 ) {
   const email = await insertRow(ctx, "emails", row, true)
   const emailId = email._id
@@ -30,7 +32,14 @@ export async function insertEmail(
       emailId,
       address,
     })
-  await insertEmailEvent(ctx, email, row.status)
+  await insertEmailEvent(
+    ctx,
+    email,
+    row.status,
+    undefined,
+    {},
+    await loadMetricContext(ctx, email, domain)
+  )
   return emailId
 }
 
