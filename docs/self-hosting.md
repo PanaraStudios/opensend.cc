@@ -58,6 +58,50 @@ to delete volumes; this always requires typing `PURGE` at a terminal, even with
 `--yes`. The commands below use `.env.docker` for source installations; script
 installations use `.env`, which Compose reads automatically.
 
+## Convex Cloud
+
+Choose Convex Cloud when you want no database to operate. Your data lives with
+Convex, and its plan limits and costs apply. The dashboard and optional SMTP
+service still run on your server, using the same images as the self-hosted stack.
+
+Create a deployment and a deployment deploy key in Convex, then install:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh -s -- install \
+  --convex cloud --domain mail.example.com
+```
+
+The installer prompts for the deploy key without echoing it. For unattended runs,
+set `CONVEX_DEPLOY_KEY` and add `--yes` (or pass `--deploy-key`). The deployment URL
+defaults to `https://<deployment-name>.convex.cloud`; `--convex-url` overrides it
+for regional deployments. The HTTP site URL replaces `.convex.cloud` with
+`.convex.site`; override it with `--convex-site-url` when needed. Both URLs also
+accept `CONVEX_URL` and `CONVEX_SITE_URL` environment variables.
+
+Only the dashboard hostname points at your server. API clients and SES callbacks
+use the Convex Cloud API and HTTP site URLs directly; no API or hooks hostname
+is required. `.env` stores `OPENSEND_CONVEX=cloud`, the deploy key, URLs and
+`SES_CALLBACK_ORIGIN` with mode 0600. Upgrade and uninstall remember this mode.
+The installer selects `compose.yaml:compose.cloud.yaml` and, when Caddy is enabled,
+`compose.cloud-caddy.yaml`. Caddy serves the dashboard and custom tracking hosts,
+forwarding `/t/*` over HTTPS with the upstream Host and the client's `X-Real-IP`.
+Tracking resolves signed message tokens independently of Host. In cloud mode,
+custom tracking CNAMEs point at the HTTPS dashboard hostname so requests reach
+this proxy; fallback tracking links and SES callbacks still use the Convex site.
+Without Caddy, configure your existing proxy to route custom tracking hosts in
+the same way. A local HTTP dashboard does not support custom tracking hosts.
+
+Back up data with Convex's own export, including file storage:
+
+```sh
+docker compose run --name opensend-backup migrate export --include-file-storage --path /tmp/backup.zip
+docker cp opensend-backup:/tmp/backup.zip ./backup.zip
+docker rm opensend-backup
+```
+
+`docker compose run --rm migrate logs` works the same in both modes. There is no
+local database volume to back up in cloud mode. Keep `.env` private and backed up.
+
 ## From source
 
 Install Docker with Compose, Node 22, and pnpm 11.7.0. Run:

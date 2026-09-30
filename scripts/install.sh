@@ -16,6 +16,10 @@ Usage: install.sh [install|upgrade [version]|uninstall|help] [options]
   --domain HOST        App hostname (OPENSEND_DOMAIN)
   --api-domain HOST    API hostname (OPENSEND_API_DOMAIN; api.<domain>)
   --hooks-domain HOST  Callback hostname (OPENSEND_HOOKS_DOMAIN; hooks.<domain>)
+  --convex self|cloud  Backend mode (OPENSEND_CONVEX; self)
+  --deploy-key KEY     Cloud deploy key (CONVEX_DEPLOY_KEY; prompted without echo)
+  --convex-url URL     Cloud deployment URL (CONVEX_URL; derived from deploy key)
+  --convex-site-url URL  Cloud HTTP site URL (CONVEX_SITE_URL; derived from URL)
   --caddy yes|no       HTTPS proxy (OPENSEND_CADDY; yes)
   --yes                Accept defaults (OPENSEND_YES=1)
   --local              Localhost URLs without Caddy (OPENSEND_LOCAL=1)
@@ -40,6 +44,10 @@ yes=${OPENSEND_YES:-0}
 local=${OPENSEND_LOCAL:-0}
 source_url=${OPENSEND_SOURCE_URL:-}
 no_start=${OPENSEND_NO_START:-0}
+convex_mode=${OPENSEND_CONVEX:-self}
+deploy_key=${CONVEX_DEPLOY_KEY:-}
+convex_url=${CONVEX_URL:-}
+convex_site_url=${CONVEX_SITE_URL:-}
 purge=0
 case ${1:-} in
   install|upgrade|uninstall|help) command=$1; shift ;;
@@ -49,12 +57,14 @@ if [ "$command" = upgrade ] && [ "$#" -gt 0 ]; then
 fi
 while [ "$#" -gt 0 ]; do
   case $1 in
-    --dir|--version|--domain|--api-domain|--hooks-domain|--caddy|--source-url)
+    --dir|--version|--domain|--api-domain|--hooks-domain|--caddy|--source-url|--convex|--deploy-key|--convex-url|--convex-site-url)
       [ "$#" -ge 2 ] || die "Missing value for $1"
       case $1 in
         --dir) dir=$2 ;; --version) version=$2 ;; --domain) domain=$2 ;;
         --api-domain) api_domain=$2 ;; --hooks-domain) hooks_domain=$2 ;;
         --caddy) caddy=$2 ;; --source-url) source_url=$2 ;;
+        --convex) convex_mode=$2 ;; --deploy-key) deploy_key=$2 ;;
+        --convex-url) convex_url=$2 ;; --convex-site-url) convex_site_url=$2 ;;
       esac
       shift 2 ;;
     --yes) yes=1; shift ;; --local) local=1; shift ;;
@@ -105,6 +115,9 @@ get_env() {
     print value; exit
   }' "$env_file"
 }
+if has_env OPENSEND_CONVEX; then convex_mode=$(get_env OPENSEND_CONVEX)
+elif has_env INSTANCE_SECRET; then convex_mode=self; fi
+case $convex_mode in self|cloud) ;; *) die '--convex must be self or cloud' ;; esac
 compose() { docker compose --env-file "$env_file" "$@"; }
 
 if [ "$command" = uninstall ]; then
@@ -161,13 +174,15 @@ if [ "$command" = install ] && has_env OPENSEND_VERSION; then version=$(get_env 
 stamp=$(date -u +%Y%m%dT%H%M%SZ).$$
 if [ "$command" = upgrade ]; then
   cp -p "$env_file" "$env_file.$stamp.bak"
-  say 'Back up the convex-data volume before upgrading. Export to a host file with:'
+  if [ "$convex_mode" = cloud ]; then
+    say 'Back up your Convex Cloud data before upgrading. Export to a host file with:'
+  else say 'Back up the convex-data volume before upgrading. Export to a host file with:'; fi
   say "  cd '$dir' && docker compose run --name opensend-backup migrate export --include-file-storage --path /tmp/backup.zip"
   say '  docker cp opensend-backup:/tmp/backup.zip ./backup.zip'
   say '  docker rm opensend-backup'
 fi
 if has_env COMPOSE_FILE; then
-  case $(get_env COMPOSE_FILE) in *compose.caddy.yaml*) caddy=yes ;; *) caddy=no ;; esac
+  case $(get_env COMPOSE_FILE) in *compose.caddy.yaml*|*compose.cloud-caddy.yaml*) caddy=yes ;; *) caddy=no ;; esac
 elif [ "$local" = 1 ]; then caddy=no
 else
   prompt 'Use Caddy for HTTPS (yes/no)' "$caddy"
@@ -186,15 +201,18 @@ fi
 if [ "$local" != 1 ]; then
   if ! has_env SITE_URL; then prompt 'App hostname' "$domain"; domain=$answer; fi
   [ -n "$domain" ] || die 'Supply --domain HOST, or use --local for testing.'
-  api_domain=${api_domain:-api.$domain}
-  hooks_domain=${hooks_domain:-hooks.$domain}
-  if ! has_env CONVEX_PUBLIC_URL; then
-    prompt 'Convex API hostname' "$api_domain"; api_domain=$answer
-  fi
-  if ! has_env CONVEX_PUBLIC_SITE_URL; then
-    prompt 'Convex hooks hostname' "$hooks_domain"; hooks_domain=$answer
-  fi
-  for host in "$domain" "$api_domain" "$hooks_domain"; do
+  if [ "$convex_mode" = self ]; then
+    api_domain=${api_domain:-api.$domain}
+    hooks_domain=${hooks_domain:-hooks.$domain}
+    if ! has_env CONVEX_PUBLIC_URL; then
+      prompt 'Convex API hostname' "$api_domain"; api_domain=$answer
+    fi
+    if ! has_env CONVEX_PUBLIC_SITE_URL; then
+      prompt 'Convex hooks hostname' "$hooks_domain"; hooks_domain=$answer
+    fi
+    hosts="$domain $api_domain $hooks_domain"
+  else hosts=$domain; fi
+  for host in $hosts; do
     case $host in *[!a-zA-Z0-9.-]*|''|.*|*.) die "Invalid hostname: $host" ;; esac
   done
 fi
@@ -207,6 +225,53 @@ if [ "$caddy" = yes ]; then
   if printf '%s\n' "$listeners" | grep -E '[:.](80|443)([[:space:]]|->|$)' >/dev/null 2>&1; then
     warn 'Ports 80/443 are in use; Caddy needs these ports.'
   fi
+fi
+
+if [ "$convex_mode" = cloud ]; then
+  if has_env CONVEX_DEPLOY_KEY; then deploy_key=$(get_env CONVEX_DEPLOY_KEY); fi
+  if [ -z "$deploy_key" ] && [ "$yes" != 1 ] && [ "$tty_available" = 1 ]; then
+    printf 'Convex deployment deploy key: ' >/dev/tty
+    terminal_state=$(stty -g </dev/tty)
+    trap 'stty "$terminal_state" </dev/tty' 0
+    trap 'exit 1' HUP INT TERM
+    stty -echo </dev/tty
+    read -r deploy_key </dev/tty || deploy_key=
+    stty "$terminal_state" </dev/tty
+    trap - 0 HUP INT TERM
+    printf '\n' >/dev/tty
+  fi
+  [ -n "$deploy_key" ] || die 'Supply --deploy-key or CONVEX_DEPLOY_KEY for cloud mode.'
+  if has_env CONVEX_URL; then convex_url=$(get_env CONVEX_URL)
+  else
+    if [ -z "$convex_url" ]; then
+      deployment_name=${deploy_key%%|*}
+      case $deployment_name in
+        dev:*|prod:*) deployment_name=${deployment_name#*:} ;;
+        *) deployment_name= ;;
+      esac
+      case $deployment_name in
+        ''|*[!a-zA-Z0-9-]*) ;;
+        *) convex_url=https://$deployment_name.convex.cloud ;;
+      esac
+    fi
+    prompt 'Convex deployment URL' "$convex_url"; convex_url=$answer
+  fi
+  if has_env CONVEX_SITE_URL; then convex_site_url=$(get_env CONVEX_SITE_URL)
+  else
+    if [ -z "$convex_site_url" ]; then
+      case $convex_url in
+        *.convex.cloud) convex_site_url=${convex_url%.convex.cloud}.convex.site ;;
+      esac
+    fi
+    prompt 'Convex HTTP site URL' "$convex_site_url"; convex_site_url=$answer
+  fi
+  for url in "$convex_url" "$convex_site_url"; do
+    case $url in
+      https://*) url_host=${url#https://}
+        case $url_host in ''|*[!a-zA-Z0-9.:-]*) die 'Cloud URLs must be HTTPS origins without a path.' ;; esac ;;
+      *) die 'Supply HTTPS --convex-url and --convex-site-url origins.' ;;
+    esac
+  done
 fi
 
 umask 077
@@ -227,8 +292,13 @@ put_env() {
   printf '%s=%s\n' "$env_key" "$env_value" >> "$env_file"
 }
 # Append missing defaults only. Never rotate an existing secret, even on upgrade.
-put_env INSTANCE_NAME opensend
-for key in INSTANCE_SECRET BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY; do
+put_env OPENSEND_CONVEX "$convex_mode"
+secret_keys="BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY"
+if [ "$convex_mode" = self ]; then
+  put_env INSTANCE_NAME opensend
+  secret_keys="INSTANCE_SECRET $secret_keys"
+fi
+for key in $secret_keys; do
   if ! has_env "$key"; then put_env "$key" "$(random_secret)"; fi
 done
 for key in APP_IMAGE MIGRATE_IMAGE SMTP_IMAGE; do
@@ -246,24 +316,38 @@ put_env CONVEX_PORT "${CONVEX_PORT:-3210}"
 put_env CONVEX_SITE_PORT "${CONVEX_SITE_PORT:-3211}"
 if [ "$local" = 1 ]; then
   put_env SITE_URL "http://localhost:$(get_env APP_PORT)"
-  put_env CONVEX_PUBLIC_URL "http://localhost:$(get_env CONVEX_PORT)"
-  put_env CONVEX_PUBLIC_SITE_URL "http://host.docker.internal:$(get_env CONVEX_SITE_PORT)"
-  put_env CONVEX_BACKEND_ORIGIN "http://host.docker.internal:$(get_env CONVEX_PORT)"
+  if [ "$convex_mode" = self ]; then
+    put_env CONVEX_PUBLIC_URL "http://localhost:$(get_env CONVEX_PORT)"
+    put_env CONVEX_PUBLIC_SITE_URL "http://host.docker.internal:$(get_env CONVEX_SITE_PORT)"
+    put_env CONVEX_BACKEND_ORIGIN "http://host.docker.internal:$(get_env CONVEX_PORT)"
+  fi
 else
   put_env SITE_URL "https://$domain"
-  put_env CONVEX_PUBLIC_URL "https://$api_domain"
-  put_env CONVEX_PUBLIC_SITE_URL "https://$hooks_domain"
-  put_env CONVEX_BACKEND_ORIGIN "$(get_env CONVEX_PUBLIC_URL)"
+  if [ "$convex_mode" = self ]; then
+    put_env CONVEX_PUBLIC_URL "https://$api_domain"
+    put_env CONVEX_PUBLIC_SITE_URL "https://$hooks_domain"
+    put_env CONVEX_BACKEND_ORIGIN "$(get_env CONVEX_PUBLIC_URL)"
+  fi
 fi
 mode=keep
 [ "$command" != upgrade ] || mode=replace
 put_env OPENSEND_VERSION "$version" "$mode"
-if [ "$caddy" = yes ]; then put_env COMPOSE_FILE compose.yaml:compose.caddy.yaml
+if [ "$convex_mode" = cloud ]; then
+  put_env CONVEX_DEPLOY_KEY "$deploy_key"
+  put_env CONVEX_URL "$convex_url"
+  put_env CONVEX_SITE_URL "$convex_site_url"
+  put_env SES_CALLBACK_ORIGIN "$convex_site_url"
+  compose_files=compose.yaml:compose.cloud.yaml
+  if [ "$caddy" = yes ]; then compose_files=$compose_files:compose.cloud-caddy.yaml; fi
+  put_env COMPOSE_FILE "$compose_files"
+elif [ "$caddy" = yes ]; then put_env COMPOSE_FILE compose.yaml:compose.caddy.yaml
 else put_env COMPOSE_FILE compose.yaml; fi
 
 # Shell environment takes precedence over .env in Compose; the persisted values
 # are authoritative after the caller's overrides have been saved.
 unset APP_IMAGE MIGRATE_IMAGE SMTP_IMAGE CONVEX_IMAGE APP_PORT CONVEX_PORT CONVEX_SITE_PORT COMPOSE_PROJECT_NAME COMPOSE_FILE OPENSEND_VERSION
+unset CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT CONVEX_SELF_HOSTED_URL CONVEX_URL CONVEX_SITE_URL
+if [ "$convex_mode" = cloud ]; then unset SES_CALLBACK_ORIGIN; fi
 unset INSTANCE_NAME INSTANCE_SECRET BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY CONVEX_SELF_HOSTED_ADMIN_KEY SITE_URL CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL CONVEX_BACKEND_ORIGIN
 if [ -z "$source_url" ]; then
   if [ "$version" = latest ]; then source_url=$RELEASES_URL/latest/download
@@ -274,14 +358,17 @@ trap 'rm -rf "$staging"' 0
 trap 'exit 1' HUP INT TERM
 fetch "$source_url/compose.yaml" > "$staging/compose.yaml"
 fetch "$source_url/compose.caddy.yaml" > "$staging/compose.caddy.yaml"
+fetch "$source_url/compose.cloud.yaml" > "$staging/compose.cloud.yaml"
+fetch "$source_url/compose.cloud-caddy.yaml" > "$staging/compose.cloud-caddy.yaml"
+fetch "$source_url/Caddyfile.cloud" > "$staging/Caddyfile.cloud"
 fetch "$source_url/Caddyfile" > "$staging/Caddyfile"
 mkdir -p docker/caddy
-for file in compose.yaml compose.caddy.yaml docker/caddy/Caddyfile; do
+for file in compose.yaml compose.caddy.yaml compose.cloud.yaml compose.cloud-caddy.yaml docker/caddy/Caddyfile docker/caddy/Caddyfile.cloud; do
   [ ! -f "$file" ] || cp -p "$file" "$file.$stamp.bak"
   mv "$staging/${file##*/}" "$file"
   chmod 644 "$file"
 done
-if ! has_env CONVEX_SELF_HOSTED_ADMIN_KEY; then
+if [ "$convex_mode" = self ] && ! has_env CONVEX_SELF_HOSTED_ADMIN_KEY; then
   # Selecting only convex avoids relying on image ordering or a pinned digest.
   convex_image=$(compose config --images convex)
   [ -n "$convex_image" ] || die 'Compose did not resolve the Convex image.'
@@ -318,7 +405,9 @@ say "Auth and verification links: cd '$dir' && docker compose run --rm migrate l
 case $(get_env SITE_URL) in
   http://localhost:*|http://127.0.0.1:*) ;;
   *) say 'Point these DNS hostnames to your server IP:'
-     for key in SITE_URL CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL; do
+     dns_keys=SITE_URL
+     if [ "$convex_mode" = self ]; then dns_keys="$dns_keys CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL"; fi
+     for key in $dns_keys; do
        url=$(get_env "$key"); say "  ${url#*://} -> server IP"
      done ;;
 esac

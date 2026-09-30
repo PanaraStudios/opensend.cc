@@ -24,6 +24,7 @@ curl -fsSL https://opensend.cc/install.sh | sh
 ```
 
 The installer downloads prebuilt images and configures the three public hostnames.
+Use `--convex cloud` to run with Convex Cloud instead of a local backend.
 See [self-hosting](docs/self-hosting.md) for flags, upgrades and source installation.
 
 ## Develop
