@@ -9,7 +9,6 @@ import {
   type PaginationOptions,
 } from "convex/server"
 import {
-  env,
   query,
   mutation,
   internalQuery,
@@ -471,7 +470,7 @@ export async function createDomain(
   }
   const installation = await findInstallation(ctx)
   if (!installation) throw new ConvexError("Installation not found")
-  const target = trackingTarget(installation.callbackOrigin, env.SITE_URL)
+  const target = trackingTarget(installation.callbackOrigin)
   const id = await insertRow(ctx, "domains", {
     organizationId,
     region: args.region,
@@ -630,8 +629,7 @@ export async function updateDomain(
       ? {
           ...tracking,
           trackingTarget: trackingTarget(
-            (await findInstallation(ctx))!.callbackOrigin,
-            env.SITE_URL
+            (await findInstallation(ctx))!.callbackOrigin
           ),
         }
       : {}),

@@ -1,5 +1,6 @@
 import { v, ConvexError, type Infer } from "convex/values"
 import { isPublicHostname } from "../../lib/net/public-host"
+import { env } from "../_generated/server"
 export const setupStepValue = v.union(
   v.literal("welcome"),
   v.literal("aws"),
@@ -220,7 +221,10 @@ export const receiptRuleName = (installationId: string, domainId: string) =>
   `${resourcePrefix(installationId)}-${domainId.slice(-12)}`
 /** Self-hosted tracking uses the callback host. Cloud custom hosts must reach
     the dashboard's proxy, while callbacks and fallback links go to Convex. */
-export function trackingTarget(callbackOrigin: string, siteUrl?: string) {
+export function trackingTarget(
+  callbackOrigin: string,
+  siteUrl: string | undefined = env.SITE_URL
+) {
   const url = new URL(callbackOrigin)
   if (
     url.protocol !== "https:" ||

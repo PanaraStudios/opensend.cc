@@ -1,7 +1,7 @@
 "use node"
 import { v } from "convex/values"
 import { GetEmailIdentityCommand } from "@aws-sdk/client-sesv2"
-import { env, internalAction } from "../_generated/server"
+import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { assertOwned, awsError } from "./aws"
 import { pacedConnection } from "./pacing"
@@ -27,8 +27,7 @@ export const run = internalAction({
       result = await verificationState(
         identity,
         domain,
-        installation.callbackOrigin,
-        env.SITE_URL
+        installation.callbackOrigin
       )
     } catch (e) {
       result = { error: awsError(e) }

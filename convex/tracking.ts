@@ -26,7 +26,7 @@ const limiter = new RateLimiter(components.rateLimiter, {
 })
 
 export function trackingOrigin(domain: Doc<"domains">, callbackOrigin: string) {
-  const target = trackingTarget(callbackOrigin, env.SITE_URL)
+  const target = trackingTarget(callbackOrigin)
   const host = trackingHost(domain)
   return host &&
     domain.records.some(
