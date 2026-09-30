@@ -720,6 +720,146 @@ export function templateSendComponents(
   return sends
 }
 
+/* ------------------------------------------------------- reading Meta */
+
+/** The fields a sync asks `GET /{waba}/message_templates` for. */
+export const TEMPLATE_FIELDS =
+  "id,name,language,category,status,components,rejected_reason,quality_score,parameter_format"
+
+/** A template as Meta lists it, narrowed to what a sync stores. */
+export type MetaTemplate = {
+  id: string
+  name: string
+  language: string
+  category: TemplateCategory
+  status: TemplateStatus
+  parameterFormat: ParameterFormat
+  components: TemplateComponent[]
+  rejectedReason?: string
+  quality?: TemplateQuality
+}
+
+const oneOf = <T extends string>(values: readonly T[], value: unknown) =>
+  values.find((known) => known === upper(value))
+
+/** A rejection reason worth showing: Meta sends NONE for none. */
+const reason = (value: unknown) => {
+  const found = text(value).trim()
+  return found && found !== "NONE" ? found : undefined
+}
+
+/** The templates of a list response's `data`; entries without an id, name
+    or language are dropped. A category Meta added since (FREE_SERVICE)
+    reads as utility, an unknown status as pending. */
+export function readMetaTemplates(data: unknown): MetaTemplate[] {
+  return list(data).flatMap((raw): MetaTemplate[] => {
+    const item = record(raw)
+    const id =
+      text(item.id) || (typeof item.id === "number" ? String(item.id) : "")
+    const name = text(item.name)
+    const language = text(item.language)
+    if (!id || !name || !language) return []
+    const components = list(item.components).filter(
+      (component): component is TemplateComponent =>
+        typeof record(component).type === "string"
+    )
+    const format =
+      text(item.parameter_format).toLowerCase() === "named"
+        ? "named"
+        : text(item.parameter_format).toLowerCase() === "positional"
+          ? "positional"
+          : componentsParameterFormat(components)
+    const quality = oneOf(TEMPLATE_QUALITIES, record(item.quality_score).score)
+    const rejectedReason = reason(item.rejected_reason)
+    return [
+      {
+        id,
+        name,
+        language,
+        category: oneOf(TEMPLATE_CATEGORIES, item.category) ?? "UTILITY",
+        status: oneOf(TEMPLATE_STATUSES, item.status) ?? "PENDING",
+        parameterFormat: format,
+        components,
+        ...(rejectedReason ? { rejectedReason } : {}),
+        ...(quality ? { quality } : {}),
+      },
+    ]
+  })
+}
+
+/** What a template webhook changes on the template it names. */
+export type TemplateUpdate = {
+  metaTemplateId: string
+  metaStatus?: TemplateStatus
+  /** A reason to show, or null to clear the last one. */
+  rejectedReason?: string | null
+  category?: TemplateCategory
+  quality?: TemplateQuality
+  /** The event does not say the status (an unarchive): sync the WABA. */
+  resync?: boolean
+}
+
+export const TEMPLATE_WEBHOOK_FIELDS = [
+  "message_template_status_update",
+  "template_category_update",
+  "message_template_quality_update",
+] as const
+
+/** Reads `message_template_status_update`, `template_category_update` and
+    `message_template_quality_update` values; null for another field or a
+    value without a template id. Flagged, locked and unlocked events keep
+    the status; a reinstated template is approved again. */
+export function readTemplateUpdate(
+  field: string,
+  value: Record<string, unknown>
+): TemplateUpdate | null {
+  const raw = value.message_template_id
+  const metaTemplateId =
+    typeof raw === "number" && Number.isFinite(raw) ? String(raw) : text(raw)
+  if (!metaTemplateId) return null
+  if (field === "message_template_status_update") {
+    const event = upper(value.event)
+    const status =
+      event === "REINSTATED" ? "APPROVED" : oneOf(TEMPLATE_STATUSES, event)
+    const category = oneOf(TEMPLATE_CATEGORIES, value.message_template_category)
+    return {
+      metaTemplateId,
+      ...(status ? { metaStatus: status } : {}),
+      ...(status === "REJECTED"
+        ? {
+            rejectedReason:
+              reason(record(value.rejection_info).reason) ??
+              reason(value.reason) ??
+              null,
+          }
+        : status
+          ? { rejectedReason: null }
+          : {}),
+      ...(category ? { category } : {}),
+      ...(event === "UNARCHIVED" ? { resync: true } : {}),
+    }
+  }
+  if (field === "template_category_update") {
+    // Only a change that happened has a previous category.
+    const category = oneOf(TEMPLATE_CATEGORIES, value.new_category)
+    return {
+      metaTemplateId,
+      ...(value.previous_category !== undefined && category
+        ? { category }
+        : {}),
+    }
+  }
+  if (field === "message_template_quality_update") {
+    const quality = oneOf(TEMPLATE_QUALITIES, value.new_quality_score)
+    return { metaTemplateId, ...(quality ? { quality } : {}) }
+  }
+  return null
+}
+
+/** Whether a template in this state can be sent. */
+export const sendableStatus = (status: TemplateStatus | undefined) =>
+  status === "APPROVED"
+
 /* ---------------------------------------------------------------- labels */
 
 export function buttonLabel(type: ButtonType) {

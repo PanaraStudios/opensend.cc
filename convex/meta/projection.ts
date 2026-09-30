@@ -11,6 +11,8 @@ import { normalizePhone } from "../../lib/dashboard/phone"
 import { CHANNEL_MESSAGE_TYPES } from "../tables/channels"
 import { channelMessagePayload } from "../channels/payload"
 import { live } from "./connect"
+import { templateWebhook } from "../whatsapp/templates"
+import { TEMPLATE_WEBHOOK_FIELDS } from "../../lib/meta/templates"
 import {
   array,
   object,
@@ -388,21 +390,14 @@ export const project = internalMutation({
         for (const update of array(change.value.statuses))
           await status(ctx, change.account, update, event)
       } else if (
-        ["message_template_status_update", "template_category_update"].includes(
-          change.field
-        )
+        TEMPLATE_WEBHOOK_FIELDS.some((field) => field === change.field)
       ) {
-        // Lane 4A owns template fields. Keep Meta's full update in the outbox.
-        await emitEvent(
+        await templateWebhook(
           ctx,
           change.organizationId,
-          "whatsapp.template.status_updated",
-          {
-            channel: "whatsapp",
-            waba_id: change.wabaId,
-            field: change.field,
-            ...change.value,
-          }
+          change.wabaId,
+          change.field,
+          change.value
         )
       } else if (
         [

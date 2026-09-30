@@ -175,6 +175,9 @@ import type * as unsubscribeHttp from "../unsubscribeHttp.js";
 import type * as usage from "../usage.js";
 import type * as webhookDelivery from "../webhookDelivery.js";
 import type * as webhooks from "../webhooks.js";
+import type * as whatsapp_rows from "../whatsapp/rows.js";
+import type * as whatsapp_templateActions from "../whatsapp/templateActions.js";
+import type * as whatsapp_templates from "../whatsapp/templates.js";
 
 import type {
   ApiFromModules,
@@ -350,6 +353,9 @@ declare const fullApi: ApiFromModules<{
   usage: typeof usage;
   webhookDelivery: typeof webhookDelivery;
   webhooks: typeof webhooks;
+  "whatsapp/rows": typeof whatsapp_rows;
+  "whatsapp/templateActions": typeof whatsapp_templateActions;
+  "whatsapp/templates": typeof whatsapp_templates;
 }>;
 
 /**

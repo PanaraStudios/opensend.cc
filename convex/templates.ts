@@ -1,4 +1,4 @@
-import { includeSelected } from "../lib/dashboard/options"
+import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { selectedOption, hasTeamRows, teamRow, searchOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, type Infer } from "convex/values"
@@ -21,7 +21,24 @@ import {
   patchRow,
 } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
-import { templateStatusValue, templateVariableValue } from "./tables/templates"
+import {
+  templateStatusValue,
+  templateVariableValue,
+  whatsappTemplateValue,
+} from "./tables/templates"
+import { channelValue } from "./tables/channels"
+import {
+  assertChangeAllowed,
+  assertNameFree,
+  componentFacts,
+  emptyComponents,
+  freeTemplateName,
+  isWhatsApp,
+  whatsappSettings,
+  type WhatsAppSettings,
+  type WhatsAppTemplate,
+} from "./whatsapp/rows"
+import { templateNameFrom } from "../lib/meta/templates"
 import { UNSUBSCRIBE_VARIABLE_NAME } from "../lib/dashboard/email-variables"
 import {
   MAX_TEMPLATE_VARIABLES,
@@ -51,6 +68,11 @@ const TEXT_LIMITS = {
 } as const
 const bytes = (value: string) => new TextEncoder().encode(value).length
 
+/** The WhatsApp settings an edit may change; the rest follow Meta. */
+export const whatsappSettingsValue = whatsappTemplateValue
+  .pick("wabaId", "language", "category")
+  .partial()
+
 export const draftFields = {
   text: v.optional(v.string()),
   variableDefinitions: v.optional(v.array(templateVariableValue)),
@@ -62,12 +84,14 @@ export const draftFields = {
   content: v.optional(v.any()),
   from: v.optional(v.string()),
   replyTo: v.optional(v.string()),
+  whatsapp: v.optional(whatsappSettingsValue),
 }
 export type Input = Partial<
   Record<keyof typeof TEXT_LIMITS | "html" | "text", string> & {
     content: unknown
     variableDefinitions: Infer<typeof templateVariableValue>[]
     replyToAddresses: string[]
+    whatsapp: Partial<WhatsAppSettings>
   }
 >
 type Draft = Pick<EmailTemplate, "name" | "subject" | "preview" | "html"> & {
@@ -77,6 +101,9 @@ type Draft = Pick<EmailTemplate, "name" | "subject" | "preview" | "html"> & {
   replyToAddresses?: string[]
   from?: string
   replyTo?: string
+  /** Absent or email for an email template. */
+  channel?: Infer<typeof channelValue>
+  whatsapp?: Partial<WhatsAppSettings>
 }
 
 function checkInput(input: Input) {
@@ -184,6 +211,19 @@ export async function insertTemplate(
   draft: Draft
 ) {
   checkInput(draft)
+  if (draft.channel === "whatsapp")
+    return insertWhatsAppTemplate(ctx, organizationId, {
+      name: draft.name,
+      content: draft.content,
+      whatsapp: await whatsappSettings(
+        ctx,
+        organizationId,
+        draft.whatsapp ?? {}
+      ),
+      uniqueName: true,
+    })
+  if (draft.channel !== undefined && draft.channel !== "email")
+    throw new ConvexError("Templates can be email or WhatsApp")
   const name = draft.name.trim() || UNTITLED_TEMPLATE
   const alias = uniqueTemplateAlias(
     name,
@@ -223,6 +263,59 @@ export async function insertTemplate(
   return id
 }
 
+/** A WhatsApp template: its row, and its draft holding the components.
+    `uniqueName` numbers a taken name instead of refusing it. A template
+    synced from Meta arrives published, with its Meta fields. */
+export async function insertWhatsAppTemplate(
+  ctx: MutationCtx,
+  organizationId: string,
+  input: {
+    name: string
+    content?: unknown
+    whatsapp: WhatsAppSettings & Partial<WhatsAppTemplate>
+    uniqueName?: boolean
+    status?: Doc<"templates">["status"]
+  }
+) {
+  const target = input.whatsapp
+  const name = input.uniqueName
+    ? await freeTemplateName(ctx, organizationId, input.name, target)
+    : templateNameFrom(input.name)
+  if (!input.uniqueName)
+    await assertNameFree(ctx, organizationId, { ...target, name })
+  const facts = componentFacts(input.content ?? emptyComponents())
+  const alias = uniqueTemplateAlias(
+    name,
+    await aliasesNear(ctx, organizationId, name)
+  )
+  await checkFree(ctx, organizationId, alias)
+  const now = Date.now()
+  const id = await insertRow(ctx, "templates", {
+    organizationId,
+    channel: "whatsapp",
+    name,
+    alias,
+    status: input.status ?? "draft",
+    subject: "",
+    preview: "",
+    variables: facts.variables,
+    updatedAt: now,
+    version: 1,
+    searchText: searchText(name, alias),
+    whatsapp: {
+      ...target,
+      parameterFormat: target.parameterFormat ?? facts.parameterFormat,
+    },
+    ...(input.status === "published" ? { publishedAt: now } : {}),
+  })
+  await ctx.db.insert("templateDrafts", {
+    templateId: id,
+    html: "",
+    content: facts.components,
+  })
+  return id
+}
+
 const listItem = schema.doc("templates").extend({ html: v.string() })
 
 const templateFilters = {
@@ -230,7 +323,14 @@ const templateFilters = {
   /** Part of the name or alias, as typed. */
   search: v.optional(v.string()),
   status: v.optional(templateStatusValue),
+  channel: v.optional(channelValue),
 }
+/** Email templates store no channel, so "email" reads as absent. */
+export const storedChannel = (
+  channel: Infer<typeof channelValue> | undefined
+) => (channel === "email" ? undefined : channel)
+export const templateChannel = (row: Pick<Doc<"templates">, "channel">) =>
+  row.channel ?? "email"
 
 // Scan 512 metadata rows; reserve one maximum-size (1 MiB) draft per match.
 export const TEMPLATE_SEARCH_BUDGET = {
@@ -247,23 +347,36 @@ export const list = query({
     const search = args.search
     const matches = matchesSearch(search)
     const templates = stream(ctx.db, schema).query("templates")
-    const rows = args.status
+    const channel = args.channel
+    /* By channel the list keeps its newest-first order and narrows the
+       status per page; the status alone has its own index. */
+    const rows = channel
       ? templates
-          .withIndex("by_organizationId_and_status", (q) =>
+          .withIndex("by_organizationId_and_channel", (q) =>
             q
               .eq("organizationId", args.organizationId)
-              .eq("status", args.status!)
+              .eq("channel", storedChannel(channel))
           )
           .order("desc")
-      : templates
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId)
-          )
-          .order("desc")
+      : args.status
+        ? templates
+            .withIndex("by_organizationId_and_status", (q) =>
+              q
+                .eq("organizationId", args.organizationId)
+                .eq("status", args.status!)
+            )
+            .order("desc")
+        : templates
+            .withIndex("by_organizationId", (q) =>
+              q.eq("organizationId", args.organizationId)
+            )
+            .order("desc")
     const result = await filteredPage(
       rows,
       args.paginationOpts,
-      (row) => matches(row.name, row.alias),
+      (row) =>
+        (!channel || !args.status || row.status === args.status) &&
+        matches(row.name, row.alias),
       TEMPLATE_SEARCH_BUDGET,
       search
     )
@@ -285,7 +398,8 @@ export const count = query({
   returns: countValue,
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    if (args.search?.trim()) return { total: null }
+    // The counts are kept by status only.
+    if (args.search?.trim() || args.channel) return { total: null }
     return {
       total: await counters.templates.total(ctx, args.organizationId, [
         { is: args.status, among: literals(templateStatusValue) },
@@ -310,11 +424,25 @@ export const options = query({
     organizationId: v.string(),
     search: v.optional(v.string()),
     selectedId: v.optional(v.id("templates")),
+    /** Email when left out: the email pickers predate channels. */
+    channel: v.optional(channelValue),
   },
   returns: v.array(schema.doc("templates")),
-  handler: async (ctx, { organizationId, search, selectedId }) => {
+  handler: async (ctx, { organizationId, search, selectedId, channel }) => {
     await requireTeam(ctx, organizationId, "read")
-    const rows = await searchOptions(ctx, "templates", organizationId, search)
+    const rows = search?.trim()
+      ? (await searchOptions(ctx, "templates", organizationId, search)).filter(
+          (row) => templateChannel(row) === (channel ?? "email")
+        )
+      : await ctx.db
+          .query("templates")
+          .withIndex("by_organizationId_and_channel", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("channel", storedChannel(channel ?? "email"))
+          )
+          .order("desc")
+          .take(OPTION_LIMIT)
     return includeSelected(
       rows,
       await selectedOption(ctx, "templates", organizationId, selectedId),
@@ -344,7 +472,12 @@ export const get = query({
 })
 
 export const create = mutation({
-  args: { organizationId: v.string(), name: v.string(), ...draftFields },
+  args: {
+    organizationId: v.string(),
+    name: v.string(),
+    channel: v.optional(channelValue),
+    ...draftFields,
+  },
   returns: v.id("templates"),
   handler: async (ctx, { organizationId, ...input }) => {
     await requireTeam(ctx, organizationId, "write")
@@ -390,6 +523,10 @@ export const unpublish = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const template = await writable(ctx, id)
+    if (isWhatsApp(template))
+      throw new ConvexError(
+        "A WhatsApp template stays at Meta until you delete it"
+      )
     const live = await findPublished(ctx, id)
     if (live) await ctx.db.delete("publishedTemplates", live._id)
     if (template.status === "published")
@@ -411,11 +548,15 @@ export const duplicate = mutation({
   },
 })
 
+export const DELETE_AT_META =
+  "This template is at Meta: delete it there through WhatsApp"
+
 export const remove = mutation({
   args: { id: v.id("templates") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const template = await writable(ctx, id)
+    if (template.whatsapp?.metaTemplateId) throw new ConvexError(DELETE_AT_META)
     return removeTemplate(ctx, template)
   },
 })
@@ -437,7 +578,13 @@ export async function publishedTemplate(
   const template: Doc<"templates"> | null = id
     ? await ctx.db.get("templates", id)
     : await aliasOwner(ctx, organizationId, idOrAlias)
-  if (!template || template.organizationId !== organizationId) return null
+  // An email send never takes a WhatsApp template.
+  if (
+    !template ||
+    template.organizationId !== organizationId ||
+    isWhatsApp(template)
+  )
+    return null
   const live = await findPublished(ctx, template._id)
   if (!live) return null
   const {
@@ -506,11 +653,142 @@ export function renderTemplate(
   )
 }
 
+/** A new alias the caller asked for, checked; undefined when unchanged. */
+async function chosenAlias(
+  ctx: QueryCtx,
+  template: Doc<"templates">,
+  input: string | undefined
+) {
+  const alias = input?.trim()
+  if (alias === undefined || alias === template.alias) return undefined
+  const error = templateAliasError(
+    alias,
+    (await aliasOwner(ctx, template.organizationId, alias)) ? [{ alias }] : []
+  )
+  if (error) throw new ConvexError(error)
+  return alias
+}
+
+/** The alias after an edit: the one chosen, or the one that follows a
+    rename until the template has been published. */
+async function aliasAfterEdit(
+  ctx: QueryCtx,
+  template: Doc<"templates">,
+  chosen: string | undefined,
+  name: string | undefined
+) {
+  if (chosen !== undefined) return chosen
+  const publishedAt = template.publishedAt ?? null
+  if (name === undefined || publishedAt !== null) return template.alias
+  const alias = renamedTemplateAlias(
+    {
+      id: template._id,
+      name: template.name,
+      alias: template.alias,
+      publishedAt,
+    },
+    name,
+    await aliasesNear(ctx, template.organizationId, name)
+  )
+  if (alias !== template.alias)
+    await checkFree(ctx, template.organizationId, alias)
+  return alias
+}
+
+const EMAIL_FIELDS = [
+  "subject",
+  "preview",
+  "html",
+  "text",
+  "from",
+  "replyTo",
+  "variableDefinitions",
+  "replyToAddresses",
+] as const
+
+/** An edit of a WhatsApp draft: its name, Meta settings and components.
+    What Meta fixes once a template is submitted stays fixed. */
+async function updateWhatsAppTemplate(
+  ctx: MutationCtx,
+  template: Doc<"templates">,
+  input: Input
+) {
+  const current = template.whatsapp
+  const draft = await findDraft(ctx, template._id)
+  if (!current || !draft) throw new ConvexError("Template not found")
+  if (EMAIL_FIELDS.some((key) => input[key] !== undefined))
+    throw new ConvexError("WhatsApp templates have no email fields")
+  const name =
+    input.name !== undefined ? templateNameFrom(input.name) : template.name
+  const renamed = name !== template.name
+  const settings = await whatsappSettings(
+    ctx,
+    template.organizationId,
+    input.whatsapp ?? {},
+    current
+  )
+  assertChangeAllowed(current, settings, renamed)
+  const moved =
+    settings.wabaId !== current.wabaId || settings.language !== current.language
+  if (renamed || moved)
+    await assertNameFree(
+      ctx,
+      template.organizationId,
+      { ...settings, name },
+      template._id
+    )
+  const contentChanged =
+    input.content !== undefined &&
+    JSON.stringify(input.content ?? null) !==
+      JSON.stringify(draft.content ?? null)
+  const sent = contentChanged || settings.category !== current.category
+  const alias = await chosenAlias(ctx, template, input.alias)
+  if (!renamed && !moved && !sent && alias === undefined) return null
+  const facts = componentFacts(contentChanged ? input.content : draft.content)
+  const now = Math.max(Date.now(), template.updatedAt + 1)
+  const nextAlias = await aliasAfterEdit(
+    ctx,
+    template,
+    alias,
+    renamed ? name : undefined
+  )
+  await patchRow(ctx, "templates", template._id, {
+    name,
+    alias: nextAlias,
+    variables: facts.variables,
+    whatsapp: {
+      ...current,
+      ...settings,
+      parameterFormat: facts.parameterFormat,
+    },
+    updatedAt: now,
+    version: (template.version ?? 0) + 1,
+    publishedAt:
+      publishedAtAfterEdit(
+        {
+          updatedAt: template.updatedAt,
+          publishedAt: template.publishedAt ?? null,
+        },
+        sent ? { content: undefined } : {},
+        now
+      ) ?? undefined,
+    searchText: searchText(name, nextAlias),
+  })
+  if (contentChanged)
+    await ctx.db.patch("templateDrafts", draft._id, {
+      content: facts.components,
+    })
+  return null
+}
+
 export async function updateTemplate(
   ctx: MutationCtx,
   template: Doc<"templates">,
   input: Input
 ) {
+  if (isWhatsApp(template)) return updateWhatsAppTemplate(ctx, template, input)
+  if (input.whatsapp !== undefined)
+    throw new ConvexError("Only WhatsApp templates have WhatsApp settings")
   const id = template._id
   const draft = await findDraft(ctx, id)
   if (!draft) throw new ConvexError("Template not found")
@@ -551,30 +829,12 @@ export async function updateTemplate(
       "replyToAddresses",
       input.replyTo.trim() ? [input.replyTo.trim()] : []
     )
-  const alias = input.alias?.trim()
-  if (alias !== undefined && alias !== template.alias) {
-    const error = templateAliasError(
-      alias,
-      (await aliasOwner(ctx, template.organizationId, alias)) ? [{ alias }] : []
-    )
-    if (error) throw new ConvexError(error)
-  }
-  const aliasChanged = alias !== undefined && alias !== template.alias
-  if (!aliasChanged && Object.keys(changes).length === 0) return null
+  const alias = await chosenAlias(ctx, template, input.alias)
+  if (alias === undefined && Object.keys(changes).length === 0) return null
 
   const next = { ...current, ...changes }
   const publishedAt = template.publishedAt ?? null
-  const nextAlias = aliasChanged
-    ? alias
-    : changes.name === undefined || publishedAt !== null
-      ? template.alias
-      : renamedTemplateAlias(
-          { id, name: template.name, alias: template.alias, publishedAt },
-          changes.name,
-          await aliasesNear(ctx, template.organizationId, changes.name)
-        )
-  if (nextAlias !== template.alias && !aliasChanged)
-    await checkFree(ctx, template.organizationId, nextAlias)
+  const nextAlias = await aliasAfterEdit(ctx, template, alias, changes.name)
   const now = Math.max(Date.now(), template.updatedAt + 1)
   await patchRow(ctx, "templates", id, {
     name: next.name,
@@ -618,10 +878,14 @@ export async function updateTemplate(
   return null
 }
 
+export const SUBMIT_TO_META =
+  "WhatsApp templates are published by submitting them to Meta"
+
 export async function publishTemplate(
   ctx: MutationCtx,
   template: Doc<"templates">
 ) {
+  if (isWhatsApp(template)) throw new ConvexError(SUBMIT_TO_META)
   const id = template._id
   const draft = await findDraft(ctx, id)
   if (!draft?.html.trim())
@@ -657,6 +921,18 @@ export async function duplicateTemplate(
 ) {
   const id = template._id
   const draft = await findDraft(ctx, id)
+  if (isWhatsApp(template) && template.whatsapp)
+    return insertWhatsAppTemplate(ctx, template.organizationId, {
+      name: `${template.name}_copy`,
+      content: draft?.content,
+      whatsapp: await whatsappSettings(
+        ctx,
+        template.organizationId,
+        {},
+        template.whatsapp
+      ),
+      uniqueName: true,
+    })
   return insertTemplate(ctx, template.organizationId, {
     // " copy" must not push a name at the limit past it.
     name: `${template.name} copy`.slice(0, TEXT_LIMITS.name[1]),
