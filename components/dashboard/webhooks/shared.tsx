@@ -49,8 +49,13 @@ import {
   webhookFormError,
 } from "@/lib/dashboard/webhooks"
 import { useWebhookCommands } from "@/lib/webhooks/use-webhooks"
+import { cn } from "@/lib/utils"
 
 export const WebhookIcon = LucideWebhookIcon
+
+/** The longest event name that still fits half the events box; groups with
+    longer names (`whatsapp.template.status_updated`) take one column. */
+const TWO_COLUMN_EVENT_LENGTH = 24
 
 export const WEBHOOK_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },
@@ -175,7 +180,14 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
                       />
                       {group.label}
                     </label>
-                    <div className="grid gap-2 pl-6 sm:grid-cols-2">
+                    <div
+                      className={cn(
+                        "grid gap-2 pl-6",
+                        group.events.every(
+                          (event) => event.length <= TWO_COLUMN_EVENT_LENGTH
+                        ) && "sm:grid-cols-2"
+                      )}
+                    >
                       {group.events.map((event) => (
                         <label
                           key={event}
