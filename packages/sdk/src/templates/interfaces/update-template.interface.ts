@@ -1,5 +1,9 @@
 import type { Response } from '../../interfaces';
-import type { Template, TemplateVariable } from './template';
+import type {
+  Template,
+  TemplateVariable,
+  WhatsAppTemplateOptions,
+} from './template';
 
 type TemplateVariableUpdateOptions = Pick<TemplateVariable, 'key' | 'type'> &
   (
@@ -19,6 +23,10 @@ export interface UpdateTemplateOptions
   > {
   variables?: TemplateVariableUpdateOptions[];
   replyTo?: string[] | string;
+  /** A template's channel cannot change; sending it is only a check. */
+  channel?: 'email' | 'whatsapp';
+  /** A WhatsApp template's settings and components. */
+  whatsapp?: WhatsAppTemplateOptions;
 }
 
 export interface UpdateTemplateResponseSuccess extends Pick<Template, 'id'> {

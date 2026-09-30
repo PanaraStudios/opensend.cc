@@ -987,4 +987,69 @@ describe('Templates', () => {
       expect(secondParsedUrl.searchParams.get('limit')).toBe('25');
     });
   });
+
+  describe('WhatsApp templates', () => {
+    it('creates a WhatsApp template with its settings in snake case', async () => {
+      mockSuccessResponse({ object: 'template', id: 'tpl_whatsapp' });
+      const resend = new Resend(TEST_API_KEY);
+      await resend.templates.create({
+        name: 'order_shipped',
+        channel: 'whatsapp',
+        whatsapp: {
+          wabaId: '102290129340398',
+          language: 'en_US',
+          category: 'UTILITY',
+          parameterFormat: 'positional',
+          components: [
+            {
+              type: 'BODY',
+              text: 'Your order {{1}} has shipped.',
+              example: { body_text: [['860198']] },
+            },
+          ],
+        },
+      });
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init?.body as string)).toEqual({
+        name: 'order_shipped',
+        channel: 'whatsapp',
+        whatsapp: {
+          waba_id: '102290129340398',
+          language: 'en_US',
+          category: 'UTILITY',
+          parameter_format: 'positional',
+          components: [
+            {
+              type: 'BODY',
+              text: 'Your order {{1}} has shipped.',
+              example: { body_text: [['860198']] },
+            },
+          ],
+        },
+      });
+      expect(mockRender).not.toHaveBeenCalled();
+    });
+
+    it('updates a WhatsApp template category', async () => {
+      mockSuccessResponse({ object: 'template', id: 'tpl_whatsapp' });
+      const resend = new Resend(TEST_API_KEY);
+      await resend.templates.update('tpl_whatsapp', {
+        whatsapp: { category: 'MARKETING' },
+      });
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init?.body as string)).toEqual({
+        whatsapp: { category: 'MARKETING' },
+      });
+    });
+
+    it('lists templates of one channel', async () => {
+      mockSuccessResponse({ object: 'list', has_more: false, data: [] });
+      const resend = new Resend(TEST_API_KEY);
+      await resend.templates.list({ channel: 'whatsapp', limit: 5 });
+      const [url] = fetchMock.mock.calls[0];
+      const parsedUrl = new URL(url as string);
+      expect(parsedUrl.searchParams.get('channel')).toBe('whatsapp');
+      expect(parsedUrl.searchParams.get('limit')).toBe('5');
+    });
+  });
 });
