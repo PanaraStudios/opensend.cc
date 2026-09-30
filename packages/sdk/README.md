@@ -6,8 +6,6 @@ this package is a port of [Resend's Node.js SDK](https://github.com/resend/resen
 (version 6.30.0, commit `004c938`): the same resources, method names and
 `{ data, error, headers }` results.
 
-> Not published yet. It lives in `packages/sdk` of the Opensend repository.
-
 ## Install
 
 ```bash

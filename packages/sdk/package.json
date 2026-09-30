@@ -1,6 +1,6 @@
 {
   "name": "@opensendcc/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js library for the Opensend API, a port of Resend's Node.js SDK",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
