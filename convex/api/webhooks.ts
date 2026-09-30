@@ -1,9 +1,7 @@
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
 import type { HttpRouter } from "convex/server"
-import { symmetricEncrypt } from "better-auth/crypto"
 import {
-  env,
   internalMutation,
   internalQuery,
   type QueryCtx,
@@ -12,13 +10,13 @@ import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import schema from "../schema"
 import {
-  decryptSecret,
   insertWebhook,
   updateWebhook,
   removeWebhook,
   rotateWebhookSecret,
   replayDelivery,
 } from "../webhooks"
+import { decryptSecret, encryptSecret } from "../secrets"
 import { createWebhookSecret } from "../../lib/dashboard/ids"
 import {
   callerValue,
@@ -317,10 +315,7 @@ async function secret() {
   const signingSecret = createWebhookSecret()
   return {
     signingSecret,
-    secret: await symmetricEncrypt({
-      key: env.SSO_ENCRYPTION_KEY,
-      data: signingSecret,
-    }),
+    secret: await encryptSecret(signingSecret),
   }
 }
 export function registerWebhookRoutes(http: HttpRouter) {

@@ -3,7 +3,7 @@ import { v, ConvexError } from "convex/values"
 import { action, mutation, internalMutation } from "./_generated/server"
 import { components } from "./_generated/api"
 import { requireTeam, sessionId } from "./access"
-import { symmetricEncrypt } from "better-auth/crypto"
+import { encryptSecret } from "./secrets"
 export const save = action({
   args: {
     organizationId: v.string(),
@@ -40,10 +40,7 @@ export const save = action({
       organizationId: args.organizationId,
       issuer: args.issuer.replace(/\/$/, ""),
       clientId: args.clientId.trim(),
-      encryptedSecret: await symmetricEncrypt({
-        key: env.SSO_ENCRYPTION_KEY!,
-        data: args.clientSecret,
-      }),
+      encryptedSecret: await encryptSecret(args.clientSecret),
       revision: crypto.randomUUID(),
     })
   },

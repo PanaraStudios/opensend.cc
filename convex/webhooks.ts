@@ -6,19 +6,13 @@ import {
   paginationResultValidator,
 } from "convex/server"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
-import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto"
-import {
-  action,
-  env,
-  internalMutation,
-  mutation,
-  query,
-} from "./_generated/server"
+import { action, internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
+import { decryptSecret, encryptSecret } from "./secrets"
 import {
   BOOLEANS,
   countValue,
@@ -85,11 +79,6 @@ const shown = ({
   events,
   enabled,
 })
-
-const encrypt = (data: string) =>
-  symmetricEncrypt({ key: env.SSO_ENCRYPTION_KEY, data })
-export const decryptSecret = (data: string) =>
-  symmetricDecrypt({ key: env.SSO_ENCRYPTION_KEY, data })
 
 function validated(endpoint: string, events: string[]) {
   const error = webhookFormError(endpoint, events as WebhookEvent[])
@@ -381,7 +370,7 @@ export const create = action({
   handler: async (ctx, args): Promise<Id<"webhooks">> =>
     ctx.runMutation(internal.webhooks.insert, {
       ...args,
-      secret: await encrypt(createWebhookSecret()),
+      secret: await encryptSecret(createWebhookSecret()),
     }),
 })
 
@@ -435,7 +424,7 @@ export const rotateSecret = action({
   handler: async (ctx, { id }): Promise<null> =>
     ctx.runMutation(internal.webhooks.saveSecret, {
       id,
-      secret: await encrypt(createWebhookSecret()),
+      secret: await encryptSecret(createWebhookSecret()),
     }),
 })
 

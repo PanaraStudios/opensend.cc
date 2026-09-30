@@ -1,7 +1,7 @@
 import { env } from "./_generated/server"
 import { getOAuthState } from "better-auth/api"
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose"
-import { symmetricDecrypt } from "better-auth/crypto"
+import { decryptSecret } from "./secrets"
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 import type { ActionCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
@@ -52,10 +52,7 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri), {
     [customFetch]: (url) => fetchPublic(url),
   })
-  const clientSecret = await symmetricDecrypt({
-    key: env.SSO_ENCRYPTION_KEY!,
-    data: connection.encryptedSecret,
-  })
+  const clientSecret = await decryptSecret(connection.encryptedSecret)
   const tokenUrl = discovery.token_endpoint
   const authorizationUrl = new URL(discovery.authorization_endpoint)
   if (
