@@ -98,9 +98,21 @@ export const channelTables = {
     registeredAt: v.optional(v.number()),
     checkedAt: v.optional(v.number()),
     error: v.optional(v.string()),
+    /** Set with the `disconnected` status; the lists index on it, so a
+        disconnected account keeps its row and messages but leaves them. */
+    disconnectedAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_channel", ["organizationId", "channel"])
+    .index("by_organizationId_and_disconnectedAt", [
+      "organizationId",
+      "disconnectedAt",
+    ])
+    .index("by_organizationId_and_channel_and_disconnectedAt", [
+      "organizationId",
+      "channel",
+      "disconnectedAt",
+    ])
     .index("by_channel_and_externalId", ["channel", "externalId"])
     .index("by_connectionId", ["connectionId"]),
   /** A person's identity on a channel. Messenger and Instagram ids are
