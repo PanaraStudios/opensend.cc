@@ -14,8 +14,8 @@ Usage: install.sh [install|upgrade [version]|uninstall|help] [options]
   --dir PATH           Installation directory (OPENSEND_DIR; ./opensend)
   --version TAG        Release tag (OPENSEND_VERSION; latest GitHub release)
   --domain HOST        App hostname (OPENSEND_DOMAIN)
-  --api-domain HOST    API hostname (OPENSEND_API_DOMAIN; api.<domain>)
-  --hooks-domain HOST  Callback hostname (OPENSEND_HOOKS_DOMAIN; hooks.<domain>)
+  --api-domain HOST    REST API, callbacks and tracking (OPENSEND_API_DOMAIN; api.<domain>)
+  --realtime-domain HOST  Dashboard live updates (OPENSEND_REALTIME_DOMAIN; realtime.<domain>)
   --convex self|cloud  Backend mode (OPENSEND_CONVEX; self)
   --deploy-key KEY     Cloud deploy key (CONVEX_DEPLOY_KEY; prompted without echo)
   --convex-url URL     Cloud deployment URL (CONVEX_URL; derived from deploy key)
@@ -38,7 +38,7 @@ dir=${OPENSEND_DIR:-./opensend}
 version=${OPENSEND_VERSION:-}
 domain=${OPENSEND_DOMAIN:-}
 api_domain=${OPENSEND_API_DOMAIN:-}
-hooks_domain=${OPENSEND_HOOKS_DOMAIN:-}
+realtime_domain=${OPENSEND_REALTIME_DOMAIN:-}
 caddy=${OPENSEND_CADDY:-yes}
 yes=${OPENSEND_YES:-0}
 local=${OPENSEND_LOCAL:-0}
@@ -57,11 +57,11 @@ if [ "$command" = upgrade ] && [ "$#" -gt 0 ]; then
 fi
 while [ "$#" -gt 0 ]; do
   case $1 in
-    --dir|--version|--domain|--api-domain|--hooks-domain|--caddy|--source-url|--convex|--deploy-key|--convex-url|--convex-site-url)
+    --dir|--version|--domain|--api-domain|--realtime-domain|--caddy|--source-url|--convex|--deploy-key|--convex-url|--convex-site-url)
       [ "$#" -ge 2 ] || die "Missing value for $1"
       case $1 in
         --dir) dir=$2 ;; --version) version=$2 ;; --domain) domain=$2 ;;
-        --api-domain) api_domain=$2 ;; --hooks-domain) hooks_domain=$2 ;;
+        --api-domain) api_domain=$2 ;; --realtime-domain) realtime_domain=$2 ;;
         --caddy) caddy=$2 ;; --source-url) source_url=$2 ;;
         --convex) convex_mode=$2 ;; --deploy-key) deploy_key=$2 ;;
         --convex-url) convex_url=$2 ;; --convex-site-url) convex_site_url=$2 ;;
@@ -203,14 +203,14 @@ if [ "$local" != 1 ]; then
   [ -n "$domain" ] || die 'Supply --domain HOST, or use --local for testing.'
   if [ "$convex_mode" = self ]; then
     api_domain=${api_domain:-api.$domain}
-    hooks_domain=${hooks_domain:-hooks.$domain}
-    if ! has_env CONVEX_PUBLIC_URL; then
-      prompt 'Convex API hostname' "$api_domain"; api_domain=$answer
-    fi
+    realtime_domain=${realtime_domain:-realtime.$domain}
     if ! has_env CONVEX_PUBLIC_SITE_URL; then
-      prompt 'Convex hooks hostname' "$hooks_domain"; hooks_domain=$answer
+      prompt 'API hostname' "$api_domain"; api_domain=$answer
     fi
-    hosts="$domain $api_domain $hooks_domain"
+    if ! has_env CONVEX_PUBLIC_URL; then
+      prompt 'Realtime hostname' "$realtime_domain"; realtime_domain=$answer
+    fi
+    hosts="$domain $api_domain $realtime_domain"
   else hosts=$domain; fi
   for host in $hosts; do
     case $host in *[!a-zA-Z0-9.-]*|''|.*|*.) die "Invalid hostname: $host" ;; esac
@@ -324,8 +324,8 @@ if [ "$local" = 1 ]; then
 else
   put_env SITE_URL "https://$domain"
   if [ "$convex_mode" = self ]; then
-    put_env CONVEX_PUBLIC_URL "https://$api_domain"
-    put_env CONVEX_PUBLIC_SITE_URL "https://$hooks_domain"
+    put_env CONVEX_PUBLIC_URL "https://$realtime_domain"
+    put_env CONVEX_PUBLIC_SITE_URL "https://$api_domain"
     put_env CONVEX_BACKEND_ORIGIN "$(get_env CONVEX_PUBLIC_URL)"
   fi
 fi
@@ -400,6 +400,9 @@ if [ "$no_start" != 1 ] && ! start; then
 fi
 say "Opensend configuration is ready in $dir"
 say "App URL: $(get_env SITE_URL)"
+if [ "$convex_mode" = cloud ]; then api_url=$(get_env CONVEX_SITE_URL)
+else api_url=$(get_env CONVEX_PUBLIC_SITE_URL); fi
+say "API base URL (SDK and REST): $api_url"
 say 'The first account you create becomes the installation admin.'
 say "Auth and verification links: cd '$dir' && docker compose run --rm migrate logs"
 case $(get_env SITE_URL) in

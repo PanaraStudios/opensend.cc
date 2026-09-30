@@ -11,8 +11,8 @@ services:
       - "443:443/udp"
     environment:
       SITE_URL: ${SITE_URL:?Set SITE_URL in .env.docker to the dashboard's https:// URL}
-      CONVEX_PUBLIC_URL: ${CONVEX_PUBLIC_URL:?Set CONVEX_PUBLIC_URL in .env.docker to the Convex API's https:// URL}
-      CONVEX_PUBLIC_SITE_URL: ${CONVEX_PUBLIC_SITE_URL:?Set CONVEX_PUBLIC_SITE_URL in .env.docker to the Convex HTTP site's https:// URL}
+      CONVEX_PUBLIC_URL: ${CONVEX_PUBLIC_URL:?Set CONVEX_PUBLIC_URL in .env.docker to the realtime https:// URL, such as https://realtime.example.com}
+      CONVEX_PUBLIC_SITE_URL: ${CONVEX_PUBLIC_SITE_URL:?Set CONVEX_PUBLIC_SITE_URL in .env.docker to the API https:// URL, such as https://api.example.com}
     volumes:
       - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

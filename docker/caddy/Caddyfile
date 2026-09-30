@@ -11,13 +11,13 @@
 	reverse_proxy app:3000
 }
 
-# Convex API and WebSocket sync (CONVEX_PUBLIC_URL).
+# Dashboard live updates: Convex queries and WebSocket sync (CONVEX_PUBLIC_URL, realtime.<domain>).
 {$CONVEX_PUBLIC_URL} {
 	reverse_proxy convex:3210
 }
 
 # Convex HTTP actions: REST API, SNS callbacks, tracking and one-click
-# unsubscribe (CONVEX_PUBLIC_SITE_URL). Tracking reads the client IP from X-Real-IP.
+# unsubscribe (CONVEX_PUBLIC_SITE_URL, api.<domain>). Tracking reads the client IP from X-Real-IP.
 {$CONVEX_PUBLIC_SITE_URL} {
 	reverse_proxy convex:3211 {
 		header_up X-Real-IP {remote_host}

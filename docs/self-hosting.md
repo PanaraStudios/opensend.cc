@@ -16,13 +16,14 @@ supply a hostname using flags or environment variables:
 ```sh
 curl -fsSL https://opensend.cc/install.sh | sh -s -- install \
   --domain mail.example.com --api-domain api.mail.example.com \
-  --hooks-domain hooks.mail.example.com --yes
+  --realtime-domain realtime.mail.example.com --yes
 ```
 
 The default directory is `./opensend`. The script downloads release Compose files
 and the Caddyfile, writes `.env` with mode 0600, pulls prebuilt images and starts
 the stack. No Node, pnpm or source checkout is needed on the server. Point the
-three DNS hostnames at your server IP and allow ports 80 and 443. The first
+three DNS hostnames at your server IP (the app, `api.` for the REST API and
+callbacks, and `realtime.` for the dashboard's live updates) and allow ports 80 and 443. The first
 account you create becomes the installation administrator. From the installation
 directory, read its verification links with `docker compose run --rm migrate logs`.
 
