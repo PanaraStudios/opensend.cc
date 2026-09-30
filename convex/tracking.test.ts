@@ -7,6 +7,7 @@ import { insertEmail } from "./emailRows"
 import { patchRow } from "./counts"
 import { signToken } from "../lib/tokens/signed"
 import { TRACKING_CONTEXT } from "../lib/tracking/html"
+import { trackingTarget } from "./ses/contracts"
 import { trackingOrigin } from "./tracking"
 
 const secret = "test-tracking-secret-".repeat(3)
@@ -341,4 +342,55 @@ test("retry keeps link indexes and origin stable and does not duplicate the URL 
   expect(
     await f.t.run((ctx) => ctx.db.query("emailTracking").take(10))
   ).toHaveLength(1)
+})
+
+test("cloud custom tracking targets the dashboard proxy and survives upstream Host rewriting", async () => {
+  vi.stubEnv("SITE_URL", "https://dashboard.opensend.test")
+  const f = await setup()
+  const callbackOrigin = "https://fake-name.eu.convex.site"
+  expect(
+    trackingTarget(callbackOrigin, "https://dashboard.opensend.test")
+  ).toBe("dashboard.opensend.test")
+  expect(
+    trackingTarget(
+      "https://api.opensend.test",
+      "https://dashboard.opensend.test"
+    )
+  ).toBe("api.opensend.test")
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch("installation", f.installation, { callbackOrigin })
+    const domain = (await ctx.db.get("domains", f.domain))!
+    await patchRow(ctx, "domains", f.domain, {
+      records: domain.records.map((r) => ({
+        ...r,
+        status: "verified" as const,
+        value: "dashboard.opensend.test",
+      })),
+    })
+  })
+  expect(
+    (await f.t.fetch("/t/ask?domain=links.mail.example.test")).status
+  ).toBe(200)
+  const message = await f.t.mutation(internal.emails.claim, {
+    id: f.id,
+    generation: 0,
+  })
+  expect(message?.html).toContain("https://links.mail.example.test/t/")
+  const response = await f.t.fetch(`/t/c/${await f.token(0)}`, {
+    headers: { host: "fake-name.eu.convex.site", "x-real-ip": "1.2.3.4" },
+  })
+  expect(response.status).toBe(302)
+  expect(response.headers.get("location")).toBe("https://example.com/?x=1&y=2")
+  await f.t.run(async (ctx) => {
+    const domain = (await ctx.db.get("domains", f.domain))!
+    await patchRow(ctx, "domains", f.domain, {
+      records: domain.records.map((r) => ({
+        ...r,
+        value: "fake-name.eu.convex.site",
+      })),
+    })
+  })
+  expect(
+    (await f.t.fetch("/t/ask?domain=links.mail.example.test")).status
+  ).toBe(403)
 })

@@ -218,10 +218,9 @@ export const inboundRuleSetName = (installationId: string) =>
 /** One receipt rule per domain, named like its configuration set. */
 export const receiptRuleName = (installationId: string, domainId: string) =>
   `${resourcePrefix(installationId)}-${domainId.slice(-12)}`
-/** Tracking always returns to this self-hosted installation, through a CNAME
-    to the callback's hostname: AWS needs it public and HTTPS, and a CNAME
-    cannot carry a port or a path. */
-export function trackingTarget(callbackOrigin: string) {
+/** Self-hosted tracking uses the callback host. Cloud custom hosts must reach
+    the dashboard's proxy, while callbacks and fallback links go to Convex. */
+export function trackingTarget(callbackOrigin: string, siteUrl?: string) {
   const url = new URL(callbackOrigin)
   if (
     url.protocol !== "https:" ||
@@ -235,5 +234,7 @@ export function trackingTarget(callbackOrigin: string) {
     throw new ConvexError(
       "Configure a public HTTPS callback, without a port or path, before provisioning AWS"
     )
+  if (url.hostname.endsWith(".convex.site") && siteUrl?.startsWith("https://"))
+    return trackingTarget(siteUrl)
   return url.hostname
 }

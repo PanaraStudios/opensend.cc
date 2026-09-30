@@ -1,7 +1,7 @@
 "use node"
 import { trackingTarget } from "./contracts"
 import { v, ConvexError } from "convex/values"
-import { internalAction } from "../_generated/server"
+import { env, internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import {
   getOwnedTenant,
@@ -328,7 +328,10 @@ export const domain = internalAction({
         discoveredRecords = identityRecords(
           {
             ...domain,
-            trackingTarget: trackingTarget(installation.callbackOrigin),
+            trackingTarget: trackingTarget(
+              installation.callbackOrigin,
+              env.SITE_URL
+            ),
           },
           identity
         )
@@ -478,7 +481,10 @@ export const domain = internalAction({
             discoveredRecords = identityRecords(
               {
                 ...domain,
-                trackingTarget: trackingTarget(installation.callbackOrigin),
+                trackingTarget: trackingTarget(
+                  installation.callbackOrigin,
+                  env.SITE_URL
+                ),
               },
               created
             )
@@ -495,7 +501,10 @@ export const domain = internalAction({
         discoveredRecords = identityRecords(
           {
             ...domain,
-            trackingTarget: trackingTarget(installation.callbackOrigin),
+            trackingTarget: trackingTarget(
+              installation.callbackOrigin,
+              env.SITE_URL
+            ),
           },
           identity
         )
@@ -544,7 +553,8 @@ export const domain = internalAction({
       const state = await verificationState(
         identity,
         domain,
-        installation.callbackOrigin
+        installation.callbackOrigin,
+        env.SITE_URL
       )
       await applyEventDestination(
         ses,
@@ -565,7 +575,10 @@ export const domain = internalAction({
         id: domainId,
         changes: {
           ...state,
-          trackingTarget: trackingTarget(installation.callbackOrigin),
+          trackingTarget: trackingTarget(
+            installation.callbackOrigin,
+            env.SITE_URL
+          ),
           tls: tlsPolicy,
           configurationSet: configName,
           tenantAssociated: true,

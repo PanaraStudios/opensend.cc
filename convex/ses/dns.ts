@@ -155,13 +155,14 @@ export async function authoritativeLookups(
 export async function verificationState(
   identity: GetEmailIdentityResponse,
   domain: RecordDomain,
-  callbackOrigin: string
+  callbackOrigin: string,
+  siteUrl?: string
 ) {
   const recursive = lookups(3000)
   const authoritative = await authoritativeLookups(domain.name, recursive)
   const records = await checkRecords(
     identityRecords(
-      { ...domain, trackingTarget: trackingTarget(callbackOrigin) },
+      { ...domain, trackingTarget: trackingTarget(callbackOrigin, siteUrl) },
       identity
     ),
     authoritative ? [authoritative, recursive] : [recursive]

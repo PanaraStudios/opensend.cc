@@ -1,5 +1,6 @@
 import { v, ConvexError } from "convex/values"
 import {
+  env,
   query,
   mutation,
   internalQuery,
@@ -240,9 +241,9 @@ async function callbackMove(
 ) {
   await requireInstallationAdmin(ctx)
   const installation = await requireConnection(ctx)
-  // Tracking CNAMEs point at its hostname, so it cannot carry a port.
+  // Public callbacks and tracking CNAME targets cannot carry a port.
   try {
-    trackingTarget(callbackOrigin)
+    trackingTarget(callbackOrigin, env.SITE_URL)
   } catch {
     throw new ConvexError("Use an HTTPS URL without a port, path, or query")
   }
@@ -376,7 +377,7 @@ export const provisionRegion = mutation({
     await requireInstallationAdmin(ctx)
     const installation = await findInstallation(ctx)
     if (!installation?.accountId) throw new ConvexError("Connect AWS first")
-    trackingTarget(installation.callbackOrigin)
+    trackingTarget(installation.callbackOrigin, env.SITE_URL)
     const region = await findRegion(ctx, args.region)
     if (!region) throw new ConvexError("Enable this region first")
     if (region.phase === "running") return null
