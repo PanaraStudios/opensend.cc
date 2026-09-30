@@ -8,9 +8,10 @@ import {
 } from "./public-host"
 
 export type PublicFetchOptions = {
-  method?: "GET" | "POST"
+  method?: "GET" | "POST" | "DELETE"
   headers?: Record<string, string>
-  body?: string
+  /** Text, or bytes such as a multipart media upload. */
+  body?: string | Uint8Array
   timeoutMs?: number
   maxBytes?: number
   truncate?: boolean
