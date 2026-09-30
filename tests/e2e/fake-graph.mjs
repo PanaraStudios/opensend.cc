@@ -317,11 +317,6 @@ export async function startFakeGraph(port) {
       query: Object.fromEntries(url.searchParams),
       body: parseBody(raw, request.headers["content-type"]),
       authorization: request.headers.authorization,
-      headers: Object.fromEntries(
-        Object.entries(request.headers).filter(([key]) =>
-          key.startsWith("svix-")
-        )
-      ),
     }
     calls.push(call)
     const override = overrides.find(
