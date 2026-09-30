@@ -23,13 +23,104 @@ export const graphError = (message, code, extra = {}) => ({
   },
 })
 
+/* WhatsApp state the connect routes share: every WABA has one phone
+   number, `${wabaId}0`, which `/register` moves onto Cloud API. It lives for
+   the server's lifetime; /__reset clears only calls and overrides. */
+const numbers = new Map()
+const phoneNumberOf = (wabaId) => {
+  const id = `${wabaId}0`
+  if (!numbers.has(id)) numbers.set(id, { wabaId, registered: false })
+  return id
+}
+const phoneNumber = (id) => {
+  const { registered } = numbers.get(id)
+  return {
+    id,
+    display_phone_number: `+1 555-${id.slice(-5, -1).padStart(4, "0")}`,
+    verified_name: "Opensend E2E",
+    quality_rating: "GREEN",
+    status: registered ? "CONNECTED" : "PENDING",
+    code_verification_status: "VERIFIED",
+    platform_type: registered ? "CLOUD_API" : "NOT_APPLICABLE",
+    throughput: { level: "STANDARD" },
+    whatsapp_business_manager_messaging_limit: "TIER_1K",
+  }
+}
+/** The app ID in an app access token, `Bearer {app-id}|{secret}`. */
+const appIdOf = (authorization = "") =>
+  /^Bearer (\d+)\|/.exec(authorization)?.[1]
+
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
-  // Meta app verification: GET /{app-id}?fields=id,name
+  // Embedded Signup: the token code becomes a business token.
+  {
+    method: "GET",
+    path: /^\/oauth\/access_token$/,
+    respond: (_, call) => ({
+      body: {
+        access_token: `EAAE2EBusinessToken${call.query.code ?? ""}`,
+        token_type: "bearer",
+      },
+    }),
+  },
+  // Token checks: every token is a valid WhatsApp token for the caller's
+  // app, not limited to particular WABAs.
+  {
+    method: "GET",
+    path: /^\/debug_token$/,
+    respond: (_, call) => ({
+      body: {
+        data: {
+          app_id: appIdOf(call.authorization),
+          is_valid: true,
+          scopes: [
+            "whatsapp_business_management",
+            "whatsapp_business_messaging",
+            "business_management",
+          ],
+        },
+      },
+    }),
+  },
+  // Webhooks on a WABA: POST subscribes the app, DELETE unsubscribes it.
+  {
+    method: "POST",
+    path: /^\/\d+\/subscribed_apps$/,
+    respond: () => ({ body: { success: true } }),
+  },
+  {
+    method: "DELETE",
+    path: /^\/\d+\/subscribed_apps$/,
+    respond: () => ({ body: { success: true } }),
+  },
+  {
+    method: "GET",
+    path: /^\/(\d+)\/phone_numbers$/,
+    respond: ([, wabaId]) => ({
+      body: { data: [phoneNumber(phoneNumberOf(wabaId))] },
+    }),
+  },
+  {
+    method: "POST",
+    path: /^\/(\d+)\/register$/,
+    respond: ([, id], call) => {
+      if (!numbers.has(id) || !/^\d{6}$/.test(call.body?.pin ?? ""))
+        return {
+          status: 400,
+          body: graphError("Invalid parameter", 100),
+        }
+      numbers.get(id).registered = true
+      return { body: { success: true } }
+    },
+  },
+  // One object by ID: a phone number, or the Meta app (verification) and
+  // WABAs, which only need an ID and a name.
   {
     method: "GET",
     path: /^\/(\d+)$/,
-    respond: ([, id]) => ({ body: { id, name: "Opensend E2E" } }),
+    respond: ([, id]) => ({
+      body: numbers.has(id) ? phoneNumber(id) : { id, name: "Opensend E2E" },
+    }),
   },
   // Webhook subscription: POST /{app-id}/subscriptions
   {
