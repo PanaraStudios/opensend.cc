@@ -18,21 +18,16 @@ env:
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  images:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+  # Blacksmith runners build each image natively per architecture (no QEMU)
+  # and push it by digest; the images job merges the digests into one
+  # multi-arch tag. Needs the Blacksmith GitHub app on the org.
+  build:
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'blacksmith-8vcpu-ubuntu-2404-arm' || 'blacksmith-8vcpu-ubuntu-2404' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: app
-            file: Dockerfile
-            target: app
-          - image: migrate
-            file: Dockerfile
-            target: migrate
-          - image: smtp
-            file: docker/smtp/Dockerfile
-            target: ""
+        image: [app, migrate, smtp]
+        platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,7 +36,59 @@ jobs:
         run: |
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
           git show-ref --verify "refs/tags/$RELEASE_TAG"
-      - uses: docker/setup-qemu-action@v4
+      - name: Select Dockerfile and target
+        run: |
+          arch=${PLATFORM#linux/}
+          echo "ARCH=$arch" >> "$GITHUB_ENV"
+          case "$IMAGE" in
+            smtp) echo "DOCKERFILE=docker/smtp/Dockerfile" >> "$GITHUB_ENV"; echo "TARGET=" >> "$GITHUB_ENV" ;;
+            *) echo "DOCKERFILE=Dockerfile" >> "$GITHUB_ENV"; echo "TARGET=$IMAGE" >> "$GITHUB_ENV" ;;
+          esac
+        env:
+          IMAGE: ${{ matrix.image }}
+          PLATFORM: ${{ matrix.platform }}
+      - uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: opensend-${{ matrix.image }}
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: useblacksmith/build-push-action@v2
+        id: build
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          target: ${{ env.TARGET }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/panarastudios/opensend-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ env.ARCH }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  images:
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [app, migrate, smtp]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -57,21 +104,18 @@ jobs:
             type=raw,value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ${{ matrix.file }}
-          target: ${{ matrix.target }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Create the multi-arch tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/panarastudios/opensend-${{ matrix.image }}@sha256:%s ' *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "ghcr.io/panarastudios/opensend-${{ matrix.image }}:$RELEASE_TAG"
 
   release:
     needs: images
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v5
         with:

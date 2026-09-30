@@ -213,11 +213,11 @@ try {
   const configured = parse(readFileSync(resolve(configuration, ".env"), "utf8"))
   assert.equal(configured.COMPOSE_FILE, "compose.yaml:compose.caddy.yaml")
   assert.equal(configured.SITE_URL, "https://mail.example.test")
-  assert.equal(configured.CONVEX_PUBLIC_URL, "https://api.mail.example.test")
   assert.equal(
-    configured.CONVEX_PUBLIC_SITE_URL,
-    "https://hooks.mail.example.test"
+    configured.CONVEX_PUBLIC_URL,
+    "https://realtime.mail.example.test"
   )
+  assert.equal(configured.CONVEX_PUBLIC_SITE_URL, "https://api.mail.example.test")
   assert.equal(configured.CONVEX_BACKEND_ORIGIN, configured.CONVEX_PUBLIC_URL)
   assert.ok(statSync(resolve(configuration, "docker/caddy/Caddyfile")).isFile())
 
