@@ -10,6 +10,7 @@ describe("teamSafePath", () => {
     assert.equal(teamSafePath("/instance/ses"), "/instance/ses")
     assert.equal(teamSafePath("/instance/meta"), "/instance/meta")
     assert.equal(teamSafePath("/contacts"), "/contacts")
+    assert.equal(teamSafePath("/channels"), "/channels")
   })
 
   it("drops record ids to the parent list", () => {
