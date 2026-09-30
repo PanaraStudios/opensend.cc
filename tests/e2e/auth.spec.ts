@@ -18,6 +18,7 @@ import { shortcutTests } from "./shortcuts-flow"
 import { metaInboundTests } from "./meta-inbound-flow"
 import { metaAppTests } from "./meta-app-flow"
 import { channelsTests } from "./channels-flow"
+import { whatsappTemplatesTests } from "./whatsapp-templates-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -1222,6 +1223,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   metaAppTests(() => ({ owner, member }))
   channelsTests(() => ({ owner, member }))
   metaInboundTests(() => ({ owner, organizationId }))
+  whatsappTemplatesTests(() => ({ owner, organizationId }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")

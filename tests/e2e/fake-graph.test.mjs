@@ -49,3 +49,51 @@ test("fake Graph serves authenticated media metadata and download bytes and reco
     await graph.close()
   }
 })
+
+test("fake Graph keeps message templates per WABA and lists a synced one", async () => {
+  const graph = await startFakeGraph(0)
+  const json = { "content-type": "application/json" }
+  try {
+    const created = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          name: "order_update",
+          language: "en_US",
+          category: "UTILITY",
+          parameter_format: "positional",
+          components: [{ type: "BODY", text: "Hi" }],
+        }),
+      })
+    ).json()
+    assert.equal(created.status, "PENDING")
+    const listed = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      listed.data.map((template) => template.name),
+      ["order_update", "e2e_synced_offer"]
+    )
+    assert.equal(listed.paging.next, undefined)
+    const edited = await fetch(`${graph.origin}/v25.0/${created.id}`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ components: [{ type: "BODY", text: "Hello" }] }),
+    })
+    assert.equal(edited.status, 200)
+    await fetch(
+      `${graph.origin}/v25.0/5551/message_templates?name=order_update&hsm_id=${created.id}`,
+      { method: "DELETE" }
+    )
+    const after = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      after.data.map((template) => template.name),
+      ["e2e_synced_offer"]
+    )
+  } finally {
+    await graph.close()
+  }
+})
