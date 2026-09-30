@@ -58,9 +58,8 @@ describe('Contacts', () => {
         });
 
         const resend = new Resend('os_test00000000000000000000000000001');
-        await expect(
-          resend.contacts.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "id": "3deaccfb-f47f-440a-8875-ea14b1716b43",
@@ -135,9 +134,8 @@ describe('Contacts', () => {
         });
 
         const resend = new Resend('os_test00000000000000000000000000001');
-        await expect(
-          resend.contacts.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "id": "3deaccfb-f47f-440a-8875-ea14b1716b43",
@@ -164,9 +162,8 @@ describe('Contacts', () => {
         };
 
         const resend = new Resend('os_test00000000000000000000000000001');
-        await expect(
-          resend.contacts.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": null,
             "error": {
@@ -197,9 +194,8 @@ describe('Contacts', () => {
         };
 
         const resend = new Resend('os_test00000000000000000000000000001');
-        await expect(
-          resend.contacts.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": null,
             "error": {
@@ -227,6 +223,7 @@ describe('Contacts', () => {
             {
               id: 'b6d24b8e-af0b-4c3c-be0c-359bbd97381e',
               email: 'team@resend.com',
+              phone: null,
               created_at: '2023-04-07 23:13:52.669661+00',
               unsubscribed: false,
               first_name: 'John',
@@ -235,6 +232,7 @@ describe('Contacts', () => {
             {
               id: 'ac7503ac-e027-4aea-94b3-b0acd46f65f9',
               email: 'team@react.email',
+              phone: null,
               created_at: '2023-04-07 23:13:20.417116+00',
               unsubscribed: false,
               first_name: 'John',
@@ -279,6 +277,7 @@ describe('Contacts', () => {
               {
                 id: 'b6d24b8e-af0b-4c3c-be0c-359bbd97381e',
                 email: 'team@resend.com',
+                phone: null,
                 created_at: '2023-04-07 23:13:52.669661+00',
                 unsubscribed: false,
                 first_name: 'John',
@@ -287,6 +286,7 @@ describe('Contacts', () => {
               {
                 id: 'ac7503ac-e027-4aea-94b3-b0acd46f65f9',
                 email: 'team@react.email',
+                phone: null,
                 created_at: '2023-04-07 23:13:20.417116+00',
                 unsubscribed: false,
                 first_name: 'John',
@@ -300,9 +300,8 @@ describe('Contacts', () => {
 
           const resend = new Resend('os_test00000000000000000000000000001');
 
-          await expect(
-            resend.contacts.list(options),
-          ).resolves.toMatchInlineSnapshot(`
+          await expect(resend.contacts.list(options)).resolves
+            .toMatchInlineSnapshot(`
             {
               "data": {
                 "data": [
@@ -312,6 +311,7 @@ describe('Contacts', () => {
                     "first_name": "John",
                     "id": "b6d24b8e-af0b-4c3c-be0c-359bbd97381e",
                     "last_name": "Smith",
+                    "phone": null,
                     "unsubscribed": false,
                   },
                   {
@@ -320,6 +320,7 @@ describe('Contacts', () => {
                     "first_name": "John",
                     "id": "ac7503ac-e027-4aea-94b3-b0acd46f65f9",
                     "last_name": "Smith",
+                    "phone": null,
                     "unsubscribed": false,
                   },
                 ],
@@ -344,6 +345,7 @@ describe('Contacts', () => {
           {
             id: 'b6d24b8e-af0b-4c3c-be0c-359bbd97381e',
             email: 'team@resend.com',
+            phone: null,
             created_at: '2023-04-07 23:13:52.669661+00',
             unsubscribed: false,
             first_name: 'John',
@@ -482,6 +484,7 @@ describe('Contacts', () => {
         object: 'contact',
         id: 'fd61172c-cafc-40f5-b049-b45947779a29',
         email: 'team@resend.com',
+        phone: null,
         first_name: '',
         last_name: '',
         created_at: '2024-01-16 18:12:26.514+00',
@@ -501,9 +504,8 @@ describe('Contacts', () => {
         id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87223',
         audienceId: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
       };
-      await expect(
-        resend.contacts.get(options),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.get(options)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "created_at": "2024-01-16 18:12:26.514+00",
@@ -512,6 +514,7 @@ describe('Contacts', () => {
             "id": "fd61172c-cafc-40f5-b049-b45947779a29",
             "last_name": "",
             "object": "contact",
+            "phone": null,
             "properties": {},
             "unsubscribed": false,
           },
@@ -528,6 +531,7 @@ describe('Contacts', () => {
         object: 'contact',
         id: 'fd61172c-cafc-40f5-b049-b45947779a29',
         email: 'team@resend.com',
+        phone: null,
         first_name: '',
         last_name: '',
         created_at: '2024-01-16 18:12:26.514+00',
@@ -547,9 +551,8 @@ describe('Contacts', () => {
         email: 'team@resend.com',
         audienceId: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
       };
-      await expect(
-        resend.contacts.get(options),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.get(options)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "created_at": "2024-01-16 18:12:26.514+00",
@@ -558,6 +561,7 @@ describe('Contacts', () => {
             "id": "fd61172c-cafc-40f5-b049-b45947779a29",
             "last_name": "",
             "object": "contact",
+            "phone": null,
             "properties": {},
             "unsubscribed": false,
           },
@@ -575,6 +579,7 @@ describe('Contacts', () => {
           object: 'contact',
           id: 'fd61172c-cafc-40f5-b049-b45947779a29',
           email: 'team@resend.com',
+          phone: null,
           first_name: '',
           last_name: '',
           created_at: '2024-01-16 18:12:26.514+00',
@@ -602,9 +607,8 @@ describe('Contacts', () => {
         const options: GetContactOptions = {
           id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87223',
         };
-        await expect(
-          resend.contacts.get(options),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.get(options)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "created_at": "2024-01-16 18:12:26.514+00",
@@ -613,6 +617,7 @@ describe('Contacts', () => {
               "id": "fd61172c-cafc-40f5-b049-b45947779a29",
               "last_name": "",
               "object": "contact",
+              "phone": null,
               "properties": {
                 "country": {
                   "type": "string",
@@ -638,6 +643,7 @@ describe('Contacts', () => {
           object: 'contact',
           id: 'fd61172c-cafc-40f5-b049-b45947779a29',
           email: 'team@resend.com',
+          phone: null,
           first_name: '',
           last_name: '',
           created_at: '2024-01-16 18:12:26.514+00',
@@ -665,9 +671,8 @@ describe('Contacts', () => {
         const options: GetContactOptions = {
           email: 'team@resend.com',
         };
-        await expect(
-          resend.contacts.get(options),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.get(options)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "created_at": "2024-01-16 18:12:26.514+00",
@@ -676,6 +681,7 @@ describe('Contacts', () => {
               "id": "fd61172c-cafc-40f5-b049-b45947779a29",
               "last_name": "",
               "object": "contact",
+              "phone": null,
               "properties": {
                 "country": {
                   "type": "string",
@@ -700,6 +706,7 @@ describe('Contacts', () => {
           object: 'contact',
           id: 'fd61172c-cafc-40f5-b049-b45947779a29',
           email: 'team@resend.com',
+          phone: null,
           first_name: '',
           last_name: '',
           created_at: '2024-01-16 18:12:26.514+00',
@@ -735,6 +742,7 @@ describe('Contacts', () => {
               "id": "fd61172c-cafc-40f5-b049-b45947779a29",
               "last_name": "",
               "object": "contact",
+              "phone": null,
               "properties": {
                 "country": {
                   "type": "string",
@@ -768,6 +776,7 @@ describe('Contacts', () => {
           object: 'contact',
           id: 'fd61172c-cafc-40f5-b049-b45947779a29',
           email: 'team@resend.com',
+          phone: null,
           first_name: '',
           last_name: '',
           created_at: '2024-01-16 18:12:26.514+00',
@@ -792,9 +801,8 @@ describe('Contacts', () => {
         });
 
         const resend = new Resend('os_test00000000000000000000000000001');
-        await expect(
-          resend.contacts.get('team@resend.com'),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.contacts.get('team@resend.com')).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "created_at": "2024-01-16 18:12:26.514+00",
@@ -803,6 +811,7 @@ describe('Contacts', () => {
               "id": "fd61172c-cafc-40f5-b049-b45947779a29",
               "last_name": "",
               "object": "contact",
+              "phone": null,
               "properties": {
                 "country": {
                   "type": "string",
@@ -856,9 +865,8 @@ describe('Contacts', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.contacts.update(payload),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.update(payload)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "3d4a472d-bc6d-4dd2-aa9d-d3d50ce87223",
@@ -930,9 +938,8 @@ describe('Contacts', () => {
         id: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87223',
         audienceId: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
       };
-      await expect(
-        resend.contacts.remove(options),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.remove(options)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "contact": "3d4a472d-bc6d-4dd2-aa9d-d3d50ce87223",
@@ -965,9 +972,8 @@ describe('Contacts', () => {
         email: 'acme@example.com',
         audienceId: '3d4a472d-bc6d-4dd2-aa9d-d3d50ce87222',
       };
-      await expect(
-        resend.contacts.remove(options),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.remove(options)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "contact": "acme@example.com",
@@ -1012,5 +1018,54 @@ describe('Contacts', () => {
         }
       `);
     });
+  });
+});
+
+describe('phone contacts', () => {
+  beforeEach(() => {
+    fetchMocker.enableMocks();
+  });
+  afterEach(() => fetchMock.resetMocks());
+  afterAll(() => fetchMocker.disableMocks());
+
+  it('creates a phone-only contact and sends phone updates', async () => {
+    const opensend = new Resend('os_test00000000000000000000000000001');
+    fetchMock.mockResponse(
+      JSON.stringify({ object: 'contact', id: 'contact-phone' }),
+    );
+    await opensend.contacts.create({ phone: '+14155552671' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+      phone: '+14155552671',
+    });
+    await opensend.contacts.update({
+      id: 'contact-phone',
+      phone: '+442079460958',
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({
+      phone: '+442079460958',
+    });
+    await opensend.contacts.update({ id: 'contact-phone', phone: null });
+    expect(JSON.parse(fetchMock.mock.calls[2][1]!.body as string)).toEqual({
+      phone: null,
+    });
+  });
+
+  it('returns a phone-only contact with a null email', async () => {
+    const opensend = new Resend('os_test00000000000000000000000000001');
+    const contact = {
+      object: 'contact',
+      id: 'contact-phone',
+      email: null,
+      phone: '+14155552671',
+      first_name: null,
+      last_name: null,
+      created_at: '2026-10-01',
+      unsubscribed: false,
+      properties: {},
+    };
+    fetchMock.mockResponse(JSON.stringify(contact));
+    expect((await opensend.contacts.get('contact-phone')).data).toEqual(
+      contact,
+    );
   });
 });

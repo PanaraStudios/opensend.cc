@@ -13,7 +13,8 @@ export interface LegacyCreateContactOptions {
    * @see https://resend.com/docs/dashboard/segments/migrating-from-audiences-to-segments
    */
   audienceId: string;
-  email: string;
+  email?: string;
+  phone?: string;
   unsubscribed?: boolean;
   firstName?: string;
   lastName?: string;
@@ -21,7 +22,8 @@ export interface LegacyCreateContactOptions {
 }
 
 export interface CreateContactOptions {
-  email: string;
+  email?: string;
+  phone?: string;
   unsubscribed?: boolean;
   firstName?: string;
   lastName?: string;

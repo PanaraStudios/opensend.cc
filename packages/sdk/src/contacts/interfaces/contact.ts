@@ -1,7 +1,8 @@
 export interface Contact {
   created_at: string;
   id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   first_name: string | null;
   last_name: string | null;
   unsubscribed: boolean;
