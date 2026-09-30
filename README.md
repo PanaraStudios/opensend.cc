@@ -28,7 +28,7 @@ See [self-hosting](docs/self-hosting.md) for flags, upgrades and source installa
 
 ## Develop
 
-Requires Node.js 20.9+ and [pnpm](https://pnpm.io).
+Requires Node.js 22 and [pnpm](https://pnpm.io) 11.7.0.
 
 ```sh
 pnpm install --frozen-lockfile
