@@ -1,3 +1,4 @@
+import { registerWhatsAppRoutes } from "./whatsapp"
 import { registerUsageRoutes } from "./usage"
 import { registerSuppressionRoutes } from "./suppressions"
 import { registerWebhookRoutes } from "./webhooks"
@@ -18,6 +19,7 @@ import { registerLogRoutes } from "./logs"
 /** The public REST API. Each resource registers its routes with `apiRoute`
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
+  registerWhatsAppRoutes(http)
   registerUsageRoutes(http)
   registerAutomationRoutes(http)
   registerImportRoutes(http)

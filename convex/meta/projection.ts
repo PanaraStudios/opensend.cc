@@ -3,12 +3,13 @@ import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { insertRow, patchRow } from "../counts"
-import { upsertContact } from "../audience"
+import { upsertWhatsAppThread } from "../channels/identity"
 import { emitEvent } from "../events"
 import { customEventType } from "../automationEvents"
 import { retirement } from "../teamLifecycle"
 import { normalizePhone } from "../../lib/dashboard/phone"
 import { CHANNEL_MESSAGE_TYPES } from "../tables/channels"
+import { acceptChannelMessage } from "../channels/messages"
 import { channelMessagePayload } from "../channels/payload"
 import { live } from "./connect"
 import {
@@ -19,7 +20,6 @@ import {
   MEDIA_TYPES,
   STATUS_RANK,
   outboundStatus,
-  profileNameParts,
 } from "../../lib/meta/webhooks"
 
 const messageByExternalId = (ctx: MutationCtx, id: string) =>
@@ -49,7 +49,7 @@ async function receive(
 ) {
   const data = object(raw)
   const externalId = string(data.id)
-  const sender = string(data.from)
+  const sender = string(data.from).replace(/^\+/, "")
   const phone = normalizePhone(sender.startsWith("+") ? sender : `+${sender}`)
   if (
     !externalId ||
@@ -63,51 +63,6 @@ async function receive(
     .map(object)
     .find((contact) => string(contact.wa_id) === sender)
   const profileName = string(object(profile?.profile).name)
-  const identity = await ctx.db
-    .query("channelContacts")
-    .withIndex(
-      "by_organizationId_and_channel_and_scopeId_and_externalId",
-      (q) =>
-        q
-          .eq("organizationId", account.organizationId)
-          .eq("channel", "whatsapp")
-          .eq("scopeId", "whatsapp")
-          .eq("externalId", sender)
-    )
-    .unique()
-  const linked = identity?.contactId
-    ? await ctx.db.get("contacts", identity.contactId)
-    : null
-  const contactId =
-    linked?.organizationId === account.organizationId
-      ? linked._id
-      : (
-          await upsertContact(
-            ctx,
-            account.organizationId,
-            { phone, ...profileNameParts(profileName) },
-            { properties: [], segmentIds: [], skipExisting: true }
-          )
-        ).id
-  const changes = {
-    contactId,
-    phone,
-    ...(profileName ? { profileName } : {}),
-    lastInboundAt: Math.max(at, identity?.lastInboundAt ?? 0),
-  }
-  let channelContactId
-  if (identity) {
-    await ctx.db.patch("channelContacts", identity._id, changes)
-    channelContactId = identity._id
-  } else
-    channelContactId = await ctx.db.insert("channelContacts", {
-      organizationId: account.organizationId,
-      channel: "whatsapp",
-      scopeId: "whatsapp",
-      externalId: sender,
-      marketingOptOut: false,
-      ...changes,
-    })
   const type =
     CHANNEL_MESSAGE_TYPES.find((type) => type === data.type) ?? "unsupported"
   const media = object(data[type])
@@ -116,56 +71,15 @@ async function receive(
       ? string(object(data.text).body)
       : string(media.caption) || `[${type}]`
   ).slice(0, 1000)
-  const conversation = await ctx.db
-    .query("conversations")
-    .withIndex("by_accountId_and_channelContactId", (q) =>
-      q.eq("accountId", account._id).eq("channelContactId", channelContactId)
-    )
-    .unique()
-  const lastInboundAt = Math.max(at, conversation?.lastInboundAt ?? 0)
-  const conversationChanges = {
-    contactId,
-    lastInboundAt,
-    windowExpiresAt: lastInboundAt + 24 * 3600_000,
-    unread: true,
-    unreadCount:
-      (conversation?.unreadCount ?? (conversation?.unread ? 1 : 0)) + 1,
-    ...(!conversation || at >= conversation.lastMessageAt
-      ? {
-          lastMessageAt: at,
-          lastPreview: preview,
-          lastDirection: "inbound" as const,
-        }
-      : {}),
-    search: [phone, profileName || identity?.profileName].join(" "),
-  }
-  const conversationId = conversation
-    ? (
-        await patchRow(
-          ctx,
-          "conversations",
-          conversation._id,
-          conversationChanges
-        )
-      )._id
-    : (
-        await insertRow(
-          ctx,
-          "conversations",
-          {
-            organizationId: account.organizationId,
-            channel: "whatsapp",
-            accountId: account._id,
-            channelContactId,
-            status: "open",
-            lastMessageAt: at,
-            lastPreview: preview,
-            lastDirection: "inbound",
-            ...conversationChanges,
-          },
-          true
-        )
-      )._id
+  const { contactId, channelContactId, conversationId } =
+    await upsertWhatsAppThread(ctx, account, {
+      externalId: sender,
+      phone,
+      profileName,
+      at,
+      preview,
+      direction: "inbound",
+    })
   const message = await insertRow(
     ctx,
     "channelMessages",
@@ -251,6 +165,15 @@ async function status(
     message.direction !== "outbound"
   )
     return
+  if (next === "sent") {
+    await acceptChannelMessage(
+      ctx,
+      message,
+      string(data.id),
+      timestamp(data.timestamp, event.receivedAt)
+    )
+    return
+  }
   const errors = array(data.errors).map(object)
   const error = errors[0]
   const advances = STATUS_RANK[next] > STATUS_RANK[message.status]
@@ -263,6 +186,9 @@ async function status(
                 string(error?.message) ||
                 string(error?.title) ||
                 "WhatsApp delivery failed",
+              ...(string(error?.title)
+                ? { errorTitle: string(error?.title) }
+                : {}),
               ...(typeof error?.code === "number"
                 ? { errorCode: error.code }
                 : {}),

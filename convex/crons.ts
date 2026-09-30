@@ -64,4 +64,11 @@ for (const name of [
     {}
   )
 
+crons.interval(
+  "outgoing channel media retention",
+  { hours: 1 },
+  internal.channels.mediaUploads.prune,
+  {}
+)
+
 export default crons

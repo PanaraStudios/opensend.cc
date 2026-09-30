@@ -76,3 +76,13 @@ export function graphFailure(error: unknown) {
       ? `Meta refused the request: ${error.message}`
       : "Could not reach Meta. Try again."
 }
+
+/** Disposable e2e receiver, enabled only by the installation's local Graph
+ * override and only for this reserved fixture URL. All other customer URLs
+ * keep the public HTTPS and DNS checks. */
+export function metaTestWebhookTarget(endpoint: string) {
+  const localOrigin = graphLocalOrigin()
+  return localOrigin && endpoint === "https://whatsapp-send.invalid/events"
+    ? { url: new URL("/__webhooks", localOrigin), localOrigin }
+    : { url: new URL(endpoint), localOrigin: undefined }
+}

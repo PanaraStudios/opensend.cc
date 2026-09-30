@@ -48,6 +48,7 @@ export const seedAccount = internalMutation({
       handle: "+15550783881",
       status: "active",
       throughputMps: 80,
+      registeredAt: Date.now(),
     })
   },
 })

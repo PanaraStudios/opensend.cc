@@ -1,6 +1,6 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
-import { emailSourceValue, tagValue } from "./emails"
+import { tagValue } from "./emails"
 
 const literals = <T extends string>(values: readonly T[]) =>
   v.union(...values.map((value) => v.literal(value)))
@@ -202,9 +202,19 @@ export const channelTables = {
     preview: v.string(),
     templateId: v.optional(v.id("templates")),
     broadcastId: v.optional(v.id("broadcasts")),
+    automationRunId: v.optional(v.id("automationRuns")),
     replyToId: v.optional(v.id("channelMessages")),
     tags: v.optional(v.array(tagValue)),
-    source: v.optional(emailSourceValue),
+    source: v.optional(
+      v.union(
+        v.literal("api"),
+        v.literal("dashboard"),
+        v.literal("broadcast"),
+        v.literal("automation"),
+        v.literal("smtp"),
+        v.literal("system")
+      )
+    ),
     apiKeyId: v.optional(v.id("apiKeys")),
     apiLogId: v.optional(v.id("apiLogs")),
     /** Meta's message id (wamid, mid): how status webhooks find it. */
@@ -219,12 +229,37 @@ export const channelTables = {
     sentAt: v.optional(v.number()),
     error: v.optional(v.string()),
     errorCode: v.optional(v.number()),
+    errorTitle: v.optional(v.string()),
     /** Sender, recipient and preview as words, for the list's search. */
     search: v.string(),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_status", ["organizationId", "status"])
     .index("by_organizationId_and_channel", ["organizationId", "channel"])
+    .index("by_team_channel_status_direction", [
+      "organizationId",
+      "channel",
+      "status",
+      "direction",
+    ])
+    .index("by_team_channel_direction", [
+      "organizationId",
+      "channel",
+      "direction",
+    ])
+    .index("by_team_channel_account_status_direction", [
+      "organizationId",
+      "channel",
+      "accountId",
+      "status",
+      "direction",
+    ])
+    .index("by_team_channel_account_direction", [
+      "organizationId",
+      "channel",
+      "accountId",
+      "direction",
+    ])
     .index("by_conversationId", ["conversationId"])
     .index("by_channel_and_externalId", ["channel", "externalId"])
     .index("by_expiresAt", ["expiresAt"])
@@ -232,6 +267,19 @@ export const channelTables = {
       searchField: "search",
       filterFields: ["organizationId", "channel", "status"],
     }),
+  channelMediaUploads: defineTable({
+    organizationId: v.string(),
+    accountId: v.id("channelAccounts"),
+    mediaId: v.string(),
+    storageId: v.id("_storage"),
+    contentType: v.string(),
+    filename: v.string(),
+    size: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_team_and_mediaId", ["organizationId", "mediaId"])
+    .index("by_expiresAt", ["expiresAt"]),
   channelMessageContents: defineTable({
     messageId: v.id("channelMessages"),
     /** The channel's message object as JSON. */

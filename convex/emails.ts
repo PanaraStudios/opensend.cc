@@ -79,7 +79,7 @@ const MAX_TAGS = 48
 const MAX_HEADERS = 50
 /** Waits before each retry of a send SES throttled or that failed in
     transit. Permanent rejections are never retried. */
-const RETRY_DELAYS = [30, 120, 600, 1800, 7200].map((s) => s * 1000)
+export const RETRY_DELAYS = [30, 120, 600, 1800, 7200].map((s) => s * 1000)
 const OUR_TAGS = ["opensend_email", "opensend_team"]
 
 const pool = new Workpool(components.sendPool, { maxParallelism: 10 })

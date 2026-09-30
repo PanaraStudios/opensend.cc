@@ -41,6 +41,7 @@ tags:
   - name: Webhooks
   - name: Usage
   - name: Suppressions
+  - name: WhatsApp
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
@@ -5929,6 +5930,384 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /whatsapp/messages:
+    post:
+      operationId: whatsapp/messages/send
+      tags:
+        - WhatsApp
+      summary: Send WhatsApp Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          headers: &a1
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppId"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+      description:
+        Queue a message and return its stable id. The number must be active and registered;
+        from may be a phone number id or account id and is required unless exactly one live number is
+        connected. Every non-template type requires an open 24-hour window. Template variables use
+        consecutive keys 1, 2, ... for positional parameters or Meta parameter names for named
+        parameters. reply_to accepts an Opensend message id or wamid within the recipient
+        conversation. Domain-restricted sending keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendWhatsAppMessage"
+    get:
+      operationId: whatsapp/messages/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Messages
+      x-opensend-permission: full_access
+      parameters:
+        - &a3
+          $ref: "#/components/parameters/PaginationLimit"
+        - &a4
+          $ref: "#/components/parameters/PaginationAfter"
+        - &a5
+          $ref: "#/components/parameters/PaginationBefore"
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: phone_number_id
+          required: false
+          schema: &a2
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/messages/{id}:
+    get:
+      operationId: whatsapp/messages/get
+      tags:
+        - WhatsApp
+      summary: Get WhatsApp Message
+      x-opensend-permission: full_access
+      parameters:
+        - &a6
+          in: path
+          name: id
+          required: true
+          schema: *a2
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageDetail"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/media:
+    post:
+      operationId: whatsapp/media/upload
+      tags:
+        - WhatsApp
+      summary: Upload WhatsApp Media
+      x-opensend-permission: sending
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppId"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          description: Invalid media or a final Meta API rejection.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/Error422"
+                  - $ref: "#/components/schemas/WhatsAppMetaError"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta did not return a media id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+        "503":
+          description: Meta temporarily refused the upload. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+      description:
+        "Upload binary media to Convex storage and Meta. MIME/size limits: JPEG/PNG 5 MB;
+        supported audio/video 16 MB; documents 100 MB; WebP static stickers 100 KB or animated
+        stickers 500 KB. OGG requires codecs=opus. Meta also validates codecs and image formats. The
+        deployment HTTP body limit can be lower. Returns Meta media id. Domain-restricted keys receive
+        403."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                from: *a2
+                type:
+                  type: string
+                  description:
+                    MIME type; defaults to the uploaded file Content-Type. For OGG use audio/ogg;
+                    codecs=opus.
+              required:
+                - file
+  /whatsapp/phone-numbers:
+    get:
+      operationId: whatsapp/phoneNumbers/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Phone Numbers
+      x-opensend-permission: full_access
+      parameters: &a7
+        - *a3
+        - *a4
+        - *a5
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppPhoneNumberList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/phone-numbers/{id}:
+    get:
+      operationId: whatsapp/phoneNumbers/get
+      tags:
+        - WhatsApp
+      summary: Get WhatsApp Phone Number
+      x-opensend-permission: full_access
+      parameters:
+        - *a6
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppPhoneNumber"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/conversations:
+    get:
+      operationId: whatsapp/conversations/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Conversations
+      x-opensend-permission: full_access
+      parameters: *a7
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppConversationList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/conversations/{id}/messages:
+    get:
+      operationId: whatsapp/conversations/messages
+      tags:
+        - WhatsApp
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - *a6
+        - *a3
+        - *a4
+        - *a5
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
 components:
   headers:
     ratelimit_limit:
@@ -6121,6 +6500,773 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    WhatsAppMetaError:
+      type: object
+      required: [statusCode, name, message]
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: integer
+          enum: [422, 502, 503]
+        name:
+          type: string
+          const: meta_api_error
+        message:
+          type: string
+    WhatsAppMediaReference:
+      type: object
+      properties:
+        id: &a1
+          type: string
+        link:
+          type: string
+          format: uri
+      required: []
+      oneOf:
+        - required:
+            - id
+          not:
+            required:
+              - link
+        - required:
+            - link
+          not:
+            required:
+              - id
+    WhatsAppTemplate:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z0-9_]+$
+        language:
+          oneOf:
+            - *a1
+            - type: object
+              properties:
+                code: *a1
+              required:
+                - code
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  - header
+                  - body
+                  - button
+              parameters:
+                type: array
+                items:
+                  type: object
+              sub_type: *a1
+              index: *a1
+            required:
+              - type
+              - parameters
+        variables:
+          type: object
+          additionalProperties:
+            type:
+              - string
+              - number
+      required:
+        - name
+        - language
+      not:
+        required:
+          - components
+          - variables
+    WhatsAppText:
+      oneOf:
+        - type: string
+          minLength: 1
+          maxLength: 4096
+        - type: object
+          properties:
+            body:
+              type: string
+              minLength: 1
+              maxLength: 4096
+            preview_url:
+              type: boolean
+          required:
+            - body
+    WhatsAppLocation:
+      type: object
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        name: *a1
+        address: *a1
+      required:
+        - latitude
+        - longitude
+    WhatsAppInteractive:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - button
+            - list
+        body:
+          type: object
+          properties:
+            text: *a1
+          required:
+            - text
+        action:
+          type: object
+        header:
+          type: object
+        footer:
+          type: object
+          properties:
+            text: *a1
+          required:
+            - text
+      required:
+        - type
+        - body
+        - action
+    WhatsAppReaction:
+      type: object
+      properties:
+        message_id: *a1
+        emoji:
+          type: string
+          maxLength: 16
+      required:
+        - message_id
+        - emoji
+    WhatsAppEvent:
+      type: object
+      properties:
+        type: &a3
+          type: string
+          enum:
+            - queued
+            - sent
+            - delivered
+            - read
+            - failed
+            - received
+        created_at:
+          type: string
+          format: date-time
+        details: {}
+      required:
+        - type
+        - created_at
+        - details
+    WhatsAppStoredMedia:
+      type: object
+      properties:
+        id: &a2
+          type:
+            - string
+            - "null"
+        content_type: *a1
+        filename: *a2
+        size:
+          type:
+            - number
+            - "null"
+        download_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        expires_at: *a2
+        error: *a2
+      required:
+        - id
+        - content_type
+        - filename
+        - size
+        - download_url
+        - expires_at
+        - error
+    WhatsAppPhoneNumber:
+      type: object
+      properties:
+        id: *a1
+        phone_number_id: *a1
+        display_phone_number: *a1
+        verified_name: *a1
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - restricted
+            - error
+            - disconnected
+        quality:
+          type: string
+          enum:
+            - green
+            - yellow
+            - red
+            - unknown
+        throughput:
+          type: number
+        messaging_limit: *a2
+        waba_id: *a2
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - phone_number_id
+        - display_phone_number
+        - verified_name
+        - status
+        - quality
+        - throughput
+        - messaging_limit
+        - waba_id
+        - created_at
+    WhatsAppConversation:
+      type: object
+      properties:
+        id: *a1
+        channel:
+          type: string
+          const: whatsapp
+        account_id: *a2
+        channel_contact_id: *a2
+        contact_id: *a2
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        last_message_at:
+          type: string
+          format: date-time
+        last_preview: *a1
+        last_direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        window_expires_at: *a2
+        unread:
+          type: boolean
+      required:
+        - id
+        - channel
+        - account_id
+        - channel_contact_id
+        - contact_id
+        - status
+        - last_message_at
+        - last_preview
+        - last_direction
+        - window_expires_at
+        - unread
+    WhatsAppId:
+      type: object
+      properties:
+        id: *a1
+      required:
+        - id
+    SendWhatsAppMessage:
+      type: object
+      properties:
+        from: *a1
+        to:
+          type: string
+          pattern: ^\+?[1-9]\d{6,14}$
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+        text:
+          $ref: "#/components/schemas/WhatsAppText"
+        template:
+          $ref: "#/components/schemas/WhatsAppTemplate"
+        location:
+          $ref: "#/components/schemas/WhatsAppLocation"
+        interactive:
+          $ref: "#/components/schemas/WhatsAppInteractive"
+        reaction:
+          $ref: "#/components/schemas/WhatsAppReaction"
+        reply_to: *a1
+        tags: &a4
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name: *a1
+              value: *a1
+            required:
+              - name
+              - value
+        image:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+              required: []
+        video:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+              required: []
+        audio:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties: {}
+              required: []
+        document:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+                filename: *a1
+              required: []
+        sticker:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties: {}
+              required: []
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          properties:
+            type:
+              const: text
+          not:
+            anyOf:
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - template
+          properties:
+            type:
+              const: template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - image
+          properties:
+            type:
+              const: image
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - video
+          properties:
+            type:
+              const: video
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - audio
+          properties:
+            type:
+              const: audio
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - document
+          properties:
+            type:
+              const: document
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - sticker
+          properties:
+            type:
+              const: sticker
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - location
+          properties:
+            type:
+              const: location
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - interactive
+          properties:
+            type:
+              const: interactive
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - reaction
+        - required:
+            - reaction
+          properties:
+            type:
+              const: reaction
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+    WhatsAppMessage:
+      type: object
+      properties:
+        id: *a1
+        channel:
+          type: string
+          const: whatsapp
+        account_id: *a1
+        conversation_id: *a1
+        from: *a1
+        to: *a1
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+            - contacts
+            - button
+            - unsupported
+        status: *a3
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        external_id: *a2
+        created_at:
+          type: string
+          format: date-time
+        tags: *a4
+        text: *a1
+        template:
+          $ref: "#/components/schemas/WhatsAppTemplate"
+        location:
+          type:
+            - object
+            - "null"
+        interactive:
+          type:
+            - object
+            - "null"
+        reaction:
+          type:
+            - object
+            - "null"
+        media:
+          type:
+            - object
+            - array
+            - "null"
+        error:
+          type: object
+          properties:
+            code:
+              type:
+                - number
+                - "null"
+            title: *a2
+            message: *a1
+          required:
+            - code
+            - title
+            - message
+      required:
+        - id
+        - channel
+        - account_id
+        - conversation_id
+        - from
+        - to
+        - type
+        - status
+        - direction
+        - external_id
+        - created_at
+        - tags
+    WhatsAppMessageDetail:
+      allOf:
+        - $ref: "#/components/schemas/WhatsAppMessage"
+        - type: object
+          properties:
+            last_event: *a3
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/WhatsAppEvent"
+            media:
+              type: array
+              items:
+                $ref: "#/components/schemas/WhatsAppStoredMedia"
+          required:
+            - last_event
+            - events
+            - media
+    WhatsAppMessageList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppMessage"
+      required:
+        - object
+        - has_more
+        - data
+    WhatsAppPhoneNumberList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppPhoneNumber"
+      required:
+        - object
+        - has_more
+        - data
+    WhatsAppConversationList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppConversation"
+      required:
+        - object
+        - has_more
+        - data
     ShareEmailOptions:
       type: object
       properties:
