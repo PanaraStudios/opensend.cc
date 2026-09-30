@@ -6545,9 +6545,20 @@ components:
           not:
             required:
               - id
-    WhatsAppTemplate:
+    WhatsAppMessageTemplate:
       type: object
+      description: >-
+        The template to send. Name an approved template stored in opensend by
+        id, alias, or name and language, and pass variables; opensend fills
+        that template's header, body and buttons and rejects missing
+        variables. Or pass Meta components directly with a name and language.
       properties:
+        id:
+          type: string
+          description: The template's opensend id.
+        alias:
+          type: string
+          description: The template's alias.
         name:
           type: string
           pattern: ^[a-z0-9_]+$
@@ -6585,9 +6596,14 @@ components:
             type:
               - string
               - number
-      required:
-        - name
-        - language
+      anyOf:
+        - required:
+            - name
+            - language
+        - required:
+            - id
+        - required:
+            - alias
       not:
         required:
           - components
@@ -6817,7 +6833,7 @@ components:
         text:
           $ref: "#/components/schemas/WhatsAppText"
         template:
-          $ref: "#/components/schemas/WhatsAppTemplate"
+          $ref: "#/components/schemas/WhatsAppMessageTemplate"
         location:
           $ref: "#/components/schemas/WhatsAppLocation"
         interactive:
@@ -7169,7 +7185,7 @@ components:
         tags: *a4
         text: *a1
         template:
-          $ref: "#/components/schemas/WhatsAppTemplate"
+          $ref: "#/components/schemas/WhatsAppMessageTemplate"
         location:
           type:
             - object
