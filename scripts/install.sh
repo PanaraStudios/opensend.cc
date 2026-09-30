@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-MIN_RAM_MB=2048
+MIN_RAM_MB=3584 # a "4 GB" server reports about 3.7-3.9 GB of MemTotal
 RELEASES_URL=https://github.com/PanaraStudios/opensend.cc/releases
 LATEST_URL=https://api.github.com/repos/PanaraStudios/opensend.cc/releases/latest
 
@@ -148,7 +148,7 @@ elif command -v sysctl >/dev/null 2>&1; then
   ram_mb=$((ram_bytes / 1024 / 1024))
 fi
 if [ "$ram_mb" -gt 0 ] && [ "$ram_mb" -lt "$MIN_RAM_MB" ]; then
-  warn "${ram_mb} MB RAM detected; at least ${MIN_RAM_MB} MB is suggested."
+  warn "${ram_mb} MB RAM detected; the minimum is a 4 GB server. See https://opensend.cc/docs/self-hosting/requirements"
 fi
 if [ -z "$version" ]; then
   release=$(fetch "$LATEST_URL" 2>/dev/null || true)
