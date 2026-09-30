@@ -3,7 +3,7 @@ import type {
   Opensend,
   CreateWebhookResponseSuccess,
   UpdateWebhookResponseSuccess,
-} from "@opensend/sdk"
+} from "@opensendcc/sdk"
 import { z } from "zod"
 
 const webhookEventSchema = z.enum([

@@ -1,4 +1,4 @@
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { describe, expect, it } from "vitest"
 import { createMcpServer } from "../src/server.js"
 

@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { CreateBroadcastOptions, Opensend } from "@opensend/sdk"
+import type { CreateBroadcastOptions, Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
 import { EMAIL_HTML_RULES } from "../lib/email-html-rules.js"
 

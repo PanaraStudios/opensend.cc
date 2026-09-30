@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import packageJson from "../package.json" with { type: "json" }
 import {
   addApiKeyTools,

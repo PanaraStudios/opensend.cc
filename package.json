@@ -26,12 +26,12 @@
     "test": "tsx --test lib/*.test.ts lib/dashboard/*.test.ts lib/aws/*.test.ts docker/smtp/*.test.mjs docker/migrate/*.test.mjs",
     "setup": "node scripts/setup.mjs",
     "test:auth": "vitest run --config vitest.auth.config.ts",
-    "test:sdk": "pnpm --filter @opensend/sdk test",
+    "test:sdk": "pnpm --filter @opensendcc/sdk test",
     "backend": "node scripts/backend.mjs",
     "aws:cleanup": "node scripts/aws-cleanup.mjs",
     "test:e2e": "node scripts/test-e2e.mjs",
     "test:install": "node scripts/test-install.mjs",
-    "test:mcp": "pnpm --filter @opensend/mcp test"
+    "test:mcp": "pnpm --filter @opensendcc/mcp test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1136.0",

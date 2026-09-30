@@ -1,6 +1,6 @@
-# @opensend/mcp
+# @opensendcc/mcp
 
-MCP server for self-hosted Opensend, using `@opensend/sdk`. Ported from
+MCP server for self-hosted Opensend, using `@opensendcc/sdk`. Ported from
 [resend-mcp](https://github.com/resend/resend-mcp) 2.24.0,
 commit `96dd92f9065130702f8ab898a8583c5fab469c0c`. Requires Node.js 22+.
 **Not published yet.** Build and run from this workspace; do not publish.
@@ -8,8 +8,8 @@ commit `96dd92f9065130702f8ab898a8583c5fab469c0c`. Requires Node.js 22+.
 ## Run
 
 ```sh
-pnpm --filter @opensend/sdk build
-pnpm --filter @opensend/mcp build
+pnpm --filter @opensendcc/sdk build
+pnpm --filter @opensendcc/mcp build
 OPENSEND_API_KEY=… OPENSEND_BASE_URL=https://api.example.com opensend-mcp
 ```
 
@@ -126,8 +126,8 @@ Kept tool names and input shapes match upstream; descriptions reflect Opensend.
 
 ```sh
 pnpm test:mcp                         # builds SDK + MCP, then offline tests
-pnpm --filter @opensend/mcp build
-pnpm --filter @opensend/mcp typecheck # source and tests
+pnpm --filter @opensendcc/mcp build
+pnpm --filter @opensendcc/mcp typecheck # source and tests
 ```
 
 Tests cover upstream behavior, all registered tools against the OpenAPI operation

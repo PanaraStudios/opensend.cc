@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { USER_AGENT } from "./user-agent.js"
 import "dotenv/config"
-import { Opensend } from "@opensend/sdk"
+import { Opensend } from "@opensendcc/sdk"
 import { parseArgs, resolveConfigOrExit } from "./cli/index.js"
 import { runHttp } from "./transports/http.js"
 import { runStdio } from "./transports/stdio.js"

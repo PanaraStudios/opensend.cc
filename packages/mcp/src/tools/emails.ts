@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
 
 const SEND_EMAIL_TOOL_BASE = {

@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend, SuppressionListEntry } from "@opensend/sdk"
+import type { Opensend, SuppressionListEntry } from "@opensendcc/sdk"
 import { z } from "zod"
 
 function formatSuppression(suppression: SuppressionListEntry) {

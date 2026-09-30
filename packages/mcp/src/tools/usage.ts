@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 
 const GET_USAGE_TOOL = {
   title: "Get Usage",

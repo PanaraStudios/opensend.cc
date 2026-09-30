@@ -1,5 +1,5 @@
 import { serveStdio } from "@modelcontextprotocol/server/stdio"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { createMcpServer } from "../server.js"
 import type { ServerOptions } from "../types.js"
 

@@ -1,4 +1,4 @@
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { runStdio } from "../../src/transports/stdio.js"
 
