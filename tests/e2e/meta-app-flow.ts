@@ -38,7 +38,8 @@ export function metaAppTests(state: () => State) {
       owner.getByRole("heading", { name: "Meta app", level: 1 })
     ).toBeVisible()
     await expect(
-      settings.getByText("Not connected", { exact: true })
+      // The status badge; the App ID row shows the same words until set.
+      settings.getByText("Not connected", { exact: true }).first()
     ).toBeVisible()
     await screenshot(owner, "empty")
 
