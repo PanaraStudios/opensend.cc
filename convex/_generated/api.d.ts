@@ -75,6 +75,8 @@ import type * as lists from "../lists.js";
 import type * as logs from "../logs.js";
 import type * as meta_app from "../meta/app.js";
 import type * as meta_appActions from "../meta/appActions.js";
+import type * as meta_connect from "../meta/connect.js";
+import type * as meta_connectActions from "../meta/connectActions.js";
 import type * as meta_graph from "../meta/graph.js";
 import type * as meta_http from "../meta/http.js";
 import type * as metricRows from "../metricRows.js";
@@ -240,6 +242,8 @@ declare const fullApi: ApiFromModules<{
   logs: typeof logs;
   "meta/app": typeof meta_app;
   "meta/appActions": typeof meta_appActions;
+  "meta/connect": typeof meta_connect;
+  "meta/connectActions": typeof meta_connectActions;
   "meta/graph": typeof meta_graph;
   "meta/http": typeof meta_http;
   metricRows: typeof metricRows;
@@ -405,5 +409,6 @@ export declare const components: {
   channelMessageCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"channelMessageCounts">;
   conversationCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"conversationCounts">;
   broadcastMessageCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"broadcastMessageCounts">;
+  channelAccountCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"channelAccountCounts">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };

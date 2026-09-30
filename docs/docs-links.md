@@ -23,6 +23,7 @@ detail/editor routes inherit the most specific matching entry.
 | `/automations` | `/dashboard/automations/introduction` |
 | `/automations/events` | `/dashboard/automations/trigger` |
 | `/broadcasts` | `/dashboard/broadcasts` |
+| `/channels` | `/self-hosting/requirements` (until a channels page exists) |
 | `/contacts` | `/dashboard/audience/contacts` |
 | `/domains` | `/dashboard/domains/manage` |
 | `/emails` | `/dashboard/emails/sending` |

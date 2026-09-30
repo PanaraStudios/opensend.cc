@@ -10,6 +10,7 @@ export const DOCS_LINKS = {
     "/automations": "/docs/dashboard/automations/introduction",
     "/automations/events": "/docs/dashboard/automations/trigger",
     "/broadcasts": "/docs/dashboard/broadcasts",
+    "/channels": "/docs/self-hosting/requirements",
     "/contacts": "/docs/dashboard/audience/contacts",
     "/domains": "/docs/dashboard/domains/manage",
     "/emails": "/docs/dashboard/emails/sending",

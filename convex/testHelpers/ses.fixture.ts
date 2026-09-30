@@ -21,6 +21,7 @@ const COUNT_COMPONENTS = [
   "channelMessageCounts",
   "conversationCounts",
   "broadcastMessageCounts",
+  "channelAccountCounts",
 
   "broadcastRecipientLinkCounts",
   "broadcastLinkCounts",

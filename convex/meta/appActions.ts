@@ -3,8 +3,7 @@ import { v, ConvexError } from "convex/values"
 import { action, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { decryptSecret } from "../secrets"
-import { graph } from "./graph"
-import { MetaError } from "../../lib/meta/errors"
+import { appAccessToken, graph, graphFailure } from "./graph"
 
 /** The WhatsApp Business Account fields opensend.cc projects. */
 export const WHATSAPP_WEBHOOK_FIELDS = [
@@ -37,7 +36,7 @@ async function withApp<T>(
     const result = await run({
       appId: app.appId,
       graphVersion: app.graphVersion,
-      token: `${app.appId}|${await decryptSecret(app.encryptedAppSecret)}`,
+      token: await appAccessToken(app),
       verifyToken: await decryptSecret(app.encryptedVerifyToken),
       callbackUrl: app.callbackUrl,
     })
@@ -46,12 +45,7 @@ async function withApp<T>(
       ...recorded(result),
     })
   } catch (e) {
-    const message =
-      e instanceof ConvexError && typeof e.data === "string"
-        ? e.data
-        : e instanceof MetaError
-          ? `Meta refused the request: ${e.message}`
-          : "Could not reach Meta. Try again."
+    const message = graphFailure(e)
     await ctx.runMutation(internal.meta.app.record, {
       appId: app.appId,
       error: message,

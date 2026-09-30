@@ -9,7 +9,11 @@ import {
   type QueryCtx,
 } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { findInstallation, requireInstallationAdmin } from "../access"
+import {
+  findInstallation,
+  requireInstallationAdmin,
+  requireTeam,
+} from "../access"
 import { decryptSecret, encryptSecret } from "../secrets"
 import { metaConfigIdsValue } from "../tables/meta"
 import { createToken } from "../../lib/dashboard/ids"
@@ -77,6 +81,34 @@ export const status = query({
       callbackUrl,
       verifyToken: await decryptSecret(app.encryptedVerifyToken),
       error: app.error,
+    }
+  },
+})
+
+/** What a team's dashboard needs to open Embedded Signup: the public app
+    ID, configuration IDs and Graph version. Never a secret. */
+export const publicConfig = query({
+  args: { organizationId: v.string() },
+  returns: v.object({
+    configured: v.boolean(),
+    appId: v.optional(v.string()),
+    configIds: metaConfigIdsValue,
+    graphVersion: v.string(),
+  }),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const app = await findMetaApp(ctx)
+    if (!app)
+      return {
+        configured: false,
+        configIds: {},
+        graphVersion: DEFAULT_GRAPH_VERSION,
+      }
+    return {
+      configured: true,
+      appId: app.appId,
+      configIds: app.configIds,
+      graphVersion: app.graphVersion,
     }
   },
 })

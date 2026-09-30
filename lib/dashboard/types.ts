@@ -9,6 +9,11 @@ import type {
 } from "../../convex/tables/audience"
 import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
 import type {
+  channelAccountStatusValue,
+  channelQualityValue,
+  messagingChannelValue,
+} from "../../convex/tables/channels"
+import type {
   emailStatusValue,
   suppressionReasonValue,
 } from "../../convex/tables/emails"
@@ -56,6 +61,9 @@ export type MemberRole = "admin" | "member"
 export type EmailStatus = Infer<typeof emailStatusValue>
 
 export type BroadcastStatus = Infer<typeof broadcastStatusValue>
+export type MessagingChannel = Infer<typeof messagingChannelValue>
+export type ChannelAccountStatus = Infer<typeof channelAccountStatusValue>
+export type ChannelQuality = Infer<typeof channelQualityValue>
 
 export type TemplateStatus = Infer<typeof templateStatusValue>
 export type AutomationStatus = "enabled" | "disabled"

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { httpStatusLabel, httpStatusTone, normalizeHref } from "./format"
+import {
+  httpStatusLabel,
+  httpStatusTone,
+  messagingLimitLabel,
+  normalizeHref,
+} from "./format"
 
 describe("normalizeHref", () => {
   it("keeps web addresses, mail and phone links, anchors and merge tags", () => {
@@ -46,5 +51,14 @@ describe("httpStatusTone", () => {
   it("labels a missing response in words", () => {
     assert.equal(httpStatusLabel(0), "No response")
     assert.equal(httpStatusLabel(502), "502")
+  })
+})
+
+describe("messagingLimitLabel", () => {
+  it("reads Meta's messaging limit tiers", () => {
+    assert.equal(messagingLimitLabel("TIER_250"), "250 per 24 hours")
+    assert.equal(messagingLimitLabel("TIER_10K"), "10K per 24 hours")
+    assert.equal(messagingLimitLabel("TIER_UNLIMITED"), "Unlimited")
+    assert.equal(messagingLimitLabel(undefined), "Unknown")
   })
 })

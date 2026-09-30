@@ -55,7 +55,8 @@ export const metaTables = {
     error: v.optional(v.string()),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_businessId", ["businessId"]),
+    .index("by_businessId", ["businessId"])
+    .index("by_status", ["status"]),
   /** A WhatsApp Business Account belongs to exactly one team. */
   whatsappBusinessAccounts: defineTable({
     organizationId: v.string(),
