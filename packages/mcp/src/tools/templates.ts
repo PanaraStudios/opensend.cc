@@ -3,7 +3,7 @@ import type {
   CreateTemplateOptions,
   Opensend,
   UpdateTemplateOptions,
-} from "@opensend/sdk"
+} from "@opensendcc/sdk"
 import { z } from "zod"
 import { EMAIL_HTML_RULES } from "../lib/email-html-rules.js"
 

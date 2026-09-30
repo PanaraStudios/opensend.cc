@@ -1,4 +1,4 @@
-# @opensend/sdk
+# @opensendcc/sdk
 
 Node.js library for the [Opensend](https://opensend.cc) API. Opensend is a
 self-hosted email platform on Amazon SES with a Resend-compatible API, and
@@ -11,7 +11,7 @@ this package is a port of [Resend's Node.js SDK](https://github.com/resend/resen
 ## Install
 
 ```bash
-pnpm add @opensend/sdk
+pnpm add @opensendcc/sdk
 ```
 
 Node.js 20 or later. To send React emails, also install `@react-email/render`.
@@ -23,7 +23,7 @@ installation's API origin (the Convex HTTP site, `CONVEX_PUBLIC_SITE_URL`) and
 an API key from **API keys** in the dashboard:
 
 ```ts
-import { Opensend } from '@opensend/sdk';
+import { Opensend } from '@opensendcc/sdk';
 
 const opensend = new Opensend('os_xxxxxxxx', {
   baseUrl: 'https://api.example.com',
@@ -65,7 +65,7 @@ Change the import and the base URL. `Resend` is exported as an alias of
 `Opensend`, so the rest of your code stays the same:
 
 ```ts
-import { Resend } from '@opensend/sdk';
+import { Resend } from '@opensendcc/sdk';
 
 const resend = new Resend(process.env.OPENSEND_API_KEY, {
   baseUrl: process.env.OPENSEND_BASE_URL,
@@ -121,9 +121,9 @@ new endpoint or SDK method without a counterpart fails the tests.
 ## Development
 
 ```bash
-pnpm --filter @opensend/sdk test       # unit + contract tests
-pnpm --filter @opensend/sdk typecheck
-pnpm --filter @opensend/sdk build      # dist/ (ESM, CJS, types)
+pnpm --filter @opensendcc/sdk test       # unit + contract tests
+pnpm --filter @opensendcc/sdk typecheck
+pnpm --filter @opensendcc/sdk build      # dist/ (ESM, CJS, types)
 ```
 
 `test/live.spec.ts` runs read-only calls against a real installation when

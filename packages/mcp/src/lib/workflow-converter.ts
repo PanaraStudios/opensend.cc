@@ -5,7 +5,7 @@ import type {
   AutomationResponseStep,
   AutomationStep,
   AutomationStepType,
-} from "@opensend/sdk"
+} from "@opensendcc/sdk"
 
 // Steps use SDK types directly. The only abstraction is `next`/`branches`
 // instead of a separate connections array — easier for LLMs to construct.

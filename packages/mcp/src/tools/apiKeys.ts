@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
 
 const CREATE_API_KEY_TOOL = {

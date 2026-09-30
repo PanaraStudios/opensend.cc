@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/client"
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server"
-import type { Opensend } from "@opensend/sdk"
+import type { Opensend } from "@opensendcc/sdk"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { addContactImportTools } from "../../src/tools/contactImports.js"
 

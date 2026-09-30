@@ -1,5 +1,5 @@
 {
-  "name": "@opensend/sdk",
+  "name": "@opensendcc/sdk",
   "version": "0.1.0",
   "description": "Node.js library for the Opensend API, a port of Resend's Node.js SDK",
   "main": "./dist/index.cjs",
@@ -58,5 +58,8 @@
     "vitest": "3.2.4",
     "vitest-fetch-mock": "0.4.5",
     "yaml": "^2.8.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

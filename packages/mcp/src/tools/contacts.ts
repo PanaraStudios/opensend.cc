@@ -4,7 +4,7 @@ import type {
   RemoveContactsResponse,
   Opensend,
   UpdateContactResponse,
-} from "@opensend/sdk"
+} from "@opensendcc/sdk"
 import { z } from "zod"
 
 const CREATE_CONTACT_TOOL = {

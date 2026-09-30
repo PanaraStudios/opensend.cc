@@ -11,7 +11,7 @@ import {
   isInitializeRequest,
   isLegacyRequest,
 } from "@modelcontextprotocol/server"
-import { Opensend } from "@opensend/sdk"
+import { Opensend } from "@opensendcc/sdk"
 import { USER_AGENT } from "../user-agent.js"
 import { createMcpServer } from "../server.js"
 import type { ServerOptions } from "../types.js"
