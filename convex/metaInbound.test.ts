@@ -657,10 +657,16 @@ test("routes a phone number id to its connected team when another team's disconn
   const f = await inboundFixture()
   await f.t.run(async (ctx) => {
     const account = (await ctx.db.get("channelAccounts", f.account))!
-    const { _id, _creationTime, ...fields } = account
     await insertRow(ctx, "channelAccounts", {
-      ...fields,
       organizationId: f.outsider.team,
+      channel: account.channel,
+      externalId: account.externalId,
+      connectionId: account.connectionId,
+      wabaId: account.wabaId,
+      displayName: account.displayName,
+      handle: account.handle,
+      status: account.status,
+      throughputMps: account.throughputMps,
       disconnectedAt: Date.now() - 1000,
     })
   })
