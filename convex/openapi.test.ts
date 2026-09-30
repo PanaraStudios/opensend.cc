@@ -264,6 +264,7 @@ describe("OpenAPI contract", () => {
       "GET /ses/health",
       "POST /ses/events",
       "POST /ses/inbound",
+      "GET /meta/webhook",
       "GET /t/o/*",
       "GET /t/c/*",
       "GET /t/ask",
