@@ -8,6 +8,7 @@ import { registerApiRoutes } from "./api/http"
 import { registerAuthRoutes } from "./authHttp"
 import { registerOAuthRoutes } from "./oauthHttp"
 import { registerSesRoutes } from "./ses/http"
+import { registerChannelDownloadRoutes } from "./channels/downloads"
 import { registerMetaRoutes } from "./meta/http"
 import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
 
@@ -18,6 +19,7 @@ registerTrackingRoutes(http)
 registerSmtpRoutes(http)
 registerSesRoutes(http)
 registerMetaRoutes(http)
+registerChannelDownloadRoutes(http)
 registerAuthRoutes(http)
 registerOAuthRoutes(http)
 registerApiRoutes(http)

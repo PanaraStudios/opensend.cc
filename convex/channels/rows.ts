@@ -12,6 +12,6 @@ export async function deleteChannelMessageContent(
     .unique()
   if (!content) return
   for (const media of content.media ?? [])
-    await ctx.storage.delete(media.storageId)
+    if (media.storageId) await ctx.storage.delete(media.storageId)
   await ctx.db.delete("channelMessageContents", content._id)
 }

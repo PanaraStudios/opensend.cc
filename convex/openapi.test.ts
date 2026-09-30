@@ -15,6 +15,7 @@ import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
 import type { ApiRouteOptions } from "./api/route"
 import { api, components, internal } from "./_generated/api"
+import { WEBHOOK_EVENTS } from "../lib/dashboard/types"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
 import type { Id } from "./_generated/dataModel"
@@ -261,10 +262,12 @@ describe("OpenAPI contract", () => {
       "POST /oauth/introspect",
       "GET /receiving-files/*",
       "GET /email-files/*",
+      "GET /channels/media/*",
       "GET /ses/health",
       "POST /ses/events",
       "POST /ses/inbound",
       "GET /meta/webhook",
+      "POST /meta/webhook",
       "GET /t/o/*",
       "GET /t/c/*",
       "GET /t/ask",
@@ -928,4 +931,11 @@ test("GET /usage validates the self-hosted usage response", async () => {
     emails: { daily: { limit: 200 }, monthly: { limit: null } },
     segments: { limit: null },
   })
+})
+
+test("webhook event subscriptions use the shared catalogue including WhatsApp", () => {
+  const eventType = contract.components.schemas.WebhookEventType
+  expect(typeof eventType === "object" && eventType.enum).toEqual([
+    ...WEBHOOK_EVENTS,
+  ])
 })

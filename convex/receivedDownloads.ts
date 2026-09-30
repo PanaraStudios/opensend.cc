@@ -1,12 +1,7 @@
-import { SignJWT, jwtVerify } from "jose"
+import { signedFileLink, verifyFileToken } from "./fileDownloads"
 import type { HttpRouter } from "convex/server"
 import { v } from "convex/values"
-import {
-  env,
-  httpAction,
-  internalQuery,
-  type ActionCtx,
-} from "./_generated/server"
+import { httpAction, internalQuery, type ActionCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { retirement } from "./teamLifecycle"
@@ -15,25 +10,18 @@ const PREFIX = "/receiving-files/"
 const SENT_PREFIX = "/email-files/"
 export const sentAttachmentId = (emailId: string, index: number) =>
   `${emailId}_${index}`
-const key = () => new TextEncoder().encode(env.BETTER_AUTH_SECRET)
 export async function downloadLink(
   ctx: ActionCtx,
   emailId: Id<"receivedEmails"> | Id<"emails">,
   attachmentId?: string,
   outbound = false
 ) {
-  const expires = Math.floor(Date.now() / 1000) + 3600
-  const token = await new SignJWT({ emailId, attachmentId, outbound })
-    .setProtectedHeader({ alg: "HS256" })
-    .setAudience(outbound ? "sent-file" : "received-file")
-    .setExpirationTime(expires)
-    .sign(key())
-  const installation = await ctx.runQuery(internal.installation.connection, {})
-  const origin = installation.callbackOrigin ?? env.CONVEX_SITE_URL
-  return {
-    download_url: `${origin}${outbound ? SENT_PREFIX : PREFIX}${token}`,
-    expires_at: new Date(expires * 1000).toISOString(),
-  }
+  return signedFileLink(
+    ctx,
+    outbound ? SENT_PREFIX : PREFIX,
+    outbound ? "sent-file" : "received-file",
+    { emailId, attachmentId, outbound }
+  )
 }
 export const file = internalQuery({
   args: {
@@ -109,13 +97,9 @@ export const download = httpAction(async (ctx, request) => {
   const pathname = new URL(request.url).pathname
   const outbound = pathname.startsWith(SENT_PREFIX)
   try {
-    const { payload } = await jwtVerify(
+    const payload = await verifyFileToken(
       pathname.slice(outbound ? SENT_PREFIX.length : PREFIX.length),
-      key(),
-      {
-        algorithms: ["HS256"],
-        audience: outbound ? "sent-file" : "received-file",
-      }
+      outbound ? "sent-file" : "received-file"
     )
     if (
       typeof payload.emailId !== "string" ||
