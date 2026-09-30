@@ -3,18 +3,14 @@
 MCP server for self-hosted Opensend, using `@opensendcc/sdk`. Ported from
 [resend-mcp](https://github.com/resend/resend-mcp) 2.24.0,
 commit `96dd92f9065130702f8ab898a8583c5fab469c0c`. Requires Node.js 22+.
-**Not published yet.** Build and run from this workspace; do not publish.
 
 ## Run
 
 ```sh
-pnpm --filter @opensendcc/sdk build
-pnpm --filter @opensendcc/mcp build
-OPENSEND_API_KEY=… OPENSEND_BASE_URL=https://api.example.com opensend-mcp
+OPENSEND_API_KEY=… OPENSEND_BASE_URL=https://api.example.com npx -y @opensendcc/mcp
 ```
 
-Until installed as a CLI, replace `opensend-mcp` with
-`node /absolute/path/to/packages/mcp/dist/index.js`.
+Or install it globally (`pnpm add -g @opensendcc/mcp`) and run `opensend-mcp`.
 The required base URL is your installation's Convex HTTP API origin
 (`CONVEX_PUBLIC_SITE_URL`), not the dashboard URL. `--key` and `--base-url`
 override the environment. There is no default API origin.
@@ -22,7 +18,7 @@ override the environment. There is no default API origin.
 HTTP (Streamable HTTP at `/mcp` and `/`, health check at `/health`):
 
 ```sh
-OPENSEND_BASE_URL=https://api.example.com opensend-mcp --http --port 3000
+OPENSEND_BASE_URL=https://api.example.com npx -y @opensendcc/mcp --http --port 3000
 ```
 
 HTTP clients supply their own Opensend key in `Authorization: Bearer <key>`;
@@ -39,14 +35,14 @@ Use `--help` for all flags.
 
 Use this JSON for **Claude Desktop** (`claude_desktop_config.json`),
 **Claude Code** (`.mcp.json`), or **Cursor** (`.cursor/mcp.json`). Replace the
-absolute path, key, and origin with your installation's values:
+key and origin with your installation's values:
 
 ```json
 {
   "mcpServers": {
     "opensend": {
-      "command": "node",
-      "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@opensendcc/mcp"],
       "env": {
         "OPENSEND_API_KEY": "os_test0000000000000000000000000000",
         "OPENSEND_BASE_URL": "https://api.example.com"

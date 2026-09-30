@@ -7,6 +7,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest"
 import { runHttp } from "../src/transports/http.js"
 import { fakeKey, baseUrl } from "./helpers/client.js"
+import { USER_AGENT } from "../src/user-agent.js"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -51,7 +52,7 @@ it.each(["legacy", "modern"] as const)(
       expect(requests).toHaveLength(1)
       expect(requests[0].url).toBe(baseUrl + "/domains")
       expect(requests[0].headers.get("authorization")).toBe("Bearer " + fakeKey)
-      expect(requests[0].headers.get("user-agent")).toBe("opensend-mcp:0.1.0")
+      expect(requests[0].headers.get("user-agent")).toBe(USER_AGENT)
       if (era === "legacy") {
         for (const authorization of [
           "",

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { parse } from "yaml"
 import { connectClient, baseUrl, fakeKey } from "./helpers/client.js"
 import { toolNames } from "./helpers/tool-names.js"
+import { USER_AGENT } from "../src/user-agent.js"
 
 const spec = parse(
   readFileSync(
@@ -115,7 +116,7 @@ describe("all registered tools use served OpenAPI operations", () => {
         expect(url.origin).toBe(baseUrl)
         const headers = new Headers(init?.headers)
         expect(headers.get("authorization")).toBe("Bearer " + fakeKey)
-        expect(headers.get("user-agent")).toBe("opensend-mcp:0.1.0")
+        expect(headers.get("user-agent")).toBe(USER_AGENT)
         requests.push({ method: init?.method ?? "GET", path: url.pathname })
         if (activeTool === "update-broadcast" && init?.method === "GET") {
           return Response.json({
