@@ -26,6 +26,8 @@ export const graphError = (message, code, extra = {}) => ({
 /* WhatsApp state the connect routes share: every WABA has one phone
    number, `${wabaId}0`, which `/register` moves onto Cloud API. It lives for
    the server's lifetime; /__reset clears only calls and overrides. */
+let messageSequence = 0
+let mediaSequence = 0
 const numbers = new Map()
 const phoneNumberOf = (wabaId) => {
   const id = `${wabaId}0`
@@ -52,6 +54,27 @@ const appIdOf = (authorization = "") =>
 
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
+  {
+    method: "POST",
+    path: /^\/\d+\/messages$/,
+    respond: () => ({
+      body: {
+        messaging_product: "whatsapp",
+        messages: [{ id: `wamid.${++messageSequence}` }],
+      },
+    }),
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/media$/,
+    respond: () => ({ body: { id: `meta-upload-${++mediaSequence}` } }),
+  },
+  {
+    method: "POST",
+    path: /^\/__webhooks$/,
+    unversioned: true,
+    respond: () => ({ body: { ok: true } }),
+  },
   // Embedded Signup: the token code becomes a business token.
   {
     method: "GET",
@@ -206,6 +229,11 @@ export async function startFakeGraph(port) {
       query: Object.fromEntries(url.searchParams),
       body: parseBody(raw, request.headers["content-type"]),
       authorization: request.headers.authorization,
+      headers: Object.fromEntries(
+        Object.entries(request.headers).filter(([key]) =>
+          key.startsWith("svix-")
+        )
+      ),
     }
     calls.push(call)
     const override = overrides.find(

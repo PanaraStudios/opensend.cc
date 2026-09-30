@@ -49,3 +49,75 @@ test("fake Graph serves authenticated media metadata and download bytes and reco
     await graph.close()
   }
 })
+
+test("fake Graph sends unique wamids, uploads media, captures signed customer events and forces Graph errors", async () => {
+  const graph = await startFakeGraph(0)
+  try {
+    const send = () =>
+      fetch(`${graph.origin}/v25.0/123/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: "16505551234",
+          type: "text",
+          text: { body: "Hi" },
+        }),
+      })
+    const first = await (await send()).json(),
+      second = await (await send()).json()
+    assert.match(first.messages[0].id, /^wamid\.\d+$/)
+    assert.notEqual(first.messages[0].id, second.messages[0].id)
+    const form = new FormData()
+    form.append("messaging_product", "whatsapp")
+    form.append(
+      "file",
+      new Blob([new Uint8Array([255, 0, 128])], { type: "image/png" }),
+      "file.png"
+    )
+    assert.match(
+      (
+        await (
+          await fetch(`${graph.origin}/v25.0/123/media`, {
+            method: "POST",
+            body: form,
+          })
+        ).json()
+      ).id,
+      /^meta-upload-/
+    )
+    await fetch(`${graph.origin}/__webhooks`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "svix-id": "message",
+        "svix-signature": "v1,signature",
+      },
+      body: JSON.stringify({
+        type: "whatsapp.message.sent",
+        data: { id: "local-id" },
+      }),
+    })
+    const calls = await (await fetch(`${graph.origin}/__calls`)).json()
+    assert.equal(calls.length, 4)
+    assert.equal(calls[2].path, "/123/media")
+    assert.match(calls[2].body, /name="messaging_product"/)
+    assert.equal(calls[3].body.type, "whatsapp.message.sent")
+    assert.equal(calls[3].headers["svix-signature"], "v1,signature")
+    await fetch(`${graph.origin}/__responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        method: "POST",
+        path: "^/123/messages$",
+        status: 400,
+        body: { error: { code: 131047 } },
+      }),
+    })
+    const forced = await send()
+    assert.equal(forced.status, 400)
+    assert.equal((await forced.json()).error.code, 131047)
+  } finally {
+    await graph.close()
+  }
+})
