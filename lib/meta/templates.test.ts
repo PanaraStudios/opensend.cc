@@ -7,6 +7,8 @@ import {
   componentsParameterFormat,
   formFromComponents,
   isTemplateName,
+  readMetaTemplates,
+  readTemplateUpdate,
   templateNameFrom,
   templateProblems,
   templateSendComponents,
@@ -302,6 +304,128 @@ describe("templateSendComponents", () => {
       (error: unknown) =>
         error instanceof TemplateVariablesMissing &&
         error.missing.join() === "header_1,2,button_0"
+    )
+  })
+})
+
+describe("reading Meta", () => {
+  it("narrows a list response to what a sync stores", () => {
+    assert.deepEqual(
+      readMetaTemplates([
+        {
+          id: "1387372356726668",
+          name: "reservation_confirmation",
+          language: "en_US",
+          category: "UTILITY",
+          status: "APPROVED",
+          parameter_format: "NAMED",
+          quality_score: { score: "GREEN" },
+          rejected_reason: "NONE",
+          components: [{ type: "BODY", text: "Hi {{name}}" }, "junk"],
+        },
+        { id: "2", name: "", language: "en" },
+        {
+          id: 3,
+          name: "later",
+          language: "en",
+          category: "FREE_SERVICE",
+          status: "SOMETHING_NEW",
+          components: [],
+        },
+      ]),
+      [
+        {
+          id: "1387372356726668",
+          name: "reservation_confirmation",
+          language: "en_US",
+          category: "UTILITY",
+          status: "APPROVED",
+          parameterFormat: "named",
+          components: [{ type: "BODY", text: "Hi {{name}}" }],
+          quality: "GREEN",
+        },
+        {
+          id: "3",
+          name: "later",
+          language: "en",
+          category: "UTILITY",
+          status: "PENDING",
+          parameterFormat: "positional",
+          components: [],
+        },
+      ]
+    )
+  })
+  it("reads status, category and quality webhooks", () => {
+    assert.deepEqual(
+      readTemplateUpdate("message_template_status_update", {
+        event: "REJECTED",
+        message_template_id: 1689556908129835,
+        reason: "INVALID_FORMAT",
+        message_template_category: "MARKETING",
+        rejection_info: { reason: "Parameters touch." },
+      }),
+      {
+        metaTemplateId: "1689556908129835",
+        metaStatus: "REJECTED",
+        rejectedReason: "Parameters touch.",
+        category: "MARKETING",
+      }
+    )
+    assert.deepEqual(
+      readTemplateUpdate("message_template_status_update", {
+        event: "REINSTATED",
+        message_template_id: 1,
+      }),
+      { metaTemplateId: "1", metaStatus: "APPROVED", rejectedReason: null }
+    )
+    assert.deepEqual(
+      readTemplateUpdate("message_template_status_update", {
+        event: "UNARCHIVED",
+        message_template_id: 1,
+      }),
+      { metaTemplateId: "1", resync: true }
+    )
+    assert.deepEqual(
+      readTemplateUpdate("message_template_status_update", {
+        event: "FLAGGED",
+        message_template_id: 1,
+      }),
+      { metaTemplateId: "1" }
+    )
+    // An impending recategorization changes nothing yet.
+    assert.deepEqual(
+      readTemplateUpdate("template_category_update", {
+        message_template_id: 2,
+        new_category: "UTILITY",
+        correct_category: "MARKETING",
+      }),
+      { metaTemplateId: "2" }
+    )
+    assert.deepEqual(
+      readTemplateUpdate("template_category_update", {
+        message_template_id: 2,
+        previous_category: "UTILITY",
+        new_category: "MARKETING",
+      }),
+      { metaTemplateId: "2", category: "MARKETING" }
+    )
+    assert.deepEqual(
+      readTemplateUpdate("message_template_quality_update", {
+        message_template_id: 3,
+        new_quality_score: "RED",
+      }),
+      { metaTemplateId: "3", quality: "RED" }
+    )
+    assert.equal(
+      readTemplateUpdate("messages", { message_template_id: 1 }),
+      null
+    )
+    assert.equal(
+      readTemplateUpdate("message_template_status_update", {
+        event: "APPROVED",
+      }),
+      null
     )
   })
 })

@@ -277,6 +277,7 @@ export async function insertWhatsAppTemplate(
     status?: Doc<"templates">["status"]
   }
 ) {
+  checkInput({ name: input.name, content: input.content })
   const target = input.whatsapp
   const name = input.uniqueName
     ? await freeTemplateName(ctx, organizationId, input.name, target)

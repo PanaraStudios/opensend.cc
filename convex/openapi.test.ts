@@ -442,6 +442,85 @@ describe("OpenAPI contract", () => {
     expect(published.published_at).toEqual(expect.any(String))
   })
 
+  test("WhatsApp template requests and responses match the contract", async () => {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("metaConnections", {
+        organizationId: f.owner.team,
+        businessId: "business",
+        businessName: "Contract",
+        method: "manual_token",
+        encryptedToken: "unused",
+        tokenLast4: "used",
+        scopes: [],
+        status: "active",
+      })
+      await ctx.db.insert("whatsappBusinessAccounts", {
+        organizationId: f.owner.team,
+        wabaId: "102290129340398",
+        connectionId,
+      })
+    })
+    const request = {
+      name: "order_shipped",
+      channel: "whatsapp",
+      whatsapp: {
+        language: "en_US",
+        category: "UTILITY",
+        parameter_format: "named",
+        components: [
+          {
+            type: "BODY",
+            text: "Hi {{first_name}}, your order has shipped.",
+            example: {
+              body_text_named_params: [
+                { param_name: "first_name", example: "Pablo" },
+              ],
+            },
+          },
+        ],
+      },
+    }
+    const create = contract.paths["/templates"].post
+    validateBody(
+      create.requestBody!.content["application/json"].schema,
+      request
+    )
+    const { id } = await response(
+      "/templates",
+      "POST",
+      await f.call("/templates", "POST", request)
+    )
+    const got = await response(
+      "/templates/{id}",
+      "GET",
+      await f.call(`/templates/${id}`)
+    )
+    expect(got).toMatchObject({
+      channel: "whatsapp",
+      whatsapp: { parameter_format: "named", status: null },
+      variables: [{ key: "first_name", fallback_value: null }],
+    })
+    const list = await response(
+      "/templates",
+      "GET",
+      await f.call("/templates?channel=whatsapp")
+    )
+    expect(list.data).toHaveLength(1)
+    const update = { whatsapp: { category: "MARKETING" } }
+    validateBody(
+      contract.paths["/templates/{id}"].patch.requestBody!.content[
+        "application/json"
+      ].schema,
+      update
+    )
+    await response(
+      "/templates/{id}",
+      "PATCH",
+      await f.call(`/templates/${id}`, "PATCH", update)
+    )
+  })
+
   test("team isolation refuses dashboard access with permission and REST resource access with 404", async () => {
     const f = await setup()
     await expect(
