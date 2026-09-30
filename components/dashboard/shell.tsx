@@ -25,7 +25,6 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   HouseIcon,
-  CloudIcon,
   LogOutIcon,
   MonitorIcon,
   MoonIcon,
@@ -88,7 +87,7 @@ import { Toaster } from "@/components/ui/toast"
 import {
   DASHBOARD_NAV,
   SETTINGS_NAV,
-  SES_SETTINGS_PAGE,
+  INSTANCE_PAGES,
   STANDALONE_PAGES,
   navItemActive,
 } from "@/lib/dashboard/nav"
@@ -229,14 +228,16 @@ function CommandMenu({
                 {item.title}
               </CommandItem>
             ))}
-            {installationAdmin && (
-              <CommandItem
-                value={SES_SETTINGS_PAGE.title}
-                onSelect={() => go(SES_SETTINGS_PAGE.href)}
-              >
-                {SES_SETTINGS_PAGE.title}
-              </CommandItem>
-            )}
+            {installationAdmin &&
+              INSTANCE_PAGES.map((item) => (
+                <CommandItem
+                  key={item.href}
+                  value={item.title}
+                  onSelect={() => go(item.href)}
+                >
+                  {item.title}
+                </CommandItem>
+              ))}
           </CommandGroup>
           <CommandSeparator />
           {open ? (
@@ -450,14 +451,16 @@ function DashboardSidebar({
                       <UserRoundIcon />
                       My profile
                     </DropdownMenuItem>
-                    {installationAdmin && (
-                      <DropdownMenuItem
-                        render={<Link href={SES_SETTINGS_PAGE.href} />}
-                      >
-                        <CloudIcon />
-                        {SES_SETTINGS_PAGE.title}
-                      </DropdownMenuItem>
-                    )}
+                    {installationAdmin &&
+                      INSTANCE_PAGES.map(({ href, title, icon: Icon }) => (
+                        <DropdownMenuItem
+                          key={href}
+                          render={<Link href={href} />}
+                        >
+                          <Icon />
+                          {title}
+                        </DropdownMenuItem>
+                      ))}
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <AppearanceItems />

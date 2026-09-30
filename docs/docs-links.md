@@ -28,6 +28,7 @@ detail/editor routes inherit the most specific matching entry.
 | `/emails` | `/dashboard/emails/sending` |
 | `/emails/receiving` | `/dashboard/receiving/introduction` |
 | `/emails/suppressions` | `/dashboard/emails/suppressions` |
+| `/instance/meta` | `/self-hosting/requirements` (until a Meta page exists) |
 | `/instance/ses`, `/settings/ses` | `/self-hosting/aws-ses` |
 | `/logs` | `/dashboard/logs` |
 | `/metrics` | `/dashboard/emails/metrics` |
