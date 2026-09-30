@@ -159,6 +159,9 @@ function AddManuallyDialog({
   const [phone, setPhone] = React.useState("")
   const [segmentId, setSegmentId] = React.useState("none")
   const [error, setError] = React.useState<string | null>(null)
+  /** Phone problems show under the phone field, everything else under the
+      email addresses. */
+  const phoneError = error !== null && /phone/i.test(error)
 
   function reset() {
     setEmails("")
@@ -259,7 +262,7 @@ function AddManuallyDialog({
                 rows={5}
                 autoFocus
               />
-              {error ? <FieldError>{error}</FieldError> : null}
+              {error && !phoneError ? <FieldError>{error}</FieldError> : null}
             </Field>
             <Field>
               <FieldLabel htmlFor="manual-phone">Phone</FieldLabel>
@@ -273,6 +276,7 @@ function AddManuallyDialog({
                   setError(null)
                 }}
               />
+              {phoneError ? <FieldError>{error}</FieldError> : null}
               <FieldDescription>
                 Include + and the country code. Optional when an email is given.
               </FieldDescription>
@@ -848,12 +852,16 @@ export function ContactsView() {
                   />
                 </TableCell>
                 <TableCell>
-                  <Link
-                    href={`/contacts/${contact.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {contact.email || "—"}
-                  </Link>
+                  {contact.email ? (
+                    <Link
+                      href={`/contacts/${contact.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {contact.email}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                   {contact.unsubscribed ? (
                     <Badge variant="secondary" className="ml-2">
                       Unsubscribed
@@ -861,12 +869,16 @@ export function ContactsView() {
                   ) : null}
                 </TableCell>
                 <TableCell>
-                  <Link
-                    href={`/contacts/${contact.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {contact.phone || "—"}
-                  </Link>
+                  {contact.phone ? (
+                    <Link
+                      href={`/contacts/${contact.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {contact.phone}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {contact.firstName || "—"}
