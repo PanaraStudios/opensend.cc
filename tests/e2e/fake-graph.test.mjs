@@ -50,7 +50,7 @@ test("fake Graph serves authenticated media metadata and download bytes and reco
   }
 })
 
-test("fake Graph sends unique wamids, uploads media, captures signed customer events and forces Graph errors", async () => {
+test("fake Graph sends unique wamids, uploads media and forces Graph errors", async () => {
   const graph = await startFakeGraph(0)
   try {
     const send = () =>
@@ -86,24 +86,10 @@ test("fake Graph sends unique wamids, uploads media, captures signed customer ev
       ).id,
       /^meta-upload-/
     )
-    await fetch(`${graph.origin}/__webhooks`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "svix-id": "message",
-        "svix-signature": "v1,signature",
-      },
-      body: JSON.stringify({
-        type: "whatsapp.message.sent",
-        data: { id: "local-id" },
-      }),
-    })
     const calls = await (await fetch(`${graph.origin}/__calls`)).json()
-    assert.equal(calls.length, 4)
+    assert.equal(calls.length, 3)
     assert.equal(calls[2].path, "/123/media")
     assert.match(calls[2].body, /name="messaging_product"/)
-    assert.equal(calls[3].body.type, "whatsapp.message.sent")
-    assert.equal(calls[3].headers["svix-signature"], "v1,signature")
     await fetch(`${graph.origin}/__responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -117,6 +103,54 @@ test("fake Graph sends unique wamids, uploads media, captures signed customer ev
     const forced = await send()
     assert.equal(forced.status, 400)
     assert.equal((await forced.json()).error.code, 131047)
+  } finally {
+    await graph.close()
+  }
+})
+
+test("fake Graph keeps message templates per WABA and lists a synced one", async () => {
+  const graph = await startFakeGraph(0)
+  const json = { "content-type": "application/json" }
+  try {
+    const created = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          name: "order_update",
+          language: "en_US",
+          category: "UTILITY",
+          parameter_format: "positional",
+          components: [{ type: "BODY", text: "Hi" }],
+        }),
+      })
+    ).json()
+    assert.equal(created.status, "PENDING")
+    const listed = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      listed.data.map((template) => template.name),
+      ["order_update", "e2e_synced_offer"]
+    )
+    assert.equal(listed.paging.next, undefined)
+    const edited = await fetch(`${graph.origin}/v25.0/${created.id}`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ components: [{ type: "BODY", text: "Hello" }] }),
+    })
+    assert.equal(edited.status, 200)
+    await fetch(
+      `${graph.origin}/v25.0/5551/message_templates?name=order_update&hsm_id=${created.id}`,
+      { method: "DELETE" }
+    )
+    const after = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      after.data.map((template) => template.name),
+      ["e2e_synced_offer"]
+    )
   } finally {
     await graph.close()
   }

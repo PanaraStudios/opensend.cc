@@ -1635,8 +1635,9 @@ paths:
         - Templates
       summary: Create Template
       description: >-
-        Create a draft email template (requires full access). Variables are inferred from inline merge tags
-        unless explicit definitions are supplied.
+        Create a draft template (requires full access). An email template's variables are inferred from inline
+        merge tags unless explicit definitions are supplied. With `channel: whatsapp`, the draft is a WhatsApp
+        template made of Meta's components, submitted to Meta for review when published.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1683,12 +1684,20 @@ paths:
       tags:
         - Templates
       summary: List Templates
-      description: List templates for your team (requires full access).
+      description: List templates for your team (requires full access), optionally of one channel.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
         - $ref: '#/components/parameters/PaginationBefore'
+        - name: channel
+          in: query
+          description: Only templates of this channel.
+          schema:
+            type: string
+            enum:
+              - email
+              - whatsapp
       responses:
         '200':
           description: The requested resource list.
@@ -1829,7 +1838,9 @@ paths:
       tags:
         - Templates
       summary: Delete Template
-      description: Delete a template, including its draft and published version (requires full access).
+      description: >-
+        Delete a template, including its draft and published version (requires full access). A WhatsApp
+        template submitted to Meta is deleted at Meta first.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -2600,7 +2611,8 @@ paths:
       summary: Publish Template
       description: >-
         Publish the current template draft for sending (requires full access). Nonempty HTML is required, and
-        publishing replaces the previous published version.
+        publishing replaces the previous published version. A WhatsApp template is submitted to Meta instead
+        (or its edit, once Meta approved or rejected it); it can be sent once `whatsapp.status` is APPROVED.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -9691,9 +9703,30 @@ components:
             $ref: '#/components/schemas/TemplateVariableInput'
           maxItems: 50
           description: Up to 50 unique string or number variable definitions, overriding inferred inline variables.
+        channel:
+          type: string
+          enum:
+            - email
+            - whatsapp
+          description: The template's channel, email when omitted. It cannot change.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplateInput'
       required:
         - name
-        - html
+      if:
+        properties:
+          channel:
+            const: whatsapp
+        required:
+          - channel
+      then:
+        properties:
+          name:
+            pattern: ^[a-z0-9_]+$
+            description: Meta's template name, of lowercase letters, numbers and underscores.
+      else:
+        required:
+          - html
       description: Create a template draft; inline merge tags infer variables unless explicit definitions are supplied.
     UpdateTemplateOptions:
       type: object
@@ -9747,7 +9780,144 @@ components:
             $ref: '#/components/schemas/TemplateVariableInput'
           maxItems: 50
           description: Up to 50 unique string or number variable definitions, overriding inferred inline variables.
+        channel:
+          type: string
+          enum:
+            - email
+            - whatsapp
+          description: The template's channel, email when omitted. It cannot change.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplateInput'
       description: Edit the current template draft without changing the published version.
+    WhatsAppTemplateInput:
+      type: object
+      properties:
+        waba_id:
+          type: string
+          description: >-
+            The WhatsApp Business Account the template belongs to, the team's first one when omitted. Fixed once
+            submitted.
+        language:
+          type: string
+          description: Meta's template language code, like en_US, en_US when omitted. Fixed once submitted.
+        category:
+          type: string
+          enum:
+            - MARKETING
+            - UTILITY
+            - AUTHENTICATION
+          description: The template category, MARKETING when omitted. Fixed once Meta approved it.
+        parameter_format:
+          type: string
+          enum:
+            - named
+            - positional
+          description: >-
+            Optional check: the components' variables decide the format ({{first_name}} is named, {{1}}
+            positional).
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/WhatsAppTemplateComponent'
+          description: Meta's template components in the creation format, with an example for every variable.
+      additionalProperties: false
+      description: A WhatsApp template's Meta settings and components.
+    WhatsAppTemplateComponent:
+      type: object
+      properties:
+        type:
+          type: string
+          description: HEADER, BODY, FOOTER or BUTTONS.
+      required:
+        - type
+      additionalProperties: true
+      description: >-
+        One of Meta's template components, as Meta documents it:
+        https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/components
+    WhatsAppTemplate:
+      type: object
+      properties:
+        waba_id:
+          type: string
+          description: The WhatsApp Business Account the template belongs to.
+        language:
+          type: string
+          description: Meta's template language code.
+        category:
+          type: string
+          enum:
+            - MARKETING
+            - UTILITY
+            - AUTHENTICATION
+        parameter_format:
+          type: string
+          enum:
+            - named
+            - positional
+        meta_template_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Meta's template ID, once submitted.
+        status:
+          anyOf:
+            - type: string
+              enum:
+                - PENDING
+                - APPROVED
+                - REJECTED
+                - PAUSED
+                - DISABLED
+                - IN_APPEAL
+                - LIMIT_EXCEEDED
+                - ARCHIVED
+                - PENDING_DELETION
+                - DELETED
+            - type: 'null'
+          description: Meta's review status; null until submitted. Sends need APPROVED.
+        rejected_reason:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Why Meta rejected the template.
+        quality:
+          anyOf:
+            - type: string
+              enum:
+                - GREEN
+                - YELLOW
+                - RED
+                - UNKNOWN
+            - type: 'null'
+          description: Meta's quality rating of the template.
+        submitted_at:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: When the template was last submitted to Meta.
+        synced_at:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: When a sync from Meta last saw the template.
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/WhatsAppTemplateComponent'
+          description: The draft's components; only on a retrieved template.
+      required:
+        - waba_id
+        - language
+        - category
+        - parameter_format
+        - meta_template_id
+        - status
+        - rejected_reason
+        - quality
+        - submitted_at
+        - synced_at
+      additionalProperties: false
+      description: A WhatsApp template's place at Meta.
     TemplateListItem:
       type: object
       properties:
@@ -9778,6 +9948,13 @@ components:
               description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
             - type: 'null'
           description: Timestamp indicating when the template was published.
+        channel:
+          type: string
+          enum:
+            - whatsapp
+          description: Present on WhatsApp templates; absent means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplate'
       required:
         - id
         - name
@@ -9854,6 +10031,13 @@ components:
         has_unpublished_versions:
           type: boolean
           description: Indicates whether the template has unpublished versions.
+        channel:
+          type: string
+          enum:
+            - whatsapp
+          description: Present on WhatsApp templates; absent means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplate'
       required:
         - object
         - id

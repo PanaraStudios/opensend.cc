@@ -5,7 +5,6 @@ import { internal } from "./_generated/api"
 import { limitedBody } from "./ses/web"
 import { publicFetch } from "../lib/net/public-fetch"
 import { webhookEndpointError } from "../lib/dashboard/webhooks"
-import { metaTestWebhookTarget } from "./meta/graph"
 import { webhookHeaders } from "../lib/webhooks/signing"
 
 /** Svix waits 15 seconds for an answer. */
@@ -33,11 +32,10 @@ async function post(target: {
 }) {
   const problem = webhookEndpointError(target.endpoint)
   if (problem) throw new Error(problem)
-  const { url, localOrigin } = metaTestWebhookTarget(target.endpoint)
+  const url = new URL(target.endpoint)
   const body = JSON.stringify(target.payload)
   const response = await publicFetch(url, {
     method: "POST",
-    localOrigin,
     headers: await webhookHeaders({
       id: target.messageId,
       timestamp: Math.floor(Date.now() / 1000),

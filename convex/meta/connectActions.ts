@@ -4,7 +4,13 @@ import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { decryptSecret, encryptSecret } from "../secrets"
-import { appAccessToken, graph, graphFailure } from "./graph"
+import {
+  TOKEN_REFUSED,
+  appAccessToken,
+  friendly,
+  graph,
+  graphFailure,
+} from "./graph"
 import { MetaError } from "../../lib/meta/errors"
 import {
   NUMBER_LIMIT,
@@ -30,7 +36,6 @@ type Connected = {
   accounts: { id: Id<"channelAccounts">; handle: string; registered: boolean }[]
 }
 
-const TOKEN_REFUSED = "Meta refused the business token. Reconnect the business."
 const connectedValue = v.object({
   connectionId: v.id("metaConnections"),
   accounts: v.array(
@@ -47,30 +52,6 @@ function numericId(value: string, label: string) {
   if (!/^\d{1,32}$/.test(id))
     throw new ConvexError(`Enter the numeric ${label}`)
   return id
-}
-
-/** Runs Graph calls for the dashboard: failures become messages it can
-    show, and a refused token (190) flags the connection for reconnecting. */
-async function friendly<T>(
-  ctx: ActionCtx,
-  run: () => Promise<T>,
-  connectionId?: Id<"metaConnections">
-): Promise<T> {
-  try {
-    return await run()
-  } catch (e) {
-    if (e instanceof MetaError && e.action === "token_invalid") {
-      if (!connectionId)
-        throw new ConvexError("Meta refused the token. Check it and try again.")
-      await ctx.runMutation(internal.meta.connect.markConnection, {
-        connectionId,
-        status: "error",
-        error: TOKEN_REFUSED,
-      })
-      throw new ConvexError(TOKEN_REFUSED)
-    }
-    throw new ConvexError(graphFailure(e))
-  }
 }
 
 /** `GET /debug_token` with the app token. */
@@ -137,13 +118,12 @@ async function nameOf(token: string, version: string, id: string) {
   }
 }
 
-/** Imports the WABA's message templates once it is attached. Template sync
-    belongs to the templates lane, which fills this in; connecting does not
-    wait on it. */
-const syncWabaTemplates: (
-  ctx: ActionCtx,
-  waba: { connectionId: Id<"metaConnections">; wabaId: string }
-) => Promise<void> = async () => {}
+/** Imports the WABA's message templates once it is attached. Connecting
+    does not wait on it, and a failed sync is retried by the hourly one. */
+const syncWabaTemplates = (ctx: ActionCtx, waba: { wabaId: string }) =>
+  ctx.scheduler.runAfter(0, internal.whatsapp.templateActions.syncAccount, {
+    wabaId: waba.wabaId,
+  })
 
 /** Attaches a WABA with a checked business token: refuses a WABA another
     team holds, subscribes the app to its webhooks
@@ -204,7 +184,7 @@ async function attachWaba(
     wabaName,
     numbers,
   })
-  await syncWabaTemplates(ctx, { connectionId: connected.connectionId, wabaId })
+  await syncWabaTemplates(ctx, { wabaId })
   return connected
 }
 

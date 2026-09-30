@@ -82,9 +82,9 @@ function media(value: unknown, type: string) {
   }
 }
 
-/** Lane 3B can resolve stored template ids/aliases here before payload building.
- * Until then callers supply Meta's approved name and language directly. */
-export function resolveWhatsAppTemplate(value: unknown) {
+/** A template name and language, with Meta components or plain variables.
+ * Stored templates are resolved first in convex/channels/messages.ts. */
+export function templatePayload(value: unknown) {
   const template = object(value, "template")
   const name = text(template.name, "template.name", 512)
   if (!/^[a-z0-9_]+$/.test(name)) throw new Error("Invalid template name.")
@@ -317,7 +317,7 @@ export function whatsappPayload(input: WhatsAppBody): Record<
         ? { preview_url: source.preview_url }
         : {}),
     }
-  } else if (type === "template") body = resolveWhatsAppTemplate(input.template)
+  } else if (type === "template") body = templatePayload(input.template)
   else if (["image", "video", "audio", "document", "sticker"].includes(type))
     body = media(input[type], type)
   else if (type === "interactive") body = interactive(input.interactive)

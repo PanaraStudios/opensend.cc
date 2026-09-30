@@ -166,49 +166,33 @@ export function whatsappSendTests(
           }),
         ])
       )
+      // The existing receiver pattern: .invalid never leaves the backend,
+      // and the durable delivery record carries the signed payload.
+      const deliveries = () =>
+        backend.query(api.webhooks.deliveries, {
+          webhookId,
+          event: "whatsapp.message.sent",
+          paginationOpts: { numItems: 10, cursor: null },
+        })
       await expect
         .poll(
-          async () => {
-            const received = await (
-              await owner.request.get(`${fake()}/__calls`)
-            ).json()
-            return received.filter(
-              (call: {
-                path: string
-                body: { type?: string; data?: { id?: string } }
-              }) =>
-                call.path === "/__webhooks" &&
-                call.body.type === "whatsapp.message.sent" &&
-                call.body.data?.id === id
-            ).length
-          },
+          async () =>
+            (await deliveries()).page.filter(
+              (delivery) =>
+                (delivery.payload as { data?: { id?: string } }).data?.id === id
+            ).length,
           { timeout: 45000 }
         )
         .toBe(1)
-      const received = await (
-        await owner.request.get(`${fake()}/__calls`)
-      ).json()
-      const sentWebhook = received.find(
-        (call: { path: string; body: { data?: { id?: string } } }) =>
-          call.path === "/__webhooks" && call.body.data?.id === id
-      )
-      expect(sentWebhook.headers).toMatchObject({
-        "svix-id": expect.any(String),
-        "svix-signature": expect.stringContaining("v1,"),
-        "svix-timestamp": expect.any(String),
+      const sentDelivery = (await deliveries()).page.find(
+        (delivery) =>
+          (delivery.payload as { data?: { id?: string } }).data?.id === id
+      )!
+      expect(sentDelivery.messageId).toMatch(/^msg_/)
+      expect(sentDelivery.payload).toMatchObject({
+        type: "whatsapp.message.sent",
+        data: { id, channel: "whatsapp", status: "sent" },
       })
-      const secret = (await backend.query(api.webhooks.signingSecret, {
-        id: webhookId,
-      }))!
-      const signature = createHmac(
-        "sha256",
-        Buffer.from(secret.slice(6), "base64")
-      )
-        .update(
-          `${sentWebhook.headers["svix-id"]}.${sentWebhook.headers["svix-timestamp"]}.${JSON.stringify(sentWebhook.body)}`
-        )
-        .digest("base64")
-      expect(sentWebhook.headers["svix-signature"]).toBe(`v1,${signature}`)
       await owner.request.post(`${fake()}/__responses`, {
         data: {
           method: "POST",

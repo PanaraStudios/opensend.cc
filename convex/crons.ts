@@ -38,6 +38,13 @@ crons.interval(
   {}
 )
 
+crons.interval(
+  "whatsapp template sync",
+  { hours: 1 },
+  internal.whatsapp.templates.dispatchSync,
+  {}
+)
+
 crons.interval("sent email retention", { hours: 1 }, internal.emails.prune, {})
 
 crons.interval(

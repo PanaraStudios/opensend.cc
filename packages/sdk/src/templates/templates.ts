@@ -1,4 +1,3 @@
-import type { PaginationOptions } from '../common/interfaces';
 import { getPaginationQueryProperties } from '../common/utils/get-pagination-query-properties';
 import { parseTemplateToApiOptions } from '../common/utils/parse-template-to-api-options';
 import { render } from '../render';
@@ -18,6 +17,7 @@ import type {
   GetTemplateResponseSuccess,
 } from './interfaces/get-template.interface';
 import type {
+  ListTemplatesOptions,
   ListTemplatesResponse,
   ListTemplatesResponseSuccess,
 } from './interfaces/list-templates.interface';
@@ -53,8 +53,8 @@ export class Templates {
   ): Promise<CreateTemplateResponse> {
     const body: CreateTemplateOptions = { ...payload };
 
-    if (payload.react) {
-      body.html = await render(payload.react);
+    if (body.channel !== 'whatsapp' && body.react) {
+      body.html = await render(body.react);
     }
 
     return this.resend.post<CreateTemplateResponseSuccess>(
@@ -77,10 +77,13 @@ export class Templates {
     return data;
   }
 
-  async list(options: PaginationOptions = {}): Promise<ListTemplatesResponse> {
-    return this.resend.get<ListTemplatesResponseSuccess>(
-      `/templates${getPaginationQueryProperties(options)}`,
+  async list(options: ListTemplatesOptions = {}): Promise<ListTemplatesResponse> {
+    const params = new URLSearchParams(
+      getPaginationQueryProperties(options).slice(1),
     );
+    if (options.channel) params.set('channel', options.channel);
+    const query = params.size > 0 ? `?${params.toString()}` : '';
+    return this.resend.get<ListTemplatesResponseSuccess>(`/templates${query}`);
   }
 
   duplicate(

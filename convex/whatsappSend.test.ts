@@ -671,22 +671,10 @@ test("retirement and generation fences prevent later claims or records", async (
   expect(await message(f, id)).toMatchObject({ status: "queued", attempts: 0 })
 })
 
-test("WhatsApp sent fans out a signed customer webhook; local test receiver is limited to the reserved endpoint", async () => {
+test("WhatsApp sent fans out a signed customer webhook", async () => {
   const f = await setup()
   const workpoolTest = (await import("@convex-dev/workpool/test")).default
   workpoolTest.register(f.t, "webhookPool")
-  vi.stubEnv("META_GRAPH_ORIGIN", "http://localhost:3333")
-  const { metaTestWebhookTarget } = await import("./meta/graph")
-  expect(metaTestWebhookTarget("https://hooks.example.com/events")).toEqual({
-    url: new URL("https://hooks.example.com/events"),
-    localOrigin: undefined,
-  })
-  expect(metaTestWebhookTarget("https://whatsapp-send.invalid/events")).toEqual(
-    {
-      url: new URL("http://localhost:3333/__webhooks"),
-      localOrigin: "http://localhost:3333",
-    }
-  )
   const webhookId = await f.owner.client.action(api.webhooks.create, {
     organizationId: f.owner.team,
     endpoint: "https://whatsapp-send.invalid/events",
@@ -697,7 +685,8 @@ test("WhatsApp sent fans out a signed customer webhook; local test receiver is l
       path: `/${PHONE_ID}/messages`,
       respond: () => ({ messages: [{ id: "wamid.customer" }] }),
     },
-    { path: "/__webhooks", respond: () => ({ ok: true }) },
+    // The customer endpoint, answered by the same publicFetch stub.
+    { path: "/events", respond: () => ({ ok: true }) },
   ])
   const id = await send(f)
   await deliver(f, id)
@@ -717,12 +706,12 @@ test("WhatsApp sent fans out a signed customer webhook; local test receiver is l
     id: delivery!._id,
     attempt: 0,
   })
-  expect(graph.to("/__webhooks")[0].body).toMatchObject({
+  expect(graph.to("/events")[0].body).toMatchObject({
     type: "whatsapp.message.sent",
     data: { id, external_id: "wamid.customer" },
   })
   const call = graph.spy.mock.calls.find(
-    ([url]) => new URL(url).pathname === "/__webhooks"
+    ([url]) => new URL(url).pathname === "/events"
   )!
   const headers = call[1]!.headers!
   const secret = (await f.owner.client.query(api.webhooks.signingSecret, {
@@ -737,8 +726,4 @@ test("WhatsApp sent fans out a signed customer webhook; local test receiver is l
       secret,
     })
   )
-  vi.stubEnv("META_GRAPH_ORIGIN", "https://graph.facebook.com")
-  expect(
-    metaTestWebhookTarget("https://whatsapp-send.invalid/events").localOrigin
-  ).toBeUndefined()
 })

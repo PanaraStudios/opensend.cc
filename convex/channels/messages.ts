@@ -1,4 +1,4 @@
-import { v, type Infer } from "convex/values"
+import { ConvexError, v, type Infer } from "convex/values"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
 import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
 import {
@@ -21,6 +21,7 @@ import { tagValue } from "../tables/emails"
 import { upsertWhatsAppThread } from "./identity"
 import { channelMessagePayload } from "./payload"
 import { whatsappPayload, type WhatsAppBody } from "../../lib/meta/payloads"
+import { resolveWhatsAppTemplate } from "../whatsapp/templates"
 import { STATUS_RANK, object, string } from "../../lib/meta/webhooks"
 import { TAG_PATTERN } from "../../lib/dashboard/email-send"
 import { RETRY_DELAYS } from "../emails"
@@ -92,6 +93,61 @@ export async function resolveWhatsAppAccount(
   return account
 }
 
+/** A template send with `components` goes to Meta as given. Otherwise the
+ * team's stored template (by id, alias, or name and language, on the sending
+ * number's WABA) must be approved, and its own components are filled from
+ * `variables`, so missing variables fail here rather than at Meta. A name
+ * opensend has not synced yet still passes through for Meta to check. */
+async function storedTemplate(
+  ctx: MutationCtx,
+  organizationId: string,
+  wabaId: string | undefined,
+  value: unknown
+) {
+  if (typeof value !== "object" || value === null || "components" in value)
+    return value
+  const ref = value as {
+    id?: unknown
+    alias?: unknown
+    name?: unknown
+    language?: unknown
+    variables?: unknown
+  }
+  const language =
+    typeof ref.language === "string"
+      ? ref.language
+      : typeof ref.language === "object" && ref.language !== null
+        ? (ref.language as { code?: unknown }).code
+        : undefined
+  const byName = ref.id === undefined && ref.alias === undefined
+  try {
+    const template = await resolveWhatsAppTemplate(ctx, organizationId, {
+      id: typeof ref.id === "string" ? ref.id : undefined,
+      alias: typeof ref.alias === "string" ? ref.alias : undefined,
+      name: typeof ref.name === "string" ? ref.name : undefined,
+      language: typeof language === "string" ? language : undefined,
+      wabaId,
+    })
+    const variables =
+      typeof ref.variables === "object" && ref.variables !== null
+        ? (ref.variables as Record<string, string | number>)
+        : {}
+    return {
+      name: template.name,
+      language: template.language,
+      components: template.sendComponents(variables),
+    }
+  } catch (error) {
+    if (
+      byName &&
+      error instanceof ConvexError &&
+      error.data === "WhatsApp template not found"
+    )
+      return value
+    throw error
+  }
+}
+
 /** One entry point for APIs, composers, broadcasts and automations. Callers
  * authorize their team before invoking it; retirement is checked here too. */
 export async function createChannelMessage(
@@ -107,10 +163,25 @@ export async function createChannelMessage(
 ) {
   if (await retirement(ctx, opts.organizationId))
     throw invalid("This team is being retired.")
+  const account = await resolveWhatsAppAccount(
+    ctx,
+    opts.organizationId,
+    input.from
+  )
   let payload: ReturnType<typeof whatsappPayload>
   try {
     payload = whatsappPayload({
       ...input.body,
+      ...(input.body.template !== undefined
+        ? {
+            template: await storedTemplate(
+              ctx,
+              opts.organizationId,
+              account.wabaId,
+              input.body.template
+            ),
+          }
+        : {}),
       to: input.to,
       reply_to: input.replyTo,
     } as WhatsAppBody)
@@ -129,11 +200,6 @@ export async function createChannelMessage(
     throw invalid(
       "Tags must use ASCII letters, numbers, underscores or dashes (at most 48 tags, 256 characters each)."
     )
-  const account = await resolveWhatsAppAccount(
-    ctx,
-    opts.organizationId,
-    input.from
-  )
   const now = Date.now()
   let replyToId: Id<"channelMessages"> | undefined
   if (input.replyTo) {
