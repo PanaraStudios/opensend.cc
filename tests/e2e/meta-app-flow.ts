@@ -15,7 +15,7 @@ type GraphCall = {
 const APP_ID = "1234567890123"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const WEBHOOK_FIELDS =
-  "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update"
+  "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update,phone_number_name_update"
 const fakeGraph = () => process.env.OPENSEND_FAKE_GRAPH_URL!
 /** Open menus close when a full-page capture resizes the viewport. */
 const screenshot = (page: Page, name: string, fullPage = true) =>

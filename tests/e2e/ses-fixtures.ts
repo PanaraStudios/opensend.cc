@@ -214,7 +214,7 @@ export async function seedBroadcastSender(page: Page, id: string) {
 }
 
 /** A table's newest rows, read through the admin CLI like `pnpm backend data`. */
-function backendRows<T>(table: string, limit = 100): T[] {
+export function backendRows<T>(table: string, limit = 100): T[] {
   assertTestOwnership()
   const output = execFileSync(
     "node",

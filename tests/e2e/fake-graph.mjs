@@ -25,6 +25,24 @@ export const graphError = (message, code, extra = {}) => ({
 
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
+  {
+    method: "GET",
+    path: /^\/meta-inbound-media$/,
+    respond: (_match, _call, origin) => ({
+      body: {
+        id: "meta-inbound-media",
+        url: `${origin}/media-download/meta-inbound-media`,
+        mime_type: "image/png",
+        file_size: 3,
+      },
+    }),
+  },
+  {
+    method: "GET",
+    path: /^\/media-download\/meta-inbound-media$/,
+    unversioned: true,
+    respond: () => ({ body: Buffer.from([1, 2, 3]), contentType: "image/png" }),
+  },
   // Meta app verification: GET /{app-id}?fields=id,name
   {
     method: "GET",
@@ -82,9 +100,13 @@ export async function startFakeGraph(port) {
       return send(response, 200, { ok: true })
     }
     const versioned = VERSIONED.exec(url.pathname)
-    if (!versioned)
+    const path = versioned?.[2] ?? url.pathname
+    if (
+      !versioned &&
+      !ROUTES.some((route) => route.unversioned && route.path.test(path))
+    )
       return send(response, 404, graphError("Unknown path components", 2500))
-    const [, version, path] = versioned
+    const version = versioned?.[1]
     const call = {
       method,
       version,
@@ -99,9 +121,25 @@ export async function startFakeGraph(port) {
     )
     if (override) return send(response, override.status ?? 200, override.body)
     for (const route of ROUTES) {
-      const match = route.method === method && route.path.exec(path)
+      const match =
+        Boolean(route.unversioned) === !versioned &&
+        route.method === method &&
+        route.path.exec(path)
       if (match) {
-        const { status = 200, body } = route.respond(match, call)
+        const {
+          status = 200,
+          body,
+          contentType,
+        } = route.respond(
+          match,
+          call,
+          `http://host.docker.internal:${server.address().port}`
+        )
+        if (contentType) {
+          response.writeHead(status, { "content-type": contentType })
+          response.end(body)
+          return
+        }
         return send(response, status, body)
       }
     }
@@ -112,6 +150,7 @@ export async function startFakeGraph(port) {
     server.listen(Number(port), resolve)
   })
   return {
+    origin: `http://localhost:${server.address().port}`,
     close: () =>
       new Promise((resolve) => {
         server.close(() => resolve())
