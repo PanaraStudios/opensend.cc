@@ -6,10 +6,13 @@ import type {
   AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
+  ChannelAccountStatus,
+  ChannelQuality,
   DomainStatus,
   EmailStatus,
   ExportStatus,
   MemberRole,
+  MessagingChannel,
   Region,
   SuppressionReason,
   TemplateStatus,
@@ -268,6 +271,38 @@ export const BROADCAST_STATUS_TONE: Record<BroadcastStatus, BadgeTone> = {
   sent: "success",
   failed: "destructive",
   canceled: "secondary",
+}
+
+export const CHANNEL_ACCOUNT_STATUS_TONE: Record<
+  ChannelAccountStatus,
+  BadgeTone
+> = {
+  pending: "warning",
+  active: "success",
+  restricted: "warning",
+  error: "destructive",
+  disconnected: "secondary",
+}
+
+/** WhatsApp's phone number quality rating. */
+export const CHANNEL_QUALITY_TONE: Record<ChannelQuality, BadgeTone> = {
+  green: "success",
+  yellow: "warning",
+  red: "destructive",
+  unknown: "secondary",
+}
+
+export const CHANNEL_LABELS: Record<MessagingChannel, string> = {
+  whatsapp: "WhatsApp",
+  messenger: "Messenger",
+  instagram: "Instagram",
+}
+
+/** Meta's messaging limit tier, `TIER_1K`, as people read it. */
+export function messagingLimitLabel(tier: string | undefined): string {
+  if (!tier) return "Unknown"
+  const limit = tier.replace(/^TIER_/, "")
+  return limit === "UNLIMITED" ? "Unlimited" : `${limit} per 24 hours`
 }
 
 export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
