@@ -129,7 +129,25 @@ test("retirement erases every product table and child, preserving other teams an
     await ctx.db.patch("exports", ids.get("exports") as Id<"exports">, {
       storageId: exportStorage,
     })
-    return { storageId, exportStorage }
+    // A channel message's timeline spans transactions; its media goes too.
+    const messageId = ids.get("channelMessages") as Id<"channelMessages">
+    for (let n = 0; n < 20; n++)
+      await ctx.db.insert("channelMessageEvents", {
+        messageId,
+        type: "sent",
+        at: n,
+      })
+    const mediaStorage = await ctx.storage.store(new Blob(["private media"]))
+    await ctx.db.patch(
+      "channelMessageContents",
+      ids.get("channelMessageContents") as Id<"channelMessageContents">,
+      {
+        media: [
+          { storageId: mediaStorage, contentType: "image/png", size: 13 },
+        ],
+      }
+    )
+    return { storageId, exportStorage, mediaStorage }
   })
   await f.owner.client.mutation(api.teams.remove, {
     organizationId: f.owner.team,
@@ -149,7 +167,8 @@ test("retirement erases every product table and child, preserving other teams an
       })
     )
   ).rejects.toThrow("Team not found")
-  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+  // One transaction per table and child page, more than the default 100.
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000), 200)
   await f.t.run(async (ctx) => {
     for (const table of TEAM_TABLES)
       expect(
@@ -167,6 +186,7 @@ test("retirement erases every product table and child, preserving other teams an
     expect(await counters.contacts.total(ctx, f.outsider.team)).toBe(1)
     expect(await ctx.storage.get(ids.storageId)).toBeNull()
     expect(await ctx.storage.get(ids.exportStorage)).toBeNull()
+    expect(await ctx.storage.get(ids.mediaStorage)).toBeNull()
   })
 })
 

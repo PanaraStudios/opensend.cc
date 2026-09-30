@@ -384,6 +384,33 @@ export const counters = {
     key: (domain) => [domain.status, domain.region],
     where: (domain) => !domain.deleted,
   }),
+  channelMessages: new Counter<"channelMessages", string>(
+    components.channelMessageCounts,
+    {
+      namespace: team,
+      key: (message) => [message.channel, message.status, created(message)],
+    }
+  ),
+  conversations: new Counter<"conversations", string>(
+    components.conversationCounts,
+    {
+      namespace: team,
+      key: (conversation) => [
+        conversation.channel,
+        conversation.status,
+        conversation.unread,
+      ],
+    }
+  ),
+  /** Each channel broadcast's messages by status: its stats. */
+  broadcastMessages: new Counter<"channelMessages", Id<"broadcasts">>(
+    components.broadcastMessageCounts,
+    {
+      namespace: (message) => message.broadcastId!,
+      key: (message) => [message.status],
+      where: (message) => message.broadcastId !== undefined,
+    }
+  ),
 }
 
 type Sync<T extends TableNames> = Pick<
@@ -428,6 +455,8 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   webhookDeliveries: [counters.webhookDeliveries],
   webhookAttempts: [counters.webhookAttempts],
   domains: [counters.domains],
+  channelMessages: [counters.channelMessages, counters.broadcastMessages],
+  conversations: [counters.conversations],
 }
 export type CountedTable =
   | "contactImports"
@@ -459,6 +488,8 @@ export type CountedTable =
   | "webhookDeliveries"
   | "webhookAttempts"
   | "domains"
+  | "channelMessages"
+  | "conversations"
 export const COUNTED_TABLES = Object.keys(COUNTED) as CountedTable[]
 
 // A database writer belongs to one transaction; never reuse checks across calls.

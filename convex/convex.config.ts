@@ -21,6 +21,9 @@ const app = defineApp({
     DOMAIN_CONNECT_PRIVATE_KEY: v.optional(v.string()),
     DOMAIN_CONNECT_KEY: v.optional(v.string()),
     DOMAIN_CONNECT_SIGNER: v.optional(v.string()),
+    // Development and e2e only: a local fake Graph API origin, honored only
+    // for http://localhost, 127.0.0.1 or host.docker.internal.
+    META_GRAPH_ORIGIN: v.optional(v.string()),
   },
 })
 app.use(betterAuth)
@@ -30,6 +33,7 @@ app.use(rateLimiter)
 app.use(workpool, { name: "inboundPool" })
 app.use(workpool, { name: "sendPool" })
 app.use(workpool, { name: "webhookPool" })
+app.use(workpool, { name: "channelPool" })
 // One aggregate per count, as its README asks; convex/counts.ts owns them.
 app.use(aggregate, { name: "contactImportCounts" })
 app.use(aggregate, { name: "contactCounts" })
@@ -67,5 +71,8 @@ app.use(aggregate, { name: "broadcastRecipientLinkCounts" })
 app.use(aggregate, { name: "usageSentCounts" })
 app.use(aggregate, { name: "usageReceivedCounts" })
 app.use(aggregate, { name: "usageAutomationCounts" })
+app.use(aggregate, { name: "channelMessageCounts" })
+app.use(aggregate, { name: "conversationCounts" })
+app.use(aggregate, { name: "broadcastMessageCounts" })
 app.use(migrations)
 export default app
