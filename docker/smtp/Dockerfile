@@ -1,12 +1,12 @@
-FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e AS build
+FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY docker/smtp/package.json ./docker/smtp/package.json
-COPY docker/smtp/*.mjs ./docker/smtp/
-RUN pnpm --filter @opensend/smtp-gateway deploy --prod --legacy --ignore-scripts /out
+RUN pnpm --filter @opensend/smtp-gateway deploy --prod --ignore-scripts --config.inject-workspace-packages=true /out
+COPY docker/smtp/main.mjs docker/smtp/server.mjs /out/
 
-FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
 ENV NODE_ENV=production
