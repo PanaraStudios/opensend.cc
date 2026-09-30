@@ -17,10 +17,11 @@ const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const WEBHOOK_FIELDS =
   "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update"
 const fakeGraph = () => process.env.OPENSEND_FAKE_GRAPH_URL!
-const screenshot = (page: Page, name: string) =>
+/** Open menus close when a full-page capture resizes the viewport. */
+const screenshot = (page: Page, name: string, fullPage = true) =>
   page.screenshot({
     path: `${process.env.OPENSEND_TEST_RESULTS}/meta-app-${name}.png`,
-    fullPage: true,
+    fullPage,
   })
 
 async function graphCalls(page: Page): Promise<GraphCall[]> {
@@ -158,7 +159,7 @@ export function metaAppTests(state: () => State) {
       await expect(
         owner.getByRole("menuitem", { name: page.title, exact: true })
       ).toHaveAttribute("href", page.href)
-    await screenshot(owner, "account-menu")
+    await screenshot(owner, "account-menu", false)
     await owner.keyboard.press("Escape")
   })
 
