@@ -459,11 +459,12 @@ export async function recipientPage(
     : await suppressedAmong(
         ctx,
         row.organizationId,
-        candidates.map((c) => c.email)
+        candidates.flatMap((c) => (c.email ? [c.email] : []))
       )
   const contacts = []
   for (const contact of candidates) {
-    if (contact.unsubscribed || suppressed.has(contact.email)) continue
+    if (!contact.email || contact.unsubscribed || suppressed.has(contact.email))
+      continue
     if (
       topic &&
       effectiveTopicSubscription(

@@ -347,6 +347,7 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
       "id",
       "created_at",
       "email",
+      "phone",
       "first_name",
       "last_name",
       "unsubscribed",
@@ -376,7 +377,8 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
         rows: result.page.map((contact) => [
           contact._id,
           csvTime(contact._creationTime),
-          contact.email,
+          contact.email ?? "",
+          contact.phone ?? "",
           contact.firstName,
           contact.lastName,
           String(contact.unsubscribed),

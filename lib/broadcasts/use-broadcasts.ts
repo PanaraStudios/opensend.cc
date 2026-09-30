@@ -149,11 +149,11 @@ export function useBroadcastSaver(item: Broadcast) {
     [item.id, sent, update]
   )
 }
-export function useContactBroadcasts(email: string) {
+export function useContactBroadcasts(email: string | undefined) {
   return useTeamList(
     api.broadcasts.history,
     api.broadcasts.historyCount,
-    { email },
+    email ? { email } : "skip",
     asBroadcast
   )
 }

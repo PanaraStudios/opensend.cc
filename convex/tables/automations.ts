@@ -63,7 +63,7 @@ export const automationTables = {
     organizationId: v.string(),
     automationId: v.id("automations"),
     contactId: v.id("contacts"),
-    contactEmail: v.string(),
+    contactEmail: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
     lastSignalEventId: v.optional(v.id("events")),
     payload: payloadValue,

@@ -32,6 +32,7 @@ export function asContact(row: ContactRow | ContactDetailRow): Contact {
   return {
     id: row._id,
     email: row.email,
+    phone: row.phone,
     firstName: row.firstName,
     lastName: row.lastName,
     createdAt: row._creationTime,
@@ -84,6 +85,7 @@ export function useContactSearch(search: string, enabled = true) {
       rows?.map((row) => ({
         id: row._id,
         email: row.email,
+        phone: row.phone,
         firstName: row.firstName,
         lastName: row.lastName,
       })) ?? [],
@@ -226,7 +228,15 @@ export function useAudienceCommands() {
     updateContact: (
       id: string,
       patch: Partial<
-        Pick<Contact, "firstName" | "lastName" | "unsubscribed" | "properties">
+        Pick<
+          Contact,
+          | "email"
+          | "phone"
+          | "firstName"
+          | "lastName"
+          | "unsubscribed"
+          | "properties"
+        >
       >
     ) => update({ id: id as Id<"contacts">, ...patch }),
     async deleteContacts(ids: string[]) {

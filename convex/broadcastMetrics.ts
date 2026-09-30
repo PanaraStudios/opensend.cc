@@ -167,6 +167,7 @@ export async function broadcastRecipientProblem(
   if (
     !contact ||
     contact.organizationId !== email.organizationId ||
+    !contact.email ||
     contact.email !== recipient.email ||
     contact.unsubscribed
   )

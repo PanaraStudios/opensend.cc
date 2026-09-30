@@ -262,7 +262,8 @@ export const effect = internalMutation({
       contact: contact
         ? {
             id: contact._id,
-            email: contact.email,
+            email: contact.email ?? "",
+            phone: contact.phone ?? "",
             first_name: contact.firstName,
             last_name: contact.lastName,
             unsubscribed: contact.unsubscribed,
@@ -337,6 +338,11 @@ export const effect = internalMutation({
           return {
             skipped: true,
             output: { reason: contact ? "unsubscribed" : "contact deleted" },
+          }
+        if (!contact.email)
+          return {
+            skipped: true,
+            output: { reason: "contact has no email address" },
           }
         const template = await publishedTemplate(
           ctx,

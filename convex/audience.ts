@@ -1,3 +1,4 @@
+import { normalizePhone } from "../lib/dashboard/phone"
 import { teamRow as findTeamRow } from "./lists"
 import { ConvexError } from "convex/values"
 import { internal } from "./_generated/api"
@@ -10,6 +11,7 @@ import {
   normalizeEmail,
   type ContactFields,
   type ContactInput,
+  type ContactIdentity,
 } from "../lib/dashboard/contacts"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -93,10 +95,14 @@ export function segmentInput(ids: Id<"segments">[]) {
   return unique
 }
 
-const searchText = (contact: Pick<Doc<"contacts">, "email" | ContactName>) =>
+const searchText = (
+  contact: Pick<Doc<"contacts">, "email" | "phone" | ContactName>
+) =>
   [
     contact.email,
-    contact.email.replace(/[@._+-]+/g, " "),
+    contact.email?.replace(/[@._+-]+/g, " "),
+    contact.phone,
+    contact.phone?.slice(1),
     contact.firstName,
     contact.lastName,
   ].join(" ")
@@ -112,7 +118,8 @@ export function contactEventData(
     segment_ids: segmentIds,
     created_at: new Date(contact._creationTime).toISOString(),
     updated_at: new Date(contact.updatedAt).toISOString(),
-    email: contact.email,
+    email: contact.email ?? null,
+    phone: contact.phone ?? null,
     first_name: contact.firstName || null,
     last_name: contact.lastName || null,
     unsubscribed: contact.unsubscribed,
@@ -274,6 +281,40 @@ export async function setTopicChoices(
 const cleanProperties = (properties: Record<string, string>) =>
   Object.fromEntries(Object.entries(properties).filter(([, value]) => value))
 
+/** Shared create/update identity rules. Empty strings clear an identity. */
+function normalizeIdentity(input: ContactIdentity): ContactIdentity {
+  const email = input.email?.trim() ? normalizeEmail(input.email) : undefined
+  const phone = input.phone?.trim() ? normalizePhone(input.phone) : undefined
+  if (email) {
+    const error = contactEmailError(email)
+    if (error) throw new ConvexError(error)
+  }
+  if (phone === null)
+    throw new ConvexError(
+      "Enter a phone number with + and 8–15 digits, including the country code"
+    )
+  if (!email && !phone)
+    throw new ConvexError("An email or phone number is required")
+  return { email, phone }
+}
+const identityChanged = (contact: ContactIdentity, input: ContactIdentity) =>
+  contact.email !== input.email || contact.phone !== input.phone
+const findIdentity = (
+  ctx: Ctx,
+  organizationId: string,
+  key: "email" | "phone",
+  value: string
+) =>
+  ctx.db
+    .query("contacts")
+    .withIndex(
+      key === "email"
+        ? "by_organizationId_and_email"
+        : "by_organizationId_and_phone",
+      (q) => q.eq("organizationId", organizationId).eq(key, value)
+    )
+    .unique()
+
 /** Creates a contact, or merges into the team's contact with that address.
     Validates before writing, so a throw leaves nothing behind. With
     `skipExisting`, an existing address is left untouched. */
@@ -286,21 +327,27 @@ export async function upsertContact(
     segmentIds: Id<"segments">[]
     skipExisting?: boolean
     emit?: boolean
+    /** Imports may merge a phone-only row into an existing contact. */
+    mergePhone?: boolean
     /** Shared by a batch of contacts; memberships past it are scheduled. */
     budget?: MembershipBudget
   }
 ): Promise<{ id: Id<"contacts">; result: "created" | "updated" | "skipped" }> {
   const budget = options.budget ?? membershipBudget()
-  const email = normalizeEmail(input.email)
-  const error =
-    contactEmailError(email) ?? contactFieldsError(input, options.properties)
+  const identity = normalizeIdentity(input)
+  const error = contactFieldsError(input, options.properties)
   if (error) throw new ConvexError(error)
-  const existing = await ctx.db
-    .query("contacts")
-    .withIndex("by_organizationId_and_email", (q) =>
-      q.eq("organizationId", organizationId).eq("email", email)
-    )
-    .unique()
+  const byEmail = identity.email
+    ? await findIdentity(ctx, organizationId, "email", identity.email)
+    : null
+  const byPhone = identity.phone
+    ? await findIdentity(ctx, organizationId, "phone", identity.phone)
+    : null
+  if (byPhone && byEmail?._id !== byPhone._id && (byEmail || identity.email))
+    throw new ConvexError("That phone number already exists")
+  const existing = byEmail ?? byPhone
+  if (byPhone && !byEmail && !options.mergePhone && !options.skipExisting)
+    throw new ConvexError("That phone number already exists")
   const now = Date.now()
   if (existing) {
     if (options.skipExisting) return { id: existing._id, result: "skipped" }
@@ -308,9 +355,14 @@ export async function upsertContact(
       ...input,
       properties: cleanProperties(input.properties ?? {}),
     })
-    const changed = fieldsChanged(existing, fields)
+    const nextIdentity = {
+      email: identity.email ?? existing.email,
+      phone: identity.phone ?? existing.phone,
+    }
+    const changed =
+      fieldsChanged(existing, fields) || identityChanged(existing, nextIdentity)
     const contact = changed
-      ? await patchContact(ctx, existing, fields, now)
+      ? await patchContact(ctx, existing, { ...fields, ...nextIdentity }, now)
       : existing
     await joinContact(ctx, contact, options.segmentIds, budget, {
       emit: options.emit !== false,
@@ -326,9 +378,9 @@ export async function upsertContact(
   }
   const id = await insertRow(ctx, "contacts", {
     organizationId,
-    email,
+    ...identity,
     ...fields,
-    search: searchText({ email, ...fields }),
+    search: searchText({ ...identity, ...fields }),
     updatedAt: now,
   })
   const contact = (await ctx.db.get("contacts", id))!
@@ -353,12 +405,12 @@ function fieldsChanged(contact: Doc<"contacts">, fields: ContactFields) {
 async function patchContact(
   ctx: MutationCtx,
   contact: Doc<"contacts">,
-  fields: ContactFields,
+  fields: ContactFields & ContactIdentity,
   now: number
 ) {
   const next = {
     ...fields,
-    search: searchText({ email: contact.email, ...fields }),
+    search: searchText({ ...contact, ...fields }),
     updatedAt: now,
   }
   return patchRow(ctx, "contacts", contact._id, next)
@@ -368,8 +420,21 @@ async function patchContact(
 export async function updateContact(
   ctx: MutationCtx,
   contact: Doc<"contacts">,
-  patch: Partial<ContactFields>
+  patch: Partial<ContactFields> & ContactIdentity
 ) {
+  const identity = normalizeIdentity({
+    email: patch.email === undefined ? contact.email : patch.email,
+    phone: patch.phone === undefined ? contact.phone : patch.phone,
+  })
+  for (const key of ["email", "phone"] as const) {
+    const value = identity[key]
+    const other =
+      value && (await findIdentity(ctx, contact.organizationId, key, value))
+    if (other && other._id !== contact._id)
+      throw new ConvexError(
+        `That ${key === "phone" ? "phone number" : "email address"} already exists`
+      )
+  }
   const error = contactFieldsError(
     patch,
     await listProperties(ctx, contact.organizationId)
@@ -384,8 +449,14 @@ export async function updateContact(
       ...(patch.properties ?? {}),
     }),
   }
-  if (!fieldsChanged(contact, fields)) return
-  const next = await patchContact(ctx, contact, fields, Date.now())
+  if (!fieldsChanged(contact, fields) && !identityChanged(contact, identity))
+    return
+  const next = await patchContact(
+    ctx,
+    contact,
+    { ...fields, ...identity },
+    Date.now()
+  )
   await emitContact(ctx, "contact.updated", next)
 }
 

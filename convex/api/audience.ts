@@ -263,7 +263,8 @@ export const create = internalMutation({
           ctx,
           organizationId,
           {
-            email: stringField(input, "email", true)!,
+            email: stringField(input, "email"),
+            phone: stringField(input, "phone"),
             ...contactFields(input),
             properties: await properties(ctx, organizationId, input.properties),
           },
@@ -311,6 +312,8 @@ export const change = internalMutation({
       else
         await updateContact(ctx, row, {
           ...contactFields(input),
+          email: input.email === null ? "" : stringField(input, "email"),
+          phone: input.phone === null ? "" : stringField(input, "phone"),
           properties: await properties(ctx, org, input.properties),
         })
       return row._id
@@ -363,7 +366,7 @@ export const get = internalQuery({
   handler: async (ctx, { caller, resource, id }) => {
     await requireCaller(ctx, caller)
     const row = await own(ctx, resource, caller.organizationId, id)
-    if (resource !== "contacts" || !("email" in row)) return { row }
+    if (resource !== "contacts" || !("unsubscribed" in row)) return { row }
     return {
       row,
       properties: Object.fromEntries(
@@ -389,10 +392,11 @@ export const get = internalQuery({
 
 export function summary(row: Doc<Resource>) {
   const base = { id: row._id, created_at: apiTime(row._creationTime) }
-  if ("email" in row)
+  if ("unsubscribed" in row)
     return {
       ...base,
-      email: row.email,
+      email: row.email ?? null,
+      phone: row.phone ?? null,
       // Resend sends null for a missing name, here as in contact webhooks.
       first_name: row.firstName || null,
       last_name: row.lastName || null,
