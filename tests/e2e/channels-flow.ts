@@ -159,9 +159,10 @@ export function channelsTests(state: () => State) {
         token: TOKEN,
         wabaId: WABA,
       })
-    ).rejects.toThrow(
-      "This WhatsApp Business Account is already connected to another team"
-    )
+    ).rejects.toMatchObject({
+      // Production backends redact the message; ConvexError data carries it.
+      data: "This WhatsApp Business Account is already connected to another team",
+    })
     await owner.request.post(`${fakeGraph()}/__reset`)
     const exchanged = await backend.action(
       api.meta.connectActions.exchangeEmbeddedSignup,
