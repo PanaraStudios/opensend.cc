@@ -24,13 +24,34 @@ import {
   outboundStatus,
 } from "../../lib/meta/webhooks"
 
-const messageByExternalId = (ctx: MutationCtx, id: string) =>
+/** Messages with a wamid. Meta's ids are unique, but a lookup must not
+    throw on a duplicate row, so callers pick the row they mean. */
+const messagesByExternalId = (ctx: MutationCtx, id: string) =>
   ctx.db
     .query("channelMessages")
     .withIndex("by_channel_and_externalId", (q) =>
       q.eq("channel", "whatsapp").eq("externalId", id)
     )
-    .unique()
+    .take(10)
+const messageByExternalId = async (ctx: MutationCtx, id: string) =>
+  (await messagesByExternalId(ctx, id))[0] ?? null
+/** The outbound message a status is about: this number's send of that wamid
+    to the status's recipient. */
+const statusMessage = async (
+  ctx: MutationCtx,
+  account: Doc<"channelAccounts">,
+  data: Record<string, unknown>
+) => {
+  const recipient = string(data.recipient_id)
+  return (
+    (await messagesByExternalId(ctx, string(data.id))).find(
+      (message) =>
+        message.direction === "outbound" &&
+        message.accountId === account._id &&
+        (!recipient || message.to === recipient)
+    ) ?? null
+  )
+}
 /** The connected row for a phone number id; disconnected teams' rows stay. */
 const accountByExternalId = async (ctx: MutationCtx, id: string) =>
   (
@@ -160,13 +181,8 @@ async function status(
   const data = object(raw)
   const next = outboundStatus(data.status)
   if (!next) return
-  const message = await messageByExternalId(ctx, string(data.id))
-  if (
-    !message ||
-    message.accountId !== account._id ||
-    message.direction !== "outbound"
-  )
-    return
+  const message = await statusMessage(ctx, account, data)
+  if (!message) return
   if (next === "sent") {
     await acceptChannelMessage(
       ctx,
@@ -285,7 +301,7 @@ export const project = internalMutation({
             for (const rawStatus of array(value.statuses)) {
               const data = object(rawStatus)
               if (!outboundStatus(data.status) || !string(data.id)) continue
-              if (!(await messageByExternalId(ctx, string(data.id)))) {
+              if (!(await statusMessage(ctx, account, data))) {
                 if (attempt < 6) {
                   await ctx.scheduler.runAfter(
                     10000 * 2 ** attempt,

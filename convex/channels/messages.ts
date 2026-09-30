@@ -206,12 +206,14 @@ export async function createChannelMessage(
     const id = ctx.db.normalizeId("channelMessages", input.replyTo)
     const reply = id
       ? await ctx.db.get("channelMessages", id)
-      : await ctx.db
-          .query("channelMessages")
-          .withIndex("by_channel_and_externalId", (q) =>
-            q.eq("channel", "whatsapp").eq("externalId", input.replyTo)
-          )
-          .unique()
+      : ((
+          await ctx.db
+            .query("channelMessages")
+            .withIndex("by_channel_and_externalId", (q) =>
+              q.eq("channel", "whatsapp").eq("externalId", input.replyTo)
+            )
+            .take(10)
+        ).find((row) => row.accountId === account._id) ?? null)
     if (
       !reply ||
       reply.organizationId !== opts.organizationId ||
