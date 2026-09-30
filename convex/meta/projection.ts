@@ -19,6 +19,7 @@ import {
   MEDIA_TYPES,
   STATUS_RANK,
   outboundStatus,
+  profileNameParts,
 } from "../../lib/meta/webhooks"
 
 const messageByExternalId = (ctx: MutationCtx, id: string) =>
@@ -84,7 +85,7 @@ async function receive(
           await upsertContact(
             ctx,
             account.organizationId,
-            { phone },
+            { phone, ...profileNameParts(profileName) },
             { properties: [], segmentIds: [], skipExisting: true }
           )
         ).id

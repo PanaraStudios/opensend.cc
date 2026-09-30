@@ -169,7 +169,11 @@ test("a text creates phone-only audience, identity, conversation, timeline and b
   await project(f, { ...payload, ignored: true })
   const data = await rows(f)
   expect(data.contacts).toHaveLength(1)
-  expect(data.contacts[0]).toMatchObject({ phone: "+16505551234" })
+  expect(data.contacts[0]).toMatchObject({
+    phone: "+16505551234",
+    firstName: "Sheena",
+    lastName: "Nelson",
+  })
   expect(data.contacts[0].email).toBeUndefined()
   expect(data.identities).toHaveLength(1)
   expect(data.identities[0]).toMatchObject({
@@ -223,7 +227,11 @@ test("matches existing contact by normalized phone and never rolls back the wind
     upsertContact(
       ctx,
       f.owner.team,
-      { email: "known@example.test", phone: "+1 (650) 555-1234" },
+      {
+        email: "known@example.test",
+        phone: "+1 (650) 555-1234",
+        firstName: "Known",
+      },
       { properties: [], segmentIds: [] }
     )
   )
@@ -232,6 +240,8 @@ test("matches existing contact by normalized phone and never rolls back the wind
   await project(f, incoming("old", now - 3600))
   const data = await rows(f)
   expect(data.contacts).toHaveLength(1)
+  // The WhatsApp profile name never overwrites a name the team set.
+  expect(data.contacts[0]).toMatchObject({ firstName: "Known", lastName: "" })
   expect(data.identities[0].contactId).toBe(made.id)
   expect(data.conversations[0]).toMatchObject({
     lastMessageAt: now * 1000,

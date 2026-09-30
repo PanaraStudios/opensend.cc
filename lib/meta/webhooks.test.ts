@@ -7,6 +7,7 @@ import {
   timestamp,
   outboundStatus,
   STATUS_RANK,
+  profileNameParts,
 } from "./webhooks"
 test("untrusted webhook helpers reject mismatched shapes and invalid timestamps", () => {
   for (const value of [null, [], "text", 123])
@@ -19,4 +20,20 @@ test("untrusted webhook helpers reject mismatched shapes and invalid timestamps"
   assert.equal(outboundStatus("received"), null)
   assert.equal(outboundStatus("failed"), "failed")
   assert.ok(STATUS_RANK.failed > STATUS_RANK.read)
+})
+
+test("profile names split into first and last names", () => {
+  assert.deepEqual(profileNameParts("Priya Shah"), {
+    firstName: "Priya",
+    lastName: "Shah",
+  })
+  assert.deepEqual(profileNameParts("  Ana  María de la Cruz "), {
+    firstName: "Ana",
+    lastName: "María de la Cruz",
+  })
+  assert.deepEqual(profileNameParts("Cher"), {
+    firstName: "Cher",
+    lastName: "",
+  })
+  assert.deepEqual(profileNameParts(""), { firstName: "", lastName: "" })
 })

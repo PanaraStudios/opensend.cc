@@ -50,3 +50,10 @@ export const outboundStatus = (
   value === "failed"
     ? value
     : null
+
+/** A channel profile name as contact names: the first word, then the rest.
+    Only used when inbound creates a contact, so a CRM's names are kept. */
+export function profileNameParts(name: string) {
+  const [firstName = "", ...rest] = name.trim().split(/\s+/).filter(Boolean)
+  return { firstName, lastName: rest.join(" ") }
+}
