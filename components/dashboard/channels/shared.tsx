@@ -90,13 +90,10 @@ export function MetaAppAlert({
             ? "Add your Meta app before teams connect WhatsApp, Messenger or Instagram."
             : "Ask your installation administrator to add the Meta app before you connect WhatsApp, Messenger or Instagram."}
         {admin && (
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={<Link href={META_APP_PAGE.href} />}
-          >
-            Set up the Meta app
-          </Button>
+          <>
+            {" "}
+            <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>.
+          </>
         )}
       </AlertDescription>
     </Alert>
