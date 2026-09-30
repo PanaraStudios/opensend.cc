@@ -25,16 +25,52 @@ const templateVariableSchema = z.object({
     ),
 })
 
+const whatsappTemplateSchema = z
+  .object({
+    wabaId: z
+      .string()
+      .optional()
+      .describe(
+        "The WhatsApp Business Account ID. Defaults to the team's first one."
+      ),
+    language: z
+      .string()
+      .optional()
+      .describe("Meta's template language code, like en_US (the default)."),
+    category: z
+      .enum(["MARKETING", "UTILITY", "AUTHENTICATION"])
+      .optional()
+      .describe("The template category. Defaults to MARKETING."),
+    components: z
+      .array(z.looseObject({ type: z.string() }))
+      .optional()
+      .describe(
+        'Meta\'s template components in the creation format: HEADER, BODY (required), FOOTER and BUTTONS, each with a "type". Variables are {{1}}, {{2}} or named like {{first_name}}, and every variable needs an example (example.body_text or example.body_text_named_params).'
+      ),
+  })
+  .describe("WhatsApp settings and components, for channel whatsapp.")
+
+const channelSchema = z
+  .enum(["email", "whatsapp"])
+  .describe("The template's channel. Defaults to email.")
+
 const CREATE_TEMPLATE_TOOL = {
   title: "Create Template",
-  description: `Create an email template in Opensend with HTML/text. Use publish-template before sending.`,
+  description: `Create an email template in Opensend with HTML/text, or a WhatsApp template (channel whatsapp) from Meta's components. Use publish-template before sending; for WhatsApp, publishing submits it to Meta for review.`,
   inputSchema: {
-    name: z.string().nonempty().describe("The name of the template."),
-    html: z
+    name: z
       .string()
       .nonempty()
       .describe(
-        `The HTML content of the template. Use triple-brace syntax for variables: {{{VARIABLE_NAME}}}.\n\n${EMAIL_HTML_RULES}`
+        "The name of the template. WhatsApp names use only lowercase letters, numbers and underscores."
+      ),
+    channel: channelSchema.optional(),
+    whatsapp: whatsappTemplateSchema.optional(),
+    html: z
+      .string()
+      .optional()
+      .describe(
+        `The HTML content of an email template (required for email). Use triple-brace syntax for variables: {{{VARIABLE_NAME}}}.\n\n${EMAIL_HTML_RULES}`
       ),
     subject: z
       .string()
@@ -75,8 +111,11 @@ const LIST_TEMPLATES_TOOL = {
   title: "List Templates",
   annotations: { readOnlyHint: true },
   description:
-    "List all email templates from Opensend. Returns template names, statuses, and aliases. Don't bother telling the user the IDs unless they ask for them.",
+    "List templates from Opensend, email and WhatsApp. Returns template names, statuses, and aliases. Don't bother telling the user the IDs unless they ask for them.",
   inputSchema: {
+    channel: channelSchema
+      .optional()
+      .describe("Only templates of this channel."),
     limit: z
       .number()
       .min(1)
@@ -139,6 +178,11 @@ const UPDATE_TEMPLATE_TOOL = {
       .describe(
         "New array of template variables (replaces existing variables)."
       ),
+    whatsapp: whatsappTemplateSchema
+      .optional()
+      .describe(
+        "New WhatsApp settings or components, for a WhatsApp template (components replace the existing ones)."
+      ),
   },
 } as const
 
@@ -154,7 +198,7 @@ const REMOVE_TEMPLATE_TOOL = {
 const PUBLISH_TEMPLATE_TOOL = {
   title: "Publish Template",
   description:
-    "Publish an email template in Opensend. Templates must be published before they can be used for sending emails. Re-publishing a previously published template makes the latest changes live. Accepts a template ID, alias.",
+    "Publish a template in Opensend. Templates must be published before they can be used for sending. Re-publishing a previously published template makes the latest changes live. A WhatsApp template is submitted to Meta for review instead, and can be sent once Meta approves it. Accepts a template ID, alias.",
   inputSchema: {
     id: z.string().nonempty().describe("The template ID, alias"),
   },
@@ -176,17 +220,34 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-template",
     CREATE_TEMPLATE_TOOL,
-    async ({ name, html, subject, from, replyTo, text, alias, variables }) => {
-      const response = await opensend.templates.create({
-        name,
-        html,
-        subject,
-        from,
-        replyTo,
-        text,
-        alias,
-        variables,
-      } as CreateTemplateOptions)
+    async ({
+      name,
+      channel,
+      whatsapp,
+      html,
+      subject,
+      from,
+      replyTo,
+      text,
+      alias,
+      variables,
+    }) => {
+      if (channel !== "whatsapp" && !html)
+        throw new Error("Email templates need html.")
+      const response = await opensend.templates.create(
+        channel === "whatsapp"
+          ? { name, channel, alias, whatsapp }
+          : ({
+              name,
+              html,
+              subject,
+              from,
+              replyTo,
+              text,
+              alias,
+              variables,
+            } as CreateTemplateOptions)
+      )
 
       if (response.error) {
         throw new Error(
@@ -210,7 +271,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "list-templates",
     LIST_TEMPLATES_TOOL,
-    async ({ limit, after, before }) => {
+    async ({ channel, limit, after, before }) => {
       if (after && before) {
         throw new Error(
           'Cannot use both "after" and "before" parameters. Use only one for pagination.'
@@ -225,7 +286,9 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
             ? { limit }
             : undefined
 
-      const response = await opensend.templates.list(paginationOptions)
+      const response = await opensend.templates.list(
+        channel ? { ...paginationOptions, channel } : paginationOptions
+      )
 
       if (response.error) {
         throw new Error(
@@ -250,7 +313,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
           },
           ...templates.map((template) => ({
             type: "text" as const,
-            text: `Name: ${template.name}\nStatus: ${template.status}\nAlias: ${template.alias ?? "none"}\nID: ${template.id}\nCreated at: ${template.created_at}`,
+            text: `Name: ${template.name}\nChannel: ${template.channel ?? "email"}\nStatus: ${template.status}${template.whatsapp ? `\nMeta status: ${template.whatsapp.status ?? "not submitted"}` : ""}\nAlias: ${template.alias ?? "none"}\nID: ${template.id}\nCreated at: ${template.created_at}`,
           })),
           ...(hasMore
             ? [
@@ -279,6 +342,21 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
       }
 
       const template = response.data
+      if (template.channel === "whatsapp" && template.whatsapp) {
+        const whatsapp = template.whatsapp
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Name: ${template.name}\nID: ${template.id}\nChannel: whatsapp\nStatus: ${template.status}\nMeta status: ${whatsapp.status ?? "not submitted"}${whatsapp.rejected_reason ? `\nRejected: ${whatsapp.rejected_reason}` : ""}\nAlias: ${template.alias ?? "none"}\nWABA: ${whatsapp.waba_id}\nLanguage: ${whatsapp.language}\nCategory: ${whatsapp.category}\nParameter format: ${whatsapp.parameter_format}\nVariables: ${template.variables?.map((v) => v.key).join(", ") || "none"}`,
+            },
+            {
+              type: "text",
+              text: `Components:\n${JSON.stringify(whatsapp.components ?? [], null, 2)}`,
+            },
+          ],
+        }
+      }
       const variablesText =
         template.variables && template.variables.length > 0
           ? template.variables
@@ -324,6 +402,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
       text,
       alias,
       variables,
+      whatsapp,
     }) => {
       const id = rawId.trim()
       const response = await opensend.templates.update(id, {
@@ -335,6 +414,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
         text,
         alias,
         variables,
+        ...(whatsapp ? { whatsapp } : {}),
       } as UpdateTemplateOptions)
 
       if (response.error) {
