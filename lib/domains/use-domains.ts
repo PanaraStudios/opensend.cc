@@ -1,9 +1,14 @@
 "use client"
 import * as React from "react"
-import { useAction, useMutation } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useTeamRole,
+  useWorkspace,
+  requireTeamId,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
 import { domainCheckResult } from "@/lib/dashboard/domains"
 import type { Domain } from "@/lib/dashboard/types"
@@ -12,12 +17,15 @@ export function asDomain(row: Doc<"domains">): Domain {
   return {
     id: row._id,
     name: row.name,
+    claiming: !!row.claimId,
     region: row.region,
     provider: row.dnsProvider,
     status: row.status,
     createdAt: row._creationTime,
-    openTracking: false,
-    clickTracking: false,
+    openTracking: row.openTracking ?? false,
+    clickTracking: row.clickTracking ?? false,
+    trackingSubdomain: row.trackingSubdomain,
+    trackingTarget: row.trackingTarget,
     tls: row.tls,
     customReturnPath: row.customReturnPath,
     receiving: row.receiving ?? false,
@@ -33,30 +41,20 @@ export function asDomain(row: Doc<"domains">): Domain {
           },
         }
       : {}),
-    events: [
-      { type: "added", at: row._creationTime },
-      ...(row.dnsVerifiedAt
-        ? [{ type: "dns_verified" as const, at: row.dnsVerifiedAt }]
-        : []),
-      ...(row.partiallyVerifiedAt
-        ? [{ type: "partially_verified" as const, at: row.partiallyVerifiedAt }]
-        : []),
-      ...(row.verifiedAt
-        ? [{ type: "verified" as const, at: row.verifiedAt }]
-        : []),
-    ],
+    dnsVerifiedAt: row.dnsVerifiedAt,
+    partiallyVerifiedAt: row.partiallyVerifiedAt,
+    verifiedAt: row.verifiedAt,
   }
 }
 export function useDomainCommands() {
   const workspace = useWorkspace()
   const create = useMutation(api.domains.create)
+  const claim = useMutation(api.domainClaims.create)
   const verify = useMutation(api.domains.verify)
   const remove = useMutation(api.domains.remove)
   const update = useMutation(api.domains.update)
   const applyUrl = useAction(api.ses.domainConnect.apply)
-  const canWrite =
-    workspace.teams.find((t) => t.id === workspace.activeTeamId)?.role ===
-    "admin"
+  const { canWrite } = useTeamRole()
   return {
     organizationId: workspace.activeTeamId,
     canWrite,
@@ -65,14 +63,32 @@ export function useDomainCommands() {
       region: Domain["region"]
       customReturnPath: string
     }) => {
-      if (!workspace.activeTeamId) throw new Error("Create a team first")
-      return create({ ...input, organizationId: workspace.activeTeamId })
+      const organizationId = requireTeamId(workspace.activeTeamId)
+      return create({ ...input, organizationId })
+    },
+    claimDomain: (input: {
+      name: string
+      region: Domain["region"]
+      customReturnPath: string
+    }) => {
+      const organizationId = requireTeamId(workspace.activeTeamId)
+      return claim({ ...input, organizationId })
     },
     verifyDomain: (id: string) => verify({ id: id as Id<"domains"> }),
     deleteDomain: (id: string) => remove({ id: id as Id<"domains"> }),
     updateDomain: (
       id: string,
-      patch: { tls?: Domain["tls"]; sending?: boolean; receiving?: boolean }
+      patch: Partial<
+        Pick<
+          Domain,
+          | "tls"
+          | "sending"
+          | "receiving"
+          | "trackingSubdomain"
+          | "openTracking"
+          | "clickTracking"
+        >
+      >
     ) => update({ id: id as Id<"domains">, ...patch }),
     /** The DNS provider's own page, with every record filled in. */
     autoConfigureUrl: (id: string) => applyUrl({ id: id as Id<"domains"> }),
@@ -98,4 +114,29 @@ export function useDomainCheck(domains: Domain[]) {
     // operation instead, which reports through the domain's phase.
     if (await verifyDomain(id)) waiting.current.add(id)
   }
+}
+
+/** Bounded options for the existing dropdowns and command search. */
+export function useDomainOptions(
+  filters: {
+    search?: string
+    status?: Doc<"domains">["status"]
+    selectedId?: Id<"domains">
+  } = {},
+  enabled = true
+) {
+  const page = useTeamQuery(api.domains.options, filters, { enabled })
+  return React.useMemo(() => page?.map(asDomain) ?? [], [page])
+}
+export function useDomain(id: string | null | undefined) {
+  const row = useQuery(api.domains.get, id ? { id } : "skip")
+  return row ? asDomain(row.domain) : row
+}
+export function useDomainByName(name: string | undefined) {
+  const row = useTeamQuery(
+    api.domains.byName,
+    { name: name! },
+    { enabled: !!name }
+  )
+  return row ? asDomain(row) : row
 }

@@ -1,7 +1,6 @@
 import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
-import { DEMO_NOW } from "./data"
 import { formatDate } from "./format"
 
 export const RANGE_PRESETS = [
@@ -29,8 +28,9 @@ export type RollingPreset = keyof typeof ROLLING_DAYS
 export type NamedRangePreset = (typeof RANGE_PRESETS)[number]["value"]
 export type RangePreset = NamedRangePreset | "all"
 
-export function defaultEmailRange(): DateRange {
-  return rangeFromPreset("15d")
+/** The last 15 days, ending on the supplied clock or today. */
+export function defaultEmailRange(now?: number): DateRange {
+  return rangeFromPreset("15d", now)
 }
 
 function lastDays(current: Date, days: number): DateRange {
@@ -51,7 +51,7 @@ export function rangeFromPreset(
 ): DateRange | undefined
 export function rangeFromPreset(
   preset: RangePreset,
-  now = DEMO_NOW
+  now = Date.now()
 ): DateRange | undefined {
   const current = new Date(now)
   switch (preset) {
@@ -72,11 +72,12 @@ export function rangeFromPreset(
 }
 
 export function presetFromRange(
-  range: DateRange | undefined
+  range: DateRange | undefined,
+  now?: number
 ): RangePreset | "custom" {
   if (!range?.from) return "all"
   for (const { value: preset } of RANGE_PRESETS) {
-    const candidate = rangeFromPreset(preset)
+    const candidate = rangeFromPreset(preset, now)
     if (
       candidate.from &&
       isSameDay(candidate.from, range.from) &&
@@ -90,10 +91,11 @@ export function presetFromRange(
 
 export function rangeLabel(
   range: DateRange | undefined,
-  allowAllTime = false
+  allowAllTime = false,
+  now?: number
 ): string {
   if (!range?.from) return allowAllTime ? ALL_TIME_PRESET.label : "Date range"
-  const preset = presetFromRange(range)
+  const preset = presetFromRange(range, now)
   if (preset !== "custom" && preset !== "all") {
     return (
       RANGE_PRESETS.find((item) => item.value === preset)?.label ?? "Date range"
@@ -108,17 +110,28 @@ export function pickerPresets(allowAllTime: boolean) {
 }
 
 export function rangeAfterCalendarClear(
-  allowAllTime: boolean
+  allowAllTime: boolean,
+  now?: number
 ): DateRange | undefined {
-  return allowAllTime ? undefined : defaultEmailRange()
+  return allowAllTime ? undefined : defaultEmailRange(now)
+}
+
+/** The range's first and last millisecond, whole days; none for all time. */
+export function rangeBounds(range: DateRange | undefined): {
+  from?: number
+  to?: number
+} {
+  if (!range?.from) return {}
+  return {
+    from: startOfDay(range.from).getTime(),
+    to: endOfDay(range.to ?? range.from).getTime(),
+  }
 }
 
 export function inDateRange(
   timestamp: number,
   range: DateRange | undefined
 ): boolean {
-  if (!range?.from) return true
-  const start = startOfDay(range.from).getTime()
-  const end = endOfDay(range.to ?? range.from).getTime()
-  return timestamp >= start && timestamp <= end
+  const { from = -Infinity, to = Infinity } = rangeBounds(range)
+  return timestamp >= from && timestamp <= to
 }

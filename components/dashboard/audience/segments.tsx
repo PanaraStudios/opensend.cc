@@ -33,6 +33,7 @@ import {
   DetailHeader,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   NotFoundState,
@@ -40,16 +41,24 @@ import {
   Surface,
   Th,
   useDeleteRecord,
+  useAutosaveDraft,
+  useListSearch,
 } from "@/components/dashboard/primitives"
-import {
-  AudienceChrome,
-  AudienceDocsSheet,
-} from "@/components/dashboard/audience/shared"
+import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
-import { contactMatches, segmentContactCounts } from "@/lib/dashboard/contacts"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+import {
+  asSegment,
+  useAudienceCommands,
+  useContactList,
+  useSegmentList,
+} from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
 
 function AddSegmentDialog({
   open,
@@ -59,18 +68,26 @@ function AddSegmentDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addSegment } = useDashboard()
+  const { addSegment } = useAudienceCommands()
+  const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return
-    const { id } = addSegment(trimmed)
-    toast.add({ type: "success", title: "Segment created" })
-    setName("")
-    onOpenChange(false)
-    router.push(`/segments/${id}`)
+    if (!trimmed || pending) return
+    setPending(true)
+    try {
+      const id = await addSegment(trimmed)
+      toast.add({ type: "success", title: "Segment created" })
+      setName("")
+      onOpenChange(false)
+      router.push(`/segments/${id}`)
+    } catch (caught) {
+      toast.add({ type: "error", title: actionError(caught) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -106,7 +123,7 @@ function AddSegmentDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={!name.trim()}>
+            <Button type="submit" disabled={!name.trim() || pending}>
               Create segment
             </Button>
           </DialogFooter>
@@ -117,23 +134,23 @@ function AddSegmentDialog({
 }
 
 export function SegmentsView() {
-  const { state, deleteSegment, addExport } = useDashboard()
-  const [query, setQuery] = React.useState("")
+  const { deleteSegment } = useAudienceCommands()
+  const { query, setQuery, search } = useListSearch()
   const [open, setOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-
-  const needle = searchNeedle(query)
-  const rows = state.segments.filter((segment) =>
-    matchesNeedle(needle, segment.name)
-  )
-  const memberCounts = segmentContactCounts(state.contacts)
+  const exporting = useExportDialog({
+    resource: "segments",
+    noun: "segments",
+    filters: { search: query.trim() || undefined },
+  })
+  const segments = useSegmentList(search)
+  const { rows, pageRows, pagination } = segments
 
   return (
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Create segment
@@ -141,16 +158,16 @@ export function SegmentsView() {
         </>
       }
     >
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
         placeholder="Search segments…"
-        onExport={() => {
-          addExport("Segments", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
-      {rows.length === 0 ? (
+      {segments.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={LayersIcon}
           title="No segments"
@@ -162,57 +179,59 @@ export function SegmentsView() {
           </Button>
         </EmptyState>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Name</Th>
-              <Th>Contacts</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((segment) => (
-            <TableRow key={segment.id}>
-              <TableCell>
-                <Link
-                  href={`/segments/${segment.id}`}
-                  className="font-medium hover:underline"
-                >
-                  {segment.name}
-                </Link>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {memberCounts.get(segment.id) ?? 0}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(segment.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      render={<Link href={`/segments/${segment.id}`} />}
-                    >
-                      <EyeIcon />
-                      View segment
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPendingDelete(segment.id)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Name</Th>
+                <Th>Contacts</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((segment) => (
+              <TableRow key={segment.id}>
+                <TableCell>
+                  <Link
+                    href={`/segments/${segment.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {segment.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {segment.count}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(segment.createdAt)}
+                </TableCell>
+                <TableCell>
+                  <MoreMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={<Link href={`/segments/${segment.id}`} />}
+                      >
+                        <EyeIcon />
+                        View segment
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setPendingDelete(segment.id)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="segment" />
+        </>
       )}
       <AddSegmentDialog open={open} onOpenChange={setOpen} />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {
@@ -220,8 +239,8 @@ export function SegmentsView() {
         }}
         title="Delete segment?"
         description="Contacts stay in the workspace. They are only removed from this group."
-        onConfirm={() => {
-          if (pendingDelete) deleteSegment(pendingDelete)
+        onConfirm={async () => {
+          if (pendingDelete) await deleteSegment(pendingDelete)
           toast.add({ type: "success", title: "Segment deleted" })
         }}
       />
@@ -231,26 +250,49 @@ export function SegmentsView() {
 
 export function SegmentDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateSegment, deleteSegment, setContactSegments } =
-    useDashboard()
-  const segment = state.segments.find((item) => item.id === id)
+  const stored = useQuery(api.segments.get, { id })
   const { leaving, deleteAndLeave } = useDeleteRecord("/segments")
-  const [pendingDelete, setPendingDelete] = React.useState(false)
-  const [query, setQuery] = React.useState("")
 
-  if (!segment) {
+  if (stored === undefined) return <Skeleton className="h-64 w-full" />
+  if (!stored) {
     if (leaving) return null
     return (
       <NotFoundState icon={LayersIcon} noun="segment" backHref="/segments" />
     )
   }
+  return <SegmentPage segment={asSegment(stored)} onDelete={deleteAndLeave} />
+}
 
-  const members = state.contacts.filter((contact) =>
-    contact.segmentIds.includes(segment.id)
-  )
-  const needle = searchNeedle(query)
-  const candidates = state.contacts.filter((contact) =>
-    contactMatches(contact, needle)
+function SegmentPage({
+  segment,
+  onDelete,
+}: {
+  segment: ReturnType<typeof asSegment>
+  onDelete: (remove: () => void) => void
+}) {
+  const { updateSegment, deleteSegment, setContactSegment } =
+    useAudienceCommands()
+  const [pendingDelete, setPendingDelete] = React.useState(false)
+  const { query, setQuery, search } = useListSearch()
+  /* A cleared field waits for a name instead of saving a blank one. */
+  const name = useAutosaveDraft(segment.name, async (next) => {
+    if (next.trim()) await updateSegment(segment.id, next)
+  })
+  const title = name.draft.trim() || segment.name
+  const candidates = useContactList({ search })
+  const { pageRows, pagination } = candidates
+  /* Membership is checked for the page on view: a contact can be in any
+     number of segments, so list rows do not carry them. */
+  const members = new Set<string>(
+    useQuery(
+      api.segments.memberIds,
+      pageRows.length
+        ? {
+            id: segment.id as Id<"segments">,
+            contactIds: pageRows.map((contact) => contact.id as Id<"contacts">),
+          }
+        : "skip"
+    ) ?? []
   )
 
   return (
@@ -258,9 +300,9 @@ export function SegmentDetail() {
       <DetailHeader
         backHref="/segments"
         backLabel="Segments"
-        title={segment.name}
+        title={title}
         icon={LayersIcon}
-        description={`${pluralize(members.length, "contact")} · Created ${formatDate(segment.createdAt)}`}
+        description={`${pluralize(segment.count, "contact")} · Created ${formatDate(segment.createdAt)}`}
         actions={
           <Button variant="outline" onClick={() => setPendingDelete(true)}>
             Delete
@@ -271,11 +313,7 @@ export function SegmentDetail() {
       <Surface className="max-w-lg">
         <Field>
           <FieldLabel htmlFor="segment-rename">Name</FieldLabel>
-          <Input
-            id="segment-rename"
-            value={segment.name}
-            onChange={(event) => updateSegment(segment.id, event.target.value)}
-          />
+          <Input id="segment-rename" {...name.props} />
           <FieldDescription>
             Only your team sees this name. It is not shown on unsubscribe pages.
           </FieldDescription>
@@ -291,7 +329,9 @@ export function SegmentDetail() {
             placeholder="Filter contacts…"
           />
         </div>
-        {candidates.length === 0 ? (
+        {candidates.status === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : candidates.rows.length === 0 ? (
           <EmptyState
             icon={LayersIcon}
             title="No matching contacts"
@@ -302,55 +342,64 @@ export function SegmentDetail() {
             </Button>
           </EmptyState>
         ) : (
-          <ResourceTable
-            headers={
-              <>
-                <Th className="w-10" />
-                <Th>Email</Th>
-                <Th>Name</Th>
-              </>
-            }
-          >
-            {candidates.map((contact) => (
-              <TableRow key={contact.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={contact.segmentIds.includes(segment.id)}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(contact.segmentIds)
-                      if (checked === true) next.add(segment.id)
-                      else next.delete(segment.id)
-                      setContactSegments(contact.id, [...next])
-                    }}
-                    aria-label={`Include ${contact.email}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={`/contacts/${contact.id}`}
-                    className="hover:underline"
-                  >
-                    {contact.email}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {[contact.firstName, contact.lastName]
-                    .filter(Boolean)
-                    .join(" ") || "—"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
+          <>
+            <ResourceTable
+              headers={
+                <>
+                  <Th className="w-10" />
+                  <Th>Email</Th>
+                  <Th>Name</Th>
+                </>
+              }
+            >
+              {pageRows.map((contact) => (
+                <TableRow key={contact.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={members.has(contact.id)}
+                      onCheckedChange={(checked) => {
+                        setContactSegment(
+                          contact.id,
+                          segment.id,
+                          checked === true
+                        ).catch((caught) =>
+                          toast.add({
+                            type: "error",
+                            title: actionError(caught),
+                          })
+                        )
+                      }}
+                      aria-label={`Include ${contact.email}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/contacts/${contact.id}`}
+                      className="hover:underline"
+                    >
+                      {contact.email}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {[contact.firstName, contact.lastName]
+                      .filter(Boolean)
+                      .join(" ") || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+            <ListPagination {...pagination} embedded noun="contact" />
+          </>
         )}
       </section>
 
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
-        title={`Delete ${segment.name}?`}
+        title={`Delete ${title}?`}
         description="Contacts remain in the workspace. They are only removed from this segment."
         onConfirm={() => {
-          deleteAndLeave(() => deleteSegment(segment.id))
+          onDelete(() => void deleteSegment(segment.id))
           toast.add({ type: "success", title: "Segment deleted" })
         }}
       />

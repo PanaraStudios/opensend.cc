@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { SEED_STATE } from "./data"
+import type { ContactProperty } from "./types"
 import {
   availableVariables,
+  escapeHtml,
+  fillVariables,
   formatVariable,
   hasUnsubscribeLink,
   parseVariables,
@@ -45,7 +47,14 @@ describe("hasUnsubscribeLink", () => {
 
 describe("availableVariables", () => {
   it("adds custom contact properties after the built-in ones, once each", () => {
-    const base = SEED_STATE.properties[0]!
+    const base: ContactProperty = {
+      id: "property",
+      key: "company",
+      name: "Company",
+      type: "string",
+      fallbackValue: "Acme",
+      createdAt: 1,
+    }
     const variables = availableVariables([
       { ...base, key: "plan", name: "Plan", fallbackValue: "free" },
       { ...base, key: "first_name", name: "Duplicate" },
@@ -60,6 +69,28 @@ describe("availableVariables", () => {
     assert.equal(
       variables.filter((one) => one.name === "contact.first_name").length,
       1
+    )
+  })
+})
+
+describe("fillVariables", () => {
+  it("fills values, falls back when missing or empty, and escapes", () => {
+    const source = `Hi ${formatVariable("contact.first_name", "there")} ${formatVariable("contact.plan")}!`
+    assert.equal(
+      fillVariables(source, { "contact.first_name": "Ada" }),
+      "Hi Ada !"
+    )
+    assert.equal(
+      fillVariables(source, { "contact.first_name": "" }),
+      "Hi there !"
+    )
+    assert.equal(
+      fillVariables(
+        source,
+        { "contact.first_name": '<b>"A&B"</b>' },
+        escapeHtml
+      ),
+      "Hi &lt;b&gt;&quot;A&amp;B&quot;&lt;/b&gt; !"
     )
   })
 })

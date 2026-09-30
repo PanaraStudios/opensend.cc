@@ -1,13 +1,24 @@
 "use client"
 
 import * as React from "react"
+import {
+  ShortcutProvider,
+  useShortcut,
+  useShortcutModifier,
+} from "@/lib/dashboard/use-shortcut"
+import { NAVIGATION_SHORTCUTS } from "@/lib/dashboard/shortcuts"
+import {
+  NavigationKeys,
+  ShortcutsDialog,
+} from "@/components/dashboard/shortcuts-dialog"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { WorkspaceProvider } from "@/components/auth/workspace"
+import { WorkspaceProvider, useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
 import { MARKETING_URL } from "@/lib/site"
+import { docsHrefForRoute } from "@/lib/docs-links"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowUpRightIcon,
@@ -21,12 +32,18 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SearchIcon,
+  KeyboardIcon,
   SunIcon,
   UserRoundIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
-import { ConfirmDialog } from "@/components/dashboard/primitives"
+import {
+  ConfirmDialog,
+  useDebouncedValue,
+} from "@/components/dashboard/primitives"
+import { useContactSearch } from "@/lib/audience/use-audience"
+import { useEmailSearch } from "@/lib/emails/use-emails"
 import { TeamSwitcher } from "@/components/dashboard/team-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Kbd } from "@/components/ui/kbd"
@@ -76,7 +93,7 @@ import {
   navItemActive,
 } from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
-import { DashboardProvider, useDashboard } from "@/lib/dashboard/store"
+import { useDomainOptions } from "@/lib/domains/use-domains"
 
 const APPEARANCE_OPTIONS = [
   { theme: "light", label: "Light", Icon: SunIcon },
@@ -110,10 +127,20 @@ function AppearanceItems() {
 function SidebarCollapseButton() {
   const { state, toggleSidebar } = useSidebar()
   const collapsed = state === "collapsed"
+  const modifier = useShortcutModifier()
+  useShortcut("mod+b", toggleSidebar)
 
   return (
     <SidebarMenuButton
-      tooltip={collapsed ? "Expand" : "Collapse"}
+      aria-keyshortcuts={modifier === "⌘" ? "Meta+B" : "Control+B"}
+      tooltip={{
+        children: (
+          <>
+            {collapsed ? "Expand" : "Collapse"}
+            <Kbd>{modifier} B</Kbd>
+          </>
+        ),
+      }}
       onClick={toggleSidebar}
     >
       {collapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
@@ -126,31 +153,53 @@ function CommandMenu({
   open,
   onOpenChange,
   installationAdmin,
+  onShortcuts,
 }: {
+  onShortcuts: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
   installationAdmin: boolean
 }) {
   const router = useRouter()
-  const { state } = useDashboard()
+  const [search, setSearch] = React.useState("")
+  const settled = useDebouncedValue(search)
+  const contacts = useContactSearch(settled, open)
+  const emails = useEmailSearch(settled, open)
+  const domains = useDomainOptions({ search: settled }, open)
 
+  function setOpen(next: boolean) {
+    if (!next) setSearch("")
+    onOpenChange(next)
+  }
   function go(href: string) {
-    onOpenChange(false)
+    setOpen(false)
     router.push(href)
   }
 
   return (
     <CommandDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={setOpen}
       title="Search"
       description="Jump to a page or record"
     >
       <Command>
-        <CommandInput placeholder="Search pages, emails, contacts…" />
+        <CommandInput
+          placeholder="Search pages, emails, contacts…"
+          value={search}
+          onValueChange={setSearch}
+        />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           <CommandGroup heading="Pages">
+            <CommandItem
+              onSelect={() => {
+                setOpen(false)
+                onShortcuts()
+              }}
+            >
+              Keyboard shortcuts <Kbd className="ml-auto">?</Kbd>
+            </CommandItem>
             {DASHBOARD_NAV.map((item) => (
               <CommandItem
                 key={item.href}
@@ -158,6 +207,7 @@ function CommandMenu({
                 onSelect={() => go(item.href)}
               >
                 {item.title}
+                <NavigationKeys href={item.href} />
               </CommandItem>
             ))}
             {/* The first tab is where Settings itself opens, listed above. */}
@@ -192,9 +242,10 @@ function CommandMenu({
           {open ? (
             <>
               <CommandGroup heading="Emails">
-                {state.emails.map((email) => (
+                {emails.map((email) => (
                   <CommandItem
                     key={email.id}
+                    serverResult
                     value={`email ${email.subject} ${email.to}`}
                     onSelect={() => go(`/emails/${email.id}`)}
                   >
@@ -203,9 +254,10 @@ function CommandMenu({
                 ))}
               </CommandGroup>
               <CommandGroup heading="Domains">
-                {state.domains.map((domain) => (
+                {domains.map((domain) => (
                   <CommandItem
                     key={domain.id}
+                    serverResult
                     value={`domain ${domain.name}`}
                     onSelect={() => go(`/domains/${domain.id}`)}
                   >
@@ -214,9 +266,10 @@ function CommandMenu({
                 ))}
               </CommandGroup>
               <CommandGroup heading="Contacts">
-                {state.contacts.map((contact) => (
+                {contacts.map((contact) => (
                   <CommandItem
                     key={contact.id}
+                    serverResult
                     value={`contact ${contact.email} ${contact.firstName} ${contact.lastName}`}
                     onSelect={() => go(`/contacts/${contact.id}`)}
                   >
@@ -234,16 +287,19 @@ function CommandMenu({
 
 function DashboardSidebar({
   onSearch,
+  onShortcuts,
   setupPending,
   installationAdmin,
 }: {
   onSearch: () => void
+  onShortcuts: () => void
   setupPending: boolean
   installationAdmin: boolean
 }) {
+  const modifier = useShortcutModifier()
   const pathname = usePathname()
   const router = useRouter()
-  const { you } = useDashboard()
+  const { user: you } = useWorkspace()
   const [logoutOpen, setLogoutOpen] = React.useState(false)
 
   return (
@@ -276,13 +332,22 @@ function DashboardSidebar({
                 <SidebarMenuItem className="mb-1">
                   <SidebarMenuButton
                     variant="outline"
-                    tooltip="Search"
+                    tooltip={{
+                      children: (
+                        <>
+                          Search <Kbd>{modifier} K</Kbd>
+                        </>
+                      ),
+                    }}
+                    aria-keyshortcuts={
+                      modifier === "⌘" ? "Meta+K" : "Control+K"
+                    }
                     onClick={onSearch}
                   >
                     <SearchIcon />
                     <span>Search</span>
                     <Kbd className="ml-auto px-1.5 group-data-[collapsible=icon]:hidden">
-                      <span>⌘</span>
+                      <span>{modifier}</span>
                       <span>K</span>
                     </Kbd>
                   </SidebarMenuButton>
@@ -297,7 +362,15 @@ function DashboardSidebar({
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       isActive={active}
-                      tooltip={item.title}
+                      tooltip={{
+                        hidden: false,
+                        children: (
+                          <>
+                            {item.title}
+                            <NavigationKeys href={item.href} />
+                          </>
+                        ),
+                      }}
                       aria-current={active ? "page" : undefined}
                       render={<Link href={item.href} />}
                     >
@@ -313,6 +386,22 @@ function DashboardSidebar({
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={onShortcuts}
+              aria-keyshortcuts="Shift+/"
+              tooltip={{
+                children: (
+                  <>
+                    Keyboard shortcuts <Kbd>?</Kbd>
+                  </>
+                ),
+              }}
+            >
+              <KeyboardIcon />
+              <span>Keyboard shortcuts</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarCollapseButton />
           </SidebarMenuItem>
@@ -401,7 +490,7 @@ function DashboardSidebar({
                 tooltip="Docs"
                 render={
                   <a
-                    href={`${MARKETING_URL}/docs`}
+                    href={docsHrefForRoute(pathname)}
                     target="_blank"
                     rel="noreferrer"
                   />
@@ -437,25 +526,22 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   const setupPending = !installation?.installation?.completedAt
   const installationAdmin = installation?.admin === true
 
-  React.useEffect(() => {
-    if (setupPending) return
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault()
-        setSearchOpen((open) => !open)
-      }
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [setupPending])
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
+  const { resolvedTheme, setTheme } = useTheme()
+  useShortcut("mod+k", () => setSearchOpen(true), { enabled: !setupPending })
+  useShortcut("?", () => setShortcutsOpen(true))
+  useShortcut("d", () => setTheme(resolvedTheme === "dark" ? "light" : "dark"))
 
   return (
     <div className="hatch min-h-svh">
       <SidebarProvider>
+        {!setupPending && <NavigationShortcuts />}
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <DashboardSidebar
           setupPending={setupPending}
           installationAdmin={installationAdmin}
           onSearch={() => setSearchOpen(true)}
+          onShortcuts={() => setShortcutsOpen(true)}
         />
         <SidebarInset className="min-w-0 bg-background">
           <div className="flex min-h-0 w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
@@ -465,6 +551,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
         </SidebarInset>
         {!setupPending && (
           <CommandMenu
+            onShortcuts={() => setShortcutsOpen(true)}
             open={searchOpen}
             onOpenChange={setSearchOpen}
             installationAdmin={installationAdmin}
@@ -478,23 +565,70 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
-      <DashboardProvider>
-        <Toaster>
+      <Toaster>
+        <ShortcutProvider>
           <DashboardChrome>{children}</DashboardChrome>
-        </Toaster>
-      </DashboardProvider>
+        </ShortcutProvider>
+      </Toaster>
     </WorkspaceProvider>
   )
 }
 
-/** The same workspace store and toasts without the sidebar, for full-screen
+/** The same workspace and toasts without the sidebar, for full-screen
     editors that own the whole viewport. */
 export function FullScreenShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
-      <DashboardProvider>
-        <Toaster>{children}</Toaster>
-      </DashboardProvider>
+      <Toaster>
+        <ShortcutProvider>
+          <EditorShortcuts />
+          {children}
+        </ShortcutProvider>
+      </Toaster>
     </WorkspaceProvider>
+  )
+}
+
+function NavigationShortcut({
+  href,
+  letter,
+}: {
+  href: string
+  letter: string
+}) {
+  const router = useRouter()
+  useShortcut(`g ${letter}`, () => router.push(href))
+  return null
+}
+
+function NavigationShortcuts() {
+  return (
+    <>
+      {Object.entries(NAVIGATION_SHORTCUTS).map(([href, letter]) => (
+        <NavigationShortcut key={href} href={href} letter={letter} />
+      ))}
+    </>
+  )
+}
+
+function EditorShortcuts() {
+  const [open, setOpen] = React.useState(false)
+  const [searchOpen, setSearchOpen] = React.useState(false)
+  const installation = useQuery(api.installation.status)
+  const { resolvedTheme, setTheme } = useTheme()
+  useShortcut("?", () => setOpen(true))
+  useShortcut("mod+k", () => setSearchOpen(true))
+  useShortcut("d", () => setTheme(resolvedTheme === "dark" ? "light" : "dark"))
+  return (
+    <>
+      <NavigationShortcuts />
+      <ShortcutsDialog open={open} onOpenChange={setOpen} />
+      <CommandMenu
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        installationAdmin={installation?.admin === true}
+        onShortcuts={() => setOpen(true)}
+      />
+    </>
   )
 }

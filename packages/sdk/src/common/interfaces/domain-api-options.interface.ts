@@ -1,0 +1,12 @@
+import type { DomainCapabilities } from '../../domains/interfaces/domain';
+
+export interface DomainApiOptions {
+  name: string;
+  region?: string;
+  custom_return_path?: string;
+  capabilities?: Partial<DomainCapabilities>;
+  open_tracking?: boolean;
+  click_tracking?: boolean;
+  tls?: 'enforced' | 'opportunistic';
+  tracking_subdomain?: string;
+}

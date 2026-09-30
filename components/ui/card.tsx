@@ -25,7 +25,7 @@ function Card({
       data-hoverable={hoverable || undefined}
       data-highlight={highlight || undefined}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card bg-(image:--gradient-panel) py-(--card-spacing) text-sm text-card-foreground shadow-panel transition-shadow [--card-spacing:--spacing(6)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-highlight:bg-(image:--gradient-panel-highlight) data-hoverable:hover:shadow-[0_0_0_1px_var(--border-strong),var(--shadow-panel)] data-[size=sm]:[--card-spacing:--spacing(4)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card bg-(image:--gradient-panel) py-(--card-spacing) text-sm text-card-foreground shadow-panel transition-shadow [--card-spacing:--spacing(6)] has-data-[slot=card-footer]:pb-0 has-data-[slot=list-pagination]:pb-0 has-[>img:first-child]:pt-0 data-highlight:bg-(image:--gradient-panel-highlight) data-hoverable:hover:shadow-[0_0_0_1px_var(--border-strong),var(--shadow-panel)] data-[size=sm]:[--card-spacing:--spacing(4)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         className
       )}
       {...props}

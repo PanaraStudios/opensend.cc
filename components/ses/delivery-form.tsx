@@ -32,7 +32,7 @@ export function DeliveryUrlForm({ status }: { status: SesStatus }) {
               <code className="min-w-0 flex-1 text-xs break-all">
                 {command}
               </code>
-              <CopyButton value={command} label="Copy tunnel command" />
+              <CopyButton value={command} label="Tunnel command" />
             </div>
           </AlertDescription>
         </Alert>

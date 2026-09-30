@@ -1,4 +1,5 @@
 "use node"
+import { trackingTarget } from "./contracts"
 import { v, ConvexError } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -21,15 +22,7 @@ import {
 import { identityFingerprint } from "./adoption"
 import { verificationState } from "./dns"
 import { identityRecords } from "./records"
-import {
-  CreateTopicCommand,
-  GetTopicAttributesCommand,
-  ListTagsForResourceCommand as SnsTags,
-  SetTopicAttributesCommand,
-  SubscribeCommand,
-  ListSubscriptionsByTopicCommand,
-  SetSubscriptionAttributesCommand,
-} from "@aws-sdk/client-sns"
+import { ensureSubscription, ensureTopic } from "./topics"
 import {
   CreateQueueCommand,
   GetQueueUrlCommand,
@@ -47,6 +40,7 @@ import {
   CreateEmailIdentityCommand,
   GetEmailIdentityCommand,
   PutEmailIdentityMailFromAttributesCommand,
+  PutEmailIdentityFeedbackAttributesCommand,
   PutConfigurationSetDeliveryOptionsCommand,
   CreateConfigurationSetEventDestinationCommand,
   UpdateConfigurationSetEventDestinationCommand,
@@ -56,6 +50,7 @@ import {
   DeleteConfigurationSetCommand,
   type SESv2Client,
 } from "@aws-sdk/client-sesv2"
+import { removeReceiptRule, syncReceiptRule } from "./inbound"
 
 const tlsPolicyValue = (tls: "enforced" | "opportunistic") =>
   tls === "enforced" ? "REQUIRE" : "OPTIONAL"
@@ -72,6 +67,68 @@ function applyTlsPolicy(
   )
 }
 
+/** Always remove SES engagement event types, including on existing sets. */
+async function applyEventDestination(
+  ses: SESv2Client,
+  configName: string,
+  topicArn: string | undefined,
+  created = false
+) {
+  const destinations = created
+    ? undefined
+    : await ses.send(
+        new GetConfigurationSetEventDestinationsCommand({
+          ConfigurationSetName: configName,
+        })
+      )
+  const Destination = destinations?.EventDestinations?.some(
+    (d) => d.Name === "opensend-events"
+  )
+    ? UpdateConfigurationSetEventDestinationCommand
+    : CreateConfigurationSetEventDestinationCommand
+  await ses.send(
+    new Destination({
+      ConfigurationSetName: configName,
+      EventDestinationName: "opensend-events",
+      EventDestination: {
+        Enabled: true,
+        MatchingEventTypes: [
+          "SEND",
+          "REJECT",
+          "BOUNCE",
+          "COMPLAINT",
+          "DELIVERY",
+          "RENDERING_FAILURE",
+          "DELIVERY_DELAY",
+        ],
+        SnsDestination: { TopicArn: topicArn },
+      },
+    })
+  )
+}
+
+/** SES emails every bounce and complaint to the sender unless forwarding is
+    off. Opensend already gets them from the event destination, so the copies
+    only land in the domain's inbox; Resend sends none. AWS keeps forwarding
+    anyway when no other notification method is set up. A policy from before
+    this permission leaves forwarding as it is, without holding up setup. */
+async function setFeedbackForwarding(
+  ses: SESv2Client,
+  domain: string,
+  enabled: boolean
+) {
+  try {
+    await ses.send(
+      new PutEmailIdentityFeedbackAttributesCommand({
+        EmailIdentity: domain,
+        EmailForwardingEnabled: enabled,
+      })
+    )
+  } catch (e) {
+    if ((e as { name?: string }).name !== "AccessDeniedException") throw e
+  }
+}
+
 export const region = internalAction({
   args: { regionId: v.id("sesRegions") },
   returns: v.null(),
@@ -85,47 +142,15 @@ export const region = internalAction({
         region.region
       )
       const prefix = resourcePrefix(installation._id)
-      const name = `${prefix}-events`
-      const topicArn = `arn:aws:sns:${region.region}:${installation.accountId}:${name}`
-      const tags = [{ Key: "opensend:installation", Value: installation._id }]
-      let topic = await missing(() =>
-        sns.send(new GetTopicAttributesCommand({ TopicArn: topicArn }))
-      )
-      if (!topic) {
-        await sns.send(new CreateTopicCommand({ Name: name, Tags: tags }))
-        topic = await sns.send(
-          new GetTopicAttributesCommand({ TopicArn: topicArn })
-        )
-      }
-      assertOwned(
-        (await sns.send(new SnsTags({ ResourceArn: topicArn }))).Tags,
-        installation._id
-      )
-      await sns.send(
-        new SetTopicAttributesCommand({
-          TopicArn: topicArn,
-          AttributeName: "SignatureVersion",
-          AttributeValue: "2",
-        })
-      )
-      await sns.send(
-        new SetTopicAttributesCommand({
-          TopicArn: topicArn,
-          AttributeName: "Policy",
-          AttributeValue: mergePolicy(topic.Attributes?.Policy, {
-            Sid: "OpensendSesPublish",
-            Effect: "Allow",
-            Principal: { Service: "ses.amazonaws.com" },
-            Action: "sns:Publish",
-            Resource: topicArn,
-            Condition: {
-              StringEquals: { "AWS:SourceAccount": installation.accountId },
-              ArnLike: {
-                "AWS:SourceArn": `arn:aws:ses:${region.region}:${installation.accountId}:configuration-set/${prefix}-*`,
-              },
-            },
-          }),
-        })
+      const topicArn = await ensureTopic(
+        sns,
+        installation,
+        region.region,
+        `${prefix}-events`,
+        {
+          Sid: "OpensendSesPublish",
+          SourceArn: `arn:aws:ses:${region.region}:${installation.accountId}:configuration-set/${prefix}-*`,
+        }
       )
       let queue = await missing(() =>
         sqs.send(
@@ -185,55 +210,20 @@ export const region = internalAction({
         id: regionId,
         changes: { topicArn, queueArn },
       })
-      const endpoint = `${installation.callbackOrigin}/ses/events`
-      let subscriptionArn: string | undefined
-      let token: string | undefined
-      do {
-        const page = await sns.send(
-          new ListSubscriptionsByTopicCommand({
-            TopicArn: topicArn,
-            NextToken: token,
-          })
-        )
-        subscriptionArn = page.Subscriptions?.find(
-          (s) => s.Protocol === "https" && s.Endpoint === endpoint
-        )?.SubscriptionArn
-        token = page.NextToken
-      } while (!subscriptionArn && token)
-      const subscriptionAttributes = {
-        RawMessageDelivery: "false",
-        RedrivePolicy: JSON.stringify({ deadLetterTargetArn: queueArn }),
-      }
-      if (!subscriptionArn || subscriptionArn === "PendingConfirmation") {
-        const result = await sns.send(
-          new SubscribeCommand({
-            TopicArn: topicArn,
-            Protocol: "https",
-            Endpoint: endpoint,
-            ReturnSubscriptionArn: true,
-            Attributes: subscriptionAttributes,
-          })
-        )
-        subscriptionArn = result.SubscriptionArn
-      } else {
-        for (const [AttributeName, AttributeValue] of Object.entries(
-          subscriptionAttributes
-        ))
-          await sns.send(
-            new SetSubscriptionAttributesCommand({
-              SubscriptionArn: subscriptionArn,
-              AttributeName,
-              AttributeValue,
-            })
-          )
-      }
+      const subscriptionArn = await ensureSubscription(
+        sns,
+        topicArn,
+        `${installation.callbackOrigin}/ses/events`,
+        {
+          RawMessageDelivery: "false",
+          RedrivePolicy: JSON.stringify({ deadLetterTargetArn: queueArn }),
+        }
+      )
       await ctx.runMutation(internal.ses.state.patchRegion, {
         id: regionId,
         changes: {
           phase: "ready",
-          ...(subscriptionArn && subscriptionArn !== "PendingConfirmation"
-            ? { subscriptionArn }
-            : {}),
+          ...(subscriptionArn ? { subscriptionArn } : {}),
           quota: await readAccount(ses),
           checkedAt: Date.now(),
         },
@@ -258,8 +248,12 @@ export const domain = internalAction({
         domain,
         region,
         tenant: tenantRow,
+        inbound,
       } = await ctx.runQuery(internal.domains.workerContext, { id: domainId })
-      const { installation, ses } = await pacedConnection(ctx, domain.region)
+      const { installation, ses, sesClassic } = await pacedConnection(
+        ctx,
+        domain.region
+      )
       if (
         domain.operation !== "remove" &&
         (!tenantRow || !tenantProvisioned(tenantRow))
@@ -309,6 +303,7 @@ export const domain = internalAction({
         await resourceAssociation(ses, tenant.TenantName, configArn)
         const tls = domain.pendingTls ?? domain.tls
         await applyTlsPolicy(ses, configName, tls)
+        await applyEventDestination(ses, configName, region.topicArn)
         await ctx.runMutation(internal.domains.finish, {
           id: domainId,
           changes: { tls },
@@ -330,7 +325,13 @@ export const domain = internalAction({
         identity.DkimAttributes.SigningHostedZone &&
         domain.operation === "provision"
       )
-        discoveredRecords = identityRecords(domain, identity)
+        discoveredRecords = identityRecords(
+          {
+            ...domain,
+            trackingTarget: trackingTarget(installation.callbackOrigin),
+          },
+          identity
+        )
       // Checked early so a foreign association fails before anything changes.
       const identityAssociated =
         identity && tenant && domain.operation !== "remove"
@@ -365,6 +366,7 @@ export const domain = internalAction({
       ))
       if (config) await assertConfigOwned()
       if (domain.operation === "remove") {
+        await removeReceiptRule(sesClassic, installation, domain, inbound)
         if (tenant) {
           if (identity) await disassociate(ses, tenant.TenantName, identityArn)
           if (config) await disassociate(ses, tenant.TenantName, configArn)
@@ -404,6 +406,8 @@ export const domain = internalAction({
                   : "USE_DEFAULT_VALUE",
             })
           )
+          // The identity goes back with SES's default feedback forwarding.
+          await setFeedbackForwarding(ses, domain.name, true)
         } else if (identity)
           await ses.send(
             new DeleteEmailIdentityCommand({ EmailIdentity: domain.name })
@@ -429,6 +433,7 @@ export const domain = internalAction({
             status: "pending",
             tenantAssociated: false,
           },
+          receiptRuleSet: null,
         })
         return null
       }
@@ -470,7 +475,13 @@ export const domain = internalAction({
             created.DkimAttributes?.Tokens?.length &&
             created.DkimAttributes.SigningHostedZone
           ) {
-            discoveredRecords = identityRecords(domain, created)
+            discoveredRecords = identityRecords(
+              {
+                ...domain,
+                trackingTarget: trackingTarget(installation.callbackOrigin),
+              },
+              created
+            )
             await ctx.runMutation(internal.domains.saveRecords, {
               id: domainId,
               records: discoveredRecords,
@@ -481,7 +492,13 @@ export const domain = internalAction({
           )
           assertOwned(identity.Tags, installation._id, domainId)
         }
-        discoveredRecords = identityRecords(domain, identity)
+        discoveredRecords = identityRecords(
+          {
+            ...domain,
+            trackingTarget: trackingTarget(installation.callbackOrigin),
+          },
+          identity
+        )
         if (!createdConfig)
           await ses.send(
             new PutConfigurationSetSuppressionOptionsCommand({
@@ -489,37 +506,6 @@ export const domain = internalAction({
               SuppressedReasons: ["BOUNCE", "COMPLAINT"],
             })
           )
-        const destinations = createdConfig
-          ? undefined
-          : await ses.send(
-              new GetConfigurationSetEventDestinationsCommand({
-                ConfigurationSetName: configName,
-              })
-            )
-        const Destination = destinations?.EventDestinations?.some(
-          (d) => d.Name === "opensend-events"
-        )
-          ? UpdateConfigurationSetEventDestinationCommand
-          : CreateConfigurationSetEventDestinationCommand
-        await ses.send(
-          new Destination({
-            ConfigurationSetName: configName,
-            EventDestinationName: "opensend-events",
-            EventDestination: {
-              Enabled: true,
-              MatchingEventTypes: [
-                "SEND",
-                "REJECT",
-                "BOUNCE",
-                "COMPLAINT",
-                "DELIVERY",
-                "RENDERING_FAILURE",
-                "DELIVERY_DELAY",
-              ],
-              SnsDestination: { TopicArn: region.topicArn },
-            },
-          })
-        )
         if (needsAdoption)
           await ses.send(
             new TagResourceCommand({ ResourceArn: identityArn, Tags: tags })
@@ -555,14 +541,36 @@ export const domain = internalAction({
         identity = await ses.send(
           new GetEmailIdentityCommand({ EmailIdentity: domain.name })
         )
+      const state = await verificationState(
+        identity,
+        domain,
+        installation.callbackOrigin
+      )
+      await applyEventDestination(
+        ses,
+        configName,
+        region.topicArn,
+        createdConfig
+      )
+      if (identity.FeedbackForwardingStatus !== false)
+        await setFeedbackForwarding(ses, domain.name, false)
+      const receiptRuleSet = await syncReceiptRule(
+        ctx,
+        sesClassic,
+        installation,
+        domain,
+        inbound
+      )
       await ctx.runMutation(internal.domains.finish, {
         id: domainId,
         changes: {
-          ...(await verificationState(identity, domain)),
+          ...state,
+          trackingTarget: trackingTarget(installation.callbackOrigin),
           tls: tlsPolicy,
           configurationSet: configName,
           tenantAssociated: true,
         },
+        receiptRuleSet,
       })
       await ctx.runMutation(internal.ses.state.patchRegion, {
         id: region._id,

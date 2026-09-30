@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { normalizeHref } from "./format"
+import { httpStatusLabel, httpStatusTone, normalizeHref } from "./format"
 
 describe("normalizeHref", () => {
   it("keeps web addresses, mail and phone links, anchors and merge tags", () => {
@@ -32,5 +32,19 @@ describe("normalizeHref", () => {
 
   it("leaves an empty value empty, which clears the link", () => {
     assert.equal(normalizeHref("   "), "")
+  })
+})
+
+describe("httpStatusTone", () => {
+  it("reads a missing response as a failure", () => {
+    assert.equal(httpStatusTone(204), "success")
+    assert.equal(httpStatusTone(301), "warning")
+    assert.equal(httpStatusTone(500), "destructive")
+    assert.equal(httpStatusTone(0), "destructive")
+  })
+
+  it("labels a missing response in words", () => {
+    assert.equal(httpStatusLabel(0), "No response")
+    assert.equal(httpStatusLabel(502), "502")
   })
 })

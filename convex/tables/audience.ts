@@ -1,0 +1,142 @@
+import { defineTable } from "convex/server"
+import { v } from "convex/values"
+
+export const topicDefaultValue = v.union(
+  v.literal("opt_in"),
+  v.literal("opt_out")
+)
+export const topicVisibilityValue = v.union(
+  v.literal("public"),
+  v.literal("private")
+)
+export const topicSubscriptionValue = v.union(
+  v.literal("subscribed"),
+  v.literal("unsubscribed")
+)
+export const propertyTypeValue = v.union(
+  v.literal("string"),
+  v.literal("number")
+)
+
+/* Segment membership and topic choices are child tables, not arrays on the
+   contact: a segment can hold any number of contacts, and broadcasts resolve
+   recipients by segment or topic. */
+export const contactInputValue = v.object({
+  email: v.string(),
+  firstName: v.optional(v.string()),
+  lastName: v.optional(v.string()),
+  unsubscribed: v.optional(v.boolean()),
+  properties: v.optional(v.record(v.string(), v.string())),
+})
+export const importResultValue = v.object({
+  created: v.number(),
+  updated: v.number(),
+  skipped: v.number(),
+  createdIds: v.array(v.id("contacts")),
+  errors: v.array(v.string()),
+})
+export const audienceTables = {
+  contactImports: defineTable({
+    organizationId: v.string(),
+    contacts: v.array(contactInputValue),
+    segmentIds: v.array(v.id("segments")),
+    skipExisting: v.boolean(),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    offset: v.number(),
+    result: importResultValue,
+    error: v.optional(v.string()),
+    failedCount: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    topics: v.optional(
+      v.array(
+        v.object({
+          topicId: v.id("topics"),
+          subscription: topicSubscriptionValue,
+        })
+      )
+    ),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_status", ["organizationId", "status"]),
+  contacts: defineTable({
+    organizationId: v.string(),
+    /** Normalized lowercase; unique per team. */
+    email: v.string(),
+    firstName: v.string(),
+    lastName: v.string(),
+    unsubscribed: v.boolean(),
+    /** Keyed by property key, so bounded by the team's property count. */
+    properties: v.record(v.string(), v.string()),
+    /** Email and names, for the search box. */
+    search: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_email", ["organizationId", "email"])
+    .index("by_organizationId_and_unsubscribed", [
+      "organizationId",
+      "unsubscribed",
+    ])
+    .searchIndex("search_search", {
+      searchField: "search",
+      filterFields: ["organizationId", "unsubscribed"],
+    }),
+  contactProperties: defineTable({
+    organizationId: v.string(),
+    key: v.string(),
+    name: v.string(),
+    type: propertyTypeValue,
+    fallbackValue: v.optional(v.string()),
+    /** Set while its values are stripped from every contact. The key stays
+        reserved until that finishes, so a new property never loses values. */
+    deleting: v.optional(v.boolean()),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_key", ["organizationId", "key"])
+    .index("by_organizationId_and_deleting", ["organizationId", "deleting"]),
+  segments: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    /** Deprecated: sizes come from the segment member counts. Cleared by
+        `migrations:backfillCounts`; drop once every install has run it. */
+    memberCount: v.optional(v.number()),
+  })
+    .index("by_organizationId", ["organizationId"])
+    /** Picker suggestions: a team has any number of segments. */
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    }),
+  segmentMembers: defineTable({
+    organizationId: v.string(),
+    segmentId: v.id("segments"),
+    contactId: v.id("contacts"),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_segmentId", ["segmentId"])
+    /** A contact's segments in the order it joined them. */
+    .index("by_contactId", ["contactId"])
+    .index("by_contactId_and_segmentId", ["contactId", "segmentId"]),
+  topics: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    description: v.string(),
+    /** Fixed at creation: it decides every contact without an explicit row. */
+    defaultSubscription: topicDefaultValue,
+    visibility: topicVisibilityValue,
+  }).index("by_organizationId", ["organizationId"]),
+  /** Only explicit choices; anyone else follows the topic's default. */
+  topicSubscriptions: defineTable({
+    organizationId: v.string(),
+    topicId: v.id("topics"),
+    contactId: v.id("contacts"),
+    subscription: topicSubscriptionValue,
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_topicId_and_subscription", ["topicId", "subscription"])
+    .index("by_contactId_and_topicId", ["contactId", "topicId"]),
+}

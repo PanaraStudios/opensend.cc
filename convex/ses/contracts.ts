@@ -1,4 +1,6 @@
-import { v, type Infer } from "convex/values"
+import { v, ConvexError, type Infer } from "convex/values"
+import { isPublicHostname } from "../../lib/net/public-host"
+import { env } from "../_generated/server"
 export const setupStepValue = v.union(
   v.literal("welcome"),
   v.literal("aws"),
@@ -70,7 +72,8 @@ export const recordValue = v.object({
     v.literal("MX"),
     v.literal("SPF"),
     v.literal("DMARC"),
-    v.literal("Receiving")
+    v.literal("Receiving"),
+    v.literal("Tracking")
   ),
   type: v.union(v.literal("CNAME"), v.literal("MX"), v.literal("TXT")),
   name: v.string(),
@@ -145,19 +148,97 @@ export function installationUrl(value: string, allowLocal = false) {
     url.pathname !== "/"
   )
     throw new Error("Use an HTTPS origin without a path, query, or credentials")
-  if (
-    !allowLocal &&
-    (local ||
-      !url.hostname.includes(".") ||
-      /^[\d.]+$/.test(url.hostname) ||
-      url.hostname.includes(":"))
-  )
+  if (!allowLocal && !isPublicHostname(url.hostname))
     throw new Error("Use a public HTTPS hostname")
   return url.origin
 }
+/** Bumped whenever the generated IAM policy gains permissions. An installation
+    without a recorded revision runs revision 1, the setup-only policy. */
+export const POLICY_REVISION = 3
 export function resourcePrefix(installationId: string) {
   return `opensend-${installationId}`
 }
 export function teamTenantName(installationId: string, organizationId: string) {
   return `${resourcePrefix(installationId)}-t-${organizationId.slice(-16)}`
+}
+
+/* SES receives mail only in some regions:
+   https://docs.aws.amazon.com/general/latest/gr/ses.html#ses_inbound_endpoints */
+const RECEIVING_REGIONS = new Set([
+  "us-east-1",
+  "us-east-2",
+  "us-west-1",
+  "us-west-2",
+  "af-south-1",
+  "ap-southeast-3",
+  "ap-south-1",
+  "ap-northeast-3",
+  "ap-northeast-2",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ap-northeast-1",
+  "ca-central-1",
+  "eu-central-1",
+  "eu-west-1",
+  "eu-west-2",
+  "eu-south-1",
+  "eu-west-3",
+  "eu-north-1",
+  "il-central-1",
+  "me-south-1",
+  "sa-east-1",
+])
+export function requireReceivingRegion(region: string) {
+  if (!RECEIVING_REGIONS.has(region))
+    throw new ConvexError(
+      `Amazon SES does not receive email in ${region}. Use a domain in a region that supports receiving.`
+    )
+}
+/** "ap-northeast-1" → "apne1": short enough for an S3 bucket name. */
+export function shortRegion(region: string) {
+  const [area, direction, number] = region.split("-")
+  const compass = direction
+    .replace(/north/g, "n")
+    .replace(/south/g, "s")
+    .replace(/east/g, "e")
+    .replace(/west/g, "w")
+    .replace(/central/g, "c")
+  return `${area}${compass}${number}`
+}
+/** The region's inbound mail bucket. S3 names are global and at most 63
+    characters; the IAM policy allows `${prefix}-inbound*`. */
+export function inboundBucketName(installationId: string, region: string) {
+  const name = `${resourcePrefix(installationId)}-inbound-${shortRegion(region)}`
+  if (name.length > 63 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(name))
+    throw new ConvexError("This installation ID is too long for an S3 bucket")
+  return name
+}
+/** The rule set Opensend creates when a region has no active one. */
+export const inboundRuleSetName = (installationId: string) =>
+  `${resourcePrefix(installationId)}-inbound`
+/** One receipt rule per domain, named like its configuration set. */
+export const receiptRuleName = (installationId: string, domainId: string) =>
+  `${resourcePrefix(installationId)}-${domainId.slice(-12)}`
+/** Self-hosted tracking uses the callback host. Cloud custom hosts must reach
+    the dashboard's proxy, while callbacks and fallback links go to Convex. */
+export function trackingTarget(
+  callbackOrigin: string,
+  siteUrl: string | undefined = env.SITE_URL
+) {
+  const url = new URL(callbackOrigin)
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  )
+    throw new ConvexError(
+      "Configure a public HTTPS callback, without a port or path, before provisioning AWS"
+    )
+  if (url.hostname.endsWith(".convex.site") && siteUrl?.startsWith("https://"))
+    return trackingTarget(siteUrl)
+  return url.hostname
 }

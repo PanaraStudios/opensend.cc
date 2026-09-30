@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation"
 import { FileCodeIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import {
   EditorNotFound,
   EmailEditorScreen,
@@ -16,21 +17,24 @@ import {
   TemplateMenu,
   usePublishTemplate,
 } from "@/components/dashboard/templates/shared"
-import { useDashboard, useStoreHydrated } from "@/lib/dashboard/store"
+import { actionError } from "@/lib/action-error"
 import { templatePublishLabel } from "@/lib/dashboard/template"
+import type { EmailTemplate } from "@/lib/dashboard/types"
+import {
+  useTemplate,
+  useTemplateCommands,
+  useTemplateSaver,
+} from "@/lib/templates/use-templates"
 
 export function TemplateEditor() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
-  const { state, updateTemplate, deleteTemplate } = useDashboard()
-  const hydrated = useStoreHydrated()
-  const publish = usePublishTemplate()
+  const item = useTemplate(id)
+  const { deleteTemplate } = useTemplateCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/templates")
-  const item = state.templates.find((row) => row.id === id)
 
   /* The editor copies the document into the engine when it mounts, so it
-     waits for the saved one rather than starting from the seed. */
-  if (!hydrated) return null
+     waits for the stored one rather than starting empty. */
+  if (item === undefined) return null
 
   if (!item) {
     if (leaving) return null
@@ -43,17 +47,42 @@ export function TemplateEditor() {
     )
   }
 
+  return (
+    <TemplateEditorScreen
+      key={item.id}
+      item={item}
+      onDelete={() =>
+        deleteAndLeave(
+          () =>
+            void deleteTemplate(item.id).catch((error) =>
+              toast.add({ type: "error", title: actionError(error) })
+            )
+        )
+      }
+    />
+  )
+}
+
+function TemplateEditorScreen({
+  item,
+  onDelete,
+}: {
+  item: EmailTemplate
+  onDelete: () => void
+}) {
+  const router = useRouter()
+  const save = useTemplateSaver(item)
+  const publish = usePublishTemplate()
   const publishLabel = templatePublishLabel(item)
 
   return (
     <EmailEditorScreen
-      key={item.id}
       item={item}
       noun="template"
       listHref="/templates"
       listLabel="Templates"
       badge={<TemplateStatusBadge status={item.status} />}
-      onChange={(patch) => updateTemplate(item.id, patch)}
+      onChange={save}
       actions={(editor) => (
         <>
           <TemplateMenu
@@ -61,7 +90,7 @@ export function TemplateEditor() {
             inEditor
             save={editor.flush}
             onDuplicated={(next) => router.push(`/templates/${next}`)}
-            onDelete={() => deleteAndLeave(() => deleteTemplate(item.id))}
+            onDelete={onDelete}
           />
           <Button
             size="sm"
@@ -69,7 +98,7 @@ export function TemplateEditor() {
             disabled={!publishLabel || editor.empty}
             onClick={async () => {
               /* What goes live is the email on screen, so it is saved first. */
-              if (await editor.flush()) publish(item.id)
+              if (await editor.flush()) await publish(item.id)
             }}
           >
             {publishLabel ?? "Published"}

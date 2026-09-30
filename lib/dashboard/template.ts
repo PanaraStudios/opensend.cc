@@ -1,10 +1,17 @@
-import { usedVariables } from "./email-variables"
+import { parseVariables, usedVariables } from "./email-variables"
 import { slugify, uniqueSlug } from "./slug"
 import type { EmailTemplate } from "./types"
 
 export const UNTITLED_TEMPLATE = "Untitled Template"
 
 const ALIAS_FALLBACK = "template"
+
+/** Resend's cap on the variables one template may use. */
+export const MAX_TEMPLATE_VARIABLES = 50
+
+/** The alias a name starts from, before it is numbered to be unique. */
+export const templateAliasBase = (name: string) =>
+  slugify(name) || ALIAS_FALLBACK
 
 export function uniqueTemplateAlias(
   name: string,
@@ -20,7 +27,7 @@ export function uniqueTemplateAlias(
 /** True while the alias is still the one made from the name: its slug, or
     that slug numbered because another template held it at the time. */
 function isAutomaticAlias(item: Pick<EmailTemplate, "name" | "alias">) {
-  const base = slugify(item.name) || ALIAS_FALLBACK
+  const base = templateAliasBase(item.name)
   return (
     item.alias === base ||
     (item.alias.startsWith(`${base}-`) &&
@@ -48,8 +55,31 @@ export function renamedTemplateAlias(
 export function templateVariables(
   item: Pick<EmailTemplate, "subject" | "preview" | "html">
 ): string[] {
-  return usedVariables(`${item.subject}\n${item.preview}\n${item.html}`)
+  return usedVariables(templateSource(item))
 }
+
+const templateSource = (
+  item: Pick<EmailTemplate, "subject" | "preview" | "html">
+) => `${item.subject}\n${item.preview}\n${item.html}`
+
+export type TemplateVariable = { key: string; fallback?: string }
+
+/** Each variable once, with the first fallback written for it: like Resend,
+    a variable has one default, used wherever a send leaves it out. */
+export function templateVariableDefaults(
+  item: Pick<EmailTemplate, "subject" | "preview" | "html">
+): TemplateVariable[] {
+  const defaults = new Map<string, string>()
+  for (const { name, fallback } of parseVariables(templateSource(item)))
+    if (!defaults.get(name)) defaults.set(name, fallback)
+  return [...defaults].map(([key, fallback]) =>
+    fallback ? { key, fallback } : { key }
+  )
+}
+
+/** What `templateAliasError` says of a taken alias; the server says the
+    same, so the alias dialog reads alike either way. */
+export const TEMPLATE_ALIAS_TAKEN = "Another template already uses this alias"
 
 /** Why an alias cannot be used, or null when it can. */
 export function templateAliasError(
@@ -61,7 +91,7 @@ export function templateAliasError(
     return "Use lowercase letters, numbers, dashes and underscores"
   }
   if (others.some((item) => item.alias === alias)) {
-    return "Another template already uses this alias"
+    return TEMPLATE_ALIAS_TAKEN
   }
   return null
 }
@@ -97,24 +127,6 @@ export function publishedAtAfterEdit(
   const live = item.publishedAt !== null && item.updatedAt <= item.publishedAt
   const sent = SENT_FIELDS.some((field) => field in patch)
   return live && !sent ? now : item.publishedAt
-}
-
-/** Backfill for records persisted before templates opened in the editor. */
-export function normalizeTemplates(
-  templates: readonly EmailTemplate[]
-): EmailTemplate[] {
-  const out: EmailTemplate[] = []
-  for (const item of templates) {
-    out.push({
-      ...item,
-      alias: item.alias || uniqueTemplateAlias(item.name, out),
-      preview: item.preview ?? "",
-      publishedAt:
-        item.publishedAt ??
-        (item.status === "published" ? item.updatedAt : null),
-    })
-  }
-  return out
 }
 
 export type TemplateInput = Pick<EmailTemplate, "name" | "subject"> &

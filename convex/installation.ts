@@ -23,10 +23,12 @@ import {
   regionValue,
   setupStepValue,
   tenantProvisioned,
+  trackingTarget,
 } from "./ses/contracts"
 import { internal } from "./_generated/api"
 import { startWorkflow } from "./ses/workflows"
-import type { MutationCtx } from "./_generated/server"
+import { resubscribe } from "./ses/inboundRegions"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc } from "./_generated/dataModel"
 
 export { findInstallation }
@@ -82,6 +84,7 @@ export const status = query({
                 credentialKind: installation.credentialKind,
                 accessKeyLast4: installation.accessKeyLast4,
                 credentialRevision: installation.credentialRevision,
+                policyRevision: installation.policyRevision,
               }
             : {}),
         }
@@ -181,6 +184,21 @@ export const connection = internalQuery({
   returns: schema.doc("installation"),
   handler: (ctx) => requireConnection(ctx),
 })
+export const recordPolicyRevision = internalMutation({
+  args: { credentialRevision: v.number(), policyRevision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await requireConnection(ctx)
+    // A check made with replaced credentials proves nothing about the new ones.
+    if (installation.credentialRevision !== args.credentialRevision)
+      throw new ConvexError("Setup changed. Reload and try again.")
+    await ctx.db.patch("installation", installation._id, {
+      policyRevision: args.policyRevision,
+    })
+    return null
+  },
+})
 export const saveEnvironment = internalMutation({
   args: { siteUrl: v.string(), callbackOrigin: v.string() },
   returns: v.id("installation"),
@@ -212,6 +230,87 @@ export const saveEnvironment = internalMutation({
       environmentCheckedAt: Date.now(),
       credentialRevision: 0,
     })
+  },
+})
+/** What moving the public URL needs: a connected installation, a new valid
+    origin, and no AWS setup running that still uses the current one. */
+async function callbackMove(
+  ctx: QueryCtx | MutationCtx,
+  callbackOrigin: string
+) {
+  await requireInstallationAdmin(ctx)
+  const installation = await requireConnection(ctx)
+  // Tracking CNAMEs point at its hostname, so it cannot carry a port.
+  try {
+    trackingTarget(callbackOrigin)
+  } catch {
+    throw new ConvexError("Use an HTTPS URL without a port, path, or query")
+  }
+  if (callbackOrigin === installation.callbackOrigin)
+    throw new ConvexError("This is already the public URL")
+  const regions = await listRegions(ctx)
+  const inbound = await ctx.db
+    .query("inboundRegions")
+    .withIndex("by_region")
+    .take(20)
+  const domainRunning = await ctx.db
+    .query("domains")
+    .withIndex("by_deleted_and_phase", (q) =>
+      q.eq("deleted", false).eq("phase", "running")
+    )
+    .first()
+  if (
+    domainRunning ||
+    regions.some((region) => region.phase === "running") ||
+    inbound.some((row) => row.phase === "running")
+  )
+    throw new ConvexError(
+      "Wait for running AWS and domain setup to finish, then change the URL"
+    )
+  return { installation, regions, inbound }
+}
+/** Checked before the new URL is probed, so a refusal costs no request. */
+export const checkCallbackMove = internalQuery({
+  args: { callbackOrigin: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { callbackOrigin }) => {
+    await callbackMove(ctx, callbackOrigin)
+    return null
+  },
+})
+/** Moves the installation to a public URL the caller proved reaches this
+    deployment. Every region provisioned before subscribes the new URL again,
+    and counts as unconfirmed until SNS confirms it, as in first-time setup;
+    domains then refresh their tracking records. The IAM policy grants no
+    `sns:Unsubscribe`, so the old URL's subscriptions stay in SNS. */
+export const moveCallbackOrigin = internalMutation({
+  args: { callbackOrigin: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { callbackOrigin }) => {
+    const { installation, regions, inbound } = await callbackMove(
+      ctx,
+      callbackOrigin
+    )
+    await ctx.db.patch("installation", installation._id, {
+      callbackOrigin,
+      environmentCheckedAt: Date.now(),
+    })
+    const subscribed = regions.filter((region) => region.topicArn)
+    for (const region of subscribed)
+      await ctx.db.patch("sesRegions", region._id, {
+        phase: "running",
+        error: undefined,
+        callbackConfirmed: false,
+        subscriptionArn: undefined,
+      })
+    for (const row of inbound)
+      if (row.operation === "provision" && row.topicArn)
+        await resubscribe(ctx, row)
+    await startWorkflow(ctx, internal.ses.workflows.moveCallbackOrigin, {
+      regionIds: subscribed.map((region) => region._id),
+      regions: regions.map((region) => region.region),
+    })
+    return null
   },
 })
 export const activateConnection = internalMutation({
@@ -248,6 +347,8 @@ export const activateConnection = internalMutation({
       accessKeyLast4: args.accessKeyLast4,
       defaultRegion: args.defaultRegion,
       credentialRevision: args.revision + 1,
+      // New credentials may belong to a user with an older policy.
+      policyRevision: undefined,
       ...(!installation.completedAt ? { setupStep: "callback" as const } : {}),
     })
     for (const item of args.regions) {
@@ -275,10 +376,7 @@ export const provisionRegion = mutation({
     await requireInstallationAdmin(ctx)
     const installation = await findInstallation(ctx)
     if (!installation?.accountId) throw new ConvexError("Connect AWS first")
-    if (!installation.callbackOrigin.startsWith("https://"))
-      throw new ConvexError(
-        "Configure a public HTTPS callback before provisioning AWS"
-      )
+    trackingTarget(installation.callbackOrigin)
     const region = await findRegion(ctx, args.region)
     if (!region) throw new ConvexError("Enable this region first")
     if (region.phase === "running") return null
@@ -306,7 +404,7 @@ export async function completeInstallation(
   organizationId: string
 ) {
   await requireInstallationAdmin(ctx)
-  await requireTeam(ctx, organizationId, true)
+  await requireTeam(ctx, organizationId, "admin")
   const installation = await findInstallation(ctx)
   if (!installation?.accountId) throw new ConvexError("Connect AWS first")
   if (installation.completedAt) return

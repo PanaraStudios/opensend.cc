@@ -1,9 +1,27 @@
 "use client"
 
 import * as React from "react"
+import {
+  ShortcutAction,
+  useShortcut,
+  useConfirmShortcut,
+  useShortcutModifier,
+} from "@/lib/dashboard/use-shortcut"
+import { useTableShortcuts } from "@/lib/dashboard/use-table-shortcuts"
+import { Kbd } from "@/components/ui/kbd"
+import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
+import {
+  usePaginatedQuery,
+  useQuery,
+  type PaginatedQueryArgs,
+  type PaginatedQueryItem,
+  type PaginatedQueryReference,
+} from "convex/react"
+import type { FunctionReference } from "convex/server"
+import { useWorkspace } from "@/components/auth/workspace"
 import {
   ArrowLeftIcon,
   BookOpenIcon,
@@ -24,6 +42,7 @@ import {
 
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
+import { docsHrefForRoute } from "@/lib/docs-links"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -34,7 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardAction,
@@ -84,6 +103,7 @@ import {
 import {
   Combobox,
   ComboboxContent,
+  ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
@@ -109,17 +129,11 @@ import {
   SelectGroup,
   SelectItem,
   SelectTrigger,
+  selectTriggerClassName,
   SelectValue,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import {
   Table,
   TableBody,
@@ -149,16 +163,26 @@ import {
   exportStatusLabel,
   formatDateTime,
   formatRelative,
+  httpStatusLabel,
   httpStatusTone,
-  pluralize,
   sentenceCase,
   statusLabel,
   TEMPLATE_STATUS_TONE,
   templateStatusLabel,
   type BadgeTone,
 } from "@/lib/dashboard/format"
+import { rangeLabel } from "@/lib/dashboard/email-range"
+import { exportSummary, type ExportFilterLine } from "@/lib/dashboard/exports"
 import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
+import {
+  PAGE_SIZES,
+  canGoNext,
+  hasPages,
+  lastLoadedPage,
+  pageLabel,
+  type Pager,
+} from "@/lib/dashboard/pagination"
 import type {
   AutomationRunStatus,
   AutomationStatus,
@@ -192,7 +216,7 @@ export function PageHeader({
       </div>
       {children ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {children}
+          <ShortcutAction value="create">{children}</ShortcutAction>
         </div>
       ) : null}
     </div>
@@ -257,8 +281,7 @@ export function useDraftValue(value: string, commit: (next: string) => void) {
   }
 }
 
-/** Local draft for a store-backed text field. Commits on blur so typing does
-    not write localStorage and re-render every consumer per keystroke. */
+/** Local draft for a stored text field. Commits on blur. */
 export function useDraft(
   value: string,
   commit: (next: string) => void,
@@ -274,6 +297,104 @@ export function useDraft(
       onChange?.()
     },
     onBlur: commitDraft,
+  }
+}
+
+/** Input props for a stored text field that saves as you type: each
+    keystroke shows at once, and the value is saved after a short pause, on
+    blur, and on unmount, so typing costs one write per pause rather than one
+    per keystroke. While an edit waits or saves, the stored value does not
+    replace it; a rejected save reports the error and shows the stored value
+    again. `draft` is the live text, for headings that follow the field. */
+export function useAutosaveDraft(
+  value: string,
+  commit: (next: string) => Promise<unknown>,
+  delay = 400
+) {
+  const [draft, setDraft] = React.useState(value)
+  const [synced, setSynced] = React.useState(value)
+  const [editing, setEditing] = React.useState(false)
+  if (synced !== value) {
+    setSynced(value)
+    if (!editing) setDraft(value)
+  }
+  const latest = React.useRef({ draft, value, commit })
+  React.useEffect(() => {
+    latest.current.draft = draft
+    latest.current.value = value
+    latest.current.commit = commit
+  })
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sent = React.useRef<string | null>(null)
+  const pending = React.useRef<Promise<boolean> | null>(null)
+
+  const flush = React.useCallback((onlyIfWaiting = false): Promise<boolean> => {
+    if (onlyIfWaiting && timer.current === null)
+      return pending.current ?? Promise.resolve(true)
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = null
+    const { draft: next, value: stored, commit: save } = latest.current
+    const settle = () => {
+      if (timer.current === null && latest.current.draft === next)
+        setEditing(false)
+    }
+    if (next === sent.current) return pending.current ?? Promise.resolve(true)
+    if (next === stored) {
+      settle()
+      return pending.current ?? Promise.resolve(true)
+    }
+    sent.current = next
+    const done = () => {
+      if (sent.current === next) {
+        sent.current = null
+        pending.current = null
+      }
+    }
+    const promise = save(next).then(
+      () => {
+        done()
+        settle()
+        return true
+      },
+      (caught: unknown) => {
+        done()
+        toast.add({ type: "error", title: actionError(caught) })
+        if (timer.current !== null || latest.current.draft !== next)
+          return false
+        latest.current.draft = latest.current.value
+        setDraft(latest.current.value)
+        setEditing(false)
+        return false
+      }
+    )
+    pending.current = promise
+    return promise
+  }, [])
+  React.useEffect(
+    () => () => {
+      void flush(true)
+    },
+    [flush]
+  )
+
+  const change = (next: string) => {
+    latest.current.draft = next
+    setDraft(next)
+    setEditing(true)
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = setTimeout(flush, delay)
+  }
+  return {
+    draft,
+    setDraft: change,
+    flush,
+    props: {
+      value: draft,
+      onChange: (
+        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+      ) => change(event.target.value),
+      onBlur: () => flush(true),
+    },
   }
 }
 
@@ -311,9 +432,12 @@ export function DetailHeader({
   badge?: React.ReactNode
   actions?: React.ReactNode
 }) {
+  const router = useRouter()
+  useShortcut("Escape", () => router.push(backHref))
   return (
     <div className="flex flex-col gap-4">
       <Button
+        aria-keyshortcuts="Escape"
         variant="ghost"
         size="sm"
         nativeButton={false}
@@ -340,7 +464,7 @@ export function DetailHeader({
         </div>
         {actions ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {actions}
+            <ShortcutAction value="edit">{actions}</ShortcutAction>
           </div>
         ) : null}
       </div>
@@ -388,7 +512,8 @@ export function Surface({
 /** One framed block of a settings page: what it is about, its controls, and
     a footer for the button that saves them. `heading` replaces the title
     when the block has tabs of its own; `flush` is for a table or an empty
-    state, which bring their own inset. */
+    state, which bring their own inset, and puts a table's pager right under
+    its last row. */
 export function SettingsCard({
   title,
   heading,
@@ -421,7 +546,9 @@ export function SettingsCard({
           {actions ? <CardAction>{actions}</CardAction> : null}
         </CardHeader>
         {children ? (
-          <CardContent className={cn("flex flex-col gap-5", flush && "px-2")}>
+          <CardContent
+            className={cn("flex flex-col", flush ? "px-2" : "gap-5")}
+          >
             {children}
           </CardContent>
         ) : null}
@@ -527,8 +654,9 @@ export function ResourceTable({
   children: React.ReactNode
   className?: string
 }) {
+  const ref = useTableShortcuts()
   return (
-    <div className={cn("frame", className)}>
+    <div ref={ref} className={cn("frame", className)}>
       <div className="panel overflow-hidden p-0">
         <Table>
           <TableHeader>
@@ -562,65 +690,201 @@ export function useDebouncedValue<T>(value: T, delay = 250) {
   return settled
 }
 
+export function useListSearch() {
+  const [query, setQuery] = React.useState("")
+  const search = useDebouncedValue(query)
+  return { query, setQuery, search }
+}
+
 /* ------------------------------------------------------------- pagination */
 
-export const PAGE_SIZES = [40, 80, 120] as const
+export { PAGE_SIZES }
 
-/** Client-side paging over an already filtered list. The page clamps, so a
-    filter that shrinks the list never strands the view past the last page. */
-export function usePagination<T>(rows: readonly T[]) {
+type PaginationState = Pager & {
+  /** A page is being fetched; the step buttons wait for it. */
+  loading: boolean
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+}
+
+/** Paging over `rows`, loaded whole or (with `source`) a server page at a
+    time: stepping past the loaded rows loads more, and a filtered page that
+    came back short keeps loading until it fills or the list runs out. The
+    page clamps to what loaded, so a filter that shrinks the list never
+    strands the view. Spread `pagination` into `ListPagination`. */
+function usePager<T>(
+  rows: readonly T[],
+  source: {
+    hasMore: boolean
+    loading: boolean
+    total: number | null
+    /** Set while more can load. */
+    loadMore?: (numItems: number) => void
+  }
+): { pageRows: T[]; pagination: PaginationState } {
   const [pageSize, setPageSize] = React.useState<number>(PAGE_SIZES[0])
   const [requested, setPage] = React.useState(0)
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
-  const page = Math.min(requested, pageCount - 1)
+  const loaded = rows.length
+  const page = Math.min(requested, lastLoadedPage({ loaded, pageSize }))
+  const { loadMore } = source
+  const fill = (page: number, size: number) => {
+    if (loadMore && (page + 1) * size > loaded)
+      loadMore((page + 1) * size - loaded)
+  }
+  React.useEffect(() => {
+    if (loadMore && (page + 1) * pageSize > loaded)
+      loadMore((page + 1) * pageSize - loaded)
+  }, [loadMore, loaded, page, pageSize])
   return {
     pageRows: rows.slice(page * pageSize, (page + 1) * pageSize),
     pagination: {
       page,
-      pageCount,
       pageSize,
-      total: rows.length,
-      onPageChange: setPage,
-      onPageSizeChange(next: number) {
-        setPageSize(next)
+      loaded,
+      total: source.total,
+      hasMore: source.hasMore,
+      loading: source.loading,
+      onPageChange(next: number) {
+        fill(next, pageSize)
+        setPage(next)
+      },
+      onPageSizeChange(size: number) {
+        fill(0, size)
+        setPageSize(size)
         setPage(0)
       },
     },
   }
 }
 
-/** Footer for a paged list: position, page size, and the two step buttons. */
+/** Paging over the rows a `usePaginatedQuery` has loaded so far. `total`
+    is the list's count query for the same filters, when it has one. */
+export function useLoadedPagination<T>(
+  rows: readonly T[],
+  query: {
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted"
+    loadMore: (numItems: number) => void
+  },
+  total?: { total: number | null } | null
+) {
+  return usePager(rows, {
+    hasMore: query.status !== "Exhausted",
+    loading: query.status === "LoadingMore",
+    total: total?.total ?? null,
+    loadMore: query.status === "CanLoadMore" ? query.loadMore : undefined,
+  })
+}
+
+/** A server list a page at a time, with its count query for the same
+    filters (`args` without `paginationOpts`), mapped by `map` (keep it
+    stable: a module-level function). `lead` rows, kept stable too, go
+    before the server's (built-in entries, say) and count with them. Every
+    Convex-backed list uses this, then spreads `pagination` into
+    `ListPagination`. Optional `tail` rows follow once the server list ends. */
+export function usePagedList<
+  Query extends PaginatedQueryReference,
+  Row = PaginatedQueryItem<Query>,
+>(
+  list: Query,
+  count: CountQuery<Query>,
+  args: PaginatedQueryArgs<Query> | "skip",
+  map: (item: PaginatedQueryItem<Query>) => Row = identity,
+  lead: readonly Row[] = NO_ROWS,
+  tail: readonly Row[] = NO_ROWS
+) {
+  const query = usePaginatedQuery(list, args, {
+    initialNumItems: PAGE_SIZES[0],
+  })
+  const counted = useQuery(
+    count as FunctionReference<"query">,
+    args === "skip" ? "skip" : args
+  ) as { total: number | null } | undefined
+  const rows = React.useMemo(
+    () => [
+      ...lead,
+      ...query.results.map((item) => map(item)),
+      ...(query.status === "Exhausted" ? tail : []),
+    ],
+    [lead, tail, query.results, query.status, map]
+  )
+  const total =
+    counted?.total == null
+      ? null
+      : { total: counted.total + lead.length + tail.length }
+  return { ...query, rows, ...useLoadedPagination(rows, query, total) }
+}
+const identity = <T,>(item: T) => item
+const NO_ROWS: readonly never[] = []
+/** A list's count query: its filters, without the page. */
+type CountQuery<Query extends PaginatedQueryReference> = FunctionReference<
+  "query",
+  "public",
+  PaginatedQueryArgs<Query>,
+  { total: number | null }
+>
+
+/** `usePagedList` for the active team: `filters` are the list's arguments
+    besides the team and the page. */
+export function useTeamList<
+  Query extends PaginatedQueryReference,
+  Row = PaginatedQueryItem<Query>,
+>(
+  list: Query,
+  count: CountQuery<Query>,
+  filters: Omit<PaginatedQueryArgs<Query>, "organizationId"> | "skip",
+  map: (item: PaginatedQueryItem<Query>) => Row = identity,
+  lead?: readonly Row[],
+  tail?: readonly Row[]
+) {
+  const { activeTeamId } = useWorkspace()
+  return usePagedList(
+    list,
+    count,
+    activeTeamId && filters !== "skip"
+      ? ({
+          ...filters,
+          organizationId: activeTeamId,
+        } as unknown as PaginatedQueryArgs<Query>)
+      : "skip",
+    map,
+    lead,
+    tail
+  )
+}
+
+/** Footer for a paged list: position, page size, and the two step buttons.
+    A top-level list keeps it, as Resend does, even on one page; a list
+    `embedded` in a record's page or a card shows it only once the list
+    runs past one page. Inside a card it closes the table like a row: a
+    divider above, the cells' inset, and the card's padding gone below. */
 export function ListPagination({
-  page,
-  pageCount,
-  pageSize,
-  total,
   noun,
   plural,
   onPageChange,
   onPageSizeChange,
   previousLabel = "Previous",
   nextLabel = "Next",
-  hasMore = false,
-  loading = false,
-}: Omit<ReturnType<typeof usePagination>["pagination"], "onPageChange"> & {
-  onPageChange: (page: number) => void
+  loading,
+  embedded = false,
+  ...pager
+}: PaginationState & {
   noun: string
   /** For a noun that does not just take an "s". */
   plural?: string
   previousLabel?: string
   nextLabel?: string
-  hasMore?: boolean
-  loading?: boolean
+  embedded?: boolean
 }) {
+  const { page, pageSize } = pager
+  if (embedded && !hasPages(pager)) return null
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div
+      data-slot="list-pagination"
+      className="flex w-full flex-wrap items-center justify-between gap-2 in-data-[slot=card-content]:border-t in-data-[slot=card-content]:border-table-divider in-data-[slot=card-content]:py-2 [[data-slot=table-container]+&]:px-4"
+    >
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
-        <span>
-          Page {page + 1} of {pageCount}
-          {hasMore ? "+" : ""} · {pluralize(total, noun, plural)}
-          {hasMore ? "+" : ""}
-        </span>
+        <span>{pageLabel(pager, noun, plural)}</span>
+        <span aria-hidden>–</span>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -661,7 +925,7 @@ export function ListPagination({
         <Button
           variant="outline"
           size="sm"
-          disabled={loading || (page >= pageCount - 1 && !hasMore)}
+          disabled={loading || !canGoNext(pager)}
           onClick={() => onPageChange(page + 1)}
         >
           {nextLabel}
@@ -823,7 +1087,7 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
 export function HttpStatusBadge({ status }: { status: number }) {
   return (
     <Badge variant={httpStatusTone(status)} dot>
-      {status}
+      {httpStatusLabel(status)}
     </Badge>
   )
 }
@@ -900,14 +1164,15 @@ export function SetupDetails({
 
 /* -------------------------------------------------------------- clipboard */
 
-export async function copyToClipboard(value: string, label = "Copy") {
+/** `label` names what is copied ("API key"), for the toast. */
+export async function copyToClipboard(value: string, label?: string) {
   await navigator.clipboard.writeText(value)
-  toast.add({ type: "success", title: `${label} copied` })
+  toast.add({ type: "success", title: label ? `${label} copied` : "Copied" })
 }
 
 export function CopyButton({
   value,
-  label = "Copy",
+  label,
 }: {
   value: string
   label?: string
@@ -933,7 +1198,7 @@ export function CopyButton({
       type="button"
       variant="ghost"
       size="icon-xs"
-      aria-label={label}
+      aria-label={label ? `Copy ${label}` : "Copy"}
       onClick={() => void copy()}
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
@@ -1059,7 +1324,7 @@ export function JsonSection({
   value,
 }: {
   title: string
-  value: object
+  value: unknown
 }) {
   const source = React.useMemo(() => JSON.stringify(value, null, 2), [value])
   const tokens = React.useMemo(() => tokenizeJson(source), [source])
@@ -1111,6 +1376,7 @@ export function SelectionBar({
   onClear: () => void
   children: React.ReactNode
 }) {
+  useShortcut("Escape", onClear, { enabled: count > 0, priority: 20 })
   if (count === 0) return null
   return (
     <div className="pointer-events-none sticky bottom-6 z-40 order-last mt-auto flex h-0 items-end justify-center">
@@ -1123,12 +1389,13 @@ export function SelectionBar({
           {count} selected
         </p>
         <Separator orientation="vertical" className="h-5 self-center" />
-        {children}
+        <ShortcutAction value="delete">{children}</ShortcutAction>
         <Separator orientation="vertical" className="h-5 self-center" />
         <Button
           variant="ghost"
           size="icon"
           aria-label="Clear selection"
+          aria-keyshortcuts="Escape"
           onClick={onClear}
         >
           <XIcon />
@@ -1153,6 +1420,9 @@ export function ConfirmDialog({
   confirmLabel?: string
   onConfirm: () => unknown | Promise<unknown>
 }) {
+  const { scope: confirmScope, button: confirmButton } =
+    useConfirmShortcut(open)
+  const modifier = useShortcutModifier()
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState("")
   return (
@@ -1162,7 +1432,7 @@ export function ConfirmDialog({
         if (!pending) onOpenChange(next)
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent ref={confirmScope}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -1175,6 +1445,10 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <Button
+            ref={confirmButton}
+            aria-keyshortcuts={
+              modifier === "⌘" ? "Meta+Enter" : "Control+Enter"
+            }
             variant="destructive"
             disabled={pending}
             onClick={async () => {
@@ -1190,7 +1464,7 @@ export function ConfirmDialog({
               }
             }}
           >
-            {confirmLabel}
+            {confirmLabel} <Kbd aria-hidden="true">{modifier} Enter</Kbd>
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1231,6 +1505,9 @@ function TypeToConfirmForm({
   onConfirm,
   children,
 }: React.ComponentProps<typeof TypeToConfirmDialog>) {
+  const { scope: confirmScope, button: confirmButton } =
+    useConfirmShortcut(true)
+  const modifier = useShortcutModifier()
   const id = React.useId()
   const [typed, setTyped] = React.useState("")
   const [acknowledged, setAcknowledged] = React.useState(false)
@@ -1239,7 +1516,7 @@ function TypeToConfirmForm({
   const ready = typed === phrase && (acknowledged || !acknowledgement)
 
   return (
-    <AlertDialogContent size="md">
+    <AlertDialogContent size="md" ref={confirmScope}>
       <form
         className="contents"
         onSubmit={async (event) => {
@@ -1299,11 +1576,15 @@ function TypeToConfirmForm({
         <AlertDialogFooter>
           <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
           <Button
+            ref={confirmButton}
+            aria-keyshortcuts={
+              modifier === "⌘" ? "Meta+Enter" : "Control+Enter"
+            }
             type="submit"
             variant="destructive"
             disabled={!ready || pending}
           >
-            {confirmLabel}
+            {confirmLabel} <Kbd aria-hidden="true">{modifier} Enter</Kbd>
           </Button>
         </AlertDialogFooter>
       </form>
@@ -1451,6 +1732,146 @@ export type SelectOption = {
   dotClassName?: string
 }
 
+export type SelectSearch = {
+  onChange: (value: string) => void
+  placeholder?: string
+}
+
+/** The searchable popup shared by ordinary selects and the email paper. */
+export function SearchableSelect({
+  value,
+  defaultValue,
+  onChange,
+  items,
+  selectedItem,
+  search,
+  trigger,
+  name,
+  disabled,
+  align = "start",
+  contentClassName,
+}: {
+  value?: string
+  defaultValue?: string
+  onChange?: (value: string) => void
+  items: readonly SelectOption[]
+  selectedItem?: SelectOption
+  search: SelectSearch
+  trigger: (current: SelectOption | undefined) => React.ReactElement
+  name?: string
+  disabled?: boolean
+  align?: "start" | "center" | "end"
+  contentClassName?: string
+}) {
+  const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue)
+  const selectedValue = value ?? uncontrolledValue
+  const found =
+    items.find((item) => item.value === selectedValue) ??
+    (selectedItem?.value === selectedValue ? selectedItem : undefined)
+  const [remembered, setRemembered] = React.useState(found)
+  if (
+    found &&
+    (found.value !== remembered?.value ||
+      found.label !== remembered.label ||
+      found.dotClassName !== remembered.dotClassName)
+  ) {
+    setRemembered(found)
+  }
+  // Convex returns undefined between searches; keep the chosen label visible.
+  const current =
+    found ?? (remembered?.value === selectedValue ? remembered : undefined)
+  const choices =
+    current && !items.some((item) => item.value === current.value)
+      ? [...items, current]
+      : [...items]
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const settledSearch = useDebouncedValue(query)
+  const onSearch = search.onChange
+  React.useEffect(() => {
+    onSearch(settledSearch)
+  }, [onSearch, settledSearch])
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  return (
+    <Combobox
+      items={choices}
+      filter={null}
+      autoHighlight
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+      value={current ?? null}
+      onValueChange={(item: SelectOption | null) => {
+        if (!item) return
+        setRemembered(item)
+        setUncontrolledValue(item.value)
+        onChange?.(item.value)
+      }}
+      inputValue={query}
+      onInputValueChange={setQuery}
+      itemToStringLabel={(item: SelectOption) => item.label}
+      itemToStringValue={(item: SelectOption) => item.value}
+      isItemEqualToValue={(a: SelectOption, b: SelectOption) =>
+        a.value === b.value
+      }
+      name={name}
+      disabled={disabled}
+    >
+      <ComboboxPrimitive.Trigger
+        render={trigger(current)}
+        onKeyDown={(event) => {
+          if (
+            !open &&
+            event.key.length === 1 &&
+            event.key !== " " &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey
+          ) {
+            event.preventBaseUIHandler()
+            event.preventDefault()
+            setQuery(event.key)
+            setOpen(true)
+          }
+        }}
+      />
+      <ComboboxContent
+        align={align}
+        sideOffset={4}
+        initialFocus={inputRef}
+        className={contentClassName}
+      >
+        <ComboboxInput
+          ref={inputRef}
+          showTrigger={false}
+          placeholder={search.placeholder ?? "Search…"}
+          aria-label={search.placeholder ?? "Search"}
+        />
+        <ComboboxEmpty>No results found.</ComboboxEmpty>
+        <ComboboxList>
+          {(item: SelectOption) => (
+            <ComboboxItem key={item.value} value={item}>
+              {item.dotClassName ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    item.dotClassName
+                  )}
+                />
+              ) : null}
+              <span className="truncate">{item.label}</span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
 /** Single-value select driven by an options array. Renders the items once,
     for both the trigger value and the list. */
 export function OptionSelect({
@@ -1458,6 +1879,8 @@ export function OptionSelect({
   defaultValue,
   onChange,
   items,
+  selectedItem,
+  search,
   id,
   name,
   size = "default",
@@ -1470,6 +1893,8 @@ export function OptionSelect({
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
+  selectedItem?: SelectOption
+  search?: SelectSearch
   items: readonly SelectOption[]
   /** Shown while no item is chosen. */
   placeholder?: string
@@ -1481,6 +1906,48 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  if (search)
+    return (
+      <SearchableSelect
+        value={value}
+        defaultValue={defaultValue}
+        onChange={onChange}
+        items={items}
+        selectedItem={selectedItem}
+        search={search}
+        name={name}
+        disabled={disabled}
+        align={align}
+        trigger={(current) => (
+          <button
+            type="button"
+            id={id}
+            aria-label={ariaLabel}
+            data-slot="select-trigger"
+            data-size={size}
+            className={cn(selectTriggerClassName, className)}
+          >
+            <span data-slot="select-value" className="flex flex-1 text-left">
+              {current?.dotClassName ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    current.dotClassName
+                  )}
+                />
+              ) : null}
+              {current?.label ?? placeholder}
+            </span>
+            <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+          </button>
+        )}
+      />
+    )
+  const choices =
+    selectedItem && !items.some((item) => item.value === selectedItem.value)
+      ? [...items, selectedItem]
+      : items
   return (
     <Select
       value={value}
@@ -1488,7 +1955,7 @@ export function OptionSelect({
       onValueChange={(next) => {
         if (next && onChange) onChange(next)
       }}
-      items={[...items]}
+      items={[...choices]}
       name={name}
       disabled={disabled}
     >
@@ -1502,7 +1969,7 @@ export function OptionSelect({
       </SelectTrigger>
       <SelectContent align={align} alignItemWithTrigger={false}>
         <SelectGroup>
-          {items.map((item) => (
+          {choices.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.dotClassName ? (
                 <span
@@ -1524,7 +1991,7 @@ export function OptionSelect({
   )
 }
 
-type Suggestion = { value: string; create: boolean }
+type Suggestion = SelectOption & { create: boolean }
 
 /** A text value that is typed or picked: the known values are offered as it
     is typed, and one that is not among them can be added under `createLabel`.
@@ -1533,6 +2000,11 @@ export function SuggestInput({
   value,
   onChange,
   options,
+  selectedItem,
+  allowCreate = true,
+  id,
+  disabled,
+  onSearch,
   placeholder,
   createLabel = "Create",
   className,
@@ -1540,45 +2012,73 @@ export function SuggestInput({
 }: {
   value: string
   onChange: (value: string) => void
-  options: readonly string[]
+  options: readonly (string | SelectOption)[]
+  selectedItem?: SelectOption
+  allowCreate?: boolean
+  id?: string
+  disabled?: boolean
+  onSearch?: (value: string) => void
   placeholder?: string
   createLabel?: string
   className?: string
   "aria-label"?: string
 }) {
-  const [query, setQuery] = React.useState(value)
-  /* The text follows the stored value whenever that changes: after a pick,
-     and when it is set from elsewhere. */
-  const [seen, setSeen] = React.useState(value)
-  if (seen !== value) {
-    setSeen(value)
-    setQuery(value)
+  const selected =
+    selectedItem ??
+    options.find((item) =>
+      typeof item === "string" ? item === value : item.value === value
+    )
+  const label =
+    typeof selected === "string" ? selected : (selected?.label ?? value)
+  const [query, setQuery] = React.useState(label)
+  const [seen, setSeen] = React.useState(label)
+  if (seen !== label) {
+    setSeen(label)
+    setQuery(label)
   }
+
+  const settledSearch = useDebouncedValue(query === label ? "" : query)
+  React.useEffect(() => {
+    onSearch?.(settledSearch)
+  }, [onSearch, settledSearch])
 
   const items = React.useMemo<Suggestion[]>(() => {
     const text = query.trim()
-    /* The settled value in the field lists every option, not just itself. */
-    const needle = text === value ? "" : text.toLowerCase()
-    const matches = options
-      .filter((option) => option.toLowerCase().includes(needle))
-      .map((option) => ({ value: option, create: false }))
-    return text && !options.includes(text)
-      ? [...matches, { value: text, create: true }]
+    const needle = text === label ? "" : text.toLowerCase()
+    const choices = options.map((option) =>
+      typeof option === "string" ? { value: option, label: option } : option
+    )
+    if (value && !choices.some((option) => option.value === value))
+      choices.push({ value, label })
+    const matches = choices
+      .filter(
+        (option) => onSearch || option.label.toLowerCase().includes(needle)
+      )
+      .map((option) => ({ ...option, create: false }))
+    return allowCreate &&
+      text &&
+      !choices.some((option) => option.label === text)
+      ? [...matches, { value: text, label: text, create: true }]
       : matches
-  }, [options, query, value])
+  }, [options, query, label, value, allowCreate, onSearch])
 
   return (
     <Combobox
       items={items}
+      disabled={disabled}
       filter={null}
       autoHighlight
       value={null}
       inputValue={query}
-      itemToStringLabel={(item: Suggestion) => item.value}
-      onInputValueChange={setQuery}
+      itemToStringLabel={(item: Suggestion) => item.label}
+      onInputValueChange={(next) => {
+        setQuery(next)
+      }}
       onOpenChange={(open) => {
         /* Closed without a pick, what was typed is dropped. */
-        if (!open) setQuery(value)
+        if (!open) {
+          setQuery(label)
+        }
       }}
       onValueChange={(item: Suggestion | null) => {
         if (item) onChange(item.value)
@@ -1586,6 +2086,7 @@ export function SuggestInput({
     >
       <ComboboxInput
         className={cn("w-full", className)}
+        id={id}
         aria-label={ariaLabel}
         placeholder={placeholder}
         showTrigger={false}
@@ -1600,7 +2101,7 @@ export function SuggestInput({
             >
               {item.create ? <PlusIcon /> : null}
               <span className="min-w-0 flex-1 truncate">
-                {item.create ? `${createLabel} ${item.value}` : item.value}
+                {item.create ? `${createLabel} ${item.label}` : item.label}
               </span>
             </ComboboxItem>
           )}
@@ -1613,6 +2114,8 @@ export function SuggestInput({
 /* ---------------------------------------------------------------- toolbar */
 
 export type ToolbarFilter = {
+  search?: SelectSearch
+  selectedItem?: SelectOption
   value: string
   onChange: (value: string) => void
   items: readonly SelectOption[]
@@ -1625,11 +2128,14 @@ export function ToolbarFilters({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
 }: {
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  /** The real clock, for lists of real records; see `DateRangePicker`. */
+  now?: number
   filters?: readonly ToolbarFilter[]
 }) {
   return (
@@ -1639,6 +2145,7 @@ export function ToolbarFilters({
           range={range}
           onRangeChange={onRangeChange}
           allowAllTime={allowAllTime}
+          now={now}
         />
       ) : null}
       {filters.map((filter) => (
@@ -1649,6 +2156,8 @@ export function ToolbarFilters({
           value={filter.value}
           onChange={filter.onChange}
           items={filter.items}
+          selectedItem={filter.selectedItem}
+          search={filter.search}
           aria-label={filter["aria-label"]}
         />
       ))}
@@ -1665,6 +2174,7 @@ export function ListToolbar({
   range,
   onRangeChange,
   allowAllTime = true,
+  now,
   filters = [],
   onExport,
   children,
@@ -1675,10 +2185,14 @@ export function ListToolbar({
   range?: DateRange | undefined
   onRangeChange?: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  now?: number
   filters?: readonly ToolbarFilter[]
-  onExport?: () => void
+  /** Gets the filters as the export dialog confirms them. */
+  onExport?: (summary: ExportFilterLine[]) => void
   children?: React.ReactNode
 }) {
+  const search = React.useRef<HTMLInputElement>(null)
+  useShortcut("/", () => search.current?.focus())
   return (
     <div className="flex flex-wrap items-center gap-2">
       <InputGroup className="h-8! w-full max-w-full overflow-hidden sm:max-w-xs">
@@ -1686,6 +2200,8 @@ export function ListToolbar({
           <SearchIcon />
         </InputGroupAddon>
         <InputGroupInput
+          ref={search}
+          aria-keyshortcuts="/"
           className="h-full! min-w-0"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -1696,6 +2212,7 @@ export function ListToolbar({
         range={range}
         onRangeChange={onRangeChange}
         allowAllTime={allowAllTime}
+        now={now}
         filters={filters}
       />
       {children}
@@ -1706,7 +2223,18 @@ export function ListToolbar({
           size="icon"
           aria-label="Export"
           className="ml-auto"
-          onClick={onExport}
+          onClick={() =>
+            onExport(
+              exportSummary({
+                search: query,
+                date: onRangeChange
+                  ? rangeLabel(range, allowAllTime, now)
+                  : undefined,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                filters,
+              })
+            )
+          }
         >
           <DownloadIcon />
         </Button>
@@ -1717,60 +2245,21 @@ export function ListToolbar({
 
 /* ------------------------------------------------------------------- docs */
 
-export function DocsButton({ onClick }: { onClick: () => void }) {
+export function DocsButton({ href }: { href?: string }) {
+  const pathname = usePathname()
+  // A plain anchor keeps the link role for this new-tab page; Button would
+  // announce it as a button.
   return (
-    <Button variant="outline" onClick={onClick}>
+    <a
+      data-slot="button"
+      className={buttonVariants({ variant: "outline" })}
+      href={href ?? docsHrefForRoute(pathname)}
+      target="_blank"
+      rel="noreferrer"
+    >
       <BookOpenIcon data-icon="inline-start" />
       Docs
-    </Button>
-  )
-}
-
-export type DocsSection = { title: string; body: React.ReactNode }
-
-/** A request or payload sample inside a docs section. */
-export function DocsCode({ children }: { children: string }) {
-  return (
-    <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
-      {children}
-    </pre>
-  )
-}
-
-export function DocsSheet({
-  open,
-  onOpenChange,
-  title,
-  description,
-  sections,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  sections: readonly DocsSection[]
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
-        </SheetHeader>
-        <div className="flex flex-col gap-4 px-4 pb-4 text-sm">
-          {sections.map((section) => (
-            <div key={section.title} className="flex flex-col gap-1">
-              <p className="font-medium">{section.title}</p>
-              {typeof section.body === "string" ? (
-                <p className="text-muted-foreground">{section.body}</p>
-              ) : (
-                section.body
-              )}
-            </div>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
+    </a>
   )
 }
 

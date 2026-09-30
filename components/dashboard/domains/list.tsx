@@ -1,10 +1,14 @@
 "use client"
 
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CopyIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -36,7 +40,7 @@ import {
   IconCell,
   ListToolbar,
   ListPagination,
-  usePagination,
+  usePagedList,
   MoreMenu,
   OptionSelect,
   PageHeader,
@@ -46,12 +50,11 @@ import {
   StatusBadge,
   Th,
   copyToClipboard,
-  useDebouncedValue,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   DOMAIN_STATUS_ITEMS,
   DomainIcon,
-  DomainsDocsSheet,
   REGION_ITEMS,
   RegionValue,
 } from "@/components/dashboard/domains/shared"
@@ -60,7 +63,7 @@ import {
   validateDnsLabel,
   validateDomainName,
 } from "@/lib/dashboard/domains"
-import { usePaginatedQuery, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import type { FunctionArgs } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import {
@@ -82,8 +85,9 @@ export function AddDomainDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const { addDomain } = useDomainCommands()
+  const { addDomain, claimDomain } = useDomainCommands()
   const installation = useQuery(api.installation.status)
+  const [inUse, setInUse] = React.useState(false)
   const [pending, setPending] = React.useState(false)
   const [name, setName] = React.useState("")
   const [chosenRegion, setRegion] = React.useState<Region | undefined>()
@@ -93,6 +97,7 @@ export function AddDomainDialog({
   const [error, setError] = React.useState<string | null>(null)
 
   function reset() {
+    setInUse(false)
     setName("")
     setRegion(undefined)
     setReturnPath(DEFAULT_RETURN_PATH)
@@ -128,7 +133,36 @@ export function AddDomainDialog({
       onOpenChange(false)
       router.push(`/domains/${id}`)
     } catch (e) {
-      setError(actionError(e))
+      if (
+        e &&
+        typeof e === "object" &&
+        "data" in e &&
+        e.data &&
+        typeof e.data === "object" &&
+        "statusCode" in e.data &&
+        e.data.statusCode === 403
+      ) {
+        setInUse(true)
+        setError(null)
+      } else setError(actionError(e))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function claim() {
+    setPending(true)
+    try {
+      const result = await claimDomain({
+        name,
+        region,
+        customReturnPath: returnPath,
+      })
+      reset()
+      onOpenChange(false)
+      router.push(`/domains/${result.domain_id}`)
+    } catch (error) {
+      setError(actionError(error))
     } finally {
       setPending(false)
     }
@@ -159,6 +193,7 @@ export function AddDomainDialog({
                 id="domain-name"
                 value={name}
                 onChange={(event) => {
+                  setInUse(false)
                   setName(event.target.value)
                   setError(null)
                 }}
@@ -216,13 +251,32 @@ export function AddDomainDialog({
               </Field>
             </SetupDetails>
           </FieldGroup>
+          {inUse && (
+            <Alert variant="warning" className="mb-4">
+              <AlertTitle>Domain already in use</AlertTitle>
+              <AlertDescription>
+                This domain is registered by another team. If you own it, add a
+                TXT record to claim it.
+              </AlertDescription>
+            </Alert>
+          )}
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Adding…" : "Add domain"}
-            </Button>
+            {inUse ? (
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => void claim()}
+              >
+                {pending ? "Starting claim…" : "Claim domain"}
+              </Button>
+            ) : (
+              <Button type="submit" disabled={pending}>
+                {pending ? "Adding…" : "Add domain"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -232,20 +286,24 @@ export function AddDomainDialog({
 
 export function DomainsView() {
   const { organizationId, canWrite, deleteDomain } = useDomainCommands()
-  const [query, setQuery] = React.useState("")
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
   const [region, setRegion] = React.useState("all")
   const [addOpen, setAddOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null)
-  const search = useDebouncedValue(query)
 
-  const {
-    results,
-    status: loading,
-    loadMore,
-  } = usePaginatedQuery(
+  const exporting = useExportDialog({
+    resource: "domains",
+    noun: "domains",
+    filters: {
+      search: query.trim() || undefined,
+      status: status === "all" ? undefined : status,
+      region: region === "all" ? undefined : region,
+    },
+  })
+  const domains = usePagedList(
     api.domains.list,
+    api.domains.count,
     organizationId
       ? {
           organizationId,
@@ -256,11 +314,10 @@ export function DomainsView() {
           ...(region !== "all" ? { region: region as Region } : {}),
         }
       : "skip",
-    { initialNumItems: 40 }
+    asDomain
   )
-  const rows = React.useMemo(() => results.map(asDomain), [results])
+  const { rows, pageRows, pagination } = domains
   const check = useDomainCheck(rows)
-  const { pageRows, pagination } = usePagination(rows)
   const unfiltered = !query && status === "all" && region === "all"
   async function verify(id: string) {
     try {
@@ -280,9 +337,11 @@ export function DomainsView() {
           <PlusIcon />
           Add domain
         </Button>
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
+        onExport={exporting.open}
         query={query}
         onQueryChange={setQuery}
         placeholder="Search domain prefix…"
@@ -301,7 +360,7 @@ export function DomainsView() {
           },
         ]}
       />
-      {loading === "LoadingFirstPage" ? (
+      {domains.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
@@ -346,7 +405,11 @@ export function DomainsView() {
                   </IconCell>
                 </TableCell>
                 <TableCell>
-                  <StatusBadge status={domain.status} />
+                  {domain.claiming ? (
+                    <Badge variant="secondary">Claim in progress</Badge>
+                  ) : (
+                    <StatusBadge status={domain.status} />
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <span className="flex items-center gap-1.5">
@@ -373,7 +436,8 @@ export function DomainsView() {
                         <CopyIcon />
                         Copy domain
                       </DropdownMenuItem>
-                      {domain.status === "verified" ? null : (
+                      {domain.status === "verified" ||
+                      domain.claiming ? null : (
                         <DropdownMenuItem
                           disabled={!canWrite || domain.checking}
                           onClick={() => void verify(domain.id)}
@@ -396,29 +460,10 @@ export function DomainsView() {
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination
-            {...pagination}
-            noun="domain"
-            hasMore={loading !== "Exhausted"}
-            loading={loading === "LoadingMore"}
-            onPageChange={(page) => {
-              if (
-                (page + 1) * pagination.pageSize > rows.length &&
-                loading === "CanLoadMore"
-              )
-                loadMore(pagination.pageSize)
-              pagination.onPageChange(page)
-            }}
-            onPageSizeChange={(size) => {
-              pagination.onPageSizeChange(size)
-              if (size > rows.length && loading === "CanLoadMore")
-                loadMore(size - rows.length)
-            }}
-          />
+          <ListPagination {...pagination} noun="domain" />
         </>
       )}
       <AddDomainDialog open={addOpen} onOpenChange={setAddOpen} />
-      <DomainsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(next) => {

@@ -4,7 +4,7 @@ import * as React from "react"
 import { OAuthAppsCard } from "./oauth-apps"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMutation } from "convex/react"
+import { useMutation, usePaginatedQuery } from "convex/react"
 import { QRCodeSVG } from "qrcode.react"
 import {
   Building2Icon,
@@ -18,7 +18,8 @@ import {
 import { api } from "@/convex/_generated/api"
 import { authClient, authResult } from "@/lib/auth/client"
 import { actionError } from "@/lib/action-error"
-import { useWorkspace } from "@/components/auth/workspace"
+import { useTeamCommands, useWorkspace } from "@/components/auth/workspace"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -66,6 +67,8 @@ import {
 import { toast } from "@/components/ui/toast"
 import {
   CodeWell,
+  useLoadedPagination,
+  ListPagination,
   MonoValue,
   MoreMenu,
   PageHeader,
@@ -86,11 +89,14 @@ import {
   roleLabel,
 } from "@/lib/dashboard/format"
 import { SETTINGS_NAV_INDEX } from "@/lib/dashboard/nav"
-import { useDashboard } from "@/lib/dashboard/store"
 import type { Team } from "@/lib/dashboard/types"
 
 function EmailCard() {
-  const { you, updateEmail } = useDashboard()
+  const { user: you } = useWorkspace()
+  const updateEmail = async (email: string) =>
+    authResult(
+      await authClient.changeEmail({ newEmail: email, callbackURL: "/profile" })
+    )
   const stored = you?.email ?? ""
   const { draft: email, setDraft: setEmail } = useDraftValue(
     stored,
@@ -151,7 +157,10 @@ function EmailCard() {
 
 function TeamsCard() {
   const router = useRouter()
-  const { teams, switchTeam, renameTeam } = useDashboard()
+  const query = usePaginatedQuery(api.teams.list, {}, { initialNumItems: 20 })
+  const teams = query.results.map((team) => ({ ...team, removable: true }))
+  const { pageRows, pagination } = useLoadedPagination(teams, query)
+  const { switchTeam, renameTeam } = useTeamCommands()
   const [renaming, setRenaming] = React.useState<Team | null>(null)
   const [leaving, setLeaving] = React.useState<Team | null>(null)
 
@@ -170,14 +179,17 @@ function TeamsCard() {
         title="Teams"
         description="The teams that are associated with your account."
       >
-        {teams.length === 0 && (
+        {query.status === "LoadingFirstPage" && (
+          <Skeleton className="h-40 w-full" />
+        )}
+        {query.status !== "LoadingFirstPage" && teams.length === 0 && (
           <p className="text-sm text-muted-foreground">
             You don’t belong to a team yet. Use the team menu to create one, or
             accept an invitation above.
           </p>
         )}
         <ItemGroup className="gap-1">
-          {teams.map((team) => (
+          {pageRows.map((team) => (
             <Item key={team.id} className="px-0">
               <ItemMedia>
                 <TeamGlyph team={team} />
@@ -222,6 +234,7 @@ function TeamsCard() {
             </Item>
           ))}
         </ItemGroup>
+        <ListPagination {...pagination} embedded noun="team" />
       </SettingsCard>
       <TextFieldDialog
         open={renaming !== null}

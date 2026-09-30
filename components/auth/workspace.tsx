@@ -1,7 +1,17 @@
 "use client"
 import { createContext, useContext, useEffect } from "react"
-import { useQuery, useMutation, useConvexAuth } from "convex/react"
-import type { FunctionReturnType } from "convex/server"
+import {
+  useQuery,
+  useMutation,
+  useAction,
+  useConvexAuth,
+  type OptionalRestArgsOrSkip,
+} from "convex/react"
+import type {
+  FunctionReturnType,
+  FunctionArgs,
+  FunctionReference,
+} from "convex/server"
 import { api } from "@/convex/_generated/api"
 import { authClient, authResult } from "@/lib/auth/client"
 import { AsyncForm, FormInput } from "./ui"
@@ -13,6 +23,8 @@ import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
 import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import type { MemberRole, Team } from "@/lib/dashboard/types"
+
 export type Workspace = NonNullable<
   FunctionReturnType<typeof api.teams.snapshot>
 >
@@ -21,6 +33,101 @@ export function useWorkspace() {
   const value = useContext(Context)
   if (!value) throw new Error("Account data is not available")
   return value
+}
+/** A query scoped to the active team, skipped until that team is available. */
+export function useTeamQuery<
+  Q extends FunctionReference<"query", "public", { organizationId: string }>,
+>(
+  fn: Q,
+  ...[args, options]: Record<string, never> extends Omit<
+    FunctionArgs<Q>,
+    "organizationId"
+  >
+    ? [
+        args?: Omit<FunctionArgs<Q>, "organizationId">,
+        options?: { enabled?: boolean },
+      ]
+    : [
+        args: Omit<FunctionArgs<Q>, "organizationId">,
+        options?: { enabled?: boolean },
+      ]
+) {
+  const { activeTeamId } = useWorkspace()
+  return useQuery(
+    fn,
+    ...([
+      activeTeamId && (options?.enabled ?? true)
+        ? { ...args, organizationId: activeTeamId }
+        : "skip",
+    ] as OptionalRestArgsOrSkip<Q>)
+  )
+}
+
+/** Resolve the team when a command runs, preserving its missing-team error. */
+export function requireTeamId(activeTeamId: string | null | undefined): string {
+  if (!activeTeamId) throw new Error("Create a team first")
+  return activeTeamId
+}
+
+export function useTeams(): Team[] {
+  return useWorkspace().teams.map((team) => ({ ...team, removable: true }))
+}
+export function useActiveTeam(): Team {
+  const { activeTeamId } = useWorkspace()
+  return (
+    useTeams().find((team) => team.id === activeTeamId) ?? {
+      id: "",
+      name: "Account",
+      slug: "",
+      role: "member",
+      joinedAt: 0,
+      members: 0,
+      removable: false,
+    }
+  )
+}
+export function useTeamCommands() {
+  const { activeTeamId } = useWorkspace()
+  const create = useMutation(api.teams.create)
+  const switchTeam = useMutation(api.teams.switchTeam)
+  const rename = useMutation(api.teams.rename)
+  const remove = useMutation(api.teams.remove)
+  const invite = useMutation(api.teams.invite)
+  const changeMember = useMutation(api.teams.changeMember)
+  const upload = useAction(api.teams.uploadAvatar)
+  const avatar = useMutation(api.teams.removeAvatar)
+  return {
+    switchTeam: (id: string) => switchTeam({ organizationId: id }),
+    createTeam: (name: string) => create({ name }),
+    renameTeam: (id: string, name: string) =>
+      rename({ organizationId: id, name }),
+    deleteTeam: (id: string, leave = false) =>
+      remove({ organizationId: id, leave }),
+    inviteMember: (input: { email: string; role: MemberRole }) =>
+      invite({ ...input, organizationId: activeTeamId ?? "" }),
+    updateMemberRole: (id: string, role: MemberRole) =>
+      changeMember({ organizationId: activeTeamId ?? "", memberId: id, role }),
+    removeMember: (id: string) =>
+      changeMember({ organizationId: activeTeamId ?? "", memberId: id }),
+    setTeamAvatar: async (id: string, data: string | undefined) => {
+      if (!data) return avatar({ organizationId: id })
+      const blob = await (await fetch(data)).blob()
+      return upload({
+        organizationId: id,
+        bytes: await blob.arrayBuffer(),
+        contentType: blob.type,
+      })
+    },
+  }
+}
+/** Mirrors `requireTeam` in convex/access.ts: any member writes the product;
+    only admins manage the team itself. */
+export function useTeamRole() {
+  const workspace = useWorkspace()
+  const role = workspace.teams.find(
+    (t) => t.id === workspace.activeTeamId
+  )?.role
+  return { canWrite: role !== undefined, isAdmin: role === "admin" }
 }
 export function AccountTeamAccess({ account }: { account: Workspace }) {
   return (

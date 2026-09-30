@@ -1,8 +1,8 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useQuery } from "convex/react"
 import { ChevronDownIcon, MailIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
   DetailHeader,
@@ -25,15 +26,12 @@ import {
   ResourceTable,
   Th,
 } from "@/components/dashboard/primitives"
-import { LogIcon, LogsDocsSheet } from "@/components/dashboard/logs/shared"
+import { LogIcon } from "@/components/dashboard/logs/shared"
 import { permissionLabel } from "@/lib/dashboard/format"
-import {
-  logRequestBody,
-  logRequestHeaders,
-  logResponseBody,
-  logSourceLabel,
-} from "@/lib/dashboard/logs"
-import { useDashboard } from "@/lib/dashboard/store"
+import { api } from "@/convex/_generated/api"
+import { logSourceLabel, storedBody } from "@/lib/dashboard/logs"
+import { useEmail } from "@/lib/emails/use-emails"
+import { asLog } from "@/lib/logs/use-logs"
 
 function RequestHeaders({
   headers,
@@ -82,11 +80,11 @@ function RequestHeaders({
 
 export function LogDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state } = useDashboard()
-  const [docsOpen, setDocsOpen] = React.useState(false)
-  const log = state.logs.find((item) => item.id === id)
+  const found = useQuery(api.logs.get, { id })
+  const email = useEmail(found?.log.emailId)?.email
 
-  if (!log) {
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
+  if (!found) {
     return (
       <NotFoundState
         icon={LogIcon}
@@ -97,10 +95,10 @@ export function LogDetail() {
     )
   }
 
-  const email = state.emails.find((item) => item.id === log.emailId)
-  const apiKey = state.apiKeys.find((item) => item.id === log.apiKeyId)
-  const requestBody = logRequestBody(log, email)
-  const responseBody = logResponseBody(log)
+  const log = asLog(found.log)
+  const { apiKey, body } = found
+  const requestBody = storedBody(body?.requestBody)
+  const responseBody = storedBody(body?.responseBody)
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,7 +108,7 @@ export function LogDetail() {
         title={`${log.method} ${log.path}`}
         icon={LogIcon}
         badge={<HttpStatusBadge status={log.status} />}
-        actions={<DocsButton onClick={() => setDocsOpen(true)} />}
+        actions={<DocsButton />}
       />
       <MetaStrip
         items={[
@@ -130,7 +128,7 @@ export function LogDetail() {
             label: "API key",
             value: apiKey ? (
               <>
-                <Link href={`/api-keys/${apiKey.id}`} className="truncate">
+                <Link href={`/api-keys/${apiKey._id}`} className="truncate">
                   {apiKey.name}
                 </Link>
                 <Badge variant="secondary">
@@ -162,14 +160,18 @@ export function LogDetail() {
             : []),
         ]}
       />
-      {responseBody ? (
+      {responseBody !== null ? (
         <JsonSection title="Response body" value={responseBody} />
       ) : null}
-      {requestBody ? (
+      {requestBody !== null ? (
         <JsonSection title="Request body" value={requestBody} />
       ) : null}
-      <RequestHeaders headers={logRequestHeaders(log, requestBody)} />
-      <LogsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
+      <RequestHeaders
+        headers={(body?.requestHeaders ?? []).map(({ name, value }) => [
+          name,
+          value,
+        ])}
+      />
     </div>
   )
 }

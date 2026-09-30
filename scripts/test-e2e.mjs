@@ -12,8 +12,9 @@ import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
 const filename = resolve(`.env.playwright-${project}`)
-const [appPort, convexPort, sitePort, dashboardPort, oidcPort] =
-  await Promise.all(Array.from({ length: 5 }, freePort))
+const [appPort, convexPort, sitePort, oidcPort] = await Promise.all(
+  Array.from({ length: 4 }, freePort)
+)
 const resultDir = resolve("test-results", project)
 mkdirSync(resultDir, { recursive: true })
 const realm = JSON.parse(readFileSync("docker/oidc-realm.json", "utf8"))
@@ -49,7 +50,6 @@ const values = {
   APP_PORT: appPort,
   CONVEX_PORT: convexPort,
   CONVEX_SITE_PORT: sitePort,
-  DASHBOARD_PORT: dashboardPort,
   OIDC_PORT: oidcPort,
   OIDC_REALM_FILE: realmFile,
   APP_IMAGE: process.env.APP_IMAGE || "opensend-app:local",
@@ -57,14 +57,10 @@ const values = {
   // Exercise setup's Docker loopback normalization with a remapped host port.
   CONVEX_PUBLIC_SITE_URL: `http://localhost:${sitePort}`,
   ALLOW_LOCAL_OIDC: "true",
+  // The suite reads invitation, verification and reset links from the logs.
+  LOG_AUTH_LINKS: "true",
   ...(process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE
     ? { CONVEX_IMAGE: process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE }
-    : {}),
-  ...(process.env.E2E_DASHBOARD_IMAGE || local.CONVEX_DASHBOARD_IMAGE
-    ? {
-        CONVEX_DASHBOARD_IMAGE:
-          process.env.E2E_DASHBOARD_IMAGE || local.CONVEX_DASHBOARD_IMAGE,
-      }
     : {}),
 }
 writeFileSync(

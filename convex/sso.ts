@@ -2,7 +2,7 @@ import { env } from "./_generated/server"
 import { v, ConvexError } from "convex/values"
 import { action, mutation, internalMutation } from "./_generated/server"
 import { components } from "./_generated/api"
-import { sessionId } from "./access"
+import { requireTeam, sessionId } from "./access"
 import { symmetricEncrypt } from "better-auth/crypto"
 export const save = action({
   args: {
@@ -13,8 +13,14 @@ export const save = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "admin")
     const id = await sessionId(ctx)
-    const url = new URL(args.issuer)
+    let url: URL
+    try {
+      url = new URL(args.issuer)
+    } catch {
+      throw new ConvexError("Enter a valid issuer, client ID, and secret")
+    }
     if (
       url.protocol !== "https:" &&
       !(env.ALLOW_LOCAL_OIDC === "true" && url.protocol === "http:")

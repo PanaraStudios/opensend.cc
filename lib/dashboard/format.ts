@@ -25,6 +25,14 @@ export function formatDateTime(timestamp: number): string {
 
 /** Compact age, e.g. "18d ago". Falls back to the date past a year. */
 export function formatRelative(timestamp: number, now = Date.now()): string {
+  /* A minute ahead is clock skew, not the future. */
+  const ahead = Math.floor((timestamp - now) / 1000)
+  if (ahead >= 60) {
+    if (ahead < 3600) return `in ${Math.floor(ahead / 60)}m`
+    if (ahead < 86_400) return `in ${Math.floor(ahead / 3600)}h`
+    if (ahead < 365 * 86_400) return `in ${Math.floor(ahead / 86_400)}d`
+    return formatDate(timestamp)
+  }
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
   if (seconds < 60) return "just now"
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
@@ -114,6 +122,10 @@ export function automationStatusLabel(status: AutomationStatus): string {
   return status === "enabled" ? "Enabled" : "Disabled"
 }
 
+export function tenantStatusLabel(status?: string): string {
+  return sentenceCase((status || "UNKNOWN").toLowerCase().replaceAll("_", " "))
+}
+
 export function suppressionReasonLabel(reason: SuppressionReason): string {
   switch (reason) {
     case "bounced":
@@ -130,7 +142,9 @@ export function exportStatusLabel(status: ExportStatus): string {
     case "processing":
       return "Processing"
     case "ready":
-      return "Ready"
+      return "Completed"
+    case "failed":
+      return "Failed"
     case "expired":
       return "Expired"
   }
@@ -266,6 +280,13 @@ export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {
   disabled: "secondary",
 }
 
+export const TENANT_STATUS_TONE: Record<string, BadgeTone> = {
+  ENABLED: "success",
+  REINSTATED: "success",
+  DISABLED: "warning",
+  UNKNOWN: "warning",
+}
+
 export const AUTOMATION_RUN_STATUS_TONE: Record<
   AutomationRunStatus | "skipped",
   BadgeTone
@@ -280,6 +301,7 @@ export const AUTOMATION_RUN_STATUS_TONE: Record<
 export const EXPORT_STATUS_TONE: Record<ExportStatus, BadgeTone> = {
   processing: "warning",
   ready: "success",
+  failed: "destructive",
   expired: "secondary",
 }
 
@@ -296,7 +318,14 @@ export function percent(part: number, total: number, digits = 0): string {
 
 /** 2xx reads as fine, 3xx as a nudge, anything else as a failure. */
 export function httpStatusTone(status: number): BadgeTone {
-  if (status >= 400) return "destructive"
-  if (status >= 300) return "warning"
-  return "success"
+  if (status >= 200 && status < 300) return "success"
+  if (status >= 300 && status < 400) return "warning"
+  return "destructive"
 }
+
+/** 0 means the request never got an HTTP response (DNS, refused, timeout). */
+export function httpStatusLabel(status: number): string {
+  return status === 0 ? "No response" : String(status)
+}
+
+export const formatNumber = (value: number) => value.toLocaleString("en-US")

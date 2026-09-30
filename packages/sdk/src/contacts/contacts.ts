@@ -1,0 +1,214 @@
+import { buildPaginationUrl } from '../common/utils/build-pagination-query';
+import type { Resend } from '../resend';
+import { ContactImports } from './imports/contact-imports';
+import type {
+  CreateContactOptions,
+  CreateContactRequestOptions,
+  CreateContactResponse,
+  CreateContactResponseSuccess,
+  LegacyCreateContactOptions,
+} from './interfaces/create-contact-options.interface';
+import type {
+  GetContactOptions,
+  GetContactResponse,
+  GetContactResponseSuccess,
+} from './interfaces/get-contact.interface';
+import type {
+  ListContactsOptions,
+  ListContactsResponse,
+  ListContactsResponseSuccess,
+} from './interfaces/list-contacts.interface';
+import type {
+  RemoveContactOptions,
+  RemoveContactsResponse,
+  RemoveContactsResponseSuccess,
+} from './interfaces/remove-contact.interface';
+import type {
+  UpdateContactOptions,
+  UpdateContactResponse,
+  UpdateContactResponseSuccess,
+} from './interfaces/update-contact.interface';
+import { ContactSegments } from './segments/contact-segments';
+import { ContactTopics } from './topics/contact-topics';
+
+export class Contacts {
+  readonly imports: ContactImports;
+  readonly topics: ContactTopics;
+  readonly segments: ContactSegments;
+
+  constructor(private readonly resend: Resend) {
+    this.imports = new ContactImports(this.resend);
+    this.topics = new ContactTopics(this.resend);
+    this.segments = new ContactSegments(this.resend);
+  }
+
+  async create(
+    payload: CreateContactOptions,
+    options?: CreateContactRequestOptions,
+  ): Promise<CreateContactResponse>;
+  async create(
+    payload: LegacyCreateContactOptions,
+    options?: CreateContactRequestOptions,
+  ): Promise<CreateContactResponse>;
+
+  async create(
+    payload: CreateContactOptions | LegacyCreateContactOptions,
+    options: CreateContactRequestOptions = {},
+  ): Promise<CreateContactResponse> {
+    // Legacy create contact endpoint
+    if ('audienceId' in payload) {
+      if ('segments' in payload || 'topics' in payload) {
+        return {
+          data: null,
+          headers: null,
+          error: {
+            message:
+              '`audienceId` is deprecated, and cannot be used together with `segments` or `topics`. Use `segments` instead to add one or more segments to the new contact.',
+            statusCode: null,
+            name: 'invalid_parameter',
+          },
+        };
+      }
+
+      const data = await this.resend.post<CreateContactResponseSuccess>(
+        `/audiences/${payload.audienceId}/contacts`,
+        {
+          unsubscribed: payload.unsubscribed,
+          email: payload.email,
+          first_name: payload.firstName,
+          last_name: payload.lastName,
+          properties: payload.properties,
+        },
+        options,
+      );
+      return data;
+    }
+
+    // Current create contact endpoint
+    const data = await this.resend.post<CreateContactResponseSuccess>(
+      '/contacts',
+      {
+        unsubscribed: payload.unsubscribed,
+        email: payload.email,
+        first_name: payload.firstName,
+        last_name: payload.lastName,
+        properties: payload.properties,
+        segments: payload.segments,
+        topics: payload.topics,
+      },
+      options,
+    );
+    return data;
+  }
+
+  async list(options: ListContactsOptions = {}): Promise<ListContactsResponse> {
+    const segmentId = options.segmentId ?? options.audienceId;
+    if (!segmentId) {
+      const url = buildPaginationUrl('/contacts', options);
+      const data = await this.resend.get<ListContactsResponseSuccess>(url);
+      return data;
+    }
+
+    const url = buildPaginationUrl(`/segments/${segmentId}/contacts`, options);
+    const data = await this.resend.get<ListContactsResponseSuccess>(url);
+    return data;
+  }
+
+  async get(options: GetContactOptions): Promise<GetContactResponse> {
+    if (typeof options === 'string') {
+      return this.resend.get<GetContactResponseSuccess>(`/contacts/${options}`);
+    }
+
+    if (!options.id && !options.email) {
+      return {
+        data: null,
+        headers: null,
+        error: {
+          message: 'Missing `id` or `email` field.',
+          statusCode: null,
+          name: 'missing_required_field',
+        },
+      };
+    }
+
+    if (!options.audienceId) {
+      return this.resend.get<GetContactResponseSuccess>(
+        `/contacts/${options?.email ? options?.email : options?.id}`,
+      );
+    }
+
+    return this.resend.get<GetContactResponseSuccess>(
+      `/audiences/${options.audienceId}/contacts/${options?.email ? options?.email : options?.id}`,
+    );
+  }
+
+  async update(options: UpdateContactOptions): Promise<UpdateContactResponse> {
+    if (!options.id && !options.email) {
+      return {
+        data: null,
+        headers: null,
+        error: {
+          message: 'Missing `id` or `email` field.',
+          statusCode: null,
+          name: 'missing_required_field',
+        },
+      };
+    }
+
+    if (!options.audienceId) {
+      const data = await this.resend.patch<UpdateContactResponseSuccess>(
+        `/contacts/${options?.email ? options?.email : options?.id}`,
+        {
+          unsubscribed: options.unsubscribed,
+          first_name: options.firstName,
+          last_name: options.lastName,
+          properties: options.properties,
+        },
+      );
+      return data;
+    }
+
+    const data = await this.resend.patch<UpdateContactResponseSuccess>(
+      `/audiences/${options.audienceId}/contacts/${options?.email ? options?.email : options?.id}`,
+      {
+        unsubscribed: options.unsubscribed,
+        first_name: options.firstName,
+        last_name: options.lastName,
+        properties: options.properties,
+      },
+    );
+    return data;
+  }
+
+  async remove(payload: RemoveContactOptions): Promise<RemoveContactsResponse> {
+    if (typeof payload === 'string') {
+      return this.resend.delete<RemoveContactsResponseSuccess>(
+        `/contacts/${payload}`,
+      );
+    }
+
+    if (!payload.id && !payload.email) {
+      return {
+        data: null,
+        headers: null,
+        error: {
+          message: 'Missing `id` or `email` field.',
+          statusCode: null,
+          name: 'missing_required_field',
+        },
+      };
+    }
+
+    if (!payload.audienceId) {
+      return this.resend.delete<RemoveContactsResponseSuccess>(
+        `/contacts/${payload?.email ? payload?.email : payload?.id}`,
+      );
+    }
+
+    return this.resend.delete<RemoveContactsResponseSuccess>(
+      `/audiences/${payload.audienceId}/contacts/${
+        payload?.email ? payload?.email : payload?.id
+      }`,
+    );
+  }
+}

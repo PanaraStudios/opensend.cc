@@ -8,7 +8,6 @@ import {
   XIcon,
   CircleCheckIcon,
   CircleXIcon,
-  DownloadIcon,
   LogOutIcon,
   ShieldIcon,
   UploadIcon,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import {
   Table,
@@ -35,12 +35,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
+  useLoadedPagination,
+  ListPagination,
   EmptyState,
-  ExportStatusBadge,
   MoreMenu,
   OptionSelect,
-  PageHeader,
-  ResourceTable,
   SectionChrome,
   SettingsCard,
   Surface,
@@ -51,16 +50,26 @@ import {
   InviteMemberDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
-import { useMutation, useAction } from "convex/react"
+import { useMutation, useAction, usePaginatedQuery } from "convex/react"
 import { authClient, authResult } from "@/lib/auth/client"
 import { api } from "@/convex/_generated/api"
-import { useWorkspace } from "@/components/auth/workspace"
+import {
+  useActiveTeam,
+  useTeamCommands,
+  useWorkspace,
+} from "@/components/auth/workspace"
 import { actionError } from "@/lib/action-error"
 import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
 import { formatDate, roleLabel } from "@/lib/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
 import { slugify } from "@/lib/dashboard/slug"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useSmtp } from "@/lib/smtp/use-smtp"
+import { useTopics } from "@/lib/audience/use-audience"
+import {
+  useUnsubscribeCommands,
+  useUnsubscribePage,
+} from "@/lib/unsubscribe/use-unsubscribe"
+import { UnsubscribePageCard } from "@/components/unsubscribe/page-card"
 import type { Team, TeamMember } from "@/lib/dashboard/types"
 
 const SMTP_PORT_ITEMS = [
@@ -83,7 +92,7 @@ function SettingsLead({ children }: { children: React.ReactNode }) {
 }
 
 function TeamOverview({ team }: { team: Team }) {
-  const { setTeamAvatar } = useDashboard()
+  const { setTeamAvatar } = useTeamCommands()
   const rename = useMutation(api.teams.rename)
   const [pending, setPending] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
@@ -221,7 +230,17 @@ const MEMBER_TABS = [
 ] as const
 
 function TeamMembers({ team }: { team: Team }) {
-  const { state, updateMemberRole, removeMember } = useDashboard()
+  const query = usePaginatedQuery(
+    api.teams.members,
+    { organizationId: team.id },
+    { initialNumItems: 20 }
+  )
+  const { pageRows: members, pagination } = useLoadedPagination(
+    query.results,
+    query,
+    { total: team.members }
+  )
+  const { updateMemberRole, removeMember } = useTeamCommands()
   const [tab, setTab] = React.useState<string>("members")
   const [inviting, setInviting] = React.useState(false)
   const [removing, setRemoving] = React.useState<TeamMember | null>(null)
@@ -251,114 +270,126 @@ function TeamMembers({ team }: { team: Team }) {
         }
       >
         {tab === "members" ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <Th>Email</Th>
-                <Th>Role</Th>
-                <Th>Enabled MFA</Th>
-                <Th className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {state.members.map((member) => {
-                const mfa = member.mfa
-                const promoted = member.role === "admin" ? "member" : "admin"
-                return (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="font-medium">
-                        {member.email}
-                        {member.you ? (
-                          <Badge variant="secondary" className="ml-2">
-                            You
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Joined on {formatDate(member.createdAt)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {roleLabel(member.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {mfa ? (
-                        <CircleCheckIcon
-                          aria-label="MFA enabled"
-                          className="size-4 text-success"
-                        />
-                      ) : (
-                        <CircleXIcon
-                          aria-label="MFA not enabled"
-                          className="size-4 text-muted-foreground"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {member.you ? (
-                        <MoreMenu>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              disabled={!team.removable}
-                              onClick={() => setLeaving(true)}
-                            >
-                              <LogOutIcon />
-                              Leave team
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </MoreMenu>
-                      ) : admin ? (
-                        <MoreMenu>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              disabled={changingRole}
-                              onClick={async () => {
-                                setChangingRole(true)
-                                try {
-                                  await updateMemberRole(member.id, promoted)
-                                  toast.add({
-                                    type: "success",
-                                    title: `Role changed to ${roleLabel(promoted)}`,
-                                  })
-                                } catch (error) {
-                                  toast.add({
-                                    type: "error",
-                                    title: actionError(error),
-                                  })
-                                } finally {
-                                  setChangingRole(false)
-                                }
-                              }}
-                            >
-                              <ShieldIcon />
-                              Change role to {roleLabel(promoted)}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setRemoving(member)}
-                            >
-                              <UserMinusIcon />
-                              Remove from team
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </MoreMenu>
-                      ) : null}
-                    </TableCell>
+          query.status === "LoadingFirstPage" ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <Th>Email</Th>
+                    <Th>Role</Th>
+                    <Th>Enabled MFA</Th>
+                    <Th className="w-10" />
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        ) : admin ? (
-          <OAuthAppsList key={team.id} organizationId={team.id} />
+                </TableHeader>
+                <TableBody>
+                  {members.map((member) => {
+                    const mfa = member.mfa
+                    const promoted =
+                      member.role === "admin" ? "member" : "admin"
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {member.email}
+                            {member.you ? (
+                              <Badge variant="secondary" className="ml-2">
+                                You
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Joined on {formatDate(member.joinedAt)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {roleLabel(member.role)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {mfa ? (
+                            <CircleCheckIcon
+                              aria-label="MFA enabled"
+                              className="size-4 text-success"
+                            />
+                          ) : (
+                            <CircleXIcon
+                              aria-label="MFA not enabled"
+                              className="size-4 text-muted-foreground"
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {member.you ? (
+                            <MoreMenu>
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={!team.removable}
+                                  onClick={() => setLeaving(true)}
+                                >
+                                  <LogOutIcon />
+                                  Leave team
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </MoreMenu>
+                          ) : admin ? (
+                            <MoreMenu>
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  disabled={changingRole}
+                                  onClick={async () => {
+                                    setChangingRole(true)
+                                    try {
+                                      await updateMemberRole(
+                                        member.id,
+                                        promoted
+                                      )
+                                      toast.add({
+                                        type: "success",
+                                        title: `Role changed to ${roleLabel(promoted)}`,
+                                      })
+                                    } catch (error) {
+                                      toast.add({
+                                        type: "error",
+                                        title: actionError(error),
+                                      })
+                                    } finally {
+                                      setChangingRole(false)
+                                    }
+                                  }}
+                                >
+                                  <ShieldIcon />
+                                  Change role to {roleLabel(promoted)}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() =>
+                                    setRemoving({
+                                      ...member,
+                                      createdAt: member.joinedAt,
+                                    })
+                                  }
+                                >
+                                  <UserMinusIcon />
+                                  Remove from team
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </MoreMenu>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+              <ListPagination {...pagination} embedded noun="member" />
+            </>
+          )
         ) : (
-          <p className="p-6 text-sm text-muted-foreground">
-            Only team admins can view and manage authorized apps.
-          </p>
+          <OAuthAppsList key={team.id} organizationId={team.id} />
         )}
       </SettingsCard>
       <InviteMemberDialog open={inviting} onOpenChange={setInviting} />
@@ -385,7 +416,15 @@ function TeamMembers({ team }: { team: Team }) {
 }
 
 function TeamInvitations({ team }: { team: Team }) {
-  const { invitations } = useWorkspace()
+  const query = usePaginatedQuery(
+    api.teams.invitations,
+    { organizationId: team.id },
+    { initialNumItems: 20 }
+  )
+  const { pageRows: invitations, pagination } = useLoadedPagination(
+    query.results,
+    query
+  )
   const invite = useMutation(api.teams.invite)
   const cancel = useMutation(api.teams.cancelInvitation)
   const [pending, setPending] = React.useState<string | null>(null)
@@ -413,61 +452,66 @@ function TeamInvitations({ team }: { team: Team }) {
   }
   return (
     <SettingsCard title="Invitations" flush>
-      {invitations.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <Th>Email</Th>
-              <Th>Role</Th>
-              <Th>Status</Th>
-              <Th>Expires</Th>
-              <Th className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((invitation) => (
-              <TableRow key={invitation.id}>
-                <TableCell className="font-medium">
-                  {invitation.email}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {roleLabel(invitation.role)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">
-                    {invitation.status === "expired" ? "Expired" : "Pending"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDate(invitation.expiresAt)}
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        disabled={pending !== null}
-                        onClick={() => update(invitation.id, true)}
-                      >
-                        <SendIcon />
-                        Resend invitation
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={pending !== null}
-                        variant="destructive"
-                        onClick={() => update(invitation.id, false)}
-                      >
-                        <XIcon />
-                        Cancel invitation
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
+      {query.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : query.results.length || query.status !== "Exhausted" ? (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <Th>Email</Th>
+                <Th>Role</Th>
+                <Th>Status</Th>
+                <Th>Expires</Th>
+                <Th className="w-10" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {invitations.map((invitation) => (
+                <TableRow key={invitation.id}>
+                  <TableCell className="font-medium">
+                    {invitation.email}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {roleLabel(invitation.role)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {invitation.status === "expired" ? "Expired" : "Pending"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(invitation.expiresAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          disabled={pending !== null}
+                          onClick={() => update(invitation.id, true)}
+                        >
+                          <SendIcon />
+                          Resend invitation
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={pending !== null}
+                          variant="destructive"
+                          onClick={() => update(invitation.id, false)}
+                        >
+                          <XIcon />
+                          Cancel invitation
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <ListPagination {...pagination} embedded noun="invitation" />
+        </>
       ) : (
         <EmptyState
           size="sm"
@@ -481,7 +525,7 @@ function TeamInvitations({ team }: { team: Team }) {
 }
 
 export function SettingsTeam() {
-  const { activeTeam: team } = useDashboard()
+  const team = useActiveTeam()
   const [deleting, setDeleting] = React.useState(false)
 
   return (
@@ -530,19 +574,14 @@ export function SettingsTeam() {
 }
 
 export function SettingsSmtp() {
-  const { state, updateSettings } = useDashboard()
-  const smtp = state.settings.smtp
-  const updateSmtp = (patch: Partial<typeof smtp>) =>
-    updateSettings((current) => ({
-      ...current,
-      smtp: { ...current.smtp, ...patch },
-    }))
+  const { smtp, updateSmtp } = useSmtp()
+  if (smtp === undefined) return <Skeleton className="h-64 w-full" />
 
   return (
     <>
       <SettingsLead>
         Send through the same API keys using any SMTP client. Username is
-        resend; the password is an Opensend API key.
+        opensend; the password is an Opensend API key.
       </SettingsLead>
       <Surface className="max-w-lg">
         <Field orientation="horizontal">
@@ -557,7 +596,11 @@ export function SettingsSmtp() {
           <Switch
             id="smtp-enabled"
             checked={smtp.enabled}
-            onCheckedChange={(checked) => updateSmtp({ enabled: checked })}
+            onCheckedChange={(checked) =>
+              updateSmtp({ enabled: checked }).catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
+            }
           />
         </Field>
         <Field>
@@ -570,16 +613,17 @@ export function SettingsSmtp() {
             id="smtp-port"
             className="w-full"
             value={String(smtp.port)}
-            onChange={(next) => updateSmtp({ port: Number(next) as 465 | 587 })}
+            onChange={(next) =>
+              updateSmtp({ port: Number(next) as 465 | 587 }).catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
+            }
             items={SMTP_PORT_ITEMS}
           />
         </Field>
         <Field>
           <FieldLabel>Username</FieldLabel>
-          <Input readOnly value="resend" />
-          <FieldDescription>
-            Matches the Resend SMTP contract so existing clients keep working.
-          </FieldDescription>
+          <Input readOnly value="opensend" />
         </Field>
         <Field>
           <FieldLabel>Password</FieldLabel>
@@ -591,7 +635,7 @@ export function SettingsSmtp() {
 }
 
 export function SettingsSso() {
-  const { activeTeam: team } = useDashboard()
+  const team = useActiveTeam()
   const { sso } = useWorkspace()
   const saveConnection = useAction(api.sso.save)
   const enforce = useMutation(api.sso.enforce)
@@ -744,20 +788,28 @@ export function SettingsSso() {
 }
 
 export function SettingsUnsubscribe() {
-  const { state, updateSettings } = useDashboard()
-  const page = state.settings.unsubscribe
+  const page = useUnsubscribePage()
+  const topics = useTopics()
+  const { savePage } = useUnsubscribeCommands()
+  const [pending, setPending] = React.useState(false)
 
-  function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!page) return
     const form = new FormData(event.currentTarget)
-    updateSettings({
-      unsubscribe: {
+    setPending(true)
+    try {
+      await savePage({
         heading: String(form.get("heading") ?? page.heading),
         body: String(form.get("body") ?? page.body),
         brandName: String(form.get("brandName") ?? page.brandName),
-      },
-    })
-    toast.add({ type: "success", title: "Unsubscribe page saved" })
+      })
+      toast.add({ type: "success", title: "Unsubscribe page saved" })
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -766,111 +818,52 @@ export function SettingsUnsubscribe() {
         Contacts land here from broadcast footers. Public topics are listed so
         they can stay on the mail they want.
       </SettingsLead>
-      <div className="grid items-stretch gap-6 lg:grid-cols-2">
-        <form onSubmit={save} className="flex flex-col self-stretch">
-          <Surface className="min-h-0 flex-1">
-            <Field>
-              <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
-              <Input
-                id="unsub-brand"
-                name="brandName"
-                key={page.brandName}
-                defaultValue={page.brandName}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="unsub-heading">Heading</FieldLabel>
-              <Input
-                id="unsub-heading"
-                name="heading"
-                key={page.heading}
-                defaultValue={page.heading}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="unsub-body">Body</FieldLabel>
-              <Input
-                id="unsub-body"
-                name="body"
-                key={page.body}
-                defaultValue={page.body}
-              />
-            </Field>
-            <Button type="submit">Save</Button>
-          </Surface>
-        </form>
-        <Surface>
-          <p className="font-mono text-caption text-muted-foreground">
-            Preview
-          </p>
-          <p className="text-small text-muted-foreground">{page.brandName}</p>
-          <h2 className="text-h4">{page.heading}</h2>
-          <p className="text-small text-muted-foreground">{page.body}</p>
-          <ul className="space-y-2 text-sm">
-            {state.topics
-              .filter((topic) => topic.visibility === "public")
-              .map((topic) => (
-                <li
-                  key={topic.id}
-                  className="flex items-center justify-between"
-                >
-                  <span>{topic.name}</span>
-                  <Badge variant="secondary">Topic</Badge>
-                </li>
-              ))}
-          </ul>
-        </Surface>
-      </div>
-    </>
-  )
-}
-
-export function SettingsExports() {
-  const { state } = useDashboard()
-
-  return (
-    <>
-      <PageHeader
-        title="Exports"
-        description="Exports from Emails, Broadcasts, Contacts, Segments, Domains, Logs, and API keys. Ready files stay available for 7 days."
-      />
-      {state.exports.length === 0 ? (
-        <EmptyState
-          icon={DownloadIcon}
-          title="You haven't performed any exports yet"
-          description="Once you execute an export, you'll be able to see them here."
-        />
+      {page === undefined || topics === undefined ? (
+        <Skeleton className="h-40 w-full" />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Resource</Th>
-              <Th>Status</Th>
-              <Th>Rows</Th>
-              <Th>Created</Th>
-              <Th>Expires</Th>
-            </>
-          }
-        >
-          {state.exports.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.resource}</TableCell>
-              <TableCell>
-                <ExportStatusBadge status={item.status} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {item.rows}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(item.createdAt)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(item.expiresAt)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <div className="grid items-stretch gap-6 lg:grid-cols-2">
+          <form onSubmit={save} className="flex flex-col self-stretch">
+            <Surface className="min-h-0 flex-1">
+              <Field>
+                <FieldLabel htmlFor="unsub-brand">Brand name</FieldLabel>
+                <Input
+                  id="unsub-brand"
+                  name="brandName"
+                  key={page.brandName}
+                  defaultValue={page.brandName}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="unsub-heading">Heading</FieldLabel>
+                <Input
+                  id="unsub-heading"
+                  name="heading"
+                  key={page.heading}
+                  defaultValue={page.heading}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="unsub-body">Body</FieldLabel>
+                <Input
+                  id="unsub-body"
+                  name="body"
+                  key={page.body}
+                  defaultValue={page.body}
+                />
+              </Field>
+              <Button type="submit" disabled={pending}>
+                Save
+              </Button>
+            </Surface>
+          </form>
+          <UnsubscribePageCard
+            page={page}
+            topics={topics.filter((topic) => topic.visibility === "public")}
+          />
+        </div>
       )}
     </>
   )
 }
+
+export { SettingsExports } from "./exports/list"

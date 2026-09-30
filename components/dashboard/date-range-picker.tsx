@@ -13,7 +13,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { CheckIcon, ChevronDownIcon } from "lucide-react"
-import { DEMO_NOW } from "@/lib/dashboard/data"
+import { useClock } from "@/lib/time/use-clock"
 import {
   pickerPresets,
   rangeAfterCalendarClear,
@@ -69,8 +69,6 @@ const RANGE_CALENDAR_COMPONENTS = {
   DayButton: RangeCalendarDayButton,
 }
 
-const DEMO_TODAY = new Date(DEMO_NOW)
-
 const PRESET_BUTTON_CLASS =
   "flex h-8 shrink-0 items-center justify-between gap-2 rounded-md px-2.5 text-left text-sm whitespace-nowrap transition-colors sm:w-full"
 
@@ -78,22 +76,24 @@ const PRESET_BUTTON_SELECTED_CLASS = `${PRESET_BUTTON_CLASS} bg-muted text-foreg
 
 const PRESET_BUTTON_IDLE_CLASS = `${PRESET_BUTTON_CLASS} text-muted-foreground hover:bg-muted/60 hover:text-foreground`
 
-function calendarMonthFromRange(range: DateRange | undefined): Date {
-  return range?.to ?? range?.from ?? DEMO_TODAY
-}
-
+/** Presets count back from the shared browser clock unless supplied. */
 export function DateRangePicker({
   range,
   onRangeChange,
   allowAllTime = false,
+  now: suppliedNow,
 }: {
   range: DateRange | undefined
   onRangeChange: (range: DateRange | undefined) => void
   allowAllTime?: boolean
+  now?: number
 }) {
-  const active = presetFromRange(range)
+  const clock = useClock()
+  const now = suppliedNow ?? clock ?? undefined
+  const today = now === undefined ? undefined : new Date(now)
+  const active = presetFromRange(range, now)
   const presets = pickerPresets(allowAllTime)
-  const label = rangeLabel(range, allowAllTime)
+  const label = rangeLabel(range, allowAllTime, now)
   /* Remount the calendar when the range changes so it opens on that month. */
   const rangeMonthKey = `${range?.from?.getTime() ?? ""}-${range?.to?.getTime() ?? ""}`
 
@@ -133,7 +133,7 @@ export function DateRangePicker({
                       : PRESET_BUTTON_IDLE_CLASS
                   }
                   onClick={() => {
-                    onRangeChange(rangeFromPreset(preset.value))
+                    onRangeChange(rangeFromPreset(preset.value, now))
                   }}
                 >
                   <span>{preset.label}</span>
@@ -152,11 +152,11 @@ export function DateRangePicker({
               mode="range"
               selected={range}
               key={rangeMonthKey}
-              defaultMonth={calendarMonthFromRange(range)}
-              today={DEMO_TODAY}
+              defaultMonth={range?.to ?? range?.from ?? today}
+              today={today}
               onSelect={(next) => {
                 if (!next?.from) {
-                  onRangeChange(rangeAfterCalendarClear(allowAllTime))
+                  onRangeChange(rangeAfterCalendarClear(allowAllTime, now))
                   return
                 }
                 onRangeChange(next)

@@ -15,16 +15,15 @@ const limiter = new RateLimiter(components.rateLimiter, {
   // One manual status check per domain at a time, however often it is asked.
   domainCheck: { kind: "token bucket", rate: 1, period: 10000, capacity: 1 },
 })
-export async function limitDomainCheck(
-  ctx: MutationCtx,
-  domainId: Id<"domains">
-) {
-  const result = await limiter.limit(ctx, "domainCheck", { key: domainId })
+async function limitCheck(ctx: MutationCtx, name: "domainCheck", key: string) {
+  const result = await limiter.limit(ctx, name, { key })
   if (!result.ok)
     throw new ConvexError(
       `Checked just now. Try again in ${Math.ceil(result.retryAfter / 1000)} seconds.`
     )
 }
+export const limitDomainCheck = (ctx: MutationCtx, domainId: Id<"domains">) =>
+  limitCheck(ctx, "domainCheck", domainId)
 export const reserve = internalMutation({
   args: { region: regionValue },
   returns: v.number(),

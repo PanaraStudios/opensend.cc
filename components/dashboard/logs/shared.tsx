@@ -4,7 +4,6 @@ import { ScrollTextIcon } from "lucide-react"
 
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
-  DocsSheet,
   HttpStatusBadge,
   IconCell,
   MonoLink,
@@ -42,34 +41,5 @@ export function LogRow({ log }: { log: ApiLog }) {
         <RelativeTime at={log.createdAt} />
       </TableCell>
     </TableRow>
-  )
-}
-
-const LOG_DOCS = [
-  {
-    title: "What is logged",
-    body: "Every API, SMTP, and dashboard request against this workspace, with its status, caller, and payloads.",
-  },
-  {
-    title: "Filtering",
-    body: "Narrow by date, status class, user agent, or source. Search matches the method, endpoint, and status code.",
-  },
-  {
-    title: "Redaction",
-    body: "Authorization and network headers are redacted before a request is stored.",
-  },
-]
-
-export function LogsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Logs"
-      description="Request-level history for debugging integrations."
-      sections={LOG_DOCS}
-    />
   )
 }

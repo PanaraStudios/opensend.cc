@@ -140,10 +140,10 @@ describe("OAuth boundary validation", () => {
       })
     ).rejects.toThrow("expired")
   })
-  test("consent requires verified current admin membership", async () => {
+  test("any current, verified member may consent, as on Resend", async () => {
     const f = await fixture(),
       token = await f.start()
-    await f.t.run(async (ctx) => {
+    const memberId = await f.t.run(async (ctx) => {
       const m = await ctx.db
         .query("member")
         .withIndex("by_organizationId_and_userId", (q) =>
@@ -151,10 +151,20 @@ describe("OAuth boundary validation", () => {
         )
         .unique()
       await ctx.db.patch(m!._id, { role: "member" })
+      return m!._id
     })
+    const approved = await f.t.mutation(api.oauth.decide, {
+      token,
+      browserHash: "browser-hash",
+      sessionId: f.sessionId,
+      organizationId: f.organizationId,
+      accept: true,
+    })
+    expect(approved.grantId).not.toBeNull()
+    await f.t.run((ctx) => ctx.db.delete(memberId))
     await expect(
       f.t.mutation(api.oauth.decide, {
-        token,
+        token: await f.start(),
         browserHash: "browser-hash",
         sessionId: f.sessionId,
         organizationId: f.organizationId,
@@ -242,7 +252,7 @@ describe("OAuth live authorization and replay", () => {
       )
     ).toEqual([otherTeam])
   })
-  test("team app management requires current admin membership and SSO", async () => {
+  test("members manage team apps; leaving the team revokes; SSO still applies", async () => {
     const f = await fixture(),
       grantId = await f.approve()
     const member = await f.t.run((ctx) =>
@@ -256,23 +266,21 @@ describe("OAuth live authorization and replay", () => {
     const id = await f.t.run(async (ctx) =>
       ctx.db.normalizeId("oauthGrant", grantId)
     )
+    // A demotion keeps the grant: members may hold one.
     await f.t.run((ctx) => ctx.db.patch(member!._id, { role: "member" }))
-    await expect(
-      f.t.query(api.oauth.list, {
-        sessionId: f.sessionId,
-        organizationId: f.organizationId,
-      })
-    ).rejects.toThrow("permission")
-    await expect(
-      f.t.mutation(api.oauth.disconnect, {
-        sessionId: f.sessionId,
-        organizationId: f.organizationId,
-        id: id!,
-      })
-    ).rejects.toThrow("permission")
-    await f.t.run(async (ctx) => {
-      await ctx.db.patch(member!._id, { role: "owner" })
-      await ctx.db.insert("sso", {
+    expect(
+      await f.t.query(api.oauth.checkGrant, { id: grantId })
+    ).not.toBeNull()
+    expect(
+      (
+        await f.t.query(api.oauth.list, {
+          sessionId: f.sessionId,
+          organizationId: f.organizationId,
+        })
+      ).map((row) => row.id)
+    ).toEqual([grantId])
+    await f.t.run((ctx) =>
+      ctx.db.insert("sso", {
         organizationId: f.organizationId,
         issuer: "https://idp.test",
         clientId: "idp",
@@ -281,7 +289,7 @@ describe("OAuth live authorization and replay", () => {
         enforced: true,
         tested: true,
       })
-    })
+    )
     await expect(
       f.t.query(api.oauth.list, {
         sessionId: f.sessionId,
@@ -295,6 +303,15 @@ describe("OAuth live authorization and replay", () => {
         id: id!,
       })
     ).rejects.toThrow("SSO_REQUIRED")
+    // Leaving the team ends the grant and team access.
+    await f.t.run((ctx) => ctx.db.delete(member!._id))
+    expect(await f.t.query(api.oauth.checkGrant, { id: grantId })).toBeNull()
+    await expect(
+      f.t.query(api.oauth.list, {
+        sessionId: f.sessionId,
+        organizationId: f.organizationId,
+      })
+    ).rejects.toThrow("permission")
   })
   test("expired codes and refresh tokens cannot be consumed", async () => {
     const f = await fixture(),

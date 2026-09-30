@@ -31,28 +31,40 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  ListPagination,
   ListToolbar,
   MoreMenu,
   OptionSelect,
   ResourceTable,
   Th,
+  useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   AudienceChrome,
-  AudienceDocsSheet,
   propertyDisplayName,
 } from "@/components/dashboard/audience/shared"
 import { DatabaseIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import {
-  isReservedPropertyKey,
-  isValidPropertyKey,
   normalizePropertyKey,
+  propertyKeyError,
+  DEFAULT_CONTACT_PROPERTIES,
 } from "@/lib/dashboard/contacts"
-import { DEFAULT_CONTACT_PROPERTIES } from "@/lib/dashboard/data"
 import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
 import { formatDate } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
-import type { PropertyType } from "@/lib/dashboard/types"
+import {
+  asProperty,
+  useAudienceCommands,
+  useProperties,
+} from "@/lib/audience/use-audience"
+import { actionError } from "@/lib/action-error"
+import { Skeleton } from "@/components/ui/skeleton"
+import { api } from "@/convex/_generated/api"
+import type { ContactProperty, PropertyType } from "@/lib/dashboard/types"
+
+type PropertyRow = ContactProperty | (typeof DEFAULT_CONTACT_PROPERTIES)[number]
+const asPropertyRow = (row: Parameters<typeof asProperty>[0]): PropertyRow =>
+  asProperty(row)
 
 const PROPERTY_TYPES = [
   { value: "string", label: "String" },
@@ -66,7 +78,9 @@ function AddPropertyDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { state, addProperty } = useDashboard()
+  const { addProperty } = useAudienceCommands()
+  const properties = useProperties()
+  const [pending, setPending] = React.useState(false)
   const [key, setKey] = React.useState("")
   const [type, setType] = React.useState<PropertyType>("string")
   const [fallbackValue, setFallbackValue] = React.useState("")
@@ -79,29 +93,34 @@ function AddPropertyDialog({
     setError(null)
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending) return
     const nextKey = normalizePropertyKey(key)
-    if (!isValidPropertyKey(nextKey)) {
-      setError("Use a lowercase key with letters, numbers, and underscores")
+    const keyError = propertyKeyError(
+      nextKey,
+      (properties ?? []).map((item) => item.key)
+    )
+    if (keyError) {
+      setError(keyError)
       return
     }
-    if (
-      isReservedPropertyKey(nextKey) ||
-      state.properties.some((item) => item.key === nextKey)
-    ) {
-      setError("That key already exists")
-      return
+    setPending(true)
+    try {
+      await addProperty({
+        name: propertyDisplayName(nextKey),
+        key: nextKey,
+        type,
+        fallbackValue,
+      })
+      toast.add({ type: "success", title: "Property created" })
+      reset()
+      onOpenChange(false)
+    } catch (caught) {
+      setError(actionError(caught))
+    } finally {
+      setPending(false)
     }
-    addProperty({
-      name: propertyDisplayName(nextKey),
-      key: nextKey,
-      type,
-      fallbackValue,
-    })
-    toast.add({ type: "success", title: "Property created" })
-    reset()
-    onOpenChange(false)
   }
 
   return (
@@ -165,7 +184,9 @@ function AddPropertyDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit">Add property</Button>
+            <Button type="submit" disabled={pending}>
+              Add property
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -174,23 +195,32 @@ function AddPropertyDialog({
 }
 
 export function PropertiesView() {
-  const { state, deleteProperty } = useDashboard()
-  const [query, setQuery] = React.useState("")
+  const { deleteProperty } = useAudienceCommands()
+  const { query, setQuery, search } = useListSearch()
   const [open, setOpen] = React.useState(false)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [pending, setPending] = React.useState<string | null>(null)
 
-  const needle = searchNeedle(query)
-  const propertyMatches = (item: { name: string; key: string }) =>
-    matchesNeedle(needle, item.name, item.key)
-  const defaults = DEFAULT_CONTACT_PROPERTIES.filter(propertyMatches)
-  const custom = state.properties.filter(propertyMatches)
+  /* The built-in fields lead the first page, then the team's own. */
+  const defaults = React.useMemo(() => {
+    const needle = searchNeedle(search)
+    return DEFAULT_CONTACT_PROPERTIES.filter((item) =>
+      matchesNeedle(needle, item.name, item.key)
+    )
+  }, [search])
+  const properties = useTeamList(
+    api.contactProperties.list,
+    api.contactProperties.count,
+    { search },
+    asPropertyRow,
+    defaults
+  )
+  const { rows, pageRows, pagination } = properties
 
   return (
     <AudienceChrome
       actions={
         <>
-          <DocsButton onClick={() => setDocsOpen(true)} />
+          <DocsButton />
           <Button onClick={() => setOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             Add property
@@ -203,7 +233,9 @@ export function PropertiesView() {
         onQueryChange={setQuery}
         placeholder="Search properties…"
       />
-      {defaults.length === 0 && custom.length === 0 ? (
+      {properties.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={DatabaseIcon}
           title="No properties"
@@ -215,66 +247,69 @@ export function PropertiesView() {
           </Button>
         </EmptyState>
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Key</Th>
-              <Th>Type</Th>
-              <Th>Fallback</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {defaults.map((item) => (
-            <TableRow key={item.key}>
-              <TableCell>
-                <code className="font-mono text-[13px]">{item.key}</code>
-                <Badge variant="secondary" className="ml-2">
-                  Default
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground capitalize">
-                {item.type}
-              </TableCell>
-              <TableCell className="text-muted-foreground">—</TableCell>
-              <TableCell className="text-muted-foreground">—</TableCell>
-              <TableCell />
-            </TableRow>
-          ))}
-          {custom.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <code className="font-mono text-[13px]">{item.key}</code>
-              </TableCell>
-              <TableCell className="text-muted-foreground capitalize">
-                {item.type}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {item.fallbackValue || "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatDate(item.createdAt)}
-              </TableCell>
-              <TableCell>
-                <MoreMenu>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setPending(item.id)}
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </MoreMenu>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Key</Th>
+                <Th>Type</Th>
+                <Th>Fallback</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) =>
+              !("id" in item) ? (
+                <TableRow key={item.key}>
+                  <TableCell>
+                    <code className="font-mono text-[13px]">{item.key}</code>
+                    <Badge variant="secondary" className="ml-2">
+                      Default
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground capitalize">
+                    {item.type}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">—</TableCell>
+                  <TableCell className="text-muted-foreground">—</TableCell>
+                  <TableCell />
+                </TableRow>
+              ) : (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <code className="font-mono text-[13px]">{item.key}</code>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground capitalize">
+                    {item.type}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {item.fallbackValue || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(item.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setPending(item.id)}
+                        >
+                          <Trash2Icon />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              )
+            )}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="property" plural="properties" />
+        </>
       )}
       <AddPropertyDialog open={open} onOpenChange={setOpen} />
-      <AudienceDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pending !== null}
         onOpenChange={(next) => {
@@ -282,8 +317,8 @@ export function PropertiesView() {
         }}
         title="Delete property?"
         description="Values are removed from every contact. The fallback is discarded."
-        onConfirm={() => {
-          if (pending) deleteProperty(pending)
+        onConfirm={async () => {
+          if (pending) await deleteProperty(pending)
           toast.add({ type: "success", title: "Property deleted" })
         }}
       />

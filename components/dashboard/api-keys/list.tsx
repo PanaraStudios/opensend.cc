@@ -15,7 +15,6 @@ import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
-  ApiKeysDocsSheet,
   DeleteApiKeyDialog,
   PERMISSION_FILTER_ITEMS,
   ViewApiKeyDialog,
@@ -30,40 +29,61 @@ import {
   RelativeTime,
   ResourceTable,
   Th,
-  usePagination,
+  useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
-import { ALL_PERMISSIONS, filterApiKeys } from "@/lib/dashboard/api-keys"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
+import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
 import { permissionLabel } from "@/lib/dashboard/format"
-import { searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
-import type { ApiKey } from "@/lib/dashboard/types"
+import { useExportDialog } from "@/components/dashboard/export-dialog"
+import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 
 export function ApiKeysView() {
-  const { state, createApiKey, updateApiKey, deleteApiKey, addExport } =
-    useDashboard()
-  const [query, setQuery] = React.useState("")
+  const { organizationId, createApiKey, updateApiKey, deleteApiKey } =
+    useApiKeyCommands()
+  const { query, setQuery, search } = useListSearch()
   const [permission, setPermission] = React.useState(ALL_PERMISSIONS)
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
   const [editing, setEditing] = React.useState<ApiKey | null>(null)
   const [deleting, setDeleting] = React.useState<ApiKey | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
 
-  const rows = filterApiKeys(state.apiKeys, {
-    needle: searchNeedle(query),
-    permission,
+  const filters = {
+    search: search.trim() || undefined,
+    permission:
+      permission === ALL_PERMISSIONS
+        ? undefined
+        : (permission as ApiKeyPermission),
+  }
+  const exporting = useExportDialog({
+    resource: "api-keys",
+    noun: "API keys",
+    filters: { ...filters, search: query.trim() || undefined },
   })
-  const { pageRows, pagination } = usePagination(rows)
+  const {
+    rows,
+    status: loading,
+    pageRows,
+    pagination,
+  } = useTeamList(api.apiKeys.list, api.apiKeys.count, filters, asApiKey)
+  const hasKeys = useQuery(
+    api.apiKeys.hasAny,
+    organizationId ? { organizationId } : "skip"
+  )
 
   return (
     <>
       <PageHeader title="API keys">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         <Button onClick={() => setAdding(true)}>
           <PlusIcon data-icon="inline-start" />
           Create API key
         </Button>
       </PageHeader>
+      {exporting.dialog}
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
@@ -76,24 +96,21 @@ export function ApiKeysView() {
             "aria-label": "Filter by permission",
           },
         ]}
-        onExport={() => {
-          addExport("API keys", rows.length)
-          toast.add({ type: "success", title: "Export started" })
-        }}
+        onExport={exporting.open}
       />
-      {rows.length === 0 ? (
+      {loading === "LoadingFirstPage" || hasKeys === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={ApiKeyIcon}
-          title={
-            state.apiKeys.length === 0 ? "No API keys" : "No API keys found"
-          }
+          title={hasKeys ? "No API keys found" : "No API keys"}
           description={
-            state.apiKeys.length === 0
-              ? "Create a key to send through the REST API or SMTP."
-              : "No keys match these filters."
+            hasKeys
+              ? "No keys match these filters."
+              : "Create a key to send through the REST API or SMTP."
           }
         >
-          {state.apiKeys.length === 0 ? (
+          {!hasKeys ? (
             <Button onClick={() => setAdding(true)}>
               <PlusIcon data-icon="inline-start" />
               Create API key
@@ -173,8 +190,8 @@ export function ApiKeysView() {
         onOpenChange={setAdding}
         title="Add API Key"
         submitLabel="Add"
-        onSubmit={(values) => {
-          const created = createApiKey(values)
+        onSubmit={async (values) => {
+          const created = await createApiKey(values)
           setToken(created.token)
           toast.add({ type: "success", title: "API key created" })
         }}
@@ -187,8 +204,8 @@ export function ApiKeysView() {
         title="Edit API Key"
         submitLabel="Save"
         apiKey={editing}
-        onSubmit={(values) => {
-          if (editing) updateApiKey(editing.id, values)
+        onSubmit={async (values) => {
+          if (editing) await updateApiKey(editing.id, values)
           toast.add({ type: "success", title: "API key updated" })
         }}
       />
@@ -204,12 +221,11 @@ export function ApiKeysView() {
         onOpenChange={(next) => {
           if (!next) setDeleting(null)
         }}
-        onConfirm={() => {
-          if (deleting) deleteApiKey(deleting.id)
+        onConfirm={async () => {
+          if (deleting) await deleteApiKey(deleting.id)
           toast.add({ type: "success", title: "API key removed" })
         }}
       />
-      <ApiKeysDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

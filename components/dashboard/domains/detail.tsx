@@ -1,4 +1,5 @@
 "use client"
+import { DomainClaim } from "./claim"
 import * as React from "react"
 import { useParams } from "next/navigation"
 import { useQuery, useMutation, useAction } from "convex/react"
@@ -33,6 +34,15 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -64,7 +74,6 @@ import {
   DnsRecordsTable,
   DomainIcon,
   DomainSection,
-  DomainsDocsSheet,
   ProviderMark,
   ProviderValue,
   RegionValue,
@@ -73,6 +82,7 @@ import {
   downloadTextFile,
 } from "@/components/dashboard/domains/shared"
 import {
+  DEFAULT_TRACKING_SUBDOMAIN,
   domainBanner,
   domainCsvFile,
   domainEventSteps,
@@ -82,6 +92,7 @@ import {
   domainZoneFile,
   providerLabel,
   trackingEnabled,
+  validateDnsLabel,
   type DomainBanner,
   type DomainEventStep,
 } from "@/lib/dashboard/domains"
@@ -234,6 +245,133 @@ function DomainEvents({ domain }: { domain: Domain }) {
     <DetailSection title="Domain events">
       <EventTrail steps={steps} />
     </DetailSection>
+  )
+}
+
+function TrackingDialog({
+  open,
+  onOpenChange,
+  domain,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  domain: Domain
+}) {
+  const { updateDomain } = useDomainCommands()
+  const [subdomain, setSubdomain] = React.useState(
+    domain.trackingSubdomain || DEFAULT_TRACKING_SUBDOMAIN
+  )
+  const [click, setClick] = React.useState(domain.clickTracking)
+  const [openTracking, setOpenTracking] = React.useState(domain.openTracking)
+  const [error, setError] = React.useState<string | null>(null)
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    const labelError = validateDnsLabel(subdomain)
+    if (labelError) {
+      setError(labelError)
+      return
+    }
+    void updateDomain(domain.id, {
+      trackingSubdomain: subdomain.trim().toLowerCase(),
+      clickTracking: click,
+      openTracking,
+    }).then(
+      () =>
+        toast.add({
+          type: "success",
+          title: "Tracking configured",
+          description: "Add the CNAME record to finish.",
+        }),
+      (failure) => toast.add({ type: "error", title: actionError(failure) })
+    )
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setError(null)
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle>Configure tracking</DialogTitle>
+            <DialogDescription>
+              Links and pixels are rewritten to this subdomain so they match
+              your sending domain.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="py-4">
+            <Field>
+              <FieldLabel htmlFor="tracking-subdomain">
+                Tracking subdomain
+              </FieldLabel>
+              <Input
+                id="tracking-subdomain"
+                value={subdomain}
+                onChange={(event) => {
+                  setSubdomain(event.target.value)
+                  setError(null)
+                }}
+                placeholder={DEFAULT_TRACKING_SUBDOMAIN}
+                autoFocus
+              />
+              {error ? (
+                <FieldError>{error}</FieldError>
+              ) : (
+                <FieldDescription>
+                  Rewritten links become{" "}
+                  <span className="font-mono">
+                    {subdomain || DEFAULT_TRACKING_SUBDOMAIN}.{domain.name}
+                  </span>
+                  .
+                </FieldDescription>
+              )}
+            </Field>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="tracking-click">
+                <span className="flex flex-col gap-1">
+                  Click tracking
+                  <FieldDescription>
+                    Rewrites links so clicks can be attributed.
+                  </FieldDescription>
+                </span>
+              </FieldLabel>
+              <Switch
+                id="tracking-click"
+                checked={click}
+                onCheckedChange={setClick}
+              />
+            </Field>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="tracking-open">
+                <span className="flex flex-col gap-1">
+                  Open tracking
+                  <FieldDescription>
+                    Adds a tracking pixel to measure opens.
+                  </FieldDescription>
+                </span>
+              </FieldLabel>
+              <Switch
+                id="tracking-open"
+                checked={openTracking}
+                onCheckedChange={setOpenTracking}
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              Cancel
+            </DialogClose>
+            <Button type="submit">Save</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -434,6 +572,7 @@ function DomainConfiguration({
   busy: boolean
 }) {
   const { canWrite, updateDomain } = useDomainCommands()
+  const [trackingOpen, setTrackingOpen] = React.useState(false)
   const tracking = trackingEnabled(domain)
   const trackingRecords = domainTrackingRecords(domain)
 
@@ -465,8 +604,8 @@ function DomainConfiguration({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            disabled
-            title="Tracking is not available yet"
+            disabled={!canWrite || busy}
+            onClick={() => setTrackingOpen(true)}
           >
             Configure
           </Button>
@@ -500,6 +639,14 @@ function DomainConfiguration({
           {domain.customReturnPath}.{domain.name}
         </MonoValue>
       </DomainSection>
+      {/* Keyed on the saved values so reopening the dialog shows them, not
+          the draft it mounted with. */}
+      <TrackingDialog
+        key={`${domain.trackingSubdomain}-${domain.clickTracking}-${domain.openTracking}`}
+        open={trackingOpen}
+        onOpenChange={setTrackingOpen}
+        domain={domain}
+      />
     </Surface>
   )
 }
@@ -513,7 +660,6 @@ export function DomainDetail() {
   const { deleteDomain, canWrite } = useDomainCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/domains")
   const [tab, setTab] = React.useState("records")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState(false)
   const [providerLookupFailed, setProviderLookupFailed] = React.useState(false)
@@ -556,6 +702,7 @@ export function DomainDetail() {
     if (leaving) return null
     return <NotFoundState icon={DomainIcon} noun="domain" backHref="/domains" />
   }
+  if (stored?.claimId) return <DomainClaim domain={stored} />
   const busy = result.domain.phase === "running"
   const error = result.domain.error ?? result.tenant?.error
   // The worker flags an identity it could not claim; error text is never parsed.
@@ -573,7 +720,7 @@ export function DomainDetail() {
         icon={DomainIcon}
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem
@@ -641,7 +788,6 @@ export function DomainDetail() {
         open={reviewOpen}
         onOpenChange={setReviewOpen}
       />
-      <DomainsDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}

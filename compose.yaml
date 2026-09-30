@@ -15,6 +15,7 @@ services:
       CONVEX_SITE_ORIGIN: ${CONVEX_PUBLIC_SITE_URL:-http://localhost:3211}
       DISABLE_BEACON: "true"
       REDACT_LOGS_TO_CLIENT: "true"
+      DOCUMENT_RETENTION_DELAY: ${DOCUMENT_RETENTION_DELAY:-172800}
     volumes:
       - convex-data:/convex/data
     extra_hosts:
@@ -25,6 +26,7 @@ services:
       timeout: 3s
       retries: 30
   dashboard:
+    profiles: [debug]
     image: ${CONVEX_DASHBOARD_IMAGE:-ghcr.io/get-convex/convex-dashboard@sha256:63e94c62940a09acd36464e02e1b0a7589f7ef48227003de78510f9523bb4e6b}
     restart: unless-stopped
     ports:
@@ -35,13 +37,44 @@ services:
       convex:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6791').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:6791').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 10
+  migrate:
+    image: ${MIGRATE_IMAGE:-ghcr.io/panarastudios/opensend-migrate:${OPENSEND_VERSION:-latest}}
+    build:
+      context: .
+      target: migrate
+    restart: "no"
+    depends_on:
+      convex:
+        condition: service_healthy
+    environment:
+      CONVEX_SELF_HOSTED_URL: http://convex:3210
+      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY}
+      SITE_URL: ${SITE_URL:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      SSO_ENCRYPTION_KEY: ${SSO_ENCRYPTION_KEY:-}
+      SES_ENCRYPTION_KEY: ${SES_ENCRYPTION_KEY:-}
+      SES_CALLBACK_ORIGIN: ${SES_CALLBACK_ORIGIN:-}
+      ALLOW_LOCAL_OIDC: ${ALLOW_LOCAL_OIDC:-}
+      LOG_AUTH_LINKS: ${LOG_AUTH_LINKS:-}
+      DOMAIN_CONNECT_KEY: ${DOMAIN_CONNECT_KEY:-}
+      DOMAIN_CONNECT_PRIVATE_KEY: ${DOMAIN_CONNECT_PRIVATE_KEY:-}
+      DOMAIN_CONNECT_SIGNER: ${DOMAIN_CONNECT_SIGNER:-}
+      SMTP_HOST: ${SMTP_HOST:-}
   app:
-    image: ${APP_IMAGE:-opensend-app:local}
-    build: .
+    image: ${APP_IMAGE:-ghcr.io/panarastudios/opensend-app:${OPENSEND_VERSION:-latest}}
+    build:
+      context: .
+      target: app
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"
@@ -52,11 +85,41 @@ services:
     depends_on:
       convex:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 10
+  smtp:
+    image: ${SMTP_IMAGE:-ghcr.io/panarastudios/opensend-smtp:${OPENSEND_VERSION:-latest}}
+    profiles: [smtp]
+    build:
+      context: .
+      dockerfile: docker/smtp/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 40s
+    ports:
+      - "${SMTP_TLS_PUBLIC_PORT:-465}:2465"
+      - "${SMTP_STARTTLS_PUBLIC_PORT:-587}:2587"
+    environment:
+      SMTP_CONVEX_SITE_URL: http://convex:3211
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_TLS_KEY_PATH: /certs/privkey.pem
+      SMTP_TLS_CERT_PATH: /certs/fullchain.pem
+      SMTP_MAX_MESSAGE_BYTES: ${SMTP_MAX_MESSAGE_BYTES:-41943040}
+    volumes:
+      - ${SMTP_CERT_DIR:-./docker/smtp/certs}:/certs:ro
+    depends_on:
+      convex:
+        condition: service_healthy
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]

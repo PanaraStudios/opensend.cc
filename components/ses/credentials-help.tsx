@@ -14,13 +14,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { downloadTextFile } from "@/components/dashboard/domains/shared"
-import { buildAwsIamPolicy, IAM_USERS_URL } from "@/lib/aws/setup"
+import {
+  AWS_IAM_POLICY_FILE,
+  buildAwsIamPolicy,
+  IAM_USERS_URL,
+} from "@/lib/aws/setup"
 import type { Region } from "@/lib/dashboard/types"
 
 const canDownloadPolicy = (accountId: string) => /^\d{12}$/.test(accountId)
 
-/** Hands over the IAM policy the connection needs, named for the account and
-    regions it was generated for. */
+/** Hands over the one IAM policy the connection needs, generated for the
+    account and regions it will be attached in. */
 export function DownloadIamPolicyButton({
   installationId,
   accountId,
@@ -39,7 +43,7 @@ export function DownloadIamPolicyButton({
       disabled={!canDownloadPolicy(accountId)}
       onClick={() =>
         downloadTextFile(
-          "opensend-iam-policy.json",
+          AWS_IAM_POLICY_FILE,
           JSON.stringify(
             buildAwsIamPolicy(installationId, regions, accountId),
             null,

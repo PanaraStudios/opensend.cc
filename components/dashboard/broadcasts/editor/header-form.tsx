@@ -17,17 +17,29 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useDraft } from "@/components/dashboard/primitives"
-import { emailFrom, fromAddresses } from "@/lib/dashboard/broadcast"
+import { useSegmentOptions, useTopicOptions } from "@/lib/audience/use-audience"
+import {
+  useDraft,
+  SearchableSelect,
+  type SelectSearch,
+} from "@/components/dashboard/primitives"
+import { useDomainByName, useDomainOptions } from "@/lib/domains/use-domains"
+import { emailFrom } from "@/lib/dashboard/broadcast"
 import {
   formatScheduleHint,
   scheduleOptions,
   timeZoneLabel,
   type ScheduleOption,
 } from "@/lib/dashboard/schedule"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
+import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
+import { defaultFromAddress } from "@/lib/dashboard/format"
+import { senderDomainSearch } from "@/lib/dashboard/sender-options"
+import type { Id } from "@/convex/_generated/dataModel"
 
 /* This form sits on the email paper, so it keeps the paper's own palette in
    both app themes. Anything that floats above it (menus, popovers) is app
@@ -47,7 +59,11 @@ function PaperSelect({
   placeholder,
   testId,
   label,
+  selectedItem,
+  search,
 }: {
+  search?: SelectSearch
+  selectedItem?: { value: string; label: string }
   value: string
   onValueChange: (value: string) => void
   items: readonly { value: string; label: string }[]
@@ -55,7 +71,37 @@ function PaperSelect({
   testId: string
   label: string
 }) {
-  const current = items.find((item) => item.value === value)
+  if (search)
+    return (
+      <SearchableSelect
+        value={value}
+        onChange={onValueChange}
+        items={items}
+        selectedItem={selectedItem}
+        search={search}
+        contentClassName="min-w-52"
+        trigger={(current) => (
+          <button
+            type="button"
+            aria-label={label}
+            data-testid={testId}
+            className={cn(
+              VALUE,
+              "flex items-center gap-1 text-left",
+              !current && "text-[#9ca3af]"
+            )}
+          >
+            {current?.label ?? placeholder}
+            <ChevronDownIcon className="size-3.5 text-[#9ca3af]" />
+          </button>
+        )}
+      />
+    )
+  const choices =
+    selectedItem && !items.some((item) => item.value === selectedItem.value)
+      ? [...items, selectedItem]
+      : items
+  const current = choices.find((item) => item.value === value)
 
   return (
     <DropdownMenu>
@@ -81,7 +127,7 @@ function PaperSelect({
           value={value}
           onValueChange={(next) => onValueChange(String(next))}
         >
-          {items.map((item) => (
+          {choices.map((item) => (
             <DropdownMenuRadioItem
               key={item.value}
               value={item.value}
@@ -190,12 +236,29 @@ export function BroadcastSendFields({
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
 }) {
-  const { state, updateBroadcast } = useDashboard()
+  const [segmentSearch, setSegmentSearch] = React.useState("")
+  const [topicSearch, setTopicSearch] = React.useState("")
+  const segments = useSegmentOptions(item.segmentId, segmentSearch) ?? []
+  const topics = useTopicOptions(item.topicId, topicSearch) ?? []
+  const commands = useBroadcastCommands()
+  const updateBroadcast = (
+    id: string,
+    patch: Parameters<typeof commands.updateBroadcast>[1]
+  ) =>
+    void commands
+      .updateBroadcast(id, patch)
+      .catch((error) => toast.add({ type: "error", title: actionError(error) }))
   return (
     <>
       <div className={ROW}>
         <span className={LABEL}>To</span>
         <PaperSelect
+          selectedItem={
+            segments
+              .filter((row) => row.id === item.segmentId)
+              .map((row) => ({ value: row.id, label: row.name }))[0]
+          }
+          search={{ onChange: setSegmentSearch }}
           label="Audience"
           testId="header-audience"
           placeholder="Select a segment…"
@@ -207,7 +270,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "everyone", label: "All contacts" },
-            ...state.segments.map((segment) => ({
+            ...segments.map((segment) => ({
               value: segment.id,
               label: segment.name,
             })),
@@ -217,6 +280,12 @@ export function BroadcastSendFields({
       <div className={ROW}>
         <span className={LABEL}>Subscribe to</span>
         <PaperSelect
+          selectedItem={
+            topics
+              .filter((row) => row.id === item.topicId)
+              .map((row) => ({ value: row.id, label: row.name }))[0]
+          }
+          search={{ onChange: setTopicSearch }}
           label="Topic"
           testId="header-topic"
           placeholder="Select a topic"
@@ -228,7 +297,7 @@ export function BroadcastSendFields({
           }
           items={[
             { value: "none", label: "No topic" },
-            ...state.topics.map((topic) => ({
+            ...topics.map((topic) => ({
               value: topic.id,
               label: topic.name,
             })),
@@ -258,14 +327,24 @@ export function EmailHeaderForm({
   onChange: (patch: EmailHeaderPatch) => void
   children?: React.ReactNode
 }) {
-  const { state } = useDashboard()
   const [showReplyTo, setShowReplyTo] = React.useState(
     Boolean(item.replyTo?.trim())
   )
   const [showPreview, setShowPreview] = React.useState(
     Boolean(item.preview.trim())
   )
-  const from = emailFrom(item, state.domains)
+  const [domainSearch, setDomainSearch] = React.useState("")
+  const defaultDomains = useDomainOptions({ status: "verified" })
+  const from = item.from || emailFrom(item, defaultDomains)
+  const mailbox = parseMailbox(from)
+  const selectedDomain = useDomainByName(
+    mailbox ? senderDomainOf(mailbox) : undefined
+  )
+  const domains = useDomainOptions({
+    status: "verified",
+    search: senderDomainSearch(domainSearch),
+    selectedId: selectedDomain?.id as Id<"domains"> | undefined,
+  })
   const subject = useDraft(item.subject, (value) =>
     onChange({ subject: value })
   )
@@ -285,14 +364,16 @@ export function EmailHeaderForm({
       <div className={ROW}>
         <span className={LABEL}>From</span>
         <PaperSelect
+          selectedItem={{ value: from, label: from }}
+          search={{ onChange: setDomainSearch }}
           label="From"
           testId="header-from"
           placeholder="Select a sender"
           value={from}
           onValueChange={(next) => onChange({ from: next })}
-          items={fromAddresses(state.domains).map((address) => ({
-            value: address,
-            label: address,
+          items={domains.map((domain) => ({
+            value: defaultFromAddress(domain.name),
+            label: defaultFromAddress(domain.name),
           }))}
         />
         {showReplyTo ? null : (

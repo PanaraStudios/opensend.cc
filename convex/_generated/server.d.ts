@@ -35,9 +35,11 @@ type Env = {
   readonly DOMAIN_CONNECT_KEY: string | undefined;
   readonly DOMAIN_CONNECT_PRIVATE_KEY: string | undefined;
   readonly DOMAIN_CONNECT_SIGNER: string | undefined;
+  readonly LOG_AUTH_LINKS: string | undefined;
   readonly SES_CALLBACK_ORIGIN: string | undefined;
   readonly SES_ENCRYPTION_KEY: string | undefined;
   readonly SITE_URL: string;
+  readonly SMTP_HOST: string | undefined;
   readonly SSO_ENCRYPTION_KEY: string;
 };
 

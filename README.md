@@ -15,9 +15,21 @@ The marketing website is maintained separately in the private
 webhook, R2 logo storage, waitlist, and analytics are not part of this app.
 UI components and styles are local copies; neither repository imports from the other.
 
+## Install on a server
+
+With Docker and Docker Compose installed:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh
+```
+
+The installer downloads prebuilt images and configures the three public hostnames.
+Use `--convex cloud` to run with Convex Cloud instead of a local backend.
+See [self-hosting](docs/self-hosting.md) for flags, upgrades and source installation.
+
 ## Develop
 
-Requires Node.js 20.9+ and [pnpm](https://pnpm.io).
+Requires Node.js 22 and [pnpm](https://pnpm.io) 11.7.0.
 
 ```sh
 pnpm install --frozen-lockfile

@@ -42,18 +42,31 @@ import {
   ResourceTable,
   Th,
   useDeleteRecord,
+  useLoadedPagination,
+  ListPagination,
 } from "@/components/dashboard/primitives"
 import {
   audienceLabel,
   broadcastActions,
   broadcastAsTemplateInput,
-  broadcastEventRows,
   isBroadcastDraftLike,
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
+import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
 import { percent } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useQuery, usePaginatedQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { Skeleton } from "@/components/ui/skeleton"
+import { actionError } from "@/lib/action-error"
+import {
+  useBroadcast,
+  useBroadcastCommands,
+} from "@/lib/broadcasts/use-broadcasts"
+import { useDomainByName } from "@/lib/domains/use-domains"
+import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
+import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 const EVENT_TABS: {
   value: BroadcastEventTab
@@ -129,11 +142,11 @@ function StatsTable({
 }
 
 function BroadcastReport({ item }: { item: Broadcast }) {
-  const { state } = useDashboard()
   const [hideTracking, setHideTracking] = React.useState(false)
   const [tab, setTab] = React.useState<BroadcastEventTab>("unsubscribed")
   const stats = item.stats
-  const domain = state.domains.find((row) => row.status === "verified")
+  const sender = item.from && parseMailbox(item.from)
+  const domain = useDomainByName(sender ? senderDomainOf(sender) : undefined)
   const trackingOff = Boolean(
     domain && (!domain.openTracking || !domain.clickTracking)
   )
@@ -141,7 +154,20 @@ function BroadcastReport({ item }: { item: Broadcast }) {
     stats.recipients > 0
       ? Math.round((stats.delivered / stats.recipients) * 100)
       : 0
-  const rows = broadcastEventRows(state, item, tab)
+  const events = usePaginatedQuery(
+    api.broadcasts.eventList,
+    { id: item.id as Id<"broadcasts">, type: tab },
+    { initialNumItems: 20 }
+  )
+  const total = useQuery(api.broadcasts.eventCount, {
+    id: item.id as Id<"broadcasts">,
+    type: tab,
+  })
+  const { pageRows: rows, pagination } = useLoadedPagination(
+    events.results,
+    events,
+    total
+  )
   const active =
     EVENT_TABS.find((entry) => entry.value === tab) ?? EVENT_TABS[0]
 
@@ -212,7 +238,9 @@ function BroadcastReport({ item }: { item: Broadcast }) {
         tabs={EVENT_TABS}
       >
         <TabsContent value={tab} className="p-5">
-          {rows.length === 0 ? (
+          {events.status === "LoadingFirstPage" ? (
+            <Skeleton className="h-40 w-full" />
+          ) : rows.length === 0 && events.status === "Exhausted" ? (
             <EmptyState
               size="sm"
               icon={MailIcon}
@@ -234,6 +262,7 @@ function BroadcastReport({ item }: { item: Broadcast }) {
               ))}
             </ResourceTable>
           )}
+          <ListPagination {...pagination} embedded noun="recipient" />
         </TabsContent>
       </PanelTabs>
     </>
@@ -243,15 +272,20 @@ function BroadcastReport({ item }: { item: Broadcast }) {
 export function BroadcastDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const topics = useTopics() ?? []
   const {
-    state,
     updateBroadcast,
     duplicateBroadcast,
-    setBroadcastStatus,
+    sendBroadcast,
+    cancelBroadcast,
     deleteBroadcast,
-    addTemplate,
-  } = useDashboard()
-  const item = state.broadcasts.find((row) => row.id === id)
+  } = useBroadcastCommands()
+  const reportError = (error: unknown) =>
+    toast.add({ type: "error", title: actionError(error) })
+  const saveAsTemplate = useSaveAsTemplate()
+  const item = useBroadcast(id)
+  // The broadcast's own segment resolves wherever it falls in the team's list.
+  const segments = useSegmentOptions(item?.segmentId) ?? []
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
   const [renameOpen, setRenameOpen] = React.useState(false)
@@ -263,6 +297,7 @@ export function BroadcastDetail() {
     if (editable) router.replace(`/broadcasts/${id}/edit`)
   }, [editable, id, router])
 
+  if (item === undefined) return <Skeleton className="h-64 w-full" />
   if (!item) {
     if (leaving) return null
     return (
@@ -277,22 +312,23 @@ export function BroadcastDetail() {
 
   const broadcast = item
   const { canSend, canCancel } = broadcastActions(broadcast.status)
-  const topic = state.topics.find((row) => row.id === broadcast.topicId)
-  const audience = audienceLabel(broadcast.segmentId, state.segments)
+  const topic = topics.find((row) => row.id === broadcast.topicId)
+  const audience = audienceLabel(broadcast.segmentId, segments)
 
   function cloneAsTemplate() {
-    addTemplate(broadcastAsTemplateInput(broadcast))
-    toast.add({ type: "success", title: "Template created" })
+    void saveAsTemplate(broadcastAsTemplateInput(broadcast))
   }
 
   function sendNow() {
-    setBroadcastStatus(broadcast.id, "sent")
-    toast.add({ type: "success", title: "Broadcast sent" })
+    void sendBroadcast(broadcast.id)
+      .then(() => toast.add({ type: "success", title: "Broadcast sent" }))
+      .catch(reportError)
   }
 
   function cancelSend() {
-    setBroadcastStatus(broadcast.id, "canceled")
-    toast.add({ type: "success", title: "Broadcast canceled" })
+    void cancelBroadcast(broadcast.id)
+      .then(() => toast.add({ type: "success", title: "Broadcast canceled" }))
+      .catch(reportError)
   }
 
   return (
@@ -320,12 +356,15 @@ export function BroadcastDetail() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
-                    const copy = duplicateBroadcast(broadcast.id)
-                    toast.add({
-                      type: "success",
-                      title: "Broadcast duplicated",
-                    })
-                    if (copy) router.push(`/broadcasts/${copy.id}/edit`)
+                    void duplicateBroadcast(broadcast.id)
+                      .then((copy) => {
+                        toast.add({
+                          type: "success",
+                          title: "Broadcast duplicated",
+                        })
+                        router.push(`/broadcasts/${copy.id}/edit`)
+                      })
+                      .catch(reportError)
                   }}
                 >
                   <CopyIcon />
@@ -355,8 +394,11 @@ export function BroadcastDetail() {
         onOpenChange={setRenameOpen}
         name={broadcast.name}
         onRename={(name) => {
-          updateBroadcast(broadcast.id, { name })
-          toast.add({ type: "success", title: "Broadcast renamed" })
+          void updateBroadcast(broadcast.id, { name })
+            .then(() =>
+              toast.add({ type: "success", title: "Broadcast renamed" })
+            )
+            .catch(reportError)
         }}
       />
       <ConfirmDialog
@@ -365,8 +407,12 @@ export function BroadcastDetail() {
         title={`Delete ${broadcast.name || "Untitled"}?`}
         description="This removes the broadcast from the workspace."
         onConfirm={() => {
-          deleteAndLeave(() => deleteBroadcast(broadcast.id))
-          toast.add({ type: "success", title: "Broadcast deleted" })
+          void deleteBroadcast(broadcast.id)
+            .then(() => {
+              toast.add({ type: "success", title: "Broadcast deleted" })
+              deleteAndLeave(() => {})
+            })
+            .catch(reportError)
         }}
       />
     </>

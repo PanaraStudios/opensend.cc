@@ -2,8 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import { formatRelative } from "./format"
-import { logStatusClass, normalizeLog, tokenizeJson } from "./logs"
-import type { ApiLog } from "./types"
+import { logStatusClass, tokenizeJson } from "./logs"
 
 describe("tokenizeJson", () => {
   it("round-trips the source and separates keys from strings", () => {
@@ -30,16 +29,6 @@ describe("logStatusClass", () => {
     assert.equal(logStatusClass(304), "3xx")
     assert.equal(logStatusClass(422), "4xx")
     assert.equal(logStatusClass(503), "5xx")
-  })
-})
-
-describe("normalizeLog", () => {
-  it("backfills fields missing from older persisted logs", () => {
-    const legacy = { id: "log_1", status: 200 } as ApiLog
-    const log = normalizeLog(legacy)
-    assert.equal(log.source, "dashboard")
-    assert.equal(log.apiKeyId, null)
-    assert.ok(log.userAgent)
   })
 })
 

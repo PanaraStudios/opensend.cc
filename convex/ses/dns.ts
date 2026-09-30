@@ -1,8 +1,13 @@
 "use node"
+import { trackingTarget } from "./contracts"
 import { Resolver } from "node:dns/promises"
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
-import type { Doc } from "../_generated/dataModel"
-import { identityRecords, type DnsRecord } from "./records"
+import {
+  identityRecords,
+  verifiesDomain,
+  type DnsRecord,
+  type RecordDomain,
+} from "./records"
 export const canonical = (value: string) =>
   value.trim().toLowerCase().replace(/\.$/, "")
 const isSpf = (value: string) => /^v=spf1(\s|$)/i.test(value)
@@ -149,15 +154,16 @@ export async function authoritativeLookups(
 /** A domain's status, read from its SES identity and its live DNS. */
 export async function verificationState(
   identity: GetEmailIdentityResponse,
-  domain: Pick<
-    Doc<"domains">,
-    "name" | "region" | "customReturnPath" | "receiving"
-  >
+  domain: RecordDomain,
+  callbackOrigin: string
 ) {
   const recursive = lookups(3000)
   const authoritative = await authoritativeLookups(domain.name, recursive)
   const records = await checkRecords(
-    identityRecords(domain, identity),
+    identityRecords(
+      { ...domain, trackingTarget: trackingTarget(callbackOrigin) },
+      identity
+    ),
     authoritative ? [authoritative, recursive] : [recursive]
   )
   const sesVerified = !!identity.VerifiedForSendingStatus
@@ -169,14 +175,13 @@ export async function verificationState(
     identity.MailFromAttributes.MailFromDomain ===
       `${domain.customReturnPath}.${domain.name}` &&
     identity.MailFromAttributes.BehaviorOnMxFailure === "REJECT_MESSAGE"
-  /* DMARC is advisory, so it never holds a domain back from verified, and
-     a resolver that timed out proves nothing: only a record the resolver
+  /* A resolver that timed out proves nothing: only a record the resolver
      positively did not find keeps a domain partially verified. */
   const allVerified =
     sesVerified &&
     dkimVerified &&
     mailFromVerified &&
-    records.every((r) => r.kind === "DMARC" || r.status !== "pending")
+    records.every((r) => !verifiesDomain(r) || r.status !== "pending")
   return {
     records,
     sesVerified,

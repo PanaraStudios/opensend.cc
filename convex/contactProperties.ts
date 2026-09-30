@@ -1,0 +1,235 @@
+import { includeSelected, matchingOptions } from "../lib/dashboard/options"
+import type { MutationCtx } from "./_generated/server"
+import type { Doc } from "./_generated/dataModel"
+import { v, ConvexError } from "convex/values"
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
+import { query, mutation, internalMutation } from "./_generated/server"
+import { internal } from "./_generated/api"
+import { requireTeam } from "./access"
+import schema from "./schema"
+import { LIMITS, listProperties } from "./audience"
+import { countValue, counters, deleteRow, insertRow, patchRow } from "./counts"
+import { matchesSearch, teamPage, selectedOption } from "./lists"
+import { propertyTypeValue } from "./tables/audience"
+import {
+  normalizePropertyKey,
+  isReservedPropertyKey,
+  propertyKeyError,
+} from "../lib/dashboard/contacts"
+
+/** Contacts a stripping pass rewrites before handing on to the next. */
+const STRIP_BATCH = 200
+
+const propertyFilters = {
+  organizationId: v.string(),
+  search: v.optional(v.string()),
+}
+
+// 512 property rows, no hydration; 4 MiB leaves ample transaction headroom.
+export const PROPERTY_SEARCH_BUDGET = { rows: 512, bytes: 4 * 1024 * 1024 }
+
+/** The team's custom properties, newest first, a page at a time. */
+export const list = query({
+  args: { ...propertyFilters, paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(schema.doc("contactProperties")),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const matches = matchesSearch(args.search)
+    return teamPage(
+      ctx,
+      "contactProperties",
+      args.organizationId,
+      args.paginationOpts,
+      // One being deleted is already gone for the team.
+      (property) => !property.deleting && matches(property.name, property.key),
+      PROPERTY_SEARCH_BUDGET,
+      args.search
+    )
+  },
+})
+
+export const count = query({
+  args: propertyFilters,
+  returns: countValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    if (args.search?.trim()) return { total: null }
+    return {
+      total: await counters.contactProperties.total(ctx, args.organizationId),
+    }
+  },
+})
+
+/** Every custom property of the team, newest first, for pickers. */
+export const definitions = query({
+  args: { organizationId: v.string() },
+  returns: v.array(schema.doc("contactProperties")),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    return (await listProperties(ctx, organizationId)).sort(
+      (a, b) => b._creationTime - a._creationTime
+    )
+  },
+})
+
+export const options = query({
+  args: {
+    organizationId: v.string(),
+    search: v.optional(v.string()),
+    selectedId: v.optional(v.id("contactProperties")),
+  },
+  returns: v.array(schema.doc("contactProperties")),
+  handler: async (ctx, { organizationId, search, selectedId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const rows = (await listProperties(ctx, organizationId)).sort(
+      (a, b) => b._creationTime - a._creationTime
+    )
+    const selected = await selectedOption(
+      ctx,
+      "contactProperties",
+      organizationId,
+      selectedId
+    )
+    const choices = includeSelected(
+      matchingOptions(rows, search, (row) => [row.key, row.name]),
+      selected && !selected.deleting ? selected : null,
+      (row) => row._id
+    )
+    return choices
+  },
+})
+
+export const create = mutation({
+  args: {
+    organizationId: v.string(),
+    key: v.string(),
+    name: v.string(),
+    type: propertyTypeValue,
+    fallbackValue: v.optional(v.string()),
+  },
+  returns: v.id("contactProperties"),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "write")
+    return createProperty(ctx, args)
+  },
+})
+
+/** Hides the property at once and strips its values from every contact in
+    batches; the key is free again once that finishes. There is no update:
+    a property's key and type are what stored values were written against. */
+export const remove = mutation({
+  args: { id: v.id("contactProperties") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const property = await ctx.db.get("contactProperties", id)
+    if (!property || property.deleting)
+      throw new ConvexError("Property not found")
+    await requireTeam(ctx, property.organizationId, "write")
+    return removeProperty(ctx, property)
+  },
+})
+
+export const strip = internalMutation({
+  args: {
+    id: v.id("contactProperties"),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, { id, cursor }) => {
+    const property = await ctx.db.get("contactProperties", id)
+    if (!property) return null
+    const { page, isDone, continueCursor } = await ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", property.organizationId)
+      )
+      .paginate({ cursor, numItems: STRIP_BATCH })
+    for (const contact of page) {
+      if (!(property.key in contact.properties)) continue
+      const { [property.key]: _removed, ...properties } = contact.properties
+      void _removed
+      await patchRow(ctx, "contacts", contact._id, { properties })
+    }
+    if (isDone) await deleteRow(ctx, "contactProperties", id)
+    else
+      await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
+        id,
+        cursor: continueCursor,
+      })
+    return null
+  },
+})
+
+export async function createProperty(
+  ctx: MutationCtx,
+  args: Omit<Doc<"contactProperties">, "_id" | "_creationTime" | "deleting">,
+  format: "dashboard" | "api" = "dashboard"
+) {
+  const key = format === "api" ? args.key : normalizePropertyKey(args.key)
+  // Keys still being stripped count as taken.
+  const taken = await ctx.db
+    .query("contactProperties")
+    .withIndex("by_organizationId_and_key", (q) =>
+      q.eq("organizationId", args.organizationId).eq("key", key)
+    )
+    .take(1)
+  const error = format === "api"
+    ? !/^[a-zA-Z0-9_]{1,50}$/.test(key) ? "Invalid property key"
+      : isReservedPropertyKey(key.toLowerCase()) || taken.length ? "That key already exists" : null
+    : propertyKeyError(key, taken.map((row) => row.key))
+  if (error) throw new ConvexError(error)
+  if (
+    ((await counters.contactProperties.total(ctx, args.organizationId)) ?? 0) >=
+    LIMITS.properties
+  )
+    throw new ConvexError(
+      `A team can have up to ${LIMITS.properties} properties`
+    )
+  const fallbackValue = format === "api" ? args.fallbackValue : args.fallbackValue?.trim() || undefined
+  const name = args.name.trim() || key
+  if (name.length > 200 || (fallbackValue?.length ?? 0) > 1000)
+    throw new ConvexError("That name or fallback value is too long")
+  if (
+    args.type === "number" &&
+    fallbackValue &&
+    !Number.isFinite(Number(fallbackValue))
+  )
+    throw new ConvexError("The fallback must be a number")
+  return insertRow(ctx, "contactProperties", {
+    organizationId: args.organizationId,
+    key,
+    name,
+    type: args.type,
+    fallbackValue,
+  })
+}
+
+export async function removeProperty(
+  ctx: MutationCtx,
+  property: Doc<"contactProperties">
+) {
+  const id = property._id
+  await patchRow(ctx, "contactProperties", id, { deleting: true })
+  await ctx.scheduler.runAfter(0, internal.contactProperties.strip, {
+    id,
+    cursor: null,
+  })
+  return null
+}
+
+export async function updateProperty(
+  ctx: MutationCtx,
+  property: Doc<"contactProperties">,
+  fallbackValue: string | undefined
+) {
+  if (fallbackValue === undefined) return
+  if (
+    fallbackValue.length > 1000 ||
+    (property.type === "number" && !Number.isFinite(Number(fallbackValue)))
+  )
+    throw new ConvexError("Invalid property fallback value")
+  await patchRow(ctx, "contactProperties", property._id, { fallbackValue })
+}

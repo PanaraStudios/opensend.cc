@@ -1,14 +1,12 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { ArrowUpRightIcon, CloudIcon, GlobeIcon } from "lucide-react"
 
 import { CloudflareIcon } from "@/components/brand-icons"
 import { Switch } from "@/components/ui/switch"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
-  DocsSheet,
   MonoValue,
   ResourceTable,
   StatusBadge,
@@ -25,16 +23,15 @@ import {
 } from "@/lib/dashboard/domains"
 import { regionLabel, statusLabel } from "@/lib/dashboard/format"
 import { cn } from "@/lib/utils"
+import { docsHrefForDnsRecord } from "@/lib/docs-links"
 import type { SelectOption } from "@/components/dashboard/primitives"
+import { downloadBlob } from "@/lib/dashboard/download"
 
 export const DomainIcon = GlobeIcon
 
-/** Where the docs for a record type live. One page for now. */
-export const DNS_DOCS_HREF = "/docs"
-
 export const REGION_ITEMS: readonly SelectOption[] = REGIONS.map((item) => ({
   value: item.value,
-  label: `${item.label} (${item.code})`,
+  label: `${item.label} (${item.value})`,
 }))
 
 export const DOMAIN_STATUS_ITEMS: readonly SelectOption[] = [
@@ -153,13 +150,15 @@ export function DomainSection({
         ) : null}
       </div>
       {docLabel ? (
-        <Link
-          href={DNS_DOCS_HREF}
+        <a
+          href={docsHrefForDnsRecord(docLabel)}
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex w-fit items-center gap-0.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           {docLabel}
           <ArrowUpRightIcon className="size-3 shrink-0" />
-        </Link>
+        </a>
       ) : null}
       {children}
     </section>
@@ -173,7 +172,7 @@ export function DnsRecordsTable({
   domainName,
   showPriority = false,
 }: {
-  records: readonly DnsRecord[]
+  records: readonly Omit<DnsRecord, "kind">[]
   domainName: string
   showPriority?: boolean
 }) {
@@ -225,48 +224,10 @@ export function DnsRecordsTable({
   )
 }
 
-const DOMAIN_DOCS = [
-  {
-    title: "Add a domain",
-    body: "A subdomain such as updates.example.com keeps transactional reputation separate from marketing, and does not affect your root domain.",
-  },
-  {
-    title: "Verification",
-    body: "Add the DKIM and SPF records at your DNS provider, then click Check DNS records. We also check them automatically for 72 hours, since DNS changes can take that long to propagate.",
-  },
-  {
-    title: "Receiving",
-    body: "Turning receiving on adds an MX record that points inbound mail for the domain at SES. It replaces the mail provider the domain uses today, so use a subdomain when that mailbox must keep working. Receipt rules and an inbox come later.",
-  },
-  {
-    title: "Where SES lives",
-    body: "Opensend publishes the record values AWS returns and reads their status back. SES stays on your AWS account, and API callers never see your credentials.",
-  },
-]
-
-export function DomainsDocsSheet(props: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <DocsSheet
-      {...props}
-      title="Domains"
-      description="Verify a domain you own, then send from any address on it."
-      sections={DOMAIN_DOCS}
-    />
-  )
-}
-
 /** Hand the browser a generated file, the way the record menu offers a zone
     file. Kept here so the callers stay declarative. */
 export function downloadTextFile(name: string, contents: string) {
-  const url = URL.createObjectURL(new Blob([contents], { type: "text/plain" }))
-  const link = document.createElement("a")
-  link.href = url
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(name, new Blob([contents], { type: "text/plain" }))
 }
 
 export function downloadZoneFile(domain: Domain, records?: DnsRecord[]) {

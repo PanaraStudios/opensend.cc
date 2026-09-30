@@ -17,7 +17,9 @@ export default defineSchema({
     scopes: v.array(v.string()),
     expiresAt: v.number(),
     used: v.boolean(),
-  }).index("by_token", ["token"]),
+  })
+    .index("by_token", ["token"])
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true }),
   oauthGrant: defineTable({
     clientId: v.string(),
     userId: v.string(),
@@ -27,18 +29,27 @@ export default defineSchema({
     epochs: v.array(v.object({ key: v.string(), revision: v.number() })),
     createdAt: v.number(),
     revoked: v.boolean(),
+    revokedAt: v.optional(v.number()),
+    revokedReason: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_organizationId", ["organizationId"]),
-  oauthUse: defineTable({ key: v.string(), grantId: v.string() }).index(
-    "by_key",
-    ["key"]
-  ),
+  oauthUse: defineTable({
+    key: v.string(),
+    grantId: v.string(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true })
+    .index("by_key", ["key"])
+    .index("by_grantId", ["grantId"]),
   oauthRate: defineTable({
     key: v.string(),
     start: v.number(),
+    expiresAt: v.optional(v.number()),
     count: v.number(),
-  }).index("by_key", ["key"]),
+  })
+    .index("by_key", ["key"])
+    .index("by_expiresAt", { fields: ["expiresAt"], staged: true }),
   member: tables.member.index("by_organizationId_and_userId", [
     "organizationId",
     "userId",
@@ -60,7 +71,9 @@ export default defineSchema({
     sessionId: v.string(),
     organizationId: v.string(),
     revision: v.string(),
-  }).index("by_sessionId_and_organizationId", ["sessionId", "organizationId"]),
+  })
+    .index("by_sessionId_and_organizationId", ["sessionId", "organizationId"])
+    .index("by_organizationId", ["organizationId"]),
   avatar: defineTable({
     organizationId: v.string(),
     storageId: v.id("_storage"),

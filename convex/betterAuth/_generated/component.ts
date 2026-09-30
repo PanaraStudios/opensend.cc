@@ -235,14 +235,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   memberId: string;
                   organizationId: string;
                   revoked: boolean;
+                  revokedAt?: number;
+                  revokedReason?: string;
                   scopes: Array<string>;
                   userId: string;
                 };
                 model: "oauthGrant";
               }
-            | { data: { grantId: string; key: string }; model: "oauthUse" }
             | {
-                data: { count: number; key: string; start: number };
+                data: { expiresAt?: number; grantId: string; key: string };
+                model: "oauthUse";
+              }
+            | {
+                data: {
+                  count: number;
+                  expiresAt?: number;
+                  key: string;
+                  start: number;
+                };
                 model: "oauthRate";
               }
             | { data: { key: string; userId: string }; model: "bootstrap" }
@@ -850,6 +860,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "epochs"
                     | "createdAt"
                     | "revoked"
+                    | "revokedAt"
+                    | "revokedReason"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -877,7 +889,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthUse";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -904,7 +916,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthRate";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1630,6 +1642,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "epochs"
                     | "createdAt"
                     | "revoked"
+                    | "revokedAt"
+                    | "revokedReason"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -1657,7 +1671,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthUse";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1684,7 +1698,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "oauthRate";
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -2668,6 +2682,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   memberId?: string;
                   organizationId?: string;
                   revoked?: boolean;
+                  revokedAt?: number;
+                  revokedReason?: string;
                   scopes?: Array<string>;
                   userId?: string;
                 };
@@ -2682,6 +2698,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "epochs"
                     | "createdAt"
                     | "revoked"
+                    | "revokedAt"
+                    | "revokedReason"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -2707,10 +2725,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthUse";
-                update: { grantId?: string; key?: string };
+                update: { expiresAt?: number; grantId?: string; key?: string };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -2735,10 +2753,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthRate";
-                update: { count?: number; key?: string; start?: number };
+                update: {
+                  count?: number;
+                  expiresAt?: number;
+                  key?: string;
+                  start?: number;
+                };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -3629,6 +3652,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   memberId?: string;
                   organizationId?: string;
                   revoked?: boolean;
+                  revokedAt?: number;
+                  revokedReason?: string;
                   scopes?: Array<string>;
                   userId?: string;
                 };
@@ -3643,6 +3668,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "epochs"
                     | "createdAt"
                     | "revoked"
+                    | "revokedAt"
+                    | "revokedReason"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -3668,10 +3695,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthUse";
-                update: { grantId?: string; key?: string };
+                update: { expiresAt?: number; grantId?: string; key?: string };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "grantId" | "_id";
+                  field: "key" | "grantId" | "expiresAt" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -3696,10 +3723,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               }
             | {
                 model: "oauthRate";
-                update: { count?: number; key?: string; start?: number };
+                update: {
+                  count?: number;
+                  expiresAt?: number;
+                  key?: string;
+                  start?: number;
+                };
                 where?: Array<{
                   connector?: "AND" | "OR";
-                  field: "key" | "start" | "count" | "_id";
+                  field: "key" | "start" | "expiresAt" | "count" | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -3874,6 +3906,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           memberId: string;
           organizationId: string;
           revoked: boolean;
+          revokedAt?: number;
+          revokedReason?: string;
           scopes: Array<string>;
           userId: string;
         },
@@ -3973,6 +4007,30 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      listRest: FunctionReference<
+        "query",
+        "internal",
+        {
+          after?: string;
+          before?: string;
+          limit: number;
+          organizationId: string;
+        },
+        {
+          data: Array<{
+            client: { logo_uri: string | null; name: string };
+            client_id: string;
+            created_at: string;
+            id: string;
+            resource: null;
+            revoked_at: string | null;
+            revoked_reason: string | null;
+            scopes: Array<string>;
+          }>;
+          has_more: boolean;
+        },
+        Name
+      >;
       pending: FunctionReference<
         "query",
         "internal",
@@ -4006,6 +4064,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { clientId: string; id: string },
         null,
+        Name
+      >;
+      revokeRest: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; organizationId: string },
+        {
+          id: string;
+          object: "oauth_grant";
+          revoked_at: string;
+          revoked_reason: "revoked_from_api";
+        },
         Name
       >;
       revokeToken: FunctionReference<
@@ -4078,8 +4148,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       authorizeTeam: FunctionReference<
         "query",
         "internal",
-        { organizationId: string; sessionId: string; write: boolean },
+        { organizationId: string; owner: boolean; sessionId: string },
         null,
+        Name
+      >;
+      bootstrapRecipient: FunctionReference<
+        "query",
+        "internal",
+        { email: string },
+        boolean,
         Name
       >;
       checkSession: FunctionReference<
@@ -4093,6 +4170,30 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           name: string;
           userId: string;
         },
+        Name
+      >;
+      transferInstallationAdmin: FunctionReference<
+        "mutation",
+        "internal",
+        { email: string },
+        null,
+        Name
+      >;
+    };
+    retention: {
+      prune: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          cursor?: string | null;
+          table?:
+            | "oauthFlow"
+            | "oauthRate"
+            | "oauthUse"
+            | "ssoProof"
+            | "verification";
+        },
+        null,
         Name
       >;
     };
@@ -4202,6 +4303,36 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      invitations: FunctionReference<
+        "query",
+        "internal",
+        {
+          organizationId: string;
+          paginationOpts: {
+            cursor: string | null;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+            numItems: number;
+          };
+          sessionId: string;
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            email: string;
+            expiresAt: number;
+            id: string;
+            role: "admin" | "member";
+            status: string;
+          }>;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
+        },
+        Name
+      >;
       invite: FunctionReference<
         "mutation",
         "internal",
@@ -4212,6 +4343,79 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           sessionId: string;
         },
         { email: string; id: string },
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          paginationOpts: {
+            cursor: string | null;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+            numItems: number;
+          };
+          sessionId: string;
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            avatar?: string;
+            id: string;
+            joinedAt: number;
+            members: number;
+            name: string;
+            role: "admin" | "member";
+            slug: string;
+            ssoConfigured: boolean;
+            ssoRequired: boolean;
+          }>;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
+        },
+        Name
+      >;
+      members: FunctionReference<
+        "query",
+        "internal",
+        {
+          organizationId: string;
+          paginationOpts: {
+            cursor: string | null;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+            numItems: number;
+          };
+          sessionId: string;
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            email: string;
+            id: string;
+            joinedAt: number;
+            mfa: boolean;
+            name: string;
+            role: "admin" | "member";
+            status: "active" | "invited";
+            you: boolean;
+          }>;
+          pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+          splitCursor?: string | null;
+        },
+        Name
+      >;
+      purgeOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        { organizationId: string },
+        null,
         Name
       >;
       remove: FunctionReference<

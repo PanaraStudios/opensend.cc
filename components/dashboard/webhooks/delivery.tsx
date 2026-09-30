@@ -1,10 +1,13 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import { useQuery } from "convex/react"
 import { RotateCwIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
 import {
   CodeWell,
@@ -18,18 +21,26 @@ import {
   RelativeTime,
 } from "@/components/dashboard/primitives"
 import { WebhookIcon } from "@/components/dashboard/webhooks/shared"
-import { useDashboard } from "@/lib/dashboard/store"
-import { isDeliveryFailed } from "@/lib/dashboard/webhooks"
+import { api } from "@/convex/_generated/api"
+import { actionError } from "@/lib/action-error"
+import { deliveryResult } from "@/lib/dashboard/webhooks"
+import {
+  asWebhook,
+  asWebhookDelivery,
+  useWebhookCommands,
+} from "@/lib/webhooks/use-webhooks"
 
 export function WebhookDeliveryDetail() {
   const { id, deliveryId } = useParams<{ id: string; deliveryId: string }>()
   const router = useRouter()
-  const { state, replayWebhookDelivery } = useDashboard()
-  const webhook = state.webhooks.find((item) => item.id === id)
-  const delivery = state.webhookDeliveries.find(
-    (item) => item.id === deliveryId && item.webhookId === id
-  )
+  const { replayWebhookDelivery } = useWebhookCommands()
+  const [replaying, setReplaying] = React.useState(false)
+  const result = useQuery(api.webhooks.delivery, { id: deliveryId })
+  const match = result?.webhook._id === id ? result : null
+  const webhook = match && asWebhook(match.webhook)
+  const delivery = match && asWebhookDelivery(match.delivery)
 
+  if (result === undefined) return <Skeleton className="h-64 w-full" />
   if (!webhook || !delivery) {
     return (
       <NotFoundState
@@ -54,13 +65,19 @@ export function WebhookDeliveryDetail() {
           <Button
             variant="outline"
             /* A disabled webhook is sent nothing, a replay included. */
-            disabled={!webhook.enabled}
+            disabled={!webhook.enabled || replaying}
             title={webhook.enabled ? undefined : "Enable the webhook to replay"}
-            onClick={() => {
-              const next = replayWebhookDelivery(delivery.id)
-              if (!next) return
-              toast.add({ type: "success", title: "Event replayed" })
-              router.push(`/webhooks/${webhook.id}/${next.id}`)
+            onClick={async () => {
+              setReplaying(true)
+              try {
+                const next = await replayWebhookDelivery(delivery.id)
+                toast.add({ type: "success", title: "Event replayed" })
+                router.push(`/webhooks/${webhook.id}/${next}`)
+              } catch (e) {
+                toast.add({ type: "error", title: actionError(e) })
+              } finally {
+                setReplaying(false)
+              }
             }}
           >
             <RotateCwIcon data-icon="inline-start" />
@@ -83,7 +100,7 @@ export function WebhookDeliveryDetail() {
           },
           {
             label: "Result",
-            value: isDeliveryFailed(delivery) ? "Failed" : "Succeeded",
+            value: deliveryResult(delivery),
           },
           { label: "Sent", value: <RelativeTime at={delivery.createdAt} /> },
           { label: "Attempts", value: delivery.attempts },

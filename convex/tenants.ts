@@ -1,3 +1,8 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
+import { retirement } from "./teamLifecycle"
 import { v, ConvexError } from "convex/values"
 import {
   query,
@@ -16,6 +21,7 @@ import {
   requireInstallationAdmin,
 } from "./access"
 import { findActiveDomain } from "./domains"
+import { patchRow } from "./counts"
 import { regionValue, teamTenantName, tenantProvisioned } from "./ses/contracts"
 import { startWorkflow } from "./ses/workflows"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -108,7 +114,7 @@ export const retry = mutation({
   args: { organizationId: v.string(), region: regionValue },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireTeam(ctx, args.organizationId, true)
+    await requireTeam(ctx, args.organizationId, "write")
     const row = await findTenant(ctx, args.organizationId, args.region)
     if (row && tenantProvisioned(row))
       await ctx.db.patch("sesTenants", row._id, { phase: "pending" })
@@ -117,16 +123,17 @@ export const retry = mutation({
   },
 })
 export const cleanup = query({
-  args: {},
-  returns: v.array(schema.doc("sesTenants")),
-  handler: async (ctx) => {
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(schema.doc("sesTenants")),
+  handler: async (ctx, { paginationOpts }) => {
     await requireInstallationAdmin(ctx)
     return ctx.db
       .query("sesTenants")
       .withIndex("by_operation_and_deleted_and_phase", (q) =>
         q.eq("operation", "remove").eq("deleted", false).eq("phase", "failed")
       )
-      .take(25)
+      .order("desc")
+      .paginate(paginationOpts)
   },
 })
 export const retryCleanup = mutation({
@@ -162,7 +169,7 @@ export const prepareDomain = internalMutation({
     /* A provision can recreate the identity, and a different tenant makes the
        old association meaningless; a refresh only re-checks the association it
        already has, so it must not take a verified domain out of sending. */
-    await ctx.db.patch("domains", domainId, {
+    await patchRow(ctx, "domains", domainId, {
       tenantId,
       ...(domain.operation === "provision" || domain.tenantId !== tenantId
         ? { tenantAssociated: false }
@@ -190,6 +197,14 @@ export const finish = internalMutation({
       tenant.phase !== "running"
     )
       return null
+    if (
+      args.removed &&
+      !args.error &&
+      (await retirement(ctx, tenant.organizationId))
+    ) {
+      await ctx.db.delete("sesTenants", args.id)
+      return null
+    }
     await ctx.db.patch("sesTenants", args.id, {
       phase: args.error ? "failed" : "ready",
       error: args.error,

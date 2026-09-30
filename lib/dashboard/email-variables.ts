@@ -30,6 +30,35 @@ export function parseVariables(
   return out
 }
 
+/** Fills every merge tag for one recipient; a missing or empty value falls
+    back to the tag's own fallback. `encode` escapes values for the target
+    format, so contact data can never inject markup into HTML. */
+export function fillVariables(
+  source: string,
+  values: Readonly<Record<string, string | undefined>>,
+  encode: (value: string) => string = (value) => value
+): string {
+  return source.replace(
+    VARIABLE_PATTERN,
+    (_match, name: string, fallback?: string) =>
+      encode(
+        (Object.hasOwn(values, name) ? values[name] : undefined) ||
+          (fallback ?? "").trim()
+      )
+  )
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+}
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => HTML_ENTITIES[c]!)
+}
+
 export const UNSUBSCRIBE_VARIABLE_NAME = "OPENSEND_UNSUBSCRIBE_URL"
 
 /** The opt-out link's destination, filled in per recipient. */

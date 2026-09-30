@@ -2,18 +2,19 @@
 
 import * as React from "react"
 import { useParams } from "next/navigation"
+import { useQuery } from "convex/react"
 import { PencilIcon, Trash2Icon } from "lucide-react"
 
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
 import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
-  ApiKeysDocsSheet,
   DeleteApiKeyDialog,
 } from "@/components/dashboard/api-keys/shared"
 import {
@@ -25,30 +26,39 @@ import {
   DetailHeader,
   DocsButton,
   EmptyState,
+  ListPagination,
   MetaStrip,
   MoreMenu,
   NotFoundState,
   RelativeTime,
   ResourceTable,
   useDeleteRecord,
+  useTeamList,
 } from "@/components/dashboard/primitives"
-import { apiKeyDomainLabel, apiKeyLogs } from "@/lib/dashboard/api-keys"
+import { api } from "@/convex/_generated/api"
+import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
+import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
 import { permissionLabel, pluralize } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
-
-/** Requests shown inline. The full history stays on the logs page. */
-const RECENT_REQUESTS = 10
+import { useDomain } from "@/lib/domains/use-domains"
+import { asLog } from "@/lib/logs/use-logs"
 
 export function ApiKeyDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateApiKey, deleteApiKey } = useDashboard()
+  const { updateApiKey, deleteApiKey } = useApiKeyCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/api-keys")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
-  const apiKey = state.apiKeys.find((item) => item.id === id)
+  const found = useQuery(api.apiKeys.get, { id })
+  const domain = useDomain(found?.key.domainId)
+  const recent = useTeamList(
+    api.logs.list,
+    api.logs.count,
+    found ? { apiKeyId: found.key._id } : "skip",
+    asLog
+  )
 
-  if (!apiKey) {
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
+  if (!found) {
     if (leaving) return null
     return (
       <NotFoundState
@@ -60,8 +70,7 @@ export function ApiKeyDetail() {
     )
   }
 
-  const logs = apiKeyLogs(state.logs, apiKey.id)
-  const creator = state.members.find((member) => member.id === apiKey.createdBy)
+  const apiKey = asApiKey(found.key)
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,7 +81,7 @@ export function ApiKeyDetail() {
         icon={ApiKeyIcon}
         actions={
           <>
-            <DocsButton onClick={() => setDocsOpen(true)} />
+            <DocsButton />
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setEditing(true)}>
@@ -96,32 +105,46 @@ export function ApiKeyDetail() {
           { label: "Permission", value: permissionLabel(apiKey.permission) },
           {
             label: "Domain",
-            value: apiKeyDomainLabel(state.domains, apiKey),
+            value: apiKeyDomainLabel(domain ? [domain] : [], apiKey),
           },
-          { label: "Total uses", value: pluralize(logs.length, "request") },
+          {
+            label: "Total uses",
+            value: pluralize(found.requests, "request"),
+          },
           { label: "Token", value: <ApiKeyToken apiKey={apiKey} /> },
           {
             label: "Last used",
             value: <RelativeTime at={apiKey.lastUsedAt} fallback="Never" />,
           },
           { label: "Created", value: <RelativeTime at={apiKey.createdAt} /> },
-          { label: "Creator", value: creator?.name ?? "—" },
+          { label: "Creator", value: apiKey.createdBy ?? "—" },
         ]}
       />
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Recent requests</h2>
-        {logs.length === 0 ? (
+        {recent.status === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : recent.rows.length === 0 ? (
           <EmptyState
             icon={LogIcon}
             title="No requests yet"
             description="Requests signed with this key show up here."
           />
         ) : (
-          <ResourceTable headers={LOG_TABLE_HEADERS}>
-            {logs.slice(0, RECENT_REQUESTS).map((log) => (
-              <LogRow key={log.id} log={log} />
-            ))}
-          </ResourceTable>
+          <>
+            <ResourceTable headers={LOG_TABLE_HEADERS}>
+              {recent.pageRows.map((log) => (
+                <LogRow key={log.id} log={log} />
+              ))}
+            </ResourceTable>
+            <ListPagination
+              {...recent.pagination}
+              embedded
+              noun="request"
+              previousLabel="Newer"
+              nextLabel="Older"
+            />
+          </>
         )}
       </section>
       <ApiKeyFormDialog
@@ -130,8 +153,8 @@ export function ApiKeyDetail() {
         title="Edit API Key"
         submitLabel="Save"
         apiKey={apiKey}
-        onSubmit={(values) => {
-          updateApiKey(apiKey.id, values)
+        onSubmit={async (values) => {
+          await updateApiKey(apiKey.id, values)
           toast.add({ type: "success", title: "API key updated" })
         }}
       />
@@ -140,13 +163,12 @@ export function ApiKeyDetail() {
         open={deleting}
         onOpenChange={setDeleting}
         onConfirm={() =>
-          deleteAndLeave(() => {
-            deleteApiKey(apiKey.id)
+          deleteAndLeave(async () => {
+            await deleteApiKey(apiKey.id)
             toast.add({ type: "success", title: "API key removed" })
           })
         }
       />
-      <ApiKeysDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </div>
   )
 }

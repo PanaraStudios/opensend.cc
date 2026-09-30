@@ -7,12 +7,18 @@ import {
 } from "better-auth/plugins/generic-oauth"
 import { convex } from "@convex-dev/better-auth/plugins"
 import authConfig from "./auth.config"
-import { sendAuthEmail } from "./authEmail"
+import type { AuthEmail } from "./authEmail"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { jwt } from "better-auth/plugins/jwt"
 
-/** Shared by the runtime, component adapter and schema generator. */
-export function createAuthOptions(providers: GenericOAuthConfig[] = []) {
+/** Shared by the runtime, component adapter and schema generator. Only
+    the runtime passes a `sendEmail` that can reach the system sender. */
+export function createAuthOptions(
+  providers: GenericOAuthConfig[] = [],
+  sendEmail: (email: AuthEmail) => void | Promise<void> = () => {
+    throw new Error("Account email requires the runtime mailer")
+  }
+) {
   return {
     appName: "Opensend",
     emailAndPassword: {
@@ -21,20 +27,20 @@ export function createAuthOptions(providers: GenericOAuthConfig[] = []) {
       minPasswordLength: 12,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) =>
-        sendAuthEmail({ to: user.email, kind: "reset", url }),
+        sendEmail({ to: user.email, kind: "reset", url }),
     },
     emailVerification: {
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) =>
-        sendAuthEmail({ to: user.email, kind: "verify", url }),
+        sendEmail({ to: user.email, kind: "verify", url }),
     },
     user: {
       changeEmail: {
         enabled: true,
         sendChangeEmailConfirmation: async ({ user, url }) =>
-          sendAuthEmail({ to: user.email, kind: "change-email", url }),
+          sendEmail({ to: user.email, kind: "change-email", url }),
       },
     },
     session: { freshAge: 300, cookieCache: { enabled: false } },

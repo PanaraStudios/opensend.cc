@@ -1,12 +1,9 @@
-/// <reference types="vite/client" />
+import * as publicHttp from "../lib/net/public-fetch"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
-import { convexTest } from "convex-test"
-import workflowTest from "@convex-dev/workflow/test"
-import rateLimiterTest from "@convex-dev/rate-limiter/test"
-import { teamTenantName } from "./ses/contracts"
-import schema from "./schema"
-import authSchema from "./betterAuth/schema"
 import { api, components, internal } from "./_generated/api"
+import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { patchRow } from "./counts"
+import { mockInboundAws } from "./testHelpers/inboundAws.fixture"
 import type { Doc } from "./_generated/dataModel"
 import {
   encryptCredentials,
@@ -49,140 +46,6 @@ import {
   type Tenant,
 } from "@aws-sdk/client-sesv2"
 import { Resolver } from "node:dns/promises"
-
-const modules = import.meta.glob("./**/*.ts")
-const authModules = import.meta.glob("./betterAuth/**/*.ts")
-async function fixture() {
-  const t = convexTest(schema, modules)
-  t.registerComponent("betterAuth", authSchema, authModules)
-  workflowTest.register(t)
-  rateLimiterTest.register(t)
-  async function actor(name: string, bootstrap = false) {
-    const user = await t.mutation(components.betterAuth.adapter.create, {
-      input: {
-        model: "user",
-        data: {
-          name,
-          email: `${name}@example.test`,
-          emailVerified: true,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      },
-    })
-    const session = await t.mutation(components.betterAuth.adapter.create, {
-      input: {
-        model: "session",
-        data: {
-          userId: user._id,
-          token: name,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          expiresAt: Date.now() + 3600000,
-        },
-      },
-    })
-    if (bootstrap)
-      await t.mutation(components.betterAuth.policy.admitUser, {
-        userId: user._id,
-        email: user.email,
-      })
-    const client = t.withIdentity({ subject: user._id, sessionId: session._id })
-    const team = await t.mutation(components.betterAuth.teams.create, {
-      name,
-      sessionId: session._id,
-    })
-    return { client, team, user, session }
-  }
-  const owner = await actor("owner", true)
-  const outsider = await actor("outsider")
-  const installation = await owner.client.mutation(
-    internal.installation.saveEnvironment,
-    {
-      siteUrl: "https://opensend.test",
-      callbackOrigin: "https://api.opensend.test",
-    }
-  )
-  await owner.client.mutation(internal.installation.activateConnection, {
-    revision: 0,
-    accountId: "123456789012",
-    credentialKind: "keys",
-    encryptedCredentials: "ciphertext",
-    accessKeyLast4: "1234",
-    defaultRegion: "us-east-1",
-    regions: [
-      {
-        region: "us-east-1",
-        quota: {
-          production: false,
-          sendingEnabled: true,
-          daily: 200,
-          rate: 1,
-          sent: 0,
-        },
-      },
-    ],
-  })
-  const region = await t.run(
-    async (ctx) => (await ctx.db.query("sesRegions").first())!
-  )
-  await t.mutation(internal.ses.state.patchRegion, {
-    id: region._id,
-    changes: {
-      phase: "ready",
-      topicArn: "arn:aws:sns:us-east-1:123456789012:opensend-events",
-    },
-  })
-  const tenantName = teamTenantName(installation, owner.team)
-  const tenant = await t.run((ctx) =>
-    ctx.db.insert("sesTenants", {
-      organizationId: owner.team,
-      region: "us-east-1",
-      name: tenantName,
-      phase: "ready",
-      operation: "provision",
-      generation: 1,
-      deleted: false,
-      arn: `arn:aws:ses:us-east-1:123456789012:tenant/${tenantName}/provider-tenant`,
-      providerId: "provider-tenant",
-      sendingStatus: "ENABLED",
-    })
-  )
-  const domain = await t.run((ctx) =>
-    ctx.db.insert("domains", {
-      organizationId: owner.team,
-      tenantId: tenant,
-      tenantAssociated: false,
-      name: "mail.example.test",
-      region: "us-east-1",
-      customReturnPath: "send",
-      status: "pending",
-      phase: "ready",
-      deleted: false,
-      sending: true,
-      tls: "opportunistic",
-      records: [],
-      sesVerified: false,
-      dkimVerified: false,
-      mailFromVerified: false,
-      operation: "provision",
-    })
-  )
-  await t.run((ctx) =>
-    ctx.db.patch("installation", installation, { completedAt: Date.now() })
-  )
-  return {
-    t,
-    owner,
-    outsider,
-    installation,
-    region,
-    domain,
-    actor,
-    tenant,
-    tenantName,
-  }
-}
 
 beforeEach(() => vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32)))
 afterEach(() => {
@@ -253,7 +116,8 @@ describe("installation and domain authorization", () => {
         paginationOpts: { cursor: null, numItems: 10 },
       })
     ).rejects.toThrow("permission")
-    const invite = await f.owner.client.mutation(api.teams.invite, {
+    const invite = await f.t.mutation(components.betterAuth.teams.invite, {
+      sessionId: f.owner.session._id,
       organizationId: f.owner.team,
       email: f.outsider.user.email,
       role: "member",
@@ -267,10 +131,22 @@ describe("installation and domain authorization", () => {
     expect(
       await f.outsider.client.query(api.domains.get, { id: f.domain })
     ).not.toBeNull()
+    // Resend's model: members manage the product, admins manage the team.
+    await f.outsider.client.mutation(api.domains.update, {
+      id: f.domain,
+      sending: false,
+    })
     await expect(
-      f.outsider.client.mutation(api.domains.update, {
-        id: f.domain,
-        sending: false,
+      f.outsider.client.mutation(api.teams.invite, {
+        organizationId: f.owner.team,
+        email: "someone@example.com",
+        role: "member",
+      })
+    ).rejects.toThrow("permission")
+    await expect(
+      f.outsider.client.mutation(api.teams.remove, {
+        organizationId: f.owner.team,
+        leave: false,
       })
     ).rejects.toThrow("permission")
   })
@@ -368,6 +244,23 @@ describe("installation and domain authorization", () => {
         customReturnPath: "a.b",
       })
     ).rejects.toThrow("one label")
+    // Tracking CNAMEs point at the callback's hostname, which carries no port.
+    await f.t.run((ctx) =>
+      ctx.db.patch("installation", f.installation, {
+        callbackOrigin: "https://api.opensend.test:8443",
+      })
+    )
+    await expect(
+      f.owner.client.mutation(api.domains.create, {
+        ...input,
+        name: "new.test",
+      })
+    ).rejects.toThrow("without a port or path")
+    await expect(
+      f.owner.client.mutation(api.installation.provisionRegion, {
+        region: "us-east-1",
+      })
+    ).rejects.toThrow("without a port or path")
   })
   test("removal disables sending atomically and retains a tombstone", async () => {
     vi.useFakeTimers()
@@ -610,18 +503,7 @@ describe("AWS boundary regression scenarios", () => {
 
 async function awsFixture() {
   const f = await fixture()
-  await f.t.run((ctx) =>
-    ctx.db.patch("installation", f.installation, {
-      encryptedCredentials: encryptCredentials(
-        {
-          kind: "keys",
-          accessKeyId: "AKIAFIXTURE1234567890",
-          secretAccessKey: "test-only-secret",
-        },
-        f.installation
-      ),
-    })
-  )
+  await storeTestCredentials(f)
   const tags = [
     { Key: "opensend:installation", Value: f.installation },
     { Key: "opensend:domain", Value: f.domain },
@@ -840,7 +722,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
   test("publishes AWS-issued records before the rest of the setup runs", async () => {
     const f = await awsFixture()
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, { phase: "running" })
+      patchRow(ctx, "domains", f.domain, { phase: "running" })
     )
     let early: Doc<"domains"> | null = null
     f.aws.onCall = async (name) => {
@@ -945,7 +827,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       configurationSet: "other-app",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         adoption: { ...domain.adoption!, approved: true },
       })
     )
@@ -956,7 +838,10 @@ describe("provisioning actions with a controlled AWS boundary", () => {
       Value: "marketing",
     })
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
+      patchRow(ctx, "domains", f.domain, {
+        operation: "remove",
+        sending: false,
+      })
     )
     await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -1016,7 +901,7 @@ describe("provisioning actions with a controlled AWS boundary", () => {
     // Approved, but the provision never reached TagResource and AWS has drifted
     // since: there is nothing of ours to restore or delete here.
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         operation: "remove",
         sending: false,
         adoption: {
@@ -1192,7 +1077,7 @@ test("signed SNS notifications deduplicate and forged or foreign envelopes never
     changes: { topicArn: SIGNED_NOTIFICATION_V2.TopicArn },
   })
   const fetcher = vi
-    .spyOn(globalThis, "fetch")
+    .spyOn(publicHttp, "publicFetch")
     .mockImplementation(async () => new Response(TEST_CERT_PEM))
   await f.t.action(internal.ses.events.receive, {
     body: JSON.stringify(SIGNED_NOTIFICATION_V2),
@@ -1224,7 +1109,7 @@ test("removing a refused identity claim preserves the unrelated AWS identity", a
     Tags: [{ Key: "owner", Value: "other" }],
   }
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, { operation: "remove", sending: false })
+    patchRow(ctx, "domains", f.domain, { operation: "remove", sending: false })
   )
   await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
   expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
@@ -1289,7 +1174,7 @@ test("signed subscription confirmation sets readiness only for the configured en
     id: f.region._id,
     changes: { topicArn: SIGNED_SUBSCRIPTION_CONFIRMATION.TopicArn },
   })
-  vi.spyOn(globalThis, "fetch").mockImplementation(
+  vi.spyOn(publicHttp, "publicFetch").mockImplementation(
     async () => new Response(TEST_CERT_PEM)
   )
   const arn = `${SIGNED_SUBSCRIPTION_CONFIRMATION.TopicArn}:subscription`
@@ -1651,14 +1536,14 @@ describe("native SES team tenants", () => {
     })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).toContain("DeleteTenantCommand")
-    expect(
-      (await f.t.query(internal.tenants.get, { id: f.tenant }))?.deleted
-    ).toBe(true)
+    expect(await f.t.query(internal.tenants.get, { id: f.tenant })).toBeNull()
   })
   test("unexpected tenant resources stop cleanup and remain intact until an administrator retries", async () => {
     vi.useFakeTimers()
     const f = await awsFixture()
-    await f.t.run((ctx) => ctx.db.patch("domains", f.domain, { deleted: true }))
+    await f.t.run((ctx) =>
+      patchRow(ctx, "domains", f.domain, { deleted: true })
+    )
     f.aws.associations.set(
       "arn:aws:ses:us-east-1:123456789012:identity/unrelated.test",
       new Set([f.tenantName])
@@ -1670,16 +1555,14 @@ describe("native SES team tenants", () => {
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).not.toContain("DeleteTenantCommand")
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
-    expect(await f.owner.client.query(api.tenants.cleanup)).toHaveLength(1)
+    expect((await f.owner.client.query(api.tenants.cleanup, { paginationOpts: { cursor: null, numItems: 20 } })).page).toHaveLength(1)
     await expect(
       f.outsider.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     ).rejects.toThrow("installation administrator")
     f.aws.associations.clear()
     await f.owner.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
-    expect(
-      (await f.t.query(internal.tenants.get, { id: f.tenant }))?.deleted
-    ).toBe(true)
+    expect(await f.t.query(internal.tenants.get, { id: f.tenant })).toBeNull()
   })
   test("stale lifecycle workers cannot overwrite a newer removal operation", async () => {
     const f = await awsFixture()
@@ -1713,7 +1596,7 @@ describe("native SES team tenants", () => {
       })
     ).rejects.toThrow("Domain is not ready")
     await f.t.run(async (ctx) => {
-      await ctx.db.patch("domains", f.domain, {
+      await patchRow(ctx, "domains", f.domain, {
         status: "verified",
         tenantAssociated: true,
         configurationSet: "team-configuration",
@@ -1746,7 +1629,7 @@ describe("native SES team tenants", () => {
         organizationId: f.owner.team,
         domainId: f.domain,
       })
-    ).rejects.toThrow("tenant is not ready")
+    ).rejects.toThrow("Sending is paused")
   })
   test("management calls reserve separate slots per AWS region", async () => {
     vi.useFakeTimers()
@@ -1769,7 +1652,7 @@ test("setup completion requires a ready tenant belonging to the first domain's t
     await ctx.db.patch("installation", f.installation, {
       completedAt: undefined,
     })
-    await ctx.db.patch("domains", f.domain, {
+    await patchRow(ctx, "domains", f.domain, {
       tenantAssociated: false,
       phase: "failed",
       status: "failed",
@@ -1817,7 +1700,7 @@ test("saving the first domain atomically completes setup before AWS/DNS verifica
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch("domains", f.domain, { deleted: true })
+    await patchRow(ctx, "domains", f.domain, { deleted: true })
   })
   const id = await f.owner.client.mutation(api.domains.create, {
     organizationId: f.owner.team,
@@ -1852,7 +1735,7 @@ test("first domain creation rolls back if team setup is not ready", async () => 
       completedAt: undefined,
       setupStep: "domain",
     })
-    await ctx.db.patch("domains", f.domain, { deleted: true })
+    await patchRow(ctx, "domains", f.domain, { deleted: true })
     await ctx.db.patch("sesTenants", f.tenant, { phase: "failed" })
   })
   await expect(
@@ -1988,7 +1871,7 @@ test("TLS changes preserve verified DNS, identity state and tenant associations,
     },
   ]
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, {
+    patchRow(ctx, "domains", f.domain, {
       records,
       status: "verified",
       sesVerified: true,
@@ -2066,8 +1949,10 @@ async function receivingFixture() {
     },
   }
   await f.t.run((ctx) =>
-    ctx.db.patch("domains", f.domain, { operation: "refresh" })
+    patchRow(ctx, "domains", f.domain, { operation: "refresh" })
   )
+  // Turning receiving on sets up the region's inbound mail first.
+  mockInboundAws(f.installation)
   return f
 }
 /** Publish everything SES asks for, plus the optional inbound MX and DMARC. */
@@ -2097,6 +1982,44 @@ function publish(zone: { inbound?: number; dmarc?: string } = {}) {
 }
 const read = async (f: Awaited<ReturnType<typeof receivingFixture>>) =>
   (await f.owner.client.query(api.domains.get, { id: f.domain }))!.domain
+
+describe("SES feedback forwarding", () => {
+  const forwardingCalls = (f: Awaited<ReturnType<typeof receivingFixture>>) =>
+    f.aws.calls.filter(
+      (name) => name === "PutEmailIdentityFeedbackAttributesCommand"
+    )
+
+  test("is turned off once events reach Opensend, so senders get no bounce emails", async () => {
+    const f = await receivingFixture()
+    publish()
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(forwardingCalls(f)).toHaveLength(1)
+    const destination = f.aws.calls.findIndex((name) =>
+      /ConfigurationSetEventDestinationCommand$/.test(name)
+    )
+    expect(destination).toBeGreaterThanOrEqual(0)
+    expect(
+      f.aws.calls.indexOf("PutEmailIdentityFeedbackAttributesCommand")
+    ).toBeGreaterThan(destination)
+    // Already off: nothing to change on the next refresh.
+    f.aws.identity = { ...f.aws.identity, FeedbackForwardingStatus: false }
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(forwardingCalls(f)).toHaveLength(1)
+  })
+
+  test("a policy without the permission leaves forwarding on and the domain ready", async () => {
+    const f = await receivingFixture()
+    publish()
+    f.aws.onCall = async (name) => {
+      if (name === "PutEmailIdentityFeedbackAttributesCommand")
+        throw Object.assign(new Error("denied"), {
+          name: "AccessDeniedException",
+        })
+    }
+    await f.t.action(internal.ses.provision.domain, { domainId: f.domain })
+    expect(await read(f)).toMatchObject({ status: "verified", phase: "ready" })
+  })
+})
 
 describe("DMARC guidance and inbound receiving", () => {
   test("DMARC is always published, accepts a stricter policy, and never blocks verification", async () => {
@@ -2145,9 +2068,10 @@ describe("DMARC guidance and inbound receiving", () => {
       priority: 10,
       status: "pending",
     })
+    // As on Resend, the receiving record has its own status.
     expect(domain).toMatchObject({
       receiving: true,
-      status: "partially_verified",
+      status: "verified",
       phase: "ready",
     })
     publish({ inbound: 20, dmarc: "v=DMARC1; p=none;" })
@@ -2230,6 +2154,9 @@ describe("transient failures never unpublish a working domain", () => {
       "pending"
     )
     expect(domain.status).toBe("partially_verified")
+    // Domain events trace the way to verified, not a later dip.
+    expect(domain.verifiedAt).toBeTruthy()
+    expect(domain.partiallyVerifiedAt).toBeUndefined()
   })
   test("a throttled refresh keeps a verified domain sending, editable and retryable", async () => {
     vi.useFakeTimers()
@@ -2420,7 +2347,7 @@ describe("automatic status checks", () => {
     f.aws.onCall = async (name) => {
       if (name === "GetEmailIdentityCommand")
         await f.t.run((ctx) =>
-          ctx.db.patch("domains", f.domain, { phase: "running" })
+          patchRow(ctx, "domains", f.domain, { phase: "running" })
         )
     }
     await f.t.action(internal.ses.verify.run, {
@@ -2457,7 +2384,7 @@ describe("automatic status checks", () => {
   test("Check DNS records retries a failed operation instead", async () => {
     const f = await receivingFixture()
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         phase: "failed",
         operation: "provision",
       })
@@ -2493,7 +2420,7 @@ describe("Domain Connect", () => {
       }),
     }
     const fetch = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(publicHttp, "publicFetch")
       .mockImplementation(async (input) =>
         String(input).endsWith("/v2/example.test/settings")
           ? Response.json(settings)
@@ -2602,7 +2529,7 @@ describe("Domain Connect", () => {
     const { pem, publicKey } = keyPair()
     vi.stubEnv("DOMAIN_CONNECT_PRIVATE_KEY", pem.replace(/\n/g, "\\n"))
     vi.stubEnv("DOMAIN_CONNECT_KEY", "_dck1")
-    const fetch = vi.spyOn(globalThis, "fetch")
+    const fetch = vi.spyOn(publicHttp, "publicFetch")
     const query = templateQuery({
       domain: "example.test",
       host: "mail",
@@ -2626,7 +2553,7 @@ describe("Domain Connect", () => {
   })
   test("any other installation asks opensend.cc to sign, and says so when it cannot", async () => {
     const fetch = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(publicHttp, "publicFetch")
       .mockResolvedValueOnce(Response.json({ sig: "c2ln", key: "_dck1" }))
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
     expect(await signature("domain=example.test")).toEqual({
@@ -2665,7 +2592,7 @@ describe("Domain Connect", () => {
       f.owner.client.action(api.ses.domainConnect.apply, { id: f.domain })
     ).rejects.toThrow("isn't available")
     await f.t.run((ctx) =>
-      ctx.db.patch("domains", f.domain, {
+      patchRow(ctx, "domains", f.domain, {
         records: domain().records,
         domainConnect: {
           zone: "example.test",
@@ -2677,7 +2604,7 @@ describe("Domain Connect", () => {
     await expect(
       f.outsider.client.action(api.ses.domainConnect.apply, { id: f.domain })
     ).rejects.toThrow("permission")
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    vi.spyOn(publicHttp, "publicFetch").mockResolvedValue(
       Response.json({ sig: "c2ln", key: "_dck1" })
     )
     const url = new URL(

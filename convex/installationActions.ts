@@ -1,14 +1,21 @@
 "use node"
+import { publicFetch } from "../lib/net/public-fetch"
+import { localHttpOrigin } from "../lib/net/public-host"
 import { action } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
-import { credentialsValue, installationUrl, regionValue } from "./ses/contracts"
+import {
+  POLICY_REVISION,
+  credentialsValue,
+  installationUrl,
+  regionValue,
+} from "./ses/contracts"
 import {
   checkEncryption,
   encryptCredentials,
   createWrappedKey,
 } from "./ses/crypto"
-import { clients, readAccount, awsError } from "./ses/aws"
+import { clients, hasPolicyRevision, readAccount, awsError } from "./ses/aws"
 import { GetCallerIdentityCommand } from "@aws-sdk/client-sts"
 import { controlPlanePacer } from "./ses/pacing"
 import { setupProof } from "./ses/web"
@@ -30,6 +37,42 @@ export const initialize = action({
     return null
   },
 })
+/** Throws unless the origin reaches this exact deployment: it must answer a
+    fresh challenge with this deployment's proof. */
+async function proveCallbackOrigin(callbackOrigin: string) {
+  const challenge = crypto.randomUUID()
+  const response = await publicFetch(
+    `${callbackOrigin}/ses/health?challenge=${challenge}`,
+    { timeoutMs: 10000, localOrigin: localHttpOrigin(callbackOrigin) }
+  )
+  const body: unknown = await response.json()
+  const expected = await setupProof(challenge)
+  if (
+    !response.ok ||
+    !body ||
+    typeof body !== "object" ||
+    !("challenge" in body) ||
+    body.challenge !== challenge ||
+    !("proof" in body) ||
+    body.proof !== expected
+  )
+    throw new Error("The callback URL did not reach this Opensend deployment")
+}
+/** A public URL check's failure, as the message the dashboard shows. */
+function callbackError(e: unknown) {
+  if (e && typeof e === "object" && "data" in e && typeof e.data === "string")
+    return new ConvexError(e.data)
+  if (
+    e instanceof Error &&
+    (e.message === "fetch failed" || e.name === "TimeoutError")
+  )
+    return new ConvexError(
+      "Could not reach this backend URL. Keep your tunnel running and try again."
+    )
+  return new ConvexError(
+    e instanceof Error ? e.message : "Environment check failed"
+  )
+}
 export const checkEnvironment = action({
   args: { callbackOrigin: v.string() },
   returns: v.null(),
@@ -38,49 +81,37 @@ export const checkEnvironment = action({
     try {
       const siteUrl = installationUrl(process.env.SITE_URL ?? "", true)
       const callbackOrigin = installationUrl(args.callbackOrigin, true)
-      // A challenge confirms the configured URL reaches this exact deployment.
-      const challenge = crypto.randomUUID()
-      const response = await fetch(
-        `${callbackOrigin}/ses/health?challenge=${challenge}`,
-        { signal: AbortSignal.timeout(10000), redirect: "error" }
-      )
-      const body: unknown = await response.json()
-      const expected = await setupProof(challenge)
-      if (
-        !response.ok ||
-        !body ||
-        typeof body !== "object" ||
-        !("challenge" in body) ||
-        body.challenge !== challenge ||
-        !("proof" in body) ||
-        body.proof !== expected
-      )
-        throw new Error(
-          "The callback URL did not reach this Opensend deployment"
-        )
+      await proveCallbackOrigin(callbackOrigin)
       await ctx.runMutation(internal.installation.saveEnvironment, {
         siteUrl,
         callbackOrigin,
       })
       return null
     } catch (e) {
-      if (
-        e &&
-        typeof e === "object" &&
-        "data" in e &&
-        typeof e.data === "string"
-      )
-        throw new ConvexError(e.data)
-      if (
-        e instanceof Error &&
-        (e.message === "fetch failed" || e.name === "TimeoutError")
-      )
-        throw new ConvexError(
-          "Could not reach this backend URL. Keep your tunnel running and try again."
-        )
-      throw new ConvexError(
-        e instanceof Error ? e.message : "Environment check failed"
-      )
+      throw callbackError(e)
+    }
+  },
+})
+/** Moves a provisioned installation to a new public URL, once the URL is
+    proven to reach this deployment. AWS then subscribes the new URL and
+    domains refresh; see `installation.moveCallbackOrigin`. */
+export const changeCallbackOrigin = action({
+  args: { callbackOrigin: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runQuery(internal.installation.adminContext, {})
+    try {
+      const callbackOrigin = installationUrl(args.callbackOrigin.trim(), true)
+      await ctx.runQuery(internal.installation.checkCallbackMove, {
+        callbackOrigin,
+      })
+      await proveCallbackOrigin(callbackOrigin)
+      await ctx.runMutation(internal.installation.moveCallbackOrigin, {
+        callbackOrigin,
+      })
+      return null
+    } catch (e) {
+      throw callbackError(e)
     }
   },
 })
@@ -149,9 +180,29 @@ export const connect = action({
         defaultRegion: args.defaultRegion,
         regions: checked,
       })
-      return null
     } catch (e) {
       throw new ConvexError(awsError(e))
     }
+    /* Record the permissions these credentials already have. This is how an
+       administrator upgrades: update IAM, then update the connection. A
+       failure leaves the revision unrecorded, so sending keeps waiting. */
+    try {
+      const granted = await Promise.all(
+        regions.map((region) =>
+          hasPolicyRevision(
+            clients(region, args.credentials, controlPlanePacer(ctx, region)),
+            installation._id
+          )
+        )
+      )
+      if (granted.every(Boolean))
+        await ctx.runMutation(internal.installation.recordPolicyRevision, {
+          credentialRevision: installation.credentialRevision + 1,
+          policyRevision: POLICY_REVISION,
+        })
+    } catch {
+      // Connection succeeds even if the probes cannot yet confirm permissions.
+    }
+    return null
   },
 })

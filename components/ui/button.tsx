@@ -1,3 +1,19 @@
+"use client"
+
+import * as React from "react"
+import { actionShortcut } from "@/lib/dashboard/shortcuts"
+import {
+  ShortcutAction,
+  isVisible,
+  useShortcut,
+  useShortcutModifier,
+} from "@/lib/dashboard/use-shortcut"
+import { Kbd } from "@/components/ui/kbd"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
@@ -55,15 +71,67 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  ref,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  return (
+  const action = React.useContext(ShortcutAction)
+  const target = React.useRef<HTMLButtonElement>(null)
+  const mergedRef = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      target.current = node
+      if (typeof ref === "function") return ref(node)
+      if (ref) ref.current = node
+    },
+    [ref]
+  )
+  const modifier = useShortcutModifier()
+  const label = props["aria-label"] ?? buttonText(props.children).trim()
+  const shortcut = actionShortcut(action, label)
+  useShortcut(shortcut, () => {
+    const button = target.current
+    if (
+      !button ||
+      !isVisible(button) ||
+      button.disabled ||
+      button.getAttribute("aria-disabled") === "true"
+    )
+      return false
+    button.click()
+  })
+  const button = (
     <ButtonPrimitive
+      ref={mergedRef}
+      aria-keyshortcuts={shortcut?.replace(
+        "mod+",
+        modifier === "⌘" ? "Meta+" : "Control+"
+      )}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
   )
+  if (!shortcut) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>
+        {label}
+        <Kbd>{shortcut.replace("mod+", `${modifier} `).toUpperCase()}</Kbd>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function buttonText(children: React.ReactNode): string {
+  return React.Children.toArray(children)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number")
+        return String(child)
+      if (React.isValidElement<{ children?: React.ReactNode }>(child))
+        return buttonText(child.props.children)
+      return ""
+    })
+    .join("")
 }
 
 export { Button, buttonVariants }

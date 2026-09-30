@@ -29,7 +29,13 @@ export async function requireMember(
       q.eq("organizationId", organizationId).eq("userId", actor.user._id)
     )
     .unique()
-  if (!member || (owner && member.role !== "owner"))
+  const organization = ctx.db.normalizeId("organization", organizationId)
+  if (
+    !member ||
+    !organization ||
+    !(await ctx.db.get("organization", organization)) ||
+    (owner && member.role !== "owner")
+  )
     throw new ConvexError("You do not have permission")
   const sso = await ctx.db
     .query("sso")
@@ -109,15 +115,51 @@ export const authorizeInstallation = query({
     return { admin: bootstrap?.userId === user._id }
   },
 })
+/** Operator recovery (CLI only): the super admin role moves to another
+    verified account, effective on that account's next request. */
+export const transferInstallationAdmin = mutation({
+  args: { email: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { email }) => {
+    const user = await ctx.db
+      .query("user")
+      .withIndex("email_name", (q) => q.eq("email", email.toLowerCase()))
+      .first()
+    if (!user?.emailVerified)
+      throw new ConvexError("No verified account uses this email")
+    const bootstrap = await ctx.db
+      .query("bootstrap")
+      .withIndex("by_key", (q) => q.eq("key", "initial-account"))
+      .unique()
+    if (!bootstrap) throw new ConvexError("Setup has not started")
+    await ctx.db.patch(bootstrap._id, { userId: user._id })
+    return null
+  },
+})
 export const authorizeTeam = query({
   args: {
     sessionId: v.string(),
     organizationId: v.string(),
-    write: v.boolean(),
+    owner: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.sessionId, args.organizationId, args.write)
+    await requireMember(ctx, args.sessionId, args.organizationId, args.owner)
     return null
+  },
+})
+
+/** Called only across the component boundary by the installation mailer. */
+export const bootstrapRecipient = query({
+  args: { email: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { email }) => {
+    const bootstrap = await ctx.db
+      .query("bootstrap")
+      .withIndex("by_key", (q) => q.eq("key", "initial-account"))
+      .unique()
+    const id = bootstrap && ctx.db.normalizeId("user", bootstrap.userId)
+    const user = id ? await ctx.db.get("user", id) : null
+    return !!user && user.email.toLowerCase() === email.trim().toLowerCase()
   },
 })

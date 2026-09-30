@@ -1,0 +1,117 @@
+import { Webhook } from 'standardwebhooks';
+import { buildPaginationUrl } from '../common/utils/build-pagination-query';
+import type { Resend } from '../resend';
+import { Events } from './events/events';
+import type {
+  CreateWebhookOptions,
+  CreateWebhookRequestOptions,
+  CreateWebhookResponse,
+  CreateWebhookResponseSuccess,
+} from './interfaces/create-webhook-options.interface';
+import type {
+  GetWebhookResponse,
+  GetWebhookResponseSuccess,
+} from './interfaces/get-webhook.interface';
+import type {
+  ListWebhooksOptions,
+  ListWebhooksResponse,
+  ListWebhooksResponseSuccess,
+} from './interfaces/list-webhooks.interface';
+import type {
+  RemoveWebhookResponse,
+  RemoveWebhookResponseSuccess,
+} from './interfaces/remove-webhook.interface';
+import type {
+  RotateWebhookSigningSecretResponse,
+  RotateWebhookSigningSecretResponseSuccess,
+} from './interfaces/rotate-webhook-signing-secret.interface';
+import type {
+  UpdateWebhookOptions,
+  UpdateWebhookResponse,
+  UpdateWebhookResponseSuccess,
+} from './interfaces/update-webhook.interface';
+import type { WebhookEventPayload } from './interfaces/webhook-event.interface';
+
+interface Headers {
+  id: string;
+  timestamp: string;
+  signature: string;
+}
+
+interface VerifyWebhookOptions {
+  payload: string;
+  headers: Headers;
+  webhookSecret: string;
+}
+
+export class Webhooks {
+  readonly events: Events;
+
+  constructor(private readonly resend: Resend) {
+    this.events = new Events(resend);
+  }
+
+  async create(
+    payload: CreateWebhookOptions,
+    options: CreateWebhookRequestOptions = {},
+  ): Promise<CreateWebhookResponse> {
+    const data = await this.resend.post<CreateWebhookResponseSuccess>(
+      '/webhooks',
+      payload,
+      options,
+    );
+    return data;
+  }
+
+  async get(id: string): Promise<GetWebhookResponse> {
+    const data = await this.resend.get<GetWebhookResponseSuccess>(
+      `/webhooks/${id}`,
+    );
+
+    return data;
+  }
+
+  async list(options: ListWebhooksOptions = {}): Promise<ListWebhooksResponse> {
+    const url = buildPaginationUrl('/webhooks', options);
+
+    const data = await this.resend.get<ListWebhooksResponseSuccess>(url);
+    return data;
+  }
+
+  async update(
+    id: string,
+    payload: UpdateWebhookOptions,
+  ): Promise<UpdateWebhookResponse> {
+    const data = await this.resend.patch<UpdateWebhookResponseSuccess>(
+      `/webhooks/${id}`,
+      payload,
+    );
+    return data;
+  }
+
+  async remove(id: string): Promise<RemoveWebhookResponse> {
+    const data = await this.resend.delete<RemoveWebhookResponseSuccess>(
+      `/webhooks/${id}`,
+    );
+    return data;
+  }
+
+  async rotateSigningSecret(
+    id: string,
+  ): Promise<RotateWebhookSigningSecretResponse> {
+    const data =
+      await this.resend.post<RotateWebhookSigningSecretResponseSuccess>(
+        `/webhooks/${id}/signing-secret/rotate`,
+      );
+    return data;
+  }
+
+  verify(payload: VerifyWebhookOptions): WebhookEventPayload {
+    const webhook = new Webhook(payload.webhookSecret);
+    return webhook.verify(payload.payload, {
+      'webhook-id': payload.headers.id,
+      'webhook-timestamp': payload.headers.timestamp,
+      'webhook-signature': payload.headers.signature,
+    }) as WebhookEventPayload;
+  }
+}

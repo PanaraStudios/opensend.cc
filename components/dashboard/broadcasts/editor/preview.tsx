@@ -22,6 +22,7 @@ export function EmailPreviewFrame({
       title={title}
       srcDoc={html}
       sandbox=""
+      referrerPolicy="no-referrer"
       loading="lazy"
       data-testid={testId}
       className={cn("size-full border-0 bg-white", className)}

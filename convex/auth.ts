@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values"
 import { env } from "./_generated/server"
 import { createClient, type GenericCtx } from "@convex-dev/better-auth"
 import { betterAuth } from "better-auth/minimal"
@@ -6,6 +7,7 @@ import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
 import schema from "./betterAuth/schema"
 import { createAuthOptions } from "./authOptions"
+import { sendAuthEmail, type AuthEmail } from "./authEmail"
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 
 export const authComponent: ReturnType<
@@ -27,9 +29,19 @@ export const authComponent: ReturnType<
 export const { onCreate, onUpdate, onDelete } = authComponent.triggersApi()
 export function createAuth(
   ctx: GenericCtx<DataModel>,
-  providers: GenericOAuthConfig[] = []
+  providers: GenericOAuthConfig[] = [],
+  deliver?: (email: AuthEmail) => Promise<void>
 ) {
-  const options = createAuthOptions(providers)
+  const options = createAuthOptions(providers, async (email) => {
+    try {
+      if (deliver) await deliver(email)
+      else await sendAuthEmail(ctx, email)
+    } catch (error) {
+      if (error instanceof ConvexError && typeof error.data === "string")
+        throw new APIError("BAD_REQUEST", { message: error.data })
+      throw error
+    }
+  })
   return betterAuth({
     ...options,
     emailAndPassword: {

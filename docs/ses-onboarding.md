@@ -48,7 +48,7 @@ setup file with `opensend` as the default user name and the required permissions
 for the selected regions. **Open AWS setup** opens the CloudFormation console.
 Upload the file, use the copied stack name, review the IAM acknowledgement and
 submit. AWS determines the account ID from the account you are signed into.
-The template creates a dedicated user and a scoped managed policy; it does not
+The template creates a dedicated user and one scoped managed policy; it does not
 create console access or expose access-key secrets in stack outputs.
 
 After the stack completes, open the user in IAM and create an access key. Download
@@ -100,18 +100,67 @@ remain readable with their original SES encryption environment key.
 Workflows contain resource IDs and load current credentials only inside actions.
 Replacement credentials are validated before activation using a revision check.
 
-Provisioning requires the following IAM actions. This is a **setup** policy,
-not the future mail-sending policy. Substitute the account, enabled regions,
-installation ID displayed in the resource preview, and allowed sending domains.
-Use an AWS role with these permissions, or a dedicated least-privilege IAM user.
+Opensend needs the following IAM actions, delivered as **one** managed policy
+(`OpensendPolicy`, file `opensend-iam-policy.json`). IAM caps a managed policy at
+6,144 characters (whitespace excluded), so ARNs use a region wildcard and every
+statement carries an `aws:RequestedRegion` condition naming the enabled regions:
+the same grants as listing each region, small enough for all four offered
+regions. Substitute the account, enabled regions, installation ID displayed in
+the resource preview, and allowed sending domains. Use an AWS role with these
+permissions, or a dedicated least-privilege IAM user.
 
-| Resource scope                                                         | Actions                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `*` (AWS APIs without resource-level scope)                            | `sts:GetCallerIdentity`, `ses:GetAccount`                                                                                                                                                                                                                                                                                                                          |
-| `arn:aws:ses:REGION:ACCOUNT:configuration-set/opensend-INSTALLATION-*` | `ses:CreateConfigurationSet`, `ses:GetConfigurationSet`, `ses:DeleteConfigurationSet`, `ses:ListTagsForResource`, `ses:TagResource`, `ses:PutConfigurationSetSuppressionOptions`, `ses:PutConfigurationSetDeliveryOptions`, `ses:GetConfigurationSetEventDestinations`, `ses:CreateConfigurationSetEventDestination`, `ses:UpdateConfigurationSetEventDestination` |
-| `arn:aws:ses:REGION:ACCOUNT:identity/YOUR_DOMAIN`                      | `ses:CreateEmailIdentity`, `ses:GetEmailIdentity`, `ses:DeleteEmailIdentity`, `ses:PutEmailIdentityMailFromAttributes`, `ses:PutEmailIdentityConfigurationSetAttributes`, `ses:TagResource`, `ses:UntagResource`                                                                                                                                                   |
-| `arn:aws:sns:REGION:ACCOUNT:opensend-INSTALLATION-events`              | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:SetTopicAttributes`, `sns:ListSubscriptionsByTopic`, `sns:Subscribe`, `sns:ConfirmSubscription`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`                                                                                                  |
-| `arn:aws:sqs:REGION:ACCOUNT:opensend-INSTALLATION-events-dlq`          | `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:ListQueueTags`, `sqs:TagQueue`, `sqs:SetQueueAttributes`                                                                                                                                                                                                                                      |
+| Resource scope (all in the enabled regions)                                                                                              | Actions                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `*` (no region condition)                                                                                                                | `sts:GetCallerIdentity`                                                                                                                                                                                                                                                                |
+| `*` (APIs with no resource ARN: the account, its suppression list, receipt rules)                                                        | `ses:GetAccount`, `ses:DeleteSuppressedDestination`, `ses:DescribeActiveReceiptRuleSet`, `ses:DescribeReceiptRuleSet`, `ses:DescribeReceiptRule`, `ses:CreateReceiptRuleSet`, `ses:SetActiveReceiptRuleSet`, `ses:CreateReceiptRule`, `ses:UpdateReceiptRule`, `ses:DeleteReceiptRule` |
+| `arn:aws:ses:*:ACCOUNT:identity/*` (read only)                                                                                           | `ses:GetEmailIdentity`, `ses:ListResourceTenants`                                                                                                                                                                                                                                      |
+| `identity/*`, only with this installation's `opensend:installation` request tag, and only on a domain no other installation has tagged   | `ses:CreateEmailIdentity`, `ses:TagResource`                                                                                                                                                                                                                                           |
+| `identity/*`, only on domains tagged `opensend:installation = INSTALLATION`                                                              | `ses:DeleteEmailIdentity`, `ses:PutEmailIdentityMailFromAttributes`, `ses:PutEmailIdentityConfigurationSetAttributes`, `ses:PutEmailIdentityFeedbackAttributes`, `ses:UntagResource`, tenant resource associations                                                                     |
+| `arn:aws:ses:*:ACCOUNT:configuration-set/opensend-INSTALLATION-*`                                                                        | configuration set create/read/delete/tag, suppression and delivery options, event destinations, tenant resource associations                                                                                                                                                           |
+| `identity/*` and `configuration-set/opensend-INSTALLATION-*`, only when `ses:TenantName` is like `opensend-INSTALLATION-t-*`             | `ses:SendEmail`                                                                                                                                                                                                                                                                        |
+| `*`, only with the `opensend:installation` / `opensend:team` request tags                                                                | `ses:CreateTenant`                                                                                                                                                                                                                                                                     |
+| `arn:aws:ses:*:ACCOUNT:tenant/opensend-INSTALLATION-t-*`                                                                                 | tenant read/delete/tag/suppression/resources, `ses:GetReputationEntity`, `ses:UpdateReputationEntityCustomerManagedStatus`                                                                                                                                                             |
+| `arn:aws:sns:*:ACCOUNT:opensend-INSTALLATION-events` and `-inbound`                                                                      | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:SetTopicAttributes`, `sns:ListSubscriptionsByTopic`, `sns:Subscribe`, `sns:ConfirmSubscription`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`                      |
+| `arn:aws:sqs:*:ACCOUNT:opensend-INSTALLATION-events-dlq`                                                                                 | `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:ListQueueTags`, `sqs:TagQueue`, `sqs:SetQueueAttributes`                                                                                                                                                          |
+| `arn:aws:s3:::opensend-INSTALLATION-inbound*` (receiving drop box: SES writes mail there, Opensend copies it into Convex and deletes it) | bucket create/policy/lifecycle/tagging, `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject`                                                                                                                                                                                             |
+
+Open and click tracking is done by Opensend itself, so no SES tracking, CloudFront
+or ACM permission is needed.
+
+The tenant condition means AWS refuses any send that does not name one of this
+installation's team tenants. A domain's ARN is just its name, so the identity
+statements are narrowed by tag instead of by name: AWS lets Opensend change or
+delete only domains tagged with its installation ID (and SES sends through a
+tenant only from domains associated with it, which takes that tag), and lets it
+tag only a new domain or an untagged one the admin approved for adoption. Every
+action is listed by name; the policy contains no action wildcards. SES allows one active receipt rule set per region;
+Opensend adds its rule to the active set and creates and activates its own set
+only when none is active. IAM cannot tell sets apart, so that rule is enforced
+by Opensend, not by the policy.
+
+### Permissions revisions
+
+The setup file names its revision in its description and in the
+`PolicyRevision` stack output. An installation with no recorded revision is on
+revision 1, which cannot send: every send path stops with "Ask your
+administrator to update AWS permissions". To upgrade, the installation
+administrator either updates the existing stack with the new setup file
+(**Replace existing template**), or chooses **Download permissions** on
+`/instance/ses`, which downloads the one policy file, and pastes it into the
+Opensend user's policy in IAM (Edit → JSON). Installations that attached the
+earlier two-policy files keep working: the check tests what the credentials can
+do, not how the policies are split. Then choose
+**Update connection**: connecting runs the permissions check and records the
+revision.
+
+The check runs two harmless calls in every enabled region with the
+installation's credentials. A `SendEmail` from `probe@permission-check.invalid`
+to the SES mailbox simulator, named for one of this installation's tenants: SES
+always rejects it (the domain can never be verified), so nothing is sent. And a
+read-only `DescribeActiveReceiptRuleSet`. An access denial means the new
+permissions are missing. Any documented SES rejection means IAM allowed the
+call. Only then is the revision recorded. Checks are rate limited, and AWS
+error details are never shown.
 
 ### Optional: automatic DNS setup
 
@@ -137,7 +186,7 @@ credentials. SCPs, permission boundaries and session policies also apply. IAM
 simulation is not presented as proof that provisioning will succeed.
 
 If tenant setup fails, the domain page shows the tenant error and explains why DNS
-records are not available. **Download IAM permissions** exports the current policy
+records are not available. **Download IAM permissions** exports the setup policy
 with the installation's account, regions and resource names filled in. For an AWS
 access denial, review/update the existing user's managed policy in IAM, then choose
 **Retry operation**. This retries tenant setup and continues domain provisioning;
@@ -185,17 +234,77 @@ cannot delete their account while AWS is connected, preventing orphaned resource
 DNS resolution and SES verification are separate. DKIM values use AWS's exact
 `Tokens` and `SigningHostedZone`. Custom MAIL FROM uses `REJECT_MESSAGE` when MX
 verification fails. TLS policy changes are applied to the domain's configuration
-set. DNS integrations, HTTPS tracking, and receiving are later milestones.
+set. HTTPS tracking is a later milestone.
+
+## Receiving and tracking
+
+Turning receiving on for a domain first sets up its region's inbound mail, once
+per region: an S3 bucket `opensend-<installation>-inbound-<short region>`
+(tagged, SES may write only through this installation's receipt rules), the
+SNS topic `opensend-<installation>-inbound` subscribed to `/ses/inbound`, and
+a receipt rule set. SES allows one active rule set per region: Opensend adds its
+rules to the active one, and creates and activates its own only when none is
+active. It never activates a set while another is active. Each domain then gets
+one receipt rule (its name as the recipient) that stores mail in the bucket
+under `<domain id>/` and notifies the topic. Receiving is refused in regions
+where SES does not receive mail.
+
+When the region's last domain stops receiving, a rule set Opensend activated is
+deactivated again if it holds no rules. The bucket, its mail and the topic are
+kept: mail may not be processed yet, the IAM policy grants no deletion, and
+turning receiving on again reuses them.
+
+Inbound SNS notifications are verified and deduplicated like event ones, routed
+to the team whose domain matches a recipient, and stored verbatim in
+`inboundMessages` (`convex/ses/inboundMessages.ts`, `ingest`). Parsing the
+S3 object and emitting `email.received` start from that row. SNS retries a
+failed HTTPS delivery only briefly and the inbound topic has no dead-letter
+queue, so a reconciler can list the bucket (`s3:ListBucket`) for objects
+without a row.
+
+Open and click tracking uses a domain's tracking subdomain, published as a
+CNAME to SES's regional tracking host (`r.<region>.awstrack.me`). SES only
+tracks once that record is verified: then the configuration set gets the
+subdomain as its custom redirect domain and its event destination adds OPEN
+and/or CLICK. Links use SES's HTTP option (`HttpsPolicy: OPTIONAL`); HTTPS
+needs a CloudFront distribution and an ACM certificate, which the installation
+cannot create.
+
+## Moving to a new public URL
+
+The public URL (the backend's HTTPS origin) is where AWS delivers SES events
+(`/ses/events`) and inbound mail notifications (`/ses/inbound`), and where
+open/click tracking and unsubscribe links point. The wizard keeps it fixed once
+AWS resources exist. To move to a new one, for example from a temporary tunnel
+to a permanent host, open **Amazon SES** in the installation settings
+(`/instance/ses`) and choose **Change** under **Delivery updates**.
+
+1. Opensend checks the new URL the same way the wizard's connection check does:
+   it must be HTTPS without a port, path or query, and it must answer a fresh
+   challenge with this deployment's proof. Nothing changes if it does not.
+2. The URL is saved, then every region provisioned before runs its setup
+   again. That subscribes the new URL to the region's event topic (and to its
+   inbound topic when receiving is set up). Each region shows its delivery
+   updates as pending, and sending in it pauses, until SNS confirms the new
+   subscription, exactly as in first-time setup.
+3. Once every region has finished, every domain refreshes, so its tracking
+   record points at the new host. A domain with a tracking subdomain shows
+   that CNAME as pending until it is updated at the DNS provider. New emails
+   use the new URL for tracking and unsubscribe links.
+
+The change is refused while a region, inbound or domain operation is running.
+The IAM policy grants no `sns:Unsubscribe`, so the previous endpoint's
+subscription stays in Amazon SNS; you can delete it in the SNS console. Until
+then, SNS still tries each event there and, once its retries run out, moves it
+to the region's dead-letter queue.
 
 ## Operational limits
 
-- Changing callback/app origins after AWS resources exist needs an explicit
-  subscription migration; the wizard refuses that change for now.
 - Enabled regions cannot yet be removed while resources may reference them.
 - SNS signatures and topic ownership are checked before confirming subscriptions
   or storing events. Notifications are deduplicated. Recipient feedback processing
-  and customer webhooks belong to later milestones; stored events are not yet
-  transformed into delivery outcomes.
+  belongs to a later milestone; stored events are not yet transformed into
+  delivery outcomes.
 - The remaining dashboard features still use their existing demo store. This
   milestone supplies no production send endpoint, API key service, SDK, or SMTP.
 - Backups need both Convex data (including components) and deployment secrets.

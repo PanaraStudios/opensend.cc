@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { SEED_STATE } from "./data"
 import {
   deriveDomainStatus,
   dnsHost,
@@ -12,9 +11,7 @@ import {
   domainRecordSections,
   domainRecords,
   domainZoneFile,
-  normalizeDomain,
   providerLabel,
-  reconcileDomain,
   validateDnsLabel,
   validateDomainName,
 } from "./domains"
@@ -24,20 +21,6 @@ import type { DnsRecord, Domain, DomainStatus } from "./types"
 const NOW = Date.parse("2026-09-18T12:00:00.000Z")
 const CREATED = NOW - 86_400_000
 const LATER = 3_600_000
-
-/** Every record this domain needs now resolves. */
-function verifyDomainRecords(domain: Domain, now: number): Domain {
-  return reconcileDomain(
-    {
-      ...domain,
-      records: domainRecords(domain).map((record) => ({
-        ...record,
-        status: "verified" as const,
-      })),
-    },
-    now
-  )
-}
 
 function stepAt(
   steps: readonly DomainEventStep[],
@@ -93,7 +76,6 @@ function domain(overrides: Partial<Domain> = {}): Domain {
     tls: "opportunistic",
     customReturnPath: "send",
     receiving: false,
-    events: [],
     records: [
       record("DKIM", "not_started"),
       record("SPF", "not_started"),
@@ -263,69 +245,16 @@ describe("domainRecords", () => {
   })
 
   it("drops the optional records again when the switch goes off", () => {
-    const withInbound = reconcileDomain(domain({ receiving: true }), NOW)
-    const withoutInbound = reconcileDomain(
-      { ...withInbound, receiving: false },
-      NOW
-    )
+    const withInbound = domain({ receiving: true })
+    const withoutInbound = domainRecords({
+      ...withInbound,
+      records: domainRecords(withInbound),
+      receiving: false,
+    })
     assert.equal(
-      withoutInbound.records.some((entry) => entry.kind === "Receiving"),
+      withoutInbound.some((entry) => entry.kind === "Receiving"),
       false
     )
-  })
-})
-
-describe("reconcileDomain", () => {
-  it("drops a verified domain to partially verified when receiving starts", () => {
-    const verified = verifyDomainRecords(domain(), NOW)
-    assert.equal(verified.status, "verified")
-    const receiving = reconcileDomain({ ...verified, receiving: true }, NOW)
-    assert.equal(receiving.status, "partially_verified")
-    const checked = verifyDomainRecords(receiving, NOW)
-    assert.equal(checked.status, "verified")
-  })
-
-  it("stamps each milestone once and keeps the first time", () => {
-    const verified = verifyDomainRecords(domain(), NOW)
-    assert.deepEqual(
-      verified.events?.map((event) => event.type),
-      ["added", "dns_verified", "verified"]
-    )
-    assert.equal(
-      verified.events?.find((event) => event.type === "added")?.at,
-      CREATED
-    )
-    const later = reconcileDomain({ ...verified, tls: "enforced" }, NOW + 1000)
-    assert.equal(
-      later.events?.find((event) => event.type === "verified")?.at,
-      NOW
-    )
-  })
-
-  it("backfills fields missing from an older persisted domain", () => {
-    const legacy = {
-      ...domain(),
-      sending: undefined,
-      trackingSubdomain: undefined,
-      events: undefined,
-      customReturnPath: "",
-    } as unknown as Domain
-    const normalized = normalizeDomain(legacy)
-    assert.equal(normalized.sending, true)
-    assert.equal(normalized.trackingSubdomain, "")
-    assert.equal(normalized.customReturnPath, "send")
-    assert.deepEqual(
-      normalized.events?.map((event) => event.type),
-      ["added"]
-    )
-  })
-})
-
-describe("seeded domains", () => {
-  it("are already reconciled, so parsing a workspace changes nothing", () => {
-    for (const seeded of SEED_STATE.domains) {
-      assert.deepEqual(normalizeDomain(seeded), seeded, seeded.name)
-    }
   })
 })
 
@@ -341,10 +270,11 @@ describe("domainEventSteps", () => {
   })
 
   it("shows the partial step once that milestone applies", () => {
-    const partial = reconcileDomain(
-      { ...verifyDomainRecords(domain(), NOW), receiving: true },
-      NOW
-    )
+    const partial = domain({
+      status: "partially_verified",
+      dnsVerifiedAt: NOW,
+      partiallyVerifiedAt: NOW,
+    })
     assert.deepEqual(
       domainEventSteps(partial).map((step) => step.label),
       ["Domain added", "DNS verified", "Partially verified", "Domain verified"]
@@ -352,11 +282,11 @@ describe("domainEventSteps", () => {
   })
 
   it("un-reaches the verified step while the domain is partially verified", () => {
-    const verified = verifyDomainRecords(domain(), NOW)
-    const partial = reconcileDomain(
-      { ...verified, receiving: true },
-      NOW + LATER
-    )
+    const partial = domain({
+      status: "partially_verified",
+      dnsVerifiedAt: NOW,
+      partiallyVerifiedAt: NOW + LATER,
+    })
     assert.equal(partial.status, "partially_verified")
     const steps = domainEventSteps(partial)
     assert.equal(stepAt(steps, "verified"), undefined)
@@ -365,11 +295,11 @@ describe("domainEventSteps", () => {
   })
 
   it("re-stamps the verified step when a domain verifies again", () => {
-    const partial = reconcileDomain(
-      { ...verifyDomainRecords(domain(), NOW), receiving: true },
-      NOW + LATER
-    )
-    const again = verifyDomainRecords(partial, NOW + 2 * LATER)
+    const again = domain({
+      status: "verified",
+      dnsVerifiedAt: NOW,
+      verifiedAt: NOW + 2 * LATER,
+    })
     assert.equal(again.status, "verified")
     const steps = domainEventSteps(again)
     assert.equal(stepAt(steps, "verified"), NOW + 2 * LATER)
@@ -379,51 +309,6 @@ describe("domainEventSteps", () => {
       false
     )
     assertChronological(steps)
-  })
-
-  it("keeps every reachable state in chronological order", () => {
-    const fresh = reconcileDomain(domain(), NOW)
-    const pending = reconcileDomain(
-      domain({
-        records: [record("DKIM", "pending"), record("SPF", "pending")],
-      }),
-      NOW
-    )
-    const failed = reconcileDomain(
-      domain({
-        records: [record("DKIM", "verified"), record("SPF", "failed")],
-      }),
-      NOW + LATER
-    )
-    const verified = verifyDomainRecords(domain(), NOW)
-    const partial = reconcileDomain(
-      { ...verified, receiving: true },
-      NOW + LATER
-    )
-    const reverified = verifyDomainRecords(partial, NOW + 2 * LATER)
-    const partialAgain = reconcileDomain(
-      {
-        ...reverified,
-        receiving: false,
-        clickTracking: true,
-        trackingSubdomain: "links",
-      },
-      NOW + 3 * LATER
-    )
-    const states = [
-      fresh,
-      pending,
-      failed,
-      verified,
-      partial,
-      reverified,
-      partialAgain,
-    ]
-    for (const state of states) {
-      assertChronological(domainEventSteps(state), state.status)
-    }
-    assert.equal(partialAgain.status, "partially_verified")
-    assert.equal(stepAt(domainEventSteps(partialAgain), "verified"), undefined)
   })
 })
 

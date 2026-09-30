@@ -1,6 +1,10 @@
 "use client"
 
 import * as React from "react"
+import { useAction, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { actionError } from "@/lib/action-error"
 import { useRouter } from "next/navigation"
 import {
   CircleCheckIcon,
@@ -27,15 +31,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { toast } from "@/components/ui/toast"
-import {
-  audienceLabel,
-  emailFrom,
-  broadcastRecipients,
-} from "@/lib/dashboard/broadcast"
+import { audienceLabel, emailFrom } from "@/lib/dashboard/broadcast"
 import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
 import { isEmail, pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
+import { useDomainOptions } from "@/lib/domains/use-domains"
+import { useSegmentOptions } from "@/lib/audience/use-audience"
+import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
@@ -128,14 +131,18 @@ export function TestEmailDialog({
   onOpenChange,
   item,
   exportHtml,
+  templateId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: EmailDraft
+  templateId?: string
   /** The email as it stands right now, exported if it has to be. */
   exportHtml: () => Promise<string | null>
 }) {
-  const { state, you, sendEmail } = useDashboard()
+  const domains = useDomainOptions({ status: "verified" })
+  const { user: you, activeTeamId } = useWorkspace()
+  const sendEmail = useMutation(api.testEmails.send)
   const [value, setValue] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
   return (
@@ -155,20 +162,27 @@ export function TestEmailDialog({
               setError("Enter a valid email address")
               return
             }
-            void exportHtml().then((html) => {
-              /* The export failed and said so; there is nothing to send. */
-              if (html === null) return
-              sendEmail({
-                from: emailFrom(item, state.domains),
-                to,
-                subject: `[Test] ${item.subject || item.name || "Untitled"}`,
-                text: item.preview || "Test send from the email editor.",
-                html,
+            void exportHtml()
+              .then(async (html) => {
+                /* The export failed and said so; there is nothing to send. */
+                if (html === null) return
+                const organizationId = requireTeamId(activeTeamId)
+                await sendEmail({
+                  organizationId,
+                  templateId: templateId as Id<"templates"> | undefined,
+                  from: item.from || emailFrom(item, domains),
+                  to,
+                  subject: `[Test] ${item.subject || item.name || "Untitled"}`,
+                  html,
+                })
+                toast.add({
+                  type: "success",
+                  title: `Test email sent to ${to}`,
+                })
+                onOpenChange(false)
+                setValue("")
               })
-              toast.add({ type: "success", title: `Test email sent to ${to}` })
-              onOpenChange(false)
-              setValue("")
-            })
+              .catch((error) => setError(actionError(error)))
           }}
         >
           <DialogHeader>
@@ -316,6 +330,7 @@ export function ReviewPopover({
         data-testid="review-popover"
       >
         <ReviewBody
+          key={`${item.segmentId ?? "all"}:${item.topicId ?? "none"}`}
           onClose={() => setOpen(false)}
           item={item}
           html={html}
@@ -346,16 +361,42 @@ function ReviewBody({
   flush: () => Promise<boolean>
 }) {
   const router = useRouter()
-  const { state, setBroadcastStatus } = useDashboard()
+  const domains = useDomainOptions({ status: "verified" })
+  const segments = useSegmentOptions(item.segmentId) ?? []
+  const { sendBroadcast, updateBroadcast } = useBroadcastCommands()
+  const { activeTeamId } = useWorkspace()
+  const review = useAction(api.broadcasts.review)
+  const [recipients, setRecipients] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    if (!activeTeamId) return
+    let live = true
+    void review({
+      organizationId: activeTeamId,
+      segmentId: item.segmentId as Id<"segments"> | null,
+      topicId: item.topicId as Id<"topics"> | null,
+    })
+      .then((count) => {
+        if (live) setRecipients(count)
+      })
+      .catch((error) => {
+        if (live) {
+          setRecipients(0)
+          toast.add({ type: "error", title: actionError(error) })
+        }
+      })
+    return () => {
+      live = false
+    }
+  }, [activeTeamId, item.segmentId, item.topicId, review])
   const checks = reviewChecks({
     item,
     html,
     empty,
     sendAt,
-    from: emailFrom(item, state.domains),
-    verified: state.domains.some((domain) => domain.status === "verified"),
-    audience: audienceLabel(item.segmentId, state.segments),
-    recipients: broadcastRecipients(state.contacts, item).length,
+    from: item.from || emailFrom(item, domains),
+    verified: domains.some((domain) => domain.status === "verified"),
+    audience: audienceLabel(item.segmentId, segments),
+    recipients: recipients ?? 0,
   })
   const blocked = checks.some((check) => check.level === "error")
 
@@ -386,21 +427,27 @@ function ReviewBody({
           disabled={blocked}
           testId="review-send"
           onConfirm={() => {
-            void flush().then((saved) => {
-              /* Never send the email from before the edit that did not save. */
-              if (!saved) return
-              /* A time picked a while ago may have passed since: that is
+            void flush()
+              .then(async (saved) => {
+                /* Never send the email from before the edit that did not save. */
+                if (!saved) return
+                /* A time picked a while ago may have passed since: that is
                  "now", not a schedule in the past. */
-              const later = sendAt !== null && sendAt > Date.now()
-              if (later) setBroadcastStatus(item.id, "scheduled", sendAt)
-              else setBroadcastStatus(item.id, "sent")
-              toast.add({
-                type: "success",
-                title: later ? "Broadcast scheduled" : "Broadcast sent",
+                const later = sendAt !== null && sendAt > Date.now()
+                await updateBroadcast(item.id, {
+                  from: item.from || emailFrom(item, domains),
+                })
+                await sendBroadcast(item.id, later ? sendAt : undefined)
+                toast.add({
+                  type: "success",
+                  title: later ? "Broadcast scheduled" : "Broadcast sent",
+                })
+                onClose()
+                router.push(`/broadcasts/${item.id}`)
               })
-              onClose()
-              router.push(`/broadcasts/${item.id}`)
-            })
+              .catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
           }}
         />
       </div>

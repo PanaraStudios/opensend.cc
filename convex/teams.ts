@@ -1,6 +1,10 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server"
 import { env } from "./_generated/server"
 import { mutation, query, action } from "./_generated/server"
-import { components } from "./_generated/api"
+import { components, internal } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
 import {
   sessionId,
@@ -13,9 +17,15 @@ import {
   findRegion,
 } from "./access"
 import type { MutationCtx } from "./_generated/server"
-import { snapshotValue } from "./betterAuth/teams"
+import {
+  snapshotValue,
+  teamValue,
+  memberValue,
+  invitationValue,
+} from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
+import { retirement } from "./teamLifecycle"
 const role = v.union(v.literal("admin"), v.literal("member"))
 /** A team is deleted only once it has no domains; its tenants go with it. */
 async function retireTeam(ctx: MutationCtx, organizationId: string) {
@@ -30,6 +40,13 @@ async function retireTeam(ctx: MutationCtx, organizationId: string) {
       "Remove this team's sending domains before deleting the team"
     )
   await removeTeamTenants(ctx, organizationId)
+  if (!(await retirement(ctx, organizationId))) {
+    await ctx.db.insert("teamRetirements", { teamId: organizationId })
+    await ctx.scheduler.runAfter(0, internal.teamCleanup.purge, {
+      organizationId,
+      table: 0,
+    })
+  }
 }
 export const snapshot = query({
   args: {},
@@ -129,7 +146,7 @@ export const remove = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireSetupComplete(ctx)
-    await requireTeam(ctx, args.organizationId, !args.leave)
+    await requireTeam(ctx, args.organizationId, args.leave ? "read" : "admin")
     const sid = await sessionId(ctx)
     // Leaving retires the team only when this member is its last one.
     if (
@@ -171,7 +188,7 @@ export const invite = mutation({
       components.betterAuth.teams.invite,
       { ...args, sessionId: await sessionId(ctx) }
     )
-    sendAuthEmail({
+    await sendAuthEmail(ctx, {
       to: invitation.email,
       kind: "invite",
       url: `${env.SITE_URL}/invitation?id=${invitation.id}`,
@@ -240,6 +257,39 @@ export const removeAvatar = mutation({
   handler: async (ctx, args) => {
     await requireSetupComplete(ctx)
     return ctx.runMutation(components.betterAuth.teams.setAvatar, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    })
+  },
+})
+
+export const list = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(teamValue),
+  handler: async (ctx, args) =>
+    ctx.runQuery(components.betterAuth.teams.list, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    }),
+})
+export const members = query({
+  args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(memberValue),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "read")
+    return ctx.runQuery(components.betterAuth.teams.members, {
+      ...args,
+      sessionId: await sessionId(ctx),
+    })
+  },
+})
+
+export const invitations = query({
+  args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(invitationValue),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "admin")
+    return ctx.runQuery(components.betterAuth.teams.invitations, {
       ...args,
       sessionId: await sessionId(ctx),
     })

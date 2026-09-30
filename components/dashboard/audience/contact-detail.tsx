@@ -1,4 +1,5 @@
 "use client"
+import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -7,12 +8,6 @@ import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -32,15 +27,38 @@ import {
   DetailHeader,
   EmailStatusBadge,
   EmptyState,
+  ListPagination,
   NotFoundState,
   ResourceTable,
+  SearchableSelect,
   Surface,
   Th,
+  useAutosaveDraft,
   useDeleteRecord,
 } from "@/components/dashboard/primitives"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Skeleton } from "@/components/ui/skeleton"
 import { contactTopicStatus } from "@/lib/dashboard/contacts"
 import { formatDate, formatDateTime } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useReceivedList } from "@/lib/received/use-received"
+import {
+  asContact,
+  useAudienceCommands,
+  useContactSegments,
+  useHasSegments,
+  useProperties,
+  useSegmentOptions,
+  useTopics,
+} from "@/lib/audience/use-audience"
+import { OPTION_LIMIT } from "@/lib/dashboard/options"
+import { actionError } from "@/lib/action-error"
+import { useRecipientEmails } from "@/lib/emails/use-emails"
+import type { Contact } from "@/lib/dashboard/types"
+
+/** Reports a failed save; the stored value then shows again. */
+const reportError = (caught: unknown) =>
+  toast.add({ type: "error", title: actionError(caught) })
 
 function HistorySection({
   title,
@@ -61,20 +79,20 @@ function HistorySection({
   )
 }
 
-function SegmentMembership({
-  contactId,
-  segmentIds,
-}: {
-  contactId: string
-  segmentIds: string[]
-}) {
-  const { state, setContactSegments } = useDashboard()
-  const assigned = state.segments.filter((segment) =>
-    segmentIds.includes(segment.id)
+function SegmentMembership({ contactId }: { contactId: string }) {
+  const { setContactSegment } = useAudienceCommands()
+  const hasSegments = useHasSegments()
+  /* A contact can be in any number of segments, and a team can have any
+     number: both lists come from the server a page at a time. */
+  const assigned = useContactSegments(contactId)
+  const [search, setSearch] = React.useState("")
+  const suggested = useSegmentOptions(null, search) ?? []
+  const available = suggested.filter(
+    (segment) => !assigned.results.some((row) => row._id === segment.id)
   )
-  const available = state.segments.filter(
-    (segment) => !segmentIds.includes(segment.id)
-  )
+  const toggle = (segmentId: string, member: boolean) =>
+    setContactSegment(contactId, segmentId, member).catch(reportError)
+  const { pageRows, pagination } = assigned
 
   return (
     <Surface>
@@ -85,7 +103,9 @@ function SegmentMembership({
           see these names.
         </p>
       </div>
-      {state.segments.length === 0 ? (
+      {hasSegments === undefined || assigned.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-8 w-full" />
+      ) : !hasSegments ? (
         <p className="text-sm text-muted-foreground">
           No segments yet.{" "}
           <Link href="/segments" className="underline underline-offset-4">
@@ -95,17 +115,17 @@ function SegmentMembership({
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {assigned.length === 0 ? (
+          {pageRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Not in any segments yet.
             </p>
           ) : (
             <ul className="flex flex-wrap gap-2">
-              {assigned.map((segment) => (
-                <li key={segment.id}>
+              {pageRows.map((segment) => (
+                <li key={segment._id}>
                   <Badge variant="secondary" size="lg" className="pr-1">
                     <Link
-                      href={`/segments/${segment.id}`}
+                      href={`/segments/${segment._id}`}
                       className="hover:underline"
                     >
                       {segment.name}
@@ -115,12 +135,7 @@ function SegmentMembership({
                       variant="ghost"
                       size="icon-xs"
                       aria-label={`Remove from ${segment.name}`}
-                      onClick={() =>
-                        setContactSegments(
-                          contactId,
-                          segmentIds.filter((id) => id !== segment.id)
-                        )
-                      }
+                      onClick={() => toggle(segment._id, false)}
                     >
                       <XIcon />
                     </Button>
@@ -129,36 +144,33 @@ function SegmentMembership({
               ))}
             </ul>
           )}
-          {available.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" className="w-fit" />
-                }
-              >
-                <PlusIcon data-icon="inline-start" />
-                Add to segment
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-44">
-                {available.map((segment) => (
-                  <DropdownMenuItem
-                    key={segment.id}
-                    onClick={() =>
-                      setContactSegments(contactId, [...segmentIds, segment.id])
-                    }
-                  >
-                    {segment.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
+          <ListPagination {...pagination} embedded noun="segment" />
+          {!search &&
+          available.length === 0 &&
+          suggested.length < OPTION_LIMIT ? (
             <p className="text-sm text-muted-foreground">
               In every segment.{" "}
               <Link href="/segments" className="underline underline-offset-4">
                 Manage segments
               </Link>
             </p>
+          ) : (
+            <SearchableSelect
+              value=""
+              onChange={(segmentId) => toggle(segmentId, true)}
+              items={available.map((segment) => ({
+                value: segment.id,
+                label: segment.name,
+              }))}
+              search={{ onChange: setSearch, placeholder: "Search segments…" }}
+              contentClassName="min-w-44"
+              trigger={() => (
+                <Button variant="outline" size="sm" className="w-fit">
+                  <PlusIcon data-icon="inline-start" />
+                  Add to segment
+                </Button>
+              )}
+            />
           )}
         </div>
       )}
@@ -166,37 +178,59 @@ function SegmentMembership({
   )
 }
 
+/** An input that saves as you type; see `useAutosaveDraft`. */
+function AutosaveInput({
+  value,
+  onSave,
+  ...props
+}: Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "onBlur"> & {
+  value: string
+  onSave: (next: string) => Promise<unknown>
+}) {
+  const draft = useAutosaveDraft(value, onSave)
+  return <Input {...props} {...draft.props} />
+}
+
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>()
-  const { state, updateContact, deleteContact, setContactTopic } =
-    useDashboard()
-  const contact = state.contacts.find((item) => item.id === id)
+  const stored = useQuery(api.contacts.get, { id })
+  const topics = useTopics()
+  const properties = useProperties()
   const { leaving, deleteAndLeave } = useDeleteRecord("/contacts")
-  const [pendingDelete, setPendingDelete] = React.useState(false)
 
-  if (!contact) {
+  if (stored === undefined || topics === undefined || properties === undefined)
+    return <Skeleton className="h-64 w-full" />
+  if (!stored) {
     if (leaving) return null
     return <NotFoundState icon={UserIcon} noun="contact" backHref="/contacts" />
   }
+  return <ContactPage contact={asContact(stored)} onDelete={deleteAndLeave} />
+}
 
-  const emails = state.emails
-    .filter((email) => email.to === contact.email)
-    .sort((a, b) => b.createdAt - a.createdAt)
-  const received = state.received
-    .filter((email) => email.from.toLowerCase().includes(contact.email))
-    .sort((a, b) => b.createdAt - a.createdAt)
-  const broadcasts = state.broadcasts
-    .filter((broadcast) => {
-      if (broadcast.status !== "sent") return false
-      if (
-        broadcast.segmentId &&
-        !contact.segmentIds.includes(broadcast.segmentId)
-      ) {
-        return false
-      }
-      return true
-    })
-    .sort((a, b) => (b.sentAt ?? b.createdAt) - (a.sentAt ?? a.createdAt))
+function ContactPage({
+  contact,
+  onDelete,
+}: {
+  contact: Contact
+  onDelete: (remove: () => void) => void
+}) {
+  const { updateContact, deleteContacts, setContactTopic } =
+    useAudienceCommands()
+  const topics = useTopics() ?? []
+  const properties = useProperties() ?? []
+  const [pendingDelete, setPendingDelete] = React.useState(false)
+  const save = (patch: Parameters<typeof updateContact>[1]) =>
+    updateContact(contact.id, patch)
+  const update = (patch: Parameters<typeof updateContact>[1]) =>
+    save(patch).catch(reportError)
+
+  const sends = useRecipientEmails(contact.email)
+  const emails = sends.rows
+  const { pageRows: emailRows, pagination: emailPagination } = sends
+  const replies = useReceivedList({ address: contact.email })
+  const received = replies.rows
+  const broadcastList = useContactBroadcasts(contact.email)
+  const broadcasts = broadcastList.pageRows
 
   return (
     <>
@@ -225,26 +259,18 @@ export function ContactDetail() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="first">First name</FieldLabel>
-                  <Input
+                  <AutosaveInput
                     id="first"
                     value={contact.firstName}
-                    onChange={(event) =>
-                      updateContact(contact.id, {
-                        firstName: event.target.value,
-                      })
-                    }
+                    onSave={(firstName) => save({ firstName })}
                   />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="last">Last name</FieldLabel>
-                  <Input
+                  <AutosaveInput
                     id="last"
                     value={contact.lastName}
-                    onChange={(event) =>
-                      updateContact(contact.id, {
-                        lastName: event.target.value,
-                      })
-                    }
+                    onSave={(lastName) => save({ lastName })}
                   />
                 </Field>
               </div>
@@ -262,29 +288,24 @@ export function ContactDetail() {
                   id="subscribed"
                   checked={!contact.unsubscribed}
                   onCheckedChange={(checked) =>
-                    updateContact(contact.id, { unsubscribed: !checked })
+                    update({ unsubscribed: !checked })
                   }
                 />
               </Field>
-              {state.properties.length > 0 ? (
+              {properties.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {state.properties.map((property) => (
+                  {properties.map((property) => (
                     <Field key={property.id}>
                       <FieldLabel htmlFor={`prop-${property.key}`}>
                         {property.name}
                       </FieldLabel>
-                      <Input
+                      <AutosaveInput
                         id={`prop-${property.key}`}
                         type={property.type === "number" ? "number" : "text"}
-                        value={contact.properties?.[property.key] ?? ""}
+                        value={contact.properties[property.key] ?? ""}
                         placeholder={property.fallbackValue}
-                        onChange={(event) =>
-                          updateContact(contact.id, {
-                            properties: {
-                              ...(contact.properties ?? {}),
-                              [property.key]: event.target.value,
-                            },
-                          })
+                        onSave={(value) =>
+                          save({ properties: { [property.key]: value } })
                         }
                       />
                     </Field>
@@ -293,10 +314,7 @@ export function ContactDetail() {
               ) : null}
             </Surface>
 
-            <SegmentMembership
-              contactId={contact.id}
-              segmentIds={contact.segmentIds}
-            />
+            <SegmentMembership contactId={contact.id} />
 
             <Surface className="lg:col-span-2">
               <h2 className="text-sm font-medium">Topics</h2>
@@ -304,7 +322,7 @@ export function ContactDetail() {
                 Topics appear on the preference page. Public topics can be
                 managed by the contact; private topics stay off that page.
               </p>
-              {state.topics.length === 0 ? (
+              {topics.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No topics yet.{" "}
                   <Link href="/topics" className="underline underline-offset-4">
@@ -322,7 +340,7 @@ export function ContactDetail() {
                     </>
                   }
                 >
-                  {state.topics.map((topic) => {
+                  {topics.map((topic) => {
                     const subscription = contactTopicStatus(contact, topic)
                     return (
                       <TableRow key={topic.id}>
@@ -345,7 +363,7 @@ export function ContactDetail() {
                                 contact.id,
                                 topic.id,
                                 checked ? "subscribed" : "unsubscribed"
-                              )
+                              ).catch(reportError)
                             }
                           />
                         </TableCell>
@@ -358,9 +376,13 @@ export function ContactDetail() {
           </div>
         </TabsContent>
         <TabsContent value="history">
-          {emails.length === 0 &&
-          received.length === 0 &&
-          broadcasts.length === 0 ? (
+          {sends.status === "LoadingFirstPage" ||
+          replies.status === "LoadingFirstPage" ||
+          broadcastList.status === "LoadingFirstPage" ? (
+            <Skeleton className="h-40 w-full" />
+          ) : emails.length === 0 &&
+            received.length === 0 &&
+            broadcasts.length === 0 ? (
             <EmptyState
               icon={MailIcon}
               title="No marketing history"
@@ -370,7 +392,7 @@ export function ContactDetail() {
             <div className="flex flex-col gap-6">
               {emails.length > 0 ? (
                 <HistorySection title="Emails">
-                  {emails.map((email) => (
+                  {emailRows.map((email) => (
                     <Item
                       key={email.id}
                       size="sm"
@@ -390,6 +412,7 @@ export function ContactDetail() {
                   ))}
                 </HistorySection>
               ) : null}
+              <ListPagination {...emailPagination} embedded noun="email" />
               {broadcasts.length > 0 ? (
                 <HistorySection title="Broadcasts">
                   {broadcasts.map((broadcast) => (
@@ -410,11 +433,16 @@ export function ContactDetail() {
                       </ItemContent>
                     </Item>
                   ))}
+                  <ListPagination
+                    {...broadcastList.pagination}
+                    embedded
+                    noun="broadcast"
+                  />
                 </HistorySection>
               ) : null}
               {received.length > 0 ? (
                 <HistorySection title="Received">
-                  {received.map((email) => (
+                  {replies.pageRows.map((email) => (
                     <Item
                       key={email.id}
                       size="sm"
@@ -433,6 +461,7 @@ export function ContactDetail() {
                   ))}
                 </HistorySection>
               ) : null}
+              <ListPagination {...replies.pagination} embedded noun="email" />
             </div>
           )}
         </TabsContent>
@@ -444,7 +473,7 @@ export function ContactDetail() {
         title={`Delete ${contact.email}?`}
         description="The contact is removed from every segment. This cannot be undone."
         onConfirm={() => {
-          deleteAndLeave(() => deleteContact(contact.id))
+          onDelete(() => void deleteContacts([contact.id]))
           toast.add({ type: "success", title: "Contact deleted" })
         }}
       />

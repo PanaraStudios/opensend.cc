@@ -1,0 +1,58 @@
+{
+  "name": "@opensend/mcp",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "opensend-mcp": "dist/index.js"
+  },
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./http": {
+      "types": "./dist/transports/http.d.ts",
+      "default": "./dist/transports/http.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-resend-mcp"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "pnpm --filter @opensend/sdk build && pnpm run build && vitest run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/express": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "minimist": "1.2.8",
+    "zod": "4.6.1",
+    "@opensend/sdk": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/minimist": "1.2.5",
+    "@types/node": "^20",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "yaml": "^2.8.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PanaraStudios/opensend.cc.git",
+    "directory": "packages/mcp"
+  },
+  "private": false
+}

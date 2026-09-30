@@ -27,24 +27,31 @@ import {
   Surface,
   Th,
   ToolbarFilters,
-  usePagination,
+  useTeamList,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
-  automationRuns,
   formatElapsed,
   formatRunDuration,
-  runStatusRates,
-  stepMetrics,
   stepSummary,
   stepTitle,
   TRIGGER_KEY,
   type StepMetrics,
 } from "@/lib/dashboard/automation"
-import { DEMO_NOW } from "@/lib/dashboard/data"
-import { inDateRange } from "@/lib/dashboard/email-range"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import { Skeleton } from "@/components/ui/skeleton"
+import { actionError } from "@/lib/action-error"
+import { useClock } from "@/lib/time/use-clock"
+import { rangeBounds } from "@/lib/dashboard/email-range"
+import {
+  asRun,
+  asRunStep,
+  useAutomationCommands,
+} from "@/lib/automations/use-automations"
 import { sentenceCase } from "@/lib/dashboard/format"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useStepContext } from "@/lib/automations/use-automations"
 import type { Automation, AutomationRun } from "@/lib/dashboard/types"
 
 /* How the automation is doing: its runs and its numbers on the left, and on
@@ -57,12 +64,6 @@ const RUN_STATUS_ITEMS: readonly SelectOption[] = [
     (value) => ({ value, label: sentenceCase(value) })
   ),
 ]
-
-/** The clock a run is measured against. The seeded runs live on the demo's
-    fixed clock; a test run is stamped with the real one. */
-function runClock(run: AutomationRun): number {
-  return run.startedAt > DEMO_NOW ? Date.now() : DEMO_NOW
-}
 
 /** A label over a value, inside a card of the graph. */
 function CardFact({
@@ -131,43 +132,56 @@ function StepFacts({
 }
 
 export function Observability({ automation }: { automation: Automation }) {
-  const { state, cancelAutomationRun } = useDashboard()
+  const context = useStepContext(automation.steps)
+  const { organizationId, cancelAutomationRun } = useAutomationCommands()
+  const now = useClock()
   const [tab, setTab] = React.useState("runs")
   const [status, setStatus] = React.useState("all")
-  /* All time to begin with: a test run is stamped with the real clock, which
-     the demo data's rolling ranges stop short of. */
   const [range, setRange] = React.useState<DateRange | undefined>(undefined)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
 
-  const runs = React.useMemo(
-    () =>
-      automationRuns(state.automationRuns, automation.id).filter((run) =>
-        inDateRange(run.startedAt, range)
-      ),
-    [state.automationRuns, automation.id, range]
+  const dates = rangeBounds(range)
+  const id = automation.id as Id<"automations">
+  const {
+    rows,
+    pageRows,
+    pagination,
+    status: loading,
+  } = useTeamList(
+    api.automations.runs,
+    api.automations.runCount,
+    {
+      id,
+      ...dates,
+      ...(status === "all"
+        ? {}
+        : { status: status as AutomationRun["status"] }),
+    },
+    asRun
   )
-  const rows = runs.filter((run) => status === "all" || run.status === status)
-  const { pageRows, pagination } = usePagination(rows)
-  const selected =
-    /* From the rows in view: a run the filters hide is not selected. */
-    tab === "runs" ? (rows.find((run) => run.id === selectedId) ?? null) : null
-  /* One pass over the runs for everything the cards and the stats show,
-     rather than one per card. */
-  const { metrics, rates, sent } = React.useMemo(
-    () => ({
-      metrics: stepMetrics(runs),
-      rates: runStatusRates(runs),
-      sent: runs.reduce(
-        (count, run) =>
-          count +
-          run.steps.filter(
-            (step) => step.type === "send_email" && step.status === "completed"
-          ).length,
-        0
-      ),
-    }),
-    [runs]
+  const statistics = useQuery(
+    api.automations.metrics,
+    organizationId ? { organizationId, id, ...dates } : "skip"
   )
+  const selectedRow =
+    tab === "runs" ? rows.find((run) => run.id === selectedId) : undefined
+  const records = useQuery(
+    api.automations.runSteps,
+    selectedRow && organizationId
+      ? { organizationId, runId: selectedRow.id as Id<"automationRuns"> }
+      : "skip"
+  )
+  const selected = selectedRow
+    ? { ...selectedRow, steps: records?.map(asRunStep) ?? [] }
+    : null
+  const metrics = new Map(statistics?.steps.map((item) => [item.key, item]))
+  const rates = statistics?.rates ?? {
+    running: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+  }
+  const sent = statistics?.sent ?? 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
@@ -184,6 +198,7 @@ export function Observability({ automation }: { automation: Automation }) {
             <TabsTrigger value="metrics">Metrics</TabsTrigger>
           </TabsList>
           <ToolbarFilters
+            now={now ?? undefined}
             range={range}
             onRangeChange={setRange}
             filters={
@@ -201,12 +216,14 @@ export function Observability({ automation }: { automation: Automation }) {
           />
         </div>
         <TabsContent value="runs" className="flex flex-col gap-3">
-          {rows.length === 0 ? (
+          {loading === "LoadingFirstPage" ? (
+            <Skeleton className="h-64 w-full" />
+          ) : rows.length === 0 ? (
             <EmptyState
               icon={AutomationIcon}
               title="No runs found"
               description={
-                runs.length === 0 && status === "all"
+                statistics?.total === 0 && status === "all"
                   ? "A run starts each time the trigger event arrives for a contact."
                   : "Try adjusting your filters or clearing them to see all runs."
               }
@@ -243,12 +260,12 @@ export function Observability({ automation }: { automation: Automation }) {
                       <RelativeTime at={run.startedAt} />
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
-                      {formatRunDuration(run, runClock(run))}
+                      {formatRunDuration(run, now ?? run.startedAt)}
                     </TableCell>
                   </TableRow>
                 ))}
               </ResourceTable>
-              <ListPagination {...pagination} noun="run" />
+              <ListPagination {...pagination} embedded noun="run" />
             </>
           )}
         </TabsContent>
@@ -265,7 +282,7 @@ export function Observability({ automation }: { automation: Automation }) {
           <Surface>
             <h2 className="text-sm font-medium">Delivery</h2>
             <div className="grid grid-cols-2 gap-4">
-              <Stat label="Runs" value={String(runs.length)} />
+              <Stat label="Runs" value={String(statistics?.total ?? 0)} />
               <Stat label="Emails" value={String(sent)} />
             </div>
           </Surface>
@@ -279,9 +296,13 @@ export function Observability({ automation }: { automation: Automation }) {
             size="sm"
             className="w-fit self-end"
             data-testid="run-stop"
-            onClick={() => {
-              cancelAutomationRun(selected.id)
-              toast.add({ type: "success", title: "Run stopped" })
+            onClick={async () => {
+              try {
+                await cancelAutomationRun(selected.id)
+                toast.add({ type: "success", title: "Run stopped" })
+              } catch (error) {
+                toast.add({ type: "error", title: actionError(error) })
+              }
             }}
           >
             <CircleStopIcon data-icon="inline-start" />
@@ -306,7 +327,7 @@ export function Observability({ automation }: { automation: Automation }) {
             <WorkflowCard
               icon={STEP_ICONS[step.type]}
               title={stepTitle(step)}
-              summary={stepSummary(step, state)}
+              summary={context ? stepSummary(step, context) : null}
             >
               <StepFacts
                 stepKey={step.key}

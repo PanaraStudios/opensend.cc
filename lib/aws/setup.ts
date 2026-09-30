@@ -1,6 +1,6 @@
 import { parseCsv } from "@/lib/dashboard/csv"
 import { REGIONS, type Region } from "@/lib/dashboard/types"
-import { resourcePrefix } from "@/convex/ses/contracts"
+import { POLICY_REVISION, resourcePrefix } from "@/convex/ses/contracts"
 
 export const IAM_USERS_URL = "https://console.aws.amazon.com/iam/home#/users"
 export const AWS_SETUP_FILENAME = "opensend-aws-access.json"
@@ -30,8 +30,17 @@ export function cloudFormationConsoleUrl(region: Region) {
   return `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/create`
 }
 const sub = (value: string) => ({ "Fn::Sub": value })
+type Statement = {
+  Sid: string
+  Effect: "Allow"
+  Action: string[]
+  Resource: "*" | ReturnType<typeof sub>[]
+  Condition?: Record<string, Record<string, string | string[]>>
+}
+type Policy = { Version: "2012-10-17"; Statement: Statement[] }
+export const AWS_IAM_POLICY_FILE = "opensend-iam-policy.json"
 
-/** A ready-to-paste policy for repairing an existing IAM user's permissions. */
+/** The policy, ready to paste into IAM for the connected account. */
 export function buildAwsIamPolicy(
   installationId: string,
   regions: readonly Region[],
@@ -39,7 +48,7 @@ export function buildAwsIamPolicy(
 ) {
   if (!/^\d{12}$/.test(accountId))
     throw new Error("Use a 12-digit AWS account ID")
-  const policy = buildAwsSetupPolicy(installationId, regions)
+  const policy = buildAwsPolicy(installationId, regions)
   return {
     ...policy,
     Statement: policy.Statement.map((statement) => ({
@@ -56,19 +65,45 @@ export function buildAwsIamPolicy(
   }
 }
 
-/** Permissions for the actual provisioning/domain operations, not account administration. */
-export function buildAwsSetupPolicy(
+/** Everything Opensend does in AWS, as ONE managed policy so setup is a
+    single paste. IAM caps a managed policy at 6,144 characters, so ARNs name
+    any region and each statement's condition limits it to the enabled ones:
+    the same grants as listing every region, at a fraction of the size. */
+export function buildAwsPolicy(
   installationId: string,
   selected: readonly Region[]
-) {
+): Policy {
   const prefix = resourcePrefix(checkedInstallationId(installationId))
   const regions = checkedRegions(selected)
-  const resources = (service: string, suffix: string) =>
-    regions.map((region) =>
-      sub(
-        `arn:\${AWS::Partition}:${service}:${region}:\${AWS::AccountId}:${suffix}`
-      )
-    )
+  const arn = (service: string, suffix: string) =>
+    sub(`arn:\${AWS::Partition}:${service}:*:\${AWS::AccountId}:${suffix}`)
+  const inRegions = { StringEquals: { "aws:RequestedRegion": regions } }
+  const scoped = (
+    Sid: string,
+    Action: string[],
+    Resource: Statement["Resource"]
+  ): Statement => ({
+    Sid,
+    Effect: "Allow",
+    Action,
+    Resource,
+    Condition: inRegions,
+  })
+  const tenantAssociations = [
+    "ses:CreateTenantResourceAssociation",
+    "ses:DeleteTenantResourceAssociation",
+  ]
+  /* A domain's ARN is just its name, so identity statements cannot be
+     narrowed by prefix. Tags do it instead: Opensend changes, sends from and
+     deletes only domains tagged with this installation, and may tag only a
+     domain no other installation has claimed (a new one, or one the admin
+     approved for adoption). */
+  const ownTag = "aws:ResourceTag/opensend:installation"
+  const domainTagKeys = {
+    "ForAllValues:StringEquals": {
+      "aws:TagKeys": ["opensend:installation", "opensend:domain"],
+    },
+  }
   return {
     Version: "2012-10-17",
     Statement: [
@@ -78,34 +113,64 @@ export function buildAwsSetupPolicy(
         Action: ["sts:GetCallerIdentity"],
         Resource: "*",
       },
+      // These SES APIs have no resource ARN: the account, its suppression
+      // list and receipt rules.
+      scoped(
+        "UseSesAccount",
+        [
+          "ses:GetAccount",
+          "ses:DeleteSuppressedDestination",
+          "ses:DescribeActiveReceiptRuleSet",
+          "ses:DescribeReceiptRuleSet",
+          "ses:DescribeReceiptRule",
+          "ses:CreateReceiptRuleSet",
+          "ses:SetActiveReceiptRuleSet",
+          "ses:CreateReceiptRule",
+          "ses:UpdateReceiptRule",
+          "ses:DeleteReceiptRule",
+        ],
+        "*"
+      ),
+      // Reading is how Opensend tells its own domains from anyone else's.
+      scoped(
+        "ReadDomains",
+        ["ses:GetEmailIdentity", "ses:ListResourceTenants"],
+        [arn("ses", "identity/*")]
+      ),
       {
-        Sid: "ReadSesAccount",
+        Sid: "ClaimDomains",
         Effect: "Allow",
-        Action: ["ses:GetAccount"],
-        Resource: "*",
-        Condition: { StringEquals: { "aws:RequestedRegion": regions } },
+        Action: ["ses:CreateEmailIdentity", "ses:TagResource"],
+        Resource: [arn("ses", "identity/*")],
+        Condition: {
+          StringEquals: {
+            ...inRegions.StringEquals,
+            "aws:RequestTag/opensend:installation": installationId,
+          },
+          StringEqualsIfExists: { [ownTag]: installationId },
+          ...domainTagKeys,
+        },
       },
       {
-        Sid: "ManageSendingDomains",
+        Sid: "ManageOwnDomains",
         Effect: "Allow",
         Action: [
-          "ses:CreateEmailIdentity",
-          "ses:GetEmailIdentity",
           "ses:DeleteEmailIdentity",
           "ses:PutEmailIdentityMailFromAttributes",
           "ses:PutEmailIdentityConfigurationSetAttributes",
-          "ses:TagResource",
+          "ses:PutEmailIdentityFeedbackAttributes",
           "ses:UntagResource",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
-          "ses:ListResourceTenants",
+          ...tenantAssociations,
         ],
-        Resource: resources("ses", "identity/*"),
+        Resource: [arn("ses", "identity/*")],
+        Condition: {
+          StringEquals: { ...inRegions.StringEquals, [ownTag]: installationId },
+          ...domainTagKeys,
+        },
       },
-      {
-        Sid: "ManageOpensendConfigurationSets",
-        Effect: "Allow",
-        Action: [
+      scoped(
+        "ManageOpensendConfigurationSets",
+        [
           "ses:CreateConfigurationSet",
           "ses:GetConfigurationSet",
           "ses:DeleteConfigurationSet",
@@ -117,11 +182,26 @@ export function buildAwsSetupPolicy(
           "ses:GetConfigurationSetEventDestinations",
           "ses:CreateConfigurationSetEventDestination",
           "ses:UpdateConfigurationSetEventDestination",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
+          ...tenantAssociations,
           "ses:ListResourceTenants",
         ],
-        Resource: resources("ses", `configuration-set/${prefix}-*`),
+        [arn("ses", `configuration-set/${prefix}-*`)]
+      ),
+      {
+        Sid: "SendTeamEmail",
+        Effect: "Allow",
+        Action: ["ses:SendEmail"],
+        Resource: [
+          arn("ses", "identity/*"),
+          arn("ses", `configuration-set/${prefix}-*`),
+        ],
+        /* A send without one of this installation's tenants is refused, and
+           SES sends through a tenant only from domains associated with it,
+           which takes the ownership tag (ManageOwnDomains). */
+        Condition: {
+          ...inRegions,
+          StringLike: { "ses:TenantName": `${prefix}-t-*` },
+        },
       },
       {
         Sid: "CreateTaggedTeamTenants",
@@ -136,24 +216,23 @@ export function buildAwsSetupPolicy(
           StringLike: { "aws:RequestTag/opensend:team": "?*" },
         },
       },
-      {
-        Sid: "ManageTeamTenants",
-        Effect: "Allow",
-        Action: [
+      scoped(
+        "ManageTeamTenants",
+        [
           "ses:GetTenant",
           "ses:DeleteTenant",
           "ses:TagResource",
           "ses:PutTenantSuppressionAttributes",
           "ses:ListTenantResources",
-          "ses:CreateTenantResourceAssociation",
-          "ses:DeleteTenantResourceAssociation",
+          ...tenantAssociations,
+          "ses:GetReputationEntity",
+          "ses:UpdateReputationEntityCustomerManagedStatus",
         ],
-        Resource: resources("ses", `tenant/${prefix}-t-*`),
-      },
-      {
-        Sid: "ManageOpensendNotifications",
-        Effect: "Allow",
-        Action: [
+        [arn("ses", `tenant/${prefix}-t-*`)]
+      ),
+      scoped(
+        "ManageOpensendNotifications",
+        [
           "sns:CreateTopic",
           "sns:GetTopicAttributes",
           "sns:ListTagsForResource",
@@ -165,13 +244,12 @@ export function buildAwsSetupPolicy(
           "sns:GetSubscriptionAttributes",
           "sns:SetSubscriptionAttributes",
         ],
-        // SNS subscription actions authorize against the parent topic, not a subscription ARN.
-        Resource: resources("sns", `${prefix}-events`),
-      },
-      {
-        Sid: "ManageOpensendDeadLetterQueue",
-        Effect: "Allow",
-        Action: [
+        // Subscription actions authorize against the parent topic.
+        [arn("sns", `${prefix}-events`), arn("sns", `${prefix}-inbound`)]
+      ),
+      scoped(
+        "ManageOpensendDeadLetterQueue",
+        [
           "sqs:CreateQueue",
           "sqs:GetQueueUrl",
           "sqs:GetQueueAttributes",
@@ -179,8 +257,26 @@ export function buildAwsSetupPolicy(
           "sqs:TagQueue",
           "sqs:SetQueueAttributes",
         ],
-        Resource: resources("sqs", `${prefix}-events-dlq`),
-      },
+        [arn("sqs", `${prefix}-events-dlq`)]
+      ),
+      // SES receiving drops mail here; Opensend copies it into Convex and
+      // deletes it. S3 ARNs carry no region or account.
+      scoped(
+        "ManageInboundMailBucket",
+        [
+          "s3:CreateBucket",
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
+          "s3:GetLifecycleConfiguration",
+          "s3:PutLifecycleConfiguration",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+          "s3:GetObject",
+          "s3:DeleteObject",
+        ],
+        [sub(`arn:\${AWS::Partition}:s3:::${prefix}-inbound*`)]
+      ),
     ],
   }
 }
@@ -196,11 +292,9 @@ export function buildAwsSetupTemplate(input: {
     throw new Error(
       "Use 1–64 letters, numbers, or +=,.@_- for the AWS user name"
     )
-  const policy = buildAwsSetupPolicy(input.installationId, input.regions)
   return {
     AWSTemplateFormatVersion: "2010-09-09",
-    Description:
-      "Create an Opensend IAM user with SES tenant and domain setup, SNS notification and SQS recovery permissions. No console login or access keys are created.",
+    Description: `Opensend AWS access, permissions revision ${POLICY_REVISION}. Creates an IAM user that can set up SES tenants and domains, send and receive mail, and manage SNS notifications, SQS recovery and the inbound mail bucket. No console login or access keys are created.`,
     Parameters: {
       UserName: {
         Type: "String",
@@ -219,8 +313,8 @@ export function buildAwsSetupTemplate(input: {
         UpdateReplacePolicy: "Retain",
         Properties: {
           Description:
-            "Scoped permissions for Opensend setup and domain management",
-          PolicyDocument: policy,
+            "Scoped permissions for Opensend: SES domains, tenants, sending and receiving",
+          PolicyDocument: buildAwsPolicy(input.installationId, input.regions),
         },
       },
       OpensendUser: {
@@ -249,9 +343,18 @@ export function buildAwsSetupTemplate(input: {
           "Open the user above to create an access key, then return to Opensend.",
         Value: IAM_USERS_URL,
       },
+      PolicyRevision: {
+        Description: "Opensend checks for this permissions revision.",
+        Value: String(POLICY_REVISION),
+      },
     },
   }
 }
+
+/** The setup template as the file the admin uploads to CloudFormation. */
+export const awsSetupTemplateFile = (
+  input: Parameters<typeof buildAwsSetupTemplate>[0]
+) => JSON.stringify(buildAwsSetupTemplate(input), null, 2) + "\n"
 
 /** AWS's downloaded CSV is parsed locally. Never echo its contents in an error. */
 export function parseAwsCredentialsCsv(source: string) {

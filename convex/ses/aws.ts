@@ -1,11 +1,20 @@
 "use node"
-import { SESv2Client, GetAccountCommand } from "@aws-sdk/client-sesv2"
+import {
+  SESv2Client,
+  GetAccountCommand,
+  SendEmailCommand,
+} from "@aws-sdk/client-sesv2"
+import {
+  SESClient,
+  DescribeActiveReceiptRuleSetCommand,
+} from "@aws-sdk/client-ses"
+import { S3Client } from "@aws-sdk/client-s3"
 import { SNSClient } from "@aws-sdk/client-sns"
 import { SQSClient } from "@aws-sdk/client-sqs"
 import { STSClient } from "@aws-sdk/client-sts"
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { ConvexError, type Infer } from "convex/values"
-import { credentialsValue, validateRegion } from "./contracts"
+import { credentialsValue, teamTenantName, validateRegion } from "./contracts"
 import { decryptCredentials } from "./crypto"
 import type { Doc } from "../_generated/dataModel"
 
@@ -45,13 +54,10 @@ export function clients(
   beforeSesCall?: () => Promise<void>
 ) {
   const config = clientConfig(region, credentials)
-  const result = {
-    ses: new SESv2Client(config),
-    sns: new SNSClient(config),
-    sqs: new SQSClient(config),
-    sts: new STSClient(config),
-  }
-  for (const client of Object.values(result)) {
+  function configure<T extends { middlewareStack: unknown }>(
+    client: T,
+    paced = false
+  ): T {
     const stack = client.middlewareStack as SESv2Client["middlewareStack"]
     stack.add(
       (next, context) => async (args) => {
@@ -66,23 +72,49 @@ export function clients(
       },
       { step: "initialize", name: "opensendOperation" }
     )
+    // Placed inside the retry loop so each SES attempt waits for the pacer.
+    if (paced && beforeSesCall)
+      (client.middlewareStack as SESv2Client["middlewareStack"]).addRelativeTo(
+        <Args, Output>(next: (args: Args) => Promise<Output>) =>
+          async (args: Args) => {
+            await beforeSesCall()
+            return next(args)
+          },
+        {
+          relation: "after",
+          toMiddleware: "retryMiddleware",
+          name: "opensendPacer",
+        }
+      )
+    return client
   }
-  // Placed inside the SDK's retry loop, so every attempt, retries included,
-  // waits its turn in the region's pacer.
-  if (beforeSesCall)
-    result.ses.middlewareStack.addRelativeTo(
-      <Args, Output>(next: (args: Args) => Promise<Output>) =>
-        async (args: Args) => {
-          await beforeSesCall()
-          return next(args)
-        },
-      {
-        relation: "after",
-        toMiddleware: "retryMiddleware",
-        name: "opensendPacer",
-      }
-    )
-  return result
+  let ses: SESv2Client | undefined
+  let sesClassic: SESClient | undefined
+  let s3: S3Client | undefined
+  let sns: SNSClient | undefined
+  let sqs: SQSClient | undefined
+  let sts: STSClient | undefined
+  return {
+    get ses() {
+      return (ses ??= configure(new SESv2Client(config), true))
+    },
+    // Receipt rules exist only in the classic SES API.
+    get sesClassic() {
+      return (sesClassic ??= configure(new SESClient(config), true))
+    },
+    get s3() {
+      return (s3 ??= configure(new S3Client(config)))
+    },
+    get sns() {
+      return (sns ??= configure(new SNSClient(config)))
+    },
+    get sqs() {
+      return (sqs ??= configure(new SQSClient(config)))
+    },
+    get sts() {
+      return (sts ??= configure(new STSClient(config)))
+    },
+  }
 }
 export function connectionClients(
   installation: Doc<"installation">,
@@ -106,6 +138,9 @@ export async function readAccount(ses: SESv2Client) {
     leaving the dashboard to read the message. The message is unchanged: the
     data is a string, so `awsError` still reports it verbatim. */
 export class AdoptionConflict extends ConvexError<string> {}
+const denied = (error: unknown) =>
+  error instanceof Error &&
+  /AccessDenied|Unauthorized|AuthorizationError/.test(error.name)
 export function awsError(error: unknown) {
   if (error instanceof ConvexError && typeof error.data === "string")
     return error.data
@@ -119,7 +154,7 @@ export function awsError(error: unknown) {
       ? `${error.opensendOperation.replace(/Command$/, "")}: `
       : ""
   // Provider errors can echo request details. Return a safe operation/code, not raw messages.
-  if (/AccessDenied|Unauthorized|AuthorizationError/.test(name))
+  if (denied(error))
     return `${operation}AWS denied this operation. Check the installation IAM policy and the selected region.`
   if (
     /InvalidClientTokenId|UnrecognizedClient|SignatureDoesNotMatch|ExpiredToken|CredentialsProviderError/.test(
@@ -130,6 +165,56 @@ export function awsError(error: unknown) {
   if (/Throttl|TooMany/.test(name))
     return "AWS throttled the request. Wait briefly and retry."
   return `${operation}AWS operation failed (${/^[A-Za-z0-9]+$/.test(name) ? name : "Error"}). Retry or check the AWS configuration.`
+}
+/** Harmless calls only the current IAM policy revision allows. IAM authorizes
+    a call before SES looks at it, so an AWS rejection that is not an access
+    denial proves the permission. The send comes from a domain that can never
+    be verified, so SES always rejects it and nothing is sent. */
+export async function hasPolicyRevision(
+  aws: ReturnType<typeof clients>,
+  installationId: string
+) {
+  const probes: { run: () => Promise<unknown>; rejections: string[] }[] = [
+    {
+      run: () =>
+        aws.ses.send(
+          new SendEmailCommand({
+            FromEmailAddress: "probe@permission-check.invalid",
+            Destination: { ToAddresses: ["success@simulator.amazonses.com"] },
+            Content: {
+              Simple: {
+                Subject: { Data: "Opensend permission check" },
+                Body: { Text: { Data: "Opensend permission check" } },
+              },
+            },
+            TenantName: teamTenantName(installationId, "permissioncheck"),
+          })
+        ),
+      // SendEmail's documented errors that follow authorization.
+      rejections: [
+        "MessageRejected",
+        "MailFromDomainNotVerifiedException",
+        "NotFoundException",
+        "BadRequestException",
+        "SendingPausedException",
+        "AccountSuspendedException",
+        "LimitExceededException",
+      ],
+    },
+    {
+      run: () =>
+        aws.sesClassic.send(new DescribeActiveReceiptRuleSetCommand({})),
+      rejections: [],
+    },
+  ]
+  for (const probe of probes)
+    try {
+      await probe.run()
+    } catch (e) {
+      if (denied(e)) return false
+      if (!(e instanceof Error && probe.rejections.includes(e.name))) throw e
+    }
+  return true
 }
 export async function missing<T>(read: () => Promise<T>): Promise<T | null> {
   try {
@@ -142,6 +227,11 @@ export async function missing<T>(read: () => Promise<T>): Promise<T | null> {
         "NotFoundException",
         "QueueDoesNotExist",
         "AWS.SimpleQueueService.NonExistentQueue",
+        "NoSuchBucketPolicy",
+        "NoSuchLifecycleConfiguration",
+        "NoSuchTagSet",
+        "RuleSetDoesNotExistException",
+        "RuleDoesNotExistException",
       ].includes(e.name)
     )
       return null

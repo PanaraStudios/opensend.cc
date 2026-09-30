@@ -1,6 +1,10 @@
 "use client"
 
 import * as React from "react"
+import type { Id } from "@/convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { useWorkspace } from "@/components/auth/workspace"
 import { CircleHelpIcon } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 import {
@@ -54,11 +58,11 @@ import {
 import {
   BOUNCE_RISK,
   COMPLAIN_RISK,
-  senderDomain,
-  summarizeEmails,
   type MetricsDay,
 } from "@/lib/dashboard/metrics"
-import { useDashboard } from "@/lib/dashboard/store"
+import { useMetrics } from "@/lib/metrics/use-metrics"
+import { useClock } from "@/lib/time/use-clock"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
 /* Same statuses as the Emails filter, so the two lists cannot drift. */
@@ -255,30 +259,35 @@ function RateCard({
 }
 
 export function MetricsView() {
-  const { state } = useDashboard()
-  const [range, setRange] = React.useState<DateRange>(defaultEmailRange)
+  const now = useClock()
+  const [chosenRange, setRange] = React.useState<DateRange>()
+  // One object per choice: a fresh default each render re-subscribes the
+  // metrics queries every render.
+  const range = React.useMemo(
+    () => chosenRange ?? defaultEmailRange(now ?? 0),
+    [chosenRange, now]
+  )
   const [domain, setDomain] = React.useState("all")
+  const [domainSearch, setDomainSearch] = React.useState("")
   const [event, setEvent] = React.useState("all")
   const status = isFilterableStatus(event) ? event : null
-
-  const domainItems = React.useMemo<SelectOption[]>(() => {
-    const names = new Set(state.emails.map((email) => senderDomain(email.from)))
-    return [
-      { value: "all", label: "All domains" },
-      ...[...names].sort().map((name) => ({ value: name, label: name })),
-    ]
-  }, [state.emails])
-
-  const { totals, days, domains } = React.useMemo(
-    () =>
-      summarizeEmails(
-        state.emails,
-        range,
-        domain === "all" ? null : domain,
-        status
-      ),
-    [state.emails, range, domain, status]
+  const { loading, totals, days, domains } = useMetrics(range, domain, status)
+  const { activeTeamId } = useWorkspace()
+  const options = useQuery(
+    api.metrics.domainOptions,
+    activeTeamId
+      ? {
+          organizationId: activeTeamId,
+          search: domainSearch,
+          selectedId: domain === "all" ? undefined : (domain as Id<"domains">),
+        }
+      : "skip"
   )
+  const domainItems: SelectOption[] = [
+    { value: "all", label: "All domains" },
+    ...(options ?? []),
+  ]
+  if (now === null || loading) return <Skeleton className="h-64 w-full" />
   const bounceRate = percent(totals.bounced, totals.sent, 2)
   const complainRate = percent(totals.complained, totals.sent, 2)
 
@@ -287,10 +296,12 @@ export function MetricsView() {
       <PageHeader title="Metrics">
         <ToolbarFilters
           range={range}
-          onRangeChange={(next) => setRange(next ?? defaultEmailRange())}
+          onRangeChange={(next) => setRange(next ?? defaultEmailRange(now))}
+          now={now}
           allowAllTime={false}
           filters={[
             {
+              search: { onChange: setDomainSearch },
               value: domain,
               onChange: setDomain,
               items: domainItems,
@@ -362,13 +373,24 @@ export function MetricsView() {
             />
           }
         >
-          {/* The event stream only records hard bounces today. */}
           <Breakdown
             tone={EMAIL_STATUS_TONE.bounced}
             rows={[
-              { label: "Transient", count: 0, share: "0%" },
-              { label: "Permanent", count: totals.bounced, share: bounceRate },
-              { label: "Undetermined", count: 0, share: "0%" },
+              {
+                label: "Transient",
+                count: totals.Transient,
+                share: percent(totals.Transient, totals.sent, 2),
+              },
+              {
+                label: "Permanent",
+                count: totals.Permanent,
+                share: percent(totals.Permanent, totals.sent, 2),
+              },
+              {
+                label: "Undetermined",
+                count: totals.Undetermined,
+                share: percent(totals.Undetermined, totals.sent, 2),
+              },
             ]}
           />
         </RateCard>

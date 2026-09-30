@@ -2,47 +2,57 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useQuery } from "convex/react"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
   DocsButton,
   EmptyState,
   IconCell,
+  ListPagination,
   ListToolbar,
   MonoLink,
   PageHeader,
   RelativeTime,
   ResourceTable,
   Th,
+  useTeamList,
+  useListSearch,
 } from "@/components/dashboard/primitives"
 import {
   WEBHOOK_STATUS_ITEMS,
   WebhookFormDialog,
   WebhookIcon,
   WebhookMenu,
-  WebhooksDocsSheet,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { useDashboard } from "@/lib/dashboard/store"
+import { api } from "@/convex/_generated/api"
 import { webhookEventsLabel } from "@/lib/dashboard/webhooks"
+import { asWebhook, useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 
 export function WebhooksView() {
   const router = useRouter()
-  const { state, createWebhook } = useDashboard()
-  const [query, setQuery] = React.useState("")
+  const { organizationId, createWebhook } = useWebhookCommands()
+  const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
-  const [docsOpen, setDocsOpen] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
-
-  const needle = searchNeedle(query)
-  const rows = state.webhooks.filter(
-    (item) =>
-      matchesNeedle(needle, item.endpoint, ...item.events) &&
-      (status === "all" || item.enabled === (status === "enabled"))
+  const webhooks = useTeamList(
+    api.webhooks.list,
+    api.webhooks.count,
+    {
+      search: search,
+      ...(status !== "all" ? { enabled: status === "enabled" } : {}),
+    },
+    asWebhook
+  )
+  const { rows, pageRows, pagination } = webhooks
+  const hasAny = useQuery(
+    api.webhooks.hasAny,
+    organizationId ? { organizationId } : "skip"
   )
 
   const addButton = (
@@ -55,7 +65,7 @@ export function WebhooksView() {
   return (
     <>
       <PageHeader title="Webhooks">
-        <DocsButton onClick={() => setDocsOpen(true)} />
+        <DocsButton />
         {addButton}
       </PageHeader>
       <ListToolbar
@@ -71,7 +81,9 @@ export function WebhooksView() {
           },
         ]}
       />
-      {state.webhooks.length === 0 ? (
+      {webhooks.status === "LoadingFirstPage" || hasAny === undefined ? (
+        <Skeleton className="h-40 w-full" />
+      ) : !hasAny ? (
         <EmptyState
           icon={WebhookIcon}
           title="No webhooks yet"
@@ -86,52 +98,54 @@ export function WebhooksView() {
           description="Nothing matches this search and status."
         />
       ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Endpoint</Th>
-              <Th>Status</Th>
-              <Th>Listening for</Th>
-              <Th>Created</Th>
-              <Th className="w-10" />
-            </>
-          }
-        >
-          {rows.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <IconCell icon={WebhookIcon}>
-                  <MonoLink href={`/webhooks/${item.id}`}>
-                    {item.endpoint}
-                  </MonoLink>
-                </IconCell>
-              </TableCell>
-              <TableCell>
-                <WebhookStatusBadge enabled={item.enabled} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {webhookEventsLabel(item.events)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <RelativeTime at={item.createdAt} />
-              </TableCell>
-              <TableCell>
-                <WebhookMenu webhook={item} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
+        <>
+          <ResourceTable
+            headers={
+              <>
+                <Th>Endpoint</Th>
+                <Th>Status</Th>
+                <Th>Listening for</Th>
+                <Th>Created</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {pageRows.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <IconCell icon={WebhookIcon}>
+                    <MonoLink href={`/webhooks/${item.id}`}>
+                      {item.endpoint}
+                    </MonoLink>
+                  </IconCell>
+                </TableCell>
+                <TableCell>
+                  <WebhookStatusBadge enabled={item.enabled} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {webhookEventsLabel(item.events)}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <RelativeTime at={item.createdAt} />
+                </TableCell>
+                <TableCell>
+                  <WebhookMenu webhook={item} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </ResourceTable>
+          <ListPagination {...pagination} noun="webhook" />
+        </>
       )}
       <WebhookFormDialog
         open={adding}
         onOpenChange={setAdding}
-        onSubmit={(values) => {
-          const created = createWebhook(values)
+        onSubmit={async (values) => {
+          const id = await createWebhook(values)
           toast.add({ type: "success", title: "Webhook added" })
-          router.push(`/webhooks/${created.id}`)
+          router.push(`/webhooks/${id}`)
         }}
       />
-      <WebhooksDocsSheet open={docsOpen} onOpenChange={setDocsOpen} />
     </>
   )
 }

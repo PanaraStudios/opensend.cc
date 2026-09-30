@@ -4,5 +4,13 @@ Copyright 2026 Panara Studios
 This product is licensed under the Apache License, Version 2.0.
 See the LICENSE file in the repository root.
 
-This product includes the Amazon SES Convex component in packages/ses,
+This product includes the Amazon SES Convex component in convex/ses,
 originally developed as part of k4stack and also licensed under Apache-2.0.
+
+packages/sdk is a port of Resend's Node.js SDK (https://github.com/resend/resend-node),
+Copyright (c) 2023 Plus Five Five, Inc., licensed under the MIT License.
+Its license text is in packages/sdk/LICENSE-resend.
+
+packages/mcp is a port of Resend's MCP server (https://github.com/resend/resend-mcp),
+Copyright 2026 Plus Five Five, Inc, licensed under the MIT License.
+Its license text is in packages/mcp/LICENSE-resend-mcp.
