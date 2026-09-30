@@ -1,0 +1,25 @@
+{
+	on_demand_tls {
+		ask {$CONVEX_SITE_URL}/t/ask
+	}
+}
+
+{$SITE_URL} {
+	reverse_proxy app:3000
+}
+
+# Tracking uses signed tokens, not Host, and reads X-Real-IP for click events.
+https:// {
+	tls {
+		on_demand
+	}
+	handle /t/* {
+		reverse_proxy {$CONVEX_SITE_URL} {
+			header_up Host {upstream_hostport}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+	handle {
+		respond 404
+	}
+}

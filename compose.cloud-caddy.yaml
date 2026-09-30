@@ -1,0 +1,25 @@
+# Cloud HTTPS proxy: dashboard and custom tracking hosts only.
+services:
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_URL: ${SITE_URL:?Set SITE_URL to the dashboard's https:// URL}
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL:?Set CONVEX_SITE_URL to your deployment HTTP site URL}
+    volumes:
+      - ./docker/caddy/Caddyfile.cloud:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+  app:
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+volumes:
+  caddy-data:
+  caddy-config:

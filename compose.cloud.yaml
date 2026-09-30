@@ -1,0 +1,22 @@
+# Apply after compose.yaml; leave the self-hosted backend disabled.
+services:
+  convex:
+    profiles: !override [self-hosted-convex]
+  migrate:
+    depends_on: !reset {}
+    environment:
+      CONVEX_DEPLOY_KEY: ${CONVEX_DEPLOY_KEY:?Set CONVEX_DEPLOY_KEY to your deployment deploy key}
+      CONVEX_SELF_HOSTED_URL: !reset null
+      CONVEX_SELF_HOSTED_ADMIN_KEY: !reset null
+  app:
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      CONVEX_INTERNAL_URL: ${CONVEX_URL:?Set CONVEX_URL to your deployment URL}
+      CONVEX_PUBLIC_URL: ${CONVEX_URL}
+      CONVEX_INTERNAL_SITE_URL: ${CONVEX_SITE_URL:?Set CONVEX_SITE_URL to your deployment HTTP site URL}
+  smtp:
+    depends_on: !reset {}
+    environment:
+      SMTP_CONVEX_SITE_URL: ${CONVEX_SITE_URL}

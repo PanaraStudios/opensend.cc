@@ -51,7 +51,7 @@ if (process.argv[2] === process.env.FAIL_COMMAND) process.exit(7)
             CALLS_FILE: callsFile,
             CONVEX_SELF_HOSTED_ADMIN_KEY: "test-admin-key",
             CONVEX_DEPLOYMENT: "must-not-use-cloud",
-            CONVEX_DEPLOY_KEY: "must-not-use-cloud-key",
+            CONVEX_DEPLOY_KEY: "",
             ...env,
           },
           stdio: ["ignore", "pipe", "pipe"],
@@ -133,6 +133,87 @@ test("reports CLI failures and rejects missing credentials", async (t) => {
   assert.match(failed.stderr, /Convex env failed \(7\)/)
   const missing = await f.run(["logs"], { CONVEX_SELF_HOSTED_ADMIN_KEY: "" })
   assert.equal(missing.code, 1)
-  assert.match(missing.stderr, /CONVEX_SELF_HOSTED_ADMIN_KEY is required/)
+  assert.match(
+    missing.stderr,
+    /CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY.*required/
+  )
   assert.equal(missing.calls.length, 1)
+})
+
+test("cloud deploy skips readiness and selects only the deploy key", async (t) => {
+  const f = await fixture(t)
+  const { code, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
+    CONVEX_DEPLOY_KEY: "dev:fake-name|token",
+    SITE_URL: "https://mail.example.test",
+  })
+  assert.equal(code, 0)
+  assert.ok(
+    calls.some((call) => call.args[2] === "SITE_URL=https://mail.example.test")
+  )
+  assert.deepEqual(calls.at(-1).args, [
+    "deploy",
+    "--yes",
+    "--typecheck",
+    "disable",
+    "--codegen",
+    "disable",
+  ])
+  for (const call of calls) {
+    assert.equal(call.url, undefined)
+    assert.equal(call.key, "")
+    assert.equal(call.deployment, undefined)
+    assert.equal(call.deployKey, "dev:fake-name|token")
+  }
+})
+
+test("cloud passes logs, export, import and env list through", async (t) => {
+  for (const args of [
+    ["logs"],
+    ["export", "--path", "/backup.zip"],
+    ["import", "/backup.zip"],
+    ["env", "list"],
+  ]) {
+    const f = await fixture(t)
+    const { code, calls } = await f.run(args, {
+      CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+      CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
+      CONVEX_DEPLOY_KEY: "dev:fake-name|token",
+    })
+    assert.equal(code, 0)
+    assert.deepEqual(
+      calls.map((call) => call.args),
+      [args]
+    )
+    assert.equal(calls[0].deployKey, "dev:fake-name|token")
+    assert.equal(calls[0].url, undefined)
+  }
+})
+
+test("rejects both credential modes before calling the CLI", async (t) => {
+  const f = await fixture(t)
+  const { code, stderr, calls } = await f.run(["logs"], {
+    CONVEX_DEPLOY_KEY: "dev:fake-name|token",
+  })
+  assert.equal(code, 1)
+  assert.match(
+    stderr,
+    /only one.*CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY/
+  )
+  assert.deepEqual(calls, [])
+})
+
+test("rejects neither credential mode before calling the CLI", async (t) => {
+  const f = await fixture(t)
+  const { code, stderr, calls } = await f.run(["logs"], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_DEPLOY_KEY: "",
+  })
+  assert.equal(code, 1)
+  assert.match(
+    stderr,
+    /CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY.*required/
+  )
+  assert.deepEqual(calls, [])
 })
