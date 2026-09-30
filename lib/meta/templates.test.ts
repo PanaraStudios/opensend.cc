@@ -1,0 +1,307 @@
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
+import {
+  EMPTY_TEMPLATE_FORM,
+  TemplateVariablesMissing,
+  componentsFromForm,
+  componentsParameterFormat,
+  formFromComponents,
+  isTemplateName,
+  templateNameFrom,
+  templateProblems,
+  templateSendComponents,
+  templateVariables,
+  type TemplateComponent,
+  type TemplateForm,
+} from "./templates"
+
+const positional: TemplateForm = {
+  ...EMPTY_TEMPLATE_FORM,
+  headerFormat: "TEXT",
+  headerText: "Act fast, {{1}}!",
+  body: "Your code {{1}} expires in {{2}} days.",
+  footer: "Lucky Shrub",
+  buttons: [
+    { type: "URL", text: "See deals", url: "https://shrub.example/d/{{1}}" },
+    { type: "QUICK_REPLY", text: "Unsubscribe" },
+  ],
+  examples: {
+    header_1: "Pablo",
+    "1": "SUMMER20",
+    "2": "10",
+    button_0: "summer",
+  },
+}
+
+const named: TemplateForm = {
+  ...EMPTY_TEMPLATE_FORM,
+  body: "Thank you, {{first_name}}! Your order is {{order_number}}.",
+  buttons: [{ type: "COPY_CODE" }],
+  examples: {
+    first_name: "Pablo",
+    order_number: "860198",
+    coupon_code: "250FF",
+  },
+}
+
+const definition = (
+  components: TemplateComponent[],
+  overrides: Partial<Parameters<typeof templateProblems>[0]> = {}
+) => ({
+  name: "order_confirmation",
+  language: "en_US",
+  category: "UTILITY",
+  parameterFormat: componentsParameterFormat(components),
+  components,
+  ...overrides,
+})
+
+describe("template names", () => {
+  it("allows lowercase letters, digits and underscores", () => {
+    assert.equal(isTemplateName("order_confirmation_2"), true)
+    assert.equal(isTemplateName("Order confirmation"), false)
+    assert.equal(isTemplateName(""), false)
+    assert.equal(isTemplateName("a".repeat(513)), false)
+  })
+  it("makes a valid name from any text", () => {
+    assert.equal(templateNameFrom("Spring Sale 2026!"), "spring_sale_2026")
+    assert.equal(templateNameFrom("  "), "untitled_template")
+  })
+})
+
+describe("componentsFromForm", () => {
+  it("writes positional examples as Meta's creation format", () => {
+    assert.deepEqual(componentsFromForm(positional), [
+      {
+        type: "HEADER",
+        format: "TEXT",
+        text: "Act fast, {{1}}!",
+        example: { header_text: ["Pablo"] },
+      },
+      {
+        type: "BODY",
+        text: "Your code {{1}} expires in {{2}} days.",
+        example: { body_text: [["SUMMER20", "10"]] },
+      },
+      { type: "FOOTER", text: "Lucky Shrub" },
+      {
+        type: "BUTTONS",
+        buttons: [
+          {
+            type: "URL",
+            text: "See deals",
+            url: "https://shrub.example/d/{{1}}",
+            example: ["https://shrub.example/d/summer"],
+          },
+          { type: "QUICK_REPLY", text: "Unsubscribe" },
+        ],
+      },
+    ])
+  })
+  it("writes named examples with their parameter names", () => {
+    assert.deepEqual(componentsFromForm(named), [
+      {
+        type: "BODY",
+        text: "Thank you, {{first_name}}! Your order is {{order_number}}.",
+        example: {
+          body_text_named_params: [
+            { param_name: "first_name", example: "Pablo" },
+            { param_name: "order_number", example: "860198" },
+          ],
+        },
+      },
+      {
+        type: "BUTTONS",
+        buttons: [{ type: "COPY_CODE", example: "250FF" }],
+      },
+    ])
+  })
+  it("reads back the same form", () => {
+    for (const form of [positional, named]) {
+      const { form: back, supported } = formFromComponents(
+        componentsFromForm(form)
+      )
+      assert.equal(supported, true)
+      assert.deepEqual(back, form)
+    }
+  })
+  it("marks parts the editor cannot show as unsupported", () => {
+    const { supported } = formFromComponents([
+      { type: "BODY", text: "Hi" },
+      { type: "CAROUSEL", cards: [] },
+    ])
+    assert.equal(supported, false)
+  })
+})
+
+describe("templateProblems", () => {
+  it("accepts a complete template", () => {
+    assert.deepEqual(
+      templateProblems(definition(componentsFromForm(positional))),
+      []
+    )
+    assert.deepEqual(
+      templateProblems(definition(componentsFromForm(named))),
+      []
+    )
+  })
+  it("requires an example for every variable", () => {
+    const components = componentsFromForm({
+      ...positional,
+      examples: { ...positional.examples, "2": "" },
+    })
+    assert.deepEqual(templateProblems(definition(components)), [
+      "Add an example for {{2}} in the body",
+    ])
+  })
+  it("checks the name, language and category", () => {
+    const problems = templateProblems(
+      definition(componentsFromForm(named), {
+        name: "Bad Name",
+        language: "english",
+        category: "PROMO",
+      })
+    )
+    assert.deepEqual(problems.slice(0, 3), [
+      "Use only lowercase letters, numbers and underscores in the name",
+      "Choose a supported language",
+      "Choose a category",
+    ])
+  })
+  it("enforces Meta's lengths and button rules", () => {
+    const problems = templateProblems(
+      definition(
+        componentsFromForm({
+          ...EMPTY_TEMPLATE_FORM,
+          body: "x".repeat(1025),
+          footer: "y".repeat(61),
+          buttons: [
+            { type: "QUICK_REPLY", text: "One" },
+            { type: "URL", text: "Site", url: "https://a.example" },
+            { type: "QUICK_REPLY", text: "Two" },
+            { type: "PHONE_NUMBER", text: "Call", phone: "+15550100" },
+            { type: "PHONE_NUMBER", text: "Call again", phone: "+15550101" },
+          ],
+        })
+      )
+    )
+    assert.ok(problems.includes("Keep the body to 1024 characters"))
+    assert.ok(problems.includes("Keep the footer to 60 characters"))
+    assert.ok(problems.includes("Group the quick reply buttons together"))
+    assert.ok(
+      problems.includes(
+        "A template can have at most 1 call phone number button"
+      )
+    )
+  })
+  it("keeps positional variables in order and apart", () => {
+    const problems = templateProblems(
+      definition(
+        componentsFromForm({
+          ...EMPTY_TEMPLATE_FORM,
+          body: "Hi {{2}}{{1}} there",
+          examples: { "1": "a", "2": "b" },
+        })
+      )
+    )
+    assert.ok(
+      problems.includes(
+        "Number the body's variables in order, starting at {{1}}"
+      )
+    )
+    assert.ok(problems.includes("Put text between the body's variables"))
+  })
+  it("refuses a format that does not match the text", () => {
+    const components = componentsFromForm(named)
+    assert.ok(
+      templateProblems(
+        definition(components, { parameterFormat: "positional" })
+      ).includes("Positional templates use variables like {{1}}")
+    )
+  })
+})
+
+describe("templateSendComponents", () => {
+  it("maps positional variables to header, body and button parameters", () => {
+    const components = componentsFromForm(positional)
+    assert.deepEqual(
+      templateVariables(components, "positional").map(({ key }) => key),
+      ["header_1", "1", "2", "button_0"]
+    )
+    assert.deepEqual(
+      templateSendComponents(components, "positional", {
+        header_1: "Jessica",
+        "1": "WINTER",
+        "2": 3,
+        button_0: "winter",
+      }),
+      [
+        { type: "header", parameters: [{ type: "text", text: "Jessica" }] },
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: "WINTER" },
+            { type: "text", text: "3" },
+          ],
+        },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: "winter" }],
+        },
+      ]
+    )
+  })
+  it("names named parameters and fills a copy-code button", () => {
+    assert.deepEqual(
+      templateSendComponents(componentsFromForm(named), "named", {
+        first_name: "Jessica",
+        order_number: "SKBUP2",
+        coupon_code: "25OFF",
+      }),
+      [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", parameter_name: "first_name", text: "Jessica" },
+            { type: "text", parameter_name: "order_number", text: "SKBUP2" },
+          ],
+        },
+        {
+          type: "button",
+          sub_type: "copy_code",
+          index: "0",
+          parameters: [{ type: "coupon_code", coupon_code: "25OFF" }],
+        },
+      ]
+    )
+  })
+  it("links a media header, falling back to a public sample", () => {
+    const components = componentsFromForm({
+      ...EMPTY_TEMPLATE_FORM,
+      headerFormat: "IMAGE",
+      headerSample: "https://cdn.example/sale.png",
+      body: "Our sale is on.",
+    })
+    assert.deepEqual(templateSendComponents(components, "positional", {}), [
+      {
+        type: "header",
+        parameters: [
+          { type: "image", image: { link: "https://cdn.example/sale.png" } },
+        ],
+      },
+    ])
+  })
+  it("names every missing variable", () => {
+    assert.throws(
+      () =>
+        templateSendComponents(componentsFromForm(positional), "positional", {
+          "1": "x",
+        }),
+      (error: unknown) =>
+        error instanceof TemplateVariablesMissing &&
+        error.missing.join() === "header_1,2,button_0"
+    )
+  })
+})
