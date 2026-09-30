@@ -10199,6 +10199,35 @@ components:
       required:
         - error
       additionalProperties: false
+    WebhookEventType:
+      type: string
+      enum:
+        - email.sent
+        - email.delivered
+        - email.delivery_delayed
+        - email.opened
+        - email.clicked
+        - email.bounced
+        - email.complained
+        - email.received
+        - email.failed
+        - email.scheduled
+        - email.suppressed
+        - whatsapp.message.sent
+        - whatsapp.message.delivered
+        - whatsapp.message.read
+        - whatsapp.message.failed
+        - whatsapp.message.received
+        - whatsapp.template.status_updated
+        - whatsapp.phone_number.updated
+        - contact.created
+        - contact.updated
+        - contact.deleted
+        - domain.created
+        - domain.updated
+        - domain.deleted
+        - suppression.added
+        - suppression.removed
     CreateWebhookRequest:
       type: object
       required:
@@ -10212,7 +10241,7 @@ components:
         events:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/WebhookEventType'
           minItems: 1
           description: Array of event types to subscribe to.
           example:
@@ -10268,7 +10297,7 @@ components:
                   - array
                   - 'null'
                 items:
-                  type: string
+                  $ref: '#/components/schemas/WebhookEventType'
                 description: Array of event types subscribed to.
                 example:
                   - email.sent
@@ -10311,7 +10340,7 @@ components:
             - array
             - 'null'
           items:
-            type: string
+            $ref: '#/components/schemas/WebhookEventType'
           description: Array of event types subscribed to.
           example:
             - email.sent
@@ -10347,7 +10376,7 @@ components:
         events:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/WebhookEventType'
           minItems: 1
           description: Array of event types to subscribe to.
           example:

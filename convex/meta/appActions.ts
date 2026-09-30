@@ -12,6 +12,7 @@ export const WHATSAPP_WEBHOOK_FIELDS = [
   "template_category_update",
   "phone_number_quality_update",
   "account_update",
+  "phone_number_name_update",
 ] as const
 
 /** Runs a Graph call with the app access token (`appId|appSecret`) and

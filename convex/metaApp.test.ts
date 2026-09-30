@@ -227,7 +227,7 @@ describe("Meta app settings", () => {
       callback_url: CALLBACK,
       verify_token: verifyToken,
       fields:
-        "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update",
+        "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update,phone_number_name_update",
       include_values: "true",
     })
     expect((await f.status()).webhookSubscribedAt).toEqual(expect.any(Number))

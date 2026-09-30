@@ -73,7 +73,9 @@ async function publicAccount(ctx: QueryCtx, account: Doc<"channelAccounts">) {
   return { ...rest, businessName: connection?.businessName ?? "" }
 }
 
-const live = (account: Doc<"channelAccounts">) =>
+/** A number still connected; a disconnected team keeps its row, so one
+    phone number id can have several rows over time. */
+export const live = (account: Doc<"channelAccounts">) =>
   account.disconnectedAt === undefined
 
 export const listConnections = query({

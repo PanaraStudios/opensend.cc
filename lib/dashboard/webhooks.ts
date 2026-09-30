@@ -6,7 +6,12 @@ import {
   type WebhookEvent,
 } from "./types"
 
-const GROUP_LABELS = { email: "Email", contact: "Contact", domain: "Domain" }
+const GROUP_LABELS = {
+  email: "Email",
+  contact: "Contact",
+  domain: "Domain",
+  whatsapp: "WhatsApp",
+}
 
 type WebhookEventGroupId = keyof typeof GROUP_LABELS
 

@@ -232,3 +232,25 @@ export const emailShares = internalMutation({
     return null
   },
 })
+
+export const meta = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const page = await ctx.db
+      .query("metaWebhookEvents")
+      .withIndex("by_receivedAt", (q) =>
+        q.lt("receivedAt", Date.now() - 7 * DAY)
+      )
+      .paginate({
+        ...retentionPage,
+        maximumBytesRead: 512 * 1024,
+        cursor: null,
+      })
+    for (const row of page.page)
+      await ctx.db.delete("metaWebhookEvents", row._id)
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(0, internal.retention.meta, {})
+    return null
+  },
+})

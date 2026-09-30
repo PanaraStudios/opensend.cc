@@ -61,12 +61,13 @@ export const DIRECTIONS = ["inbound", "outbound"] as const
 export const directionValue = literals(DIRECTIONS)
 export const CONVERSATION_STATUSES = ["open", "closed"] as const
 export const conversationStatusValue = literals(CONVERSATION_STATUSES)
-/** A media file kept in Convex storage. */
+/** An inbound media reference is pending until its file is fetched. */
 export const channelMediaValue = v.object({
-  storageId: v.id("_storage"),
+  storageId: v.optional(v.id("_storage")),
   contentType: v.string(),
   filename: v.optional(v.string()),
-  size: v.number(),
+  size: v.optional(v.number()),
+  error: v.optional(v.string()),
   /** Meta's media id, when the file came from or went to Meta. */
   mediaId: v.optional(v.string()),
 })
@@ -114,7 +115,8 @@ export const channelTables = {
       "disconnectedAt",
     ])
     .index("by_channel_and_externalId", ["channel", "externalId"])
-    .index("by_connectionId", ["connectionId"]),
+    .index("by_connectionId", ["connectionId"])
+    .index("by_wabaId", ["wabaId"]),
   /** A person's identity on a channel. Messenger and Instagram ids are
       scoped per Page or account, so `scopeId` names that scope. */
   channelContacts: defineTable({
@@ -155,6 +157,9 @@ export const channelTables = {
     /** Free-form replies are allowed until then (Meta's 24-hour window). */
     windowExpiresAt: v.optional(v.number()),
     unread: v.boolean(),
+    /** Keep the existing unread flag; new projections also count unread replies. */
+    unreadCount: v.optional(v.number()),
+    lastInboundAt: v.optional(v.number()),
     /** The person's name, handle and address as words, for search. */
     search: v.string(),
   })
@@ -171,6 +176,10 @@ export const channelTables = {
     .index("by_organizationId_and_emailAddress", [
       "organizationId",
       "emailAddress",
+    ])
+    .index("by_accountId_and_channelContactId", [
+      "accountId",
+      "channelContactId",
     ])
     .index("by_channelContactId", ["channelContactId"])
     .searchIndex("search_search", {
