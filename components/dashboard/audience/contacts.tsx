@@ -74,8 +74,10 @@ import {
 } from "@/lib/dashboard/csv"
 import {
   RESERVED_PROPERTY_KEYS,
+  contactEmailError,
   type ContactInput,
 } from "@/lib/dashboard/contacts"
+import { normalizePhone } from "@/lib/dashboard/phone"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
@@ -154,11 +156,13 @@ function AddManuallyDialog({
   const { upsertContacts } = useAudienceCommands()
   const [pending, setPending] = React.useState(false)
   const [emails, setEmails] = React.useState("")
+  const [phone, setPhone] = React.useState("")
   const [segmentId, setSegmentId] = React.useState("none")
   const [error, setError] = React.useState<string | null>(null)
 
   function reset() {
     setEmails("")
+    setPhone("")
     setSegmentId("none")
     setError(null)
   }
@@ -167,17 +171,41 @@ function AddManuallyDialog({
     event.preventDefault()
     if (pending) return
     const list = splitEmails(emails)
-    if (list.length === 0) {
-      setError("Enter at least one valid email address")
+    if (list.length === 0 && !phone.trim()) {
+      setError("An email or phone number is required")
+      return
+    }
+    const normalizedPhone = phone.trim() ? normalizePhone(phone) : undefined
+    if (normalizedPhone === null) {
+      setError(
+        "Enter a phone number with + and 8–15 digits, including the country code"
+      )
+      return
+    }
+    if (normalizedPhone && list.length > 1) {
+      setError("Enter one email address when adding a phone number")
+      return
+    }
+    if (
+      emails.trim() &&
+      (normalizedPhone ? contactEmailError(emails.trim()) : !list.length)
+    ) {
+      setError("Enter a valid email address")
       return
     }
     setPending(true)
     try {
-      const { createdIds, skipped } = await upsertContacts(
-        list.map((email) => ({ email })),
+      const { createdIds, skipped, errors } = await upsertContacts(
+        normalizedPhone
+          ? [{ email: list[0], phone: normalizedPhone }]
+          : list.map((email) => ({ email })),
         segmentId === "none" ? [] : [segmentId],
-        true
+        !normalizedPhone
       )
+      if (errors.length) {
+        setError(errors[0])
+        return
+      }
       toast.add({
         type: "success",
         title:
@@ -212,8 +240,9 @@ function AddManuallyDialog({
           <DialogHeader>
             <DialogTitle>Add manually</DialogTitle>
             <DialogDescription>
-              Paste addresses separated by commas or new lines. Existing emails
-              are skipped.
+              Add an email address or phone number. Paste multiple email
+              addresses separated by commas or new lines. Existing emails are
+              skipped.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
@@ -231,6 +260,22 @@ function AddManuallyDialog({
                 autoFocus
               />
               {error ? <FieldError>{error}</FieldError> : null}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="manual-phone">Phone</FieldLabel>
+              <Input
+                id="manual-phone"
+                type="tel"
+                value={phone}
+                placeholder="+14155552671"
+                onChange={(event) => {
+                  setPhone(event.target.value)
+                  setError(null)
+                }}
+              />
+              <FieldDescription>
+                Include + and the country code. Optional when an email is given.
+              </FieldDescription>
             </Field>
             <SegmentField
               id="manual-segment"
@@ -328,30 +373,42 @@ function ImportCsvDialog({
     event.preventDefault()
     if (pending) return
     const emailIndex = mapping.indexOf("email")
-    if (emailIndex === -1) {
-      setError("Map one column to email")
+    const phoneIndex = mapping.indexOf("phone")
+    if (emailIndex === -1 && phoneIndex === -1) {
+      setError("Map one column to email or phone")
       return
     }
     const inputs = rows.flatMap((row): ContactInput[] => {
       const email = row[emailIndex]?.trim().toLowerCase() ?? ""
-      if (!email) return []
+      const phone = row[phoneIndex]?.trim() || undefined
+      if (!email && !phone) return []
       const properties: Record<string, string> = {}
       let firstName: string | undefined
       let lastName: string | undefined
       let unsubscribed: boolean | undefined
       mapping.forEach((target, index) => {
         const value = row[index] ?? ""
-        if (target === "ignore" || target === "email") return
+        if (target === "ignore" || target === "email" || target === "phone")
+          return
         if (target === "first_name") firstName = value
         else if (target === "last_name") lastName = value
         else if (target === "unsubscribed")
           unsubscribed = parseUnsubscribed(value)
         else if (value) properties[target] = value
       })
-      return [{ email, firstName, lastName, unsubscribed, properties }]
+      return [
+        {
+          email: email || undefined,
+          phone,
+          firstName,
+          lastName,
+          unsubscribed,
+          properties,
+        },
+      ]
     })
     if (inputs.length === 0) {
-      setError("No rows with an email address")
+      setError("No rows with an email or phone number")
       return
     }
     setPending(true)
@@ -771,6 +828,7 @@ export function ContactsView() {
                   />
                 </Th>
                 <Th>Email</Th>
+                <Th>Phone</Th>
                 <Th>First name</Th>
                 <Th>Last name</Th>
                 <Th>Created</Th>
@@ -786,7 +844,7 @@ export function ContactsView() {
                     onCheckedChange={(checked) =>
                       toggleOne(contact.id, checked === true)
                     }
-                    aria-label={`Select ${contact.email}`}
+                    aria-label={`Select ${contact.email || contact.phone || "contact"}`}
                   />
                 </TableCell>
                 <TableCell>
@@ -794,13 +852,21 @@ export function ContactsView() {
                     href={`/contacts/${contact.id}`}
                     className="font-medium hover:underline"
                   >
-                    {contact.email}
+                    {contact.email || "—"}
                   </Link>
                   {contact.unsubscribed ? (
                     <Badge variant="secondary" className="ml-2">
                       Unsubscribed
                     </Badge>
                   ) : null}
+                </TableCell>
+                <TableCell>
+                  <Link
+                    href={`/contacts/${contact.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {contact.phone || "—"}
+                  </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {contact.firstName || "—"}

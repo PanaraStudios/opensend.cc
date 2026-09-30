@@ -128,7 +128,8 @@ export type Domain = {
 
 export type Contact = {
   id: string
-  email: string
+  email?: string
+  phone?: string
   firstName: string
   lastName: string
   createdAt: number
@@ -396,7 +397,7 @@ export type AutomationRun = {
   id: string
   automationId: string
   status: AutomationRunStatus
-  contactEmail: string
+  contactEmail?: string
   payload: Record<string, unknown>
   startedAt: number
   completedAt: number | null

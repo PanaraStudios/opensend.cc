@@ -723,3 +723,34 @@ describe("automation boundaries", () => {
     expect(events.filter((e) => e.type === "contact.updated")).toHaveLength(1)
   })
 })
+
+test("phone-only runs skip send_email with a reason and continue other steps", async () => {
+  const f = await setup()
+  const {
+    createdIds: [contactId],
+  } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.organizationId,
+    contacts: [{ phone: "+14155552671" }],
+    segmentIds: [],
+  })
+  const id = await f.create([await emailStep(f), update])
+  const runId = await f.member.client.mutation(api.automations.test, {
+    organizationId: f.organizationId,
+    id,
+    contactId,
+    payload: { name: "Ada" },
+  })
+  await tick(f, 5000)
+  expect(await run(f, runId)).toMatchObject({ status: "completed", sent: 0 })
+  expect((await run(f, runId))?.contactEmail).toBeUndefined()
+  expect(
+    (await steps(f, runId)).find((step) => step.key === "send")
+  ).toMatchObject({
+    status: "skipped",
+    output: { reason: "contact has no email address" },
+  })
+  expect(
+    await f.member.client.query(api.contacts.get, { id: contactId })
+  ).toMatchObject({ firstName: "Ada" })
+  expect(f.sends).toHaveLength(0)
+})

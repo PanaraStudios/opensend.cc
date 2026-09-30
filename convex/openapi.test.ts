@@ -376,6 +376,33 @@ describe("OpenAPI contract", () => {
     await response("/contacts", "GET", await f.call("/contacts"))
   })
 
+  test("phone-only contact requests and nullable responses match the contract", async () => {
+    const f = await setup()
+    validateBody(contract.components.schemas.CreateContactOptions, {
+      phone: "+14155552671",
+    })
+    const { id } = await response(
+      "/contacts",
+      "POST",
+      await f.call("/contacts", "POST", { phone: "+14155552671" })
+    )
+    expect(
+      await response("/contacts/{id}", "GET", await f.call(`/contacts/${id}`))
+    ).toMatchObject({ email: null, phone: "+14155552671", properties: {} })
+    await response("/contacts", "GET", await f.call("/contacts"))
+    await response(
+      "/contacts/{id}",
+      "PATCH",
+      await f.call(`/contacts/${id}`, "PATCH", {
+        email: "phone@example.test",
+        phone: null,
+      })
+    )
+    expect(
+      await response("/contacts/{id}", "GET", await f.call(`/contacts/${id}`))
+    ).toMatchObject({ email: "phone@example.test", phone: null })
+  })
+
   test("retrieves draft/published templates with scalar variable defaults and stable draft version", async () => {
     const f = await setup()
     const { id } = await response(
@@ -441,7 +468,7 @@ describe("OpenAPI contract", () => {
       await f.call("/contacts", "POST", {}),
       422
     )
-    expect(missing.name).toBe("missing_required_field")
+    expect(missing.name).toBe("validation_error")
     const badPage = await response(
       "/domains",
       "GET",

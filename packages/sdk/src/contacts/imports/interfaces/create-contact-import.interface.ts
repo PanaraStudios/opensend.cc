@@ -11,6 +11,7 @@ export interface ContactImportPropertyMapping {
 
 export interface ContactImportColumnMap {
   email?: string;
+  phone?: string;
   firstName?: string;
   lastName?: string;
   unsubscribed?: string;

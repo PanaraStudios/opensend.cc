@@ -84,6 +84,7 @@ export async function contactPage(
     (unsubscribed === undefined || contact.unsubscribed === unsubscribed) &&
     matches(
       contact.email,
+      contact.phone,
       contact.firstName,
       contact.lastName,
       `${contact.firstName} ${contact.lastName}`
@@ -315,6 +316,8 @@ async function teamContacts(
 export const update = mutation({
   args: {
     id: v.id("contacts"),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     unsubscribed: v.optional(v.boolean()),
@@ -465,7 +468,9 @@ export const options = query({
     selectedId: v.optional(v.id("contacts")),
   },
   returns: v.array(
-    schema.doc("contacts").pick("_id", "email", "firstName", "lastName")
+    schema
+      .doc("contacts")
+      .pick("_id", "email", "phone", "firstName", "lastName")
   ),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
@@ -490,9 +495,10 @@ export const options = query({
       selectedId
     )
     return includeSelected(rows, selected, (row) => row._id).map(
-      ({ _id, email, firstName, lastName }) => ({
+      ({ _id, email, phone, firstName, lastName }) => ({
         _id,
         email,
+        phone,
         firstName,
         lastName,
       })

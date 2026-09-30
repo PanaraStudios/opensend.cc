@@ -271,10 +271,10 @@ function CommandMenu({
                   <CommandItem
                     key={contact.id}
                     serverResult
-                    value={`contact ${contact.email} ${contact.firstName} ${contact.lastName}`}
+                    value={`contact ${contact.email ?? ""} ${contact.phone ?? ""} ${contact.firstName} ${contact.lastName}`}
                     onSelect={() => go(`/contacts/${contact.id}`)}
                   >
-                    {contact.email}
+                    {contact.email || contact.phone || "Contact"}
                   </CommandItem>
                 ))}
               </CommandGroup>

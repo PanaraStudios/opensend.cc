@@ -75,6 +75,7 @@ export class Contacts {
         {
           unsubscribed: payload.unsubscribed,
           email: payload.email,
+          phone: payload.phone,
           first_name: payload.firstName,
           last_name: payload.lastName,
           properties: payload.properties,
@@ -90,6 +91,7 @@ export class Contacts {
       {
         unsubscribed: payload.unsubscribed,
         email: payload.email,
+        phone: payload.phone,
         first_name: payload.firstName,
         last_name: payload.lastName,
         properties: payload.properties,
@@ -160,6 +162,7 @@ export class Contacts {
         `/contacts/${options?.email ? options?.email : options?.id}`,
         {
           unsubscribed: options.unsubscribed,
+          phone: options.phone,
           first_name: options.firstName,
           last_name: options.lastName,
           properties: options.properties,
@@ -172,6 +175,7 @@ export class Contacts {
       `/audiences/${options.audienceId}/contacts/${options?.email ? options?.email : options?.id}`,
       {
         unsubscribed: options.unsubscribed,
+        phone: options.phone,
         first_name: options.firstName,
         last_name: options.lastName,
         properties: options.properties,

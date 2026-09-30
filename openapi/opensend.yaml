@@ -7530,7 +7530,10 @@ components:
           type: string
           description: The opaque resource ID returned by Opensend; IDs are not UUIDs.
         email:
-          type: string
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+          description: International phone number in E.164 form.
         first_name:
           anyOf:
             - type: string
@@ -7547,6 +7550,7 @@ components:
       required:
         - id
         - email
+        - phone
         - first_name
         - last_name
         - created_at
@@ -7564,8 +7568,11 @@ components:
           type: string
           description: The opaque resource ID returned by Opensend; IDs are not UUIDs.
         email:
-          type: string
+          type: [string, 'null']
           description: Email address of the contact.
+        phone:
+          type: [string, 'null']
+          description: International phone number in E.164 form.
         first_name:
           anyOf:
             - type: string
@@ -7605,6 +7612,7 @@ components:
         - object
         - id
         - email
+        - phone
         - first_name
         - last_name
         - created_at
@@ -7617,6 +7625,9 @@ components:
         email:
           type: string
           description: Email address, trimmed and lowercased, with at most 254 characters.
+        phone:
+          type: string
+          description: International phone number including + and country code; 8–15 digits.
         first_name:
           anyOf:
             - type: string
@@ -7682,12 +7693,19 @@ components:
           type: string
           deprecated: true
           description: Segment to join when segments is omitted.
-      required:
-        - email
-      description: Create or update a contact by case-insensitive email address, merging supplied fields and memberships.
+      anyOf:
+        - required: [email]
+        - required: [phone]
+      description: Create a contact with an email or phone number; email matches merge supplied fields and memberships. Phone numbers are unique per team.
     UpdateContactOptions:
       type: object
       properties:
+        email:
+          type: [string, 'null']
+          description: Email address; null clears it when a phone remains.
+        phone:
+          type: [string, 'null']
+          description: International phone number; null clears it when an email remains.
         first_name:
           anyOf:
             - type: string
@@ -7715,7 +7733,7 @@ components:
           description: >-
             Existing property keys with matching string or number values up to 1000 characters; empty strings
             or individual null values reset to the fallback, while properties: null is rejected.
-      description: Update a contact’s names, subscription, or properties; the email address cannot be changed.
+      description: Update a contact’s email, phone, names, subscription, or properties; an email or phone must remain.
     CreateContactResponseSuccess:
       type: object
       properties:
@@ -10884,7 +10902,7 @@ components:
         column_map:
           type: string
           description: >-
-            JSON-encoded field-to-column map; custom properties support string and number values, with boolean
+            JSON-encoded field-to-column map including email and phone; a row needs an email or phone. Custom properties support string and number values, with boolean
             properties rejected.
           example: >-
             {"email":"Email","first_name":"First Name","last_name":"Last

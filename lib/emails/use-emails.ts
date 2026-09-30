@@ -65,11 +65,11 @@ export function useEmailSearch(search: string, enabled = true) {
 }
 
 /** Every email sent to one address, newest first. */
-export function useRecipientEmails(address: string) {
+export function useRecipientEmails(address: string | undefined) {
   return useTeamList(
     api.emails.byRecipient,
     api.emails.byRecipientCount,
-    { address },
+    address ? { address } : "skip",
     asEmail
   )
 }

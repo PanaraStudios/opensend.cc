@@ -20,12 +20,16 @@ export function asReceived(
     text: content?.text ?? "",
   }
 }
-export function useReceivedList(filters: {
-  search?: string
-  from?: number
-  to?: number
-  address?: string
-}) {
+export function useReceivedList(
+  filters:
+    | {
+        search?: string
+        from?: number
+        to?: number
+        address?: string
+      }
+    | "skip"
+) {
   return useTeamList(api.received.list, api.received.count, filters, asReceived)
 }
 export function useReceived(id: string) {

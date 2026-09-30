@@ -87,10 +87,12 @@ export const batch = internalMutation({
     let linksContext: Awaited<ReturnType<typeof unsubscribeContext>> | undefined
     const senders = new Map<string, ResolvedSender>()
     for (const contact of page.page) {
+      const email = contact.email
+      if (!email) continue
       const previous = await ctx.db
         .query("broadcastRecipients")
         .withIndex("by_broadcastId_and_email", (q) =>
-          q.eq("broadcastId", id).eq("email", contact.email)
+          q.eq("broadcastId", id).eq("email", email)
         )
         .unique()
       if (previous) continue
@@ -108,10 +110,10 @@ export const batch = internalMutation({
       const values: Record<string, string | undefined> = {
         FIRST_NAME: contact.firstName || undefined,
         LAST_NAME: contact.lastName || undefined,
-        EMAIL: contact.email,
+        EMAIL: email,
         "contact.first_name": contact.firstName || undefined,
         "contact.last_name": contact.lastName || undefined,
-        "contact.email": contact.email,
+        "contact.email": email,
         ...links.variables,
         RESEND_UNSUBSCRIBE_URL: links.pageUrl,
       }
@@ -130,7 +132,7 @@ export const batch = internalMutation({
         {
           ...rendered,
           from: row.from,
-          to: [contact.email],
+          to: [email],
           cc: [],
           bcc: [],
           replyTo: row.replyToAddresses ?? (row.replyTo ? [row.replyTo] : []),
@@ -152,7 +154,7 @@ export const batch = internalMutation({
         organizationId: row.organizationId,
         broadcastId: id,
         contactId: contact._id,
-        email: contact.email,
+        email,
         emailId,
         settled: false,
         failed: false,

@@ -435,7 +435,7 @@ function TestEventForm({
   )
   const contacts = (rows ?? []).map((row) => ({
     id: row._id,
-    email: row.email,
+    email: row.email || row.phone || "Contact",
   }))
   if (!chosenContact && contacts[0]) setChosenContact(contacts[0])
   const contactId = chosenContact?.id ?? ""

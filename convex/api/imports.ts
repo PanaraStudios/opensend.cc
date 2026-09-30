@@ -85,7 +85,10 @@ export const create = internalMutation({
             throw invalid(`CSV column for ${field} was not found.`)
           return index
         }
-        const email = column("email", map.email, true)
+        const email = column("email", map.email)
+        const phone = column("phone", map.phone)
+        if (email < 0 && phone < 0)
+          throw invalid("A CSV email or phone column is required.")
         const first = column("first_name", map.first_name)
         const last = column("last_name", map.last_name)
         const unsubscribed = column("unsubscribed", map.unsubscribed)
@@ -169,7 +172,8 @@ export const create = internalMutation({
         )
           throw invalid("Invalid unsubscribed value in CSV; use true or false.")
         const contacts = table.rows.map((row) => ({
-          email: row[email],
+          email: email < 0 ? undefined : row[email],
+          phone: phone < 0 ? undefined : row[phone],
           ...(first < 0 ? {} : { firstName: row[first] }),
           ...(last < 0 ? {} : { lastName: row[last] }),
           ...(unsubscribed < 0

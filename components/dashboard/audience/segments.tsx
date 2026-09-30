@@ -369,7 +369,7 @@ function SegmentPage({
                           })
                         )
                       }}
-                      aria-label={`Include ${contact.email}`}
+                      aria-label={`Include ${contact.email || contact.phone || "contact"}`}
                     />
                   </TableCell>
                   <TableCell>
@@ -377,7 +377,7 @@ function SegmentPage({
                       href={`/contacts/${contact.id}`}
                       className="hover:underline"
                     >
-                      {contact.email}
+                      {contact.email || contact.phone || "—"}
                     </Link>
                   </TableCell>
                   <TableCell className="text-muted-foreground">

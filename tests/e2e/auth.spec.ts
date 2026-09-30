@@ -7,6 +7,7 @@ import {
   testBackend,
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
+import { contactsPhoneTests } from "./contacts-phone-flow"
 import { broadcastReceivedTests } from "./broadcast-received-flow"
 import { shareEmailTests } from "./share-email-flow"
 import { domainClaimTests } from "./domain-claim-flow"
@@ -932,6 +933,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     owner.off("pageerror", record)
     expect(errors).toEqual([])
   })
+
+  contactsPhoneTests(() => ({ owner }))
 
   broadcastReceivedTests(() => ({
     owner,

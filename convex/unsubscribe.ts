@@ -358,7 +358,8 @@ async function attributeUnsubscribe(
   topicId?: Id<"topics">
 ) {
   const id = value && ctx.db.normalizeId("broadcasts", value)
-  if (!id) return
+  const email = contact.email
+  if (!id || !email) return
   const row = await ctx.db.get("broadcasts", id)
   if (
     !row ||
@@ -369,14 +370,15 @@ async function attributeUnsubscribe(
   const recipient = await ctx.db
     .query("broadcastRecipients")
     .withIndex("by_broadcastId_and_email", (q) =>
-      q.eq("broadcastId", id).eq("email", contact.email)
+      q.eq("broadcastId", id).eq("email", email)
     )
     .unique()
-  if (!recipient || recipient.contactId !== contact._id) return
+  if (!recipient?.emailId || recipient.contactId !== contact._id) return
+  const emailId = recipient.emailId
   const existing = await ctx.db
     .query("broadcastEvents")
     .withIndex("by_emailId_and_type", (q) =>
-      q.eq("emailId", recipient.emailId).eq("type", "unsubscribed")
+      q.eq("emailId", emailId).eq("type", "unsubscribed")
     )
     .unique()
   if (!existing)

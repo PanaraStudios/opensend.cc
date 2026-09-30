@@ -8,6 +8,7 @@ import type {
 
 export const RESERVED_PROPERTY_KEYS = [
   "email",
+  "phone",
   "first_name",
   "last_name",
   "unsubscribed",
@@ -69,7 +70,8 @@ export type ContactFields = Pick<
   Contact,
   "firstName" | "lastName" | "unsubscribed" | "properties"
 >
-export type ContactInput = { email: string } & Partial<ContactFields>
+export type ContactIdentity = Pick<Contact, "email" | "phone">
+export type ContactInput = ContactIdentity & Partial<ContactFields>
 
 const MAX_EMAIL = 254
 const MAX_VALUE = 1000
@@ -117,6 +119,7 @@ export function mergeContactFields(
 
 export const DEFAULT_CONTACT_PROPERTIES = [
   { key: "email", name: "Email", type: "string" },
+  { key: "phone", name: "Phone", type: "string" },
   { key: "first_name", name: "First name", type: "string" },
   { key: "last_name", name: "Last name", type: "string" },
   { key: "unsubscribed", name: "Unsubscribed", type: "boolean" },

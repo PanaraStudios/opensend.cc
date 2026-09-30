@@ -8,7 +8,12 @@ import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Item,
@@ -227,7 +232,9 @@ function ContactPage({
   const sends = useRecipientEmails(contact.email)
   const emails = sends.rows
   const { pageRows: emailRows, pagination: emailPagination } = sends
-  const replies = useReceivedList({ address: contact.email })
+  const replies = useReceivedList(
+    contact.email ? { address: contact.email } : "skip"
+  )
   const received = replies.rows
   const broadcastList = useContactBroadcasts(contact.email)
   const broadcasts = broadcastList.pageRows
@@ -237,7 +244,12 @@ function ContactPage({
       <DetailHeader
         backHref="/contacts"
         backLabel="Contacts"
-        title={contact.email}
+        title={
+          contact.email ||
+          [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+          contact.phone ||
+          "Contact"
+        }
         icon={UserIcon}
         description={`Created ${formatDate(contact.createdAt)}`}
         actions={
@@ -256,6 +268,30 @@ function ContactPage({
           <div className="grid items-stretch gap-6 lg:grid-cols-2">
             <Surface>
               <h2 className="text-sm font-medium">Profile</h2>
+              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="contact-email">Email</FieldLabel>
+                  <AutosaveInput
+                    id="contact-email"
+                    type="email"
+                    value={contact.email ?? ""}
+                    onSave={(email) => save({ email })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="contact-phone">Phone</FieldLabel>
+                  <AutosaveInput
+                    id="contact-phone"
+                    type="tel"
+                    value={contact.phone ?? ""}
+                    placeholder="+14155552671"
+                    onSave={(phone) => save({ phone })}
+                  />
+                  <FieldDescription>
+                    Include + and the country code.
+                  </FieldDescription>
+                </Field>
+              </FieldGroup>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="first">First name</FieldLabel>
@@ -470,7 +506,7 @@ function ContactPage({
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
-        title={`Delete ${contact.email}?`}
+        title={`Delete ${contact.email || contact.phone || "contact"}?`}
         description="The contact is removed from every segment. This cannot be undone."
         onConfirm={() => {
           onDelete(() => void deleteContacts([contact.id]))

@@ -129,6 +129,7 @@ export const one = internalMutation({
     const result = await upsertContact(ctx, organizationId, contact, {
       ...options,
       emit: false,
+      mergePhone: true,
     })
     if (topics?.length && result.result !== "skipped")
       await setTopicChoices(
