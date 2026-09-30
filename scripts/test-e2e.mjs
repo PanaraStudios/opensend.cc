@@ -10,10 +10,11 @@ import {
 import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
+import { startFakeGraph } from "../tests/e2e/fake-graph.mjs"
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
 const filename = resolve(`.env.playwright-${project}`)
-const [appPort, convexPort, sitePort, oidcPort] = await Promise.all(
-  Array.from({ length: 4 }, freePort)
+const [appPort, convexPort, sitePort, oidcPort, graphPort] = await Promise.all(
+  Array.from({ length: 5 }, freePort)
 )
 const resultDir = resolve("test-results", project)
 mkdirSync(resultDir, { recursive: true })
@@ -57,6 +58,8 @@ const values = {
   // Exercise setup's Docker loopback normalization with a remapped host port.
   CONVEX_PUBLIC_SITE_URL: `http://localhost:${sitePort}`,
   ALLOW_LOCAL_OIDC: "true",
+  // The backend calls the fake Graph API below instead of Meta.
+  META_GRAPH_ORIGIN: `http://host.docker.internal:${graphPort}`,
   // The suite reads invitation, verification and reset links from the logs.
   LOG_AUTH_LINKS: "true",
   ...(process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE
@@ -78,12 +81,15 @@ const env = {
   OPENSEND_CONVEX_URL: values.CONVEX_PUBLIC_URL,
   OPENSEND_CALLBACK_ORIGIN: values.CONVEX_PUBLIC_SITE_URL,
   OPENSEND_OIDC_URL: `http://host.docker.internal:${oidcPort}/realms/opensend`,
+  OPENSEND_FAKE_GRAPH_URL: `http://localhost:${graphPort}`,
   OPENSEND_TEST_RESULTS: resultDir,
 }
 mkdirSync("test-results", { recursive: true })
 let logs
+let graph
 let status = 1
 try {
+  graph = await startFakeGraph(graphPort)
   run("node", ["scripts/setup.mjs"], { env })
   // Setup may normalize a loopback URL for requests originating inside Docker.
   env.OPENSEND_CALLBACK_ORIGIN = parse(
@@ -126,6 +132,7 @@ try {
   })
   status = result
 } finally {
+  await graph?.close()
   if (logs?.pid) {
     try {
       process.kill(-logs.pid, "SIGTERM")
