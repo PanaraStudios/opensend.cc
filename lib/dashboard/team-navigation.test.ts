@@ -8,6 +8,7 @@ describe("teamSafePath", () => {
     assert.equal(teamSafePath("/emails/receiving"), "/emails/receiving")
     assert.equal(teamSafePath("/settings/team"), "/settings/team")
     assert.equal(teamSafePath("/instance/ses"), "/instance/ses")
+    assert.equal(teamSafePath("/instance/meta"), "/instance/meta")
     assert.equal(teamSafePath("/contacts"), "/contacts")
   })
 

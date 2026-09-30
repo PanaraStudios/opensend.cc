@@ -251,7 +251,7 @@ export function Observability({ automation }: { automation: Automation }) {
                     onClick={() => setSelectedId(run.id)}
                   >
                     <TableCell className="font-medium">
-                      {run.contactEmail}
+                      {run.contactEmail || "—"}
                     </TableCell>
                     <TableCell>
                       <AutomationRunStatusBadge status={run.status} />

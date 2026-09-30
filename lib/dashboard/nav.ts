@@ -1,10 +1,12 @@
 import {
   ChartColumnIcon,
+  CloudIcon,
   FileCodeIcon,
   GlobeIcon,
   KeyRoundIcon,
   MailsIcon,
   MegaphoneIcon,
+  MessagesSquareIcon,
   ScrollTextIcon,
   SettingsIcon,
   UsersIcon,
@@ -15,7 +17,6 @@ import {
 
 /** Where Settings opens. */
 export const SETTINGS_NAV_INDEX = "/settings/team"
-export const SES_SETTINGS_PAGE = { href: "/instance/ses", title: "Amazon SES" }
 
 export type NavItem = {
   href: string
@@ -23,6 +24,16 @@ export type NavItem = {
   icon: LucideIcon
   match?: readonly string[]
 }
+
+/** Installation-wide pages only the installation admin opens, from the
+    account menu and ⌘K. Amazon SES comes first. */
+export const INSTANCE_PAGES = [
+  { href: "/instance/ses", title: "Amazon SES", icon: CloudIcon },
+  { href: "/instance/meta", title: "Meta app", icon: MessagesSquareIcon },
+] as const satisfies readonly NavItem[]
+
+export const isInstancePage = (pathname: string) =>
+  INSTANCE_PAGES.some((page) => page.href === pathname)
 
 export const DASHBOARD_NAV: NavItem[] = [
   { href: "/emails", title: "Emails", icon: MailsIcon },
@@ -99,7 +110,7 @@ export const STANDALONE_PAGES: readonly SectionTab[] = [
 ]
 
 const TEAM_SAFE_PATHS = new Set<string>([
-  SES_SETTINGS_PAGE.href,
+  ...INSTANCE_PAGES.map((item) => item.href),
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
   ...EMAIL_TABS.map((item) => item.href),
   ...AUDIENCE_TABS.map((item) => item.href),

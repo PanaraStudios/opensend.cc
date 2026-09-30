@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
-import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import { INSTANCE_PAGES } from "@/lib/dashboard/nav"
 
 export default function SettingsSesRedirect() {
-  redirect(SES_SETTINGS_PAGE.href)
+  redirect(INSTANCE_PAGES[0].href)
 }

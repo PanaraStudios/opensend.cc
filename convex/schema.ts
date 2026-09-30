@@ -1,5 +1,7 @@
 import { receivedTables } from "./tables/received"
 import { broadcastTables } from "./tables/broadcasts"
+import { channelTables } from "./tables/channels"
+import { metaTables } from "./tables/meta"
 import { automationTables } from "./tables/automations"
 import { defineSchema } from "convex/server"
 import { audienceTables } from "./tables/audience"
@@ -43,4 +45,6 @@ export default defineSchema({
   ...unsubscribeTables,
   ...receivingTables,
   ...receivedTables,
+  ...metaTables,
+  ...channelTables,
 })

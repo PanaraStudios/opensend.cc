@@ -103,7 +103,7 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
     `${issuer}/keys`,
   ])
   expect(runAction).toHaveBeenCalledTimes(3)
-  const body = new URLSearchParams(fetcher.mock.calls[1][1]!.body)
+  const body = new URLSearchParams(fetcher.mock.calls[1][1]!.body as string)
   expect(body.get("code_verifier")).toBe("verifier")
   expect(body.get("client_secret")).toBe("client-secret")
   expect(body.get("redirect_uri")).toBe("https://app.example/callback")

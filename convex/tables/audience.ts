@@ -22,7 +22,8 @@ export const propertyTypeValue = v.union(
    contact: a segment can hold any number of contacts, and broadcasts resolve
    recipients by segment or topic. */
 export const contactInputValue = v.object({
-  email: v.string(),
+  email: v.optional(v.string()),
+  phone: v.optional(v.string()),
   firstName: v.optional(v.string()),
   lastName: v.optional(v.string()),
   unsubscribed: v.optional(v.boolean()),
@@ -65,18 +66,20 @@ export const audienceTables = {
   contacts: defineTable({
     organizationId: v.string(),
     /** Normalized lowercase; unique per team. */
-    email: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
     firstName: v.string(),
     lastName: v.string(),
     unsubscribed: v.boolean(),
     /** Keyed by property key, so bounded by the team's property count. */
     properties: v.record(v.string(), v.string()),
-    /** Email and names, for the search box. */
+    /** Email, phone and names, for the search box. */
     search: v.string(),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_email", ["organizationId", "email"])
+    .index("by_organizationId_and_phone", ["organizationId", "phone"])
     .index("by_organizationId_and_unsubscribed", [
       "organizationId",
       "unsubscribed",

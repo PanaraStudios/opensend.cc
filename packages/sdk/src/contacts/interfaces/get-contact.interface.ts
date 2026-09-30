@@ -21,11 +21,16 @@ interface ContactProperties {
   [key: string]: ContactPropertyValue;
 }
 
-export interface GetContactResponseSuccess
-  extends Pick<
-    Contact,
-    'id' | 'email' | 'created_at' | 'first_name' | 'last_name' | 'unsubscribed'
-  > {
+export interface GetContactResponseSuccess extends Pick<
+  Contact,
+  | 'id'
+  | 'email'
+  | 'phone'
+  | 'created_at'
+  | 'first_name'
+  | 'last_name'
+  | 'unsubscribed'
+> {
   object: 'contact';
   properties: ContactProperties;
 }

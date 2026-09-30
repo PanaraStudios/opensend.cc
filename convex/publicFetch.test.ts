@@ -184,3 +184,34 @@ test("prefers IPv4 and tries the next pinned address only when one is unreachabl
   expect(await (await publicFetch("https://host.example/")).text()).toBe("OK")
   expect(tried).toEqual(["93.184.216.34", "93.184.216.35"])
 })
+
+test("sends DELETE and byte bodies unchanged", async () => {
+  vi.spyOn(dns, "lookup").mockResolvedValue([
+    { address: "93.184.216.34", family: 4 },
+  ] as never)
+  const sent: { method?: string; body: unknown }[] = []
+  vi.spyOn(https, "request").mockImplementation((...args: unknown[]) => {
+    const options = args[1] as https.RequestOptions
+    const callback = args[2] as (response: IncomingMessage) => void
+    const req = new EventEmitter()
+    Object.assign(req, {
+      end: (body: unknown) => {
+        sent.push({ method: options.method, body })
+        const incoming = Readable.from([Buffer.from("OK")])
+        Object.assign(incoming, { statusCode: 200, headers: {} })
+        callback(incoming as IncomingMessage)
+      },
+    })
+    return req as ReturnType<typeof https.request>
+  })
+  const bytes = new Uint8Array([0, 1, 2, 255])
+  await publicFetch("https://public.example/media", {
+    method: "POST",
+    body: bytes,
+  })
+  await publicFetch("https://public.example/media/1", { method: "DELETE" })
+  expect(sent).toEqual([
+    { method: "POST", body: bytes },
+    { method: "DELETE", body: undefined },
+  ])
+})

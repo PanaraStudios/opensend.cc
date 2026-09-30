@@ -36,6 +36,12 @@ const CREATE_CONTACT_IMPORT_TOOL = {
           .string()
           .optional()
           .describe("CSV header name that contains email addresses."),
+        phone: z
+          .string()
+          .optional()
+          .describe(
+            "CSV header name that contains international phone numbers."
+          ),
         firstName: z
           .string()
           .optional()

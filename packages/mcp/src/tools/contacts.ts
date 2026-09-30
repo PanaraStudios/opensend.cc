@@ -12,7 +12,14 @@ const CREATE_CONTACT_TOOL = {
   description:
     "Create a new contact in Opensend. Optionally assign to segments and configure topic subscriptions.",
   inputSchema: {
-    email: z.email().describe("Contact email address"),
+    email: z
+      .email()
+      .optional()
+      .describe("Contact email address; email or phone is required"),
+    phone: z
+      .string()
+      .optional()
+      .describe("International phone number including + and country code"),
     firstName: z.string().optional().describe("Contact first name"),
     lastName: z.string().optional().describe("Contact last name"),
     unsubscribed: z
@@ -97,6 +104,11 @@ const UPDATE_CONTACT_TOOL = {
   title: "Update Contact",
   description: "Update a contact in Opensend (by ID or email).",
   inputSchema: {
+    phone: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("International phone number; null clears it"),
     id: z.string().optional().describe("Contact ID"),
     email: z.email().optional().describe("Contact email address"),
     firstName: z
@@ -251,6 +263,7 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
     CREATE_CONTACT_TOOL,
     async ({
       email,
+      phone,
       firstName,
       lastName,
       unsubscribed,
@@ -260,6 +273,7 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
     }) => {
       const response = await opensend.contacts.create({
         email,
+        phone,
         firstName,
         lastName,
         unsubscribed,
@@ -336,7 +350,8 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
               type: "text" as const,
               text: [
                 `ID: ${contact.id}`,
-                `Email: ${contact.email}`,
+                `Email: ${contact.email ?? "—"}`,
+                `Phone: ${contact.phone ?? "—"}`,
                 contact.first_name != null &&
                   `First name: ${contact.first_name}`,
                 contact.last_name != null && `Last name: ${contact.last_name}`,
@@ -394,7 +409,8 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
             type: "text",
             text: [
               `ID: ${contact.id}`,
-              `Email: ${contact.email}`,
+              `Email: ${contact.email ?? "—"}`,
+              `Phone: ${contact.phone ?? "—"}`,
               contact.first_name != null && `First name: ${contact.first_name}`,
               contact.last_name != null && `Last name: ${contact.last_name}`,
               `Unsubscribed: ${contact.unsubscribed}`,
@@ -412,8 +428,17 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "update-contact",
     UPDATE_CONTACT_TOOL,
-    async ({ id, email, firstName, lastName, unsubscribed, properties }) => {
+    async ({
+      id,
+      email,
+      phone,
+      firstName,
+      lastName,
+      unsubscribed,
+      properties,
+    }) => {
       const commonOptions = {
+        phone,
         firstName,
         lastName,
         unsubscribed,

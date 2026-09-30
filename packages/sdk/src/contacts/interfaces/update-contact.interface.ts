@@ -7,6 +7,7 @@ interface UpdateContactPropertiesOptions {
 
 export type UpdateContactOptions = {
   audienceId?: string;
+  phone?: string | null;
   unsubscribed?: boolean;
   /**
    * Use `null` to clear the `firstName`

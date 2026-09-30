@@ -53,9 +53,8 @@ describe('ContactImports', () => {
       mockSuccessResponse(response, { status: 201 });
 
       const resend = new Resend('os_test00000000000000000000000000001');
-      await expect(
-        resend.contacts.imports.create(payload),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.imports.create(payload)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "479e3145-dd38-476b-932c-529ceb705947",
@@ -133,9 +132,8 @@ describe('ContactImports', () => {
       mockSuccessResponse(response, {});
 
       const resend = new Resend('os_test00000000000000000000000000001');
-      await expect(
-        resend.contacts.imports.list(),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.contacts.imports.list()).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "data": [
@@ -239,4 +237,22 @@ describe('ContactImports', () => {
       );
     });
   });
+});
+
+it('maps a phone column for phone-only imports', async () => {
+  fetchMocker.enableMocks();
+  fetchMock.mockResponse(
+    JSON.stringify({ object: 'contact_import', id: 'phone-import' }),
+  );
+  const opensend = new Resend('os_test00000000000000000000000000001');
+  await opensend.contacts.imports.create({
+    file: new Blob(['Number\n+14155552671']),
+    columnMap: { phone: 'Number' },
+  });
+  const form = fetchMock.mock.calls.at(-1)![1]!.body as FormData;
+  expect(JSON.parse(form.get('column_map') as string)).toEqual({
+    phone: 'Number',
+  });
+  fetchMock.resetMocks();
+  fetchMocker.disableMocks();
 });

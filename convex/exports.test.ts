@@ -43,7 +43,7 @@ const headers = {
     "id,created_at,name,dkim_status,spf_status,spf_domain,nameserver,disable_content_storage,open_track,click_track,region",
   "api-keys": "id,created_at,name,token,permission,domain,creator",
   logs: "id,created_at,api_key_id,oauth_grant_id,user_agent,method,endpoint,response_status",
-  contacts: "id,created_at,email,first_name,last_name,unsubscribed",
+  contacts: "id,created_at,email,phone,first_name,last_name,unsubscribed",
   segments: "id,created_at,name,contacts",
 }
 test.each(Object.entries(headers))(
@@ -251,6 +251,7 @@ test("contacts export honors search, subscription, date and segment with custom 
   expect(table.rows).toHaveLength(1)
   expect(table.rows[0].slice(2)).toEqual([
     "ada@example.test",
+    "",
     "Ada",
     "Lovelace",
     "false",

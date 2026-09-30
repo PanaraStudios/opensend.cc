@@ -8,6 +8,9 @@ export type CsvTable = {
 
 const RESERVED_MAP: Record<string, string> = {
   email: "email",
+  phone: "phone",
+  phone_number: "phone",
+  "phone number": "phone",
   e_mail: "email",
   "e-mail": "email",
   first_name: "first_name",

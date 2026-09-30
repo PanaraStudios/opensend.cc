@@ -22,7 +22,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
-import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import { isInstancePage } from "@/lib/dashboard/nav"
 import type { MemberRole, Team } from "@/lib/dashboard/types"
 
 export type Workspace = NonNullable<
@@ -152,7 +152,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setupPending &&
       (path === "/profile" ||
         path.startsWith("/settings") ||
-        path === SES_SETTINGS_PAGE.href)
+        isInstancePage(path))
     )
       router.replace("/emails")
   }, [isAuthenticated, setupPending, path, router])
@@ -196,7 +196,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           )}
         </AuthPageFrame>
       ) : path !== "/profile" &&
-        path !== SES_SETTINGS_PAGE.href &&
+        !isInstancePage(path) &&
         path !== "/settings/ses" &&
         (!active || active.ssoRequired) ? (
         <AuthPageFrame>

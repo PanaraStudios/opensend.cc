@@ -12,6 +12,7 @@ import {
   type CountedTable,
 } from "./counts"
 import { deleteEmailContent } from "./emailRows"
+import { deleteChannelMessageContent } from "./channels/rows"
 import { retirement } from "./teamLifecycle"
 
 /** Parents with unscoped children are erased only after their children. */
@@ -59,6 +60,12 @@ export const TEAM_TABLES = [
   "contactImports",
   "webhookAttempts",
   "emailShares",
+  "channelMessages",
+  "conversations",
+  "channelContacts",
+  "channelAccounts",
+  "whatsappBusinessAccounts",
+  "metaConnections",
 ] as const
 
 export const CHILD_TABLES = [
@@ -71,6 +78,8 @@ export const CHILD_TABLES = [
   "templateDrafts",
   "domainHistory",
   "webhookStats",
+  "channelMessageContents",
+  "channelMessageEvents",
 ] as const
 
 async function erase<T extends TableNames>(
@@ -172,6 +181,16 @@ export const purge = internalMutation({
           .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
       )
       if (!pending) await deleteEmailContent(ctx, id)
+    } else if (name === "channelMessages") {
+      const id = row._id as Id<"channelMessages">
+      pending = await children(
+        ctx,
+        "channelMessageEvents",
+        ctx.db
+          .query("channelMessageEvents")
+          .withIndex("by_messageId_and_at", (q) => q.eq("messageId", id))
+      )
+      if (!pending) await deleteChannelMessageContent(ctx, id)
     } else if (name === "apiKeys") {
       pending = await children(
         ctx,

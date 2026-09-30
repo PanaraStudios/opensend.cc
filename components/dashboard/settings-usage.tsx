@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useClock } from "@/lib/time/use-clock"
-import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import { INSTANCE_PAGES } from "@/lib/dashboard/nav"
 
 const resetTime = (value: string) =>
   new Date(value).toLocaleString("en-US", {
@@ -116,7 +116,7 @@ export function SettingsUsage() {
             <Button
               variant="link"
               nativeButton={false}
-              render={<Link href={SES_SETTINGS_PAGE.href} />}
+              render={<Link href={INSTANCE_PAGES[0].href} />}
             >
               Amazon SES settings
             </Button>

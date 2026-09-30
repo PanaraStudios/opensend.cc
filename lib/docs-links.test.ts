@@ -13,7 +13,7 @@ import {
   AUTOMATION_TABS,
   DASHBOARD_NAV,
   EMAIL_TABS,
-  SES_SETTINGS_PAGE,
+  INSTANCE_PAGES,
   SETTINGS_NAV,
   STANDALONE_PAGES,
 } from "./dashboard/nav"
@@ -49,7 +49,7 @@ test("every dashboard navigation destination has an explicit docs mapping", () =
     ...AUTOMATION_TABS,
     ...SETTINGS_NAV,
     ...STANDALONE_PAGES,
-    SES_SETTINGS_PAGE,
+    ...INSTANCE_PAGES,
   ]) {
     assert.ok(Object.hasOwn(DOCS_LINKS.routes, href), href)
   }
@@ -74,6 +74,7 @@ test("tabs and nested detail pages resolve to the most specific guide", () => {
     ["/settings/unsubscribe", "/dashboard/audience/unsubscribe-page"],
     ["/settings/smtp", "/self-hosting/smtp-gateway"],
     ["/instance/ses", "/self-hosting/aws-ses"],
+    ["/instance/meta", "/self-hosting/requirements"],
   ]) {
     assert.equal(
       docsHrefForRoute(route),

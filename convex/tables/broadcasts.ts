@@ -100,7 +100,7 @@ export const broadcastTables = {
     broadcastId: v.id("broadcasts"),
     contactId: v.id("contacts"),
     email: v.string(),
-    emailId: v.id("emails"),
+    emailId: v.optional(v.id("emails")),
     sent: v.optional(v.boolean()),
     settled: v.boolean(),
     failed: v.boolean(),
@@ -109,6 +109,10 @@ export const broadcastTables = {
     .index("by_organizationId_and_email", ["organizationId", "email"])
     .index("by_broadcastId_and_sent", ["broadcastId", "sent"])
     .index("by_broadcastId_and_email", ["broadcastId", "email"])
+    .index("by_broadcastId_and_contactId", {
+      fields: ["broadcastId", "contactId"],
+      staged: true,
+    })
     .index("by_emailId", ["emailId"]),
   broadcastEvents: defineTable({
     organizationId: v.string(),

@@ -18,6 +18,9 @@ const COUNT_COMPONENTS = [
   "usageSentCounts",
   "usageReceivedCounts",
   "usageAutomationCounts",
+  "channelMessageCounts",
+  "conversationCounts",
+  "broadcastMessageCounts",
 
   "broadcastRecipientLinkCounts",
   "broadcastLinkCounts",
@@ -61,6 +64,7 @@ export async function fixture() {
   const t = convexTest(schema, modules)
   t.registerComponent("betterAuth", authSchema, authModules)
   workpoolTest.register(t, "inboundPool")
+  workpoolTest.register(t, "channelPool")
   workflowTest.register(t)
   rateLimiterTest.register(t)
   for (const name of COUNT_COMPONENTS) aggregateTest.register(t, name)

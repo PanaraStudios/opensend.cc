@@ -82,6 +82,7 @@ export class ContactImports {
 
     return {
       email: columnMap.email,
+      phone: columnMap.phone,
       first_name: columnMap.firstName,
       last_name: columnMap.lastName,
       unsubscribed: columnMap.unsubscribed,

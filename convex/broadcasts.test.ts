@@ -289,7 +289,7 @@ test("segment, global opt-out, topic opt-out and suppression resolve server-side
     "yes@example.com",
   ])
   await f.t.action(internal.emailSend.deliver, {
-    id: recipients.find((r) => r.email === "suppressed@example.com")!.emailId,
+    id: recipients.find((r) => r.email === "suppressed@example.com")!.emailId!,
     generation: 0,
   })
   expect(await f.stats(id)).toMatchObject({ recipients: 2, suppressed: 1 })
@@ -351,10 +351,10 @@ test("recipient copies escape merge tags, fill properties, and carry topic unsub
   const body = await f.t.run((ctx) =>
     ctx.db
       .query("emailContents")
-      .withIndex("by_emailId", (q) => q.eq("emailId", recipient.emailId))
+      .withIndex("by_emailId", (q) => q.eq("emailId", recipient.emailId!))
       .unique()
   )
-  const row = await f.t.run((ctx) => ctx.db.get("emails", recipient.emailId))
+  const row = await f.t.run((ctx) => ctx.db.get("emails", recipient.emailId!))
   expect(row).toMatchObject({ broadcastId: id, subject: "Hi Ada <3" })
   expect(body?.html).toContain("Ada &lt;3 A&amp;B")
   expect(body?.html).not.toContain("{{{")
@@ -474,7 +474,7 @@ test("SES send keeps tenant tags and broadcast webhook data; unique metrics surv
   const id = await f.create()
   const [recipient] = await f.fanout(id)
   await f.t.action(internal.emailSend.deliver, {
-    id: recipient.emailId,
+    id: recipient.emailId!,
     generation: 0,
   })
   expect(send).toHaveBeenCalledTimes(1)
@@ -492,7 +492,7 @@ test("SES send keeps tenant tags and broadcast webhook data; unique metrics surv
       "bounced",
       "complained",
     ] as const)
-      await insertEmailEvent(ctx, recipient.emailId, type)
+      await insertEmailEvent(ctx, recipient.emailId!, type)
   })
   expect(await f.stats(id)).toMatchObject({
     recipients: 1,
@@ -522,7 +522,7 @@ test("SES send keeps tenant tags and broadcast webhook data; unique metrics surv
     f.owner.client.mutation(api.broadcasts.remove, { id })
   ).rejects.toThrow(/unsent/)
   await f.t.run((ctx) =>
-    patchRow(ctx, "emails", recipient.emailId, { expiresAt: Date.now() - 1 })
+    patchRow(ctx, "emails", recipient.emailId!, { expiresAt: Date.now() - 1 })
   )
   await f.t.mutation(internal.emails.prune, {})
   expect((await f.stats(id)).opened).toBe(1)
@@ -533,7 +533,7 @@ test("permanent sender failure settles the broadcast as failed", async () => {
   const id = await f.create()
   const [recipient] = await f.fanout(id)
   await f.t.mutation(internal.emails.record, {
-    id: recipient.emailId,
+    id: recipient.emailId!,
     generation: 0,
     outcome: { kind: "failed", error: "Rejected", retryable: false },
   })
@@ -689,11 +689,11 @@ test("an opt-out during the SES queue prevents delivery and is counted once", as
     subscription: "unsubscribed",
   })
   await f.t.action(internal.emailSend.deliver, {
-    id: recipient.emailId,
+    id: recipient.emailId!,
     generation: 0,
   })
   await f.t.action(internal.emailSend.deliver, {
-    id: recipient.emailId,
+    id: recipient.emailId!,
     generation: 0,
   })
   expect(send).not.toHaveBeenCalled()
@@ -753,7 +753,7 @@ test("search, audience/status filters, history and event counts match their page
   }
   await f.contacts([{ email: "history@example.com" }], [segmentId])
   const [recipient] = await f.fanout(first)
-  await f.t.run((ctx) => insertEmailEvent(ctx, recipient.emailId, "bounced"))
+  await f.t.run((ctx) => insertEmailEvent(ctx, recipient.emailId!, "bounced"))
   expect(
     await f.owner.client.query(api.broadcasts.historyCount, {
       organizationId: f.org,
@@ -882,4 +882,39 @@ test("segment review and sending span membership pages", async () => {
     })
   ).toBe(110)
   expect(await f.fanout(await f.create({ segmentId }))).toHaveLength(110)
+})
+
+test("email broadcasts page past phone-only contacts and settle without sending to missing addresses", async () => {
+  const f = await setup()
+  await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.org,
+    segmentIds: [],
+    contacts: Array.from({ length: 12 }, (_, i) => ({
+      phone: `+1415555${String(1000 + i)}`,
+    })),
+  })
+  const id = await f.create()
+  expect(await f.fanout(id)).toEqual([])
+  expect(await f.read(id)).toMatchObject({ status: "sent", audienceDone: true })
+  expect(await f.stats(id)).toMatchObject({ recipients: 0 })
+  await f.contacts([{ email: "email@example.test" }])
+  const mixed = await f.create()
+  const recipients = await f.fanout(mixed)
+  expect(recipients.map((row) => row.email)).toEqual(["email@example.test"])
+  vi.spyOn(SESv2Client.prototype, "send").mockResolvedValue({
+    MessageId: "ses-phone-test",
+  } as never)
+  await f.t.action(internal.emailSend.deliver, {
+    id: recipients[0].emailId!,
+    generation: 0,
+  })
+  expect(await f.read(mixed)).toMatchObject({
+    status: "sent",
+    audienceDone: true,
+  })
+  expect(await f.stats(mixed)).toMatchObject({ recipients: 1 })
+  expect((await f.recipients(mixed))[0]).toMatchObject({
+    sent: true,
+    settled: true,
+  })
 })

@@ -7,6 +7,7 @@ import {
   testBackend,
 } from "./ses-fixtures"
 import { beginOAuth, oauthFlow, selectOAuthTeam } from "./oauth-flow"
+import { contactsPhoneTests } from "./contacts-phone-flow"
 import { broadcastReceivedTests } from "./broadcast-received-flow"
 import { shareEmailTests } from "./share-email-flow"
 import { domainClaimTests } from "./domain-claim-flow"
@@ -14,6 +15,7 @@ import { usageTests } from "./usage-flow"
 import { hardeningSearchTests } from "./hardening-search-flow"
 import { docsLinksTests } from "./docs-links-flow"
 import { shortcutTests } from "./shortcuts-flow"
+import { metaAppTests } from "./meta-app-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -932,6 +934,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     expect(errors).toEqual([])
   })
 
+  contactsPhoneTests(() => ({ owner }))
+
   broadcastReceivedTests(() => ({
     owner,
     organizationId,
@@ -1211,6 +1215,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
         .getByText("Member", { exact: true })
     ).toBeVisible()
   })
+
+  // The member is back to a plain Member of the owner's team here.
+  metaAppTests(() => ({ owner, member }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")
