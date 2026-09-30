@@ -84,8 +84,9 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --generate-notes
           fi
           assets_dir=$(mktemp -d)
-          cp compose.yaml compose.caddy.yaml "$assets_dir/"
+          cp compose.yaml compose.caddy.yaml compose.cloud.yaml compose.cloud-caddy.yaml "$assets_dir/"
           cp docker/caddy/Caddyfile "$assets_dir/Caddyfile"
+          cp docker/caddy/Caddyfile.cloud "$assets_dir/Caddyfile.cloud"
           if [ -f scripts/install.sh ]; then
             cp scripts/install.sh "$assets_dir/install.sh"
           fi

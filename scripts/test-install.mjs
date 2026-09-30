@@ -39,6 +39,13 @@ for (const key of Object.keys(composeEnv))
       "CONVEX_PUBLIC_URL",
       "CONVEX_PUBLIC_SITE_URL",
       "CONVEX_BACKEND_ORIGIN",
+      "CONVEX_DEPLOY_KEY",
+      "CONVEX_DEPLOYMENT",
+      "CONVEX_SELF_HOSTED_URL",
+      "CONVEX_SELF_HOSTED_ADMIN_KEY",
+      "CONVEX_URL",
+      "CONVEX_SITE_URL",
+      "SES_CALLBACK_ORIGIN",
     ].includes(key)
   )
     delete composeEnv[key]
@@ -152,12 +159,18 @@ try {
     "compose.yaml",
     "compose.caddy.yaml",
     "docker/caddy/Caddyfile",
+    "compose.cloud.yaml",
+    "compose.cloud-caddy.yaml",
+    "docker/caddy/Caddyfile.cloud",
   ])
     copyFileSync(resolve(root, file), resolve(assets, file.split("/").at(-1)))
   const assetNames = new Set([
     "/compose.yaml",
     "/compose.caddy.yaml",
     "/Caddyfile",
+    "/compose.cloud.yaml",
+    "/compose.cloud-caddy.yaml",
+    "/Caddyfile.cloud",
   ])
   server = createServer((request, response) => {
     if (!assetNames.has(request.url)) {
@@ -207,6 +220,176 @@ try {
   )
   assert.equal(configured.CONVEX_BACKEND_ORIGIN, configured.CONVEX_PUBLIC_URL)
   assert.ok(statSync(resolve(configuration, "docker/caddy/Caddyfile")).isFile())
+
+  // Fake credentials only: cloud dry runs must never start migrate or contact Convex.
+  for (const useCaddy of [true, false]) {
+    const cloudDirectory = resolve(temporary, useCaddy ? "cloud" : "cloud-eu")
+    const cloudArgs = [
+      "--dir",
+      cloudDirectory,
+      "--domain",
+      "cloud.example.test",
+      "--yes",
+      "--no-start",
+      "--version",
+      "itest-a",
+      "--source-url",
+      source,
+    ]
+    await execute(
+      "sh",
+      [
+        installer,
+        "install",
+        ...cloudArgs,
+        "--convex",
+        "cloud",
+        "--deploy-key",
+        "dev:fake-name|token",
+        "--caddy",
+        useCaddy ? "yes" : "no",
+        ...(useCaddy
+          ? []
+          : [
+              "--convex-url",
+              "https://fake-name.eu.convex.cloud",
+              "--convex-site-url",
+              "https://fake-name.eu.convex.site",
+            ]),
+      ],
+      { env: composeEnv }
+    )
+    const cloudSettings = () =>
+      parse(readFileSync(resolve(cloudDirectory, ".env"), "utf8"))
+    const initialCloud = cloudSettings()
+    assert.equal(statSync(resolve(cloudDirectory, ".env")).mode & 0o777, 0o600)
+    assert.equal(initialCloud.OPENSEND_CONVEX, "cloud")
+    assert.equal(initialCloud.CONVEX_DEPLOY_KEY, "dev:fake-name|token")
+    assert.equal(
+      initialCloud.CONVEX_URL,
+      useCaddy
+        ? "https://fake-name.convex.cloud"
+        : "https://fake-name.eu.convex.cloud"
+    )
+    assert.equal(
+      initialCloud.CONVEX_SITE_URL,
+      useCaddy
+        ? "https://fake-name.convex.site"
+        : "https://fake-name.eu.convex.site"
+    )
+    assert.equal(initialCloud.SES_CALLBACK_ORIGIN, initialCloud.CONVEX_SITE_URL)
+    assert.equal(
+      initialCloud.COMPOSE_FILE,
+      "compose.yaml:compose.cloud.yaml" +
+        (useCaddy ? ":compose.cloud-caddy.yaml" : "")
+    )
+    for (const key of [
+      "INSTANCE_NAME",
+      "INSTANCE_SECRET",
+      "CONVEX_SELF_HOSTED_ADMIN_KEY",
+      "CONVEX_PUBLIC_URL",
+      "CONVEX_PUBLIC_SITE_URL",
+    ])
+      assert.equal(
+        initialCloud[key],
+        undefined,
+        `${key} is not needed in cloud mode`
+      )
+    const cloudCompose = (args) =>
+      execute(
+        "docker",
+        [
+          "compose",
+          "--project-directory",
+          cloudDirectory,
+          "-p",
+          `${project}-cloud`,
+          ...args,
+        ],
+        { env: composeEnv, stdio: ["ignore", "pipe", "inherit"] }
+      )
+    const config = JSON.parse(
+      await cloudCompose(["--profile", "smtp", "config", "--format", "json"])
+    )
+    assert.equal(config.services.convex, undefined)
+    assert.equal(config.services.migrate.depends_on, undefined)
+    assert.equal(
+      config.services.migrate.environment.CONVEX_SELF_HOSTED_URL,
+      undefined
+    )
+    assert.equal(
+      config.services.migrate.environment.CONVEX_SELF_HOSTED_ADMIN_KEY,
+      undefined
+    )
+    assert.equal(
+      config.services.migrate.environment.CONVEX_DEPLOY_KEY,
+      initialCloud.CONVEX_DEPLOY_KEY
+    )
+    assert.deepEqual(Object.keys(config.services.app.depends_on), ["migrate"])
+    assert.equal(
+      config.services.app.environment.CONVEX_INTERNAL_URL,
+      initialCloud.CONVEX_URL
+    )
+    assert.equal(
+      config.services.app.environment.CONVEX_PUBLIC_URL,
+      initialCloud.CONVEX_URL
+    )
+    assert.equal(
+      config.services.app.environment.CONVEX_INTERNAL_SITE_URL,
+      initialCloud.CONVEX_SITE_URL
+    )
+    assert.equal(
+      config.services.smtp.environment.SMTP_CONVEX_SITE_URL,
+      initialCloud.CONVEX_SITE_URL
+    )
+    assert.equal(config.services.smtp.depends_on, undefined)
+    if (useCaddy) {
+      assert.deepEqual(Object.keys(config.services.caddy.depends_on), ["app"])
+      assert.equal(
+        config.services.caddy.environment.CONVEX_SITE_URL,
+        initialCloud.CONVEX_SITE_URL
+      )
+      assert.ok(
+        statSync(
+          resolve(cloudDirectory, "docker/caddy/Caddyfile.cloud")
+        ).isFile()
+      )
+    }
+    await execute(
+      "sh",
+      [
+        installer,
+        "install",
+        ...cloudArgs,
+        "--convex",
+        "self",
+        "--deploy-key",
+        "prod:other|different",
+      ],
+      { env: composeEnv }
+    )
+    assert.deepEqual(
+      cloudSettings(),
+      initialCloud,
+      "cloud rerun preserves configuration and deploy key"
+    )
+    await execute(
+      "sh",
+      [installer, "upgrade", ...cloudArgs, "--version", "itest-b"],
+      { env: composeEnv }
+    )
+    assert.deepEqual(
+      cloudSettings(),
+      { ...initialCloud, OPENSEND_VERSION: "itest-b" },
+      "upgrade remembers cloud mode and secrets"
+    )
+    await execute("sh", [installer, "uninstall", "--dir", cloudDirectory], {
+      env: composeEnv,
+    })
+  }
+  console.log(
+    "PASS cloud dry configuration, regional URLs, rerun, upgrade and uninstall"
+  )
 
   const install = (command, version) =>
     execute(

@@ -3,9 +3,6 @@ import { createRequire } from "node:module"
 import { dirname, resolve } from "node:path"
 import { convexEnvEntries } from "../../scripts/convex-env.mjs"
 
-delete process.env.CONVEX_DEPLOYMENT
-delete process.env.CONVEX_DEPLOY_KEY
-process.env.CONVEX_SELF_HOSTED_URL ||= "http://convex:3210"
 const require = createRequire(import.meta.url)
 const cli = resolve(
   dirname(require.resolve("convex/package.json")),
@@ -53,12 +50,26 @@ async function waitForBackend() {
 }
 
 try {
-  if (!process.env.CONVEX_SELF_HOSTED_ADMIN_KEY)
-    throw new Error("CONVEX_SELF_HOSTED_ADMIN_KEY is required")
+  const selfHosted = !!process.env.CONVEX_SELF_HOSTED_ADMIN_KEY
+  const cloud = !!process.env.CONVEX_DEPLOY_KEY
+  if (selfHosted && cloud)
+    throw new Error(
+      "Set only one of CONVEX_SELF_HOSTED_ADMIN_KEY or CONVEX_DEPLOY_KEY"
+    )
+  if (!selfHosted && !cloud)
+    throw new Error(
+      "CONVEX_SELF_HOSTED_ADMIN_KEY (self-hosted) or CONVEX_DEPLOY_KEY (cloud) is required"
+    )
+  delete process.env.CONVEX_DEPLOYMENT
+  if (cloud) delete process.env.CONVEX_SELF_HOSTED_URL
+  else {
+    delete process.env.CONVEX_DEPLOY_KEY
+    process.env.CONVEX_SELF_HOSTED_URL ||= "http://convex:3210"
+  }
   const args = process.argv.slice(2)
   if (args.length) await runCli(args)
   else {
-    await waitForBackend()
+    if (selfHosted) await waitForBackend()
     for (const [key, value] of convexEnvEntries(process.env))
       await runCli(["env", "set", `${key}=${value}`])
     await runCli([
