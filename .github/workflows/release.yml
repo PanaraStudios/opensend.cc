@@ -52,7 +52,9 @@ jobs:
         id: meta
         with:
           images: ghcr.io/panarastudios/opensend-${{ matrix.image }}
+          # The v-prefixed tag is what install.sh writes to OPENSEND_VERSION.
           tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
       - uses: docker/build-push-action@v7
