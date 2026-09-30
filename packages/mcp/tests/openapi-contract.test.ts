@@ -65,6 +65,7 @@ const workflow = {
 const overrides: Record<string, Record<string, unknown>> = {
   "batch-remove-suppressions": { ids: ["test-id"] },
   "send-email": { text: "Hello" },
+  "send-whatsapp-message": { to: "16505551234", text: "Hello" },
   "send-batch-emails": {
     emails: [
       {

@@ -19,6 +19,7 @@ import {
   addTopicTools,
   addUsageTools,
   addWebhookTools,
+  addWhatsAppTools,
 } from "./tools/index.js"
 import type { ServerOptions } from "./types.js"
 
@@ -60,5 +61,6 @@ export function createMcpServer(
   addTopicTools(server, opensend)
   addUsageTools(server, opensend)
   addWebhookTools(server, opensend)
+  addWhatsAppTools(server, opensend)
   return server
 }
