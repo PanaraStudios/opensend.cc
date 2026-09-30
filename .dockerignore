@@ -19,3 +19,12 @@ playwright.config.ts
 
 docker/smtp/certs
 docker/smtp/*.test.mjs
+
+docs
+openapi
+**/*.md
+scripts/*
+!scripts/convex-env.mjs
+.github
+**/*.test.*
+**/*.spec.*
