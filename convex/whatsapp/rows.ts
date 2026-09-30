@@ -11,9 +11,9 @@ import {
   componentsParameterFormat,
   EMPTY_TEMPLATE_FORM,
   isTemplateLanguage,
+  storedComponents,
   templateNameFrom,
   templateVariables,
-  type TemplateComponent,
 } from "../../lib/meta/templates"
 
 /* Row rules for WhatsApp templates, shared by the templates module, the
@@ -155,16 +155,7 @@ export const editableAtMeta = (template: WhatsAppTemplate) =>
   (template.metaStatus !== undefined &&
     EDITABLE_STATUSES.includes(template.metaStatus))
 
-/** Stored components, or none: the draft holds JSON from anywhere. */
-export function storedComponents(content: unknown): TemplateComponent[] {
-  if (!Array.isArray(content)) return []
-  return content.filter(
-    (item): item is TemplateComponent =>
-      !!item &&
-      typeof item === "object" &&
-      typeof (item as { type?: unknown }).type === "string"
-  )
-}
+export { storedComponents }
 
 /** A new template's components: an empty body. */
 export const emptyComponents = () => componentsFromForm(EMPTY_TEMPLATE_FORM)

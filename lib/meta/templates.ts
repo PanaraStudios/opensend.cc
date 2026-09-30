@@ -113,6 +113,17 @@ export type FormButton =
   | { type: "PHONE_NUMBER"; text: string; phone: string }
   | { type: "COPY_CODE" }
 
+/** Stored components, or none: a draft holds JSON from anywhere. */
+export function storedComponents(content: unknown): TemplateComponent[] {
+  if (!Array.isArray(content)) return []
+  return content.filter(
+    (item): item is TemplateComponent =>
+      !!item &&
+      typeof item === "object" &&
+      typeof (item as { type?: unknown }).type === "string"
+  )
+}
+
 /** The editor's flat view of a template's components. */
 export type TemplateForm = {
   headerFormat: HeaderFormat
@@ -250,6 +261,23 @@ export function templateVariables(
 }
 
 /* ------------------------------------------------------ form conversions */
+
+/** The example a form holds for a parameter, by where it is written. */
+export function formExample(
+  form: TemplateForm,
+  where: "header" | "body" | "button",
+  param: string,
+  index = 0
+) {
+  const format = formParameterFormat(form)
+  return form.examples[
+    where === "header"
+      ? headerKey(param, format)
+      : where === "body"
+        ? bodyKey(param)
+        : buttonKey(param, index, format)
+  ]
+}
 
 /** The URL before its variable, which Meta puts at the end. */
 const urlPrefix = (url: string) => url.split("{{")[0]

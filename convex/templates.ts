@@ -317,7 +317,11 @@ export async function insertWhatsAppTemplate(
   return id
 }
 
-const listItem = schema.doc("templates").extend({ html: v.string() })
+const listItem = schema.doc("templates").extend({
+  html: v.string(),
+  /** A WhatsApp draft's components, for its card. */
+  components: v.optional(v.any()),
+})
 
 const templateFilters = {
   organizationId: v.string(),
@@ -381,14 +385,18 @@ export const list = query({
       TEMPLATE_SEARCH_BUDGET,
       search
     )
-    // The cards draw each email, so the page carries the draft markup.
+    // The cards draw each template, so the page carries the draft body.
     return {
       ...result,
       page: await Promise.all(
-        result.page.map(async (row) => ({
-          ...row,
-          html: (await findDraft(ctx, row._id))?.html ?? "",
-        }))
+        result.page.map(async (row) => {
+          const draft = await findDraft(ctx, row._id)
+          return {
+            ...row,
+            html: draft?.html ?? "",
+            ...(isWhatsApp(row) ? { components: draft?.content ?? [] } : {}),
+          }
+        })
       ),
     }
   },

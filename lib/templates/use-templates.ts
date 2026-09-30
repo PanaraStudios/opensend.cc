@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { useMutation } from "convex/react"
+import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import {
@@ -12,16 +12,37 @@ import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import type { TemplateInput } from "@/lib/dashboard/template"
 import type { EmailDraft, EmailTemplate } from "@/lib/dashboard/types"
+import { DEFAULT_TEMPLATE_NAME } from "@/lib/meta/templates"
+
+/** What the WhatsApp editor saves. */
+export type WhatsAppPatch = Partial<{
+  name: string
+  content: unknown
+  whatsapp: Partial<
+    Pick<
+      NonNullable<EmailTemplate["whatsapp"]>,
+      "wabaId" | "language" | "category"
+    >
+  >
+}>
 
 export type TemplatePatch = Partial<
   Omit<EmailDraft, "id"> & Pick<EmailTemplate, "alias">
 >
 
-/** A template row, with its draft body where the caller has one. */
+/** A template row, with its draft body where the caller has one. A
+    WhatsApp draft's body is Meta's components. */
 export function asTemplate(
   row: Doc<"templates">,
-  body?: { html: string; content?: unknown }
+  body?: { html: string; content?: unknown; components?: unknown }
 ): EmailTemplate {
+  if (row.channel === "whatsapp")
+    return {
+      ...asTemplate({ ...row, channel: undefined }, { html: "" }),
+      channel: "whatsapp",
+      ...(row.whatsapp ? { whatsapp: row.whatsapp } : {}),
+      components: body?.components ?? body?.content ?? [],
+    }
   return {
     id: row._id,
     name: row.name,
@@ -62,7 +83,14 @@ export function useTemplateCommands() {
   const unpublish = useMutation(api.templates.unpublish)
   const duplicate = useMutation(api.templates.duplicate)
   const remove = useMutation(api.templates.remove)
+  const submit = useAction(api.whatsapp.templateActions.publish)
+  const removeAtMeta = useAction(api.whatsapp.templateActions.remove)
+  const sync = useAction(api.whatsapp.templateActions.sync)
   const ref = (id: string) => ({ id: id as Id<"templates"> })
+  /* WhatsApp templates are published by submitting them to Meta, and
+     deleted there first. */
+  const whatsapp = (item: Pick<EmailTemplate, "channel">) =>
+    item.channel === "whatsapp"
   return {
     organizationId: activeTeamId,
     addTemplate: async (input: TemplateInput): Promise<string> => {
@@ -73,12 +101,26 @@ export function useTemplateCommands() {
         organizationId,
       })
     },
+    /** A WhatsApp draft on the team's first WhatsApp Business Account. */
+    addWhatsAppTemplate: async (): Promise<string> =>
+      create({
+        organizationId: requireTeamId(activeTeamId),
+        name: DEFAULT_TEMPLATE_NAME,
+        channel: "whatsapp",
+      }),
     updateTemplate: (id: string, patch: TemplatePatch) =>
       update({ ...ref(id), ...wire(patch) }),
-    publishTemplate: (id: string) => publish(ref(id)),
+    /** A WhatsApp draft's settings or components. */
+    updateWhatsAppTemplate: (id: string, patch: WhatsAppPatch) =>
+      update({ ...ref(id), ...patch }),
+    publishTemplate: (item: Pick<EmailTemplate, "id" | "channel">) =>
+      whatsapp(item) ? submit(ref(item.id)) : publish(ref(item.id)),
     unpublishTemplate: (id: string) => unpublish(ref(id)),
     duplicateTemplate: (id: string): Promise<string> => duplicate(ref(id)),
-    deleteTemplate: (id: string) => remove(ref(id)),
+    deleteTemplate: (item: Pick<EmailTemplate, "id" | "channel">) =>
+      whatsapp(item) ? removeAtMeta(ref(item.id)) : remove(ref(item.id)),
+    /** Imports every template of the team's WhatsApp Business Accounts. */
+    syncFromMeta: () => sync({ organizationId: requireTeamId(activeTeamId) }),
   }
 }
 
@@ -156,3 +198,7 @@ export function useTemplateSaver(item: EmailTemplate) {
     [id, sent, update]
   )
 }
+
+/** The team's WhatsApp Business Accounts: undefined while they load. */
+export const useWhatsAppAccounts = () =>
+  useTeamQuery(api.whatsapp.templates.accounts)

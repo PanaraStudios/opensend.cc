@@ -13,6 +13,7 @@ import type {
   ExportStatus,
   MemberRole,
   MessagingChannel,
+  MetaTemplateStatus,
   Region,
   SuppressionReason,
   TemplateStatus,
@@ -308,6 +309,26 @@ export function messagingLimitLabel(tier: string | undefined): string {
 export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
   draft: "secondary",
   published: "success",
+}
+
+/** Meta's review of a WhatsApp template. */
+export const META_TEMPLATE_STATUS_TONE: Record<MetaTemplateStatus, BadgeTone> =
+  {
+    PENDING: "warning",
+    APPROVED: "success",
+    REJECTED: "destructive",
+    PAUSED: "warning",
+    DISABLED: "destructive",
+    IN_APPEAL: "warning",
+    LIMIT_EXCEEDED: "destructive",
+    ARCHIVED: "secondary",
+    PENDING_DELETION: "secondary",
+    DELETED: "secondary",
+  }
+
+/** `IN_APPEAL` as "In appeal". */
+export function metaTemplateStatusLabel(status: MetaTemplateStatus): string {
+  return sentenceCase(status.toLowerCase().replaceAll("_", " "))
 }
 
 export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {
