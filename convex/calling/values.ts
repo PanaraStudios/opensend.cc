@@ -15,6 +15,7 @@ const media = v.union(
 export const callPayloadFields = {
   object: v.literal("whatsapp_call"),
   id: v.id("calls"),
+  test: v.optional(v.boolean()),
   account_id: v.id("channelAccounts"),
   wacid: nullableString,
   direction: v.union(v.literal("inbound"), v.literal("outbound")),

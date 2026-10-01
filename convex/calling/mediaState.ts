@@ -31,7 +31,7 @@ export const complete = internalMutation({
     await ctx.db.patch("calls", id, {
       [kind]: { ...row[kind], ...file, error: file.error },
     })
-    if (!file.error)
+    if (!file.error && !row.test)
       await emitEvent(
         ctx,
         row.organizationId,

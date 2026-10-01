@@ -89,6 +89,7 @@ export function createGatewayServer(
         ![
           "/inbound",
           "/outbound",
+          "/playground",
           "/remoteAnswer",
           "/hangup",
           "/route",
@@ -170,6 +171,26 @@ export function createGatewayServer(
             return { ok: true }
           case "/inbound":
             return api.inbound(textField(body, "offerSdp"), callId)
+          case "/playground": {
+            const extension = textField(body, "extension")
+            if (
+              !/^20\d{2}$/.test(extension) ||
+              !agents?.sessions.active(extension)
+            )
+              throw new GatewayError(
+                "AGENT_OFFLINE",
+                "Register a browser session first",
+                409
+              )
+            if (!api.playground)
+              throw new GatewayError(
+                "PLAYGROUND_UNAVAILABLE",
+                "Playground calls unavailable",
+                503
+              )
+            await api.playground({ callId, extension })
+            return { ok: true }
+          }
           case "/outbound":
             return api.outbound(callId)
           case "/remoteAnswer":

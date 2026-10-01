@@ -291,6 +291,8 @@ async function browserAgent() {
     const currentPage = page
     return {
       extension: credential.extension,
+      dtmf: (digit: string) =>
+        currentPage.evaluate((d) => window.agent.dtmf(d), digit),
       stats: () => currentPage.evaluate(() => window.agent.stats()),
       async close() {
         await currentPage
@@ -733,7 +735,48 @@ async function run(
   }
 }
 try {
-  if (process.argv.includes("ivr-engine")) {
+  if (process.argv.includes("playground")) {
+    const agent = await browserAgent(),
+      callId = `playground-${randomUUID()}`
+    try {
+      await gateway.playground({ callId, extension: agent.extension })
+      await gateway.route({
+        callId,
+        target: "ivr",
+        ivrId: "harness-ivr",
+        organizationId: "harness-team",
+      })
+      await waitUntil(
+        async () => (await agent.stats()).inboundPackets > 10,
+        "Browser did not receive IVR prompt"
+      )
+      await delay(1500)
+      await agent.dtmf("1")
+      await waitUntil(
+        () => ivrPaths.some((p) => p.callId === callId && p.digits === "1"),
+        "Browser RFC2833 main digit missing"
+      )
+      await delay(1500)
+      await agent.dtmf("2")
+      await waitUntil(
+        () => ivrPaths.filter((p) => p.callId === callId).length === 2,
+        "Browser submenu digit missing"
+      )
+      assert.ok(ivrAudioFetches >= 2)
+      await gateway.hangup(callId)
+      await waitUntil(
+        () =>
+          callbacks.some((e) => e.callId === callId && e.event === "hangup"),
+        "Browser hangup callback missing"
+      )
+      console.log(
+        "PASS playground: ephemeral SIP.js caller → FreeSWITCH → real IVR runner, HTTP-cache WAV, RFC2833 1 → 2 → voicemail, signed path decisions and hangup"
+      )
+    } finally {
+      await gateway.hangup(callId).catch(() => undefined)
+      await agent.close()
+    }
+  } else if (process.argv.includes("ivr-engine")) {
     await run("inbound", undefined, "ivr-engine")
   } else if (process.argv.includes("ivr")) {
     await run("inbound", undefined, "ivr")

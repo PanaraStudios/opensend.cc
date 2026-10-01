@@ -78,7 +78,9 @@ export const consume = internalMutation({
       else if (event === "hangup" && at >= row.observedAt)
         await ctx.scheduler.runAfter(
           0,
-          internal.calling.callActions.gatewayHangup,
+          row.test
+            ? internal.calling.playground.ended
+            : internal.calling.callActions.gatewayHangup,
           { id: row._id, at, reason: string(data.reason) }
         )
     }

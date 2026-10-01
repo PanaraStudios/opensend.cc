@@ -1,0 +1,159 @@
+import { ConvexError } from "convex/values"
+import schema from "../schema"
+import { internal } from "../_generated/api"
+import { agentPresence, requireAvailable } from "./agentAccess"
+import { own as ownIvr } from "../ivr/definitions"
+import { v } from "convex/values"
+import { query, internalQuery, internalMutation } from "../_generated/server"
+import { authorize, ownedCall, payload } from "./rows"
+import { callDetailValue } from "./values"
+import { audioFile } from "../ivr/definitions"
+import { fileUrl } from "../storage/urls"
+export const setup = query({
+  args: { organizationId: v.string() },
+  returns: v.object({
+    configured: v.boolean(),
+    numbers: v.array(
+      v.object({
+        id: v.id("channelAccounts"),
+        label: v.string(),
+        routing: v.union(v.null(), v.string()),
+      })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const accounts = await ctx.db
+      .query("channelAccounts")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId)
+      )
+      .take(100)
+    return {
+      configured:
+        !!process.env.CALL_GATEWAY_URL &&
+        !!process.env.CALL_GATEWAY_SECRET &&
+        !!process.env.CALL_AGENT_WSS_URL?.startsWith("wss://"),
+      numbers: await Promise.all(
+        accounts
+          .filter((a) => a.channel === "whatsapp")
+          .map(async (a) => {
+            const s = await ctx.db
+              .query("callingSettings")
+              .withIndex("by_accountId", (q) => q.eq("accountId", a._id))
+              .unique()
+            return {
+              id: a._id,
+              label: a.handle || a.displayName,
+              routing:
+                s?.routing?.kind === "ivr"
+                  ? `ivr:${s.routing.ivrId}`
+                  : (s?.routing?.kind ?? null),
+            }
+          })
+      ),
+    }
+  },
+})
+export const detail = query({
+  args: { organizationId: v.string(), id: v.id("calls") },
+  returns: callDetailValue,
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const row = await ownedCall(ctx, args.organizationId, args.id)
+    const events = await ctx.db
+      .query("callEvents")
+      .withIndex("by_callId", (q) => q.eq("callId", row._id))
+      .order("desc")
+      .take(100)
+    return {
+      ...(await payload(ctx, row)),
+      events: events.map((e) => ({
+        event: e.event,
+        at: e.at,
+        details: JSON.parse(e.details),
+      })),
+    }
+  },
+})
+export const audio = query({
+  args: { organizationId: v.string(), fileId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    return fileUrl(ctx, await audioFile(ctx, args.organizationId, args.fileId))
+  },
+})
+
+export const create = internalMutation({
+  args: {
+    organizationId: v.string(),
+    browserId: v.string(),
+    accountId: v.id("channelAccounts"),
+    ivrId: v.id("ivrs"),
+    contactId: v.optional(v.id("contacts")),
+  },
+  returns: schema.doc("calls"),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true)
+    const agent = await agentPresence(ctx, args.organizationId, args.browserId)
+    await requireAvailable(ctx, agent)
+    await ownIvr(ctx, args.organizationId, args.ivrId)
+    const account = await ctx.db.get("channelAccounts", args.accountId)
+    if (
+      !account ||
+      account.organizationId !== args.organizationId ||
+      account.channel !== "whatsapp" ||
+      account.status === "disconnected"
+    )
+      throw new ConvexError("Choose a connected team WhatsApp number")
+    if (args.contactId) {
+      const contact = await ctx.db.get("contacts", args.contactId)
+      if (!contact || contact.organizationId !== args.organizationId)
+        throw new ConvexError("Contact not found")
+    }
+    const id = await ctx.db.insert("calls", {
+      organizationId: args.organizationId,
+      accountId: args.accountId,
+      direction: "inbound",
+      status: "connected",
+      connectedAt: Date.now(),
+      mode: "gateway",
+      test: true,
+      testUserId: agent.userId,
+      testBrowserId: args.browserId,
+      assignedAgent: agent.userId,
+      agentLeaseId: agent.leaseId,
+      agentExtension: agent.extension,
+      ivrId: args.ivrId,
+      contactId: args.contactId,
+      observedAt: Date.now(),
+      offeredAt: Date.now(),
+    })
+    await ctx.scheduler.runAfter(330000, internal.calling.playground.ended, {
+      id,
+      at: Date.now() + 330000,
+      reason: "Test duration cap",
+    })
+    return (await ctx.db.get("calls", id))!
+  },
+})
+export const owned = internalQuery({
+  args: {
+    organizationId: v.string(),
+    browserId: v.string(),
+    id: v.id("calls"),
+  },
+  returns: schema.doc("calls"),
+  handler: async (ctx, args) => {
+    const agent = await agentPresence(ctx, args.organizationId, args.browserId)
+    const call = await ownedCall(ctx, args.organizationId, args.id)
+    if (
+      !call.test ||
+      call.testUserId !== agent.userId ||
+      call.testBrowserId !== args.browserId
+    )
+      throw new ConvexError("Test call belongs to another browser")
+    return call
+  },
+})

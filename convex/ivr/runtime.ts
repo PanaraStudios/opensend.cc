@@ -143,7 +143,7 @@ async function record(
     menuId: selected.kind === "submenu" ? selected.menuId : undefined,
     ...(final ? { finalAction: selected } : {}),
   })
-  if (final)
+  if (final && !call.test)
     await emitEvent(ctx, call.organizationId, "whatsapp.call.ivr_completed", {
       id: call._id,
       account_id: call.accountId,

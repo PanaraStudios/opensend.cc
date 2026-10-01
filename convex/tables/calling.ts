@@ -48,6 +48,9 @@ export const callingTables = {
   calls: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
+    test: v.optional(v.boolean()),
+    testBrowserId: v.optional(v.string()),
+    testUserId: v.optional(v.string()),
     wacid: v.optional(v.string()),
     direction: v.union(v.literal("inbound"), v.literal("outbound")),
     status: callStatus,

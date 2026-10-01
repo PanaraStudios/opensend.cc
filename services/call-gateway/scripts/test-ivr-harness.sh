@@ -12,6 +12,7 @@
   set -e
   c build drachtio janus freeswitch call-gateway meta-peer
   c up -d drachtio janus freeswitch call-gateway
+  c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts playground
   c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts ivr-engine
   c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts voice
   c run --rm --no-deps --use-aliases meta-peer

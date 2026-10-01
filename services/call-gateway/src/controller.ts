@@ -17,6 +17,7 @@ import { JanusSession, type JanusEvent } from "./janus.js"
 import { gatewaySdp, metaSdp, validateIceRuntime } from "./sdp.js"
 
 interface Call {
+  browserExtension?: string
   machine: CallStateMachine
   id: string
   extension: string
@@ -326,6 +327,35 @@ export class CallController implements GatewayApi {
       throw error
     }
   }
+  /** Browser plays the caller; the anchored leg uses the production IVR/bot runner. */
+  async playground(request: { callId: string; extension: string }) {
+    if (!/^20\d{2}$/.test(request.extension))
+      throw new GatewayError("INVALID_EXTENSION", "Invalid browser extension")
+    const existing = this.calls.get(request.callId)
+    if (existing) {
+      if (existing.browserExtension !== request.extension)
+        throw new GatewayError("CALL_CONFLICT", "Browser call differs", 409)
+      await existing.setup
+      return
+    }
+    const call = this.allocate(request.callId, "inbound")
+    call.browserExtension = request.extension
+    call.uuid = randomUUID()
+    call.setup = (async () => {
+      try {
+        await this.fs.bgapi(
+          `originate {origination_uuid=${call.uuid},opensend_call_id=${call.id},media_webrtc=true,absolute_codec_string=OPUS@48000h@20i,originate_timeout=10}user/${request.extension}@${this.options.fsHost} &park()`
+        )
+        await this.parked(call)
+        this.notify(call, { event: "media_up" })
+        return { offerSdp: "" }
+      } catch (error) {
+        await this.finish(call, "Browser call setup failed")
+        throw error
+      }
+    })()
+    await call.setup
+  }
   async remoteAnswer(callId: string, sdp: string) {
     const call = this.get(callId)
     if (call.direction !== "outbound")
@@ -362,15 +392,28 @@ export class CallController implements GatewayApi {
     }
   }
   private async parked(call: Call) {
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < (call.browserExtension ? 220 : 100); i++) {
       if (call.ending)
         throw new GatewayError("CALL_ENDED", "Call ended during setup", 409)
-      if (
-        call.uuid &&
-        (await this.fs.api(`uuid_getvar ${call.uuid} current_application`)) ===
-          "park"
-      )
-        return
+      if (call.uuid) {
+        try {
+          if (
+            (await this.fs.api(
+              `uuid_getvar ${call.uuid} current_application`
+            )) === "park"
+          )
+            return
+        } catch (error) {
+          // bgapi acknowledges before the browser's channel is created.
+          if (
+            !call.browserExtension ||
+            !(error instanceof GatewayError) ||
+            error.code !== "ESL_ERROR" ||
+            !error.message.includes("No such channel")
+          )
+            throw error
+        }
+      }
       await delay(50)
     }
     throw new GatewayError(
@@ -447,12 +490,13 @@ export class CallController implements GatewayApi {
         )
       }
       // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.
-      await Promise.all([
-        call.janus.waitFor(
-          (event) => event.plugindata?.data.result?.event === "media_gate"
-        ),
-        call.janus.message({ request: "opensend_media", enabled: true }),
-      ])
+      if (!call.browserExtension)
+        await Promise.all([
+          call.janus.waitFor(
+            (event) => event.plugindata?.data.result?.event === "media_gate"
+          ),
+          call.janus.message({ request: "opensend_media", enabled: true }),
+        ])
       await call.machine.transition(
         request.target === "queue" ? "agent" : request.target,
         async () => {

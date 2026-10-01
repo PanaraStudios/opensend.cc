@@ -62,6 +62,8 @@ import type * as calling_gatewayHttp from "../calling/gatewayHttp.js";
 import type * as calling_gatewayState from "../calling/gatewayState.js";
 import type * as calling_media from "../calling/media.js";
 import type * as calling_mediaState from "../calling/mediaState.js";
+import type * as calling_playground from "../calling/playground.js";
+import type * as calling_playgroundState from "../calling/playgroundState.js";
 import type * as calling_projection from "../calling/projection.js";
 import type * as calling_rows from "../calling/rows.js";
 import type * as calling_settings from "../calling/settings.js";
@@ -287,6 +289,8 @@ declare const fullApi: ApiFromModules<{
   "calling/gatewayState": typeof calling_gatewayState;
   "calling/media": typeof calling_media;
   "calling/mediaState": typeof calling_mediaState;
+  "calling/playground": typeof calling_playground;
+  "calling/playgroundState": typeof calling_playgroundState;
   "calling/projection": typeof calling_projection;
   "calling/rows": typeof calling_rows;
   "calling/settings": typeof calling_settings;
