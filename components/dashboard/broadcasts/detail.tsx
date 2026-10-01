@@ -65,6 +65,7 @@ import {
 } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainByName } from "@/lib/domains/use-domains"
 import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
+import { useWorkspace } from "@/components/auth/workspace"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
@@ -370,7 +371,10 @@ export function BroadcastDetail() {
                   <CopyIcon />
                   Duplicate
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={cloneAsTemplate}>
+                <DropdownMenuItem
+                  disabled={broadcast.channel === "whatsapp"}
+                  onClick={cloneAsTemplate}
+                >
                   <LayoutTemplateIcon />
                   Clone as template
                 </DropdownMenuItem>
@@ -387,7 +391,11 @@ export function BroadcastDetail() {
         }
       />
 
-      <BroadcastReport item={broadcast} />
+      {broadcast.channel === "whatsapp" ? (
+        <WhatsAppBroadcastReport item={broadcast} />
+      ) : (
+        <BroadcastReport item={broadcast} />
+      )}
 
       <RenameBroadcastDialog
         open={renameOpen}
@@ -416,5 +424,73 @@ export function BroadcastDetail() {
         }}
       />
     </>
+  )
+}
+
+function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
+  const { activeTeamId } = useWorkspace()
+  const { results, ...page } = usePaginatedQuery(
+    api.broadcastWhatsApp.recipients,
+    activeTeamId
+      ? { organizationId: activeTeamId, id: item.id as Id<"broadcasts"> }
+      : "skip",
+    { initialNumItems: 20 }
+  )
+  const { pageRows, pagination } = useLoadedPagination(results, page)
+  const stats = item.whatsappStats
+  return (
+    <div className="flex flex-col gap-6" data-testid="whatsapp-broadcast-stats">
+      {item.status === "queued" ? (
+        <Alert>
+          <AlertDescription>
+            Metrics update as messages are delivered.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      <ResourceTable
+        headers={
+          <>
+            <Th>Event</Th>
+            <Th>Count</Th>
+          </>
+        }
+      >
+        {(["sent", "delivered", "read", "failed", "skipped"] as const).map(
+          (key) => (
+            <TableRow key={key} data-testid={`whatsapp-stat-${key}`}>
+              <TableCell>
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+              </TableCell>
+              <TableCell>{stats?.[key].toLocaleString() ?? "0"}</TableCell>
+            </TableRow>
+          )
+        )}
+      </ResourceTable>
+      <ResourceTable
+        headers={
+          <>
+            <Th>Recipient</Th>
+            <Th>Outcome</Th>
+          </>
+        }
+      >
+        {pageRows.map((recipient) => (
+          <TableRow key={recipient._id}>
+            <TableCell>
+              {recipient.phone || recipient.email || recipient.contactId}
+            </TableCell>
+            <TableCell>
+              {recipient.skipReason ??
+                (recipient.failed
+                  ? "failed"
+                  : recipient.settled
+                    ? "settled"
+                    : "sending")}
+            </TableCell>
+          </TableRow>
+        ))}
+      </ResourceTable>
+      <ListPagination {...pagination} noun="recipient" />
+    </div>
   )
 }

@@ -4,6 +4,7 @@ import * as React from "react"
 import { useParams, useRouter } from "next/navigation"
 import { MegaphoneIcon } from "lucide-react"
 
+import { WhatsAppBroadcastEditor } from "@/components/dashboard/broadcasts/whatsapp-editor"
 import { BroadcastStatusBadge } from "@/components/dashboard/primitives"
 import { BroadcastSendFields } from "@/components/dashboard/broadcasts/editor/header-form"
 import { ReviewPopover } from "@/components/dashboard/broadcasts/editor/review"
@@ -12,7 +13,10 @@ import {
   EmailEditorScreen,
 } from "@/components/dashboard/broadcasts/editor/screen"
 import { isBroadcastDraftLike } from "@/lib/dashboard/broadcast"
-import { useBroadcast, useBroadcastSaver } from "@/lib/broadcasts/use-broadcasts"
+import {
+  useBroadcast,
+  useBroadcastSaver,
+} from "@/lib/broadcasts/use-broadcasts"
 import type { Broadcast } from "@/lib/dashboard/types"
 
 export function BroadcastEditor() {
@@ -40,7 +44,11 @@ export function BroadcastEditor() {
   }
   if (report) return null
 
-  return <BroadcastScreen key={item.id} item={item} />
+  return item.channel === "whatsapp" ? (
+    <WhatsAppBroadcastEditor key={item.id} item={item} />
+  ) : (
+    <BroadcastScreen key={item.id} item={item} />
+  )
 }
 
 function BroadcastScreen({ item }: { item: Broadcast }) {

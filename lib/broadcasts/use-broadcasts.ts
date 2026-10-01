@@ -12,7 +12,8 @@ import { useTeamList } from "@/components/dashboard/primitives"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { emptyBroadcastStats } from "@/lib/dashboard/broadcast"
 export type BroadcastPatch = Partial<
-  Omit<EmailDraft, "id"> & Pick<Broadcast, "segmentId" | "topicId">
+  Omit<EmailDraft, "id"> &
+    Pick<Broadcast, "segmentId" | "topicId" | "channel" | "whatsapp">
 >
 export function asBroadcast(
   row: Doc<"broadcasts">,
@@ -21,6 +22,8 @@ export function asBroadcast(
   return {
     id: row._id,
     name: row.name,
+    channel: row.channel,
+    whatsapp: row.whatsapp,
     subject: row.subject,
     preview: row.preview,
     html: body?.html ?? "",
@@ -38,9 +41,19 @@ export function asBroadcast(
   }
 }
 function wire(patch: BroadcastPatch) {
-  const { content, from, replyTo, segmentId, topicId, ...rest } = patch
+  const { content, from, replyTo, segmentId, topicId, whatsapp, ...rest } =
+    patch
   return {
     ...rest,
+    ...(whatsapp
+      ? {
+          whatsapp: {
+            ...whatsapp,
+            accountId: whatsapp.accountId as Id<"channelAccounts">,
+            templateId: whatsapp.templateId as Id<"templates">,
+          },
+        }
+      : {}),
     ...("content" in patch ? { content: content ?? null } : {}),
     ...("from" in patch ? { from: from ?? "" } : {}),
     ...("replyTo" in patch ? { replyTo: replyTo ?? "" } : {}),
@@ -59,6 +72,11 @@ export function useBroadcast(id: string) {
     { id: result ? result.row._id : (id as Id<"broadcasts">) },
     { enabled: !!result }
   )
+  const whatsappStats = useTeamQuery(
+    api.broadcastMetrics.whatsappStats,
+    { id: id as Id<"broadcasts"> },
+    { enabled: result?.row.channel === "whatsapp" }
+  )
   return React.useMemo(
     () =>
       result === undefined
@@ -68,8 +86,9 @@ export function useBroadcast(id: string) {
           : {
               ...asBroadcast(result.row, result.body),
               stats: stats ?? emptyBroadcastStats(),
+              whatsappStats,
             },
-    [result, stats]
+    [result, stats, whatsappStats]
   )
 }
 export function useBroadcastCommands() {
