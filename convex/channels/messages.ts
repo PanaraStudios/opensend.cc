@@ -231,7 +231,9 @@ export async function createChannelMessage(
   const preview = (
     payload.type === "text"
       ? string(data.body)
-      : string(data.caption) || `[${payload.type}]`
+      : payload.type === "template"
+        ? `[template: ${string(data.name)}]`
+        : string(data.caption) || `[${payload.type}]`
   ).slice(0, 1000)
   const { channelContactId, conversationId } = await upsertWhatsAppThread(
     ctx,
