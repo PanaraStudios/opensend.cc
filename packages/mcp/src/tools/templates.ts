@@ -1,3 +1,4 @@
+import { rowChannel } from "@opensendcc/sdk"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type {
   CreateTemplateOptions,
@@ -313,7 +314,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
           },
           ...templates.map((template) => ({
             type: "text" as const,
-            text: `Name: ${template.name}\nChannel: ${template.channel ?? "email"}\nStatus: ${template.status}${template.whatsapp ? `\nMeta status: ${template.whatsapp.status ?? "not submitted"}` : ""}\nAlias: ${template.alias ?? "none"}\nID: ${template.id}\nCreated at: ${template.created_at}`,
+            text: `Name: ${template.name}\nChannel: ${rowChannel(template)}\nStatus: ${template.status}${template.whatsapp ? `\nMeta status: ${template.whatsapp.status ?? "not submitted"}` : ""}\nAlias: ${template.alias ?? "none"}\nID: ${template.id}\nCreated at: ${template.created_at}`,
           })),
           ...(hasMore
             ? [
