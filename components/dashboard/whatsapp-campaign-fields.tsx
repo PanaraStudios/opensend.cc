@@ -4,17 +4,23 @@ import * as React from "react"
 import { CHANNELS, type MessagingChannel } from "@/lib/channels"
 import { api } from "@/convex/_generated/api"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { OptionSelect, SettingsCard } from "@/components/dashboard/primitives"
+import { OptionSelect } from "@/components/dashboard/primitives"
 import {
   Field,
   FieldGroup,
   FieldLabel,
   FieldDescription,
+  FieldSet,
+  FieldLegend,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
-import { formFromComponents, storedComponents } from "@/lib/meta/templates"
+import {
+  formFromComponents,
+  storedComponents,
+  renderedTemplateFromForm,
+} from "@/lib/meta/templates"
 import {
   CONTACT_VARIABLE_FIELDS,
   normalizeVariableSource,
@@ -277,16 +283,18 @@ export function WhatsAppCampaignFields({
             />
           ))}
           {selected && channel === "whatsapp" ? (
-            <SettingsCard title="Preview" description="Sample contact values">
+            <FieldSet>
+              <FieldLegend variant="label">Preview</FieldLegend>
+              <FieldDescription>Sample contact values</FieldDescription>
               <div data-testid="whatsapp-campaign-preview">
                 <WhatsAppTemplatePreview
-                  form={{
+                  rendered={renderedTemplateFromForm({
                     ...formFromComponents(components).form,
                     examples: values,
-                  }}
+                  })}
                 />
               </div>
-            </SettingsCard>
+            </FieldSet>
           ) : null}
         </>
       )}

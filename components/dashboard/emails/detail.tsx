@@ -77,6 +77,7 @@ import {
   useEmailEvents,
 } from "@/lib/emails/use-emails"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
+import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 import { useChannelMessage } from "@/lib/messages/use-messages"
 import { channelIcon } from "@/components/dashboard/channels/shared"
@@ -569,6 +570,9 @@ export function ChannelMessageDetail() {
       />
       {found.media.length ? (
         <MessageFiles messageId={message._id} media={found.media} />
+      ) : null}
+      {found.rendered ? (
+        <WhatsAppTemplatePreview rendered={found.rendered} />
       ) : null}
       <JsonSection title="Payload" value={payload} />
     </div>

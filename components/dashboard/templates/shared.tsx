@@ -33,7 +33,11 @@ import {
   templatePublishLabel,
 } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
-import { formFromComponents, storedComponents } from "@/lib/meta/templates"
+import {
+  formFromComponents,
+  storedComponents,
+  renderedTemplateFromForm,
+} from "@/lib/meta/templates"
 import { useTemplateCommands } from "@/lib/templates/use-templates"
 
 /* The email itself, drawn small: a 600px sheet at half size, cut off by the
@@ -50,7 +54,9 @@ export function TemplateThumbnail({
         className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted p-4"
       >
         <WhatsAppTemplatePreview
-          form={formFromComponents(storedComponents(item.components)).form}
+          rendered={renderedTemplateFromForm(
+            formFromComponents(storedComponents(item.components)).form
+          )}
         />
       </div>
     )

@@ -21,6 +21,7 @@ import {
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -429,7 +430,7 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
         {message.subject ? (
           <MessageHeader>{message.subject}</MessageHeader>
         ) : null}
-        {message.text ? (
+        {message.rendered || message.text ? (
           <Bubble
             align={outbound ? "end" : "start"}
             variant={
@@ -437,7 +438,11 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
             }
           >
             <BubbleContent className="whitespace-pre-wrap">
-              {message.text}
+              {message.rendered ? (
+                <WhatsAppTemplatePreview rendered={message.rendered} embedded />
+              ) : (
+                message.text
+              )}
             </BubbleContent>
           </Bubble>
         ) : null}

@@ -180,9 +180,31 @@ export function inboxTests(
     await expect(
       owner
         .getByTestId("thread-message")
-        .filter({ hasText: `[template: ${TEMPLATE}]` })
+        .filter({ hasText: "Hi Pablo, your order is ready." })
         .getByTestId("message-status")
     ).toHaveText("Sent", { timeout: 45_000 })
+    const templateBubble = owner
+      .getByTestId("thread-message")
+      .filter({ hasText: "Hi Pablo, your order is ready." })
+    await expect(templateBubble.getByTestId("whatsapp-preview")).toContainText(
+      "Hi Pablo, your order is ready."
+    )
+    await expect(row).toContainText("Hi Pablo, your order is ready.")
+    await expect(row).not.toContainText("[template:")
+    // The shared view occupies the existing bubble, with no nested card.
+    await expect(templateBubble.locator('[data-slot="bubble"]')).toHaveCount(1)
+    await shots(owner, "template-sent")
+    const templateMessage = backendRows<Doc<"channelMessages">>(
+      "channelMessages"
+    ).find(
+      (message) =>
+        message.conversationId === conversationId && message.type === "template"
+    )!
+    await owner.goto(`/emails/${templateMessage._id}`)
+    await expect(owner.getByTestId("whatsapp-preview")).toContainText(
+      "Hi Pablo, your order is ready."
+    )
+    await shots(owner, "template-detail")
     expect((await sends(owner)).at(-1)?.body).toMatchObject({
       to: CUSTOMER,
       type: "template",

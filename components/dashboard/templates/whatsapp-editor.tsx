@@ -54,6 +54,7 @@ import {
   buttonLabel,
   componentsFromForm,
   formFromComponents,
+  renderedTemplateFromForm,
   formParameterFormat,
   storedComponents,
   templateCategoryLabel,
@@ -590,7 +591,7 @@ export function WhatsAppTemplateEditorScreen({
           className="hidden w-96 shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-muted/40 p-6 lg:flex"
         >
           <h2 className="text-sm font-medium text-muted-foreground">Preview</h2>
-          <WhatsAppTemplatePreview form={form} />
+          <WhatsAppTemplatePreview rendered={renderedTemplateFromForm(form)} />
         </aside>
       </div>
     </div>
