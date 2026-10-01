@@ -28,13 +28,6 @@ import type { DataModel } from "./dataModel.js";
  * `convex.config.ts`.
  */
 type Env = {
-  readonly OBJECT_STORAGE_ENDPOINT: string | undefined;
-  readonly OBJECT_STORAGE_REGION: string | undefined;
-  readonly OBJECT_STORAGE_BUCKET: string | undefined;
-  readonly OBJECT_STORAGE_ACCESS_KEY_ID: string | undefined;
-  readonly OBJECT_STORAGE_SECRET_ACCESS_KEY: string | undefined;
-  readonly OBJECT_STORAGE_PUBLIC_BASE_URL: string | undefined;
-
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly ALLOW_LOCAL_OIDC: string | undefined;

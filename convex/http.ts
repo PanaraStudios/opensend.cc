@@ -1,5 +1,4 @@
 import { registerCallingGatewayRoutes } from "./calling/gatewayHttp"
-import { registerStoredFileRoutes } from "./storage/downloads"
 import { registerEmailShareRoutes } from "./api/emailShares"
 import { registerReceivedDownloadRoutes } from "./receivedDownloads"
 import { registerBroadcastRoutes } from "./api/broadcasts"
@@ -18,7 +17,6 @@ import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
    parallel without editing the same lines here. */
 const http = httpRouter()
 registerCallingGatewayRoutes(http)
-registerStoredFileRoutes(http)
 registerTrackingRoutes(http)
 registerSmtpRoutes(http)
 registerSesRoutes(http)

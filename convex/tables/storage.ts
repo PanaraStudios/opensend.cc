@@ -17,6 +17,7 @@ export const uploadInput = v.object({
   from: v.optional(v.string()),
 })
 export const storageTables = {
+  // Legacy object-provider migration documents remain valid; the runner is unused.
   storageMigrations: defineTable({
     leaseUntil: v.optional(v.number()),
     table: v.number(),
@@ -35,6 +36,7 @@ export const storageTables = {
   }).index("by_organizationId", ["organizationId"]),
   storedFiles: defineTable({
     organizationId: v.string(),
+    // "object", key, pendingKey and sourceStorageId are legacy-only schema compatibility.
     provider: v.union(v.literal("convex"), v.literal("object")),
     key: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
@@ -57,6 +59,7 @@ export const storageTables = {
     pendingKey: v.optional(v.string()),
   })
     .index("by_sourceStorageId", ["sourceStorageId"])
+    .index("by_storageId", ["storageId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_state_and_expiresAt", ["state", "expiresAt"]),
 }

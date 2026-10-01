@@ -7,9 +7,8 @@ import schema from "../schema"
 import { requireTeam, requireInstallationAdmin } from "../access"
 import { callerValue, requireCaller, invalid, type Caller } from "../api/caller"
 import { retirement } from "../teamLifecycle"
-import { objectStorageConfig } from "./config"
 import { fileReference, uploadInput } from "../tables/storage"
-import { objectKey, UPLOAD_TTL, validateUpload } from "../../lib/storage/policy"
+import { UPLOAD_TTL, validateUpload } from "../../lib/storage/policy"
 import { resolveChannelAccount } from "../channels/messages"
 import { findMetaApp } from "../meta/app"
 
@@ -37,9 +36,8 @@ export const createUpload = internalMutation({
   returns: schema.doc("storedFiles"),
   handler: async (ctx, { organizationId, caller, input }) => {
     await authorize(ctx, organizationId, caller)
-    const object = !!objectStorageConfig()
     try {
-      validateUpload(input, object)
+      validateUpload(input)
     } catch (e) {
       throw invalid((e as Error).message)
     }
@@ -55,14 +53,9 @@ export const createUpload = internalMutation({
           )
         : null
     if (input.use === "asset") await requireTeam(ctx, organizationId, "admin")
-    const key = object
-      ? objectKey(organizationId, input.use, crypto.randomUUID())
-      : undefined
     const id = await ctx.db.insert("storedFiles", {
       organizationId,
-      provider: object ? "object" : "convex",
-      key,
-      pendingKey: key ? `${key}-pending` : undefined,
+      provider: "convex",
       size: input.size,
       contentType: input.contentType,
       filename: input.filename,
@@ -159,42 +152,35 @@ export const beginComplete = internalMutation({
       row.state === "deleting"
     )
       throw invalid("File not found")
-    if (row.state === "ready") return row
+    if (row.state === "ready") {
+      if (args.storageId && args.storageId !== row.storageId)
+        throw invalid("Unexpected file")
+      return row
+    }
     if (!row.expiresAt || row.expiresAt <= Date.now())
       throw invalid("Upload expired")
     if (row.state === "completing")
       throw invalid("Upload completion is already in progress")
+    const storageId = row.storageId ?? args.storageId
     if (
-      args.storageId &&
-      (row.provider !== "convex" || row.storageId !== args.storageId)
+      !storageId ||
+      (row.storageId && args.storageId && row.storageId !== args.storageId)
     )
-      throw invalid("Unexpected local file")
+      throw invalid("Provide storage_id from the Convex upload response")
+    const metadata = await ctx.db.system.get("_storage", storageId)
+    if (!metadata || metadata._creationTime < row._creationTime)
+      throw invalid("Uploaded file is missing or predates this upload")
+    const claimed = await ctx.db
+      .query("storedFiles")
+      .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+      .first()
+    if (claimed && claimed._id !== row._id)
+      throw invalid("File is already claimed")
     await ctx.db.patch("storedFiles", row._id, {
       state: "completing",
-      ...(args.storageId ? { storageId: args.storageId } : {}),
+      storageId,
     })
     return (await ctx.db.get("storedFiles", row._id))!
-  },
-})
-export const localStored = internalMutation({
-  args: { id: v.id("storedFiles"), storageId: v.id("_storage") },
-  returns: v.null(),
-  handler: async (ctx, { id, storageId }) => {
-    const row = await ctx.db.get("storedFiles", id)
-    if (
-      !row ||
-      row.provider !== "convex" ||
-      row.state !== "pending" ||
-      row.storageId ||
-      !row.expiresAt ||
-      row.expiresAt <= Date.now() ||
-      (await retirement(ctx, row.organizationId))
-    ) {
-      await ctx.storage.delete(storageId)
-      throw invalid("Upload is unavailable")
-    }
-    await ctx.db.patch("storedFiles", id, { storageId })
-    return null
   },
 })
 export const ready = internalMutation({
@@ -224,8 +210,6 @@ export const insert = internalMutation({
     organizationId: v.string(),
     feature: v.string(),
     accountId: v.optional(v.id("channelAccounts")),
-    provider: v.union(v.literal("object"), v.literal("convex")),
-    key: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
     size: v.number(),
     contentType: v.string(),
@@ -236,11 +220,15 @@ export const insert = internalMutation({
   handler: async (ctx, args) => {
     if (await retirement(ctx, args.organizationId))
       throw invalid("Team retired")
-    return ctx.db.insert("storedFiles", { ...args, state: "ready" })
+    return ctx.db.insert("storedFiles", {
+      ...args,
+      provider: "convex",
+      state: "ready",
+    })
   },
 })
 
-/** Mutations schedule durable deletion; actions await it directly. */
+/** File metadata and Convex bytes are deleted together in the mutation. */
 export async function deleteFile(
   ctx: MutationCtx,
   file: FileReference,
@@ -255,16 +243,8 @@ export async function deleteFile(
         })
         return
       }
-      await ctx.db.patch("storedFiles", row._id, {
-        state: "deleting",
-        expiresAt: Date.now(),
-      })
-      await ctx.scheduler.runAfter(0, internal.storage.objects.remove, {
-        id: row._id,
-        key: row.key,
-        pendingKey: row.pendingKey,
-        storageId: row.storageId,
-      })
+      if (row.storageId) await ctx.storage.delete(row.storageId)
+      await ctx.db.delete("storedFiles", row._id)
     }
   } else if (file.storageId) await ctx.storage.delete(file.storageId)
 }
@@ -329,16 +309,7 @@ export const settings = query({
   }),
   handler: async (ctx) => {
     await requireInstallationAdmin(ctx)
-    const config = objectStorageConfig()
-    return config
-      ? {
-          provider: "object",
-          bucket: config.bucket,
-          host: config.endpoint
-            ? new URL(config.endpoint).host
-            : `s3.${config.region}.amazonaws.com`,
-        }
-      : { provider: "convex" }
+    return { provider: "convex" }
   },
 })
 
@@ -362,3 +333,16 @@ export async function retainFile(
   })
   return row
 }
+
+/** The system table is the authority for direct-upload size and MIME type. */
+export const metadata = internalQuery({
+  args: { storageId: v.id("_storage") },
+  returns: v.union(
+    v.null(),
+    v.object({ size: v.number(), contentType: v.optional(v.string()) })
+  ),
+  handler: async (ctx, { storageId }) => {
+    const file = await ctx.db.system.get("_storage", storageId)
+    return file ? { size: file.size, contentType: file.contentType } : null
+  },
+})

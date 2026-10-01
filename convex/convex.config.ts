@@ -9,12 +9,6 @@ import migrations from "@convex-dev/migrations/convex.config.js"
 const app = defineApp({
   env: {
     SITE_URL: v.string(),
-    OBJECT_STORAGE_ENDPOINT: v.optional(v.string()),
-    OBJECT_STORAGE_REGION: v.optional(v.string()),
-    OBJECT_STORAGE_BUCKET: v.optional(v.string()),
-    OBJECT_STORAGE_ACCESS_KEY_ID: v.optional(v.string()),
-    OBJECT_STORAGE_SECRET_ACCESS_KEY: v.optional(v.string()),
-    OBJECT_STORAGE_PUBLIC_BASE_URL: v.optional(v.string()),
 
     SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),

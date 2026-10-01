@@ -5,14 +5,14 @@ import { client } from "./ses-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
 import { connectWhatsApp, PHONE_ID, WABA } from "./meta-fixtures"
 
-export function objectStorageTests(
+export function fileStorageTests(
   state: () => { owner: Page; organizationId: string }
 ) {
-  test("dashboard and REST transfer bucket media, including a document over 20 MB", async () => {
+  test("dashboard and REST transfer Convex media, including a document over 20 MB", async () => {
     const { owner, organizationId } = state()
     const backend = await client(owner)
     await connectWhatsApp(owner, organizationId)
-    const name = "Object Storage Customer",
+    const name = "File Storage Customer",
       customer = "16505559991"
     const body = JSON.stringify({
       object: "whatsapp_business_account",
@@ -27,7 +27,7 @@ export function objectStorageTests(
                 contacts: [{ wa_id: customer, profile: { name } }],
                 messages: [
                   {
-                    id: "wamid.object-storage",
+                    id: "wamid.file-storage",
                     from: customer,
                     timestamp: String(Math.floor(Date.now() / 1000)),
                     type: "text",
@@ -59,7 +59,7 @@ export function objectStorageTests(
     await owner.request.post(`${process.env.OPENSEND_FAKE_GRAPH_URL}/__reset`)
     for (const file of [
       {
-        name: "bucket-image.png",
+        name: "convex-image.png",
         mimeType: "image/png",
         buffer: Buffer.from([137, 80, 78, 71]),
       },
@@ -71,7 +71,7 @@ export function objectStorageTests(
     ]) {
       const requests: string[] = []
       const record = (request: import("@playwright/test").Request) => {
-        if (request.method() === "PUT") requests.push(request.url())
+        if (request.method() === "POST") requests.push(request.url())
       }
       owner.on("request", record)
       await owner.getByLabel("Attach file", { exact: true }).setInputFiles(file)
@@ -79,7 +79,11 @@ export function objectStorageTests(
         owner.getByRole("button", { name: `Remove ${file.name}` })
       ).toBeVisible({ timeout: 45_000 })
       owner.off("request", record)
-      expect(requests.some((url) => url.includes("X-Amz-Signature"))).toBe(true)
+      expect(
+        requests.some((url) =>
+          new URL(url).pathname.includes("/api/storage/upload")
+        )
+      ).toBe(true)
       await owner.getByLabel("Reply", { exact: true }).fill(file.name)
       await owner.getByRole("button", { name: "Send", exact: true }).click()
       const bubble = owner
@@ -90,7 +94,7 @@ export function objectStorageTests(
       })
       await expect(bubble.getByLabel(`Download ${file.name}`)).toBeVisible()
       await owner.screenshot({
-        path: `${process.env.OPENSEND_TEST_RESULTS}/object-storage-${file.name}.png`,
+        path: `${process.env.OPENSEND_TEST_RESULTS}/file-storage-${file.name}.png`,
         fullPage: true,
       })
     }
@@ -103,7 +107,7 @@ export function objectStorageTests(
           path: `/${PHONE_ID}/messages`,
           body: expect.objectContaining({
             image: expect.objectContaining({
-              link: expect.stringContaining("X-Amz-Signature"),
+              id: expect.stringMatching(/^meta-upload-/),
             }),
           }),
         }),
@@ -111,18 +115,8 @@ export function objectStorageTests(
           path: `/${PHONE_ID}/messages`,
           body: expect.objectContaining({
             document: expect.objectContaining({
-              link: expect.stringContaining("X-Amz-Signature"),
+              id: expect.stringMatching(/^meta-upload-/),
             }),
-          }),
-        }),
-      ])
-    )
-    expect(calls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          fetchedMedia: expect.objectContaining({
-            size: 21 * 1024 * 1024,
-            contentType: "application/pdf",
           }),
         }),
       ])
@@ -131,9 +125,9 @@ export function objectStorageTests(
       calls.filter(
         (call: { path: string }) => call.path === `/${PHONE_ID}/media`
       )
-    ).toHaveLength(0)
+    ).toHaveLength(2)
     // Exercise the CRM upload contract independently of dashboard actions.
-    const headers = await createApiKey(owner, "Object storage E2E")
+    const headers = await createApiKey(owner, "File storage E2E")
     const pending = await owner.request.post(
       `${process.env.OPENSEND_CALLBACK_ORIGIN}/media/uploads`,
       {
@@ -150,22 +144,18 @@ export function objectStorageTests(
     expect(pending.status()).toBe(200)
     const upload = await pending.json()
     const url = upload.upload_url.replace("host.docker.internal", "127.0.0.1")
-    expect(
-      (
-        await owner.request.put(url, {
-          data: Buffer.from([1, 2, 3]),
-          headers: {
-            "Content-Type": "image/png",
-            Host: new URL(upload.upload_url).host,
-          },
-        })
-      ).status()
-    ).toBe(200)
+    expect(upload.provider).toBe("convex")
+    const uploaded = await owner.request.post(url, {
+      data: Buffer.from([1, 2, 3]),
+      headers: { "Content-Type": "image/png" },
+    })
+    expect(uploaded.status()).toBe(200)
+    const { storageId } = await uploaded.json()
     expect(
       (
         await owner.request.post(
           `${process.env.OPENSEND_CALLBACK_ORIGIN}/media/uploads/${upload.id}/complete`,
-          { headers, data: {} }
+          { headers, data: { storage_id: storageId } }
         )
       ).status()
     ).toBe(200)
@@ -186,6 +176,8 @@ export function objectStorageTests(
       )
       .toBe("sent")
     await owner.goto("/instance/meta")
-    await expect(owner.getByText(/S3-compatible · opensend-e2e/)).toBeVisible()
+    await expect(
+      owner.getByText("Convex storage", { exact: true })
+    ).toBeVisible()
   })
 }

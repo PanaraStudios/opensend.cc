@@ -1,5 +1,4 @@
 import { withAssets, clearAsset } from "./storage/assets"
-import { objectStorageConfig } from "./storage/config"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -261,39 +260,33 @@ export const uploadAvatar = action({
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     await requireTeam(ctx, args.organizationId, "admin")
-    if (objectStorageConfig()) {
-      if (
-        !args.bytes.byteLength ||
-        args.bytes.byteLength > 1048576 ||
-        !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-          args.contentType
-        )
+    if (
+      !args.bytes.byteLength ||
+      args.bytes.byteLength > 1048576 ||
+      !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+        args.contentType
       )
-        throw new ConvexError("Upload an image up to 1 MB")
-      const storageId = await ctx.storage.store(
-        new Blob([args.bytes], { type: args.contentType })
-      )
-      const ref = await ctx.runAction(internal.storage.objects.adopt, {
-        organizationId: args.organizationId,
-        feature: "asset",
-        storageId,
-        contentType: args.contentType,
-      })
-      try {
-        await ctx.runMutation(api.storage.assets.set, {
-          organizationId: args.organizationId,
-          fileId: ref.fileId!,
-        })
-      } catch (e) {
-        await ctx.runMutation(internal.storage.files.discard, ref)
-        throw e
-      }
-      return null
-    }
-    return ctx.runAction(components.betterAuth.teams.uploadAvatar, {
-      ...args,
-      sessionId: await sessionId(ctx),
+    )
+      throw new ConvexError("Upload an image up to 1 MB")
+    const storageId = await ctx.storage.store(
+      new Blob([args.bytes], { type: args.contentType })
+    )
+    const ref = await ctx.runAction(internal.storage.objects.adopt, {
+      organizationId: args.organizationId,
+      feature: "asset",
+      storageId,
+      contentType: args.contentType,
     })
+    try {
+      await ctx.runMutation(api.storage.assets.set, {
+        organizationId: args.organizationId,
+        fileId: ref.fileId!,
+      })
+    } catch (e) {
+      await ctx.runMutation(internal.storage.files.discard, ref)
+      throw e
+    }
+    return null
   },
 })
 export const removeAvatar = mutation({

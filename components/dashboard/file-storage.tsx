@@ -6,14 +6,13 @@ import { DetailField, SettingsCard } from "./primitives"
 export function FileStorageSettings() {
   const storage = useQuery(api.storage.files.settings)
   return (
-    <SettingsCard title="File storage">
+    <SettingsCard
+      title="File storage"
+      description="Files use the Convex backend’s configured storage: local disk or its built-in S3-compatible backend."
+    >
       <dl>
         <DetailField label="Provider">
-          {!storage
-            ? "Loading…"
-            : storage.provider === "object"
-              ? `S3-compatible · ${storage.bucket} · ${storage.host}`
-              : "Local (Convex)"}
+          {storage ? "Convex storage" : "Loading…"}
         </DetailField>
       </dl>
     </SettingsCard>

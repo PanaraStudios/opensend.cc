@@ -1,3 +1,4 @@
+import { readFile } from "../storage/urls"
 import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
@@ -154,18 +155,7 @@ async function inlineHtml(
     if (!result.includes(cid)) continue
     // Leave room for metadata and JSON below Convex's 20 MiB HTTP limit.
     if (file.size > 6 * 1024 * 1024) return { html, html_format: "cid" }
-    const url = file.fileId
-      ? await ctx.runAction(internal.storage.objects.url, {
-          fileId: file.fileId,
-        })
-      : null
-    const blob = file.fileId
-      ? url
-        ? await (await fetch(url)).blob()
-        : null
-      : file.storageId
-        ? await ctx.storage.get(file.storageId)
-        : null
+    const blob = await readFile(ctx, file)
     if (!blob) continue
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ""

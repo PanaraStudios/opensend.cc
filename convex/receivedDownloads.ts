@@ -18,22 +18,6 @@ export async function downloadLink(
   attachmentId?: string,
   outbound = false
 ) {
-  const ref = await ctx.runQuery(internal.receivedDownloads.file, {
-    emailId,
-    attachmentId,
-    outbound,
-  })
-  const stored = ref?.fileId
-    ? await ctx.runQuery(internal.storage.files.get, { id: ref.fileId })
-    : null
-  if (stored?.provider === "object" && ref) {
-    const url = await fileUrl(ctx, ref, { filename: ref.filename })
-    if (url)
-      return {
-        download_url: url,
-        expires_at: new Date(Date.now() + 600_000).toISOString(),
-      }
-  }
   return signedFileLink(
     ctx,
     outbound ? SENT_PREFIX : PREFIX,
@@ -142,7 +126,11 @@ export const download = httpAction(async (ctx, request) => {
   const stored = file.fileId
     ? await ctx.runQuery(internal.storage.files.get, { id: file.fileId })
     : null
-  if (stored?.provider === "object") {
+  const storageId = stored?.storageId ?? file.storageId
+  const metadata = storageId
+    ? await ctx.runQuery(internal.storage.files.metadata, { storageId })
+    : null
+  if (metadata && metadata.size > 20 * 1024 * 1024) {
     const url = await fileUrl(ctx, file, { filename: file.filename })
     if (url)
       return new Response(null, {
@@ -150,8 +138,6 @@ export const download = httpAction(async (ctx, request) => {
         headers: { Location: url, "Cache-Control": "no-store" },
       })
   }
-  const storageId =
-    stored?.provider === "convex" ? stored.storageId : file.storageId
   const blob = storageId ? await ctx.storage.get(storageId) : null
   if (!blob) return new Response(null, { status: 404 })
   // Proxy the file: redirecting would disclose a permanent Convex storage URL.

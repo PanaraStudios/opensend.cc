@@ -1,6 +1,7 @@
 import { whatsappMediaLimit } from "../meta/media"
 
-export const LOCAL_UPLOAD_LIMIT = 20 * 1024 * 1024
+/** Application limit for the existing HTTP multipart route, not file storage. */
+export const HTTP_MULTIPART_LIMIT = 20 * 1024 * 1024
 export const UPLOAD_TTL = 15 * 60_000
 export const STORAGE_USES = [
   "whatsapp",
@@ -13,29 +14,12 @@ export type StorageUse = (typeof STORAGE_USES)[number]
 export const normalizeContentType = (value: string) =>
   value.trim().toLowerCase()
 
-/** All segments come from server identities/enums, never filenames or paths. */
-export function objectKey(
-  team: string,
-  feature: string,
-  id: string,
-  now = Date.now()
-) {
-  for (const segment of [team, feature, id])
-    if (!/^[a-zA-Z0-9_-]+$/.test(segment))
-      throw new Error("Invalid storage key segment")
-  const date = new Date(now)
-  return `teams/${team}/${feature}/${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, "0")}/${id}`
-}
-
-export function validateUpload(
-  input: {
-    use: StorageUse
-    contentType: string
-    size: number
-    animated?: boolean
-  },
-  object: boolean
-) {
+export function validateUpload(input: {
+  use: StorageUse
+  contentType: string
+  size: number
+  animated?: boolean
+}) {
   const { use, contentType, size } = input
   if (!contentType || contentType.length > 256 || /[\r\n]/.test(contentType))
     throw new Error("Invalid content type")
@@ -44,7 +28,7 @@ export function validateUpload(
       ? whatsappMediaLimit(contentType, input.animated)
       : use === "email"
         ? 30 * 1024 * 1024
-        : LOCAL_UPLOAD_LIMIT
+        : 1024 * 1024
   if (use === "template") {
     if (
       !["image/jpeg", "image/png", "video/mp4", "application/pdf"].includes(
@@ -72,13 +56,8 @@ export function validateUpload(
       throw new Error("Upload a PNG, JPEG, WebP or GIF")
     limit = 1024 * 1024
   }
-  if (!object) limit = Math.min(limit, LOCAL_UPLOAD_LIMIT)
   if (!Number.isSafeInteger(size) || size < 1 || size > limit)
-    throw new Error(
-      !object && size > LOCAL_UPLOAD_LIMIT
-        ? "Local (Convex) uploads are limited to 20 MB. Configure S3-compatible storage for larger files."
-        : `File must contain 1 to ${limit} bytes for this use`
-    )
+    throw new Error(`File must contain 1 to ${limit} bytes for this use`)
 }
 
 export function verifyUpload(
