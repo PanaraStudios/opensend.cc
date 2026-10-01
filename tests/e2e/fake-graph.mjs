@@ -69,6 +69,17 @@ const listTemplates = (wabaId) => [
   SYNCED_TEMPLATE,
 ]
 
+export const FACEBOOK_PAGE = {
+  id: "555000100",
+  name: "Opensend Messenger E2E",
+  access_token: "EAAPageE2EToken0123456789abcdef",
+  instagram_business_account: {
+    id: "178414000001",
+    username: "opensend_ig_e2e",
+    name: "Opensend Instagram E2E",
+  },
+}
+
 /** The app ID in an app access token, `Bearer {app-id}|{secret}`. */
 const appIdOf = (authorization = "") =>
   /^Bearer (\d+)\|/.exec(authorization)?.[1]
@@ -78,12 +89,20 @@ export const ROUTES = [
   {
     method: "POST",
     path: /^\/\d+\/messages$/,
-    respond: () => ({
-      body: {
-        messaging_product: "whatsapp",
-        messages: [{ id: `wamid.${++messageSequence}` }],
-      },
-    }),
+    respond: (_, call) =>
+      call.body?.recipient
+        ? {
+            body: {
+              recipient_id: call.body.recipient.id,
+              message_id: `mid.${++messageSequence}`,
+            },
+          }
+        : {
+            body: {
+              messaging_product: "whatsapp",
+              messages: [{ id: `wamid.${++messageSequence}` }],
+            },
+          },
   },
   {
     method: "POST",
@@ -101,6 +120,11 @@ export const ROUTES = [
       },
     }),
   },
+  {
+    method: "GET",
+    path: /^\/me\/accounts$/,
+    respond: () => ({ body: { data: [FACEBOOK_PAGE] } }),
+  },
   // Token checks: every token is a valid WhatsApp token for the caller's
   // app, not limited to particular WABAs.
   {
@@ -115,6 +139,11 @@ export const ROUTES = [
             "whatsapp_business_management",
             "whatsapp_business_messaging",
             "business_management",
+            "pages_messaging",
+            "pages_manage_metadata",
+            "pages_show_list",
+            "instagram_basic",
+            "instagram_manage_messages",
           ],
         },
       },
@@ -248,8 +277,16 @@ export const ROUTES = [
   {
     method: "GET",
     path: /^\/(\d+)$/,
-    respond: ([, id]) => ({
-      body: numbers.has(id) ? phoneNumber(id) : { id, name: "Opensend E2E" },
+    respond: ([, id], call) => ({
+      body: numbers.has(id)
+        ? phoneNumber(id)
+        : id === FACEBOOK_PAGE.id
+          ? FACEBOOK_PAGE
+          : call.query.fields === "first_name,last_name"
+            ? { id, first_name: "Ada", last_name: "E2E" }
+            : call.query.fields === "name,username"
+              ? { id, name: "Grace E2E", username: "grace_e2e" }
+              : { id, name: "Opensend E2E" },
     }),
   },
   // Webhook subscription: POST /{app-id}/subscriptions
