@@ -9,10 +9,6 @@ import { WhatsAppCampaignFields } from "@/components/dashboard/whatsapp-campaign
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
@@ -149,38 +145,18 @@ function EventNameInput(props: {
       ? { organizationId: activeTeamId, search, selectedName: props.value }
       : "skip"
   )
+  // System events (a WhatsApp message received, …) are suggested
+  // alongside the team's own events.
   return (
-    <div className="flex flex-col gap-2">
-      <SuggestInput
-        {...props}
-        options={[...(options ?? []), ...SYSTEM_EVENTS]}
-        selectedItem={SYSTEM_EVENTS.find(
-          (event) => event.value === props.value
-        )}
-        onSearch={setSearch}
-        placeholder="Type or select an event"
-        createLabel="Create event"
-        className="font-mono"
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-          System events
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>System events</DropdownMenuLabel>
-            {SYSTEM_EVENTS.map((event) => (
-              <DropdownMenuItem
-                key={event.value}
-                onClick={() => props.onChange(event.value)}
-              >
-                {event.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <SuggestInput
+      {...props}
+      options={[...(options ?? []), ...SYSTEM_EVENTS]}
+      selectedItem={SYSTEM_EVENTS.find((event) => event.value === props.value)}
+      onSearch={setSearch}
+      placeholder="Type or select an event"
+      createLabel="Create event"
+      className="font-mono"
+    />
   )
 }
 

@@ -191,10 +191,7 @@ export function whatsappCampaignsTests(
     const automationId = new URL(owner.url()).pathname.split("/")[2]
     await owner.getByTestId("workflow-node-start").click()
     await owner
-      .getByRole("button", { name: "System events", exact: true })
-      .click()
-    await owner
-      .getByRole("menuitem", { name: "WhatsApp message received", exact: true })
+      .getByRole("option", { name: "WhatsApp message received", exact: true })
       .click()
     await owner.getByTestId("workflow-add-step").last().click()
     await owner
