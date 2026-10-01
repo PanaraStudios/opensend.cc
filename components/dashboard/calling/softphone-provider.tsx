@@ -40,6 +40,7 @@ import {
   ArrowRightLeftIcon,
 } from "lucide-react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 interface SoftphoneContext {
   online: boolean
@@ -74,6 +75,7 @@ function TeamSoftphone({
   organizationId: string
   children: ReactNode
 }) {
+  const pathname = usePathname()
   const [browserId] = useState(() => crypto.randomUUID())
   const [phase, dispatch] = useReducer(
     softphoneTransition,
@@ -427,7 +429,7 @@ function TeamSoftphone({
       }}
     >
       <audio ref={audio} autoPlay aria-label="Call audio" />
-      {organizationId ? (
+      {organizationId && pathname === "/playground/calls" ? (
         <div
           className="flex flex-wrap items-center justify-end gap-2"
           aria-label="Softphone"
@@ -452,7 +454,7 @@ function TeamSoftphone({
                 : "Softphone"}
           </Button>
           <Link
-            href="/emails/calls"
+            href="/playground/calls"
             className="text-sm underline underline-offset-4"
           >
             Calls

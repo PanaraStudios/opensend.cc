@@ -54,7 +54,7 @@ export function objectStorageTests(
         )
       ).status()
     ).toBe(200)
-    await owner.goto("/emails/inbox")
+    await owner.goto("/playground/inbox")
     await owner.getByTestId("conversation").filter({ hasText: name }).click()
     await owner.request.post(`${process.env.OPENSEND_FAKE_GRAPH_URL}/__reset`)
     for (const file of [

@@ -862,7 +862,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     const record = (error: Error) => errors.push(error.message)
     owner.on("pageerror", record)
     for (const route of [
-      "/emails/inbox",
+      "/playground/inbox",
+      "/playground/calls",
+      "/playground/ivr",
+      "/playground/voice-bot",
       "/emails",
       "/emails/receiving",
       "/emails/suppressions",

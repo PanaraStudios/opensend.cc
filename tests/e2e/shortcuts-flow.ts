@@ -83,7 +83,18 @@ export function shortcutTests(state: () => State) {
     await expect(
       owner.getByRole("dialog", { name: "Search", exact: true })
     ).toBeVisible()
-    await owner.keyboard.press("Escape")
+    const palette = owner.getByRole("dialog", { name: "Search", exact: true })
+    await palette
+      .getByPlaceholder("Search pages, emails, contacts…")
+      .fill("Playground Inbox")
+    await palette
+      .getByRole("option", { name: "Playground · Inbox", exact: true })
+      .click()
+    await expect(owner).toHaveURL(/\/playground\/inbox$/)
+    await unfocus(owner)
+    await owner.keyboard.press("g")
+    await owner.keyboard.press("p")
+    await expect(owner).toHaveURL(/\/playground\/inbox$/)
   })
 
   test("selects only rendered contacts and opens delete confirmation without deleting", async () => {

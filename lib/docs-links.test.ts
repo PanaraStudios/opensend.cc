@@ -13,6 +13,7 @@ import {
   AUTOMATION_TABS,
   DASHBOARD_NAV,
   EMAIL_TABS,
+  PLAYGROUND_TABS,
   INSTANCE_PAGES,
   SETTINGS_NAV,
   STANDALONE_PAGES,
@@ -45,6 +46,7 @@ test("every dashboard navigation destination has an explicit docs mapping", () =
   for (const { href } of [
     ...DASHBOARD_NAV,
     ...EMAIL_TABS,
+    ...PLAYGROUND_TABS,
     ...AUDIENCE_TABS,
     ...AUTOMATION_TABS,
     ...SETTINGS_NAV,
@@ -59,7 +61,11 @@ test("tabs and nested detail pages resolve to the most specific guide", () => {
   for (const [route, path] of [
     ["/emails/message-id", "/dashboard/emails/sending"],
     ["/emails/messages/message-id", "/dashboard/emails/sending"],
-    ["/emails/inbox", "/dashboard/receiving/introduction"],
+    ["/playground", "/dashboard/receiving/introduction"],
+    ["/playground/calls", "/self-hosting/requirements"],
+    ["/playground/ivr", "/self-hosting/requirements"],
+    ["/playground/voice-bot", "/self-hosting/requirements"],
+    ["/playground/inbox", "/dashboard/receiving/introduction"],
     ["/emails/receiving/message-id", "/dashboard/receiving/introduction"],
     ["/emails/suppressions", "/dashboard/emails/suppressions"],
     ["/api-keys/key-id", "/create-an-api-key"],

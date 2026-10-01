@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { EMAIL_TABS } from "@/lib/dashboard/nav"
+import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { PhoneIcon } from "lucide-react"
 import { CallEventBubble } from "./call-event-bubble"
 export function CallsView() {
@@ -27,7 +27,7 @@ export function CallsView() {
   const log = useTeamQuery(api.calling.rows.dashboardList, { limit: 25, after })
   const state = useTeamQuery(api.calling.softphoneState.state)
   return (
-    <SectionChrome title="Messages" tabs={EMAIL_TABS}>
+    <SectionChrome title="Playground" tabs={PLAYGROUND_TABS}>
       <section className="flex flex-col gap-3" aria-label="Agent presence">
         <h2 className="text-sm font-medium">Agents</h2>
         <div className="flex flex-wrap gap-2">

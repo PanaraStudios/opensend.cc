@@ -13,6 +13,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   DocsButton,
+  SectionChrome,
   EmptyState,
   ListPagination,
   ListToolbar,
@@ -21,7 +22,6 @@ import {
 } from "@/components/dashboard/primitives"
 import { MESSAGE_CHANNEL_ITEMS } from "@/components/dashboard/channels/shared"
 import {
-  EmailsChrome,
   ConversationRow,
   logChannel,
 } from "@/components/dashboard/emails/shared"
@@ -29,6 +29,9 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useConversationList } from "@/lib/messages/use-messages"
 import { threadHref } from "@/lib/messages/links"
 import { ConversationThread } from "../conversation/conversation-thread"
+
+import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
+import { SendMessageAction } from "../conversation/send-message-action"
 
 const STATE_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All conversations" },
@@ -63,7 +66,16 @@ export function InboxView() {
     />
   )
   return (
-    <EmailsChrome actions={<DocsButton />}>
+    <SectionChrome
+      title="Playground"
+      tabs={PLAYGROUND_TABS}
+      actions={
+        <>
+          <SendMessageAction />
+          <DocsButton />
+        </>
+      }
+    >
       <div
         className="frame h-[calc(100svh-14rem)] min-h-0"
         data-testid="inbox-layout"
@@ -89,7 +101,7 @@ export function InboxView() {
           )}
         </div>
       </div>
-    </EmailsChrome>
+    </SectionChrome>
   )
 }
 

@@ -107,23 +107,40 @@ async function filterChannel(page: Page, label: string) {
 export function inboxTests(
   state: () => { owner: Page; organizationId: string; sendingDomainId: string }
 ) {
-  test("the Messages inbox threads WhatsApp and email, replies in and out of the window, and the logs filter by channel", async () => {
+  test("the Playground inbox threads WhatsApp and email, replies in and out of the window, and the logs filter by channel", async () => {
     const { owner, organizationId, sendingDomainId } = state()
     await connectWhatsApp(owner, organizationId)
     await owner.request.post(`${fakeGraph()}/__reset`)
 
-    // Messages replaces Emails, with the Inbox first among its tabs.
-    await owner.goto("/emails/inbox")
+    // Playground hosts manual testing; Messages keeps the delivery logs.
+    await owner.goto("/playground")
+    await expect(owner).toHaveURL(/\/playground\/inbox$/)
     await expect(
       owner.getByRole("link", { name: "Messages", exact: true })
     ).toBeVisible()
     await expect(
-      owner.getByRole("heading", { name: "Messages", exact: true })
+      owner.getByRole("heading", { name: "Playground", exact: true })
     ).toBeVisible()
-    for (const tab of ["Inbox", "Sending", "Receiving", "Suppressions"])
+    for (const tab of ["Inbox", "Calls", "IVR", "Voice bot"])
       await expect(
         owner.getByRole("tab", { name: tab, exact: true })
       ).toBeVisible()
+
+    await expect(
+      owner.getByRole("tab", { name: "Sending", exact: true })
+    ).toHaveCount(0)
+    await expect(owner.locator('[aria-label="Softphone"]')).toHaveCount(0)
+
+    for (const [tab, route, title] of [
+      ["IVR", "ivr", "IVR testing is coming soon"],
+      ["Voice bot", "voice-bot", "Voice bot testing is coming soon"],
+    ]) {
+      await owner.getByRole("tab", { name: tab, exact: true }).click()
+      await expect(owner).toHaveURL(new RegExp(`/playground/${route}$`))
+      await expect(owner.getByText(title, { exact: true })).toBeVisible()
+    }
+    await owner.getByRole("tab", { name: "Inbox", exact: true }).click()
+    await shots(owner, "playground")
 
     // A signed inbound message shows up live, unread.
     await inbound(owner, "wamid.inbox-e2e-1", "Is my order ready?")
@@ -134,8 +151,12 @@ export function inboxTests(
 
     // Opening it reads it.
     await row.click()
-    await expect(owner).toHaveURL(/\/emails\/inbox\?c=/)
+    await expect(owner).toHaveURL(/\/playground\/inbox\?c=/)
     const conversationId = new URL(owner.url()).searchParams.get("c")!
+    await owner.goto(`/emails/inbox?c=${conversationId}`)
+    await expect(owner).toHaveURL(
+      new RegExp(`/playground/inbox\\?c=${conversationId}$`)
+    )
     await expect(row.getByLabel("Unread", { exact: true })).toHaveCount(0)
     await expect(owner.getByText("Is my order ready?").last()).toBeVisible()
     // The reply composer stays a single row; buttons share the input group.
@@ -268,7 +289,7 @@ export function inboxTests(
       headers,
       "inbox-flow"
     )
-    await owner.goto("/emails/inbox")
+    await owner.goto("/playground/inbox")
     await filterChannel(owner, "Email")
     const email = owner
       .getByTestId("conversation")
@@ -286,6 +307,14 @@ export function inboxTests(
 
     // Sending, filtered to WhatsApp, lists the reply; its page has the timeline.
     await owner.goto("/emails")
+    for (const tab of ["Sending", "Receiving", "Suppressions"])
+      await expect(
+        owner.getByRole("tab", { name: tab, exact: true })
+      ).toBeVisible()
+    for (const tab of ["Inbox", "Calls"])
+      await expect(
+        owner.getByRole("tab", { name: tab, exact: true })
+      ).toHaveCount(0)
     await filterChannel(owner, "WhatsApp")
     const logged = owner.getByRole("row").filter({ hasText: "On its way!" })
     await expect(logged).toContainText("Read")
@@ -298,6 +327,37 @@ export function inboxTests(
     for (const step of ["Queued", "Sent", "Delivered", "Read"])
       await expect(owner.getByText(step, { exact: true }).last()).toBeVisible()
     await expect(owner.getByText("Payload", { exact: true })).toBeVisible()
+    const detailThread = owner.getByTestId("conversation-thread")
+    await expect(detailThread).toBeVisible()
+    await expect(
+      detailThread.getByText("The 24-hour window is closed.", { exact: true })
+    ).toBeVisible()
+    await inbound(owner, "wamid.detail-reply", "Please confirm delivery")
+    await expect(
+      detailThread.getByLabel("Reply", { exact: true })
+    ).toBeVisible()
+    await expect(
+      detailThread
+        .getByTestId("thread-message")
+        .filter({ hasText: "Is my order ready?" })
+    ).toBeVisible()
+    await detailThread
+      .getByLabel("Reply", { exact: true })
+      .fill("Reply from message detail")
+    await detailThread
+      .getByRole("button", { name: "Send", exact: true })
+      .click()
+    await expect(
+      detailThread
+        .getByTestId("thread-message")
+        .filter({ hasText: "Reply from message detail" })
+    ).toBeVisible()
+    await expect
+      .poll(async () => (await sends(owner)).at(-1)?.body)
+      .toMatchObject({
+        type: "text",
+        text: { body: "Reply from message detail" },
+      })
     await shots(owner, "detail")
     // Reusable conversation module: independent scroll and interactive sends.
     await inbound(
@@ -305,7 +365,7 @@ export function inboxTests(
       "wamid.inbox-rich",
       "*Ready* _to ship_ https://example.test/order"
     )
-    await owner.goto(`/emails/inbox?c=${conversationId}`)
+    await owner.goto(`/playground/inbox?c=${conversationId}`)
     const threadPanel = owner.getByTestId("conversation-thread")
     await expect(
       threadPanel.locator("strong").filter({ hasText: "Ready" })
@@ -341,7 +401,7 @@ export function inboxTests(
         .filter({ hasText: "Choose a delivery time" })
     ).toContainText("Morning")
     await shots(owner, "interactive")
-    // Send message from contact detail and Messages opens the same thread.
+    // Send message from contact detail and Playground opens the same thread.
     const threadRow = backendRows<Doc<"conversations">>("conversations").find(
       (item) => item._id === conversationId
     )!
@@ -361,6 +421,9 @@ export function inboxTests(
     await expect
       .poll(() => new URL(owner.url()).searchParams.get("c"))
       .toBe(conversationId)
+    await expect(owner).toHaveURL(
+      new RegExp(`/playground/inbox\\?c=${conversationId}$`)
+    )
     await owner
       .getByRole("button", { name: "Send message", exact: true })
       .click()
