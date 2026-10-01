@@ -14,15 +14,14 @@ import {
   invalid,
   type Caller,
 } from "./caller"
+import { objectBody, stringField } from "./route"
 import { idempotent } from "./idempotency"
-import { objectBody, stringField, arrayField, enumField } from "./route"
-import { channelMessageRoutes } from "./channelMessages"
+import { channelMessageRoutes, channelSendInput } from "./channelMessages"
 import { findMetaApp } from "../meta/app"
 import {
   MAX_WHATSAPP_MEDIA_BYTES,
   validateWhatsAppMedia,
 } from "../../lib/meta/media"
-import { WHATSAPP_SEND_TYPES } from "../../lib/meta/payloads"
 
 export function assertChannelSendingKey(caller: Caller) {
   if (caller.domainId)
@@ -84,28 +83,9 @@ export const uploadTarget = internalQuery({
 export function registerWhatsAppRoutes(http: HttpRouter) {
   channelMessageRoutes("whatsapp")(http, {
     send: async (ctx, { caller, body }) => {
-      const input = objectBody(body)
-      const tags = arrayField(input, "tags").map((raw) => {
-        const tag = objectBody(raw)
-        return {
-          name: stringField(tag, "name", true)!,
-          value: stringField(tag, "value", true)!,
-        }
-      })
-      const messageBody: Record<string, unknown> = {}
-      const type = enumField(input, "type", WHATSAPP_SEND_TYPES)
-      if (type) messageBody.type = type
-      for (const key of WHATSAPP_SEND_TYPES)
-        if (input[key] !== undefined) messageBody[key] = input[key]
       const id = await ctx.runMutation(internal.api.whatsapp.send, {
         caller,
-        input: {
-          to: stringField(input, "to", true)!,
-          from: stringField(input, "from"),
-          body: messageBody,
-          replyTo: stringField(input, "reply_to"),
-          tags,
-        },
+        input: channelSendInput(body, "whatsapp"),
       })
       return { body: { id } }
     },

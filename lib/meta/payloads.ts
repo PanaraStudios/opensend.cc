@@ -357,3 +357,201 @@ export function whatsappPayload(input: WhatsAppBody): Record<
       : {}),
   }
 }
+
+/** Meta rejects the legacy Messenger tags (CONFIRMED_EVENT_UPDATE,
+    POST_PURCHASE_UPDATE, ACCOUNT_UPDATE) with error 100 since April 27,
+    2026, so only HUMAN_AGENT is accepted. */
+export const MESSAGE_TAGS = ["HUMAN_AGENT"] as const
+export type MessageTag = (typeof MESSAGE_TAGS)[number]
+export type PageBody = {
+  to: string
+  text?: unknown
+  attachment?: unknown
+  quick_replies?: unknown
+  tag?: unknown
+  reply_to?: string
+}
+export const PAGE_WINDOW_CLOSED =
+  "The 24-hour messaging window is closed. Pass a message tag such as HUMAN_AGENT."
+
+/** HUMAN_AGENT is for human replies, only within seven days of inbound. */
+export function pageMessagingType(
+  windowExpiresAt: number | undefined,
+  tag: unknown,
+  now: number
+) {
+  if ((windowExpiresAt ?? 0) > now) return "RESPONSE" as const
+  if (!tag) throw new Error(PAGE_WINDOW_CLOSED)
+  if (tag === "HUMAN_AGENT" && (windowExpiresAt ?? 0) + 6 * 86400_000 <= now)
+    throw new Error("The 7-day HUMAN_AGENT messaging window is closed.")
+  return "MESSAGE_TAG" as const
+}
+export function quickReplies(value: unknown) {
+  if (!Array.isArray(value) || value.length > 13)
+    throw new Error("quick_replies must be an array of at most 13 replies.")
+  return value.map((raw) => {
+    const reply = object(raw, "quick reply")
+    return {
+      title: text(reply.title, "title", 20),
+      payload: text(reply.payload, "payload", 1000),
+    }
+  })
+}
+
+/** Page-backed Send API. Stored text templates are resolved before this adapter.
+ * https://developers.facebook.com/documentation/business-messaging/messenger-platform/send-messages
+ * https://developers.facebook.com/documentation/business-messaging/messenger-platform/send-messages/quick-replies
+ */
+export function pageMessageContent(
+  input: Omit<PageBody, "to" | "reply_to">,
+  channel: "messenger" | "instagram"
+) {
+  if ((input.text === undefined) === (input.attachment === undefined))
+    throw new Error(
+      "Provide exactly one of text, attachment or a stored template."
+    )
+  if (input.tag !== undefined && !MESSAGE_TAGS.some((tag) => tag === input.tag))
+    throw new Error("Invalid message tag.")
+  if (
+    channel === "instagram" &&
+    input.tag !== undefined &&
+    input.tag !== "HUMAN_AGENT"
+  )
+    throw new Error("Instagram only supports the HUMAN_AGENT tag.")
+  const message: {
+    text?: string
+    attachment?: { type: string; payload: Record<string, unknown> }
+    quick_replies?: { content_type: string; title: string; payload: string }[]
+  } = {}
+  if (input.text !== undefined)
+    message.text = text(
+      input.text,
+      "text",
+      channel === "instagram" ? 1000 : 2000
+    )
+  else {
+    const source = object(input.attachment, "attachment")
+    if (!["image", "video", "audio", "file"].includes(String(source.type)))
+      throw new Error("Invalid attachment type.")
+    if ((source.url === undefined) === (source.id === undefined))
+      throw new Error("Provide exactly one attachment url or id.")
+    let payload: Record<string, unknown>
+    if (source.url !== undefined) {
+      const url = text(source.url, "attachment.url", 4096)
+      const parsed = new URL(url)
+      if (
+        !["https:", "http:"].includes(parsed.protocol) ||
+        parsed.username ||
+        parsed.password
+      )
+        throw new Error(
+          "Attachment URLs must use HTTP or HTTPS without credentials."
+        )
+      payload = { url }
+    } else payload = { attachment_id: text(source.id, "attachment.id", 256) }
+    message.attachment = { type: String(source.type), payload }
+  }
+  if (input.quick_replies !== undefined) {
+    if (channel === "instagram" && !message.text)
+      throw new Error("Instagram quick replies require a text message.")
+    message.quick_replies = quickReplies(input.quick_replies).map((reply) => ({
+      content_type: "text",
+      ...reply,
+    }))
+  }
+  return message
+}
+function pagePayload(input: PageBody, channel: "messenger" | "instagram") {
+  if (typeof input.to !== "string" || !/^\d{1,32}$/.test(input.to))
+    throw new Error("The `to` field must be a scoped recipient ID.")
+  const message = pageMessageContent(input, channel)
+  return {
+    recipient: { id: input.to },
+    messaging_type: "RESPONSE" as "RESPONSE" | "MESSAGE_TAG",
+    message,
+    ...(input.tag !== undefined ? { tag: input.tag as MessageTag } : {}),
+    ...(input.reply_to !== undefined
+      ? { reply_to: { mid: text(input.reply_to, "reply_to", 1024) } }
+      : {}),
+  }
+}
+export const messengerPayload = (input: PageBody) =>
+  pagePayload(input, "messenger")
+export const instagramPayload = (input: PageBody) =>
+  pagePayload(input, "instagram")
+
+export const WHATSAPP_WINDOW_CLOSED =
+  "The 24-hour customer service window is closed. Send an approved template instead."
+type ChannelMessageType = WhatsAppSendType | "button" | "unsupported"
+type PreparedMessage = {
+  payload: Record<string, unknown>
+  to: string
+  type: ChannelMessageType
+  preview: string
+}
+type ChannelStrategy = {
+  build: (body: Record<string, unknown> & { to: string }) => PreparedMessage
+  assertWindow: (
+    payload: Record<string, unknown>,
+    windowExpiresAt: number | undefined,
+    now: number
+  ) => void
+  endpoint: (account: { externalId: string; pageId?: string }) => string
+  windowErrorCode: number
+}
+function pageStrategy(build: typeof messengerPayload): ChannelStrategy {
+  return {
+    build: (body) => {
+      const payload = build(body),
+        message = payload.message
+      const type =
+        message.text !== undefined
+          ? "text"
+          : message.attachment?.type === "file"
+            ? "document"
+            : (message.attachment?.type as "image" | "audio" | "video")
+      return {
+        payload,
+        to: payload.recipient.id,
+        type,
+        preview: (message.text ?? `[${type}]`).slice(0, 1000),
+      }
+    },
+    assertWindow: (payload, until, now) => {
+      payload.messaging_type = pageMessagingType(until, payload.tag, now)
+    },
+    endpoint: (account) => account.pageId ?? account.externalId,
+    windowErrorCode: 2018278,
+  }
+}
+/** Keep channel-specific wire shape, window rules and endpoints behind one adapter. */
+export const channelStrategies: Record<
+  "whatsapp" | "messenger" | "instagram",
+  ChannelStrategy
+> = {
+  whatsapp: {
+    build: (body) => {
+      const payload = whatsappPayload(body as WhatsAppBody),
+        data = payload[payload.type] as Record<string, unknown>
+      return {
+        payload,
+        to: payload.to,
+        type: payload.type,
+        preview: (payload.type === "text"
+          ? String(data.body)
+          : typeof data.caption === "string"
+            ? data.caption
+            : `[${payload.type}]`
+        ).slice(0, 1000),
+      }
+    },
+    assertWindow: (payload, until, now) => {
+      if (payload.type !== "template" && (until ?? 0) <= now)
+        throw new Error(WHATSAPP_WINDOW_CLOSED)
+    },
+    endpoint: (account) => account.externalId,
+    windowErrorCode: 131047,
+  },
+  messenger: pageStrategy(messengerPayload),
+  instagram: pageStrategy(instagramPayload),
+}

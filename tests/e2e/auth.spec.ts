@@ -15,6 +15,7 @@ import { usageTests } from "./usage-flow"
 import { hardeningSearchTests } from "./hardening-search-flow"
 import { docsLinksTests } from "./docs-links-flow"
 import { shortcutTests } from "./shortcuts-flow"
+import { messengerInstagramTests } from "./messenger-instagram-flow"
 import { whatsappSendTests } from "./whatsapp-send-flow"
 import { metaInboundTests } from "./meta-inbound-flow"
 import { metaAppTests } from "./meta-app-flow"
@@ -1228,6 +1229,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   whatsappSendTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
   whatsappCampaignsTests(() => ({ owner, organizationId }))
+  messengerInstagramTests(() => ({ owner, organizationId }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")

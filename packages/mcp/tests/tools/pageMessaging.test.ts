@@ -122,13 +122,13 @@ describe.each(["messenger", "instagram"] as const)(
               payload: "yes",
             })),
           },
+          { text: "Hello", tag: "ACCOUNT_UPDATE" },
           ...(channel === "instagram"
             ? [
                 {
                   attachment: { type: "image", id: "asset" },
                   quick_replies: [],
                 },
-                { text: "Hello", tag: "ACCOUNT_UPDATE" },
               ]
             : []),
         ]

@@ -65,15 +65,7 @@ export function addPageMessagingTools(
           .array(z.object({ title: z.string(), payload: z.string() }))
           .max(13)
           .optional(),
-        tag: (channel === "instagram"
-          ? z.enum(["HUMAN_AGENT"])
-          : z.enum([
-              "HUMAN_AGENT",
-              "CONFIRMED_EVENT_UPDATE",
-              "POST_PURCHASE_UPDATE",
-              "ACCOUNT_UPDATE",
-            ])
-        ).optional(),
+        tag: z.enum(["HUMAN_AGENT"]).optional(),
         replyTo: z.string().optional(),
         tags: z
           .array(z.object({ name: z.string(), value: z.string() }))

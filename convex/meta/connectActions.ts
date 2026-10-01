@@ -30,7 +30,11 @@ import {
    the app subscribes to its webhooks and its numbers are stored. Every
    public action checks the caller may write to the team first. */
 
-type App = { appId: string; graphVersion: string; encryptedAppSecret: string }
+export type App = {
+  appId: string
+  graphVersion: string
+  encryptedAppSecret: string
+}
 type Connected = {
   connectionId: Id<"metaConnections">
   accounts: { id: Id<"channelAccounts">; handle: string; registered: boolean }[]
@@ -47,7 +51,7 @@ const connectedValue = v.object({
   ),
 })
 
-function numericId(value: string, label: string) {
+export function numericId(value: string, label: string) {
   const id = value.trim()
   if (!/^\d{1,32}$/.test(id))
     throw new ConvexError(`Enter the numeric ${label}`)
@@ -55,7 +59,7 @@ function numericId(value: string, label: string) {
 }
 
 /** `GET /debug_token` with the app token. */
-async function debugToken(app: App, token: string): Promise<TokenInfo> {
+export async function debugToken(app: App, token: string): Promise<TokenInfo> {
   return readTokenInfo(
     await graph({
       token: await appAccessToken(app),
@@ -279,6 +283,8 @@ export const registerNumber = action({
     const target = await ctx.runQuery(internal.meta.connect.accountTarget, {
       accountId,
     })
+    if (target.channel !== "whatsapp")
+      throw new ConvexError("Only WhatsApp numbers require registration")
     await friendly(
       ctx,
       async () => {
@@ -310,6 +316,10 @@ export const syncAccount = action({
     const target = await ctx.runQuery(internal.meta.connect.accountTarget, {
       accountId,
     })
+    if (target.channel !== "whatsapp") {
+      await ctx.runAction(internal.meta.pageConnectActions.sync, { accountId })
+      return null
+    }
     const number = await friendly(
       ctx,
       async () =>
@@ -353,6 +363,12 @@ export const checkConnection = internalAction({
       })
     try {
       const token = await decryptSecret(target.encryptedToken)
+      if (target.pages.length) {
+        await ctx.runAction(internal.meta.pageConnectActions.checkConnection, {
+          connectionId,
+        })
+        return null
+      }
       const info = await debugToken(target, token)
       const problem = [undefined, ...target.wabaIds]
         .map((wabaId) => tokenProblem(info, { appId: target.appId, wabaId }))

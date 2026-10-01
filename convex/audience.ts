@@ -282,7 +282,10 @@ const cleanProperties = (properties: Record<string, string>) =>
   Object.fromEntries(Object.entries(properties).filter(([, value]) => value))
 
 /** Shared create/update identity rules. Empty strings clear an identity. */
-function normalizeIdentity(input: ContactIdentity): ContactIdentity {
+function normalizeIdentity(
+  input: ContactIdentity,
+  linkedChannel = false
+): ContactIdentity {
   const email = input.email?.trim() ? normalizeEmail(input.email) : undefined
   const phone = input.phone?.trim() ? normalizePhone(input.phone) : undefined
   if (email) {
@@ -293,7 +296,7 @@ function normalizeIdentity(input: ContactIdentity): ContactIdentity {
     throw new ConvexError(
       "Enter a phone number with + and 8–15 digits, including the country code"
     )
-  if (!email && !phone)
+  if (!email && !phone && !linkedChannel)
     throw new ConvexError("An email or phone number is required")
   return { email, phone }
 }
@@ -370,6 +373,27 @@ export async function upsertContact(
     })
     return { id: existing._id, result: "updated" }
   }
+  const id = await insertContact(
+    ctx,
+    organizationId,
+    { ...input, ...identity },
+    options.segmentIds,
+    options.emit !== false,
+    budget
+  )
+  return { id, result: "created" }
+}
+
+/** Internal channel identities also create contacts without an email or phone. */
+export async function insertContact(
+  ctx: MutationCtx,
+  organizationId: string,
+  input: ContactInput,
+  segmentIds: Id<"segments">[] = [],
+  emit = true,
+  budget = membershipBudget()
+) {
+  const now = Date.now()
   const fields = {
     firstName: input.firstName?.trim() ?? "",
     lastName: input.lastName?.trim() ?? "",
@@ -378,16 +402,16 @@ export async function upsertContact(
   }
   const id = await insertRow(ctx, "contacts", {
     organizationId,
-    ...identity,
+    email: input.email,
+    phone: input.phone,
     ...fields,
-    search: searchText({ ...identity, ...fields }),
+    search: searchText({ email: input.email, phone: input.phone, ...fields }),
     updatedAt: now,
   })
   const contact = (await ctx.db.get("contacts", id))!
-  await joinContact(ctx, contact, options.segmentIds, budget, { emit: false })
-  if (options.emit !== false)
-    await emitContact(ctx, "contact.created", contact, options.segmentIds)
-  return { id, result: "created" }
+  await joinContact(ctx, contact, segmentIds, budget, { emit: false })
+  if (emit) await emitContact(ctx, "contact.created", contact, segmentIds)
+  return id
 }
 
 function fieldsChanged(contact: Doc<"contacts">, fields: ContactFields) {
@@ -422,10 +446,24 @@ export async function updateContact(
   contact: Doc<"contacts">,
   patch: Partial<ContactFields> & ContactIdentity
 ) {
-  const identity = normalizeIdentity({
-    email: patch.email === undefined ? contact.email : patch.email,
-    phone: patch.phone === undefined ? contact.phone : patch.phone,
-  })
+  const linked =
+    (!contact.email && !contact.phone) ||
+    patch.email === "" ||
+    patch.phone === ""
+      ? (
+          await ctx.db
+            .query("channelContacts")
+            .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
+            .take(10)
+        ).some((row) => row.organizationId === contact.organizationId)
+      : false
+  const identity = normalizeIdentity(
+    {
+      email: patch.email === undefined ? contact.email : patch.email,
+      phone: patch.phone === undefined ? contact.phone : patch.phone,
+    },
+    linked
+  )
   for (const key of ["email", "phone"] as const) {
     const value = identity[key]
     const other =

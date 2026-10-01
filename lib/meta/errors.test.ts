@@ -116,3 +116,24 @@ test("Graph user-facing error titles survive parsing and MetaError construction"
   assert.equal(info.title, "Re-engagement required")
   assert.equal(new MetaError(info).title, "Re-engagement required")
 })
+
+test("Messenger permission, unavailable recipient and window errors are final even when transient", () => {
+  for (const code of [551, 10, 2018278])
+    assert.equal(
+      classifyGraphError({ status: 500, code, isTransient: true }),
+      "final"
+    )
+  assert.equal(
+    classifyGraphError({
+      status: 500,
+      code: 10,
+      subcode: 2018278,
+      isTransient: true,
+    }),
+    "final"
+  )
+  assert.equal(
+    classifyGraphError({ status: 500, code: 2, isTransient: true }),
+    "retry"
+  )
+})

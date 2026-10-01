@@ -1,3 +1,4 @@
+import { localTemplate } from "../../lib/meta/local-templates"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
@@ -51,8 +52,8 @@ function own(ctx: QueryCtx, organizationId: string, value: string) {
     fallback: () => aliasOwner(ctx, organizationId, value),
   })
 }
-type Channel = "email" | "whatsapp"
-const CHANNELS = ["email", "whatsapp"] as const
+type Channel = "email" | "whatsapp" | "messenger" | "instagram"
+const CHANNELS = ["email", "whatsapp", "messenger", "instagram"] as const
 
 /** The optional `channel` of a request: email when absent. */
 function channelField(input: Record<string, unknown>) {
@@ -130,6 +131,30 @@ function inputFields(
   if (channel && asked && asked !== channel)
     throw invalid("A template's `channel` cannot change.")
   const resolved = channel ?? asked ?? "email"
+  if (resolved === "messenger" || resolved === "instagram") {
+    if (
+      ["html", "subject", "from", "reply_to", "whatsapp"].some(
+        (key) => input[key] !== undefined
+      )
+    )
+      throw invalid("Messaging templates have no email or WhatsApp fields.")
+    const text = stringField(input, "text", required)
+    const quick_replies = input.quick_replies
+    return {
+      channel: resolved,
+      name: stringField(input, "name", required),
+      alias: stringField(input, "alias"),
+      ...(input.text !== undefined || quick_replies !== undefined
+        ? {
+            content: {
+              ...(input.text !== undefined ? { text } : {}),
+              ...(quick_replies !== undefined ? { quick_replies } : {}),
+            },
+          }
+        : {}),
+      ...(input.text !== undefined ? { text } : {}),
+    }
+  }
   if (resolved === "whatsapp")
     return { ...whatsappFields(input, required), channel: resolved }
   if (input.whatsapp !== undefined)
@@ -254,7 +279,7 @@ export const create = internalMutation({
         const id = await insertTemplate(ctx, caller.organizationId, {
           ...input,
           name: input.name!,
-          html: input.html!,
+          html: input.html ?? "",
           subject: input.subject ?? "",
           preview: "",
         })
@@ -302,11 +327,7 @@ export const change = internalMutation({
           await updateTemplate(
             ctx,
             row,
-            inputFields(
-              body,
-              false,
-              row.channel === "whatsapp" ? "whatsapp" : "email"
-            )
+            inputFields(body, false, row.channel ?? "email")
           )
         if (kind === "remove") await removeTemplate(ctx, row)
         if (kind === "publish") await publishTemplate(ctx, row)
@@ -350,6 +371,9 @@ function summary(row: Doc<"templates">) {
       row.status === "published" && row.publishedAt
         ? apiTime(row.publishedAt)
         : null,
+    ...(row.channel === "messenger" || row.channel === "instagram"
+      ? { channel: row.channel }
+      : {}),
     ...whatsappSummary(row),
   }
 }
@@ -361,7 +385,9 @@ export function registerTemplateRoutes(http: HttpRouter) {
     handler: async (ctx, { caller, query }) => {
       const channel = query.get("channel")
       if (channel !== null && !CHANNELS.some((known) => known === channel))
-        throw invalid("The `channel` parameter must be email or whatsapp.")
+        throw invalid(
+          "The `channel` parameter must be email, whatsapp, messenger or instagram."
+        )
       const result = await ctx.runQuery(internal.api.templates.list, {
         caller,
         ...listParams(query),
@@ -424,6 +450,9 @@ export function registerTemplateRoutes(http: HttpRouter) {
             row.replyToAddresses ?? (row.replyTo ? [row.replyTo] : null),
           html: draft?.html ?? "",
           text: draft?.text ?? toPlainText(draft?.html ?? ""),
+          ...(row.channel === "messenger" || row.channel === "instagram"
+            ? { quick_replies: localTemplate(draft?.content).quick_replies }
+            : {}),
           variables: resolvedVariables(row, draft ?? { html: "" }).map(
             (variable) => {
               const metadata = row.variableMetadata?.find(

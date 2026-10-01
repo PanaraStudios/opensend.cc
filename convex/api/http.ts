@@ -1,3 +1,4 @@
+import { registerPageMessageRoutes } from "./channelMessages"
 import { registerWhatsAppRoutes } from "./whatsapp"
 import { registerUsageRoutes } from "./usage"
 import { registerSuppressionRoutes } from "./suppressions"
@@ -20,6 +21,7 @@ import { registerLogRoutes } from "./logs"
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
   registerWhatsAppRoutes(http)
+  registerPageMessageRoutes(http)
   registerUsageRoutes(http)
   registerAutomationRoutes(http)
   registerImportRoutes(http)

@@ -155,3 +155,55 @@ test("fake Graph keeps message templates per WABA and lists a synced one", async
     await graph.close()
   }
 })
+
+test("fake Graph exchanges Facebook Login codes, returns Page tokens and linked Instagram, subscribes and sends Page messages", async () => {
+  const graph = await startFakeGraph(0)
+  try {
+    const get = async (path) =>
+      (await fetch(`${graph.origin}/v25.0/${path}`)).json()
+    const token = await get("oauth/access_token?code=facebook-code")
+    assert.ok(token.access_token.includes("facebook-code"))
+    const {
+      data: [page],
+    } = await get("me/accounts")
+    assert.ok(page.access_token)
+    assert.ok(page.instagram_business_account.id)
+    const headers = {
+      "content-type": "application/json",
+      authorization: `Bearer ${page.access_token}`,
+    }
+    const subscription = await fetch(
+      `${graph.origin}/v25.0/${page.id}/subscribed_apps`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          subscribed_fields: "messages,messaging_postbacks",
+        }),
+      }
+    )
+    assert.equal((await subscription.json()).success, true)
+    const sent = await fetch(`${graph.origin}/v25.0/${page.id}/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        recipient: { id: "123" },
+        messaging_type: "RESPONSE",
+        message: { text: "Hi" },
+      }),
+    })
+    assert.match((await sent.json()).message_id, /^mid\./)
+    assert.equal(
+      (await get("123?fields=first_name,last_name")).first_name,
+      "Ada"
+    )
+    assert.equal((await get("456?fields=name,username")).username, "grace_e2e")
+    const calls = await (await fetch(`${graph.origin}/__calls`)).json()
+    assert.equal(
+      calls.find((c) => c.path.endsWith("/messages")).authorization,
+      headers.authorization
+    )
+  } finally {
+    await graph.close()
+  }
+})

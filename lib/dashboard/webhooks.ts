@@ -11,6 +11,8 @@ const GROUP_LABELS = {
   contact: "Contact",
   domain: "Domain",
   whatsapp: "WhatsApp",
+  messenger: "Messenger",
+  instagram: "Instagram",
 }
 
 type WebhookEventGroupId = keyof typeof GROUP_LABELS

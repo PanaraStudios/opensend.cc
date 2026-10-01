@@ -1,100 +1,97 @@
 import type {
   PaginationOptions,
   PaginatedData,
-} from '../common/interfaces/pagination-options.interface';
-import type { PostOptions } from '../common/interfaces/post-option.interface';
-import type { IdempotentRequest } from '../common/interfaces/idempotent-request.interface';
-export type MessagingChannel = 'whatsapp' | 'messenger' | 'instagram';
+} from "../common/interfaces/pagination-options.interface"
+import type { PostOptions } from "../common/interfaces/post-option.interface"
+import type { IdempotentRequest } from "../common/interfaces/idempotent-request.interface"
+export type MessagingChannel = "whatsapp" | "messenger" | "instagram"
 export type ChannelMessageStatus =
-  'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
-export type ChannelRequestOptions = PostOptions & IdempotentRequest;
-export type ChannelPage<T> = PaginatedData<T[]>;
+  "queued" | "sent" | "delivered" | "read" | "failed" | "received"
+export type ChannelRequestOptions = PostOptions & IdempotentRequest
+export type ChannelPage<T> = PaginatedData<T[]>
 export type ListChannelMessagesOptions = PaginationOptions & {
-  status?: ChannelMessageStatus;
-  direction?: 'inbound' | 'outbound';
-  accountId?: string;
-};
+  status?: ChannelMessageStatus
+  direction?: "inbound" | "outbound"
+  accountId?: string
+}
 export interface ChannelMessage<
   C extends MessagingChannel = MessagingChannel,
   T extends string = string,
 > {
-  id: string;
-  channel: C;
-  account_id: string;
-  conversation_id: string;
-  from: string;
-  to: string;
-  type: T;
-  status: ChannelMessageStatus;
-  direction: 'inbound' | 'outbound';
-  external_id: string | null;
-  created_at: string;
-  text?: string;
-  media?: Record<string, unknown> | ChannelMessageEvents['media'];
-  tags: { name: string; value: string }[];
-  error?: { code: number | null; title: string | null; message: string };
+  id: string
+  channel: C
+  account_id: string
+  conversation_id: string
+  from: string
+  to: string
+  type: T
+  status: ChannelMessageStatus
+  direction: "inbound" | "outbound"
+  external_id: string | null
+  created_at: string
+  text?: string
+  media?: Record<string, unknown> | ChannelMessageEvents["media"]
+  tags: { name: string; value: string }[]
+  error?: { code: number | null; title: string | null; message: string }
 }
 export interface ChannelMessageEvents {
-  last_event: ChannelMessageStatus;
+  last_event: ChannelMessageStatus
   events: {
-    type: ChannelMessageStatus;
-    created_at: string;
-    details: unknown;
-  }[];
+    type: ChannelMessageStatus
+    created_at: string
+    details: unknown
+  }[]
   media: {
-    id: string | null;
-    content_type: string;
-    filename: string | null;
-    size: number | null;
-    download_url: string | null;
-    expires_at: string | null;
-    error: string | null;
-  }[];
+    id: string | null
+    content_type: string
+    filename: string | null
+    size: number | null
+    download_url: string | null
+    expires_at: string | null
+    error: string | null
+  }[]
 }
 export interface ChannelConversation<
   C extends MessagingChannel = MessagingChannel,
 > {
-  id: string;
-  channel: C;
-  account_id: string | null;
-  channel_contact_id: string | null;
-  contact_id: string | null;
-  status: 'open' | 'closed';
-  last_message_at: string;
-  last_preview: string;
-  last_direction: 'inbound' | 'outbound';
-  window_expires_at: string | null;
-  unread: boolean;
+  id: string
+  channel: C
+  account_id: string | null
+  channel_contact_id: string | null
+  contact_id: string | null
+  status: "open" | "closed"
+  last_message_at: string
+  last_preview: string
+  last_direction: "inbound" | "outbound"
+  window_expires_at: string | null
+  unread: boolean
 }
-export type PageMessageTag =
-  | 'HUMAN_AGENT'
-  | 'CONFIRMED_EVENT_UPDATE'
-  | 'POST_PURCHASE_UPDATE'
-  | 'ACCOUNT_UPDATE';
-export type PageAttachment = { type: 'image' | 'video' | 'audio' | 'file' } & (
+/** Meta rejects the legacy Messenger tags since April 27, 2026. */
+export type PageMessageTag = "HUMAN_AGENT"
+export type PageAttachment = { type: "image" | "video" | "audio" | "file" } & (
   { url: string; id?: never } | { id: string; url?: never }
-);
+)
 export type PageTemplate = (
   { id: string; alias?: never } | { alias: string; id?: never }
-) & { variables?: Record<string, string | number> };
-export type QuickReply = { title: string; payload: string };
+) & { variables?: Record<string, string | number> }
+export type QuickReply = { title: string; payload: string }
 export type PageMessageBody =
   | { text: string; attachment?: never; template?: never }
   | { attachment: PageAttachment; text?: never; template?: never }
-  | { template: PageTemplate; text?: never; attachment?: never };
+  | { template: PageTemplate; text?: never; attachment?: never }
 export type PageMessageOptions = {
-  from?: string;
-  to: string;
-  replyTo?: string;
-  tags?: { name: string; value: string }[];
-};
+  from?: string
+  to: string
+  replyTo?: string
+  tags?: { name: string; value: string }[]
+}
 export interface PageAccount {
-  id: string;
-  channel: 'messenger' | 'instagram';
-  external_id: string;
-  name: string;
-  handle: string;
-  status: 'pending' | 'active' | 'restricted' | 'error' | 'disconnected';
-  page_id: string;
-  created_at: string;
+  id: string
+  channel: "messenger" | "instagram"
+  external_id: string
+  name: string
+  handle: string
+  status: "pending" | "active" | "restricted" | "error" | "disconnected"
+  page_id: string
+  created_at: string
 }

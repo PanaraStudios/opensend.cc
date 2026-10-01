@@ -28,6 +28,15 @@ import {
   PHONE_ID,
   SENDER,
 } from "./testHelpers/meta.fixture"
+import {
+  pagesFixture,
+  pageGraphRoutes,
+  pageEnvelope,
+  PAGE_ID,
+  IG_ID,
+  PSID,
+  IGSID,
+} from "./testHelpers/pages.fixture"
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
@@ -1175,4 +1184,128 @@ test("webhook event subscriptions use the shared catalogue including WhatsApp", 
   expect(typeof eventType === "object" && eventType.enum).toEqual([
     ...WEBHOOK_EVENTS,
   ])
+})
+
+test("Messenger and Instagram send, read routes and local templates validate real responses with Ajv", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "contract-pages-encryption-".repeat(3))
+  fakeGraph(pageGraphRoutes())
+  const f = await pagesFixture()
+  const { token } = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: {
+      name: "Page contracts",
+      permission: "full_access",
+      domainId: null,
+    },
+  })
+  const call = (path: string, method = "GET", body?: unknown) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  }
+  for (const channel of ["messenger", "instagram"] as const) {
+    await f.t.fetch(
+      "/meta/webhook",
+      await signedWebhook(
+        APP_SECRET,
+        pageEnvelope(channel, {
+          message: { mid: `mid.contract.${channel}`, text: "Hello" },
+        })
+      )
+    )
+    const event = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").order("desc").first()
+    )
+    await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const to = channel === "messenger" ? PSID : IGSID,
+      resource = channel === "messenger" ? "pages" : "accounts",
+      externalId = channel === "messenger" ? PAGE_ID : IG_ID
+    const request = {
+      to,
+      text: "Reply",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    }
+    validateBody(
+      contract.paths[`/${channel}/messages`].post.requestBody!.content[
+        "application/json"
+      ].schema,
+      request
+    )
+    const { id } = await response(
+      `/${channel}/messages`,
+      "POST",
+      await call(`/${channel}/messages`, "POST", request)
+    )
+    const detail = await response(
+      `/${channel}/messages/{id}`,
+      "GET",
+      await call(`/${channel}/messages/${id}`)
+    )
+    expect(detail).toMatchObject({
+      channel,
+      text: "Reply",
+      last_event: "queued",
+    })
+    await response(
+      `/${channel}/messages`,
+      "GET",
+      await call(`/${channel}/messages`)
+    )
+    await response(
+      `/${channel}/${resource}`,
+      "GET",
+      await call(`/${channel}/${resource}`)
+    )
+    await response(
+      `/${channel}/${resource}/{id}`,
+      "GET",
+      await call(`/${channel}/${resource}/${externalId}`)
+    )
+    await response(
+      `/${channel}/conversations`,
+      "GET",
+      await call(`/${channel}/conversations`)
+    )
+    await response(
+      `/${channel}/conversations/{id}/messages`,
+      "GET",
+      await call(`/${channel}/conversations/${detail.conversation_id}/messages`)
+    )
+    const templateRequest = {
+      channel,
+      name: `${channel} welcome`,
+      text: "Hello {{{name}}}",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    }
+    validateBody(
+      contract.components.schemas.CreateTemplateRequest,
+      templateRequest
+    )
+    const template = await response(
+      "/templates",
+      "POST",
+      await call("/templates", "POST", templateRequest)
+    )
+    await response(
+      "/templates/{id}",
+      "GET",
+      await call(`/templates/${template.id}`)
+    )
+    await response(
+      "/templates",
+      "GET",
+      await call(`/templates?channel=${channel}`)
+    )
+    await response(
+      "/templates/{id}/publish",
+      "POST",
+      await call(`/templates/${template.id}/publish`, "POST", {})
+    )
+  }
 })

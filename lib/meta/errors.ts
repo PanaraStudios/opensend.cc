@@ -27,7 +27,9 @@ const RETRY_CODES = new Set([1, 2, 4, 80007, 130429, 131000])
 /** 131047: the 24-hour window closed. 131026: undeliverable. 131050: the
     person stopped marketing messages. 100: invalid parameter. 368:
     blocked for policy. The 132xxx family covers template errors. */
-const FINAL_CODES = new Set([100, 368, 131026, 131047, 131050])
+const FINAL_CODES = new Set([
+  10, 100, 368, 551, 2018278, 131026, 131047, 131050,
+])
 const TOKEN_INVALID = 190
 const PAIR_RATE_LIMIT = 131056
 
@@ -39,6 +41,7 @@ export function classifyGraphError(
   const { code } = error
   if (code === TOKEN_INVALID) return "token_invalid"
   if (code === PAIR_RATE_LIMIT) return "retry_after"
+  if (error.subcode === 2018278) return "final"
   if (code !== undefined && (FINAL_CODES.has(code) || isTemplateError(code)))
     return "final"
   if (code !== undefined && RETRY_CODES.has(code)) return "retry"

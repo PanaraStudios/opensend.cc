@@ -70,6 +70,8 @@ export const channelMediaValue = v.object({
   error: v.optional(v.string()),
   /** Meta's media id, when the file came from or went to Meta. */
   mediaId: v.optional(v.string()),
+  /** Messenger and Instagram attachments arrive as expiring CDN URLs. */
+  url: v.optional(v.string()),
 })
 
 /* A channel message mirrors an email: the row lists, search and filters
@@ -85,7 +87,7 @@ export const channelTables = {
     externalId: v.string(),
     connectionId: v.id("metaConnections"),
     wabaId: v.optional(v.string()),
-    /** The Facebook Page linked to an Instagram professional account. */
+    /** The Facebook Page behind a Messenger or linked Instagram account. */
     pageId: v.optional(v.string()),
     displayName: v.string(),
     /** The display phone number, Page name or Instagram username. */
