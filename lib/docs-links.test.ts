@@ -58,6 +58,8 @@ test("every dashboard navigation destination has an explicit docs mapping", () =
 test("tabs and nested detail pages resolve to the most specific guide", () => {
   for (const [route, path] of [
     ["/emails/message-id", "/dashboard/emails/sending"],
+    ["/emails/messages/message-id", "/dashboard/emails/sending"],
+    ["/emails/inbox", "/dashboard/receiving/introduction"],
     ["/emails/receiving/message-id", "/dashboard/receiving/introduction"],
     ["/emails/suppressions", "/dashboard/emails/suppressions"],
     ["/api-keys/key-id", "/create-an-api-key"],

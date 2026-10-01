@@ -37,7 +37,7 @@ export const isInstancePage = (pathname: string) =>
   INSTANCE_PAGES.some((page) => page.href === pathname)
 
 export const DASHBOARD_NAV: NavItem[] = [
-  { href: "/emails", title: "Emails", icon: MailsIcon },
+  { href: "/emails", title: "Messages", icon: MailsIcon },
   { href: "/broadcasts", title: "Broadcasts", icon: MegaphoneIcon },
   { href: "/automations", title: "Automations", icon: WorkflowIcon },
   { href: "/templates", title: "Templates", icon: FileCodeIcon },
@@ -64,7 +64,9 @@ export const DASHBOARD_NAV: NavItem[] = [
 export type SectionTab = { href: string; title: string }
 export type SectionTabs = readonly [SectionTab, ...SectionTab[]]
 
+/** The Messages section: every channel's threads, then the logs. */
 export const EMAIL_TABS: SectionTabs = [
+  { href: "/emails/inbox", title: "Inbox" },
   { href: "/emails", title: "Sending" },
   { href: "/emails/receiving", title: "Receiving" },
   { href: "/emails/suppressions", title: "Suppressions" },

@@ -32,10 +32,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import {
+  ChannelMessageStatusBadge,
   ConfirmDialog,
   DocsButton,
   EmailStatusBadge,
   EmptyState,
+  IconCell,
   ListPagination,
   ListToolbar,
   MoreMenu,
@@ -56,11 +58,17 @@ import {
   EmailsChrome,
   ORIGIN_ITEMS,
   REASON_ITEMS,
-  STATUS_ITEMS,
   defaultEmailRange,
   isFilterableStatus,
   isSuppressionReason,
+  logChannel,
+  sendingStatus,
+  sendingStatusItems,
 } from "@/components/dashboard/emails/shared"
+import {
+  MESSAGE_CHANNEL_ITEMS,
+  channelIcon,
+} from "@/components/dashboard/channels/shared"
 import {
   formatDateTime,
   isEmail,
@@ -68,38 +76,43 @@ import {
 } from "@/lib/dashboard/format"
 import { actionError } from "@/lib/action-error"
 import { rangeBounds } from "@/lib/dashboard/email-range"
-import {
-  useReceivedList,
-  useReceivingDomain,
-} from "@/lib/received/use-received"
+import { useReceivingDomain } from "@/lib/received/use-received"
 import { useClock } from "@/lib/time/use-clock"
 import type { SuppressionReason } from "@/lib/dashboard/types"
+import { useEmailCommands, useSuppressionList } from "@/lib/emails/use-emails"
 import {
-  useEmailCommands,
-  useEmailList,
-  useSuppressionList,
-} from "@/lib/emails/use-emails"
+  useReceivingLog,
+  useSendingLog,
+  type LogRow,
+} from "@/lib/messages/use-messages"
 
 export function EmailsView() {
   const now = useClock() ?? undefined
   const { query, setQuery, search } = useListSearch()
+  const [channel, setChannel] = React.useState("all")
   const [status, setStatus] = React.useState("all")
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
 
+  const statusItems = sendingStatusItems(channel)
+  const statusValue = statusItems.some((item) => item.value === status)
+    ? status
+    : "all"
   const filters = {
-    status: isFilterableStatus(status) ? status : undefined,
+    status: statusValue === "all" ? undefined : sendingStatus(statusValue),
     search: search.trim() || undefined,
     ...rangeBounds(range),
   }
-  const emails = useEmailList(filters)
-  const rows = emails.rows
-  const { pageRows, pagination } = emails
+  const log = useSendingLog({ ...filters, channel: logChannel(channel) })
+  const { rows, pageRows, pagination } = log
   const exporting = useExportDialog({
     resource: "emails",
     noun: "emails",
-    filters,
+    filters: {
+      ...filters,
+      status: isFilterableStatus(statusValue) ? statusValue : undefined,
+    },
   })
 
   return (
@@ -108,27 +121,34 @@ export function EmailsView() {
       <ListToolbar
         query={query}
         onQueryChange={setQuery}
-        placeholder="Search emails…"
+        placeholder="Search messages…"
         range={range}
         onRangeChange={setRange}
         now={now}
         filters={[
           {
-            value: status,
+            value: channel,
+            onChange: setChannel,
+            items: MESSAGE_CHANNEL_ITEMS,
+            "aria-label": "Filter by channel",
+          },
+          {
+            value: statusValue,
             onChange: setStatus,
-            items: STATUS_ITEMS,
+            items: statusItems,
             "aria-label": "Filter by status",
           },
         ]}
-        onExport={exporting.open}
+        // Exports cover email; other channels have no export yet.
+        onExport={channel === "email" ? exporting.open : undefined}
       />
-      {emails.status === "LoadingFirstPage" ? (
+      {log.status === "LoadingFirstPage" ? (
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={MailIcon}
-          title="No emails"
-          description="Send a message with POST /emails from the API and it appears here with its delivery events."
+          title="No messages"
+          description="Send an email with POST /emails or a WhatsApp message with POST /whatsapp/messages, and it appears here with its delivery events."
         />
       ) : (
         <>
@@ -142,64 +162,78 @@ export function EmailsView() {
               </>
             }
           >
-            {pageRows.map((email) => (
-              <TableRow key={email.id}>
+            {pageRows.map((row) => (
+              <TableRow key={row.id}>
                 <TableCell>
-                  <div className="flex flex-col gap-0.5">
-                    <Link
-                      href={`/emails/${email.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {email.to}
-                    </Link>
-                    <span className="text-xs text-muted-foreground">
-                      {email.subject}
-                    </span>
-                  </div>
+                  <LogCell row={row} />
                 </TableCell>
                 <TableCell>
-                  <EmailStatusBadge status={email.status} />
+                  <LogStatusBadge status={row.status} />
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {formatDateTime(email.createdAt)}
+                  {formatDateTime(row.createdAt)}
                 </TableCell>
                 <TableCell>
                   <MoreMenu>
                     <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        render={<Link href={`/emails/${email.id}`} />}
-                      >
+                      <DropdownMenuItem render={<Link href={row.href} />}>
                         <EyeIcon />
-                        View email
+                        View message
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        render={<Link href={`/logs?email=${email.id}`} />}
-                      >
-                        <ScrollTextIcon />
-                        View log
-                      </DropdownMenuItem>
+                      {row.channel === "email" ? (
+                        <DropdownMenuItem
+                          render={<Link href={`/logs?email=${row.id}`} />}
+                        >
+                          <ScrollTextIcon />
+                          View log
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuGroup>
                   </MoreMenu>
                 </TableCell>
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination {...pagination} noun="email" />
+          <ListPagination {...pagination} noun="message" />
         </>
       )}
     </EmailsChrome>
   )
 }
 
+/** The log's leading cell: the channel's mark, then who and what. */
+function LogCell({ row }: { row: LogRow }) {
+  return (
+    <IconCell icon={channelIcon(row.channel)}>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <Link href={row.href} className="font-medium hover:underline">
+          {row.party}
+        </Link>
+        <span className="text-xs text-muted-foreground">{row.summary}</span>
+      </div>
+    </IconCell>
+  )
+}
+
+function LogStatusBadge({ status }: { status: LogRow["status"] }) {
+  if (!status) return null
+  return status.kind === "email" ? (
+    <EmailStatusBadge status={status.value} />
+  ) : (
+    <ChannelMessageStatusBadge status={status.value} />
+  )
+}
+
 export function ReceivingView() {
   const { query, setQuery, search } = useListSearch()
   const now = useClock() ?? undefined
+  const [channel, setChannel] = React.useState("all")
   const [range, setRange] = React.useState<DateRange | undefined>(() =>
     defaultEmailRange(Date.now())
   )
   const receivingDomain = useReceivingDomain()
   const filters = { search: search.trim() || undefined, ...rangeBounds(range) }
-  const received = useReceivedList(filters)
+  const received = useReceivingLog({ ...filters, channel: logChannel(channel) })
   const { rows, pageRows, pagination } = received
   const exporting = useExportDialog({
     resource: "received",
@@ -224,7 +258,15 @@ export function ReceivingView() {
           range={range}
           onRangeChange={setRange}
           now={now}
-          onExport={exporting.open}
+          filters={[
+            {
+              value: channel,
+              onChange: setChannel,
+              items: MESSAGE_CHANNEL_ITEMS,
+              "aria-label": "Filter by channel",
+            },
+          ]}
+          onExport={channel === "email" ? exporting.open : undefined}
         />
       </div>
       {received.status === "LoadingFirstPage" ? (
@@ -232,8 +274,8 @@ export function ReceivingView() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={InboxIcon}
-          title="No received emails"
-          description="Enable receiving on a verified domain, then send a message to that address."
+          title="Nothing received"
+          description="Enable receiving on a verified domain or connect a WhatsApp number, then send a message to it."
         />
       ) : (
         <>
@@ -247,35 +289,23 @@ export function ReceivingView() {
               </>
             }
           >
-            {pageRows.map((email) => (
-              <TableRow key={email.id}>
+            {pageRows.map((row) => (
+              <TableRow key={row.id}>
                 <TableCell>
-                  <div className="flex flex-col gap-0.5">
-                    <Link
-                      href={`/emails/receiving/${email.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {email.from}
-                    </Link>
-                    <span className="text-xs text-muted-foreground">
-                      {email.subject}
-                    </span>
-                  </div>
+                  <LogCell row={row} />
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {email.to}
+                  {row.to}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {formatDateTime(email.createdAt)}
+                  {formatDateTime(row.createdAt)}
                 </TableCell>
                 <TableCell>
                   <MoreMenu>
                     <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        render={<Link href={`/emails/receiving/${email.id}`} />}
-                      >
+                      <DropdownMenuItem render={<Link href={row.href} />}>
                         <EyeIcon />
-                        View email
+                        View message
                       </DropdownMenuItem>
                     </DropdownMenuGroup>
                   </MoreMenu>
@@ -283,7 +313,7 @@ export function ReceivingView() {
               </TableRow>
             ))}
           </ResourceTable>
-          <ListPagination {...pagination} noun="email" />
+          <ListPagination {...pagination} noun="message" />
         </>
       )}
     </EmailsChrome>

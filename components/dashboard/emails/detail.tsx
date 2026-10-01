@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import {
+  CheckCheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleSlashIcon,
@@ -37,9 +38,12 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import {
+  ChannelMessageStatusBadge,
   CodeWell,
   CopyButton,
   DetailHeader,
+  JsonSection,
+  MonoLink,
   EmailStatusBadge,
   EmptyState,
   EventTrail,
@@ -50,14 +54,22 @@ import {
   PanelTabs,
   copyToClipboard,
 } from "@/components/dashboard/primitives"
-import { emailStatusLabel, formatDateTime } from "@/lib/dashboard/format"
+import {
+  emailStatusLabel,
+  formatDateTime,
+  sentenceCase,
+} from "@/lib/dashboard/format"
 import {
   tokenizeHtml,
   type HtmlTokenKind,
 } from "@/lib/dashboard/highlight-html"
 import { actionError } from "@/lib/action-error"
 import { useReceived } from "@/lib/received/use-received"
-import type { EmailEvent, EmailStatus } from "@/lib/dashboard/types"
+import type {
+  ChannelMessageStatus,
+  EmailEvent,
+  EmailStatus,
+} from "@/lib/dashboard/types"
 import {
   useEmail,
   useEmailCommands,
@@ -65,13 +77,17 @@ import {
 } from "@/lib/emails/use-emails"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
+import { useChannelMessage } from "@/lib/messages/use-messages"
+import { channelIcon } from "@/components/dashboard/channels/shared"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 import { useShareEmail } from "./share-dialog"
+import { MessageFiles } from "./shared"
 
 type TimelineEvent = {
   id: string
   at: number
-  type?: EmailStatus
+  type?: EmailStatus | ChannelMessageStatus
   label?: string
 }
 
@@ -88,6 +104,10 @@ function eventIcon(event: TimelineEvent): LucideIcon {
       return EyeIcon
     case "clicked":
       return MousePointerClickIcon
+    case "read":
+      return CheckCheckIcon
+    case "received":
+      return InboxIcon
     case "scheduled":
     case "delivery_delayed":
       return ClockIcon
@@ -125,14 +145,21 @@ function emailMeta(email: {
   ]
 }
 
+function eventLabel(type: TimelineEvent["type"]) {
+  if (!type) return "Event"
+  // Only channel messages are read, or received as events.
+  return type === "read" || type === "received"
+    ? sentenceCase(type)
+    : emailStatusLabel(type)
+}
+
 function EmailEventsRow({ events }: { events: TimelineEvent[] }) {
   return (
     <EventTrail
       steps={events.map((event) => ({
         id: event.id,
         icon: eventIcon(event),
-        label:
-          event.label ?? (event.type ? emailStatusLabel(event.type) : "Event"),
+        label: event.label ?? eventLabel(event.type),
         caption: formatDateTime(event.at),
       }))}
     />
@@ -289,7 +316,7 @@ export function EmailDetail() {
     <div className="flex flex-col gap-6">
       <DetailHeader
         backHref="/emails"
-        backLabel="Emails"
+        backLabel="Messages"
         title={email.to}
         icon={MailIcon}
         badge={<EmailStatusBadge status={email.status} />}
@@ -403,7 +430,7 @@ export function ReceivedDetail() {
     <div className="flex flex-col gap-6">
       <DetailHeader
         backHref="/emails/receiving"
-        backLabel="Emails"
+        backLabel="Messages"
         title={email.from}
         icon={InboxIcon}
         actions={
@@ -435,6 +462,109 @@ export function ReceivedDetail() {
         html={email.html}
         text={email.text}
       />
+    </div>
+  )
+}
+
+/** A WhatsApp (later Messenger, Instagram) message: who, what, its
+    timeline and the payload Meta got or sent. */
+export function ChannelMessageDetail() {
+  const { id } = useParams<{ id: string }>()
+  const found = useChannelMessage(id)
+
+  if (found === undefined) return <Skeleton className="h-64 w-full" />
+  if (!found) {
+    return (
+      <NotFoundState
+        icon={MailIcon}
+        noun="message"
+        backHref="/emails"
+        description="Messages are pruned from this workspace after 7 days."
+      />
+    )
+  }
+
+  const { message, account, events } = found
+  const inbound = message.direction === "inbound"
+  const number = account?.handle ?? message.from
+  const person = `+${(inbound ? message.from : message.to).replace(/^\+/, "")}`
+  const payload: unknown = JSON.parse(found.payload)
+  const template =
+    message.type === "template" &&
+    typeof payload === "object" &&
+    payload !== null &&
+    "template" in payload
+      ? (payload.template as { name?: string }).name
+      : undefined
+  return (
+    <div className="flex flex-col gap-6">
+      <DetailHeader
+        backHref={inbound ? "/emails/receiving" : "/emails"}
+        backLabel="Messages"
+        title={person}
+        icon={channelIcon(message.channel)}
+        badge={<ChannelMessageStatusBadge status={message.status} />}
+        actions={
+          <MoreMenu>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                onClick={() => void copyToClipboard(message._id, "Id")}
+              >
+                <CopyIcon />
+                Copy id
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </MoreMenu>
+        }
+      />
+      <MetaStrip
+        items={[
+          { label: "From", value: inbound ? person : number },
+          { label: "To", value: inbound ? number : person },
+          {
+            label: template ? "Template" : "Type",
+            value: template ?? sentenceCase(message.type),
+          },
+          {
+            label: "Conversation",
+            value: (
+              <MonoLink href={`/emails/inbox?c=${message.conversationId}`}>
+                Open in Inbox
+              </MonoLink>
+            ),
+          },
+          {
+            label: "Id",
+            value: (
+              <>
+                <span className="truncate font-mono">{message._id}</span>
+                <CopyButton value={message._id} label="Id" />
+              </>
+            ),
+          },
+        ]}
+      />
+      {message.error ? (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>
+            {message.errorTitle ?? "Meta refused the message"}
+            {message.errorCode ? ` (${message.errorCode})` : ""}
+          </AlertTitle>
+          <AlertDescription>{message.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <EmailEventsRow
+        events={events.map((event) => ({
+          id: event._id,
+          type: event.type,
+          at: event.at,
+        }))}
+      />
+      {found.media.length ? (
+        <MessageFiles messageId={message._id} media={found.media} />
+      ) : null}
+      <JsonSection title="Payload" value={payload} />
     </div>
   )
 }
