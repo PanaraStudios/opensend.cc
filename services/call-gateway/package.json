@@ -27,5 +27,8 @@
     "tsx": "4.23.13",
     "typescript": "5.9.3",
     "werift": "0.24.4"
+  },
+  "dependencies": {
+    "drachtio-srf": "5.0.29"
   }
 }
