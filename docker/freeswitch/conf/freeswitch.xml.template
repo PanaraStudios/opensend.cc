@@ -9,6 +9,7 @@
         <load module="mod_dptools"/><load module="mod_hash"/><load module="mod_expr"/>
         <load module="mod_opus"/><load module="mod_sndfile"/><load module="mod_tone_stream"/>
         <load module="mod_event_socket"/><load module="mod_sofia"/>
+        <load module="mod_dialplan_xml"/>
       </modules>
     </configuration>
     <configuration name="switch.conf" description="Media ports">
