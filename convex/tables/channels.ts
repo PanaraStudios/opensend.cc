@@ -1,4 +1,5 @@
 import { defineTable } from "convex/server"
+import { RENDERED_HEADER_FORMATS } from "../../lib/meta/templates"
 import { v } from "convex/values"
 import { tagValue } from "./emails"
 import {
@@ -9,6 +10,18 @@ import {
 
 export const literals = <T extends string>(values: readonly T[]) =>
   v.union(...values.map((value) => v.literal(value)))
+
+export const renderedTemplateValue = v.object({
+  header: v.optional(
+    v.object({
+      format: literals(RENDERED_HEADER_FORMATS),
+      text: v.optional(v.string()),
+    })
+  ),
+  body: v.string(),
+  footer: v.optional(v.string()),
+  buttons: v.array(v.object({ type: v.string(), text: v.string() })),
+})
 
 /** Every channel a conversation can be on. */
 export const CHANNELS = CHANNEL_IDS
@@ -283,6 +296,8 @@ export const channelTables = {
     messageId: v.id("channelMessages"),
     /** The channel's message object as JSON. */
     payload: v.string(),
+    /** What the customer received, independent of later template edits. */
+    rendered: v.optional(renderedTemplateValue),
     /** A message carries at most a few files. */
     media: v.optional(v.array(channelMediaValue)),
   }).index("by_messageId", ["messageId"]),

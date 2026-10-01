@@ -1,4 +1,5 @@
 import { CHANNELS, CHANNEL_IDS, type LogChannel } from "../lib/channels"
+import { renderedChannelTemplate } from "./channels/templates"
 import { channelRows } from "./channels/rows"
 import { ConvexError, v } from "convex/values"
 import {
@@ -29,6 +30,7 @@ import {
   MESSAGING_CHANNELS,
   channelMessageStatusValue,
   literals,
+  renderedTemplateValue,
 } from "./tables/channels"
 import { mediaDownloadLink } from "./channels/downloads"
 
@@ -323,6 +325,7 @@ export const get = query({
     v.object({
       message: schema.doc("channelMessages"),
       payload: v.string(),
+      rendered: v.optional(renderedTemplateValue),
       media: v.array(
         v.object({
           mediaId: v.optional(v.string()),
@@ -348,8 +351,15 @@ export const get = query({
       .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
       .unique()
     const account = await ctx.db.get("channelAccounts", message.accountId)
+    const rendered = await renderedChannelTemplate(
+      ctx,
+      message,
+      content,
+      account
+    )
     return {
       message,
+      ...(rendered ? { rendered } : {}),
       payload: content?.payload ?? "{}",
       media: mediaFiles(message, content),
       events: await ctx.db

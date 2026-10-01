@@ -172,6 +172,87 @@ export function fillParams(
   return text.replace(PARAM, (whole, param: string) => fill(param) ?? whole)
 }
 
+export const RENDERED_HEADER_FORMATS = [
+  "TEXT",
+  "IMAGE",
+  "VIDEO",
+  "DOCUMENT",
+  "LOCATION",
+] as const
+export type RenderedTemplate = {
+  header?: { format: (typeof RENDERED_HEADER_FORMATS)[number]; text?: string }
+  body: string
+  footer?: string
+  buttons: { type: string; text: string }[]
+}
+
+/** Snapshot the creation-format template with this send's wire parameters.
+ * Missing values stay visible; template examples are never send values. */
+export function renderTemplate(
+  components: readonly TemplateComponent[],
+  sendComponents: unknown = []
+): RenderedTemplate {
+  const sends = storedComponents(sendComponents)
+  const fill = (type: string, source: unknown) => {
+    const parameters = list(find(sends, type)?.parameters).map(record)
+    return fillParams(text(source), (key) => {
+      const parameter =
+        parameters.find((item) => item.parameter_name === key) ??
+        (POSITIONAL.test(key) && !parameters[Number(key) - 1]?.parameter_name
+          ? parameters[Number(key) - 1]
+          : undefined)
+      if (!parameter) return undefined
+      if (parameter.type === "text")
+        return typeof parameter.text === "string" ? parameter.text : undefined
+      const fallback = record(parameter[text(parameter.type)]).fallback_value
+      return typeof fallback === "string" ? fallback : undefined
+    })
+  }
+  const header = find(components, "HEADER")
+  const format = RENDERED_HEADER_FORMATS.find(
+    (item) => item === upper(header?.format)
+  )
+  const footer = text(find(components, "FOOTER")?.text)
+  return {
+    ...(format
+      ? {
+          header: {
+            format,
+            ...(format === "TEXT"
+              ? { text: fill("HEADER", header?.text) }
+              : {}),
+          },
+        }
+      : {}),
+    body: fill("BODY", find(components, "BODY")?.text),
+    ...(footer ? { footer } : {}),
+    buttons: list(find(components, "BUTTONS")?.buttons).map((raw) => {
+      const button = record(raw)
+      const type = upper(button.type)
+      const known = BUTTON_TYPES.find((item) => item === type)
+      return {
+        type,
+        text: text(button.text) || (known ? buttonLabel(known) : type),
+      }
+    }),
+  }
+}
+
+/** The editor uses example values through one adapter to the sent shape. */
+export function renderedTemplateFromForm(form: TemplateForm): RenderedTemplate {
+  const sendComponents = (["header", "body"] as const).map((where) => ({
+    type: where,
+    parameters: unique(
+      textParams(where === "header" ? form.headerText : form.body)
+    ).map((param) => ({
+      type: "text",
+      parameter_name: param,
+      text: formExample(form, where, param)?.trim() || `{{${param}}}`,
+    })),
+  }))
+  return renderTemplate(componentsFromForm(form), sendComponents)
+}
+
 const upper = (value: unknown) =>
   typeof value === "string" ? value.toUpperCase() : ""
 const text = (value: unknown) => (typeof value === "string" ? value : "")

@@ -3,6 +3,10 @@ import { primaryContactIdentity, teamRow } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
 import { object } from "../lib/meta/parse"
 import { channelMessagePayload } from "./channels/payload"
+import {
+  renderedChannelTemplate,
+  type TemplatePageCache,
+} from "./channels/templates"
 import { channelStrategies } from "../lib/meta/payloads"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
@@ -35,6 +39,7 @@ import {
   CONVERSATION_STATUSES,
   channelValue,
   conversationStatusValue,
+  renderedTemplateValue,
 } from "./tables/channels"
 import { replyHeaders, replySubject } from "../lib/dashboard/conversations"
 
@@ -348,6 +353,7 @@ const threadMessage = v.object({
   at: v.number(),
   status: v.string(),
   text: v.string(),
+  rendered: v.optional(renderedTemplateValue),
   subject: v.optional(v.string()),
   error: v.optional(v.string()),
   media: v.array(
@@ -416,19 +422,31 @@ export const messages = query({
       .withIndex("by_conversationId", (q) => q.eq("conversationId", id))
       .order("desc")
       .paginate(paginationOpts)
+    const account = conversation.accountId
+      ? await ctx.db.get("channelAccounts", conversation.accountId)
+      : null
+    const templateCache: TemplatePageCache = new Map()
     const page = await Promise.all(
       result.page.map(async (message) => {
         const content = await ctx.db
           .query("channelMessageContents")
           .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
           .unique()
+        const rendered = await renderedChannelTemplate(
+          ctx,
+          message,
+          content,
+          account,
+          templateCache
+        )
         return {
           id: message._id,
           kind: "channel" as const,
           direction: message.direction,
           at: message._creationTime,
           status: message.status,
-          text: bodyText(message, content),
+          text: rendered?.body ?? bodyText(message, content),
+          ...(rendered ? { rendered } : {}),
           ...(message.error
             ? {
                 error: message.errorTitle

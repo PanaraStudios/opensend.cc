@@ -566,6 +566,21 @@ test("local templates publish without Meta, substitute variables by alias/id and
       template: { id, variables: { name: "Grace" } },
     })
     expect((await f.message(snapshot))?.preview).toBe("Hello Grace")
+    const sentMessage = (await f.message(snapshot))!
+    const rendered = {
+      body: "Hello Grace",
+      buttons: [{ type: "QUICK_REPLY", text: "Yes" }],
+    }
+    expect(
+      await f.member.client.query(api.messages.get, { id: snapshot })
+    ).toMatchObject({ rendered })
+    const bubbles = await f.member.client.query(api.conversations.messages, {
+      id: sentMessage.conversationId,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+    expect(bubbles.page.find((bubble) => bubble.id === snapshot)).toMatchObject(
+      { text: "Hello Grace", rendered }
+    )
     expect(
       (
         await f.call(`/${channel}/messages`, "POST", {

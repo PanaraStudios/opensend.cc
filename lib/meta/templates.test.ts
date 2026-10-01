@@ -13,6 +13,8 @@ import {
   templateProblems,
   templateSendComponents,
   templateVariables,
+  renderTemplate,
+  renderedTemplateFromForm,
   type TemplateComponent,
   type TemplateForm,
 } from "./templates"
@@ -426,6 +428,144 @@ describe("reading Meta", () => {
         event: "APPROVED",
       }),
       null
+    )
+  })
+})
+
+describe("renderTemplate", () => {
+  it("fills positional body/header parameters separately and preserves footer/button labels", () => {
+    assert.deepEqual(
+      renderTemplate(
+        componentsFromForm(positional),
+        templateSendComponents(
+          componentsFromForm(positional),
+          "positional",
+          positional.examples
+        )
+      ),
+      {
+        header: { format: "TEXT", text: "Act fast, Pablo!" },
+        body: "Your code SUMMER20 expires in 10 days.",
+        footer: "Lucky Shrub",
+        buttons: [
+          { type: "URL", text: "See deals" },
+          { type: "QUICK_REPLY", text: "Unsubscribe" },
+        ],
+      }
+    )
+  })
+  it("fills named parameters by name rather than their wire order", () => {
+    assert.deepEqual(
+      renderTemplate(componentsFromForm(named), [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", parameter_name: "order_number", text: "42" },
+            { type: "text", parameter_name: "first_name", text: "Ada" },
+          ],
+        },
+      ]),
+      {
+        body: "Thank you, Ada! Your order is 42.",
+        buttons: [{ type: "COPY_CODE", text: "Copy offer code" }],
+      }
+    )
+  })
+  it("fills a named header parameter", () => {
+    assert.deepEqual(
+      renderTemplate(
+        [
+          { type: "HEADER", format: "TEXT", text: "Hi {{name}}" },
+          { type: "BODY", text: "Welcome" },
+        ],
+        [
+          {
+            type: "header",
+            parameters: [
+              { type: "text", parameter_name: "name", text: "Pablo" },
+            ],
+          },
+        ]
+      ),
+      {
+        header: { format: "TEXT", text: "Hi Pablo" },
+        body: "Welcome",
+        buttons: [],
+      }
+    )
+  })
+  for (const format of ["IMAGE", "VIDEO", "DOCUMENT", "LOCATION"] as const)
+    it(`keeps a ${format} header's format`, () => {
+      assert.deepEqual(
+        renderTemplate([
+          { type: "HEADER", format },
+          { type: "BODY", text: "An update" },
+        ]),
+        { header: { format }, body: "An update", buttons: [] }
+      )
+    })
+  it("leaves missing parameters visible, without using stored examples", () => {
+    assert.equal(
+      renderTemplate(componentsFromForm(positional)).body,
+      positional.body
+    )
+    assert.equal(
+      renderTemplate(
+        [{ type: "BODY", text: "Hi {{1}}, order {{2}}" }],
+        [{ type: "body", parameters: [{ type: "text", text: "Ada" }] }]
+      ).body,
+      "Hi Ada, order {{2}}"
+    )
+  })
+  it("uses documented currency/date-time fallback values", () => {
+    assert.equal(
+      renderTemplate(
+        [{ type: "BODY", text: "{{1}} on {{2}}" }],
+        [
+          {
+            type: "body",
+            parameters: [
+              { type: "currency", currency: { fallback_value: "$10" } },
+              { type: "date_time", date_time: { fallback_value: "Monday" } },
+            ],
+          },
+        ]
+      ).body,
+      "$10 on Monday"
+    )
+  })
+  it("does not interpret parameters inside a replacement value", () => {
+    assert.equal(
+      renderTemplate(
+        [{ type: "BODY", text: "Hi {{1}}, {{2}}" }],
+        [
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: "{{2}}" },
+              { type: "text", text: "ready" },
+            ],
+          },
+        ]
+      ).body,
+      "Hi {{2}}, ready"
+    )
+  })
+  it("adapts the editor's example values and leaves unfilled examples visible", () => {
+    assert.deepEqual(
+      renderedTemplateFromForm(positional),
+      renderTemplate(
+        componentsFromForm(positional),
+        templateSendComponents(
+          componentsFromForm(positional),
+          "positional",
+          positional.examples
+        )
+      )
+    )
+    assert.equal(
+      renderedTemplateFromForm({ ...named, examples: {} }).body,
+      named.body
     )
   })
 })

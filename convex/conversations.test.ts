@@ -20,6 +20,7 @@ import {
   incoming,
   signedWebhook,
 } from "./testHelpers/meta.fixture"
+import { createChannelMessage } from "./channels/messages"
 import { insertRow, patchRow } from "./counts"
 import { WHATSAPP_WINDOW_CLOSED as WINDOW_CLOSED } from "../lib/meta/payloads"
 
@@ -128,6 +129,50 @@ async function thread(f: Fixture, channel: "whatsapp" | "email") {
   expect(page).toHaveLength(1)
   return page[0].conversation._id
 }
+
+async function approvedTemplate(f: Fixture) {
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [
+      {
+        id: "3001",
+        name: "order_update",
+        language: "en_US",
+        category: "UTILITY",
+        status: "APPROVED",
+        parameterFormat: "positional",
+        components: [
+          { type: "HEADER", format: "TEXT", text: "Order update" },
+          {
+            type: "BODY",
+            text: "Hi {{1}}, your order is ready.",
+            example: { body_text: [["Pablo"]] },
+          },
+          { type: "FOOTER", text: "Thank you" },
+          {
+            type: "BUTTONS",
+            buttons: [{ type: "QUICK_REPLY", text: "Thanks!" }],
+          },
+        ],
+      },
+    ],
+  })
+  return (await f.t.run((ctx) =>
+    ctx.db
+      .query("templates")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", f.team))
+      .first()
+  ))!
+}
+
+const renderedOrder = (name: string) => ({
+  header: { format: "TEXT", text: "Order update" },
+  body: `Hi ${name}, your order is ready.`,
+  footer: "Thank you",
+  buttons: [{ type: "QUICK_REPLY", text: "Thanks!" }],
+})
 
 test("an inbound WhatsApp message opens an unread thread the inbox lists, filters, searches and counts", async () => {
   const f = await setup()
@@ -238,42 +283,7 @@ test("a reply inside the window queues a dashboard message; outside it the stand
 
 test("an approved template is sent with its variables once the window has closed", async () => {
   const f = await setup()
-  fakeGraph([
-    {
-      method: "GET",
-      path: `/${WABA_ID}/message_templates`,
-      respond: () => ({
-        data: [
-          {
-            id: "3001",
-            name: "order_update",
-            language: "en_US",
-            category: "UTILITY",
-            status: "APPROVED",
-            parameter_format: "POSITIONAL",
-            components: [
-              {
-                type: "BODY",
-                text: "Hi {{1}}, your order is ready.",
-                example: { body_text: [["Pablo"]] },
-              },
-            ],
-          },
-        ],
-        paging: { cursors: {} },
-      }),
-    },
-  ])
-  await f.owner.client.action(api.whatsapp.templateActions.sync, {
-    organizationId: f.team,
-  })
-  const template = await f.t.run(
-    async (ctx) =>
-      (await ctx.db
-        .query("templates")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", f.team))
-        .first())!
-  )
+  const template = await approvedTemplate(f)
   await project(f, incoming())
   const id = await thread(f, "whatsapp")
   await expire(f, id)
@@ -305,13 +315,167 @@ test("an approved template is sent with its variables once the window has closed
   })
   expect(row.message).toMatchObject({
     type: "template",
-    preview: "[template: order_update]",
+    preview: "Hi Ada, your order is ready.",
   })
   expect(JSON.parse(row.content!.payload).template).toMatchObject({
     name: "order_update",
     components: [{ type: "body", parameters: [{ type: "text", text: "Ada" }] }],
   })
+  expect(row.content!.rendered).toEqual(renderedOrder("Ada"))
+  expect((await f.list()).page[0].conversation.lastPreview).toBe(
+    "Hi Ada, your order is ready."
+  )
+  // Later published edits cannot change the actual send's snapshot.
+  await f.t.run(async (ctx) => {
+    const published = (await ctx.db
+      .query("publishedTemplates")
+      .withIndex("by_templateId", (q) => q.eq("templateId", template._id))
+      .unique())!
+    await ctx.db.patch("publishedTemplates", published._id, {
+      components: [{ type: "BODY", text: "Changed {{1}}" }],
+    })
+  })
+  expect(
+    (
+      await f.member.client.query(api.conversations.messages, {
+        id,
+        paginationOpts: page,
+      })
+    ).page[0]
+  ).toMatchObject({
+    text: renderedOrder("Ada").body,
+    rendered: renderedOrder("Ada"),
+  })
+  expect(
+    await f.member.client.query(api.messages.get, { id: sent })
+  ).toMatchObject({ rendered: renderedOrder("Ada") })
 })
+
+test("old template rows render from the published copy, including paused templates and missing parameters", async () => {
+  const f = await setup()
+  const template = await approvedTemplate(f)
+  const sent = await f.t.run((ctx) =>
+    createChannelMessage(
+      ctx,
+      {
+        channel: "whatsapp",
+        from: f.account,
+        to: SENDER,
+        body: { template: { id: template._id, variables: { "1": "Pablo" } } },
+      },
+      { organizationId: f.team, source: "api" }
+    )
+  )
+  const message = await f.t.run(async (ctx) => {
+    const content = (await ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", sent))
+      .unique())!
+    await ctx.db.patch("channelMessageContents", content._id, {
+      rendered: undefined,
+    })
+    await patchRow(ctx, "channelMessages", sent, {
+      preview: "[template: order_update]",
+    })
+    await patchRow(ctx, "templates", template._id, {
+      whatsapp: { ...template.whatsapp!, metaStatus: "PAUSED" },
+    })
+    const draft = (await ctx.db
+      .query("templateDrafts")
+      .withIndex("by_templateId", (q) => q.eq("templateId", template._id))
+      .unique())!
+    await ctx.db.patch("templateDrafts", draft._id, {
+      content: [{ type: "BODY", text: "Unpublished edit" }],
+    })
+    return (await ctx.db.get("channelMessages", sent))!
+  })
+  const bubbles = await f.member.client.query(api.conversations.messages, {
+    id: message.conversationId,
+    paginationOpts: page,
+  })
+  expect(bubbles.page[0]).toMatchObject({
+    text: renderedOrder("Pablo").body,
+    rendered: renderedOrder("Pablo"),
+  })
+  expect(
+    await f.member.client.query(api.messages.get, { id: sent })
+  ).toMatchObject({ rendered: renderedOrder("Pablo") })
+  await f.t.run(async (ctx) => {
+    const content = (await ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", sent))
+      .unique())!
+    const payload = JSON.parse(content.payload)
+    payload.template.components = []
+    await ctx.db.patch("channelMessageContents", content._id, {
+      payload: JSON.stringify(payload),
+    })
+  })
+  expect(
+    (
+      await f.member.client.query(api.conversations.messages, {
+        id: message.conversationId,
+        paginationOpts: page,
+      })
+    ).page[0]
+  ).toMatchObject({ rendered: { body: "Hi {{1}}, your order is ready." } })
+  // A different WABA's published copy must never supply the old row.
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { wabaId: "another-waba" })
+  )
+  expect(
+    (
+      await f.member.client.query(api.conversations.messages, {
+        id: message.conversationId,
+        paginationOpts: page,
+      })
+    ).page[0]
+  ).toMatchObject({ rendered: { body: "Template: order_update", buttons: [] } })
+  expect(
+    await f.member.client.query(api.messages.get, { id: sent })
+  ).toMatchObject({ rendered: { body: "Template: order_update", buttons: [] } })
+})
+
+for (const reference of ["name", "alias", "raw"] as const) {
+  test(`a ${reference} template API send snapshots the rendered body`, async () => {
+    const f = await setup()
+    const template = await approvedTemplate(f)
+    const ref =
+      reference === "name"
+        ? {
+            name: template.name,
+            language: "en_US",
+            variables: { "1": "Pablo" },
+          }
+        : reference === "alias"
+          ? { alias: template.alias, variables: { "1": "Pablo" } }
+          : {
+              name: template.name,
+              language: { code: "en_US" },
+              components: [
+                { type: "body", parameters: [{ type: "text", text: "Pablo" }] },
+              ],
+            }
+    const sent = await f.t.run((ctx) =>
+      createChannelMessage(
+        ctx,
+        {
+          channel: "whatsapp",
+          from: f.account,
+          to: SENDER,
+          body: { template: ref },
+        },
+        { organizationId: f.team, source: "api" }
+      )
+    )
+    expect(
+      await f.member.client.query(api.messages.get, { id: sent })
+    ).toMatchObject({
+      rendered: renderedOrder("Pablo"),
+      message: { preview: renderedOrder("Pablo").body },
+    })
+  })
+}
 
 test("received email becomes one thread per sender, linked to the contact, and a reply threads the answer", async () => {
   const f = await setup()

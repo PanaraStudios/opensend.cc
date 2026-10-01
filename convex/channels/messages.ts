@@ -22,7 +22,12 @@ import { tagValue } from "../tables/emails"
 import { upsertChannelThread } from "./identity"
 import { channelMessagePayload } from "./payload"
 import { channelStrategies } from "../../lib/meta/payloads"
-import { resolveLocalTemplate } from "./templates"
+import { resolveLocalTemplate, whatsappTemplateComponents } from "./templates"
+import {
+  renderTemplate,
+  storedComponents,
+  type RenderedTemplate,
+} from "../../lib/meta/templates"
 import { messagingChannelValue } from "../tables/channels"
 import { resolveWhatsAppTemplate } from "../whatsapp/templates"
 import { STATUS_RANK, object, string } from "../../lib/meta/webhooks"
@@ -116,8 +121,22 @@ async function storedTemplate(
   wabaId: string | undefined,
   value: unknown
 ) {
-  if (typeof value !== "object" || value === null || "components" in value)
-    return value
+  if (typeof value !== "object" || value === null) return { value }
+  if ("components" in value) {
+    const ref = object(value)
+    const components = await whatsappTemplateComponents(
+      ctx,
+      organizationId,
+      wabaId,
+      ref
+    )
+    return {
+      value,
+      ...(components
+        ? { rendered: renderTemplate(components, ref.components) }
+        : {}),
+    }
+  }
   const ref = value as {
     id?: unknown
     alias?: unknown
@@ -144,10 +163,13 @@ async function storedTemplate(
       typeof ref.variables === "object" && ref.variables !== null
         ? (ref.variables as Record<string, string | number>)
         : {}
+    const components = template.sendComponents(variables)
     return {
-      name: template.name,
-      language: template.language,
-      components: template.sendComponents(variables),
+      value: { name: template.name, language: template.language, components },
+      rendered: renderTemplate(
+        storedComponents(template.components),
+        components
+      ),
     }
   } catch (error) {
     if (
@@ -155,7 +177,7 @@ async function storedTemplate(
       error instanceof ConvexError &&
       error.data === "WhatsApp template not found"
     )
-      return value
+      return { value }
     throw error
   }
 }
@@ -185,20 +207,20 @@ export async function createChannelMessage(
   )
   let body = input.body
   let templateId: Id<"templates"> | undefined
+  let rendered: RenderedTemplate | undefined
   let prepared: ReturnType<typeof channelStrategies.whatsapp.build>
   try {
     if (body.template !== undefined) {
-      if (!isPageChannel(channel))
-        body = {
-          ...body,
-          template: await storedTemplate(
-            ctx,
-            opts.organizationId,
-            account.wabaId,
-            body.template
-          ),
-        }
-      else {
+      if (!isPageChannel(channel)) {
+        const resolved = await storedTemplate(
+          ctx,
+          opts.organizationId,
+          account.wabaId,
+          body.template
+        )
+        body = { ...body, template: resolved.value }
+        rendered = resolved.rendered
+      } else {
         if (body.text !== undefined || body.attachment !== undefined)
           throw new Error("Provide exactly one message body.")
         const template = await resolveLocalTemplate(
@@ -223,7 +245,8 @@ export async function createChannelMessage(
       error instanceof Error ? error.message : "Invalid channel message."
     )
   }
-  const { payload, to: recipient, preview } = prepared
+  const { payload, to: recipient } = prepared
+  const preview = rendered ? rendered.body.slice(0, 1000) : prepared.preview
   const type = templateId ? "template" : prepared.type
   if (JSON.stringify(payload).length > 200_000)
     throw invalid("The message body is too large.")
@@ -332,6 +355,7 @@ export async function createChannelMessage(
   await ctx.db.insert("channelMessageContents", {
     messageId: message._id,
     payload: JSON.stringify(payload),
+    ...(rendered ? { rendered } : {}),
     ...(upload && upload.accountId === account._id
       ? {
           media: [

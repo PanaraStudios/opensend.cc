@@ -211,6 +211,16 @@ test("window rejects every free-form type while templates are allowed; an inboun
   const thread = await f.t.run((ctx) => ctx.db.query("conversations").first())
   expect(thread?.windowExpiresAt).toBeUndefined()
   expect(await message(f, id)).toMatchObject({ type: "template" })
+  const content = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", id))
+      .unique()
+  )
+  expect(content?.rendered).toBeUndefined()
+  expect(await f.member.client.query(api.messages.get, { id })).toMatchObject({
+    rendered: { body: "Template: hello_world", buttons: [] },
+  })
   await project(f, incoming())
   const text = await send(f)
   expect(await message(f, text)).toMatchObject({ status: "queued" })
