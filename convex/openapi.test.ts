@@ -1327,3 +1327,49 @@ test("Messenger and Instagram send, read routes and local templates validate rea
     )
   }
 })
+
+test("WhatsApp catalog request, response and customer webhook examples validate per type", async () => {
+  const { whatsappSendExamples, whatsappInboundExamples } =
+    await import("../lib/meta/whatsapp-fixtures")
+  const { readFileSync } = await import("node:fs")
+  // The dereferenced contract retains examples as well as the schema.
+  type ExamplesContent = {
+    schema: AnySchema
+    examples: Record<string, { value: unknown }>
+  }
+  const operation = contract.paths["/whatsapp/messages"].post
+  const requests = operation.requestBody!.content[
+    "application/json"
+  ] as ExamplesContent
+  const responses = contract.paths["/whatsapp/messages/{id}"].get.responses[
+    "200"
+  ].content["application/json"] as ExamplesContent
+  for (const name of Object.keys(whatsappSendExamples)) {
+    expect(requests.examples[name], name).toBeDefined()
+    validateBody(requests.schema, requests.examples[name].value)
+    validateBody(responses.schema, responses.examples[`sent_${name}`].value)
+  }
+  validateBody(requests.schema, requests.examples.bsuid.value)
+  for (const name of Object.keys(whatsappInboundExamples))
+    validateBody(responses.schema, responses.examples[name].value)
+  const source = readFileSync(resolve("openapi/opensend.yaml"), "utf8")
+  expect(source).toContain("whatsapp.message.played")
+  const webhook = (
+    contract as Contract & {
+      webhooks: {
+        whatsappMessage: {
+          post: {
+            requestBody: { content: { "application/json": ExamplesContent } }
+          }
+        }
+      }
+    }
+  ).webhooks.whatsappMessage.post.requestBody.content["application/json"]
+  for (const name of [
+    ...Object.keys(whatsappSendExamples).map((n) => `sent_${n}`),
+    ...Object.keys(whatsappInboundExamples),
+  ]) {
+    expect(webhook.examples[name], name).toBeDefined()
+    validateBody(webhook.schema, webhook.examples[name].value)
+  }
+})
