@@ -4,9 +4,7 @@ ARG FREESWITCH_COMMIT=a88d069d6ffb74df797bcaf001f7e63181c07a09
 ARG SOFIA_COMMIT=6198851a610b7889c17e2d98fb84617bc1dd7aec
 # FreeSWITCH 1.10.12's own w32/download_spandsp.props pins this revision (spandsp 3).
 ARG SPANDSP_COMMIT=0d2e6ac65e0e8f53d652665a743015a88bf048d4
-RUN rm -f /etc/apt/sources.list.d/* && printf '%s\n' \
-    'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20250630T000000Z bookworm main' \
-    > /etc/apt/sources.list && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential autoconf automake libtool libtool-bin pkg-config patch \
     libssl-dev libcurl4-openssl-dev libpcre3-dev libspeex-dev libspeexdsp-dev \
     libsqlite3-dev libedit-dev libldns-dev libsndfile1-dev libopus-dev \
@@ -31,9 +29,7 @@ RUN cd freeswitch && patch -p1 < /src/ecdsa-dtls.patch \
     && espeak -w /opt/freeswitch/sounds/calling-invalid.wav 'Please press one or two.'
 
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef
-RUN rm -f /etc/apt/sources.list.d/* && printf '%s\n' \
-    'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20250630T000000Z bookworm main' \
-    > /etc/apt/sources.list && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 libcurl4 libpcre3 libspeex1 libspeexdsp1 libsqlite3-0 \
     libedit2 libldns3 libsndfile1 libopus0 libjpeg62-turbo zlib1g libtiff6 libuuid1 \
     openssl gettext-base && rm -rf /var/lib/apt/lists/* \

@@ -2,10 +2,8 @@
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef AS build
 ARG JANUS_COMMIT=a71f9cecb72b47fc3d3a7effc575ad6b21a1f4f4
 ARG SOFIA_COMMIT=6198851a610b7889c17e2d98fb84617bc1dd7aec
-# Snapshot pins transitive build/runtime packages. Update deliberately with the base.
-RUN rm -f /etc/apt/sources.list.d/* && printf '%s\n' \
-    'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20250630T000000Z bookworm main' \
-    > /etc/apt/sources.list && apt-get update && apt-get install -y --no-install-recommends \
+# Packages come from the base image's own bookworm + security mirrors; the base is pinned by digest.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential autoconf automake libtool pkg-config \
     libglib2.0-dev libjansson-dev libconfig-dev libnice-dev libssl-dev \
     libsrtp2-dev libmicrohttpd-dev zlib1g-dev patch && rm -rf /var/lib/apt/lists/*
@@ -24,9 +22,7 @@ RUN cd janus && patch -p1 < /src/meta-interop.patch && sh autogen.sh \
     && make -j2 && make install
 
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef
-RUN rm -f /etc/apt/sources.list.d/* && printf '%s\n' \
-    'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20250630T000000Z bookworm main' \
-    > /etc/apt/sources.list && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libglib2.0-0 libjansson4 libconfig9 libnice10 libssl3 libsrtp2-1 \
     libmicrohttpd12 zlib1g openssl curl gettext-base && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 janus && mkdir -p /certs /opt/janus/etc/janus \
