@@ -1,13 +1,7 @@
 "use client"
 import { getImageProps, type ImageProps } from "next/image"
 import * as React from "react"
-import {
-  DownloadIcon,
-  FileTextIcon,
-  PauseIcon,
-  PlayIcon,
-  MicIcon,
-} from "lucide-react"
+import { DownloadIcon, FileTextIcon } from "lucide-react"
 import {
   Attachment,
   AttachmentMedia,
@@ -15,16 +9,17 @@ import {
   AttachmentTitle,
   AttachmentDescription,
 } from "@/components/ui/attachment"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { AudioPlayer } from "@/components/ui/audio-player"
+import { VideoPlayer } from "@/components/ui/video-player"
+import { AspectRatio } from "@/components/ui/aspect-ratio"
 import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  MediaViewer,
+  useMediaViewer,
+  type MediaViewerItem,
+} from "@/components/ui/media-viewer"
 import { Skeleton } from "@/components/ui/skeleton"
-import { audioTime, safeMessageUrl } from "@/lib/dashboard/conversation-content"
+import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
 import { cn } from "@/lib/utils"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 
@@ -42,20 +37,46 @@ export function ConversationMedia({
   type,
   voice = false,
   pages,
+  url,
+  label,
+  viewerId,
 }: {
   file?: File
   type: string
   voice?: boolean
   pages?: number
+  url?: string
+  label?: string
+  viewerId?: string
 }) {
-  const src = safeMessageUrl(file?.download_url)
+  const src = safeMessageUrl(file?.download_url ?? url)
   const [failed, setFailed] = React.useState(false)
+  const [viewerOpen, setViewerOpen] = React.useState(false)
+  const gallery = useMediaViewer()
+  function open() {
+    if (src && !gallery?.(viewerId ?? src)) setViewerOpen(true)
+  }
+  const item: MediaViewerItem = {
+    id: src || "media",
+    src: src || "",
+    type: type === "video" ? "video" : "image",
+    filename: file?.filename ?? label,
+  }
+  const viewer = (
+    <MediaViewer
+      items={[item]}
+      selectedId={viewerOpen ? item.id : null}
+      onClose={() => setViewerOpen(false)}
+    />
+  )
   if (!src || failed || file?.error)
     return (
       <div
         className={cn(
-          "chat-media-placeholder",
-          type === "sticker" && "size-36"
+          "flex w-72 max-w-full flex-col items-center justify-center gap-2 rounded-lg bg-muted p-4 text-muted-foreground",
+          type === "sticker" && "size-36",
+          type === "image" && "aspect-[4/3]",
+          type === "video" && "aspect-video"
         )}
       >
         {!file?.error && !failed ? <Skeleton className="h-12 w-full" /> : null}
@@ -66,69 +87,54 @@ export function ConversationMedia({
       </div>
     )
   if (type === "image" || type === "sticker") {
-    // Authenticated signed URLs are intentionally served without Next's image proxy.
     const picture = (
       <ConversationImage
-        unoptimized
         width={640}
         height={480}
         src={src}
-        alt={type === "sticker" ? "Sticker" : file?.filename || "Photo"}
+        alt={
+          type === "sticker" ? "Sticker" : file?.filename || label || "Photo"
+        }
         loading="lazy"
         onError={() => setFailed(true)}
-        className={cn("chat-image", type === "sticker" && "chat-sticker")}
+        className={cn(
+          "size-full object-contain",
+          type === "sticker" && "size-36"
+        )}
       />
     )
     if (type === "sticker") return picture
     return (
-      <Dialog>
-        <DialogTrigger
-          className="block w-full cursor-zoom-in"
+      <>
+        <Button
+          type="button"
+          variant="ghost"
+          className="block h-auto w-72 max-w-full cursor-zoom-in p-0"
           aria-label="Open photo"
+          onClick={open}
         >
-          {picture}
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogTitle>Photo</DialogTitle>
-          <ConversationImage
-            unoptimized
-            width={640}
-            height={480}
-            src={src}
-            alt={file?.filename || "Photo"}
-            className="max-h-[75svh] w-full object-contain"
-          />{" "}
-        </DialogContent>
-      </Dialog>
+          <AspectRatio ratio={4 / 3} className="overflow-hidden rounded-lg">
+            {picture}
+          </AspectRatio>
+        </Button>
+        {viewer}
+      </>
     )
   }
   if (type === "video")
     return (
-      <video
-        src={src}
-        controls
-        playsInline
-        preload="none"
-        className="chat-video"
-        aria-label="Video"
-        onError={() => setFailed(true)}
-      />
+      <>
+        <VideoPlayer src={src} onOpen={open} className="w-72 max-w-full" />
+        {viewer}
+      </>
     )
   if (type === "audio")
-    return voice ? (
-      <VoicePlayer src={src} onError={() => setFailed(true)} />
-    ) : (
-      <div className="flex w-72 max-w-full flex-col gap-1">
-        <span className="text-xs">{file?.filename || "Audio"}</span>
-        <audio
-          src={src}
-          controls
-          preload="none"
-          className="w-full"
-          onError={() => setFailed(true)}
-          aria-label="Audio"
-        />
-      </div>
+    return (
+      <AudioPlayer
+        src={src}
+        compact={voice}
+        label={voice ? "Voice note" : file?.filename || "Audio"}
+      />
     )
   return (
     <Attachment className="w-72 max-w-full">
@@ -164,88 +170,5 @@ export function ConversationMedia({
         <DownloadIcon />
       </Button>
     </Attachment>
-  )
-}
-function VoicePlayer({ src, onError }: { src: string; onError: () => void }) {
-  const audio = React.useRef<HTMLAudioElement>(null)
-  const [playing, setPlaying] = React.useState(false)
-  const [position, setPosition] = React.useState(0)
-  const [duration, setDuration] = React.useState(0)
-  React.useEffect(() => {
-    const element = audio.current
-    if (!element?.parentElement) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          element.preload = "metadata"
-          element.load()
-          observer.disconnect()
-        }
-      },
-      { rootMargin: "100px" }
-    )
-    observer.observe(element.parentElement)
-    return () => observer.disconnect()
-  }, [src])
-  return (
-    <div
-      className="flex w-72 max-w-full items-center gap-2"
-      data-testid="voice-player"
-    >
-      <Avatar>
-        <AvatarFallback>
-          <MicIcon className="size-5" />
-        </AvatarFallback>
-      </Avatar>
-      <audio
-        ref={audio}
-        src={src}
-        preload="none"
-        onError={onError}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        onTimeUpdate={() => setPosition(audio.current?.currentTime ?? 0)}
-        onLoadedMetadata={() => setDuration(audio.current?.duration ?? 0)}
-      />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={playing ? "Pause voice note" : "Play voice note"}
-        onClick={() => {
-          if (playing) audio.current?.pause()
-          else void audio.current?.play().catch(onError)
-        }}
-      >
-        {playing ? <PauseIcon /> : <PlayIcon />}
-      </Button>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="chat-waveform" aria-hidden="true">
-          {Array.from({ length: 36 }, (_, i) => (
-            <span
-              key={i}
-              style={{ height: `${20 + ((i * 17 + 13) % 75)}%` }}
-              data-played={duration > 0 && i / 36 <= position / duration}
-            />
-          ))}
-        </div>
-        <input
-          type="range"
-          className="chat-seek"
-          aria-label="Seek voice note"
-          min={0}
-          max={Number.isFinite(duration) ? duration : 0}
-          step="0.1"
-          value={position}
-          onChange={(event) => {
-            if (audio.current)
-              audio.current.currentTime = Number(event.target.value)
-          }}
-        />
-        <span className="text-xs opacity-70">
-          {audioTime(playing ? position : duration)}
-        </span>
-      </div>
-    </div>
   )
 }

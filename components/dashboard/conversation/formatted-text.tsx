@@ -31,7 +31,7 @@ export function FormattedText({ text }: { text: string }) {
             return (
               <a
                 key={i}
-                className="chat-link underline"
+                className="underline underline-offset-3 hover:text-foreground"
                 href={safeMessageUrl(part.text)}
                 target="_blank"
                 rel="noopener noreferrer"

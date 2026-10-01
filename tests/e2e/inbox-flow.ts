@@ -138,6 +138,29 @@ export function inboxTests(
     const conversationId = new URL(owner.url()).searchParams.get("c")!
     await expect(row.getByLabel("Unread", { exact: true })).toHaveCount(0)
     await expect(owner.getByText("Is my order ready?").last()).toBeVisible()
+    // The reply composer stays a single row; buttons share the input group.
+    const replyGroup = owner
+      .getByTestId("conversation-thread")
+      .locator('[data-slot="input-group"]')
+      .filter({ has: owner.getByLabel("Reply", { exact: true }) })
+    await expect(replyGroup).toHaveCount(1)
+    await expect(replyGroup.locator('[data-align="block-end"]')).toHaveCount(0)
+    await expect(
+      replyGroup
+        .locator('[data-align="inline-start"]')
+        .getByRole("button", { name: "More message options" })
+    ).toBeVisible()
+    await expect(
+      replyGroup
+        .locator('[data-align="inline-end"]')
+        .getByRole("button", { name: "Send", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner
+        .getByTestId("thread-message")
+        .filter({ hasText: "Is my order ready?" })
+        .locator('[data-slot="bubble"]')
+    ).toHaveAttribute("data-variant", "muted")
 
     await expect
       .poll(async () => (await controls(owner)).map((call) => call.body))
@@ -175,6 +198,11 @@ export function inboxTests(
       await expect(bubble.getByTestId("message-status")).toHaveText(label)
     }
     await shots(owner, "thread")
+    await expect(bubble.locator('[data-slot="bubble"]')).toHaveAttribute(
+      "data-variant",
+      "default"
+    )
+    await expect(bubble.getByTestId("message-status")).toHaveClass(/text-info/)
 
     // Once the window closes, only an approved template can be sent.
     testBackendValue("meta/fixtures:expireWindow", { conversationId })

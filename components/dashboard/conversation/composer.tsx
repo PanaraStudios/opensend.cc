@@ -52,7 +52,7 @@ export function ConversationComposer({
   const { conversation } = detail
   const open = now === null || canReply(conversation, now)
   return (
-    <div className="chat-chrome max-h-[45svh] shrink-0 overflow-y-auto border-t border-border p-3">
+    <div className="max-h-[45svh] shrink-0 overflow-y-auto border-t border-border bg-background p-3">
       {open ? (
         <TextComposer detail={detail} />
       ) : conversation.channel === "whatsapp" ? (
@@ -155,8 +155,41 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
             Remove {filename}
           </Button>
         ) : null}
-        <InputGroup>
-          <InputGroupAddon>
+        {email ? (
+          <OptionSelect
+            size="sm"
+            aria-label="From"
+            value={sender}
+            onChange={setFrom}
+            items={senderItems}
+            selectedItem={sender ? { value: sender, label: sender } : undefined}
+            search={{
+              onChange: setDomainSearch,
+              placeholder: "Search domains…",
+            }}
+            placeholder="Choose a sender"
+          />
+        ) : null}
+        <InputGroup className="items-end">
+          <InputGroupTextarea
+            className="max-h-36 min-h-10 overflow-y-auto"
+            aria-label="Reply"
+            placeholder={
+              email ? `Reply to ${detail.handle}…` : "Type a message"
+            }
+            value={text}
+            rows={1}
+            onChange={(event) => {
+              setText(event.target.value)
+              if (event.target.value) indicateTyping(true)
+            }}
+            onBlur={() => indicateTyping(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey))
+                void submit()
+            }}
+          />
+          <InputGroupAddon className="gap-1">
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
               <PopoverTrigger
                 render={
@@ -259,41 +292,7 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
               </PopoverContent>
             </Popover>
           </InputGroupAddon>
-          <InputGroupTextarea
-            aria-label="Reply"
-            placeholder={
-              email ? `Reply to ${detail.handle}…` : "Type a message"
-            }
-            value={text}
-            rows={1}
-            onChange={(event) => {
-              setText(event.target.value)
-              if (event.target.value) indicateTyping(true)
-            }}
-            onBlur={() => indicateTyping(false)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey))
-                void submit()
-            }}
-          />
-          <InputGroupAddon align="block-end">
-            {email ? (
-              <OptionSelect
-                size="sm"
-                aria-label="From"
-                value={sender}
-                onChange={setFrom}
-                items={senderItems}
-                selectedItem={
-                  sender ? { value: sender, label: sender } : undefined
-                }
-                search={{
-                  onChange: setDomainSearch,
-                  placeholder: "Search domains…",
-                }}
-                placeholder="Choose a sender"
-              />
-            ) : null}
+          <InputGroupAddon align="inline-end">
             <InputGroupButton
               type="submit"
               variant="default"

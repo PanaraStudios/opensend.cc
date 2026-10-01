@@ -5,7 +5,7 @@ import { object, array, string } from "@/lib/meta/parse"
 import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 import { AttachedButtons, BusinessCard, LocationCard } from "./business-card"
-import { ConversationImage, ConversationMedia } from "./media"
+import { ConversationMedia } from "./media"
 import { FormattedText } from "./formatted-text"
 
 export function NormalizedMessageContent({
@@ -26,6 +26,7 @@ export function NormalizedMessageContent({
             <ConversationMedia
               key={i}
               file={file}
+              viewerId={`${message.id}:${i}`}
               type={type!}
               voice={
                 content.voice === true ||
@@ -176,21 +177,13 @@ export function ReferralCard({ message }: { message: ThreadMessage }) {
   const src = safeMessageUrl(referral.thumbnail_url || referral.image_url)
   const href = safeMessageUrl(referral.source_url)
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="chat-referral"
-    >
+    <div className="mb-2 flex w-72 max-w-full flex-col gap-2">
       {src ? (
-        <ConversationImage
-          unoptimized
-          width={640}
-          height={480}
-          src={src}
-          alt={string(referral.headline) || "Ad"}
-          loading="lazy"
-          className="aspect-video w-full object-cover"
+        <ConversationMedia
+          url={src}
+          type="image"
+          viewerId={`${message.id}:referral`}
+          label={string(referral.headline) || "Ad"}
         />
       ) : null}{" "}
       <div className="p-2">
@@ -200,12 +193,17 @@ export function ReferralCard({ message }: { message: ThreadMessage }) {
         <p className="font-semibold">{string(referral.headline)}</p>
         <p>{string(referral.body)}</p>
         {href ? (
-          <span className="chat-link flex items-center gap-1 text-xs">
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs underline underline-offset-3 hover:text-foreground"
+          >
             <ExternalLinkIcon className="size-3 shrink-0" />
             View {referral.source_type === "ad" ? "ad" : "post"}
-          </span>
+          </a>
         ) : null}
       </div>
-    </a>
+    </div>
   )
 }

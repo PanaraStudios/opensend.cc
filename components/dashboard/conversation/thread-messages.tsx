@@ -21,6 +21,9 @@ import {
   useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { MediaViewerProvider } from "@/components/ui/media-viewer"
+import { conversationMedia } from "@/lib/dashboard/conversation-media"
 import { MessageFiles } from "@/components/dashboard/emails/shared"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { messageHref } from "@/lib/messages/links"
@@ -37,7 +40,13 @@ import { cn } from "@/lib/utils"
 import type { Id } from "@/convex/_generated/dataModel"
 import { NormalizedMessageContent, ReferralCard } from "./message-content"
 
-export function ThreadMessages({ id }: { id: Id<"conversations"> }) {
+export function ThreadMessages({
+  id,
+  sender = "Contact",
+}: {
+  id: Id<"conversations">
+  sender?: string
+}) {
   const thread = useThread(id)
   const now = useClock()
   if (thread.status === "LoadingFirstPage")
@@ -53,44 +62,48 @@ export function ThreadMessages({ id }: { id: Id<"conversations"> }) {
     )
   )
   return (
-    <MessageScrollerProvider defaultScrollPosition="end" autoScroll>
-      <MessageScroller className="chat-wallpaper min-h-0 flex-1">
-        <MessageScrollerViewport preserveScrollOnPrepend>
-          <MessageScrollerContent className="gap-1 px-4 py-5 sm:px-8">
-            <LoadOlder
-              canLoad={thread.status === "CanLoadMore"}
-              onLoad={thread.loadOlder}
-            />
-            {visible.map((message, i) => {
-              const previous = visible[i - 1]
-              const date =
-                !previous ||
-                new Date(previous.at).toDateString() !==
-                  new Date(message.at).toDateString()
-              const context = object(message.normalized?.context)
-              const reply = originals.get(
-                string(context.id) || string(context.message_id)
-              )
-              return (
-                <MessageScrollerItem key={message.id} messageId={message.id}>
-                  {date ? (
-                    <div className="chat-date">
-                      <span>{chatDay(message.at, now ?? message.at)}</span>
-                    </div>
-                  ) : null}
-                  <ThreadBubble
-                    message={message}
-                    grouped={sameMessageGroup(previous, message)}
-                    reply={reply}
-                  />
-                </MessageScrollerItem>
-              )
-            })}
-          </MessageScrollerContent>
-        </MessageScrollerViewport>
-        <MessageScrollerButton />
-      </MessageScroller>
-    </MessageScrollerProvider>
+    <MediaViewerProvider items={conversationMedia(visible, sender)}>
+      <MessageScrollerProvider defaultScrollPosition="end" autoScroll>
+        <MessageScroller className="min-h-0 flex-1 bg-background">
+          <MessageScrollerViewport preserveScrollOnPrepend>
+            <MessageScrollerContent className="gap-1 px-4 py-5 sm:px-8">
+              <LoadOlder
+                canLoad={thread.status === "CanLoadMore"}
+                onLoad={thread.loadOlder}
+              />
+              {visible.map((message, i) => {
+                const previous = visible[i - 1]
+                const date =
+                  !previous ||
+                  new Date(previous.at).toDateString() !==
+                    new Date(message.at).toDateString()
+                const context = object(message.normalized?.context)
+                const reply = originals.get(
+                  string(context.id) || string(context.message_id)
+                )
+                return (
+                  <MessageScrollerItem key={message.id} messageId={message.id}>
+                    {date ? (
+                      <div className="my-3 flex justify-center">
+                        <Badge variant="secondary">
+                          {chatDay(message.at, now ?? message.at)}
+                        </Badge>
+                      </div>
+                    ) : null}
+                    <ThreadBubble
+                      message={message}
+                      grouped={sameMessageGroup(previous, message)}
+                      reply={reply}
+                    />
+                  </MessageScrollerItem>
+                )
+              })}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
+    </MediaViewerProvider>
   )
 }
 function LoadOlder({
@@ -124,14 +137,17 @@ export function ThreadBubble({
     const content = object(data.content)
     const poll = string(content.type).startsWith("poll")
     return (
-      <div className="chat-system" data-testid="thread-message">
-        <span>
+      <div className="my-3 flex justify-center" data-testid="thread-message">
+        <Badge
+          variant="secondary"
+          className="h-auto max-w-full text-center whitespace-normal"
+        >
           {data.type === "system"
             ? string(content.body) || message.text
             : poll
               ? "Poll · Polls aren't supported by the WhatsApp Cloud API"
               : "This message type isn't supported yet"}
-        </span>
+        </Badge>
       </div>
     )
   }
@@ -150,7 +166,7 @@ export function ThreadBubble({
       align={outbound ? "end" : "start"}
       data-testid="thread-message"
       id={`chat-message-${message.id}`}
-      className={cn("chat-message", !grouped && "mt-2")}
+      className={cn(!grouped && "mt-2", data?.reactions?.length && "mb-4")}
     >
       <MessageContent>
         {message.subject ? (
@@ -158,16 +174,16 @@ export function ThreadBubble({
         ) : null}
         <Bubble
           align={outbound ? "end" : "start"}
-          variant="ghost"
-          className={cn(
-            "chat-bubble",
-            outbound ? "chat-out" : "chat-in",
-            !grouped && "chat-tail",
-            sticker && "chat-borderless",
-            data?.type === "image" &&
-              !object(data.content).caption &&
-              "chat-overlay-meta"
-          )}
+          variant={
+            sticker
+              ? "ghost"
+              : message.error
+                ? "destructive"
+                : outbound
+                  ? "default"
+                  : "muted"
+          }
+          className="max-w-[min(85%,36rem)]"
         >
           <BubbleContent>
             {context.forwarded || context.frequently_forwarded ? (
@@ -180,7 +196,7 @@ export function ThreadBubble({
             ) : null}
             {context.id || context.message_id ? (
               <a
-                className="chat-quote"
+                className="mb-2 block rounded-md border-l-4 border-current bg-background/10 p-2"
                 href={reply ? `#chat-message-${reply.id}` : undefined}
                 onClick={(event) => {
                   if (reply) {
@@ -222,7 +238,7 @@ export function ThreadBubble({
             {!data && message.media.length ? (
               <MessageFiles messageId={message.id} media={message.media} />
             ) : null}
-            <div className="chat-meta">
+            <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums">
               <Link
                 href={messageHref(message.kind, message.id)}
                 title={formatDateTime(message.at)}
@@ -237,7 +253,7 @@ export function ThreadBubble({
                   data-testid="message-status"
                   className={cn(
                     "inline-flex",
-                    ["read", "played"].includes(message.status) && "chat-read",
+                    ["read", "played"].includes(message.status) && "text-info",
                     message.error && "text-destructive"
                   )}
                   title={sentenceCase(message.status)}
@@ -254,7 +270,7 @@ export function ThreadBubble({
             ) : null}
           </BubbleContent>
           {data?.reactions?.length ? (
-            <BubbleReactions className="chat-reactions" aria-label="Reactions">
+            <BubbleReactions aria-label="Reactions">
               {data.reactions.map((reaction) => (
                 <span key={reaction.id} title={reaction.from}>
                   {reaction.emoji}

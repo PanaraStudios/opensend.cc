@@ -76,18 +76,21 @@ for (const [name, payload] of [
 }
 test("inline media and borderless stickers replace generic file chips", () => {
   assert.match(html(fixture(whatsappInboundExamples.image)), /Open photo/)
-  assert.match(html(fixture(whatsappInboundExamples.video_note)), /<video/)
+  const video = html(fixture(whatsappInboundExamples.video_note))
+  assert.match(video, /Open video/)
+  assert.doesNotMatch(video, /<video[^>]*controls/)
+  const audio = html(fixture(whatsappInboundExamples.audio))
+  assert.doesNotMatch(audio, /<audio[^>]*controls/)
+  assert.match(audio, /Playback speed 1×/)
+  assert.match(audio, /Seek audio/)
   assert.match(
     html(fixture(whatsappInboundExamples.voice_note)),
     /voice-player/
   )
-  assert.match(
-    html(fixture(whatsappInboundExamples.audio)),
-    /<audio[^>]*controls/
-  )
+  assert.match(html(fixture(whatsappInboundExamples.audio)), /audio-player/)
   assert.match(
     html(fixture(whatsappInboundExamples.sticker)),
-    /chat-borderless/
+    /data-variant="ghost"/
   )
   assert.match(
     html(fixture(whatsappInboundExamples.document)),
@@ -140,7 +143,7 @@ test("templates retain headers, footer, carousel and attached rows with all-opti
     "Hi Ada",
     "Thank you",
     "First carousel product",
-    "chat-buttons",
+    "attached-buttons",
     "See all options",
   ])
     assert.ok(output.includes(text), text)
@@ -171,6 +174,17 @@ test("text formatting escapes markup and quotes link to loaded originals", () =>
 
 test("reaction events never render a separate bubble", () => {
   assert.equal(html(fixture(whatsappInboundExamples.reaction)), "")
+})
+test("bubbles use inbox variants, muted metadata and an existing read accent", () => {
+  const message = fixture(whatsappInboundExamples.text)
+  assert.match(html(message), /data-variant="muted"/)
+  message.direction = "outbound"
+  message.status = "read"
+  const output = html(message)
+  assert.match(output, /data-variant="default"/)
+  assert.match(output, /text-muted-foreground/)
+  assert.match(output, /text-info/)
+  assert.doesNotMatch(output, /chat-out|chat-in|chat-wallpaper|chat-bubble/)
 })
 test("Messenger and Instagram generic cards use the same attached rows", () => {
   for (const channel of ["messenger", "instagram"] as const) {

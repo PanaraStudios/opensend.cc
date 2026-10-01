@@ -70,7 +70,7 @@ export function ConversationThread({
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="conversation-thread"
     >
-      <div className="chat-chrome flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background p-3">
         {onBack ? (
           <Button
             variant="ghost"
@@ -128,7 +128,11 @@ export function ConversationThread({
           </Button>
         </div>
       </div>
-      <ThreadMessages id={conversation._id} />
+      <ThreadMessages
+        key={conversation._id}
+        id={conversation._id}
+        sender={detail.name}
+      />
       {canWrite ? <ConversationComposer detail={detail} /> : null}
     </div>
   )

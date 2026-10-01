@@ -24,10 +24,12 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import { object, array, string } from "@/lib/meta/parse"
 import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
-import { ConversationImage, ConversationMedia } from "./media"
+import { ConversationMedia } from "./media"
 import { FormattedText } from "./formatted-text"
 
 function componentsFromContent(content: Record<string, unknown>, type: string) {
@@ -52,52 +54,64 @@ export function AttachedButtons({ buttons }: { buttons: CardButton[] }) {
   const visible =
     !expanded && buttons.length > 3 ? buttons.slice(0, 2) : buttons
   return (
-    <div className="chat-buttons">
+    <div className="mt-2 flex flex-col gap-1" data-slot="attached-buttons">
       {visible.map((button, index) => {
         const Icon = ICONS[button.type.toUpperCase()] ?? ReplyIcon
         const href = safeMessageUrl(button.url, true)
         if (href)
           return (
-            <a
+            <Button
               key={index}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <a href={href} target="_blank" rel="noopener noreferrer" />
+              }
             >
-              <Icon className="size-4 shrink-0" />
+              <Icon data-icon="inline-start" />
               {button.text}
-            </a>
+            </Button>
           )
         if (button.code)
           return (
-            <button
+            <Button
               key={index}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() =>
                 void navigator.clipboard
                   .writeText(button.code!)
                   .catch(() => undefined)
               }
             >
-              <Icon className="size-4 shrink-0" />
+              <Icon data-icon="inline-start" />
               {button.text}
-            </button>
+            </Button>
           )
         return (
-          <div
+          <Button
             key={index}
-            className="chat-button"
+            variant="outline"
+            size="sm"
+            disabled
             aria-label={`${button.text} (message preview)`}
           >
-            <Icon className="size-4 shrink-0" />
+            <Icon data-icon="inline-start" />
             {button.text}
-          </div>
+          </Button>
         )
       })}
       {!expanded && buttons.length > 3 ? (
-        <button type="button" onClick={() => setExpanded(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setExpanded(true)}
+        >
           See all options
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -105,8 +119,10 @@ export function AttachedButtons({ buttons }: { buttons: CardButton[] }) {
 function ListOptions({ action }: { action: Record<string, unknown> }) {
   return (
     <Sheet>
-      <SheetTrigger className="chat-button w-full">
-        <ListIcon className="size-4 shrink-0" />
+      <SheetTrigger
+        render={<Button variant="outline" size="sm" className="w-full" />}
+      >
+        <ListIcon data-icon="inline-start" />
         {string(action.button) || "View options"}
       </SheetTrigger>
       <SheetContent>
@@ -120,11 +136,12 @@ function ListOptions({ action }: { action: Record<string, unknown> }) {
               <section key={i}>
                 <h3 className="font-medium">{string(section.title)}</h3>
                 {array(section.rows).map((row, j) => (
-                  <div key={j} className="border-b border-border py-3">
+                  <div key={j} className="flex flex-col gap-2 py-3">
                     <p>{string(object(row).title)}</p>
                     <p className="text-xs text-muted-foreground">
                       {string(object(row).description)}
                     </p>
+                    <Separator />
                   </div>
                 ))}
               </section>
@@ -304,18 +321,21 @@ export function BusinessCard({
   )
   const templateCards = array(object(carousel).cards)
   return (
-    <div className="chat-business-card">
+    <div className="flex w-72 max-w-full flex-col gap-2">
       {elements.length ? (
-        <div className="chat-carousel" aria-label="Generic cards">
+        <div className="flex gap-3 overflow-x-auto" aria-label="Generic cards">
           {elements.map((raw, index) => (
-            <div key={index}>
-              <GenericCard content={object(raw)} />
+            <div key={index} className="w-64 shrink-0">
+              <GenericCard
+                content={object(raw)}
+                viewerId={`${message.id}:card:${index}`}
+              />
             </div>
           ))}
         </div>
       ) : null}
       {content.template_type === "button" ? (
-        <GenericCard content={content} />
+        <GenericCard content={content} viewerId={`${message.id}:card`} />
       ) : null}
       {headerType && headerType !== "text" ? (
         headerType === "product" ? (
@@ -333,6 +353,7 @@ export function BusinessCard({
         ) : (
           <ConversationMedia
             file={data?.attachments[fileIndex]}
+            viewerId={`${message.id}:${fileIndex}`}
             type={headerType}
           />
         )
@@ -382,7 +403,10 @@ export function BusinessCard({
       ) : null}
       {action.product_retailer_id ? <ProductRows rows={[action]} /> : null}
       {cards.length || templateCards.length || rendered?.cards?.length ? (
-        <div className="chat-carousel" aria-label="Carousel cards">
+        <div
+          className="flex gap-3 overflow-x-auto [&>div]:w-64 [&>div]:shrink-0"
+          aria-label="Carousel cards"
+        >
           {cards.map((card, i) => (
             <div key={i}>
               <BusinessCard
@@ -443,7 +467,7 @@ export function BusinessCard({
         </div>
       ) : null}
       {kind === "list" ? (
-        <div className="chat-buttons">
+        <div className="mt-2" data-slot="attached-buttons">
           <ListOptions action={action} />
         </div>
       ) : (
@@ -451,7 +475,7 @@ export function BusinessCard({
       )}
       {kind === "flow" || kind === "address_message" ? (
         <Dialog>
-          <DialogTrigger className="chat-link text-xs underline">
+          <DialogTrigger render={<Button variant="link" size="sm" />}>
             View form details
           </DialogTrigger>
           <DialogContent>
@@ -492,7 +516,7 @@ export function LocationCard({
       target="_blank"
       rel="noopener noreferrer"
     >
-      <div className="chat-map">
+      <div className="flex aspect-video flex-col items-center justify-center gap-2 rounded-lg bg-muted text-muted-foreground">
         <MapPinIcon className="size-8" />
         <span>
           {valid ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : "Location"}
@@ -504,19 +528,22 @@ export function LocationCard({
   )
 }
 
-function GenericCard({ content }: { content: Record<string, unknown> }) {
+function GenericCard({
+  content,
+  viewerId,
+}: {
+  content: Record<string, unknown>
+  viewerId: string
+}) {
   const image = safeMessageUrl(content.image_url)
   return (
     <div className="flex flex-col gap-1">
       {image ? (
-        <ConversationImage
-          unoptimized
-          width={640}
-          height={480}
-          src={image}
-          alt={string(content.title) || "Card image"}
-          loading="lazy"
-          className="chat-image"
+        <ConversationMedia
+          url={image}
+          type="image"
+          viewerId={viewerId}
+          label={string(content.title) || "Card image"}
         />
       ) : null}{" "}
       {content.title ? (
