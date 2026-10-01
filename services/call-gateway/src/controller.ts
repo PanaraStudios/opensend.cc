@@ -1,3 +1,5 @@
+import { CallStateMachine } from "./call-state.js"
+import type { VoiceRuntime } from "./voice-runtime.js"
 import { agentQueues } from "./queues.js"
 import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
@@ -15,6 +17,7 @@ import { JanusSession, type JanusEvent } from "./janus.js"
 import { gatewaySdp, metaSdp, validateIceRuntime } from "./sdp.js"
 
 interface Call {
+  machine: CallStateMachine
   id: string
   extension: string
   janus: JanusSession
@@ -31,18 +34,47 @@ interface Call {
 }
 
 export function validateRoute(request: RouteRequest): void {
-  if (!["agent", "ivr", "queue", "bot"].includes(request.target))
+  if (
+    !["agent", "ivr", "queue", "bot", "voicemail", "hangup"].includes(
+      request.target
+    )
+  )
     throw new GatewayError("INVALID_ROUTE", "Unknown route target")
-  if (request.target === "queue" || request.target === "bot")
+  if (request.target === "queue")
     throw new GatewayError(
       "ROUTE_NOT_IMPLEMENTED",
-      "Queue and bot routing belong to task 8d",
+      "Queue routing is not implemented",
       501
     )
   if (request.target === "agent" && !/^20\d{2}$/.test(request.extension ?? ""))
     throw new GatewayError(
       "INVALID_EXTENSION",
       "Agent extension must be 2000–2099"
+    )
+  if (
+    request.maxDurationSeconds !== undefined &&
+    (!Number.isInteger(request.maxDurationSeconds) ||
+      request.maxDurationSeconds < 1 ||
+      request.maxDurationSeconds > 3600)
+  )
+    throw new GatewayError(
+      "INVALID_DURATION",
+      "Duration cap must be 1–3600 seconds"
+    )
+  if (
+    request.organizationId !== undefined &&
+    !/^[a-zA-Z0-9._:-]{1,256}$/.test(request.organizationId)
+  )
+    throw new GatewayError("INVALID_TEAM", "Invalid team")
+  if (request.codec !== undefined && !["L16", "PCMU"].includes(request.codec))
+    throw new GatewayError("INVALID_CODEC", "Expected L16 or PCMU")
+  if (
+    request.target === "bot" &&
+    (!request.organizationId || request.adapter !== "fake-echo")
+  )
+    throw new GatewayError(
+      "INVALID_BOT",
+      "Bot foundation requires team and fake-echo adapter"
     )
   if (request.record !== undefined && typeof request.record !== "boolean")
     throw new GatewayError("INVALID_RECORD", "record must be boolean")
@@ -55,6 +87,7 @@ export class CallController implements GatewayApi {
     string,
     { call: Call; expires: number }
   >()
+  private readonly voice?: VoiceRuntime
   private readonly fs: FreeSwitch
   private readonly callbacks: ConvexCallbacks
   private sweep?: NodeJS.Timeout
@@ -63,11 +96,13 @@ export class CallController implements GatewayApi {
   constructor(
     private readonly options: Config,
     dependencies: {
+      voice?: VoiceRuntime
       fs?: FreeSwitch
       callbacks?: ConvexCallbacks
       session?: () => JanusSession
     } = {}
   ) {
+    this.voice = dependencies.voice
     this.fs =
       dependencies.fs ??
       new FreeSwitch(options.fsHost, options.fsPort, options.fsSecret)
@@ -89,6 +124,7 @@ export class CallController implements GatewayApi {
     })
   }
   async start() {
+    await this.voice?.start()
     await this.fs.open()
     this.sweep = setInterval(() => {
       if (!this.fs.ready && !this.reconnecting) {
@@ -146,6 +182,7 @@ export class CallController implements GatewayApi {
       )
     const janus = this.session()
     const call: Call = {
+      machine: new CallStateMachine(),
       id: callId,
       extension,
       direction,
@@ -173,14 +210,18 @@ export class CallController implements GatewayApi {
         event.janus === "hangup" ||
         result?.event === "hangup" ||
         result?.event === "updatingcall"
-      )
-        // Let setup waiters consume the terminal SIP event before close() rejects them.
-        queueMicrotask(() => {
+      ) {
+        const finish = () => {
           void this.finish(
             call,
             result?.reason ?? "Janus call ended or renegotiation requested"
           )
-        })
+        }
+        // Routed calls prefer the anchored FreeSWITCH cause. Setup waiters must
+        // consume the terminal SIP event before close() rejects them.
+        if (call.routed && call.uuid) setTimeout(finish, 100).unref()
+        else queueMicrotask(finish)
+      }
     })
     janus.on("failure", () => {
       if (!call.ending) void this.finish(call, "Janus connection lost")
@@ -336,7 +377,23 @@ export class CallController implements GatewayApi {
   }
   async route(request: RouteRequest) {
     validateRoute(request)
+    if (request.target === "bot" && !this.voice?.fakeEnabled)
+      throw new GatewayError(
+        "BOT_UNAVAILABLE",
+        "Fake adapter is disabled; provider adapters arrive in 8d-2",
+        501
+      )
+    if (request.target === "voicemail" && !this.voice)
+      throw new GatewayError(
+        "VOICE_UNAVAILABLE",
+        "Voice controller unavailable",
+        503
+      )
     const call = this.get(request.callId)
+    if (request.target === "hangup") {
+      await this.finish(call, "Route hangup")
+      return
+    }
     await call.setup
     if (!call.answered)
       throw new GatewayError(
@@ -353,26 +410,51 @@ export class CallController implements GatewayApi {
       )
     }
     await this.parked(call)
-    if (request.target === "agent")
-      await this.fs.api(
-        `uuid_setvar ${call.uuid} opensend_agent ${request.extension}`
-      )
-    if (request.record) {
-      await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
-      this.recordings.set(call.uuid!, { call, expires: Infinity })
-    }
-    // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.
-    await Promise.all([
-      call.janus.waitFor(
-        (event) => event.plugindata?.data.result?.event === "media_gate"
-      ),
-      call.janus.message({ request: "opensend_media", enabled: true }),
-    ])
     try {
-      await this.fs.api(
-        `uuid_transfer ${call.uuid} ${request.target === "agent" ? "agent-route" : "ivr-demo"} XML calling`
+      if (request.target === "agent")
+        await this.fs.api(
+          `uuid_setvar ${call.uuid} opensend_agent ${request.extension}`
+        )
+      const controlled =
+        !!this.voice && ["ivr", "bot", "voicemail"].includes(request.target)
+      if (request.record || request.target === "voicemail") {
+        if (controlled && request.target !== "voicemail")
+          await this.fs.api(
+            `uuid_record ${call.uuid} start /recordings/${call.uuid}.wav`
+          )
+        else if (!controlled)
+          await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
+        this.recordings.set(call.uuid!, { call, expires: Infinity })
+      }
+      if (controlled) {
+        await this.fs.api(
+          `sched_hangup +${request.maxDurationSeconds ?? 300} ${call.uuid} ALLOTTED_TIMEOUT`
+        )
+        this.voice!.prepare(
+          call.id,
+          call.uuid!,
+          request,
+          call.machine,
+          (reason) => this.finish(call, reason)
+        )
+      }
+      // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.
+      await Promise.all([
+        call.janus.waitFor(
+          (event) => event.plugindata?.data.result?.event === "media_gate"
+        ),
+        call.janus.message({ request: "opensend_media", enabled: true }),
+      ])
+      await call.machine.transition(
+        request.target === "queue" ? "agent" : request.target,
+        async () => {
+          await this.fs.api(
+            `uuid_transfer ${call.uuid} ${controlled ? "voice-control" : request.target === "agent" ? "agent-route" : "ivr-demo"} XML calling`
+          )
+        }
       )
       call.routed = request
+      this.voice?.reportState(call.id, call.machine)
     } catch (error) {
       await this.finish(call, "Routing failed")
       throw error
@@ -418,9 +500,19 @@ export class CallController implements GatewayApi {
       await this.fs.api(
         `uuid_setvar ${call.uuid} opensend_agent ${request.extension}`
       )
-    await this.fs.api(
-      `uuid_transfer ${call.uuid} ${request.queue ? `queue-${request.organizationId}-${request.queue}` : "agent-route"} XML calling`
-    )
+    this.voice?.beginTransfer(call.id)
+    try {
+      await call.machine.transition("agent", async () => {
+        await this.fs.api(
+          `uuid_transfer ${call.uuid} ${request.queue ? `queue-${request.organizationId}-${request.queue}` : "agent-route"} XML calling`
+        )
+      })
+      this.voice?.reportState(call.id, call.machine)
+      await this.voice?.stop(call.id)
+    } catch (error) {
+      await this.finish(call, "Transfer failed")
+      throw error
+    }
     call.routed = {
       callId: request.callId,
       target: request.queue ? "queue" : "agent",
@@ -438,6 +530,9 @@ export class CallController implements GatewayApi {
   private async finish(call: Call, reason: string) {
     if (call.ending) return
     call.ending = true
+    call.machine.end()
+    this.voice?.reportState(call.id, call.machine)
+    await this.voice?.stop(call.id)
     const recording = call.uuid && this.recordings.get(call.uuid)
     if (recording) recording.expires = Date.now() + 60000
     this.ended.set(call.id, Date.now() + 300000)
@@ -472,11 +567,16 @@ export class CallController implements GatewayApi {
       })
       this.recordings.delete(call.uuid!)
     }
-    if (event["Event-Name"] === "CHANNEL_HANGUP_COMPLETE")
+    if (
+      ["CHANNEL_HANGUP", "CHANNEL_HANGUP_COMPLETE"].includes(
+        event["Event-Name"]
+      ) &&
+      event["Unique-ID"] === call.uuid
+    )
       void this.finish(call, event["Hangup-Cause"] ?? "SIP hangup")
   }
   async healthy() {
-    if (!this.fs.ready) return false
+    if (!this.fs.ready || (this.voice && !this.voice.healthy)) return false
     try {
       const response = await fetch(`${this.options.janusUrl}/info`, {
         signal: AbortSignal.timeout(2000),
@@ -498,6 +598,7 @@ export class CallController implements GatewayApi {
         this.finish(call, "Gateway shutdown")
       )
     )
+    await this.voice?.close()
     this.fs.close()
   }
 }

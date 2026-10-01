@@ -1,3 +1,8 @@
+import { VoiceRuntime } from "../src/voice-runtime.js"
+import { VoiceMediaEndpoint } from "../src/voice-media.js"
+import { VoiceBackend } from "../src/voice-backend.js"
+import type { CallStateMachine } from "../src/call-state.js"
+import type { RouteRequest } from "../src/contracts.js"
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { randomUUID } from "node:crypto"
@@ -9,7 +14,7 @@ import type { CallbackPayload } from "../src/contracts.js"
 import { config } from "../src/config.js"
 import { offer, answer } from "./fixtures.js"
 
-function fixture(inviteFailure?: string) {
+function fixture(inviteFailure?: string, voice?: VoiceRuntime) {
   const commands: string[] = [],
     sessions: FakeJanus[] = [],
     events: CallbackPayload[] = []
@@ -105,12 +110,14 @@ function fixture(inviteFailure?: string) {
         "FREESWITCH_ESL_SECRET",
         "FREESWITCH_SIP_SECRET",
         "FREESWITCH_DIRECTORY_SECRET",
+        "DRACHTIO_SECRET",
       ]
         .map((key) => [key, "s".repeat(64)])
         .concat([["CALL_GATEWAY_CONVEX_HTTP_URL", "http://unused"]])
     )
   )
   const controller = new CallController(options, {
+    voice,
     fs,
     callbacks,
     session: () => {
@@ -283,6 +290,148 @@ test("hold/resume gate audio without SIP/Meta renegotiation; transfers use local
   } finally {
     if (previousQueues === undefined) delete process.env.CALL_AGENT_QUEUES
     else process.env.CALL_AGENT_QUEUES = previousQueues
+    await f.controller.close()
+  }
+})
+
+test("controlled bot routing installs the cap before opening media, records via UUID, and cleans up on handoff", async () => {
+  let machine: CallStateMachine | undefined
+  let stopped = 0
+  const voice = new (class extends VoiceRuntime {
+    constructor() {
+      super(
+        { port: 0, fakeEnabled: true },
+        new VoiceMediaEndpoint({
+          host: "unused",
+          port: 9022,
+          secret: "unused",
+          advertiseHost: "unused",
+          fsHost: "unused",
+        }),
+        new VoiceBackend("http://unused", "unused")
+      )
+    }
+    override prepare(
+      _id: string,
+      _uuid: string,
+      _route: RouteRequest,
+      state: CallStateMachine
+    ) {
+      machine = state
+    }
+    override reportState() {}
+    override beginTransfer() {}
+    override async stop() {
+      stopped++
+    }
+    override async close() {}
+  })()
+  const f = fixture(undefined, voice)
+  const route = {
+    callId: "bot",
+    target: "bot" as const,
+    adapter: "fake-echo" as const,
+    organizationId: "team",
+    maxDurationSeconds: 6,
+    record: true,
+  }
+  try {
+    await f.controller.inbound(offer, "bot")
+    await f.controller.route(route)
+    await f.controller.route(route)
+    const cap = f.commands.findIndex((command) =>
+      command.startsWith("sched_hangup +6")
+    )
+    const media = f.commands.indexOf("janus:opensend_media:true")
+    assert.ok(cap >= 0 && cap < media)
+    assert.equal(
+      f.commands.filter((command) => command.startsWith("sched_hangup")).length,
+      1
+    )
+    assert.ok(
+      f.commands.some((command) =>
+        /uuid_record .* start \/recordings\//.test(command)
+      )
+    )
+    assert.ok(
+      f.commands.some((command) =>
+        command.endsWith("voice-control XML calling")
+      )
+    )
+    assert.equal(machine?.state, "bot")
+    await f.controller.control({
+      callId: "bot",
+      operation: "transfer",
+      extension: "2001",
+    })
+    assert.equal(machine?.state, "agent")
+    assert.equal(stopped, 1)
+    await f.controller.hangup("bot")
+    assert.equal(machine?.state, "hangup")
+  } finally {
+    await f.controller.close()
+  }
+})
+
+test("fake routes require explicit runtime enablement and bounded, trusted inputs", async () => {
+  const f = fixture()
+  try {
+    await f.controller.inbound(offer, "bot-disabled")
+    await assert.rejects(
+      f.controller.route({
+        callId: "bot-disabled",
+        target: "bot",
+        organizationId: "team",
+        adapter: "fake-echo",
+      }),
+      { code: "BOT_UNAVAILABLE" }
+    )
+    await assert.rejects(
+      f.controller.route({
+        callId: "bot-disabled",
+        target: "ivr",
+        maxDurationSeconds: 0,
+      }),
+      { code: "INVALID_DURATION" }
+    )
+    await assert.rejects(
+      f.controller.route({
+        callId: "bot-disabled",
+        target: "ivr",
+        maxDurationSeconds: 3601,
+      }),
+      { code: "INVALID_DURATION" }
+    )
+    await f.controller.route({ callId: "bot-disabled", target: "hangup" })
+    assert.equal(f.commands.includes("janus:opensend_media:true"), false)
+  } finally {
+    await f.controller.close()
+  }
+})
+
+test("anchored FreeSWITCH hangup cause wins a racing Janus SIP termination", async () => {
+  const f = fixture()
+  try {
+    await f.controller.inbound(offer, "cap-cause")
+    await f.controller.route({ callId: "cap-cause", target: "ivr" })
+    const uuid = f.commands
+      .find((command) => command.startsWith("uuid_transfer"))!
+      .split(" ")[1]
+    f.sessions[0].emit("event", {
+      janus: "hangup",
+      plugindata: {
+        data: { result: { event: "hangup", reason: "Session Terminated" } },
+      },
+    })
+    f.fs.emit("event", {
+      "Event-Name": "CHANNEL_HANGUP",
+      "Unique-ID": uuid,
+      "Hangup-Cause": "ALLOTTED_TIMEOUT",
+    })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const ended = f.events.filter((event) => event.event === "hangup")
+    assert.deepEqual(ended, [{ event: "hangup", reason: "ALLOTTED_TIMEOUT" }])
+  } finally {
     await f.controller.close()
   }
 })

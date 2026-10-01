@@ -92,7 +92,7 @@
           <param name="apply-candidate-acl" value="wan.auto"/>
           <param name="local-network-acl" value="localnet.auto"/>
           <param name="suppress-cng" value="true"/>
-          <param name="disable-transcoding" value="true"/>
+          <param name="disable-transcoding" value="false"/>
           <param name="rtp-timeout-sec" value="60"/>
           <param name="rtp-timer-name" value="soft"/>
         </settings>
@@ -130,6 +130,14 @@
           <action application="export" data="nolocal:absolute_codec_string=OPUS@48000h@20i"/>
           <action application="export" data="nolocal:media_webrtc=true"/>
           <action application="bridge" data="user/${opensend_agent}@freeswitch"/>
+          <action application="hangup"/>
+        </condition>
+      </extension>
+      <extension name="voice-control">
+        <condition field="destination_number" expression="^voice-control$">
+          <action application="set" data="socket_resume=false"/>
+          <action application="set" data="hangup_after_bridge=true"/>
+          <action application="socket" data="call-gateway:8093 async full"/>
           <action application="hangup"/>
         </condition>
       </extension>

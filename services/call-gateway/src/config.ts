@@ -1,4 +1,12 @@
 export interface Config {
+  voice: {
+    host: string
+    port: number
+    secret: string
+    advertiseHost: string
+    eslPort: number
+    fakeEnabled: boolean
+  }
   port: number
   secret: string
   janusUrl: string
@@ -41,7 +49,20 @@ export function config(env: NodeJS.ProcessEnv = process.env): Config {
   const fsHost = env.FREESWITCH_HOST ?? "freeswitch"
   if (!/^[a-zA-Z0-9.-]+$/.test(fsHost))
     throw new Error("Invalid FREESWITCH_HOST")
+  const host = (key: string, fallback: string) => {
+    const value = env[key] ?? fallback
+    if (!/^[a-zA-Z0-9.-]+$/.test(value)) throw new Error(`Invalid ${key}`)
+    return value
+  }
   return {
+    voice: {
+      host: host("DRACHTIO_HOST", "drachtio"),
+      port: port("DRACHTIO_PORT", 9022),
+      secret: secret("DRACHTIO_SECRET"),
+      advertiseHost: host("CALL_VOICE_RTP_HOST", "call-gateway"),
+      eslPort: port("CALL_VOICE_ESL_PORT", 8093),
+      fakeEnabled: env.CALL_VOICE_FAKE_ENABLED === "true",
+    },
     port: port("PORT", 8090),
     secret: secret("CALL_GATEWAY_SECRET"),
     janusUrl: url("JANUS_URL", "http://janus:8088/janus"),
