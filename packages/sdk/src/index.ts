@@ -52,3 +52,5 @@ export type { CreateMediaUploadOptions, MediaUpload } from "./media/media"
 export * from "./whatsapp/schema"
 export * from "./whatsapp/validation"
 export * from "./whatsapp/normalize"
+
+export type * from "./whatsapp/calling/interfaces"

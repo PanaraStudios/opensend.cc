@@ -1,5 +1,13 @@
+import type {
+  WhatsAppCall,
+  CallPermission,
+} from "../../whatsapp/calling/interfaces"
 import type { WhatsAppMessage } from "../../whatsapp/interfaces"
+export type WhatsAppCallEventType =
+  `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready"}`
 export type WebhookEvent =
+  | WhatsAppCallEventType
+  | "whatsapp.call.permission_updated"
   | "whatsapp.message.sent"
   | "whatsapp.message.delivered"
   | "whatsapp.message.read"
@@ -252,7 +260,22 @@ export interface WhatsAppMessageEvent {
   }
 }
 
+export interface WhatsAppCallEvent {
+  type: WhatsAppCallEventType
+  created_at: string
+  data: WhatsAppCall
+}
+export interface WhatsAppCallPermissionEvent {
+  type: "whatsapp.call.permission_updated"
+  created_at: string
+  data: Pick<CallPermission, "account_id" | "user_id" | "permission"> & {
+    response_source: string | null
+    context_id: string | null
+  }
+}
 export type WebhookEventPayload =
+  | WhatsAppCallEvent
+  | WhatsAppCallPermissionEvent
   | WhatsAppMessageEvent
   | EmailSentEvent
   | EmailScheduledEvent

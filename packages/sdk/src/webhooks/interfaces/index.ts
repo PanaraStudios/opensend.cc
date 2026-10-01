@@ -75,3 +75,9 @@ export type {
 } from "./webhook-event.interface"
 
 export type { WhatsAppMessageEvent } from "./webhook-event.interface"
+
+export type {
+  WhatsAppCallEventType,
+  WhatsAppCallEvent,
+  WhatsAppCallPermissionEvent,
+} from "./webhook-event.interface"
