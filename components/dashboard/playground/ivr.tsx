@@ -93,7 +93,7 @@ export function IvrList() {
               <TableRow key={ivr.id}>
                 <TableCell>
                   <Link
-                    className="text-link"
+                    className="font-medium hover:underline"
                     href={`/playground/ivr/${ivr.id}`}
                   >
                     {ivr.name}

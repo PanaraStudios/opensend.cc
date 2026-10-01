@@ -12,6 +12,7 @@ import { useAction, useMutation } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { DtmfKeypad } from "./dtmf-keypad"
 import { BrowserPhone, RingSound } from "@/lib/calling/browser"
 import {
   softphoneTransition,
@@ -250,7 +251,8 @@ function TeamSoftphone({
           for (let i = 0; i < 40 && alive.current; i++) {
             const call = latest.current.find(
               (c) =>
-                c.agentLeaseId === expectedLease.current &&
+                (c.agentLeaseId === expectedLease.current ||
+                  (c.test && c.testBrowserId === browserId)) &&
                 c.status === "connected"
             )
             if (call) {
@@ -461,7 +463,10 @@ function TeamSoftphone({
   useEffect(() => {
     if (!currentId || !state) return
     const owned = state.calls.some(
-      (c) => c._id === currentId && c.agentLeaseId === expectedLease.current
+      (c) =>
+        c._id === currentId &&
+        (c.agentLeaseId === expectedLease.current ||
+          (c.test && c.testBrowserId === browserId))
     )
     if (owned) {
       seen.current = currentId
@@ -623,21 +628,12 @@ function TeamSoftphone({
                   Transfer
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2" aria-label="DTMF keypad">
-                {"123456789*0#".split("").map((digit) => (
-                  <Button
-                    key={digit}
-                    variant="outline"
-                    disabled={phase !== "active"}
-                    aria-label={`Send ${digit}`}
-                    onClick={() => {
-                      void phone.current?.dtmf(digit).catch(fail)
-                    }}
-                  >
-                    {digit}
-                  </Button>
-                ))}
-              </div>
+              <DtmfKeypad
+                disabled={phase !== "active"}
+                send={(digit) => {
+                  void phone.current?.dtmf(digit).catch(fail)
+                }}
+              />
             </div>
           ) : null}
         </DialogContent>

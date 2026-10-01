@@ -262,7 +262,12 @@ export const start = internalMutation({
       .query("callingSettings")
       .withIndex("by_accountId", (q) => q.eq("accountId", call.accountId))
       .unique()
-    if (settings?.routing?.kind !== "ivr" || settings.routing.ivrId !== row._id)
+    if (
+      call.test
+        ? call.ivrId !== row._id
+        : settings?.routing?.kind !== "ivr" ||
+          settings.routing.ivrId !== row._id
+    )
       throw notFound("Assigned IVR")
     const id = await ctx.db.insert("ivrSessions", {
       organizationId: call.organizationId,

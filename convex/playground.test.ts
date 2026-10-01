@@ -69,6 +69,30 @@ test("playground calls reserve the browser, are marked test and are isolated", a
   expect(call.test).toBe(true)
   expect(call.wacid).toBeUndefined()
   expect(call.agentExtension).toBe("2000")
+  // A test route is authorized by its saved target, independently of live number routing.
+  const decision = await f.t.mutation(internal.ivr.runtime.start, {
+    callId: call._id,
+    ivrId: f.ivrId,
+    origin: "https://backend.test",
+    nonce: "playground-start",
+    expiresAt: Date.now() + 60000,
+  })
+  expect(decision.action.kind).toBe("hangup") // Legacy typed prompt is not rendered yet.
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", call._id, {
+      assignedAgent: "transfer-agent",
+      agentLeaseId: "transfer-lease",
+    })
+  )
+  expect(
+    (
+      await f.owner.client.query(internal.calling.playgroundState.owned, {
+        ...f.args,
+        id: call._id,
+      })
+    )._id
+  ).toBe(call._id)
+
   await expect(
     f.owner.client.mutation(
       internal.calling.playgroundState.create,

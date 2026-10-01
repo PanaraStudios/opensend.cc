@@ -81,6 +81,25 @@ export async function requireAvailable(
     )
   ).flat()
 
-  if (calls.some((c) => c._id !== except && !CALL_TERMINAL.has(c.status)))
+  const tests = (
+    await Promise.all(
+      (["queued", "ringing", "connected"] as const).map((status) =>
+        ctx.db
+          .query("calls")
+          .withIndex("by_organizationId_and_testUserId_and_status", (q) =>
+            q
+              .eq("organizationId", row.organizationId)
+              .eq("testUserId", row.userId)
+              .eq("status", status)
+          )
+          .take(2)
+      )
+    )
+  ).flat()
+  if (
+    [...calls, ...tests].some(
+      (c) => c._id !== except && !CALL_TERMINAL.has(c.status)
+    )
+  )
     throw new ConvexError("Agent already has a call")
 }

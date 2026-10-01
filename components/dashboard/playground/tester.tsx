@@ -6,6 +6,7 @@ import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
+import { DtmfKeypad } from "@/components/dashboard/calling/dtmf-keypad"
 import { useSoftphone } from "@/components/dashboard/calling/softphone-provider"
 import {
   DetailSection,
@@ -190,7 +191,7 @@ export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
                     value: (
                       <Link
                         href={`/playground/calls/${call.id}`}
-                        className="text-link"
+                        className="font-medium hover:underline"
                       >
                         View test call
                       </Link>
@@ -219,26 +220,15 @@ export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
                       Hang up
                     </Button>
                   </div>
-                  <div
-                    className="grid max-w-xs grid-cols-3 gap-2"
-                    aria-label="Test DTMF keypad"
-                  >
-                    {"123456789*0#".split("").map((d) => (
-                      <Button
-                        key={d}
-                        variant="outline"
-                        disabled={phone.phase !== "active"}
-                        aria-label={`Send ${d}`}
-                        onClick={() =>
-                          void phone
-                            .dtmf(d)
-                            .catch((e) => setError(actionError(e)))
-                        }
-                      >
-                        {d}
-                      </Button>
-                    ))}
-                  </div>
+                  <DtmfKeypad
+                    label="Test DTMF keypad"
+                    disabled={phone.phase !== "active"}
+                    send={(digit) => {
+                      void phone
+                        .dtmf(digit)
+                        .catch((e) => setError(actionError(e)))
+                    }}
+                  />
                 </>
               ) : null}
               <IvrPath path={call.ivr_path} />

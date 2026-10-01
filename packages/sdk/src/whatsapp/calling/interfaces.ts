@@ -47,6 +47,8 @@ export interface CallFile {
 }
 export interface WhatsAppCall {
   object: "whatsapp_call"
+  /** Playground calls never signal Meta or emit customer lifecycle webhooks. */
+  test?: boolean
   id: string
   account_id: string
   wacid: string | null

@@ -26520,6 +26520,9 @@ components:
           type:
             - string
             - "null"
+        test:
+          type: boolean
+          description: Playground test call; excluded from customer lifecycle webhooks.
         ivr_path:
           type: array
           maxItems: 100
@@ -26667,6 +26670,9 @@ components:
           type:
             - string
             - "null"
+        test:
+          type: boolean
+          description: Playground test call; excluded from customer lifecycle webhooks.
         ivr_path:
           type: array
           maxItems: 100
