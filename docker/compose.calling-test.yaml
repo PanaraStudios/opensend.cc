@@ -12,10 +12,13 @@ services:
     # Always use this project's certificate volume, even with a production env in the shell.
     volumes:
       - freeswitch-certs:/certs
+  drachtio:
+    image: opensend-calling-test-drachtio:0.9.11
   call-gateway:
     image: opensend-calling-test-gateway:0.1.0
     environment:
       CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
+      CALL_VOICE_FAKE_ENABLED: "true"
   coturn:
     image: opensend-calling-test-coturn:4.6
   meta-peer:

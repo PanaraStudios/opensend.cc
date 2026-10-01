@@ -1,3 +1,6 @@
+import { VoiceRuntime } from "./voice-runtime.js"
+import { VoiceMediaEndpoint } from "./voice-media.js"
+import { VoiceBackend } from "./voice-backend.js"
 import { config } from "./config.js"
 import { CallController } from "./controller.js"
 import { createGatewayServer } from "./server.js"
@@ -5,7 +8,12 @@ import { createGatewayServer } from "./server.js"
 import { AgentSessions } from "./agents.js"
 
 const options = config()
-const controller = new CallController(options)
+const voice = new VoiceRuntime(
+  { port: options.voice.eslPort, fakeEnabled: options.voice.fakeEnabled },
+  new VoiceMediaEndpoint({ ...options.voice, fsHost: options.fsHost }),
+  new VoiceBackend(options.convexUrl, options.secret)
+)
+const controller = new CallController(options, { voice })
 await controller.start()
 const server = createGatewayServer(controller, options.secret, {
   sessions: new AgentSessions(),

@@ -1,9 +1,14 @@
-export type RouteTarget = "agent" | "ivr" | "queue" | "bot"
+export type RouteTarget =
+  "agent" | "ivr" | "queue" | "bot" | "voicemail" | "hangup"
 export interface RouteRequest {
   callId: string
   target: RouteTarget
   extension?: string
   record?: boolean
+  organizationId?: string
+  adapter?: "fake-echo"
+  codec?: "L16" | "PCMU"
+  maxDurationSeconds?: number
 }
 export interface GatewayApi {
   inbound(offerSdp: string, callId: string): Promise<{ answerSdp: string }>

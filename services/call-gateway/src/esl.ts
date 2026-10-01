@@ -120,7 +120,7 @@ export class FreeSwitch extends EventEmitter {
     await this.command(`auth ${this.secret}`)
     this.connected = true
     await this.command(
-      "event plain CHANNEL_PARK CHANNEL_HANGUP_COMPLETE RECORD_STOP BACKGROUND_JOB"
+      "event plain CHANNEL_PARK CHANNEL_HANGUP CHANNEL_HANGUP_COMPLETE RECORD_STOP BACKGROUND_JOB"
     )
   }
   get ready() {

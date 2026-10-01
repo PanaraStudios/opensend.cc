@@ -170,6 +170,19 @@ services:
       timeout: 5s
       retries: 15
       start_period: 20s
+  drachtio:
+    profiles: [calling]
+    image: opensend-drachtio:0.9.11
+    build:
+      context: docker/drachtio
+    restart: unless-stopped
+    environment:
+      DRACHTIO_SECRET: ${DRACHTIO_SECRET:-}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9022'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   call-gateway:
     profiles: [calling]
     image: opensend-call-gateway:0.1.0
@@ -189,11 +202,16 @@ services:
       JANUS_ADMIN_URL: http://janus:7088/admin
       JANUS_API_SECRET: ${JANUS_API_SECRET:-}
       FREESWITCH_DIRECTORY_SECRET: ${FREESWITCH_DIRECTORY_SECRET:-}
+      DRACHTIO_SECRET: ${DRACHTIO_SECRET:-}
+      DRACHTIO_HOST: drachtio
+      CALL_VOICE_RTP_HOST: call-gateway
       CALL_AGENT_QUEUES: '${CALL_AGENT_QUEUES:-{}}'
       FREESWITCH_HOST: freeswitch
       FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
     depends_on:
+      drachtio:
+        condition: service_healthy
       janus:
         condition: service_healthy
       freeswitch:

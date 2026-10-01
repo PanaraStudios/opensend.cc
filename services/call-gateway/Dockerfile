@@ -6,6 +6,7 @@ COPY services/call-gateway/package.json services/call-gateway/package.json
 RUN pnpm install --filter @opensendcc/call-gateway --frozen-lockfile
 COPY services/call-gateway/ services/call-gateway/
 RUN pnpm --filter @opensendcc/call-gateway build
+RUN pnpm --config.inject-workspace-packages=true --filter @opensendcc/call-gateway deploy --prod /runtime
 
 # Docker-only Meta peer and real headless SIP.js browser on the compose network.
 FROM node:22.17.0-bookworm-slim@sha256:b04ce4ae4e95b522112c2e5c52f781471a5cbc3b594527bcddedee9bc48c03a0 AS harness-browser
@@ -14,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends chromium \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable && corepack prepare pnpm@11.7.0 --activate
 FROM harness-browser AS harness
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app /app
 RUN pnpm --filter @opensendcc/call-gateway exec esbuild scripts/browser-agent.ts \
@@ -24,7 +27,8 @@ CMD ["pnpm", "--filter", "@opensendcc/call-gateway", "harness"]
 FROM node:22.17.0-bookworm-slim@sha256:b04ce4ae4e95b522112c2e5c52f781471a5cbc3b594527bcddedee9bc48c03a0 AS runtime
 ENV NODE_ENV=production PORT=8090
 WORKDIR /app
-# The HTTP/Janus/ESL controller has no production dependencies.
+# Include the pinned drachtio-srf production dependency and its closure.
+COPY --from=build --chown=node:node /runtime/node_modules /app/node_modules
 COPY --from=build --chown=node:node /app/services/call-gateway/dist /app/dist
 COPY --from=build --chown=node:node /app/services/call-gateway/package.json /app/package.json
 USER node
