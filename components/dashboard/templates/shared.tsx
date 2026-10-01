@@ -27,7 +27,7 @@ import {
 } from "@/components/dashboard/primitives"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { actionError } from "@/lib/action-error"
-import { CHANNEL_LABELS, templateStatusLabel } from "@/lib/dashboard/format"
+import { templateStatusLabel } from "@/lib/dashboard/format"
 import {
   templateAliasError,
   templatePublishLabel,
@@ -74,12 +74,6 @@ export const TEMPLATE_STATUS_ITEMS: readonly SelectOption[] = [
     value,
     label: templateStatusLabel(value),
   })),
-]
-
-export const TEMPLATE_CHANNEL_ITEMS: readonly SelectOption[] = [
-  { value: "all", label: "All channels" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
 ]
 
 /** A template's status: a submitted WhatsApp template shows Meta's

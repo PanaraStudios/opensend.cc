@@ -90,15 +90,19 @@ const readLimit = (requested: number | undefined, maximum: number) =>
     ? maximum
     : Math.max(1, Math.min(Math.floor(requested), maximum))
 
+/** `rows` is one index's query, or a merge of several (`mergedStream`),
+    which pages through the stream itself. */
 export async function filteredPage<T extends NonNullable<unknown>>(
-  rows: ListQuery<T>,
+  rows: ListQuery<T> | QueryStream<T>,
   paginationOpts: PaginationOptions,
   keep: (row: T) => boolean | Promise<boolean>,
   budget: SearchBudget,
   search?: string
 ): Promise<PaginationResult<T>> {
   if (!search?.trim()) {
-    const result = await rows.inner().paginate(paginationOpts)
+    const result = await ("inner" in rows
+      ? rows.inner().paginate(paginationOpts)
+      : rows.paginate(paginationOpts))
     const page = []
     for (const row of result.page) if (await keep(row)) page.push(row)
     return { ...result, page }

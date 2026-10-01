@@ -25,6 +25,8 @@ import {
 } from "./tables/received"
 import { emitEvent } from "./events"
 import { retirement } from "./teamLifecycle"
+import { upsertEmailThread } from "./channels/identity"
+import { parseMailbox } from "../lib/dashboard/email-send"
 
 export const MAX_RECEIVED_ATTACHMENTS = 100
 export const RECEIVED_RETENTION = 30 * 86400000
@@ -238,6 +240,16 @@ export const complete = internalMutation({
       subject: args.metadata.subject,
       attachments,
     })
+    // Each sender's mail is one inbox thread.
+    if (args.metadata.sender)
+      await upsertEmailThread(ctx, {
+        organizationId: inbound.organizationId,
+        address: args.metadata.sender,
+        name: parseMailbox(args.metadata.from)?.name,
+        at: inbound._creationTime,
+        preview: args.metadata.subject.slice(0, 1000),
+        direction: "inbound",
+      })
     return id
   },
 })

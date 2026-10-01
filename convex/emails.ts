@@ -864,12 +864,36 @@ export async function emailPage(
     paginationOpts: PaginationOptions
   }
 ) {
-  const org = args.organizationId
+  const search = args.search?.trim().slice(0, 200)
+  const { from = 0, to = Number.MAX_SAFE_INTEGER } = args
+  const matches = matchesSearch(search)
+  return filteredPage(
+    emailRows(ctx, args.organizationId, args),
+    args.paginationOpts,
+    (row) =>
+      row._creationTime >= from &&
+      row._creationTime <= to &&
+      matches(row.from, ...row.to, row.subject),
+    EMAIL_SEARCH_BUDGET,
+    search
+  )
+}
+
+/** The team's emails newest first, on the index their filters pick.
+    Shared with the Messages logs, which merge them with other channels. */
+export function emailRows(
+  ctx: QueryCtx,
+  org: string,
+  args: {
+    status?: Infer<typeof emailStatusValue>
+    from?: number
+    to?: number
+  }
+) {
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
-  const search = args.search?.trim().slice(0, 200)
   const emails = stream(ctx.db, schema).query("emails")
-  const rows = (
+  return (
     args.status
       ? emails.withIndex("by_organizationId_and_status", (q) =>
           q
@@ -885,17 +909,6 @@ export async function emailPage(
             .lte("_creationTime", to)
         )
   ).order("desc")
-  const matches = matchesSearch(search)
-  return filteredPage(
-    rows,
-    args.paginationOpts,
-    (row) =>
-      row._creationTime >= from &&
-      row._creationTime <= to &&
-      matches(row.from, ...row.to, row.subject),
-    EMAIL_SEARCH_BUDGET,
-    search
-  )
 }
 
 export const count = query({

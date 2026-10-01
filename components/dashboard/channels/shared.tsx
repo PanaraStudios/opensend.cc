@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useQuery } from "convex/react"
-import { RadioTowerIcon, TriangleAlertIcon } from "lucide-react"
+import { MailIcon, RadioTowerIcon, TriangleAlertIcon } from "lucide-react"
 
 import { api } from "@/convex/_generated/api"
 import {
@@ -40,7 +40,7 @@ import {
 } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
 import { CHANNEL_LABELS } from "@/lib/dashboard/format"
-import type { MessagingChannel } from "@/lib/dashboard/types"
+import type { Channel, MessagingChannel } from "@/lib/dashboard/types"
 import { useChannelCommands } from "@/lib/channels/use-channels"
 import { INSTANCE_PAGES } from "@/lib/dashboard/nav"
 
@@ -54,6 +54,17 @@ export const CHANNEL_ICONS: Record<
   messenger: MessengerIcon,
   instagram: InstagramIcon,
 }
+
+/** A channel's mark: Lucide's mail for email, the brand's for the rest. */
+export const channelIcon = (channel: Channel) =>
+  channel === "email" ? MailIcon : CHANNEL_ICONS[channel]
+
+/** Email and the channels it shares Templates and Messages with. */
+export const MESSAGE_CHANNEL_ITEMS: readonly SelectOption[] = [
+  { value: "all", label: "All channels" },
+  { value: "email", label: "Email" },
+  { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
+]
 
 export const CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },

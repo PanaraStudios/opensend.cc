@@ -533,9 +533,11 @@ export const channelStrategies: Record<
         type: payload.type,
         preview: (payload.type === "text"
           ? String(data.body)
-          : typeof data.caption === "string"
-            ? data.caption
-            : `[${payload.type}]`
+          : payload.type === "template"
+            ? `[template: ${String(data.name)}]`
+            : typeof data.caption === "string"
+              ? data.caption
+              : `[${payload.type}]`
         ).slice(0, 1000),
       }
     },
