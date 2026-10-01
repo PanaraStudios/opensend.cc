@@ -87,6 +87,16 @@ export function softphoneTests(
     await expect(
       owner.getByRole("button", { name: "Go online", exact: true })
     ).toBeVisible()
+    const header = owner
+      .getByRole("heading", { name: "Playground", exact: true })
+      .locator("../..")
+    await expect(
+      header.getByRole("button", { name: "Go online", exact: true })
+    ).toBeVisible()
+    await expect(header.locator('[aria-label="Softphone"]')).toHaveCount(1)
+    await expect(
+      header.getByRole("link", { name: "Calls", exact: true })
+    ).toHaveCount(0)
     await expect(
       owner.getByText("Missed voice call", { exact: true }).first()
     ).toBeVisible()
@@ -102,6 +112,15 @@ export function softphoneTests(
     expect(contactId).toBeTruthy()
     await owner.goto(`/contacts/${contactId}`)
     await expect(owner.locator('[aria-label="Softphone"]')).toHaveCount(0)
+    const entry = owner
+      .locator('[data-slot="sidebar-footer"]')
+      .getByRole("button", { name: "Open softphone", exact: true })
+    await expect(entry).toBeVisible()
+    await entry.click()
+    await expect(
+      owner.getByText("Go online to receive and make calls", { exact: true })
+    ).toBeVisible()
+    await owner.getByRole("button", { name: "Close", exact: true }).click()
     await owner
       .getByRole("button", { name: "Call", exact: true })
       .first()
