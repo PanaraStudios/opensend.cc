@@ -20,6 +20,7 @@ import { metaInboundTests } from "./meta-inbound-flow"
 import { metaAppTests } from "./meta-app-flow"
 import { channelsTests } from "./channels-flow"
 import { whatsappTemplatesTests } from "./whatsapp-templates-flow"
+import { inboxTests } from "./inbox-flow"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -593,9 +594,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByRole("switch", { name: "Enable Sending", exact: true })
     ).not.toBeChecked()
-    await owner.getByRole("link", { name: "Emails", exact: true }).click()
+    await owner.getByRole("link", { name: "Messages", exact: true }).click()
     await expect(
-      owner.getByRole("heading", { name: "Emails", exact: true })
+      owner.getByRole("heading", { name: "Messages", exact: true })
     ).toBeVisible()
     const c = await client(owner)
     expect(
@@ -841,6 +842,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     const record = (error: Error) => errors.push(error.message)
     owner.on("pageerror", record)
     for (const route of [
+      "/emails/inbox",
       "/emails",
       "/emails/receiving",
       "/emails/suppressions",
@@ -1226,6 +1228,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   metaInboundTests(() => ({ owner, organizationId }))
   whatsappSendTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
+  inboxTests(() => ({ owner, organizationId, sendingDomainId }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")
