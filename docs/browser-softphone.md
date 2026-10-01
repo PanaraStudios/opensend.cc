@@ -43,14 +43,23 @@ integration. No files under `components/dashboard/conversation/` are changed.
 
 ## Operator configuration (required before browser media works)
 
-No Docker files, images or running deployments are changed in 8c. The shipped 8b
-image has a static shared-password agent directory and does **not** build
-`mod_xml_curl`; that configuration cannot authenticate expiring credentials.
-An operator must supply a FreeSWITCH build containing `mod_xml_curl` and replace
-its configuration with the directory binding below. Keep the existing media/Sofia
-settings and gateway dialplan from 8b. Remove the static directory users
-`2000`–`2099` entirely, including generated files and cached directory entries.
-Never leave the shared agent password as a fallback.
+The bundled FreeSWITCH image now builds and loads `mod_xml_curl` before Sofia.
+Its directory binding below replaces the old shared-password users entirely,
+including gateway slots. The image has an empty static directory and removes
+previously generated user files on startup. Do not add static users or directory
+cache attributes as a fallback. Restart the old FreeSWITCH instance when upgrading
+so cached credentials and registrations cannot survive the change.
+
+The simpler secure design uses **call-gateway as the directory proxy**. Convex's
+existing authenticated `calling/softphone:session` action checks team/browser
+ownership, then issues/refreshes a credential through the controller's HMAC
+`POST /agents/session`. Passwords stay in controller memory; Convex stores only
+the lease, extension and expiry. FreeSWITCH fetches that same live credential
+through `POST /agents/directory`, using a separate shared Basic secret over the
+private Compose network. There is no extra public Convex directory endpoint or
+second credential store. XML-CURL cannot generate the per-request gateway HMAC.
+The controller validates the directory secret at startup; both services must use
+the same value. Never route `/agents/directory` through the public controller proxy.
 
 Set on Convex:
 
@@ -61,7 +70,7 @@ CALL_AGENT_WSS_URL=wss://calling.example.com:7443
 CALL_AGENT_QUEUES={"TEAM_ID":["support","sales"]}
 ```
 
-Set on the controller:
+Set on **both FreeSWITCH and the controller** (Compose passes these through):
 
 ```dotenv
 FREESWITCH_DIRECTORY_SECRET=<separate random 64-character hex secret>
@@ -74,9 +83,9 @@ transfers. Operators define `queue-TEAM_ID-support` and `queue-TEAM_ID-sales` ex
 controller never accepts arbitrary SIP/PSTN destinations. Do not enable queue
 choices until those extensions exist.
 
-Load `mod_xml_curl` before Sofia. Add the following configuration section to the
-operator's FreeSWITCH configuration (substitute the actual secret; restrict this
-private HTTP endpoint to the FreeSWITCH host):
+The shipped configuration renders this binding automatically. For an existing
+operator build, load `mod_xml_curl` before Sofia and use this directory override
+(substitute the actual secret and restrict this private endpoint to FreeSWITCH):
 
 ```xml
 <configuration name="xml_curl.conf" description="Ephemeral agent directory">
@@ -97,13 +106,53 @@ Browser users receive the empty `softphone-deny` context: do not define routes i
 that context. All call routing is authorized through Convex and the HMAC gateway.
 The directory uses a separate Basic credential because FreeSWITCH XML-CURL cannot
 produce the gateway's per-request HMAC envelope. Use private networking or HTTPS;
-never expose the directory endpoint publicly.
+never expose the directory endpoint publicly. The controller's host mapping is
+loopback-only. If using XML-CURL over HTTPS outside the private network, explicitly
+set `enable-cacert-check=true` and `enable-ssl-verifyhost=true` (the pinned module's
+defaults do not verify HTTPS), and provide `ssl-cacert-file` for a private CA.
 
-Retain Sofia `wss-binding=:7443`, realm/registration domain `freeswitch`, Opus/48k
-at 20 ms, DTLS-SRTP, public RTP mapping, and a trusted WSS certificate in `/certs`.
-The WSS certificate differs from the DTLS media certificate. A self-signed WSS
-certificate fails browser registration. This browser adapter uses host ICE
-candidates; restrictive networks needing TURN remain an operator integration task.
+Sofia retains `wss-binding=:7443`, realm/registration domain `freeswitch`,
+Opus/48k at 20 ms, DTLS-SRTP and the configured public RTP mapping. The bridge
+exports `media_webrtc=true` only on the browser leg. Sofia's candidate ACLs accept
+both private LAN/Docker candidates and public/relay candidates. Set
+`CALL_AGENT_WSS_URL=wss://calling.example.com:7443` on Convex. Configure
+`FREESWITCH_PUBLIC_IP` and forward UDP 20400–20799 for public browser media.
+
+### WSS certificate
+
+The WSS certificate differs from the self-signed P-256 DTLS media certificate.
+By default startup creates `/certs/wss.pem` with localhost, 127.0.0.1 and
+`freeswitch` SANs in the certificate volume. This is only for local development:
+normal browsers reject it unless explicitly trusted. Use a local trusted CA or
+import the development certificate into your local trust store. The Docker agent
+harness alone uses Chromium's certificate-error bypass; the dashboard does not.
+
+On a VPS, obtain a publicly trusted certificate (for example Let's Encrypt) for
+`calling.example.com`. Assemble **private key followed by the full certificate
+chain** into `wss.pem`, readable by container UID 10002, in a protected host
+directory. Set `FREESWITCH_CERT_DIR=/absolute/path/to/calling-certs` in the Compose
+env file. For a read-only certificate mount use an override:
+
+```yaml
+services:
+  freeswitch:
+    volumes:
+      - /absolute/path/to/calling-certs:/certs:ro
+```
+
+The file must exist before startup with a read-only mount. On renewal, replace
+`wss.pem` atomically and restart FreeSWITCH between calls so Sofia loads it.
+Do not reuse this certificate as the independent DTLS certificate.
+
+### Optional TURN for agents
+
+The optional [coturn service](calling-gateway.md#optional-agent-turn) is off by
+default. It relays only the browser-to-FreeSWITCH leg. The current dashboard
+adapter uses host candidates and does not automatically distribute TURN
+credentials: operators enabling TURN must supply `iceServers` to their SIP.js
+adapter's `sessionDescriptionHandlerFactoryOptions.peerConnectionConfiguration`.
+See the gateway guide for credentials, ports and an example. Meta/Janus never
+uses this TURN server.
 
 Configuration was checked against [SIP.js's FreeSWITCH guide](https://sipjs.com/guides/server-configuration/freeswitch/),
 [receiving calls](https://sipjs.com/guides/receive-call/),
@@ -130,8 +179,14 @@ Convex tests cover claim races, browser/team ownership, expiry, credential issua
 revocation, transfer reservations and permission-request window enforcement.
 Gateway tests cover ephemeral directory authentication/expiry and local controls.
 The compiling `tests/e2e/softphone-flow.ts` is wired into the integration suite and
-screenshots Calls and the contact permission dialog. Docker e2e and real WebRTC
-media are deliberately left for integration: verify trusted WSS, two browsers
+screenshots Calls and the contact permission dialog. The Docker `agent` check
+registers real headless Chromium/SIP.js with backend-issued credentials, answers
+a bridged inbound call, checks browser and fake-Meta RTP in both directions, and
+verifies that a revoked credential cannot register again. It uses a fake
+authenticated backend and bypasses only the local WSS certificate check. See
+[verification output](calling-gateway.md#browser-media-verification-2026-10-01).
+It does not validate production certificate trust or public NAT/firewall routing.
+Still verify trusted WSS, two browsers
 racing to answer, two-way audio, mute, hold RTP continuity, agent/queue transfer,
 DTMF and remote/local hangup with the operator configuration above. The US live
 business number can validate UIC only, not business-initiated calling.
