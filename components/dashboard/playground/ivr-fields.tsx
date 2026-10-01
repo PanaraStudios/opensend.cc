@@ -1,5 +1,5 @@
 "use client"
-import { useId } from "react"
+import { createContext, useContext, useId } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,19 @@ import {
   type IvrBusinessHours,
 } from "@/lib/ivr"
 
+export type PromptRenderInfo = {
+  kind: string
+  text?: string
+  fileId?: string
+  voice?: string | null
+  status: string
+  error?: string | null
+  audio_url: string | null
+}
+export const PromptRendersContext = createContext<{
+  renders: PromptRenderInfo[]
+  voice?: string
+}>({ renders: [] })
 export function VoiceField({
   label,
   value,
@@ -58,6 +71,14 @@ export function PromptField({
   value: IvrPrompt
   onChange: (v: IvrPrompt) => void
 }) {
+  const context = useContext(PromptRendersContext)
+  const rendered = context.renders.find((r) =>
+    value.kind === "tts"
+      ? r.kind === "tts" &&
+        r.text === value.text &&
+        r.voice === (value.voice ?? context.voice ?? null)
+      : r.fileId === value.fileId
+  )
   return (
     <div className="flex flex-col gap-3">
       <OptionSelect
@@ -75,6 +96,11 @@ export function PromptField({
           { value: "audio", label: "Uploaded audio" },
         ]}
       />
+      {rendered?.error ? (
+        <p role="alert" className="text-destructive">
+          {rendered.error}
+        </p>
+      ) : null}
       {value.kind === "tts" ? (
         <>
           <Field>
@@ -98,9 +124,12 @@ export function PromptField({
             }
           />
           <p className="text-sm text-muted-foreground">
-            Pending render · Voice provider configuration is required to
-            generate audio.
+            {rendered?.status ?? "pending_render"} · Save with a team provider
+            key to render audio.
           </p>
+          {rendered?.audio_url ? (
+            <AudioPlayer src={rendered.audio_url} label="Rendered IVR prompt" />
+          ) : null}
         </>
       ) : (
         <>
@@ -142,6 +171,7 @@ export function ActionField({
   menus: IvrMenu[]
   label?: string
 }) {
+  const bots = useTeamQuery(api.voice.resources.dashboardList, { limit: 100 })
   return (
     <div className="flex flex-col gap-2">
       <OptionSelect
@@ -182,9 +212,13 @@ export function ActionField({
         />
       ) : null}
       {value.kind === "bot" ? (
-        <VoiceField
-          label="Bot ID"
+        <OptionSelect
+          aria-label="Voice bot"
+          placeholder="Choose a voice bot"
           value={value.botId}
+          items={(bots?.data ?? []).flatMap((b) =>
+            "name" in b ? [{ value: b.id, label: b.name }] : []
+          )}
           onChange={(botId) => onChange({ ...value, botId })}
         />
       ) : null}

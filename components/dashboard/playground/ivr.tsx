@@ -34,6 +34,8 @@ import {
 } from "@/lib/dashboard/voice-playground"
 import { validateIvr, type IvrDefinition } from "@/lib/ivr"
 import { VoiceField, MenuFields, BusinessHoursFields } from "./ivr-fields"
+import { PromptRendersContext, type PromptRenderInfo } from "./ivr-fields"
+import { IvrPromptVoiceFields } from "./prompt-voice"
 import { VoiceRouting } from "./routing"
 import { VoiceTester } from "./tester"
 
@@ -143,6 +145,7 @@ export function IvrList() {
   )
 }
 type IvrResource = IvrDefinition & {
+  prompt_renders?: PromptRenderInfo[]
   id: string
   prompt_status: string
   updated_at: string
@@ -167,6 +170,7 @@ function IvrForm({ row }: { row?: IvrResource }) {
           entryMenuId: row.entryMenuId,
           menus: row.menus,
           businessHours: row.businessHours,
+          promptVoice: row.promptVoice,
         }
       : newIvr()
   )
@@ -174,6 +178,7 @@ function IvrForm({ row }: { row?: IvrResource }) {
   const [error, setError] = useState("")
   const [deleting, setDeleting] = useState(false)
   const write = useAction(api.ivr.definitions.dashboardWrite)
+  const render = useAction(api.ivr.rendering.dashboardRender)
   const validate = useAction(api.ivr.definitions.dashboardValidate)
   const patch = (v: Partial<IvrDefinition>) => setDraft({ ...draft, ...v })
   async function save() {
@@ -214,7 +219,15 @@ function IvrForm({ row }: { row?: IvrResource }) {
     }
   }
   return (
-    <>
+    <PromptRendersContext.Provider
+      value={{
+        renders:
+          JSON.stringify(row?.promptVoice) === JSON.stringify(draft.promptVoice)
+            ? (row?.prompt_renders ?? [])
+            : [],
+        voice: draft.promptVoice?.voice,
+      }}
+    >
       <DetailHeader
         backHref="/playground/ivr"
         backLabel="IVR"
@@ -229,6 +242,25 @@ function IvrForm({ row }: { row?: IvrResource }) {
             >
               Validate
             </Button>
+            {row?.promptVoice ? (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true)
+                  setError("")
+                  try {
+                    await render({ organizationId: activeTeamId!, id: row.id })
+                  } catch (e) {
+                    setError(actionError(e))
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                Render prompts
+              </Button>
+            ) : null}
             <Button disabled={busy} onClick={() => void save()}>
               {busy ? "Working…" : "Save"}
             </Button>
@@ -279,6 +311,10 @@ function IvrForm({ row }: { row?: IvrResource }) {
             }))}
           />
         </DetailSection>
+        <IvrPromptVoiceFields
+          value={draft.promptVoice}
+          onChange={(promptVoice) => patch({ promptVoice })}
+        />
         {draft.menus.map((m, i) => (
           <DetailSection
             key={i}
@@ -354,6 +390,6 @@ function IvrForm({ row }: { row?: IvrResource }) {
           }}
         />
       ) : null}
-    </>
+    </PromptRendersContext.Provider>
   )
 }
