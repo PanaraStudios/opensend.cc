@@ -3,10 +3,11 @@ import * as React from "react"
 import { useQueries } from "convex/react"
 import { eachDayOfInterval, startOfDay, endOfDay, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
-import type {
-  FunctionArgs,
-  FunctionReference,
-  FunctionReturnType,
+import {
+  getFunctionName,
+  type FunctionArgs,
+  type FunctionReference,
+  type FunctionReturnType,
 } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -38,6 +39,8 @@ export function useMetricsChunks<Q extends FunctionReference<"query">>(
   args: FunctionArgs<Q> | null,
   spans: { from: number; to: number }[]
 ): FunctionReturnType<Q> | undefined {
+  // `api.x.y` builds a new reference on every access; key on its name.
+  const name = getFunctionName(query)
   const requests = React.useMemo(() => {
     const result: Record<string, { query: Q; args: FunctionArgs<Q> }> = {}
     if (args)
@@ -47,7 +50,8 @@ export function useMetricsChunks<Q extends FunctionReference<"query">>(
           args: { ...args, spans: spans.slice(offset, offset + 31) },
         }
     return result
-  }, [query, args, spans])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `name` identifies `query`
+  }, [name, args, spans])
   const results = useQueries(requests) as Record<
     string,
     FunctionReturnType<Q> | Error | undefined
