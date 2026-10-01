@@ -23,6 +23,7 @@ export const STEP_LABELS: Record<AutomationStepType, string> = {
   delay: "Delay",
   wait_for_event: "Wait for event",
   send_email: "Send email",
+  send_whatsapp: "Send WhatsApp",
   contact_update: "Update contact",
   contact_delete: "Delete contact",
   add_to_segment: "Add to segment",
@@ -33,7 +34,7 @@ export const STEP_GROUPS: readonly {
   label: string
   types: readonly AutomationStepType[]
 }[] = [
-  { label: "Messages", types: ["send_email"] },
+  { label: "Messages", types: ["send_email", "send_whatsapp"] },
   { label: "Flow control", types: ["condition", "delay", "wait_for_event"] },
   {
     label: "Audience",
@@ -217,6 +218,16 @@ export function newStep(
         received: [],
         timedOut: [],
       }
+    case "send_whatsapp":
+      return {
+        key,
+        type,
+        accountId: "",
+        mode: "template",
+        templateId: "",
+        variables: {},
+        text: "",
+      }
     case "send_email":
       return {
         key,
@@ -301,14 +312,27 @@ export function durationError(text: string): string | null {
 /* ------------------------------------------------------------ validation */
 
 export const RESERVED_EVENT_PREFIX = "opensend:"
+export const SYSTEM_EVENTS = [
+  {
+    value: "opensend:whatsapp.message.received",
+    label: "WhatsApp message received",
+  },
+] as const
 
 export function eventNameError(
   name: string,
-  taken: readonly string[] = []
+  taken: readonly string[] = [],
+  options: { allowSystem?: boolean } = {}
 ): string | null {
   const trimmed = name.trim()
   if (!trimmed) return "Enter an event name"
-  if (trimmed.toLowerCase().startsWith(RESERVED_EVENT_PREFIX)) {
+  if (
+    trimmed.toLowerCase().startsWith(RESERVED_EVENT_PREFIX) &&
+    !(
+      options.allowSystem &&
+      SYSTEM_EVENTS.some((event) => event.value === trimmed)
+    )
+  ) {
     return `Names starting with ${RESERVED_EVENT_PREFIX} are reserved for system events`
   }
   if (taken.includes(trimmed)) return "An event with this name already exists"
@@ -411,8 +435,18 @@ export function stepTasks(
         : ["Set a delay"]
     case "wait_for_event":
       return [
-        eventNameError(step.eventName) ? "Set event" : null,
+        eventNameError(step.eventName, [], { allowSystem: true })
+          ? "Set event"
+          : null,
         durationError(step.timeout),
+      ].flatMap((task) => task ?? [])
+    case "send_whatsapp":
+      return [
+        !step.accountId ? "Select a sending number" : null,
+        step.mode === "template" && !step.templateId
+          ? "Select an approved WhatsApp template"
+          : null,
+        step.mode === "text" && !step.text?.trim() ? "Enter a message" : null,
       ].flatMap((task) => task ?? [])
     case "send_email": {
       const template = context.templates.find(
@@ -455,7 +489,9 @@ export function automationTasks(
       type: "trigger" as const,
       title: "Custom event",
       tasks: [
-        ...(eventNameError(automation.trigger) ? ["Set event"] : []),
+        ...(eventNameError(automation.trigger, [], { allowSystem: true })
+          ? ["Set event"]
+          : []),
         ...(steps.length === 0 ? ["Add a step"] : []),
       ],
     },
@@ -495,6 +531,11 @@ export function stepSummary(
         : null
     case "wait_for_event":
       return step.eventName || null
+    case "send_whatsapp":
+      return step.mode === "text"
+        ? step.text || null
+        : (context.templates.find((item) => item.id === step.templateId)
+            ?.name ?? "Select template")
     case "send_email":
       return (
         context.templates.find((item) => item.id === step.templateId)?.name ??

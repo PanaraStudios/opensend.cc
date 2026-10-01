@@ -18,6 +18,7 @@ export const stepType = v.union(
   v.literal("delay"),
   v.literal("wait_for_event"),
   v.literal("send_email"),
+  v.literal("send_whatsapp"),
   v.literal("contact_update"),
   v.literal("contact_delete"),
   v.literal("add_to_segment")

@@ -1,3 +1,4 @@
+import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
 import type { Infer } from "convex/values"
 import { regions } from "../../convex/ses/contracts"
@@ -275,7 +276,22 @@ export type EmailDraft = {
   replyTo?: string
 }
 
+export type WhatsAppBroadcastStats = {
+  recipients: number
+  sent: number
+  delivered: number
+  read: number
+  failed: number
+  skipped: number
+}
 export type Broadcast = EmailDraft & {
+  channel?: "email" | "whatsapp"
+  whatsapp?: {
+    accountId: string
+    templateId: string
+    variables: Record<string, VariableSource>
+  }
+  whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
   segmentId: string | null
   topicId: string | null
@@ -341,6 +357,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
+  "send_whatsapp",
   "contact_update",
   "contact_delete",
   "add_to_segment",
@@ -374,6 +391,14 @@ export type AutomationStep = { key: string } & (
       /** What fills each of the template's variables: a literal, or a
           reference such as `event.first_name`. */
       variables: Record<string, string>
+    }
+  | {
+      type: "send_whatsapp"
+      accountId: string
+      mode: "template" | "text"
+      templateId?: string
+      variables: Record<string, VariableSource>
+      text?: string
     }
   | { type: "contact_update"; fields: AutomationContactField[] }
   | { type: "contact_delete" }

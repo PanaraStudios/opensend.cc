@@ -413,3 +413,50 @@ describe("round-trip", () => {
     expect(roundTripped).toEqual(original)
   })
 })
+
+it("preserves WhatsApp step mappings in both workflow directions", () => {
+  const config = {
+    accountId: "number",
+    mode: "template",
+    templateId: "approved",
+    variables: { "1": { contact: "firstName", fallback: "there" } },
+  }
+  const workflow: WorkflowDefinition = {
+    steps: [
+      {
+        key: "start",
+        type: "trigger",
+        config: { eventName: "opensend:whatsapp.message.received" },
+        next: "send",
+      },
+      { key: "send", type: "send_whatsapp", config, next: "reply" },
+      {
+        key: "reply",
+        type: "send_whatsapp",
+        config: { accountId: "number", mode: "text", text: "Thanks" },
+        next: null,
+      },
+    ],
+  }
+  const sdk = workflowToSdkOptions(workflow)
+  expect(sdk.steps[1]).toEqual({ key: "send", type: "send_whatsapp", config })
+  const result = sdkResponseToWorkflow(
+    sdk.steps.map((step) => {
+      const config: Record<string, unknown> = { ...step.config }
+      if (step.type === "send_whatsapp") {
+        config.account_id = config.accountId
+        delete config.accountId
+        if ("templateId" in config) {
+          config.template_id = config.templateId
+          delete config.templateId
+        }
+      }
+      return { ...step, config }
+    }),
+    sdk.connections.map((connection) => ({
+      ...connection,
+      type: connection.type ?? "default",
+    }))
+  )
+  expect(result).toEqual(workflow)
+})

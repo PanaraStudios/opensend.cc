@@ -4,6 +4,7 @@ import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { insertRow, patchRow } from "../counts"
 import { upsertWhatsAppThread } from "../channels/identity"
+import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { customEventType } from "../automationEvents"
 import { retirement } from "../teamLifecycle"
@@ -214,6 +215,7 @@ async function status(
           : {}),
       })
     : message
+  if (advances) await broadcastMessageMetric(ctx, current)
   await ctx.db.insert("channelMessageEvents", {
     messageId: message._id,
     type: next,

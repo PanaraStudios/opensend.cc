@@ -2,7 +2,9 @@
 
 The dashboard automation list, builder, test-event dialog and observability
 screen use Convex. The existing `POST /events/send` route starts runs through
-the custom-event outbox consumer; this lane adds no HTTP endpoints.
+the custom-event outbox consumer. Inbound WhatsApp messages also emit the system
+event `opensend:whatsapp.message.received`, with a contact ID and message payload,
+so phone-only contacts can start runs without an email address.
 
 ## Stored definitions and execution
 
@@ -26,8 +28,8 @@ through both waiting runs and enabled automations. Starting from the same outbox
 event is idempotent per automation. Unknown email addresses become contacts only
 when an enabled automation actually starts a run.
 
-The seven existing builder steps are supported: condition, delay, wait for event,
-send email, update contact, delete contact and add to segment. Conditions use the
+The builder supports condition, delay, wait for event, send email, send WhatsApp,
+update contact, delete contact and add to segment. Conditions use the
 shared comparison helpers and read current contact values. The `event.*` scope
 continues to mean the original trigger payload after a wait; the matching payload
 is retained in the wait step's output. Audience writes use the shared helpers,
@@ -47,6 +49,17 @@ A completed send step means the email was accepted by the durable sending
 pipeline, not that SES delivered it. Its output contains the email ID. Subsequent
 SES outcomes belong to the email's status/history.
 
+`send_whatsapp` uses the shared `channels.messages.createChannelMessage` pipeline
+with `source: "automation"` and an automation run ID. Its dashboard graph stores
+`accountId`, `mode: "template" | "text"`, `templateId` or `text`, and `variables`.
+REST config uses `account_id` and `template_id`; SDK and MCP config uses camelCase.
+Variable mappings accept literal strings, `{ contact: "firstName" | "lastName" |
+"email" | "phone", fallback? }`, `{ property: "key", fallback? }`, or
+`{ value: "text", fallback? }`. The account and approved template must belong to
+the same team and WABA. The runtime records `no_phone` or `window_closed` skips,
+and respects unsubscribe and marketing opt-outs. Its output contains `message_id`.
+Phone-only runs skip email steps and continue along the workflow.
+
 Disabling stops future starts and lets existing snapshots finish, matching the
 existing dashboard copy. Deleting immediately fences all steps, then cancels
 workflows and removes runs, steps, references and aggregate entries in bounded
@@ -55,7 +68,10 @@ cancelled. These operations cannot retract a message already handed to the
 sending pipeline. Workflow journals persist for live run history and are cleaned
 up on automation deletion.
 
-The builder offers only custom-event triggers and the seven step types above.
+The trigger picker offers custom events and a System events group with WhatsApp
+message received. `wait_for_event` accepts that same system event to wait for a
+reply from the contact. Reserved system names cannot be created through the
+custom event API.
 Remove-from-segment and topic steps, wait-event variable selectors and an export
 button are absent, so this lane does not add them or change the UI to expose them.
 The shared dashboard topic mutation now emits `contact.updated` when its choice
@@ -68,6 +84,9 @@ The tests register the real workflow, workpool and aggregate components in
 payload rejection, branch order, durable delay/resumption, workflow journal
 replay, event matching/timeouts, paginated fanout, cancellation and deletion,
 audience events, SES tenant binding, suppressions and unsubscribe behavior.
+`convex/whatsappCampaigns.test.ts` covers WhatsApp campaigns and automations;
+`tests/e2e/whatsapp-campaigns-flow.ts` drives the real builder and campaign form
+against the fake Graph server and saves form, report and builder screenshots.
 
 New aggregates are mounted in `convex.config.ts`; the normal count backfill
 includes automations, runs and steps. No codegen, backend deployment, live AWS

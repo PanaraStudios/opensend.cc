@@ -1,4 +1,11 @@
+import type { WhatsAppVariableSource } from '../../automations/interfaces/automation-step.interface';
 export interface Broadcast {
+  channel?: 'email' | 'whatsapp';
+  whatsapp?: {
+    account_id: string;
+    template_id: string;
+    variables: Record<string, WhatsAppVariableSource>;
+  };
   id: string;
   name: string;
   segment_id: string | null;

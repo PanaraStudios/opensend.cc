@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { WhatsAppIcon } from "@/components/brand-icons"
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -50,6 +51,7 @@ export const STEP_ICONS: Record<AutomationRunStep["type"], LucideIcon> = {
   delay: ClockIcon,
   wait_for_event: HourglassIcon,
   send_email: SendIcon,
+  send_whatsapp: WhatsAppIcon as LucideIcon,
   contact_update: UserPenIcon,
   contact_delete: UserMinusIcon,
   add_to_segment: UsersIcon,

@@ -53,6 +53,18 @@ export interface SendEmailStepConfig {
   replyTo?: string;
 }
 
+export type WhatsAppVariableSource =
+  | string
+  | ((
+      | { contact: 'firstName' | 'lastName' | 'email' | 'phone' }
+      | { property: string }
+      | { value: string }
+    ) & { fallback?: string });
+export type SendWhatsAppStepConfig = {
+  accountId: string;
+  variables?: Record<string, WhatsAppVariableSource>;
+} & ({ mode: 'template'; templateId: string } | { mode: 'text'; text: string });
+
 export interface WaitForEventStepConfig {
   eventName: string;
   timeout?: string;
@@ -81,6 +93,7 @@ export type AutomationStep =
   | { key: string; type: 'trigger'; config: TriggerStepConfig }
   | { key: string; type: 'delay'; config: DelayStepConfig }
   | { key: string; type: 'send_email'; config: SendEmailStepConfig }
+  | { key: string; type: 'send_whatsapp'; config: SendWhatsAppStepConfig }
   | { key: string; type: 'wait_for_event'; config: WaitForEventStepConfig }
   | { key: string; type: 'condition'; config: ConditionStepConfig }
   | { key: string; type: 'contact_update'; config: ContactUpdateStepConfig }

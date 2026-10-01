@@ -277,3 +277,35 @@ describe("event payloads", () => {
     assert.deepEqual(payloadErrors(undefined, { anything: true }), [])
   })
 })
+
+it("supports a WhatsApp step and known system events for triggers and reply waits", () => {
+  const step = newStep("send_whatsapp", [])
+  assert.equal(step.type, "send_whatsapp")
+  assert.equal(stepTitle(step), "Send WhatsApp")
+  assert.ok(eventNameError("opensend:whatsapp.message.received"))
+  assert.equal(
+    eventNameError("opensend:whatsapp.message.received", [], {
+      allowSystem: true,
+    }),
+    null
+  )
+  assert.ok(eventNameError("opensend:unknown", [], { allowSystem: true }))
+  assert.deepEqual(
+    automationTasks(
+      {
+        trigger: "opensend:whatsapp.message.received",
+        steps: [
+          {
+            ...step,
+            accountId: "number",
+            mode: "template",
+            templateId: "approved",
+            variables: {},
+          } as AutomationStep,
+        ],
+      },
+      { templates: [], segments: [] }
+    ),
+    []
+  )
+})

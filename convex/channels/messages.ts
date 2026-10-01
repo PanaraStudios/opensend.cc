@@ -16,6 +16,7 @@ import { findMetaApp } from "../meta/app"
 import { live } from "../meta/connect"
 import { decryptSecret } from "../secrets"
 import { invalid, notFound } from "../api/caller"
+import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import { upsertWhatsAppThread } from "./identity"
@@ -368,6 +369,7 @@ export async function acceptChannelMessage(
     type: "sent",
     at,
   })
+  await broadcastMessageMetric(ctx, current)
   const body = await content(ctx, message._id)
   await emitEvent(
     ctx,
@@ -405,6 +407,7 @@ async function fail(
       message: error,
     }),
   })
+  await broadcastMessageMetric(ctx, current)
   const body = await content(ctx, message._id)
   await emitEvent(
     ctx,
