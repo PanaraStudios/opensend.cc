@@ -7,6 +7,12 @@ import type {
   SendInstagramMessageOptions,
   ChannelRequestOptions,
 } from "@opensendcc/sdk"
+import {
+  WHATSAPP_SEND_TYPES,
+  whatsappBodySchemas,
+  validateWhatsAppBody,
+  whatsappNormalizedSchema,
+} from "@opensendcc/sdk"
 import { z } from "zod"
 
 export const channelPagination = {
@@ -27,32 +33,41 @@ export function channelOutput(
       `${channel} request failed: ${JSON.stringify(result.error)}`
     )
   return {
+    ...(result.data &&
+    typeof result.data === "object" &&
+    !Array.isArray(result.data)
+      ? { structuredContent: result.data as Record<string, unknown> }
+      : {}),
     content: [
       { type: "text" as const, text: JSON.stringify(result.data, null, 2) },
     ],
   }
 }
 
-const media = z.object({
-  id: z.string().optional(),
-  link: z.string().url().optional(),
-})
-const captionedMedia = media.extend({
-  caption: z.string().max(1024).optional(),
-})
-const record = z.record(z.string(), z.unknown())
-const bodyKeys = [
-  "text",
-  "template",
-  "image",
-  "video",
-  "audio",
-  "document",
-  "sticker",
-  "location",
-  "interactive",
-  "reaction",
-] as const
+const bodyKeys = WHATSAPP_SEND_TYPES
+
+// Existing fields remain usable by clients predating normalized content.
+// When type/content are present, their catalog discriminator is validated.
+const whatsappOutputSchema = z.fromJSONSchema({
+  ...whatsappNormalizedSchema,
+  properties: {
+    ...whatsappNormalizedSchema.properties,
+    id: { type: "string" },
+  },
+  required: ["id"],
+  oneOf: undefined,
+  anyOf: whatsappNormalizedSchema.oneOf?.map((branch) => ({
+    ...branch,
+    required: [],
+  })),
+} as Parameters<typeof z.fromJSONSchema>[0])
+const whatsappListOutputSchema = z
+  .object({
+    object: z.literal("list").optional(),
+    has_more: z.boolean().optional(),
+    data: z.array(whatsappOutputSchema).optional(),
+  })
+  .passthrough()
 
 const attachment = z
   .object({
@@ -81,44 +96,21 @@ const template = z
 
 const whatsappSendSchema = z.object({
   from: z.string().optional(),
-  to: z.string(),
+  to: z.string().optional(),
+  recipient: z.string().optional(),
   type: z.enum(bodyKeys).optional(),
-  text: z
-    .union([
-      z.string(),
-      z.object({
-        body: z.string().max(4096),
-        preview_url: z.boolean().optional(),
-      }),
-    ])
-    .optional(),
-  template: z
-    .object({
-      name: z.string(),
-      language: z.union([z.string(), z.object({ code: z.string() })]),
-      components: z.array(record).optional(),
-      variables: z
-        .record(z.string(), z.union([z.string(), z.number()]))
+  ...Object.fromEntries(
+    bodyKeys.map((key) => [
+      key,
+      z
+        .fromJSONSchema(
+          whatsappBodySchemas[key] as Parameters<typeof z.fromJSONSchema>[0]
+        )
         .optional(),
-    })
-    .optional(),
-  image: captionedMedia.optional(),
-  video: captionedMedia.optional(),
-  audio: media.optional(),
-  sticker: media.optional(),
-  document: captionedMedia
-    .extend({ filename: z.string().optional() })
-    .optional(),
-  location: z
-    .object({
-      latitude: z.number().min(-90).max(90),
-      longitude: z.number().min(-180).max(180),
-      name: z.string().optional(),
-      address: z.string().optional(),
-    })
-    .optional(),
-  interactive: record.optional(),
-  reaction: z.object({ message_id: z.string(), emoji: z.string() }).optional(),
+    ])
+  ),
+  context: z.object({ message_id: z.string() }).optional(),
+  biz_opaque_callback_data: z.string().max(512).optional(),
   replyTo: z.string().optional(),
   tags: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
   idempotencyKey: z.string().optional(),
@@ -144,6 +136,7 @@ export const channelMessageStatus = z.enum([
   "sent",
   "delivered",
   "read",
+  "played",
   "failed",
   "received",
 ])
@@ -253,9 +246,9 @@ export function addChannelTools(
     },
     async ({ idempotencyKey, ...body }) => {
       if (whatsapp) {
-        const present = bodyKeys.filter((key) => body[key] !== undefined)
-        if (present.length !== 1 || (body.type && body.type !== present[0]))
-          throw new Error("Supply exactly one body matching type.")
+        if (!body.to && !body.recipient)
+          throw new Error("Provide to or recipient (BSUID).")
+        validateWhatsAppBody(body)
       } else {
         if (
           [body.text, body.attachment, body.template].filter(
@@ -288,6 +281,7 @@ export function addChannelTools(
         ? "List team WhatsApp messages with cursor pagination and optional status, direction and phone number filters."
         : `List team ${label} messages with cursors and optional status, direction and account filters.`,
       annotations: { readOnlyHint: true },
+      ...(whatsapp ? { outputSchema: whatsappListOutputSchema } : {}),
       inputSchema: {
         ...channelPagination,
         status: channelMessageStatus.optional(),
@@ -313,6 +307,7 @@ export function addChannelTools(
         : `Retrieve one ${label} message with its status, events and media.`,
       annotations: { readOnlyHint: true },
       inputSchema: { id: z.string() },
+      ...(whatsapp ? { outputSchema: whatsappOutputSchema } : {}),
     },
     async ({ id }) => output(await resource.messages.get(id))
   )

@@ -1,241 +1,259 @@
+import type { WhatsAppMessage } from "../../whatsapp/interfaces"
 export type WebhookEvent =
-  | 'email.sent'
-  | 'email.scheduled'
-  | 'email.delivered'
-  | 'email.delivery_delayed'
-  | 'email.complained'
-  | 'email.bounced'
-  | 'email.opened'
-  | 'email.clicked'
-  | 'email.received'
-  | 'email.failed'
-  | 'email.suppressed'
-  | 'contact.created'
-  | 'contact.updated'
-  | 'contact.deleted'
-  | 'domain.created'
-  | 'domain.updated'
-  | 'domain.deleted'
-  | 'suppression.added'
-  | 'suppression.removed';
+  | "whatsapp.message.sent"
+  | "whatsapp.message.delivered"
+  | "whatsapp.message.read"
+  | "whatsapp.message.played"
+  | "whatsapp.message.payment_updated"
+  | "whatsapp.message.failed"
+  | "whatsapp.message.received"
+  | "email.sent"
+  | "email.scheduled"
+  | "email.delivered"
+  | "email.delivery_delayed"
+  | "email.complained"
+  | "email.bounced"
+  | "email.opened"
+  | "email.clicked"
+  | "email.received"
+  | "email.failed"
+  | "email.suppressed"
+  | "contact.created"
+  | "contact.updated"
+  | "contact.deleted"
+  | "domain.created"
+  | "domain.updated"
+  | "domain.deleted"
+  | "suppression.added"
+  | "suppression.removed"
 
 interface BaseEmailEventData {
-  broadcast_id?: string;
-  created_at: string;
-  email_id: string;
-  message_id: string;
-  from: string;
-  to: string[];
-  subject: string;
-  template_id?: string;
-  tags?: Record<string, string>;
+  broadcast_id?: string
+  created_at: string
+  email_id: string
+  message_id: string
+  from: string
+  to: string[]
+  subject: string
+  template_id?: string
+  tags?: Record<string, string>
 }
 
 interface EmailBounce {
-  message: string;
-  subType: string;
-  type: string;
+  message: string
+  subType: string
+  type: string
 }
 
 interface EmailClick {
-  ipAddress: string;
-  link: string;
-  timestamp: string;
-  userAgent: string;
+  ipAddress: string
+  link: string
+  timestamp: string
+  userAgent: string
 }
 
 interface EmailFailed {
-  reason: string;
+  reason: string
 }
 
 interface EmailSuppressed {
-  message: string;
-  type: string;
+  message: string
+  type: string
 }
 
 interface ReceivedEmailAttachment {
-  id: string;
-  filename: string | null;
-  content_type: string;
-  content_disposition: string | null;
-  content_id: string | null;
+  id: string
+  filename: string | null
+  content_type: string
+  content_disposition: string | null
+  content_id: string | null
 }
 
 interface ReceivedEmailEventData {
-  email_id: string;
-  created_at: string;
-  from: string;
-  to: string[];
-  bcc: string[];
-  cc: string[];
-  received_for: string[];
-  message_id: string;
-  subject: string;
-  attachments: ReceivedEmailAttachment[];
+  email_id: string
+  created_at: string
+  from: string
+  to: string[]
+  bcc: string[]
+  cc: string[]
+  received_for: string[]
+  message_id: string
+  subject: string
+  attachments: ReceivedEmailAttachment[]
 }
 
 interface ContactEventData {
-  id: string;
-  audience_id: string;
-  segment_ids: string[];
-  created_at: string;
-  updated_at: string;
-  email: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  unsubscribed: boolean;
+  id: string
+  audience_id: string
+  segment_ids: string[]
+  created_at: string
+  updated_at: string
+  email: string
+  first_name?: string | null
+  last_name?: string | null
+  unsubscribed: boolean
 }
 
 interface DomainRecord {
-  record: string;
-  name: string;
-  type: string;
-  ttl: string;
-  status: string;
-  value: string;
-  priority?: number;
+  record: string
+  name: string
+  type: string
+  ttl: string
+  status: string
+  value: string
+  priority?: number
 }
 
 interface DomainEventData {
-  id: string;
-  name: string;
-  status: string;
-  created_at: string;
-  region: string;
-  records: DomainRecord[];
+  id: string
+  name: string
+  status: string
+  created_at: string
+  region: string
+  records: DomainRecord[]
 }
 
 interface SuppressionEventData {
-  id: string;
-  email: string;
-  origin: 'bounce' | 'complaint' | 'manual';
-  source_id: string | null;
-  created_at: string;
+  id: string
+  email: string
+  origin: "bounce" | "complaint" | "manual"
+  source_id: string | null
+  created_at: string
 }
 
 export interface EmailSentEvent {
-  type: 'email.sent';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.sent"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailScheduledEvent {
-  type: 'email.scheduled';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.scheduled"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailDeliveredEvent {
-  type: 'email.delivered';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.delivered"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailDeliveryDelayedEvent {
-  type: 'email.delivery_delayed';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.delivery_delayed"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailComplainedEvent {
-  type: 'email.complained';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.complained"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailBouncedEvent {
-  type: 'email.bounced';
-  created_at: string;
+  type: "email.bounced"
+  created_at: string
   data: BaseEmailEventData & {
-    bounce: EmailBounce;
-  };
+    bounce: EmailBounce
+  }
 }
 
 export interface EmailOpenedEvent {
-  type: 'email.opened';
-  created_at: string;
-  data: BaseEmailEventData;
+  type: "email.opened"
+  created_at: string
+  data: BaseEmailEventData
 }
 
 export interface EmailClickedEvent {
-  type: 'email.clicked';
-  created_at: string;
+  type: "email.clicked"
+  created_at: string
   data: BaseEmailEventData & {
-    click: EmailClick;
-  };
+    click: EmailClick
+  }
 }
 
 export interface EmailReceivedEvent {
-  type: 'email.received';
-  created_at: string;
-  data: ReceivedEmailEventData;
+  type: "email.received"
+  created_at: string
+  data: ReceivedEmailEventData
 }
 
 export interface EmailFailedEvent {
-  type: 'email.failed';
-  created_at: string;
+  type: "email.failed"
+  created_at: string
   data: BaseEmailEventData & {
-    failed: EmailFailed;
-  };
+    failed: EmailFailed
+  }
 }
 
 export interface EmailSuppressedEvent {
-  type: 'email.suppressed';
-  created_at: string;
+  type: "email.suppressed"
+  created_at: string
   data: BaseEmailEventData & {
-    suppressed: EmailSuppressed;
-  };
+    suppressed: EmailSuppressed
+  }
 }
 
 export interface ContactCreatedEvent {
-  type: 'contact.created';
-  created_at: string;
-  data: ContactEventData;
+  type: "contact.created"
+  created_at: string
+  data: ContactEventData
 }
 
 export interface ContactUpdatedEvent {
-  type: 'contact.updated';
-  created_at: string;
-  data: ContactEventData;
+  type: "contact.updated"
+  created_at: string
+  data: ContactEventData
 }
 
 export interface ContactDeletedEvent {
-  type: 'contact.deleted';
-  created_at: string;
-  data: ContactEventData;
+  type: "contact.deleted"
+  created_at: string
+  data: ContactEventData
 }
 
 export interface DomainCreatedEvent {
-  type: 'domain.created';
-  created_at: string;
-  data: DomainEventData;
+  type: "domain.created"
+  created_at: string
+  data: DomainEventData
 }
 
 export interface DomainUpdatedEvent {
-  type: 'domain.updated';
-  created_at: string;
-  data: DomainEventData;
+  type: "domain.updated"
+  created_at: string
+  data: DomainEventData
 }
 
 export interface DomainDeletedEvent {
-  type: 'domain.deleted';
-  created_at: string;
-  data: DomainEventData;
+  type: "domain.deleted"
+  created_at: string
+  data: DomainEventData
 }
 
 export interface SuppressionAddedEvent {
-  type: 'suppression.added';
-  created_at: string;
-  data: SuppressionEventData;
+  type: "suppression.added"
+  created_at: string
+  data: SuppressionEventData
 }
 
 export interface SuppressionRemovedEvent {
-  type: 'suppression.removed';
-  created_at: string;
-  data: SuppressionEventData;
+  type: "suppression.removed"
+  created_at: string
+  data: SuppressionEventData
+}
+
+export interface WhatsAppMessageEvent {
+  type: `whatsapp.message.${"sent" | "delivered" | "read" | "played" | "failed" | "received" | "payment_updated"}`
+  created_at: string
+  data: WhatsAppMessage & {
+    status_raw?: Record<string, unknown>
+    biz_opaque_callback_data?: string
+  }
 }
 
 export type WebhookEventPayload =
+  | WhatsAppMessageEvent
   | EmailSentEvent
   | EmailScheduledEvent
   | EmailDeliveredEvent
@@ -254,4 +272,4 @@ export type WebhookEventPayload =
   | DomainUpdatedEvent
   | DomainDeletedEvent
   | SuppressionAddedEvent
-  | SuppressionRemovedEvent;
+  | SuppressionRemovedEvent
