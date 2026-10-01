@@ -9,6 +9,16 @@ import { query, type QueryCtx } from "./_generated/server"
 import { requireTeam } from "./access"
 import { countValue, counters } from "./counts"
 import { EMAIL_STATUSES } from "./tables/emails"
+import { channelValue } from "./tables/channels"
+import {
+  CHANNEL_IDS,
+  MESSAGING_CHANNELS,
+  CHANNEL_MESSAGE_STATUSES,
+} from "../lib/channels"
+import {
+  rollupChannelCounts,
+  type MessageStatusCounts,
+} from "../lib/channel-metrics"
 
 const span = v.object({ from: v.number(), to: v.number() })
 const filters = {
@@ -128,6 +138,101 @@ export const summary = query({
     await requireTeam(ctx, args.organizationId)
     checkSpans(args.spans)
     return countsFor(ctx, args, args.spans)
+  },
+})
+
+const channelCountsValue = v.object({
+  sent: v.number(),
+  delivered: v.number(),
+  read: v.number(),
+  failed: v.number(),
+  received: v.number(),
+})
+
+/** One row per channel per span. All reads use existing aggregate keys. */
+export const channelSummary = query({
+  args: {
+    organizationId: v.string(),
+    channel: v.optional(channelValue),
+    spans: v.array(span),
+  },
+  returns: v.array(
+    v.array(
+      v.object({
+        channel: channelValue,
+        counts: channelCountsValue,
+        status: v.record(v.string(), v.number()),
+      })
+    )
+  ),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    checkSpans(args.spans)
+    const channels = args.channel ? [args.channel] : CHANNEL_IDS
+    const metaChannels = MESSAGING_CHANNELS.filter((channel) =>
+      channels.includes(channel)
+    )
+    const [meta, email, received] = await Promise.all([
+      counters.channelMessages.aggregate.countBatch(
+        ctx,
+        args.spans.flatMap((range) =>
+          metaChannels.flatMap((channel) =>
+            CHANNEL_MESSAGE_STATUSES.map((status) => ({
+              namespace: args.organizationId,
+              bounds: {
+                lower: {
+                  key: [channel, status, range.from / 900000],
+                  inclusive: true,
+                },
+                upper: {
+                  key: [channel, status, (range.to + 1) / 900000],
+                  inclusive: false,
+                },
+              },
+            }))
+          )
+        )
+      ),
+      channels.includes("email") ? countsFor(ctx, args, args.spans, true) : [],
+      channels.includes("email")
+        ? counters.receivedEmails.aggregate.countBatch(
+            ctx,
+            args.spans.map((range) => ({
+              namespace: args.organizationId,
+              bounds: {
+                lower: { key: [range.from / 900000], inclusive: true },
+                upper: { key: [(range.to + 1) / 900000], inclusive: false },
+              },
+            }))
+          )
+        : [],
+    ])
+    return args.spans.map((_, i) =>
+      channels.map((channel) => {
+        if (channel === "email")
+          return {
+            channel,
+            counts: {
+              sent: email[i].sent,
+              delivered: email[i].delivered,
+              read: 0,
+              failed: email[i].status.failed ?? 0,
+              received: received[i],
+            },
+            status: email[i].status,
+          }
+        const offset =
+          (i * metaChannels.length + metaChannels.indexOf(channel)) *
+          CHANNEL_MESSAGE_STATUSES.length
+        const status = Object.fromEntries(
+          CHANNEL_MESSAGE_STATUSES.map((status, j) => [
+            status,
+            meta[offset + j],
+          ])
+        ) as MessageStatusCounts
+        return { channel, counts: rollupChannelCounts(status), status }
+      })
+    )
   },
 })
 

@@ -4,6 +4,7 @@ import { v } from "convex/values"
 import { tagValue } from "./emails"
 import {
   CHANNEL_IDS,
+  CHANNEL_MESSAGE_STATUSES,
   PAGE_CHANNELS,
   MESSAGING_CHANNELS as messagingChannels,
 } from "../../lib/channels"
@@ -46,14 +47,7 @@ export const channelQualityValue = literals(CHANNEL_QUALITIES)
 
 /** Outgoing messages move queued → sent → delivered → read, or fail;
     incoming ones are received. */
-export const CHANNEL_MESSAGE_STATUSES = [
-  "queued",
-  "sent",
-  "delivered",
-  "read",
-  "failed",
-  "received",
-] as const
+export { CHANNEL_MESSAGE_STATUSES }
 export const channelMessageStatusValue = literals(CHANNEL_MESSAGE_STATUSES)
 /** The message kinds the Meta channels carry. */
 export const CHANNEL_MESSAGE_TYPES = [
