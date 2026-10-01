@@ -1,3 +1,4 @@
+import type { PageChannel } from "../lib/channels"
 import { ConvexError, type Infer } from "convex/values"
 import type { Input } from "./templates"
 import { channelValue } from "./tables/channels"
@@ -68,7 +69,7 @@ type TemplateAdapter = {
   normalizeContent(input: Input, current?: unknown): Input
   publishCheck(body: Body | null): void
 }
-function localPublish(body: Body | null, channel: "messenger" | "instagram") {
+function localPublish(body: Body | null, channel: PageChannel) {
   if (!body?.text?.trim())
     throw new ConvexError("Add content to this template before publishing")
   pageMessageContent(localTemplate(body.content), channel)

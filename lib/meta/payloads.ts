@@ -452,10 +452,11 @@ export function pageMessageContent(
   if (input.quick_replies !== undefined) {
     if (channel === "instagram" && !message.text)
       throw new Error("Instagram quick replies require a text message.")
-    message.quick_replies = quickReplies(input.quick_replies).map((reply) => ({
+    const replies = quickReplies(input.quick_replies).map((reply) => ({
       content_type: "text",
       ...reply,
     }))
+    if (replies.length) message.quick_replies = replies
   }
   return message
 }

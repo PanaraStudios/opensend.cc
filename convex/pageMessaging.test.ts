@@ -684,7 +684,7 @@ test("REST lists, account resources, cursors and conversations stay isolated acr
   }
 })
 
-test("status before send record retries atomically and cannot duplicate an inbound batch", async () => {
+test("status before send record retries independently and cannot duplicate an inbound batch", async () => {
   const f = await setup(),
     id = await f.send()
   const batch = pageEnvelope("messenger", {
@@ -699,10 +699,10 @@ test("status before send record retries atomically and cannot duplicate an inbou
   expect(
     (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", eventId)))
       ?.projectedAt
-  ).toBeUndefined()
+  ).toEqual(expect.any(Number))
   expect(
     await f.t.run((ctx) => ctx.db.query("channelMessages").collect())
-  ).toHaveLength(3)
+  ).toHaveLength(4)
   await f.t.mutation(internal.channels.messages.record, {
     id,
     generation: 0,
@@ -711,6 +711,7 @@ test("status before send record retries atomically and cannot duplicate an inbou
   await f.t.mutation(internal.meta.projection.project, {
     id: eventId,
     attempt: 1,
+    statusIndexes: [1],
   })
   expect((await f.message(id))?.status).toBe("delivered")
   await f.t.mutation(internal.meta.projection.project, { id: eventId })

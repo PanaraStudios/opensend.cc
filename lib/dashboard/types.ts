@@ -1,3 +1,4 @@
+import type { ContactChannelIdentity } from "./contacts"
 import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
 import type { Infer } from "convex/values"
@@ -170,6 +171,7 @@ export type Domain = {
 }
 
 export type Contact = {
+  channelIdentity?: ContactChannelIdentity | null
   id: string
   email?: string
   phone?: string

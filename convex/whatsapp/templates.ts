@@ -311,6 +311,7 @@ export const upsertSynced = internalMutation({
       .unique()
     // The WABA left the team while the sync ran.
     if (waba?.organizationId !== organizationId) return null
+    if ((waba.templatesSyncedAt ?? 0) > syncedAt) return null
     for (const meta of templates) {
       const components = storedComponents(meta.components)
       const fields = {
@@ -337,6 +338,7 @@ export const upsertSynced = internalMutation({
         await writePublished(ctx, inserted, components, inserted.updatedAt)
         continue
       }
+      if ((row.whatsapp?.syncedAt ?? 0) > syncedAt) continue
       const draft = await findDraft(ctx, row._id)
       const live = await findPublished(ctx, row._id)
       const pending =
@@ -355,8 +357,13 @@ export const upsertSynced = internalMutation({
         !metadataChanged &&
         row.status === "published" &&
         row.publishedAt !== undefined
-      )
+      ) {
+        if ((row.whatsapp?.syncedAt ?? 0) < syncedAt)
+          await patchRow(ctx, "templates", row._id, {
+            whatsapp: { ...row.whatsapp!, syncedAt },
+          })
         continue
+      }
       const now = Math.max(Date.now(), row.updatedAt + 1)
       const publishedAt = same ? (row.publishedAt ?? now) : now
       await patchRow(ctx, "templates", row._id, {
@@ -406,6 +413,15 @@ export const finishSync = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const waba = await ctx.db
+      .query("whatsappBusinessAccounts")
+      .withIndex("by_wabaId", (q) => q.eq("wabaId", args.wabaId))
+      .unique()
+    if (
+      waba?.organizationId !== args.organizationId ||
+      (waba.templatesSyncedAt ?? 0) > args.syncedAt
+    )
+      return null
     const seen = new Set(args.seenMetaIds)
     const page = await ctx.db
       .query("templates")
@@ -420,6 +436,7 @@ export const finishSync = internalMutation({
         whatsapp.metaTemplateId &&
         whatsapp.metaStatus !== "DELETED" &&
         !seen.has(whatsapp.metaTemplateId) &&
+        (whatsapp.syncedAt ?? 0) < args.syncedAt &&
         (whatsapp.submittedAt ?? 0) < args.syncedAt
       )
         await patchRow(ctx, "templates", row._id, {
@@ -433,14 +450,9 @@ export const finishSync = internalMutation({
       })
       return null
     }
-    const waba = await ctx.db
-      .query("whatsappBusinessAccounts")
-      .withIndex("by_wabaId", (q) => q.eq("wabaId", args.wabaId))
-      .unique()
-    if (waba?.organizationId === args.organizationId)
-      await ctx.db.patch("whatsappBusinessAccounts", waba._id, {
-        templatesSyncedAt: args.syncedAt,
-      })
+    await ctx.db.patch("whatsappBusinessAccounts", waba._id, {
+      templatesSyncedAt: Math.max(waba.templatesSyncedAt ?? 0, args.syncedAt),
+    })
     return null
   },
 })

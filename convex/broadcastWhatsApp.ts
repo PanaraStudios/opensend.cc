@@ -1,3 +1,5 @@
+import { primaryContactIdentity } from "./audience"
+import { contactChannelIdentityValue } from "./contacts"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -323,6 +325,14 @@ export const recipients = query({
   returns: paginationResultValidator(
     schema.doc("broadcastRecipients").extend({
       phone: v.optional(v.string()),
+      contact: v.union(
+        v.null(),
+        schema
+          .doc("contacts")
+          .extend({
+            channelIdentity: v.union(v.null(), contactChannelIdentityValue),
+          })
+      ),
       messageStatus: v.optional(channelMessageStatusValue),
     })
   ),
@@ -342,6 +352,13 @@ export const recipients = query({
         ? await ctx.db.get("channelMessages", recipient.messageId)
         : null
       page.push({
+        contact:
+          contact?.organizationId === organizationId
+            ? {
+                ...contact,
+                channelIdentity: await primaryContactIdentity(ctx, contact),
+              }
+            : null,
         messageStatus:
           message?.organizationId === organizationId
             ? message.status

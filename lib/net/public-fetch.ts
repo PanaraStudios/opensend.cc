@@ -64,7 +64,7 @@ export async function publicFetch(
       return await request(url, local, pinned, options, signal)
     } catch (error) {
       const last = index === ordered.length - 1
-      if (last || signal.aborted || !unreachable(error)) throw error
+      if (last || signal.aborted || !isUnreachableError(error)) throw error
     }
   }
   throw new Error("The endpoint has no reachable address")
@@ -73,12 +73,17 @@ export async function publicFetch(
 type Address = { address: string; family: number }
 
 /** Errors raised before any byte was exchanged with that address. */
-const unreachable = (error: unknown) =>
+export const isUnreachableError = (error: unknown) =>
   error instanceof Error &&
   "code" in error &&
-  ["ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "EADDRNOTAVAIL"].includes(
-    String(error.code)
-  )
+  [
+    "ENETUNREACH",
+    "EHOSTUNREACH",
+    "ECONNREFUSED",
+    "EADDRNOTAVAIL",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+  ].includes(String(error.code))
 
 function request(
   url: URL,

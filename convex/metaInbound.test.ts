@@ -251,19 +251,23 @@ test("matches existing contact by normalized phone and never rolls back the wind
   })
 })
 
-test("an early status retries without any partial projection, then applies once the send is recorded", async () => {
+test("an early status retries independently, then applies once the send is recorded", async () => {
   const f = await inboundFixture()
   const payload = statusPayload("wamid.early", "delivered")
   const id = await project(f, payload)
   expect(
     (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", id)))?.projectedAt
-  ).toBeUndefined()
+  ).toEqual(expect.any(Number))
   const scheduled = await f.t.run((ctx) =>
     ctx.db.system.query("_scheduled_functions").collect()
   )
   expect(scheduled.some((job) => job.args[0].attempt === 1)).toBe(true)
   const message = await outbound(f, "wamid.early")
-  await f.t.mutation(internal.meta.projection.project, { id, attempt: 1 })
+  await f.t.mutation(internal.meta.projection.project, {
+    id,
+    attempt: 1,
+    statusIndexes: [0],
+  })
   expect(
     (await f.t.run((ctx) => ctx.db.get("channelMessages", message._id)))?.status
   ).toBe("delivered")
