@@ -111,7 +111,8 @@ export async function seedSesConnection(page: Page) {
     },
     checkedAt: Date.now(),
     phase: "ready",
-    topicArn: "arn:aws:sns:us-east-1:123456789012:fixture",
+    // No SNS topic yet: provisioning subscribes the callback after this step,
+    // and a provisioned region would lock the callback origin.
     callbackConfirmed: false,
   })
 }
