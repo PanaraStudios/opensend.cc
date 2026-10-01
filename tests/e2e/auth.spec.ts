@@ -1,3 +1,4 @@
+import { callingTests } from "./calling-flow"
 import { objectStorageTests } from "./object-storage-flow"
 import { chooseEmailSetup } from "./setup-channels-flow"
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
@@ -1245,6 +1246,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   channelsTests(() => ({ owner, member }))
   metaInboundTests(() => ({ owner, organizationId }))
   whatsappSendTests(() => ({ owner, organizationId }))
+  callingTests(() => ({ owner, organizationId }))
   apiKeyScopesTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
   whatsappCampaignsTests(() => ({ owner, organizationId }))

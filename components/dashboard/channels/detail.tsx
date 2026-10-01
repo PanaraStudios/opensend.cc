@@ -1,5 +1,6 @@
 "use client"
 
+import { CallingPanel } from "./calling"
 import * as React from "react"
 import { useParams } from "next/navigation"
 import {
@@ -263,6 +264,13 @@ export function ChannelDetail() {
           </DetailField>
         </dl>
       </Surface>
+      {whatsapp ? (
+        <CallingPanel
+          key={account._id}
+          accountId={account._id}
+          canWrite={canWrite}
+        />
+      ) : null}
       <RegisterNumberDialog
         account={
           registering ? { id: account._id, handle: account.handle } : null
