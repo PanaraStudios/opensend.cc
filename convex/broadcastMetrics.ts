@@ -1,5 +1,5 @@
 import { broadcastChannels } from "./broadcastChannels"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import {

@@ -1,4 +1,3 @@
-export { rowChannel } from "../../packages/sdk/src/automations/channels"
 /* WhatsApp message templates, as Meta documents them (checked 2026-10-01):
    https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-account/message-template-api
    https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview

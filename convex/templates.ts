@@ -1,5 +1,5 @@
 import { templateChannels, assertTemplateFields } from "./templateChannels"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { selectedOption, hasTeamRows, teamRow, searchOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"

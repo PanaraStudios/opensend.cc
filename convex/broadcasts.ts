@@ -1,5 +1,5 @@
 import { broadcastChannels, validateBroadcastSend } from "./broadcastChannels"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,

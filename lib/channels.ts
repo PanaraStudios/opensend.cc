@@ -6,6 +6,12 @@ export const CHANNEL_IDS = [
 ] as const
 export type Channel = (typeof CHANNEL_IDS)[number]
 export type MessagingChannel = Exclude<Channel, "email">
+/** Legacy resource rows without a channel are email resources. */
+export function rowChannel<T extends string>(row: {
+  channel?: T
+}): T | "email" {
+  return row.channel ?? "email"
+}
 export const PAGE_CHANNELS = ["messenger", "instagram"] as const
 export type PageChannel = (typeof PAGE_CHANNELS)[number]
 

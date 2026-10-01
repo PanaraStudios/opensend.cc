@@ -1,5 +1,5 @@
 import { parseTemplateInput, type TemplateChannel } from "../templateChannels"
-import { rowChannel } from "../../lib/meta/templates"
+import { rowChannel } from "../../lib/channels"
 import { localTemplate } from "../../lib/meta/local-templates"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"

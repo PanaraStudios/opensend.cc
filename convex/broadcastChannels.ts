@@ -11,7 +11,7 @@ import {
   sendEmailRecipient,
 } from "./broadcastEmail"
 import { readBroadcastStats, readWhatsAppStats } from "./broadcastMetrics"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 
 // One strategy per supported broadcast channel. Legacy email fields and
 // retained snapshots remain unchanged; adapters tag read results at the edge.

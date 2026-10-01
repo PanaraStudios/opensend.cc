@@ -14,7 +14,7 @@ import {
 
 import { CHANNELS } from "@/lib/channels"
 import { IconCell, copyToClipboard } from "@/components/dashboard/primitives"
-import { rowChannel } from "@/lib/meta/templates"
+import { rowChannel } from "@/lib/channels"
 import { channelLabel } from "@/lib/dashboard/format"
 import type { BroadcastChannel } from "@/lib/dashboard/types"
 import {

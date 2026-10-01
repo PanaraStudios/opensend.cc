@@ -12,7 +12,7 @@ import { patchRow } from "./counts"
 import { audience, recipientPage } from "./broadcasts"
 import { finishBroadcast, scheduleBroadcastSettle } from "./broadcastMetrics"
 import { broadcastChannels } from "./broadcastChannels"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 import { retirement } from "./teamLifecycle"
 
 const workflow = new WorkflowManager(components.workflow)

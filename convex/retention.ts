@@ -5,7 +5,7 @@ import { components, internal } from "./_generated/api"
 import schema from "./schema"
 import { deleteRow, patchRow, retireBroadcastCounters } from "./counts"
 import { broadcastChannels, retainedBroadcastStats } from "./broadcastChannels"
-import { rowChannel } from "../lib/meta/templates"
+import { rowChannel } from "../lib/channels"
 
 const DAY = 86_400_000
 export const retentionPage = {
