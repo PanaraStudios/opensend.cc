@@ -121,6 +121,92 @@ services:
     depends_on:
       convex:
         condition: service_healthy
+  janus:
+    profiles: [calling]
+    image: opensend-janus:1.2.3
+    build:
+      context: docker/janus
+    restart: unless-stopped
+    ports:
+      - "20000-20199:20000-20199/udp"
+    environment:
+      JANUS_API_SECRET: ${JANUS_API_SECRET:-}
+      JANUS_STUN_SERVER: ${JANUS_STUN_SERVER-stun.l.google.com}
+      JANUS_STUN_PORT: ${JANUS_STUN_PORT:-19302}
+      JANUS_PUBLIC_IP: ${JANUS_PUBLIC_IP:-}
+    volumes:
+      - janus-certs:/certs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/janus/info"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+  freeswitch:
+    profiles: [calling]
+    image: opensend-freeswitch:1.10.12
+    build:
+      context: docker/freeswitch
+    restart: unless-stopped
+    stop_grace_period: 20s
+    ports:
+      - "${CALLING_WSS_PORT:-7443}:7443/tcp"
+      - "20400-20799:20400-20799/udp"
+    environment:
+      FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
+      FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
+      FREESWITCH_AGENT_SECRET: ${FREESWITCH_AGENT_SECRET:-}
+      FREESWITCH_PUBLIC_IP: ${FREESWITCH_PUBLIC_IP:-auto}
+    volumes:
+      - freeswitch-certs:/certs
+      - calling-recordings:/recordings
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          '/opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x status | grep -q ''UP'' && /opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x ''sofia status'' | grep -q ''internal.*RUNNING'' ',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+  call-gateway:
+    profiles: [calling]
+    image: opensend-call-gateway:0.1.0
+    build:
+      context: .
+      dockerfile: services/call-gateway/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    ports:
+      - "127.0.0.1:${CALL_GATEWAY_PORT:-8090}:8090"
+    environment:
+      CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      CALL_GATEWAY_CONVEX_HTTP_URL: ${CALL_GATEWAY_CONVEX_HTTP_URL:-http://convex:3211}
+      JANUS_URL: http://janus:8088/janus
+      JANUS_ADMIN_URL: http://janus:7088/admin
+      JANUS_API_SECRET: ${JANUS_API_SECRET:-}
+      FREESWITCH_HOST: freeswitch
+      FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
+      FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
+    depends_on:
+      janus:
+        condition: service_healthy
+      freeswitch:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]
@@ -135,3 +221,6 @@ services:
       - ${OIDC_REALM_FILE:-./docker/oidc-realm.json}:/opt/keycloak/data/import/opensend.json:ro
 volumes:
   convex-data:
+  janus-certs:
+  freeswitch-certs:
+  calling-recordings:
