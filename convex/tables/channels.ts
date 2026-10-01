@@ -13,7 +13,7 @@ import {
 export const literals = <T extends string>(values: readonly T[]) =>
   v.union(...values.map((value) => v.literal(value)))
 
-export const renderedTemplateValue = v.object({
+const renderedTemplateFields = {
   header: v.optional(
     v.object({
       format: literals(RENDERED_HEADER_FORMATS),
@@ -22,7 +22,18 @@ export const renderedTemplateValue = v.object({
   ),
   body: v.string(),
   footer: v.optional(v.string()),
-  buttons: v.array(v.object({ type: v.string(), text: v.string() })),
+  buttons: v.array(
+    v.object({
+      type: v.string(),
+      text: v.string(),
+      url: v.optional(v.string()),
+      code: v.optional(v.string()),
+    })
+  ),
+}
+export const renderedTemplateValue = v.object({
+  ...renderedTemplateFields,
+  cards: v.optional(v.array(v.object(renderedTemplateFields))),
 })
 
 /** Every channel a conversation can be on. */

@@ -39,10 +39,14 @@ export function WhatsAppTemplatePreview({
   rendered,
   embedded = false,
   className,
+  showButtons = true,
+  showHeader = true,
 }: {
   rendered: RenderedTemplate
   embedded?: boolean
   className?: string
+  showButtons?: boolean
+  showHeader?: boolean
 }) {
   const MediaIcon = rendered.header && HEADER_ICONS[rendered.header.format]
   const content = (
@@ -50,7 +54,7 @@ export function WhatsAppTemplatePreview({
       className={cn("flex flex-col gap-1.5", embedded && className)}
       data-testid="whatsapp-preview"
     >
-      {MediaIcon ? (
+      {showHeader && MediaIcon ? (
         <div
           className="flex aspect-[1.91/1] w-56 max-w-full items-center justify-center rounded-lg bg-muted text-muted-foreground"
           aria-label={`${rendered.header!.format.toLowerCase()} header`}
@@ -58,7 +62,9 @@ export function WhatsAppTemplatePreview({
           <MediaIcon className="size-8" />
         </div>
       ) : null}
-      {rendered.header?.format === "TEXT" && rendered.header.text ? (
+      {showHeader &&
+      rendered.header?.format === "TEXT" &&
+      rendered.header.text ? (
         <p className="font-semibold whitespace-pre-wrap">
           {rendered.header.text}
         </p>
@@ -81,7 +87,20 @@ export function WhatsAppTemplatePreview({
           {rendered.footer}
         </p>
       ) : null}
-      {rendered.buttons.map((button, index) => {
+      {rendered.cards?.length ? (
+        <div className="flex max-w-full gap-2 overflow-x-auto">
+          {rendered.cards.map((card, index) => (
+            <div key={index} className="w-56 shrink-0">
+              <WhatsAppTemplatePreview
+                rendered={card}
+                embedded
+                showButtons={showButtons}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {(showButtons ? rendered.buttons : []).map((button, index) => {
         const Icon = BUTTON_ICONS[button.type]
         return (
           <div key={index} className="flex flex-col gap-1.5">
