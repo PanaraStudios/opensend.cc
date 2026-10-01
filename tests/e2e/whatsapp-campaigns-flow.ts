@@ -176,6 +176,77 @@ export function whatsappCampaignsTests(
     await expect(report.getByText("settled", { exact: true })).toHaveCount(0)
     await screenshot(owner, "broadcast-stats")
 
+    await owner.goto("/metrics")
+    await choose(owner, "Channel", "WhatsApp")
+    await expect
+      .poll(async () =>
+        Number(
+          await owner
+            .getByTestId("metrics-stat-sent")
+            .locator("p")
+            .last()
+            .textContent()
+        )
+      )
+      .toBeGreaterThanOrEqual(2)
+    await expect
+      .poll(async () =>
+        Number(
+          await owner
+            .getByTestId("metrics-stat-read")
+            .locator("p")
+            .last()
+            .textContent()
+        )
+      )
+      .toBeGreaterThanOrEqual(1)
+    await expect(
+      owner.getByRole("combobox", { name: "Domain", exact: true })
+    ).toHaveCount(0)
+    const originalTheme = await owner.evaluate(() =>
+      localStorage.getItem("theme")
+    )
+    for (const theme of ["light", "dark"] as const) {
+      await owner.evaluate(
+        (value) => localStorage.setItem("theme", value),
+        theme
+      )
+      await owner.reload()
+      await choose(owner, "Channel", "WhatsApp")
+      await expect(owner.getByTestId("metrics-stat-read")).toBeVisible()
+      await screenshot(owner, `metrics-whatsapp-${theme}`)
+      await choose(owner, "Channel", "All channels")
+      await expect(owner.getByTestId("metrics-channel-whatsapp")).toBeVisible()
+      await screenshot(owner, `metrics-all-${theme}`)
+    }
+    await owner
+      .getByRole("button", { name: "View WhatsApp metrics", exact: true })
+      .click()
+    await expect(owner.getByTestId("metrics-stat-delivered")).toBeVisible()
+    await choose(owner, "Channel", "Messenger")
+    await expect(owner.getByTestId("metrics-stat-delivered")).toBeVisible()
+    await choose(owner, "Channel", "Instagram")
+    await expect(owner.getByTestId("metrics-stat-received")).toBeVisible()
+    await expect(owner.getByTestId("metrics-stat-delivered")).toHaveCount(0)
+    await expect(
+      owner.getByRole("combobox", { name: "Domain", exact: true })
+    ).toHaveCount(0)
+    await choose(owner, "Channel", "Email")
+    await expect(
+      owner.getByRole("combobox", { name: "Domain", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("combobox", { name: "Event", exact: true })
+    ).toBeVisible()
+    await owner.evaluate(
+      (value) =>
+        value === null
+          ? localStorage.removeItem("theme")
+          : localStorage.setItem("theme", value),
+      originalTheme
+    )
+    await owner.reload()
+
     await owner.goto("/automations")
     await owner
       .getByRole("button", { name: "Create automation", exact: true })
