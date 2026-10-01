@@ -1,4 +1,5 @@
 "use client"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 
 import { channelForSendStep } from "@/lib/channels"
 
@@ -308,28 +309,32 @@ function StepBody({
     case "send_instagram":
     case "send_whatsapp":
       return (
-        <WhatsAppCampaignFields
-          config={step}
-          channel={channelForSendStep(step.type)}
-          allowText
-          onChange={(config) =>
-            onChange({
-              ...step,
-              ...config,
-              mode: config.mode ?? "template",
-              templateId: config.templateId ?? "",
-              text: config.text ?? "",
-            })
-          }
-        />
+        <InstanceChannelConfiguration channel="meta">
+          <WhatsAppCampaignFields
+            config={step}
+            channel={channelForSendStep(step.type)}
+            allowText
+            onChange={(config) =>
+              onChange({
+                ...step,
+                ...config,
+                mode: config.mode ?? "template",
+                templateId: config.templateId ?? "",
+                text: config.text ?? "",
+              })
+            }
+          />
+        </InstanceChannelConfiguration>
       )
     case "send_email":
       return (
-        <SendEmailBody
-          trigger={automation.trigger}
-          step={step}
-          onChange={onChange}
-        />
+        <InstanceChannelConfiguration channel="email">
+          <SendEmailBody
+            trigger={automation.trigger}
+            step={step}
+            onChange={onChange}
+          />
+        </InstanceChannelConfiguration>
       )
     case "contact_update":
       return (

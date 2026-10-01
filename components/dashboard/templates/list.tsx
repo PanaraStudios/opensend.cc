@@ -1,6 +1,6 @@
 "use client"
 
-import { EmailConfiguration } from "@/components/ses/email-configuration"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -231,7 +231,10 @@ export function TemplatesView() {
           className="ml-auto w-auto"
         />
       </ListToolbar>
-      <EmailConfiguration required={channel === "email"}>
+      <InstanceChannelConfiguration
+        channel={channel === "email" ? "email" : "meta"}
+        required={channel !== "all"}
+      >
         {loading === "LoadingFirstPage" || hasTemplates === undefined ? (
           <Skeleton className="h-40 w-full" />
         ) : !hasTemplates ? (
@@ -304,7 +307,7 @@ export function TemplatesView() {
             <ListPagination {...pagination} noun="template" />
           </>
         )}
-      </EmailConfiguration>
+      </InstanceChannelConfiguration>
     </>
   )
 }

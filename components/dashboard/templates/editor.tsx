@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation"
 import { FileCodeIcon } from "lucide-react"
 
-import { EmailConfiguration } from "@/components/ses/email-configuration"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
 import {
@@ -54,7 +54,9 @@ export function TemplateEditor() {
       ? WhatsAppTemplateEditorScreen
       : TemplateEditorScreen
   return (
-    <EmailConfiguration required={!item.channel || item.channel === "email"}>
+    <InstanceChannelConfiguration
+      channel={!item.channel || item.channel === "email" ? "email" : "meta"}
+    >
       <Screen
         key={item.id}
         item={item}
@@ -67,7 +69,7 @@ export function TemplateEditor() {
           )
         }
       />
-    </EmailConfiguration>
+    </InstanceChannelConfiguration>
   )
 }
 

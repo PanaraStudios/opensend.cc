@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useQuery } from "convex/react"
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import {
   CopyIcon,
   ChevronDownIcon,
@@ -24,7 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { api } from "@/convex/_generated/api"
 import {
   InstagramIcon,
   MessengerIcon,
@@ -109,6 +109,7 @@ export function ChannelCreateMenu({
   noun: "broadcast" | "template"
   onCreate: (channel: BroadcastChannel) => void
 }) {
+  const channels = useInstanceChannels()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button data-testid={`create-${noun}`} />}>
@@ -123,14 +124,49 @@ export function ChannelCreateMenu({
               const value = item.value as BroadcastChannel
               const Icon = channelIcon(value)
               return (
-                <DropdownMenuItem key={value} onClick={() => onCreate(value)}>
+                <DropdownMenuItem
+                  key={value}
+                  disabled={!channels?.[value === "email" ? "email" : "meta"]}
+                  onClick={() => onCreate(value)}
+                >
                   <Icon />
                   {channelLabel(value)}
+                  {!channels?.[value === "email" ? "email" : "meta"] &&
+                    " — not set up"}
                 </DropdownMenuItem>
               )
             }
           )}
         </DropdownMenuGroup>
+        {channels && (
+          <DropdownMenuGroup>
+            {(["email", "meta"] as const)
+              .filter((provider) => !channels[provider])
+              .map((provider) => (
+                <DropdownMenuItem
+                  key={provider}
+                  disabled={!channels.admin}
+                  render={
+                    channels.admin ? (
+                      <Link
+                        href={
+                          provider === "email"
+                            ? "/instance/ses"
+                            : "/instance/meta"
+                        }
+                      />
+                    ) : undefined
+                  }
+                >
+                  {channels.admin
+                    ? provider === "email"
+                      ? "Set up email"
+                      : "Set up the Meta app"
+                    : `${provider === "email" ? "Email" : "Meta"}: ask your instance admin`}
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -157,13 +193,14 @@ export function MetaAppAlert({
     configIds: { whatsapp?: string; facebookLogin?: string }
   }
 }) {
-  const installation = useQuery(api.installation.status)
+  const installation = useInstanceChannels()
   const page = channel === "page"
   if (
     config.configured &&
     (page ? config.configIds.facebookLogin : config.configIds.whatsapp)
   )
     return null
+  if (!config.configured) return <InstanceChannelConfiguration channel="meta" />
   const admin = installation?.admin === true
   return (
     <Alert variant="warning">

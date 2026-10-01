@@ -1,7 +1,6 @@
 "use client"
 
-import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 import * as React from "react"
 import Link from "next/link"
 import {
@@ -150,9 +149,10 @@ export function TemplateMenu({
   const [aliasOpen, setAliasOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const email = !item.channel || item.channel === "email"
-  const installation = useQuery(api.installation.status, email ? {} : "skip")
-  const publishLabel =
-    email && !installation?.emailConfigured ? null : templatePublishLabel(item)
+  const channels = useInstanceChannels()
+  const publishLabel = !channels?.[email ? "email" : "meta"]
+    ? null
+    : templatePublishLabel(item)
 
   return (
     <>

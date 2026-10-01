@@ -7,7 +7,7 @@ import {
 
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 
-import { EmailConfiguration } from "@/components/ses/email-configuration"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -177,7 +177,10 @@ export function BroadcastsView() {
         ]}
         onExport={exporting.open}
       />
-      <EmailConfiguration required={channel === "email"}>
+      <InstanceChannelConfiguration
+        channel={channel === "email" ? "email" : "meta"}
+        required={channel !== "all"}
+      >
         {list.status === "LoadingFirstPage" ? (
           <Skeleton className="h-40 w-full" />
         ) : rows.length === 0 ? (
@@ -287,7 +290,7 @@ export function BroadcastsView() {
             <ListPagination {...pagination} noun="broadcast" />
           </>
         )}
-      </EmailConfiguration>
+      </InstanceChannelConfiguration>
       <RenameBroadcastDialog
         open={renaming !== null}
         onOpenChange={(next) => {
