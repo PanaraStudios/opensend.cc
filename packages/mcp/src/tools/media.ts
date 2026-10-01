@@ -9,7 +9,7 @@ export function addMediaTools(server: McpServer, client: Opensend) {
     {
       title: "Create media upload",
       description:
-        "Create a direct upload. PUT the file to upload_url (POST for provider convex), then complete it. Use the returned id in WhatsApp media or email attachments.",
+        "Create a direct upload. POST the file to the Convex upload_url, then complete it with storage_id from the upload response. Use the returned id in WhatsApp media or email attachments.",
       inputSchema: z.object({
         use: z.enum(["whatsapp", "template", "email", "import"]),
         filename: z.string(),
@@ -26,7 +26,7 @@ export function addMediaTools(server: McpServer, client: Opensend) {
     {
       title: "Complete media upload",
       description:
-        "Verify a direct upload before using its id. Local Convex uploads also require storage_id from the upload response.",
+        "Verify a direct upload before using its id. Convex uploads require storage_id from the upload response.",
       inputSchema: z.object({
         id: z.string(),
         storage_id: z.string().optional(),

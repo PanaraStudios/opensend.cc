@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { storeUpload } from "./testHelpers/storage.fixture"
 import { upsertChannelThread } from "./channels/identity"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
@@ -39,13 +40,10 @@ test("a completed template file uses the shared resumable Meta sample upload", a
       size: 3,
     },
   })
-  const storageId = await f.t.run((ctx) =>
-    ctx.storage.store(new Blob(["png"], { type: "image/png" }))
+  const storageId = await storeUpload(
+    f.t,
+    new Blob(["png"], { type: "image/png" })
   )
-  await f.t.mutation(internal.storage.files.localStored, {
-    id: pending.id,
-    storageId,
-  })
   await f.owner.action(api.storage.objects.completeUpload, {
     organizationId: f.team,
     id: pending.id,

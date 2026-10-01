@@ -15,27 +15,27 @@ test('uploads directly without leaking credentials and completes with a separate
     .mockResolvedValueOnce(
       Response.json({
         id: 'file',
-        provider: 'object',
-        upload_url: 'https://bucket.test/put',
+        provider: 'convex',
+        upload_url: 'https://convex.test/upload',
         expires_at: '2026-10-01',
       })
     )
-    .mockResolvedValueOnce(new Response(null))
+    .mockResolvedValueOnce(Response.json({ storageId: 'storage' }))
     .mockResolvedValueOnce(Response.json({ id: 'file' }));
   const result = await client.media.upload(
     new Blob(['abc'], { type: 'image/png' }),
     { use: 'whatsapp', request: { idempotencyKey: 'upload-key' } }
   );
   expect(result.data).toEqual({ id: 'file' });
-  expect(fetcher.mock.calls[1][0]).toBe('https://bucket.test/put');
+  expect(fetcher.mock.calls[1][0]).toBe('https://convex.test/upload');
   const put = fetcher.mock.calls[1][1]!;
-  expect(put.method).toBe('PUT');
+  expect(put.method).toBe('POST');
   expect(new Headers(put.headers).get('authorization')).toBeNull();
   expect(
     new Headers(fetcher.mock.calls[2][1]!.headers).get('idempotency-key')
   ).toBe('upload-key:complete');
 });
-test('local uploads POST and pass storageId to completion', async () => {
+test('Convex uploads POST and pass storageId to completion', async () => {
   fetcher
     .mockResolvedValueOnce(
       Response.json({
@@ -55,7 +55,7 @@ test('local uploads POST and pass storageId to completion', async () => {
     storage_id: 'storage',
   });
 });
-test('Node paths are streamed and a failed PUT never completes', async () => {
+test('Node paths are streamed and a failed POST never completes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'opensend-upload-'));
   try {
     const path = join(directory, 'file.pdf');
@@ -64,8 +64,8 @@ test('Node paths are streamed and a failed PUT never completes', async () => {
       .mockResolvedValueOnce(
         Response.json({
           id: 'file',
-          provider: 'object',
-          upload_url: 'https://bucket.test/put',
+          provider: 'convex',
+          upload_url: 'https://convex.test/upload',
         })
       )
       .mockResolvedValueOnce(new Response(null, { status: 403 }));

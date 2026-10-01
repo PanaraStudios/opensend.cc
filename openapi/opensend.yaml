@@ -10936,7 +10936,7 @@ paths:
       operationId: media/uploads/create
       tags: [Media]
       summary: Create a direct file upload
-      description: Requires media:write. PUT to upload_url for object storage, or POST for local Convex storage. Then complete the upload. URLs expire in 15 minutes.
+      description: Requires media:write. POST the file to the Convex upload_url with Content-Type, then complete using storage_id from its JSON response. Complete within 15 minutes. Upload POSTs have a 2 minute timeout; per-kind size limits apply.
       x-opensend-scope: media:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -10974,7 +10974,7 @@ paths:
                   id: { type: string }
                   upload_url: { type: string, format: uri }
                   expires_at: { type: string, format: date-time }
-                  provider: { type: string, enum: [object, convex] }
+                  provider: { type: string, enum: [convex] }
         "401": { $ref: "#/components/responses/Error401" }
         "403": { $ref: "#/components/responses/Error403" }
         "422": { $ref: "#/components/responses/Error422" }
@@ -11002,7 +11002,7 @@ paths:
                 storage_id:
                   {
                     type: string,
-                    description: Required for local Convex uploads; use storageId from the POST upload response,
+                    description: Required for Convex uploads; use storageId from the POST upload response,
                   }
       responses:
         "200":

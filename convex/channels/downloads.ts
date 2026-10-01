@@ -10,23 +10,6 @@ export const mediaDownloadLink = async (
   messageId: Id<"channelMessages">,
   mediaId: string
 ) => {
-  const file = await ctx.runQuery(internal.channels.mediaState.file, {
-    messageId,
-    mediaId,
-  })
-  const stored = file?.fileId
-    ? await ctx.runQuery(internal.storage.files.get, { id: file.fileId })
-    : null
-  if (stored?.provider === "object" && file?.fileId && ctx.runAction) {
-    const url = await fileUrl({ runAction: ctx.runAction }, file, {
-      filename: file.filename,
-    })
-    if (url)
-      return {
-        download_url: url,
-        expires_at: new Date(Date.now() + 600_000).toISOString(),
-      }
-  }
   return signedFileLink(ctx, PREFIX, "channel-media", { messageId, mediaId })
 }
 export const download = httpAction(async (ctx, request) => {
@@ -50,10 +33,15 @@ export const download = httpAction(async (ctx, request) => {
     messageId,
     mediaId,
   })
-  const stored = file?.fileId
+  if (!file) return new Response(null, { status: 404 })
+  const stored = file.fileId
     ? await ctx.runQuery(internal.storage.files.get, { id: file.fileId })
     : null
-  if (stored?.provider === "object" && file) {
+  const storageId = stored?.storageId ?? file.storageId
+  const metadata = storageId
+    ? await ctx.runQuery(internal.storage.files.metadata, { storageId })
+    : null
+  if (metadata && metadata.size > 20 * 1024 * 1024) {
     const url = await fileUrl(ctx, file, { filename: file.filename })
     if (url)
       return new Response(null, {
@@ -61,8 +49,6 @@ export const download = httpAction(async (ctx, request) => {
         headers: { Location: url, "Cache-Control": "no-store" },
       })
   }
-  const storageId =
-    stored?.provider === "convex" ? stored.storageId : file?.storageId
   const blob = storageId ? await ctx.storage.get(storageId) : null
   if (!blob || !file) return new Response(null, { status: 404 })
   return new Response(blob, {

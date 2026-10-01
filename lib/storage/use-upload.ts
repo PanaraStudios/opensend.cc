@@ -33,15 +33,12 @@ export function useFileUpload() {
       },
     })
     const response = await fetch(pending.upload_url, {
-      method: pending.provider === "object" ? "PUT" : "POST",
+      method: "POST",
       body: file,
       headers: { "Content-Type": file.type || "application/octet-stream" },
     })
     if (!response.ok) throw new Error("File upload failed")
-    const storageId =
-      pending.provider === "convex"
-        ? (await response.json()).storageId
-        : undefined
+    const { storageId } = await response.json()
     return (await complete({ organizationId, id: pending.id, storageId })).id
   }
 }

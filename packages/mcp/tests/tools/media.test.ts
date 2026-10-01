@@ -8,8 +8,8 @@ test("media tools create and complete through the SDK without transferring binar
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
         id: "file",
-        upload_url: "https://bucket.test/put",
-        provider: "object",
+        upload_url: "https://convex.test/upload",
+        provider: "convex",
         expires_at: "2026-10-01T00:00:00Z",
       })
     )
@@ -31,7 +31,10 @@ test("media tools create and complete through the SDK without transferring binar
     })
     await f.client.callTool({
       name: "complete-media-upload",
-      arguments: { id: "file" },
+      arguments: { id: "file", storage_id: "storage" },
+    })
+    expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({
+      storage_id: "storage",
     })
     expect(fetcher.mock.calls[1][0]).toContain("/media/uploads/file/complete")
   } finally {

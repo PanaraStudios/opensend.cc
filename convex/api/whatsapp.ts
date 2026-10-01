@@ -1,5 +1,4 @@
-import { objectStorageConfig } from "../storage/config"
-import { LOCAL_UPLOAD_LIMIT } from "../../lib/storage/policy"
+import { HTTP_MULTIPART_LIMIT } from "../../lib/storage/policy"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { internalQuery } from "../_generated/server"
@@ -62,7 +61,7 @@ export function registerWhatsAppRoutes(http: HttpRouter) {
       return { body: { id } }
     },
     media: {
-      maxBody: LOCAL_UPLOAD_LIMIT,
+      maxBody: HTTP_MULTIPART_LIMIT,
       handler: async (ctx, { caller, body }) => {
         const input = objectBody(body)
         const from = stringField(input, "from")
@@ -86,22 +85,6 @@ export function registerWhatsAppRoutes(http: HttpRouter) {
           new Blob([bytes], { type: contentType })
         )
         try {
-          if (objectStorageConfig()) {
-            const stored = await ctx.runAction(internal.storage.objects.adopt, {
-              organizationId: caller.organizationId,
-              feature: "whatsapp",
-              accountId: target.accountId,
-              storageId,
-              contentType,
-              filename:
-                typeof (file as File).name === "string"
-                  ? (file as File).name
-                  : "attachment",
-            })
-            const reply = { id: stored.fileId! }
-            await ctx.runMutation(internal.api.media.record, { caller, reply })
-            return { body: reply }
-          }
           const id: string = await ctx.runAction(
             internal.channels.mediaUpload.upload,
             {

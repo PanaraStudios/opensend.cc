@@ -9,11 +9,10 @@ import { MetaError } from "../../lib/meta/errors"
 import { object, string } from "../../lib/meta/webhooks"
 import { Readable } from "node:stream"
 import { storeFile } from "../storage/objects"
-import { objectStorageConfig } from "../storage/config"
 
 const PAGE_MAX_BYTES = 25 * 1024 * 1024
 /** Refresh Meta's short-lived media URL on every attempt. The file stays in
-    configured storage provider; both HTTP calls use the public-host guard.
+    Convex storage; both HTTP calls use the public-host guard.
     https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media */
 export const fetch = internalAction({
   args: {
@@ -77,7 +76,7 @@ export const fetch = internalAction({
           : { headers: { authorization: `Bearer ${token}` } }),
         maxBytes: allowedBytes,
         timeoutMs: 240_000,
-        stream: !!objectStorageConfig(),
+        stream: true,
       })
       if (!response.ok)
         throw new MetaError({
@@ -95,7 +94,7 @@ export const fetch = internalAction({
       )
       const sticker = whatsapp && contentType.split(";")[0] === "image/webp"
       // Only the WebP header is buffered; size validation still runs before
-      // the shared helper finalizes either provider's file.
+      // the shared helper finalizes the file.
       const body = (async function* () {
         const header = new Uint8Array(32)
         let headerSize = 0

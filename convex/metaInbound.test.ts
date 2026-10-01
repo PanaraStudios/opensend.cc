@@ -434,7 +434,7 @@ test("media fetch stores bytes and signed downloads reject tampering, expiry, cr
   })
   const media = (await rows(f)).contents[0].media![0]
   expect(media).toMatchObject({
-    storageId: expect.any(String),
+    fileId: expect.any(String),
     size: 3,
     contentType: "image/png",
     mimeType: "image/png",
@@ -778,7 +778,7 @@ test.each([false, true])(
     const media = (await rows(f)).contents[0].media![0]
     if (animated) {
       expect(media).toMatchObject({
-        storageId: expect.any(String),
+        fileId: expect.any(String),
         size: bytes.length,
         mimeType: "image/webp",
       })
@@ -804,8 +804,10 @@ test("carousel media combines retained files, Meta uploads and links without ref
       organizationId: f.owner.team,
       accountId: f.account,
       feature: "whatsapp",
-      provider: "object",
-      key: "carousel.png",
+      provider: "convex",
+      storageId: await ctx.storage.store(
+        new Blob(["png"], { type: "image/png" })
+      ),
       state: "ready",
       contentType: "image/png",
       size: 3,

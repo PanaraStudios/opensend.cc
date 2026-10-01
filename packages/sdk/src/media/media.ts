@@ -15,7 +15,7 @@ export interface MediaUpload {
   id: string;
   upload_url: string;
   expires_at: string;
-  provider: 'object' | 'convex';
+  provider: 'convex';
 }
 
 export class Media {
@@ -37,7 +37,7 @@ export class Media {
       options
     );
   }
-  /** Browser Blob/File, Node buffer, or a path streamed from disk. Bucket requests carry no API key. */
+  /** Browser Blob/File, Node buffer, or a path streamed from disk. Upload requests carry no API key. */
   async upload(
     file: Blob | Uint8Array | string,
     options: Omit<
@@ -93,7 +93,7 @@ export class Media {
       if (created.error) return created;
       const pending = created.data;
       const uploaded = await fetch(pending.upload_url, {
-        method: pending.provider === 'convex' ? 'POST' : 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': type,
           ...(typeof file === 'string'
@@ -113,10 +113,9 @@ export class Media {
           },
           headers: null,
         };
-      const storage_id =
-        pending.provider === 'convex'
-          ? ((await uploaded.json()) as { storageId: string }).storageId
-          : undefined;
+      const { storageId: storage_id } = (await uploaded.json()) as {
+        storageId: string;
+      };
       return this.complete(
         pending.id,
         { storage_id },

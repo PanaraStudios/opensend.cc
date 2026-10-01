@@ -1,8 +1,6 @@
 import type { ActionCtx, QueryCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { signedFileLink } from "../fileDownloads"
 import type { FileReference } from "./files"
-import { publicAssetUrl } from "./config"
 
 export async function fileUrl(
   ctx: Pick<ActionCtx, "runAction"> | QueryCtx,
@@ -23,16 +21,15 @@ export async function fileUrl(
     return file.storageId ? ctx.storage.getUrl(file.storageId) : null
   const row = await ctx.db.get("storedFiles", file.fileId)
   if (!row || row.state !== "ready") return null
-  if (row.provider === "convex")
-    return row.storageId ? ctx.storage.getUrl(row.storageId) : null
-  if (row.feature === "asset" && row.key) {
-    const url = publicAssetUrl(row.key)
-    if (url) return url
-  }
-  return (
-    await signedFileLink(ctx, "/stored-files/", "stored-file", {
-      fileId: row._id,
-      filename: opts.filename ?? row.filename,
-    })
-  ).download_url
+  return row.storageId ? ctx.storage.getUrl(row.storageId) : null
+}
+
+export async function readFile(
+  ctx: ActionCtx,
+  ref: FileReference
+): Promise<Blob | null> {
+  if (!ref.fileId) return ref.storageId ? ctx.storage.get(ref.storageId) : null
+  const row = await ctx.runQuery(internal.storage.files.get, { id: ref.fileId })
+  if (!row || row.state !== "ready") return null
+  return row.storageId ? ctx.storage.get(row.storageId) : null
 }
