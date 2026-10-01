@@ -1,11 +1,13 @@
 "use client"
-import { createContext, useContext, useEffect } from "react"
+import { createContext, useContext, useEffect, useMemo } from "react"
 import {
   useQuery,
+  useQueries,
   useMutation,
   useAction,
   useConvexAuth,
   type OptionalRestArgsOrSkip,
+  type RequestForQueries,
 } from "convex/react"
 import type {
   FunctionReturnType,
@@ -23,6 +25,7 @@ import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
 import { SES_SETTINGS_PAGE } from "@/lib/dashboard/nav"
+import { workspaceInstallation } from "@/lib/dashboard/workspace-bootstrap"
 import type { MemberRole, Team } from "@/lib/dashboard/types"
 
 export type Workspace = NonNullable<
@@ -141,13 +144,51 @@ export function AccountTeamAccess({ account }: { account: Workspace }) {
     </Context.Provider>
   )
 }
-export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+type Bootstrap = {
+  isAuthenticated: boolean
+  isLoading: boolean
+  data: Workspace | null | undefined
+  installation: FunctionReturnType<typeof api.installation.status> | undefined
+}
+const BootstrapContext = createContext<Bootstrap | null>(null)
+
+/** Subscriptions live with the auth client, across dashboard/editor navigation.
+ * Never persist account data outside that provider or reuse it after sign-out.
+ */
+export function WorkspaceDataProvider({
+  children,
+}: {
+  children?: React.ReactNode
+}) {
   const { isAuthenticated, isLoading } = useConvexAuth()
   const data = useQuery(api.teams.snapshot, isAuthenticated ? {} : "skip")
-  const installation = useQuery(
-    api.installation.status,
-    isAuthenticated && data ? {} : "skip"
+  const installationQueries = useMemo(
+    (): RequestForQueries =>
+      isAuthenticated
+        ? { installation: { query: api.installation.status, args: {} } }
+        : {},
+    [isAuthenticated]
   )
+  const installationResult = useQueries(installationQueries).installation as
+    FunctionReturnType<typeof api.installation.status> | Error | undefined
+  const installation = workspaceInstallation(
+    isAuthenticated,
+    data,
+    installationResult
+  )
+  return (
+    <BootstrapContext.Provider
+      value={{ isAuthenticated, isLoading, data, installation }}
+    >
+      {children}
+    </BootstrapContext.Provider>
+  )
+}
+
+export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const bootstrap = useContext(BootstrapContext)
+  if (!bootstrap) throw new Error("Workspace subscriptions are not available")
+  const { isAuthenticated, isLoading, data, installation } = bootstrap
   const path = usePathname()
   const router = useRouter()
   const setupPending = !!installation && !installation.installation?.completedAt
