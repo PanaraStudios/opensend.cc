@@ -42,7 +42,8 @@ export function softphoneTests(
                     direction: "USER_INITIATED",
                     from_user_id: BSUID,
                     timestamp: String(Math.floor(Date.now() / 1000)),
-                    status: ["MISSED"],
+                    // Meta reports an unanswered call as FAILED with no duration.
+                    status: ["FAILED"],
                   },
                 ],
               },
