@@ -1,3 +1,5 @@
+import { normalizePhone } from "./phone"
+import type { MessagingChannel } from "../channels"
 import { isEmail } from "./format"
 import type {
   Contact,
@@ -5,6 +7,60 @@ import type {
   Topic,
   TopicSubscription,
 } from "./types"
+
+/** The public part of a contact's primary linked channel identity. */
+export type ContactChannelIdentity = {
+  channel: MessagingChannel
+  externalId: string
+  profileName?: string
+  phone?: string
+}
+export function contactIdentity(
+  contact: {
+    firstName?: string
+    lastName?: string
+    email?: string | null
+    phone?: string | null
+    channelIdentity?: ContactChannelIdentity | null
+  },
+  channelIdentity = contact.channelIdentity
+): {
+  label: string
+  secondary?: string
+  kind: "email" | "phone" | "name" | "channel"
+  channel?: MessagingChannel
+} {
+  const name = [contact.firstName?.trim(), contact.lastName?.trim()]
+    .filter(Boolean)
+    .join(" ")
+  const handle = channelIdentity?.phone || channelIdentity?.externalId
+  const channelLabel = channelIdentity?.profileName?.trim() || handle
+  const channel = channelIdentity?.channel
+  if (name)
+    return {
+      label: name,
+      secondary: contact.email || contact.phone || handle,
+      kind: "name",
+      channel,
+    }
+  if (contact.email)
+    return {
+      label: contact.email,
+      secondary: contact.phone || handle,
+      kind: "email",
+      channel,
+    }
+  if (contact.phone)
+    return { label: contact.phone, secondary: handle, kind: "phone", channel }
+  if (channelLabel)
+    return {
+      label: channelLabel,
+      secondary: handle !== channelLabel ? handle : undefined,
+      kind: "channel",
+      channel,
+    }
+  return { label: "Unknown contact", kind: "channel" }
+}
 
 export const RESERVED_PROPERTY_KEYS = [
   "email",
@@ -80,6 +136,28 @@ export function contactEmailError(email: string): string | null {
   return isEmail(email) && email.length <= MAX_EMAIL
     ? null
     : `${email || "An empty address"} is not a valid email address`
+}
+
+export function contactPhoneError(phone: string): string | null {
+  return normalizePhone(phone)
+    ? null
+    : "Enter a phone number with + and 8–15 digits, including the country code"
+}
+export function contactInputError(
+  input: ContactIdentity,
+  options: { linkedChannel?: boolean } = {}
+): { email?: string; phone?: string } | null {
+  if (input.email?.trim()) {
+    const error = contactEmailError(input.email.trim())
+    if (error) return { email: error }
+  }
+  if (input.phone?.trim()) {
+    const error = contactPhoneError(input.phone)
+    if (error) return { phone: error }
+  }
+  if (!input.email?.trim() && !input.phone?.trim() && !options.linkedChannel)
+    return { email: "An email or phone number is required" }
+  return null
 }
 
 /** Why these values cannot be stored on a contact, or null. Property keys

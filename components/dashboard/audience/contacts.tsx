@@ -40,6 +40,7 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
+  IconCell,
   ListPagination,
   ListToolbar,
   MonoValue,
@@ -74,9 +75,11 @@ import {
 } from "@/lib/dashboard/csv"
 import {
   RESERVED_PROPERTY_KEYS,
-  contactEmailError,
+  contactInputError,
+  contactIdentity,
   type ContactInput,
 } from "@/lib/dashboard/contacts"
+import { channelIcon } from "@/components/dashboard/channels/shared"
 import { normalizePhone } from "@/lib/dashboard/phone"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
@@ -158,44 +161,44 @@ function AddManuallyDialog({
   const [emails, setEmails] = React.useState("")
   const [phone, setPhone] = React.useState("")
   const [segmentId, setSegmentId] = React.useState("none")
-  const [error, setError] = React.useState<string | null>(null)
-  /** Phone problems show under the phone field, everything else under the
-      email addresses. */
-  const phoneError = error !== null && /phone/i.test(error)
+  const [error, setError] =
+    React.useState<ReturnType<typeof contactInputError>>(null)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
 
   function reset() {
     setEmails("")
     setPhone("")
     setSegmentId("none")
     setError(null)
+    setSubmitError(null)
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (pending) return
     const list = splitEmails(emails)
-    if (list.length === 0 && !phone.trim()) {
-      setError("An email or phone number is required")
+    const problem = contactInputError({
+      email: list[0],
+      phone,
+    })
+    if (problem) {
+      setError(problem)
       return
     }
-    const normalizedPhone = phone.trim() ? normalizePhone(phone) : undefined
-    if (normalizedPhone === null) {
-      setError(
-        "Enter a phone number with + and 8–15 digits, including the country code"
-      )
+    if (phone.trim() && list.length > 1) {
+      setError({ email: "Enter one email address when adding a phone number" })
       return
     }
-    if (normalizedPhone && list.length > 1) {
-      setError("Enter one email address when adding a phone number")
-      return
-    }
+    const normalizedPhone = phone.trim() ? normalizePhone(phone)! : undefined
     if (
       emails.trim() &&
-      (normalizedPhone ? contactEmailError(emails.trim()) : !list.length)
+      normalizedPhone &&
+      contactInputError({ email: emails.trim() })
     ) {
-      setError("Enter a valid email address")
+      setError({ email: "Enter a valid email address" })
       return
     }
+    setSubmitError(null)
     setPending(true)
     try {
       const { createdIds, skipped, errors } = await upsertContacts(
@@ -206,7 +209,7 @@ function AddManuallyDialog({
         !normalizedPhone
       )
       if (errors.length) {
-        setError(errors[0])
+        setSubmitError(errors[0])
         return
       }
       toast.add({
@@ -224,7 +227,7 @@ function AddManuallyDialog({
       onOpenChange(false)
       if (createdIds.length === 1) router.push(`/contacts/${createdIds[0]}`)
     } catch (caught) {
-      setError(actionError(caught))
+      setSubmitError(actionError(caught))
     } finally {
       setPending(false)
     }
@@ -249,34 +252,38 @@ function AddManuallyDialog({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
-            <Field>
+            <Field data-invalid={!!error?.email}>
               <FieldLabel htmlFor="manual-emails">Email addresses</FieldLabel>
               <Textarea
                 id="manual-emails"
+                aria-invalid={!!error?.email}
                 value={emails}
                 onChange={(event) => {
                   setEmails(event.target.value)
                   setError(null)
+                  setSubmitError(null)
                 }}
                 placeholder="ada@example.com, grace@hopper.dev"
                 rows={5}
                 autoFocus
               />
-              {error && !phoneError ? <FieldError>{error}</FieldError> : null}
+              {error?.email ? <FieldError>{error.email}</FieldError> : null}
             </Field>
-            <Field>
+            <Field data-invalid={!!error?.phone}>
               <FieldLabel htmlFor="manual-phone">Phone</FieldLabel>
               <Input
                 id="manual-phone"
+                aria-invalid={!!error?.phone}
                 type="tel"
                 value={phone}
                 placeholder="+14155552671"
                 onChange={(event) => {
                   setPhone(event.target.value)
                   setError(null)
+                  setSubmitError(null)
                 }}
               />
-              {phoneError ? <FieldError>{error}</FieldError> : null}
+              {error?.phone ? <FieldError>{error.phone}</FieldError> : null}
               <FieldDescription>
                 Include + and the country code. Optional when an email is given.
               </FieldDescription>
@@ -291,6 +298,7 @@ function AddManuallyDialog({
                 Optional. You can assign more segments from the contact page.
               </FieldDescription>
             </SegmentField>
+            {submitError ? <FieldError>{submitError}</FieldError> : null}
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>
@@ -831,6 +839,7 @@ export function ContactsView() {
                     aria-label="Select all contacts"
                   />
                 </Th>
+                <Th>Contact</Th>
                 <Th>Email</Th>
                 <Th>Phone</Th>
                 <Th>First name</Th>
@@ -848,37 +857,44 @@ export function ContactsView() {
                     onCheckedChange={(checked) =>
                       toggleOne(contact.id, checked === true)
                     }
-                    aria-label={`Select ${contact.email || contact.phone || "contact"}`}
+                    aria-label={`Select ${contactIdentity(contact).label}`}
                   />
                 </TableCell>
                 <TableCell>
-                  {contact.email ? (
-                    <Link
-                      href={`/contacts/${contact.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {contact.email}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  <Link
+                    href={`/contacts/${contact.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {!contact.email &&
+                    !contact.phone &&
+                    contact.channelIdentity ? (
+                      <IconCell
+                        icon={channelIcon(contact.channelIdentity.channel)}
+                      >
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate">
+                            {contactIdentity(contact).label}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {contact.channelIdentity.externalId}
+                          </span>
+                        </div>
+                      </IconCell>
+                    ) : (
+                      contactIdentity(contact).label
+                    )}
+                  </Link>
                   {contact.unsubscribed ? (
                     <Badge variant="secondary" className="ml-2">
                       Unsubscribed
                     </Badge>
                   ) : null}
                 </TableCell>
-                <TableCell>
-                  {contact.phone ? (
-                    <Link
-                      href={`/contacts/${contact.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {contact.phone}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                <TableCell className="text-muted-foreground">
+                  {contact.email || "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {contact.phone || "—"}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {contact.firstName || "—"}

@@ -26,6 +26,28 @@ function InputOTP({
   )
 }
 
+/** Shared six-digit verification/PIN input. */
+function CodeInput(
+  props: Omit<
+    React.ComponentProps<typeof InputOTP>,
+    "maxLength" | "children" | "render"
+  >
+) {
+  return (
+    <InputOTP maxLength={6} inputMode="numeric" pattern="^[0-9]*$" {...props}>
+      <InputOTPGroup>
+        {Array.from({ length: 6 }, (_, index) => (
+          <InputOTPSlot
+            key={index}
+            index={index}
+            aria-invalid={props["aria-invalid"]}
+          />
+        ))}
+      </InputOTPGroup>
+    </InputOTP>
+  )
+}
+
 function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -82,4 +104,4 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   )
 }
 
-export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator }
+export { CodeInput, InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator }

@@ -236,32 +236,6 @@ export async function createChannelMessage(
       "Tags must use ASCII letters, numbers, underscores or dashes (at most 48 tags, 256 characters each)."
     )
   const now = Date.now()
-  let replyToId: Id<"channelMessages"> | undefined
-  if (input.replyTo) {
-    const id = ctx.db.normalizeId("channelMessages", input.replyTo)
-    const reply = id
-      ? await ctx.db.get("channelMessages", id)
-      : ((
-          await ctx.db
-            .query("channelMessages")
-            .withIndex("by_channel_and_externalId", (q) =>
-              q.eq("channel", channel).eq("externalId", input.replyTo)
-            )
-            .take(10)
-        ).find((row) => row.accountId === account._id) ?? null)
-    if (
-      !reply ||
-      reply.organizationId !== opts.organizationId ||
-      reply.accountId !== account._id ||
-      (reply.direction === "inbound" ? reply.from : reply.to) !== recipient ||
-      !reply.externalId
-    )
-      throw invalid(
-        "reply_to must identify a message in this recipient's conversation."
-      )
-    replyToId = reply._id
-    Object.assign(payload, strategy.replyContext(reply.externalId))
-  }
   const data = strategy.mediaData(payload, type)
   const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
@@ -274,6 +248,36 @@ export async function createChannelMessage(
       direction: "outbound",
     }
   )
+  let replyToId: Id<"channelMessages"> | undefined
+  if (input.replyTo) {
+    const id = ctx.db.normalizeId("channelMessages", input.replyTo)
+    const reply = id
+      ? await ctx.db.get("channelMessages", id)
+      : ((
+          await ctx.db
+            .query("channelMessages")
+            .withIndex("by_channel_and_externalId", (q) =>
+              q.eq("channel", channel).eq("externalId", input.replyTo)
+            )
+            .take(10)
+        ).find(
+          (row) =>
+            row.accountId === account._id &&
+            row.conversationId === conversationId
+        ) ?? null)
+    if (
+      !reply ||
+      reply.organizationId !== opts.organizationId ||
+      reply.accountId !== account._id ||
+      reply.conversationId !== conversationId ||
+      !reply.externalId
+    )
+      throw invalid(
+        "reply_to must identify a message in this recipient's conversation."
+      )
+    replyToId = reply._id
+    Object.assign(payload, strategy.replyContext(reply.externalId))
+  }
   const conversation = (await ctx.db.get("conversations", conversationId))!
   try {
     channelStrategies[channel].assertWindow(

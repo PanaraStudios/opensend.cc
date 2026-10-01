@@ -122,7 +122,7 @@ export const list = internalQuery({
     const account = phoneNumberId
       ? await findAccount(ctx, caller, channel, phoneNumberId)
       : null
-    if (phoneNumberId && !account) throw notFound("Phone number")
+    if (phoneNumberId && !account) throw notFound(CHANNELS[channel].accountNoun)
     const conversation = conversationId
       ? await ownConversation(ctx, caller, channel, conversationId)
       : null
@@ -355,7 +355,7 @@ export function channelMessageRoutes(channel: Channel) {
           internal.api.channelMessages.accounts,
           { caller, channel, limit: 1, id: params.id }
         )
-        if (!result.data[0]) throw notFound("Phone number")
+        if (!result.data[0]) throw notFound(CHANNELS[channel].accountNoun)
         return { body: accountPayload(result.data[0]) }
       },
     })

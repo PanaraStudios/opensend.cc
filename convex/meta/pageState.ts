@@ -8,7 +8,7 @@ import { findMetaApp } from "./app"
 import { live } from "./connect"
 import { retirement } from "../teamLifecycle"
 import { profileNameParts } from "../../lib/meta/webhooks"
-import { emitContact } from "../audience"
+import { emitContact, patchContact } from "../audience"
 
 export const version = internalQuery({
   args: {},
@@ -134,11 +134,7 @@ export const profileComplete = internalMutation({
       !contact.lastName
     ) {
       const parts = profileNameParts(profileName)
-      const updated = await patchRow(ctx, "contacts", contact._id, {
-        ...parts,
-        search: profileContactSearch({ ...contact, ...parts }),
-        updatedAt: Date.now(),
-      })
+      const updated = await patchContact(ctx, contact, parts)
       await emitContact(ctx, "contact.updated", updated)
     }
     const threads = await ctx.db
@@ -157,18 +153,3 @@ export const profileComplete = internalMutation({
     return null
   },
 })
-
-/** Replace with audience.searchText when lane SC exports the contact helper. */
-function profileContactSearch(contact: {
-  email?: string
-  phone?: string
-  firstName: string
-  lastName: string
-}) {
-  return [
-    contact.email,
-    contact.phone,
-    contact.firstName,
-    contact.lastName,
-  ].join(" ")
-}

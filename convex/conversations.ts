@@ -1,3 +1,6 @@
+import { contactIdentity } from "../lib/dashboard/contacts"
+import { primaryContactIdentity } from "./audience"
+import { contactChannelIdentityValue } from "./contacts"
 import { object } from "../lib/meta/parse"
 import { channelMessagePayload } from "./channels/payload"
 import { channelStrategies } from "../lib/meta/payloads"
@@ -61,15 +64,19 @@ async function party(ctx: QueryCtx, conversation: Doc<"conversations">) {
   const handle =
     conversation.emailAddress ?? identity?.phone ?? identity?.externalId ?? ""
   const own = contact?.organizationId === conversation.organizationId
+  const channelIdentity = own
+    ? await primaryContactIdentity(ctx, contact)
+    : null
   return {
-    name:
-      (own ? `${contact.firstName} ${contact.lastName}`.trim() : "") ||
-      identity?.profileName ||
-      handle,
+    name: contactIdentity(
+      own ? contact : { email: conversation.emailAddress },
+      identity ?? channelIdentity
+    ).label,
     handle,
     contact: own
       ? {
           id: contact._id,
+          channelIdentity,
           email: contact.email ?? null,
           phone: contact.phone ?? null,
         }
@@ -152,6 +159,7 @@ export const get = query({
         v.null(),
         v.object({
           id: v.id("contacts"),
+          channelIdentity: v.union(v.null(), contactChannelIdentityValue),
           email: v.union(v.string(), v.null()),
           phone: v.union(v.string(), v.null()),
         })
@@ -326,7 +334,7 @@ function bodyText(
   message: Doc<"channelMessages">,
   content: Doc<"channelMessageContents"> | null
 ) {
-  if (message.type !== "text" || !content) return message.preview
+  if (!content) return message.preview
   return (
     channelMessagePayload(message, object(JSON.parse(content.payload))).text ??
     message.preview

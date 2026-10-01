@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { graph } from "../meta/graph"
+import { isUnreachableError } from "../../lib/net/public-fetch"
 import { MetaError } from "../../lib/meta/errors"
 import { object, array, string } from "../../lib/meta/webhooks"
 
@@ -41,18 +42,26 @@ export const deliver = internalAction({
       const externalId =
         string(result.message_id) ||
         string(object(array(result.messages)[0]).id)
-      // A malformed success or transport exception is ambiguous; do not resend.
+      // A malformed success is ambiguous; do not resend.
       if (!externalId)
         throw new Error("Meta accepted the call without a message id")
       outcome = { kind: "sent", externalId }
     } catch (error) {
-      if (!(error instanceof MetaError)) throw error
-      outcome = {
-        kind: "failed",
-        error: error.message,
-        action: error.action,
-        ...(error.code !== undefined ? { code: error.code } : {}),
-        ...(error.title ? { title: error.title } : {}),
+      if (isUnreachableError(error)) {
+        outcome = {
+          kind: "failed",
+          error: (error as Error).message,
+          action: "retry",
+        }
+      } else {
+        if (!(error instanceof MetaError)) throw error
+        outcome = {
+          kind: "failed",
+          error: error.message,
+          action: error.action,
+          ...(error.code !== undefined ? { code: error.code } : {}),
+          ...(error.title ? { title: error.title } : {}),
+        }
       }
     }
     // A failed record also goes to onComplete, never back through Graph.

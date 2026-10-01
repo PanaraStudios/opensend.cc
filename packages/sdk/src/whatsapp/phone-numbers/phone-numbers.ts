@@ -1,16 +1,8 @@
-import type { Opensend } from '../../resend';
-import type { PaginationOptions } from '../../common/interfaces/pagination-options.interface';
-import { buildPaginationUrl } from '../../common/utils/build-pagination-query';
-import type { WhatsAppPhoneNumber, WhatsAppPage } from '../interfaces';
-export class WhatsAppPhoneNumbers {
-  constructor(private readonly resend: Opensend) {}
-  list(options: PaginationOptions = {}) {
-    const url = buildPaginationUrl('/whatsapp/phone-numbers', options);
-    return this.resend.get<WhatsAppPage<WhatsAppPhoneNumber>>(url);
-  }
-  get(id: string) {
-    return this.resend.get<WhatsAppPhoneNumber>(
-      `/whatsapp/phone-numbers/${encodeURIComponent(id)}`,
-    );
+import type { Opensend } from "../../resend"
+import { ChannelAccounts } from "../../channels/accounts"
+import type { WhatsAppPhoneNumber } from "../interfaces"
+export class WhatsAppPhoneNumbers extends ChannelAccounts<WhatsAppPhoneNumber> {
+  constructor(client: Opensend) {
+    super(client, "/whatsapp/phone-numbers")
   }
 }

@@ -31,6 +31,7 @@ type ContactDetailRow = NonNullable<FunctionReturnType<typeof api.contacts.get>>
 export function asContact(row: ContactRow | ContactDetailRow): Contact {
   return {
     id: row._id,
+    channelIdentity: row.channelIdentity,
     email: row.email,
     phone: row.phone,
     firstName: row.firstName,
@@ -84,6 +85,7 @@ export function useContactSearch(search: string, enabled = true) {
     () =>
       rows?.map((row) => ({
         id: row._id,
+        channelIdentity: row.channelIdentity,
         email: row.email,
         phone: row.phone,
         firstName: row.firstName,

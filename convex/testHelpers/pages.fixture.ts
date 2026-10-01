@@ -1,3 +1,4 @@
+import type { PageChannel } from "../../lib/channels"
 import { api } from "../_generated/api"
 import { metaFixture, META_APP, type GraphRoute } from "./meta.fixture"
 export const PAGE_ID = "555000100"
@@ -52,7 +53,7 @@ export const pageGraphRoutes = (): GraphRoute[] => [
   },
 ]
 export const pageEnvelope = (
-  channel: "messenger" | "instagram",
+  channel: PageChannel,
   fields: Record<string, unknown>,
   at = Date.now()
 ): {

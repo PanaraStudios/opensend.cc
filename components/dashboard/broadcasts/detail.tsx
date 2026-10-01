@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -470,7 +471,14 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
         {pageRows.map((recipient) => (
           <TableRow key={recipient._id}>
             <TableCell>
-              {recipient.phone || recipient.email || recipient.contactId}
+              {
+                contactIdentity(
+                  recipient.contact ?? {
+                    email: recipient.email,
+                    phone: recipient.phone,
+                  }
+                ).label
+              }
             </TableCell>
             <TableCell>
               <RecipientOutcomeBadge

@@ -1,16 +1,16 @@
-import type { Opensend } from '../../resend';
-import { PageMessages } from '../../channels/page-messages';
+import type { Opensend } from "../../resend"
+import { ChannelMessages } from "../../channels/messages"
 import type {
   SendMessengerMessageOptions,
   MessengerMessage,
   MessengerMessageDetail,
-} from '../interfaces';
-export class MessengerMessages extends PageMessages<
+} from "../interfaces"
+export class MessengerMessages extends ChannelMessages<
   SendMessengerMessageOptions,
   MessengerMessage,
   MessengerMessageDetail
 > {
   constructor(client: Opensend) {
-    super(client, 'messenger');
+    super(client, "messenger")
   }
 }

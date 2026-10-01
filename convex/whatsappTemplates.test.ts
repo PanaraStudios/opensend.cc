@@ -309,7 +309,7 @@ describe("WhatsApp templates", () => {
       ctx.db.query("whatsappBusinessAccounts").first()
     )
     expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
-    // A repeated listing updates only the WABA sync clock, leaving rows unchanged.
+    // A repeated listing advances observation clocks without changing content.
     const beforeRepeat = await f.t.run((ctx) =>
       ctx.db.query("templates").collect()
     )
@@ -320,8 +320,18 @@ describe("WhatsApp templates", () => {
     expect(
       await f.t.run((ctx) => ctx.db.query("templates").collect())
     ).toHaveLength(3)
-    expect(await f.t.run((ctx) => ctx.db.query("templates").collect())).toEqual(
-      beforeRepeat
+    expect(
+      (await f.t.run((ctx) => ctx.db.query("templates").collect())).map(
+        (row) => ({
+          ...row,
+          whatsapp: { ...row.whatsapp, syncedAt: undefined },
+        })
+      )
+    ).toEqual(
+      beforeRepeat.map((row) => ({
+        ...row,
+        whatsapp: { ...row.whatsapp, syncedAt: undefined },
+      }))
     )
   })
 

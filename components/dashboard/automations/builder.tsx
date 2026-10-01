@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -420,7 +421,7 @@ function TestEventForm({
   const { activeTeamId } = useWorkspace()
   const [chosenContact, setChosenContact] = React.useState<{
     id: string
-    email: string
+    label: string
   } | null>(null)
   const [contactSearch, setContactSearch] = React.useState("")
   const rows = useQuery(
@@ -435,7 +436,7 @@ function TestEventForm({
   )
   const contacts = (rows ?? []).map((row) => ({
     id: row._id,
-    email: row.email || row.phone || "Contact",
+    label: contactIdentity(row).label,
   }))
   if (!chosenContact && contacts[0]) setChosenContact(contacts[0])
   const contactId = chosenContact?.id ?? ""
@@ -510,13 +511,13 @@ function TestEventForm({
               value={contactId}
               selectedItem={
                 chosenContact
-                  ? { value: chosenContact.id, label: chosenContact.email }
+                  ? { value: chosenContact.id, label: chosenContact.label }
                   : undefined
               }
               onChange={setContactId}
               items={contacts.map((contact) => ({
                 value: contact.id,
-                label: contact.email,
+                label: contact.label,
               }))}
             />
           </Field>

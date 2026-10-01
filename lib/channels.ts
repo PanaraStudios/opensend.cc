@@ -12,6 +12,7 @@ export type PageChannel = (typeof PAGE_CHANNELS)[number]
 type ChannelDefinition = {
   label: string
   accountNoun: string
+  handleLabel: string
   idLabel: string
   resource: string
   idParam: string
@@ -24,6 +25,7 @@ export const CHANNELS = {
   email: {
     label: "Email",
     accountNoun: "Domain",
+    handleLabel: "Domain",
     idLabel: "Domain ID",
     resource: "domains",
     idParam: "domain_id",
@@ -34,6 +36,7 @@ export const CHANNELS = {
   whatsapp: {
     label: "WhatsApp",
     accountNoun: "Number",
+    handleLabel: "Number",
     idLabel: "Phone number ID",
     resource: "phone-numbers",
     idParam: "phone_number_id",
@@ -56,6 +59,7 @@ export const CHANNELS = {
   messenger: {
     label: "Messenger",
     accountNoun: "Page",
+    handleLabel: "Handle",
     idLabel: "Page ID",
     resource: "pages",
     idParam: "page_id",
@@ -72,6 +76,7 @@ export const CHANNELS = {
   instagram: {
     label: "Instagram",
     accountNoun: "Account",
+    handleLabel: "Handle",
     idLabel: "Account ID",
     resource: "accounts",
     idParam: "account_id",

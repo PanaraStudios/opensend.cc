@@ -4,16 +4,22 @@ import type {
 } from "../common/interfaces/pagination-options.interface"
 import type { PostOptions } from "../common/interfaces/post-option.interface"
 import type { IdempotentRequest } from "../common/interfaces/idempotent-request.interface"
-export type MessagingChannel = "whatsapp" | "messenger" | "instagram"
+export const MESSAGING_CHANNELS = [
+  "whatsapp",
+  "messenger",
+  "instagram",
+] as const
+export type MessagingChannel = (typeof MESSAGING_CHANNELS)[number]
+export type PageChannel = Exclude<MessagingChannel, "whatsapp">
 export type ChannelMessageStatus =
   "queued" | "sent" | "delivered" | "read" | "failed" | "received"
 export type ChannelRequestOptions = PostOptions & IdempotentRequest
 export type ChannelPage<T> = PaginatedData<T[]>
-export type ListChannelMessagesOptions = PaginationOptions & {
-  status?: ChannelMessageStatus
-  direction?: "inbound" | "outbound"
-  accountId?: string
-}
+export type ListChannelMessagesOptions<FilterKey extends string = "accountId"> =
+  PaginationOptions & {
+    status?: ChannelMessageStatus
+    direction?: "inbound" | "outbound"
+  } & Partial<Record<FilterKey, string>>
 export interface ChannelMessage<
   C extends MessagingChannel = MessagingChannel,
   T extends string = string,
@@ -87,7 +93,7 @@ export type PageMessageOptions = {
 }
 export interface PageAccount {
   id: string
-  channel: "messenger" | "instagram"
+  channel: PageChannel
   external_id: string
   name: string
   handle: string
