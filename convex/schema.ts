@@ -1,3 +1,4 @@
+import { voiceTables } from "./tables/voice"
 import { callingTables } from "./tables/calling"
 import { storageTables } from "./tables/storage"
 import { receivedTables } from "./tables/received"
@@ -28,6 +29,7 @@ import { webhookTables } from "./tables/webhooks"
    parallel without editing the same lines here. */
 export default defineSchema({
   ...callingTables,
+  ...voiceTables,
   ...storageTables,
   ...broadcastTables,
   ...automationTables,

@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import { botConfig, botOutcome, voiceUsage } from "./voice"
 import { fileReference } from "./storage"
 
 export const callStatus = v.union(
@@ -27,6 +28,11 @@ export const callMedia = v.object({
   contentType: v.optional(v.string()),
   error: v.optional(v.string()),
 })
+export const callingRouting = v.union(
+  v.object({ kind: v.literal("agents") }),
+  v.object({ kind: v.literal("api") }),
+  v.object({ kind: v.literal("bot"), botId: v.id("voiceBots") })
+)
 export const callingTables = {
   callAgents: defineTable({
     organizationId: v.string(),
@@ -82,9 +88,24 @@ export const callingTables = {
     mediaUpAt: v.optional(v.number()),
     gatewayAt: v.optional(v.number()),
     gatewayRouted: v.optional(v.boolean()),
+    botId: v.optional(v.id("voiceBots")),
+    botConfig: v.optional(botConfig),
+    botOutcome: v.optional(botOutcome),
+    botSummary: v.optional(v.string()),
+    botFallbackReason: v.optional(v.string()),
+    botStartedAt: v.optional(v.number()),
+    botEndedAt: v.optional(v.number()),
+    botActive: v.optional(v.boolean()),
+    botDuration: v.optional(v.number()),
+    botUsage: v.optional(voiceUsage),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_organizationId_and_botActive", ["organizationId", "botActive"])
+    .index("by_organizationId_and_botStartedAt", [
+      "organizationId",
+      "botStartedAt",
+    ])
     .index("by_organizationId_and_assignedAgent_and_status", [
       "organizationId",
       "assignedAgent",
@@ -126,11 +147,13 @@ export const callingTables = {
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
     mode: handlingMode,
+    routing: v.optional(callingRouting),
     settings: v.string(),
     updatedAt: v.number(),
     restrictions: v.optional(v.string()),
   })
     .index("by_accountId", ["accountId"])
+    .index("by_routing_botId", ["routing.botId"])
     .index("by_organizationId", ["organizationId"]),
   gatewayEvents: defineTable({
     organizationId: v.string(),

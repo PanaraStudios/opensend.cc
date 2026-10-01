@@ -82,7 +82,7 @@ export function registerCallingRoutes(http: HttpRouter) {
         }),
       }),
     })
-  for (const method of ["GET", "POST"] as const)
+  for (const method of ["GET", "POST", "PATCH"] as const)
     apiRoute(http, {
       method,
       path: "/whatsapp/phone-numbers/{id}/calling",
@@ -94,9 +94,12 @@ export function registerCallingRoutes(http: HttpRouter) {
             organizationId: caller.organizationId,
             caller,
             from: params.id,
-            ...(method === "POST"
+            ...(method !== "GET"
               ? {
                   calling: objectField(input, "calling"),
+                  routing: objectField(input, "routing") as
+                    | typeof import("../tables/calling").callingRouting.type
+                    | undefined,
                   mode: enumField(input, "handling_mode", [
                     "gateway",
                     "api",

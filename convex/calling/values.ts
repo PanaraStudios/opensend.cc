@@ -1,3 +1,4 @@
+import { botOutcome, voiceUsage } from "../tables/voice"
 import { v } from "convex/values"
 import {
   callMedia,
@@ -38,6 +39,12 @@ export const callPayloadFields = {
   error: nullableString,
   error_code: nullableNumber,
   assigned_agent: nullableString,
+  bot_id: v.union(v.id("voiceBots"), v.null()),
+  bot_outcome: v.union(botOutcome, v.null()),
+  bot_summary: nullableString,
+  bot_duration: nullableNumber,
+  bot_usage: v.union(voiceUsage, v.null()),
+  bot_fallback_reason: nullableString,
 }
 export const callPayloadValue = v.object(callPayloadFields)
 export const callPageValue = v.object({

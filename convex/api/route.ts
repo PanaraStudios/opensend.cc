@@ -36,6 +36,8 @@ export type ApiRouteOptions = {
   maxBody?: number
   bodyFormat?: "multipart" | "multipart-binary"
   source?: "smtp"
+  /** Credential writes must never persist request bodies in API logs. */
+  sensitiveBody?: boolean
   idempotencyHeaders?: Record<string, string>
   /** Materialize a sensitive response only at the wire, also on replay. */
   serializeResponse?: (body: unknown) => Promise<unknown>
@@ -390,7 +392,7 @@ function dispatch(patterns: Pattern[]) {
               name,
               value: REDACTED.has(name) ? "[redacted]" : value.slice(0, 1024),
             })),
-          requestBody: text || undefined,
+          requestBody: options.sensitiveBody ? "[redacted]" : text || undefined,
           responseBody,
         },
       })

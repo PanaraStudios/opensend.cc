@@ -1,3 +1,4 @@
+import { registerVoiceRoutes } from "./voice"
 import { registerCallingRoutes } from "./calling"
 import { registerMediaRoutes } from "./media"
 import { registerPageMessageRoutes } from "./channelMessages"
@@ -23,6 +24,7 @@ import { registerLogRoutes } from "./logs"
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
   registerCallingRoutes(http)
+  registerVoiceRoutes(http)
   registerMediaRoutes(http)
   registerWhatsAppRoutes(http)
   registerPageMessageRoutes(http)

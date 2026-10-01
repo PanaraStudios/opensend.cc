@@ -21,6 +21,7 @@ export const cached = query({
       throw invalid("Phone number not found.")
     const row = await numberSettings(ctx, args.accountId)
     return {
+      routing: row?.routing ?? null,
       handling_mode: row?.mode ?? defaultMode(),
       calling: JSON.parse(row?.settings ?? "{}"),
       restrictions: row?.restrictions ? JSON.parse(row.restrictions) : null,

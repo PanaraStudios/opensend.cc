@@ -390,11 +390,10 @@ export async function performCall(
     if (row.mode === "gateway") {
       if (CALL_TERMINAL.has(current.status)) await cleanupCall(ctx, row._id)
       else if (action === "accept") {
-        await gateway().route({
-          callId: row._id,
-          target: current.agentExtension ? "agent" : "ivr",
-          extension: current.agentExtension,
+        const route = await ctx.runMutation(internal.voice.routing.select, {
+          id: row._id,
         })
+        await gateway().route(route)
         await ctx.runMutation(internal.calling.rows.finish, {
           id: row._id,
           routed: true,
@@ -495,6 +494,28 @@ export const gatewayConnect = internalAction({
           session: { sdp_type: "answer", sdp: answerSdp },
           preAcceptedSdp: answerSdp,
         })
+        if (
+          target.settings?.routing?.kind === "bot" ||
+          target.settings?.routing?.kind === "agents"
+        ) {
+          await signal(ctx, target, {
+            action: "accept",
+            call_id: row.wacid,
+            session: { sdp_type: "answer", sdp: answerSdp },
+          })
+          await ctx.runMutation(internal.calling.rows.finish, {
+            id,
+            status: "connected",
+          })
+          const route = await ctx.runMutation(internal.voice.routing.select, {
+            id,
+          })
+          await gateway().route(route)
+          await ctx.runMutation(internal.calling.rows.finish, {
+            id,
+            routed: true,
+          })
+        }
         await ctx.scheduler.runAfter(
           Math.max(
             0,
