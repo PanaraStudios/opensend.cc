@@ -21,6 +21,7 @@ import {
   addUsageTools,
   addWebhookTools,
   addChannelTools,
+  addChannelControlTools,
   channelToolOptions,
 } from "./tools/index.js"
 import type { ServerOptions } from "./types.js"
@@ -64,6 +65,7 @@ export function createMcpServer(
   addTopicTools(server, opensend)
   addUsageTools(server, opensend)
   addWebhookTools(server, opensend)
+  addChannelControlTools(server, opensend)
   for (const options of Object.values(channelToolOptions))
     addChannelTools(server, opensend, options)
   return server

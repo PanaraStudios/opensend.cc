@@ -331,3 +331,43 @@ export function addChannelTools(
     }
   )
 }
+
+/** Shared controls accept the channel explicitly, matching the REST catalog. */
+export function addChannelControlTools(server: McpServer, opensend: Opensend) {
+  const channel = z.enum(["whatsapp", "messenger", "instagram"])
+  const annotations = {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+  }
+  server.registerTool(
+    "mark_message_read",
+    {
+      title: "Mark Message Read",
+      description:
+        "Send a Meta read receipt for a team inbound message received within 30 days. Optionally show typing. Throttled reads are accepted without another Meta call.",
+      annotations,
+      inputSchema: { channel, id: z.string(), typing: z.boolean().optional() },
+    },
+    async ({ channel, id, typing }) =>
+      channelOutput(
+        channel,
+        await opensend[channel].messages.markRead(id, { typing })
+      )
+  )
+  server.registerTool(
+    "set_typing",
+    {
+      title: "Set Typing Indicator",
+      description:
+        "Show typing in a team conversation. Messenger and Instagram support on/off; WhatsApp supports on only, using its latest inbound message and marking it read. Calls are throttled per conversation.",
+      annotations,
+      inputSchema: { channel, id: z.string(), on: z.boolean() },
+    },
+    async ({ channel, id, on }) =>
+      channelOutput(
+        channel,
+        await opensend[channel].conversations.typing(id, on)
+      )
+  )
+}

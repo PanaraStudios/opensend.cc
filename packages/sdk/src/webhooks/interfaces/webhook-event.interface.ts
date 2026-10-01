@@ -1,5 +1,14 @@
 import type { WhatsAppMessage } from "../../whatsapp/interfaces"
 export type WebhookEvent =
+  | "whatsapp.message.read_receipt_sent"
+  | "whatsapp.message.read_receipt_failed"
+  | "whatsapp.message.typing_failed"
+  | "messenger.message.read_receipt_sent"
+  | "messenger.message.read_receipt_failed"
+  | "messenger.message.typing_failed"
+  | "instagram.message.read_receipt_sent"
+  | "instagram.message.read_receipt_failed"
+  | "instagram.message.typing_failed"
   | "whatsapp.message.sent"
   | "whatsapp.message.delivered"
   | "whatsapp.message.read"
@@ -252,7 +261,18 @@ export interface WhatsAppMessageEvent {
   }
 }
 
+export interface MessageControlEvent {
+  type: `${"whatsapp" | "messenger" | "instagram"}.message.${"read_receipt_sent" | "read_receipt_failed" | "typing_failed"}`
+  created_at: string
+  data: {
+    id: string
+    conversation_id: string
+    read_receipt_sent_at?: string
+    error?: string
+  }
+}
 export type WebhookEventPayload =
+  | MessageControlEvent
   | WhatsAppMessageEvent
   | EmailSentEvent
   | EmailScheduledEvent

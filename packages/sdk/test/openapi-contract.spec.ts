@@ -47,10 +47,12 @@ function sdkRequests() {
       /super\(client, [\'"](whatsapp|messenger|instagram)[\'"]\)/
     )?.[1]
     if (channel && text.includes("extends ChannelConversations")) {
+      found.add(`POST /${channel}/conversations/{}/typing`)
       found.add(`GET /${channel}/conversations`)
       found.add(`GET /${channel}/conversations/{}/messages`)
     }
     if (channel && text.includes("extends ChannelMessages")) {
+      found.add(`POST /${channel}/messages/{}/read`)
       found.add(`POST /${channel}/messages`)
       found.add(`GET /${channel}/messages`)
       found.add(`GET /${channel}/messages/{}`)
