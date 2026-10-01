@@ -58,7 +58,7 @@ CALL_GATEWAY_SECRET=<random 64-character hex secret>
 JANUS_API_SECRET=<different random 64-character hex secret>
 FREESWITCH_ESL_SECRET=<different random 64-character hex secret>
 FREESWITCH_SIP_SECRET=<different random 64-character hex secret>
-FREESWITCH_AGENT_SECRET=<different random 64-character hex secret>
+FREESWITCH_DIRECTORY_SECRET=<different random 64-character hex secret>
 CALL_GATEWAY_CONVEX_HTTP_URL=http://convex:3211
 JANUS_STUN_SERVER=stun.l.google.com
 JANUS_STUN_PORT=19302
@@ -86,12 +86,16 @@ docker compose --env-file .env.calling --profile calling logs --tail=100 janus f
 Compose initializes named-volume ownership for the unprivileged image users.
 For a trusted WSS certificate, override the FreeSWITCH `/certs` mount with a host
 directory containing `wss.pem` (private key followed by full certificate chain),
-readable by UID 10002. With a read-only mount, provide that file before starting.
+readable by UID 10002. Set `FREESWITCH_CERT_DIR` to that host directory, or use a
+read-only mount override and provide that file before starting. The default
+self-signed WSS certificate is for localhost development with explicit trust.
 The browser softphone registers over `wss://calling.example.com:7443`, authenticates
 as an extension `2000`–`2099`, with SIP realm/domain `freeswitch`. Supply agent
-credentials only to authorized agents in task 8c. The sample directory shares
-one agent password; per-agent credentials and tenant-specific provisioning belong
-to that integration before public use. Gateway slots `1000`–`1099` use a distinct
+credentials only to authorized agents in task 8c. The directory is fetched over private HTTP from the controller via
+`mod_xml_curl`, using the separate `FREESWITCH_DIRECTORY_SECRET`. Convex's 8c
+session action issues ephemeral credentials through the controller's HMAC API;
+there is no shared browser password or static fallback. See
+[browser deployment](browser-softphone.md) for the security design and upgrade steps. Gateway slots `1000`–`1099` use a distinct
 secret and are never exposed as browser accounts.
 
 ### Network and firewall
@@ -112,8 +116,8 @@ Keep media UDP mappings **1:1**, including port numbers. For a VPS behind 1:1 NA
 set `JANUS_PUBLIC_IP` and forward the Janus range; private candidates are retained
 for peers on the Compose network. STUN allows Janus to initiate outbound ICE checks
 through NAT, but does not fix blocked UDP or arbitrary symmetric NAT. No Meta TURN
-server exists. For restrictive browser-agent networks, optional coturn is configured
-on the agent's `RTCPeerConnection` in task 8c, not on Meta's side. On Docker Desktop,
+server exists. For restrictive browser-agent networks, optional coturn is enabled separately with `calling-turn` and configured
+on the agent's `RTCPeerConnection`, not on Meta's side (see below). On Docker Desktop,
 the local harness uses container host candidates on the shared network and disables
 STUN; it does not validate public NAT/firewall behavior.
 
@@ -252,11 +256,48 @@ log only event id/type. Retries use the same event id/body and a new HMAC nonce.
 Callbacks and live sessions are in memory: a controller restart drops calls and
 unsent events. There is no durable outbox or automatic session recovery in 8b.
 
+## Optional agent TURN
+
+`coturn` is excluded from `--profile calling`; opt in with
+`--profile calling --profile calling-turn`. It is built from the pinned Debian
+base with Debian's coturn package. Set `CALL_TURN_PUBLIC_IP` to its public IPv4 and
+`CALL_TURN_PASSWORD` to a separate `openssl rand -hex 32` value. It uses realm
+`opensend-calling`, username `agent`, authenticated long-term credentials, and
+UDP or TCP TURN on 3478, with UDP relay ports 20800–20999. Forward these ports
+1:1 and keep FreeSWITCH's browser RTP ports accessible from the relay.
+
+In an operator SIP.js adapter configure:
+
+```ts
+sessionDescriptionHandlerFactoryOptions: {
+  peerConnectionConfiguration: {
+    iceServers: [{
+      urls: ["turn:calling.example.com:3478?transport=udp", "turn:calling.example.com:3478?transport=tcp"],
+      username: "agent",
+      credential: "<CALL_TURN_PASSWORD delivered only to authorized agents>",
+    }],
+  },
+}
+```
+
+This service does not enable TURN in the dashboard automatically. The shipped
+adapter uses host candidates; secure credential delivery/rotation and adapter
+configuration remain operator work. This optional service does not provide TLS
+TURN on 5349. Add trusted certificates and a separate coturn TLS configuration
+if the network requires `turns:`. It has no Meta-facing role; Meta has no TURN.
+
 ## Lead harness: exact commands
 
 The harness uses werift's actual **ICE-lite controlled mode** with no STUN/TURN,
 ECDSA DTLS and Opus RTP. Its fake HMAC-authenticated callback receiver replaces
-Convex only in the test overlay. Both UIC and BIC are exercised. It asserts complete
+Convex only in the test overlay. The default check exercises UIC and BIC against the IVR. The `agent` check uses
+real headless Chromium/SIP.js 0.21.2 with a fake microphone: a fake backend action
+calls the same HMAC session-issuance endpoint as Convex, FreeSWITCH authenticates
+via XML-CURL, SIP.js registers over WSS and answers the inbound bridge. Browser
+`getStats()` must report at least 20 RTP packets each way, and Meta must receive
+additional RTP after the browser answers. Cleanup revokes the credential and asserts that FreeSWITCH rejects a fresh
+registration with it, proving there is no static or cached fallback.
+This local browser bypasses certificate errors; production trust is a separate check. It asserts complete
 SDP, ICE-full controlling via Janus Admin state, DTLS client/SRTP readiness, no RTP
 before routing, gateway media sent first, bidirectional RTP, one SSRC, callbacks,
 idempotent retries, and a finalized nonempty recording file. It is runnable entirely
@@ -265,21 +306,31 @@ on the Docker network; no Meta credentials or real Convex routes are needed.
 From the repository root, generate an uncommitted harness env file:
 
 ```sh
-umask 077
-for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_AGENT_SECRET; do
-  printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
-done > .env.calling-test
+if [ ! -f .env.calling-test ]; then
+  umask 077
+  for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET; do
+    printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
+  done > .env.calling-test
+fi
 
 c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
-c build janus freeswitch call-gateway meta-peer; c up -d --force-recreate janus freeswitch call-gateway; c run --rm --use-aliases meta-peer
+c build janus freeswitch call-gateway meta-peer
+c up -d janus freeswitch call-gateway
+c run --rm --use-aliases meta-peer
+c run --rm --use-aliases meta-peer pnpm --filter @opensendcc/call-gateway harness agent
 c down
 ```
 
-Expect two `PASS` lines and exit 0. `--use-aliases` lets callback requests resolve
+Expect two `PASS` lines for the default check, and registration, bridge, inbound and revocation
+`PASS` lines for `agent`, each with exit 0. `--use-aliases` lets callback requests resolve
 the ephemeral `meta-peer` container. The test override disables external STUN and
 sets the callback base to `http://meta-peer:8091`. For diagnosis use the same Compose
 function with `c logs --tail=200 janus freeswitch call-gateway`. The explicit project
 name isolates these containers, network and named volumes from the application.
+The overlay also uses only `opensend-calling-test-*` image tags to avoid replacing
+images used by other projects. Always use this function and select service names explicitly (`c up` with no
+service names also includes the main app services); never use unscoped Docker
+commands, another project, `down -v`, or system prune.
 `c down` removes the test containers/network and retains its certificates and
 recordings. Do not use `-v` or operate on another project's containers or volumes.
 Remove the test overlay when restoring real callbacks.
@@ -309,18 +360,42 @@ pnpm typecheck
 pnpm lint
 ```
 
-The isolated Docker harness was run on 2026-10-01: both inbound and outbound
-printed `PASS` and the command exited 0. Root typecheck/lint and all 30 gateway
-unit/protocol tests passed. Public NAT/UDP mapping, trusted browser WSS, IVR DTMF
-with an actual Meta phone, source build linkage on other target architectures and
-real Meta interoperability remain runtime checks. These older pins are deliberate
-for the documented Meta example, not a
-claim of current security patch level; update pinned sources, base digests and
-Debian snapshot together after proving the harness still passes. Queue/bot routes,
-per-agent credential provisioning, durable callback recovery, upload workers,
-browser UI and real Graph signaling remain in their separate tasks.
+The isolated Docker harness was run on 2026-10-01; see the browser media
+verification below. Public NAT/UDP mapping, production WSS certificate trust,
+IVR DTMF with an actual Meta phone and real Meta interoperability remain runtime
+checks. These media source pins are deliberate for the documented Meta example;
+update sources/base digests together after proving the harness still passes.
+Queue/bot routes, durable callback recovery and upload workers remain separate.
 
-Wave 8c adds expiring browser-agent sessions, an authenticated XML-CURL directory,
-and `/control` for local hold/resume/transfer. See [browser softphone deployment](browser-softphone.md)
-for the required FreeSWITCH directory override; the static 8b agent password must
-be removed before using browser agents. Docker configuration is unchanged.
+Wave 8c supplies expiring browser-agent sessions and `/control` for local
+hold/resume/transfer. The image now includes the required directory override;
+see [browser softphone deployment](browser-softphone.md). Convex code and backend
+deployments are unchanged by this infrastructure integration.
+
+## Browser media verification (2026-10-01)
+
+Ran both harness checks with the exact `opensend-calling-test` Compose function
+above. Both exited 0. The default inbound/outbound checks still passed after
+replacing the gateway directory with XML-CURL:
+
+```text
+PASS inbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 33 RTP packets, one SSRC, callbacks and recording
+PASS outbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 31 RTP packets, one SSRC, callbacks and recording
+PASS agent registration: backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS
+PASS agent bridge: SIP.js answered, browser received 21 / sent 21 RTP packets; Meta received 114 / sent 97
+PASS inbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 114 RTP packets, one SSRC, callbacks and recording
+PASS agent revocation: old credential rejected by FreeSWITCH; no static/cache fallback
+```
+
+The blockers were the static shared agent password, absent `mod_xml_curl` build
+and binding, and missing directory-secret wiring in Compose. The browser bridge
+now also explicitly offers WebRTC (`media_webrtc=true`) and accepts private ICE
+candidates alongside public candidates. WSS defaults to a local self-signed cert;
+the configurable `/certs` mount and trusted VPS setup are documented separately.
+
+Root `pnpm typecheck`, `pnpm lint`, gateway typecheck/build and all 35 gateway tests
+passed. Convex code was untouched, so `test:auth` was not required. The optional
+coturn image built and started as an unprivileged user; public TURN allocation
+and restrictive-network media were not exercised. It remained excluded from the
+normal calling profile. Only test-project containers/images/volumes were used,
+and `c down` removed its containers and network while retaining its data volumes.

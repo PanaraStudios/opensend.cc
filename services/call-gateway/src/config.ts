@@ -7,6 +7,7 @@ export interface Config {
   fsHost: string
   fsPort: number
   fsSecret: string
+  directorySecret: string
   sipSecret: string
   convexUrl: string
 }
@@ -49,6 +50,7 @@ export function config(env: NodeJS.ProcessEnv = process.env): Config {
     fsHost,
     fsPort: port("FREESWITCH_ESL_PORT", 8021),
     fsSecret: secret("FREESWITCH_ESL_SECRET"),
+    directorySecret: secret("FREESWITCH_DIRECTORY_SECRET"),
     sipSecret: secret("FREESWITCH_SIP_SECRET"),
     convexUrl: url("CALL_GATEWAY_CONVEX_HTTP_URL"),
   }

@@ -428,6 +428,15 @@ importers:
       '@types/node':
         specifier: 20.19.43
         version: 20.19.43
+      esbuild:
+        specifier: 0.25.12
+        version: 0.25.12
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      sip.js:
+        specifier: 0.21.2
+        version: 0.21.2
       tsx:
         specifier: 4.23.13
         version: 4.23.13

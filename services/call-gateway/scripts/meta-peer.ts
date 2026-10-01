@@ -1,8 +1,8 @@
-/** Docker-only lead harness; no browser, native addon, Graph API or Convex deployment. */
+/** Docker-only harness; fake Meta/backend plus an optional real SIP.js browser. */
 import assert from "node:assert/strict"
 import { createServer } from "node:http"
 import { randomUUID } from "node:crypto"
-import { stat } from "node:fs/promises"
+import { readFile, stat } from "node:fs/promises"
 import { setTimeout as delay } from "node:timers/promises"
 import {
   MediaStreamTrack,
@@ -11,7 +11,9 @@ import {
   RtpHeader,
   RtpPacket,
 } from "werift"
-import { HmacVerifier } from "../src/auth.js"
+import { chromium, type Browser, type Page } from "playwright"
+import type { BrowserAgentState } from "./browser-agent.js"
+import { HmacVerifier, signRequest } from "../src/auth.js"
 import { CallGatewayClient } from "../src/client.js"
 import type { GatewayCallback } from "../src/contracts.js"
 import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
@@ -29,6 +31,19 @@ const receiver = createServer(async (request, response) => {
     const chunks: Buffer[] = []
     for await (const chunk of request) chunks.push(Buffer.from(chunk))
     const body = Buffer.concat(chunks).toString()
+    // Fake authenticated Convex action: exercises the exact 8c HMAC issuance API.
+    if (request.url === "/test/agent/session") {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const { sessionId } = JSON.parse(body) as { sessionId: string }
+      const credential = await gateway.agentSession(sessionId)
+      response
+        .writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        })
+        .end(JSON.stringify(credential))
+      return
+    }
     assert.equal(request.url, "/calling/gateway/events")
     verifier.verify(request.method!, request.url!, body, request.headers)
     const event = JSON.parse(body) as GatewayCallback
@@ -92,7 +107,104 @@ async function infoFor(callId: string): Promise<Record<string, unknown>> {
   throw new Error(`Missing Janus handle for ${callId}`)
 }
 
-async function run(direction: "inbound" | "outbound") {
+async function browserAgent() {
+  const sessionId = `harness-agent-${randomUUID()}`
+  const body = JSON.stringify({ sessionId })
+  const response = await fetch("http://127.0.0.1:8091/test/agent/session", {
+    method: "POST",
+    body,
+    headers: {
+      "content-type": "application/json",
+      ...signRequest(secret, "POST", "/test/agent/session", body),
+    },
+  })
+  assert.equal(response.status, 200)
+  const credential = (await response.json()) as {
+    extension: string
+    password: string
+  }
+  const asset = await readFile("/app/agent.js")
+  const web = createServer((request, response) => {
+    if (request.url === "/agent.js")
+      response.setHeader("content-type", "text/javascript").end(asset)
+    else
+      response
+        .setHeader("content-type", "text/html")
+        .end('<script src="/agent.js"></script>')
+  })
+  await new Promise<void>((resolve) => web.listen(8092, "127.0.0.1", resolve))
+  let browser: Browser | undefined
+  let page: Page | undefined
+  try {
+    browser = await chromium.launch({
+      executablePath: "/usr/bin/chromium",
+      args: [
+        "--no-sandbox",
+        "--ignore-certificate-errors",
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+        "--autoplay-policy=no-user-gesture-required",
+      ],
+    })
+    page = await browser.newPage()
+    await page.goto("http://127.0.0.1:8092")
+    await page.evaluate((row) => window.agent.start(row), credential)
+    await page.waitForFunction(() => window.agent.state.registered, null, {
+      timeout: 15000,
+    })
+    console.log(
+      "PASS agent registration: backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS"
+    )
+    const currentPage = page
+    return {
+      extension: credential.extension,
+      stats: () => currentPage.evaluate(() => window.agent.stats()),
+      async close() {
+        await currentPage
+          .evaluate(() => window.agent.stop())
+          .catch(() => undefined)
+        await gateway.revokeAgent(sessionId)
+        try {
+          await currentPage.evaluate(
+            (row) => window.agent.start(row),
+            credential
+          )
+          await currentPage.waitForFunction(
+            () => window.agent.state.error || window.agent.state.registered,
+            null,
+            { timeout: 15000 }
+          )
+          const state = await currentPage.evaluate(() => window.agent.state)
+          assert.equal(
+            state.registered,
+            false,
+            "Revoked credential still registered through a directory fallback/cache"
+          )
+          assert.match(state.error ?? "", /Registration rejected/)
+          console.log(
+            "PASS agent revocation: old credential rejected by FreeSWITCH; no static/cache fallback"
+          )
+        } finally {
+          await currentPage
+            .evaluate(() => window.agent.stop())
+            .catch(() => undefined)
+          await browser?.close()
+          await new Promise<void>((resolve) => web.close(() => resolve()))
+        }
+      },
+    }
+  } catch (error) {
+    await browser?.close()
+    await gateway.revokeAgent(sessionId)
+    await new Promise<void>((resolve) => web.close(() => resolve()))
+    throw error
+  }
+}
+
+async function run(
+  direction: "inbound" | "outbound",
+  agent?: Awaited<ReturnType<typeof browserAgent>>
+) {
   const callId = `harness-${direction}-${randomUUID()}`
   const peer = new RTCPeerConnection({
     iceLite: true,
@@ -174,7 +286,14 @@ async function run(direction: "inbound" | "outbound") {
       0,
       "Audio escaped before Graph accept confirmation via /route"
     )
-    const route = { callId, target: "ivr" as const, record: true }
+    const route = agent
+      ? {
+          callId,
+          target: "agent" as const,
+          extension: agent.extension,
+          record: true,
+        }
+      : { callId, target: "ivr" as const, record: true }
     await gateway.route(route)
     await gateway.route(route)
     // Meta sends nothing yet: the business must send first to avoid deadlock.
@@ -210,6 +329,27 @@ async function run(direction: "inbound" | "outbound") {
       `${direction}: bidirectional Opus or callback missing`
     )
     assert.equal(ssrcs.size, 1, "Business audio changed SSRC")
+    if (agent) {
+      let stats: BrowserAgentState | undefined
+      await waitUntil(async () => {
+        stats = await agent.stats()
+        if (stats.error) throw new Error(stats.error)
+        return (
+          stats.answered &&
+          stats.inboundPackets >= 20 &&
+          stats.outboundPackets >= 20
+        )
+      }, "agent: answered bridge did not carry bidirectional browser RTP")
+      // Exclude early ringback from the Meta-side media assertion.
+      const before = received
+      await waitUntil(
+        () => received >= before + 30,
+        "agent: no RTP after browser answer"
+      )
+      console.log(
+        `PASS agent bridge: SIP.js answered, browser received ${stats!.inboundPackets} / sent ${stats!.outboundPackets} RTP packets; Meta received ${received} / sent ${sent}`
+      )
+    }
     await gateway.hangup(callId)
     await gateway.hangup(callId)
     await waitUntil(
@@ -254,8 +394,17 @@ async function run(direction: "inbound" | "outbound") {
   }
 }
 try {
-  await run("inbound")
-  await run("outbound")
+  if (process.argv.includes("agent")) {
+    const agent = await browserAgent()
+    try {
+      await run("inbound", agent)
+    } finally {
+      await agent.close()
+    }
+  } else {
+    await run("inbound")
+    await run("outbound")
+  }
 } finally {
   clearTimeout(watchdog)
   await new Promise<void>((resolve) => receiver.close(() => resolve()))

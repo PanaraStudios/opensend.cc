@@ -9,7 +9,7 @@ const controller = new CallController(options)
 await controller.start()
 const server = createGatewayServer(controller, options.secret, {
   sessions: new AgentSessions(),
-  directorySecret: process.env.FREESWITCH_DIRECTORY_SECRET ?? "",
+  directorySecret: options.directorySecret,
   sipSecret: options.sipSecret,
   control: (request) => controller.control(request),
 })

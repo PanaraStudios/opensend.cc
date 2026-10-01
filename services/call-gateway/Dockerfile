@@ -7,8 +7,17 @@ RUN pnpm install --filter @opensendcc/call-gateway --frozen-lockfile
 COPY services/call-gateway/ services/call-gateway/
 RUN pnpm --filter @opensendcc/call-gateway build
 
-# The lead can build this target to run a pure-JS Meta peer on the compose network.
-FROM build AS harness
+# Docker-only Meta peer and real headless SIP.js browser on the compose network.
+FROM node:22.17.0-bookworm-slim@sha256:b04ce4ae4e95b522112c2e5c52f781471a5cbc3b594527bcddedee9bc48c03a0 AS harness-browser
+# Keep Chromium independent of source changes so harness iterations reuse this layer.
+RUN apt-get update && apt-get install -y --no-install-recommends chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable && corepack prepare pnpm@11.7.0 --activate
+FROM harness-browser AS harness
+WORKDIR /app
+COPY --from=build /app /app
+RUN pnpm --filter @opensendcc/call-gateway exec esbuild scripts/browser-agent.ts \
+    --bundle --platform=browser --outfile=/app/agent.js
 USER node
 CMD ["pnpm", "--filter", "@opensendcc/call-gateway", "harness"]
 

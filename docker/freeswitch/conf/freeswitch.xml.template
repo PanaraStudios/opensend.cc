@@ -8,9 +8,17 @@
         <load module="mod_console"/><load module="mod_commands"/>
         <load module="mod_dptools"/><load module="mod_hash"/><load module="mod_expr"/>
         <load module="mod_opus"/><load module="mod_sndfile"/><load module="mod_tone_stream"/>
-        <load module="mod_event_socket"/><load module="mod_sofia"/>
+        <load module="mod_event_socket"/><load module="mod_xml_curl"/><load module="mod_sofia"/>
         <load module="mod_dialplan_xml"/>
       </modules>
+    </configuration>
+    <configuration name="xml_curl.conf" description="Uncached ephemeral agent and gateway directory">
+      <bindings><binding name="opensend-agents">
+        <param name="gateway-url" value="http://call-gateway:8090/agents/directory" bindings="directory"/>
+        <param name="gateway-credentials" value="directory:${FREESWITCH_DIRECTORY_SECRET}"/>
+        <param name="auth-scheme" value="basic"/>
+        <param name="timeout" value="3"/>
+      </binding></bindings>
     </configuration>
     <configuration name="switch.conf" description="Media ports">
       <settings>
@@ -66,6 +74,9 @@
           <param name="force-register-db-domain" value="freeswitch"/>
           <param name="force-subscription-domain" value="freeswitch"/>
           <param name="manage-presence" value="false"/>
+          <!-- Accept private Docker/LAN agents as well as public/relay candidates. -->
+          <param name="apply-candidate-acl" value="rfc1918.auto"/>
+          <param name="apply-candidate-acl" value="wan.auto"/>
           <param name="local-network-acl" value="localnet.auto"/>
           <param name="suppress-cng" value="true"/>
           <param name="disable-transcoding" value="true"/>
@@ -75,14 +86,7 @@
       </profile></profiles>
     </configuration>
   </section>
-  <section name="directory">
-    <domain name="freeswitch">
-      <params><param name="dial-string" value="{presence_id=${dialed_user}@${dialed_domain}}${sofia_contact(${dialed_user}@${dialed_domain})}"/></params>
-      <groups><group name="calling"><users>
-        <X-PRE-PROCESS cmd="include" data="/opt/freeswitch/conf/directory/*.xml"/>
-      </users></group></groups>
-    </domain>
-  </section>
+  <section name="directory"/>
   <section name="dialplan">
     <context name="calling">
       <extension name="incoming-gateway">
@@ -111,6 +115,7 @@
           <action application="set" data="instant_ringback=true"/>
           <action application="set" data="hangup_after_bridge=true"/>
           <action application="export" data="nolocal:absolute_codec_string=OPUS@48000h@20i"/>
+          <action application="export" data="nolocal:media_webrtc=true"/>
           <action application="bridge" data="user/${opensend_agent}@freeswitch"/>
           <action application="hangup"/>
         </condition>
@@ -134,13 +139,7 @@
         </condition>
       </extension>
     </context>
-    <!-- Browser clients cannot directly originate WhatsApp/PSTN calls. The API owns signaling. -->
-    <context name="agents">
-      <extension name="local-agent">
-        <condition field="destination_number" expression="^(20[0-9]{2})$">
-          <action application="bridge" data="user/$1@freeswitch"/>
-        </condition>
-      </extension>
-    </context>
+    <!-- All browser routing requires backend authorization. -->
+    <context name="softphone-deny"/>
   </section>
 </document>

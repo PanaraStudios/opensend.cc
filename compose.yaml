@@ -161,16 +161,16 @@ services:
     environment:
       FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
-      FREESWITCH_AGENT_SECRET: ${FREESWITCH_AGENT_SECRET:-}
+      FREESWITCH_DIRECTORY_SECRET: ${FREESWITCH_DIRECTORY_SECRET:-}
       FREESWITCH_PUBLIC_IP: ${FREESWITCH_PUBLIC_IP:-auto}
     volumes:
-      - freeswitch-certs:/certs
+      - ${FREESWITCH_CERT_DIR:-freeswitch-certs}:/certs
       - calling-recordings:/recordings
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          '/opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x status | grep -q ''UP'' && /opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x ''sofia status'' | grep -q ''internal.*RUNNING'' ',
+          '/opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x status | grep -q ''UP'' && /opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x ''sofia status'' | grep -q ''internal.*RUNNING'' && /opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$$FREESWITCH_ESL_SECRET" -x ''module_exists mod_xml_curl'' | grep -q ''true'' ',
         ]
       interval: 10s
       timeout: 5s
@@ -194,6 +194,8 @@ services:
       JANUS_URL: http://janus:8088/janus
       JANUS_ADMIN_URL: http://janus:7088/admin
       JANUS_API_SECRET: ${JANUS_API_SECRET:-}
+      FREESWITCH_DIRECTORY_SECRET: ${FREESWITCH_DIRECTORY_SECRET:-}
+      CALL_AGENT_QUEUES: '${CALL_AGENT_QUEUES:-{}}'
       FREESWITCH_HOST: freeswitch
       FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
@@ -213,6 +215,20 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+  # Opt in with --profile calling-turn in addition to --profile calling.
+  coturn:
+    profiles: [calling-turn]
+    image: opensend-coturn:4.6
+    build:
+      context: docker/coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "20800-20999:20800-20999/udp"
+    environment:
+      CALL_TURN_PUBLIC_IP: ${CALL_TURN_PUBLIC_IP:-}
+      CALL_TURN_PASSWORD: ${CALL_TURN_PASSWORD:-}
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]

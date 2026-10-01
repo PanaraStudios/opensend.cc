@@ -104,6 +104,7 @@ function fixture(inviteFailure?: string) {
         "JANUS_API_SECRET",
         "FREESWITCH_ESL_SECRET",
         "FREESWITCH_SIP_SECRET",
+        "FREESWITCH_DIRECTORY_SECRET",
       ]
         .map((key) => [key, "s".repeat(64)])
         .concat([["CALL_GATEWAY_CONVEX_HTTP_URL", "http://unused"]])
@@ -129,7 +130,10 @@ test("a rejected SIP INVITE preserves its cause when controller teardown closes 
       message: "Not Found",
       status: 502,
     })
-    assert.equal(f.commands.filter((command) => command === "janus:destroy").length, 1)
+    assert.equal(
+      f.commands.filter((command) => command === "janus:destroy").length,
+      1
+    )
     assert.equal(f.events.filter((event) => event.event === "hangup").length, 1)
   } finally {
     await f.controller.close()
