@@ -19,7 +19,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { VideoPlayer } from "@/components/ui/video-player"
-import { cn } from "@/lib/utils"
 
 export type MediaViewerItem = {
   id: string
@@ -142,7 +141,7 @@ function ViewerSlides({
                       poster={slide.poster}
                       duration={slide.duration}
                       label={slide.filename || "Video"}
-                      className="max-h-full [&_video]:max-h-[45svh]"
+                      layout="stage"
                     />
                   ) : (
                     <ViewerImage key={slide.id} item={slide} />
@@ -179,7 +178,6 @@ function ViewerSlides({
 }
 
 function ViewerImage({ item }: { item: MediaViewerItem }) {
-  const [zoom, setZoom] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
   if (failed)
     return (
@@ -188,34 +186,22 @@ function ViewerImage({ item }: { item: MediaViewerItem }) {
       </p>
     )
   return (
-    <div className="size-full overflow-auto">
-      <Button
-        type="button"
-        variant="ghost"
-        aria-label={zoom ? "Zoom out" : "Zoom in"}
-        aria-pressed={zoom}
-        className={cn(
-          "h-full w-full p-0",
-          zoom
-            ? "h-auto min-h-full min-w-[200%] cursor-zoom-out"
-            : "cursor-zoom-in"
-        )}
-        onClick={() => setZoom(!zoom)}
-      >
-        {/* Signed media must be fetched directly, without an image proxy. Full size mounts only for the active slide. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={item.src}
-          alt={item.caption || item.filename || "Photo"}
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailed(true)}
-          className={cn(
-            "object-contain",
-            zoom ? "w-full" : "max-h-full max-w-full"
-          )}
-        />
-      </Button>
+    <div
+      tabIndex={0}
+      role="group"
+      aria-label="Photo"
+      className="flex size-full items-center justify-center overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+    >
+      {/* Signed media must be fetched directly, without an image proxy. Full size mounts only for the active slide. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={item.src}
+        alt={item.caption || item.filename || "Photo"}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="block size-full object-contain"
+      />
     </div>
   )
 }

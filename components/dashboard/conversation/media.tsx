@@ -124,7 +124,12 @@ export function ConversationMedia({
   if (type === "video")
     return (
       <>
-        <VideoPlayer src={src} onOpen={open} className="w-72 max-w-full" />
+        <VideoPlayer
+          src={src}
+          onOpen={open}
+          detectVideoNote
+          className="w-72 max-w-full"
+        />
         {viewer}
       </>
     )

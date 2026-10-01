@@ -59,7 +59,7 @@ function AudioPlayerContent({
       onKeyDown={onKeyDown}
       data-testid={compact ? "voice-player" : "audio-player"}
     >
-      <audio ref={ref} src={src} preload="none" {...events} />
+      <audio ref={ref} src={src} preload="metadata" {...events} />
       {!compact ? <span className="truncate text-xs">{label}</span> : null}
       <div className="flex items-center gap-2">
         {compact
@@ -81,6 +81,7 @@ function AudioPlayerContent({
         </Button>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Slider
+            variant="media"
             aria-label={`Seek ${compact ? "voice note" : "audio"}`}
             value={[position]}
             min={0}
