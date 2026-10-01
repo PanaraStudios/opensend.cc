@@ -1,3 +1,4 @@
+import { pathEntry, action as ivrAction } from "../ivr/validators"
 import { v } from "convex/values"
 import {
   callMedia,
@@ -38,6 +39,9 @@ export const callPayloadFields = {
   error: nullableString,
   error_code: nullableNumber,
   assigned_agent: nullableString,
+  ivr_id: v.union(v.id("ivrs"), v.null()),
+  ivr_path: v.array(pathEntry),
+  ivr_outcome: v.union(ivrAction, v.null()),
 }
 export const callPayloadValue = v.object(callPayloadFields)
 export const callPageValue = v.object({

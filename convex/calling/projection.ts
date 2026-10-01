@@ -1,3 +1,4 @@
+import { completeOnHangup } from "../ivr/runtime"
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
@@ -363,6 +364,8 @@ async function lifecycle(
       id: row._id,
     })
   } else if (updated.mode === "gateway") {
+    if (CALL_TERMINAL.has(updated.status))
+      await completeOnHangup(ctx, updated._id)
     if (CALL_TERMINAL.has(updated.status))
       await ctx.scheduler.runAfter(0, internal.calling.callActions.cleanup, {
         id: row._id,

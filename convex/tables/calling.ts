@@ -1,3 +1,4 @@
+import { routing, pathEntry, action as ivrAction } from "../ivr/validators"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 import { fileReference } from "./storage"
@@ -82,6 +83,9 @@ export const callingTables = {
     mediaUpAt: v.optional(v.number()),
     gatewayAt: v.optional(v.number()),
     gatewayRouted: v.optional(v.boolean()),
+    ivrId: v.optional(v.id("ivrs")),
+    ivrPath: v.optional(v.array(pathEntry)),
+    ivrOutcome: v.optional(ivrAction),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
@@ -129,7 +133,9 @@ export const callingTables = {
     settings: v.string(),
     updatedAt: v.number(),
     restrictions: v.optional(v.string()),
+    routing: v.optional(routing),
   })
+    .index("by_routingIvrId", ["routing.kind", "routing.ivrId"])
     .index("by_accountId", ["accountId"])
     .index("by_organizationId", ["organizationId"]),
   gatewayEvents: defineTable({

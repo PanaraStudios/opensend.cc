@@ -4,7 +4,7 @@ import type { IdempotentRequest } from '../common/interfaces/idempotent-request.
 import type { PostOptions } from '../common/interfaces';
 
 export interface CreateMediaUploadOptions {
-  use: 'whatsapp' | 'template' | 'email' | 'import';
+  use: 'ivr' | 'whatsapp' | 'template' | 'email' | 'import';
   filename: string;
   content_type: string;
   size: number;

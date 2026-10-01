@@ -25,6 +25,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: IVRs
   - name: API Keys
   - name: Broadcasts
   - name: Contact Properties
@@ -10948,7 +10949,7 @@ paths:
               type: object
               required: [use, filename, content_type, size]
               properties:
-                use: { type: string, enum: [whatsapp, template, email, import] }
+                use: { type: string, enum: [ivr, whatsapp, template, email, import] }
                 filename: { type: string, maxLength: 1024 }
                 content_type: { type: string, maxLength: 256 }
                 size: { type: integer, minimum: 1, maximum: 104857600 }
@@ -12794,6 +12795,250 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+  /ivrs:
+    post:
+      operationId: ivrs/create
+      tags:
+        - IVRs
+      summary: create
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IvrDefinition"
+      responses:
+        "201":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ivr"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+    get:
+      operationId: ivrs/list
+      tags:
+        - IVRs
+      summary: list
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:read
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: after
+          in: query
+          schema: &a1
+            type: string
+        - name: before
+          in: query
+          schema: *a1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    const: list
+                  has_more:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ivr"
+                required:
+                  - object
+                  - has_more
+                  - data
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+  /ivrs/{id}:
+    get:
+      operationId: ivrs/get
+      tags:
+        - IVRs
+      summary: get
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:read
+      parameters:
+        - &a2
+          name: id
+          in: path
+          required: true
+          schema: *a1
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ivr"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+    patch:
+      operationId: ivrs/update
+      tags:
+        - IVRs
+      summary: update
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:write
+      parameters:
+        - *a2
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IvrPatch"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ivr"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+    delete:
+      operationId: ivrs/remove
+      tags:
+        - IVRs
+      summary: remove
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:write
+      parameters:
+        - *a2
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    const: ivr
+                  id: *a1
+                  deleted:
+                    type: boolean
+                    const: true
+                required:
+                  - object
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+  /ivrs/{id}/validate:
+    post:
+      operationId: ivrs/validate
+      tags:
+        - IVRs
+      summary: validate
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
+        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
+        (use=ivr, media:write, at most 16 MiB).
+      x-opensend-scope: ivrs:read
+      parameters:
+        - *a2
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IvrPatch"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items: *a1
+                required:
+                  - valid
+                  - errors
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
 components:
   headers:
     ratelimit_limit:
@@ -17994,6 +18239,8 @@ components:
     ApiScope:
       type: string
       enum:
+        - ivrs:read
+        - ivrs:write
         - media:read
         - media:write
         - emails:read
@@ -21031,6 +21278,7 @@ components:
         - email.failed
         - email.scheduled
         - email.suppressed
+        - whatsapp.call.ivr_completed
         - whatsapp.call.ringing
         - whatsapp.call.connected
         - whatsapp.call.completed
@@ -26268,6 +26516,19 @@ components:
     WhatsAppCall:
       type: object
       properties:
+        ivr_id:
+          type:
+            - string
+            - "null"
+        ivr_path:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/IvrPathEntry"
+        ivr_outcome:
+          anyOf:
+            - $ref: "#/components/schemas/IvrAction"
+            - type: "null"
         object:
           const: whatsapp_call
         id:
@@ -26402,6 +26663,19 @@ components:
     WhatsAppCallDetail:
       type: object
       properties:
+        ivr_id:
+          type:
+            - string
+            - "null"
+        ivr_path:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/IvrPathEntry"
+        ivr_outcome:
+          anyOf:
+            - $ref: "#/components/schemas/IvrAction"
+            - type: "null"
         object:
           const: whatsapp_call
         id:
@@ -26708,6 +26982,8 @@ components:
     UpdateCallingSettings:
       type: object
       properties:
+        routing:
+          $ref: "#/components/schemas/CallingRouting"
         calling:
           $ref: "#/components/schemas/CallingSettings"
         handling_mode:
@@ -26721,6 +26997,8 @@ components:
     PhoneNumberCalling:
       type: object
       properties:
+        routing:
+          $ref: "#/components/schemas/CallingRouting"
         account_id:
           type: string
         handling_mode:
@@ -26819,6 +27097,319 @@ components:
             - to
         - required:
             - recipient
+    IvrPrompt:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: audio
+            fileId: &a1
+              type: string
+          required:
+            - kind
+            - fileId
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: tts
+            text:
+              type: string
+              minLength: 1
+              maxLength: 2000
+            voice: *a1
+          required:
+            - kind
+            - text
+          additionalProperties: false
+    IvrAction:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: submenu
+            menuId: *a1
+          required:
+            - kind
+            - menuId
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: agents
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: bot
+            botId: *a1
+          required:
+            - kind
+            - botId
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: voicemail
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: playAndHangup
+            prompt:
+              $ref: "#/components/schemas/IvrPrompt"
+          required:
+            - kind
+            - prompt
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: webhook
+            url:
+              type: string
+              format: uri
+            secretId: *a1
+          required:
+            - kind
+            - url
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: hangup
+          required:
+            - kind
+          additionalProperties: false
+    IvrMenu:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[a-zA-Z0-9._:-]{1,128}$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        prompt:
+          $ref: "#/components/schemas/IvrPrompt"
+        invalidPrompt:
+          $ref: "#/components/schemas/IvrPrompt"
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 5
+        retries:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+        maxDigits:
+          type: integer
+          minimum: 1
+          maximum: 12
+          default: 1
+        options:
+          type: object
+          propertyNames:
+            pattern: ^[0-9*#]$
+          maxProperties: 12
+          additionalProperties:
+            $ref: "#/components/schemas/IvrAction"
+        noInputAction:
+          $ref: "#/components/schemas/IvrAction"
+        failureAction:
+          $ref: "#/components/schemas/IvrAction"
+      required:
+        - id
+        - name
+        - prompt
+        - options
+        - noInputAction
+        - failureAction
+      additionalProperties: false
+    IvrBusinessHours:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        timezone_id: *a1
+        weekly_operating_hours:
+          type: array
+          items:
+            type: object
+            properties:
+              day_of_week:
+                type: string
+                enum:
+                  - MONDAY
+                  - TUESDAY
+                  - WEDNESDAY
+                  - THURSDAY
+                  - FRIDAY
+                  - SATURDAY
+                  - SUNDAY
+              open_time:
+                type: string
+                pattern: ^(?:[01][0-9]|2[0-3])[0-5][0-9]$
+              close_time:
+                type: string
+                pattern: ^(?:[01][0-9]|2[0-3])[0-5][0-9]$
+            required:
+              - day_of_week
+              - open_time
+              - close_time
+            additionalProperties: false
+          maxItems: 14
+        holiday_schedule:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              start_time: *a1
+              end_time: *a1
+            required:
+              - date
+              - start_time
+              - end_time
+            additionalProperties: false
+          maxItems: 20
+        closedAction:
+          $ref: "#/components/schemas/IvrAction"
+      required:
+        - status
+        - closedAction
+      additionalProperties: false
+    IvrDefinition:
+      type: object
+      properties: &a2
+        name: &a3
+          type: string
+          minLength: 1
+          maxLength: 256
+        language: &a4
+          type: string
+          minLength: 1
+          maxLength: 64
+        entryMenuId: *a1
+        menus: &a5
+          type: array
+          items:
+            $ref: "#/components/schemas/IvrMenu"
+          maxItems: 50
+          minItems: 1
+        businessHours: &a6
+          $ref: "#/components/schemas/IvrBusinessHours"
+      required:
+        - name
+        - language
+        - entryMenuId
+        - menus
+      additionalProperties: false
+    IvrPatch:
+      type: object
+      properties: *a2
+      required: []
+      additionalProperties: false
+    Ivr:
+      type: object
+      properties:
+        object:
+          type: string
+          const: ivr
+        id: *a1
+        name: *a3
+        language: *a4
+        entryMenuId: *a1
+        menus: *a5
+        businessHours: *a6
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        webhook_signing_secret: *a1
+        prompt_status:
+          type: string
+          enum:
+            - ready
+            - pending_render
+      required:
+        - object
+        - id
+        - name
+        - language
+        - entryMenuId
+        - menus
+        - created_at
+        - updated_at
+        - webhook_signing_secret
+        - prompt_status
+      additionalProperties: false
+    IvrPathEntry:
+      type: object
+      properties:
+        menuId: *a1
+        digits: *a1
+        action:
+          $ref: "#/components/schemas/IvrAction"
+        at:
+          type: number
+      required:
+        - menuId
+        - digits
+        - action
+        - at
+      additionalProperties: false
+    CallingRouting:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: agents
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: api
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              type: string
+              const: ivr
+            ivrId: *a1
+          required:
+            - kind
+            - ivrId
+          additionalProperties: false
 webhooks:
   whatsappCall:
     post:
@@ -30915,3 +31506,70 @@ webhooks:
       responses:
         "200":
           description: Webhook acknowledged
+  whatsappCallIvrCompleted:
+    post:
+      operationId: webhooks/whatsapp/ivrCompleted
+      summary: IVR completed or handed off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  const: whatsapp.call.ivr_completed
+                created_at:
+                  type: string
+                  format: date-time
+                data:
+                  type: object
+                  properties:
+                    id: &a1
+                      type: string
+                    account_id: *a1
+                    ivr_id: *a1
+                    path:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/IvrPathEntry"
+                      maxItems: 100
+                    final_action:
+                      $ref: "#/components/schemas/IvrAction"
+                  required:
+                    - id
+                    - account_id
+                    - ivr_id
+                    - path
+                    - final_action
+                  additionalProperties: false
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+            example:
+              type: whatsapp.call.ivr_completed
+              created_at: 2026-10-02T10:00:00Z
+              data:
+                id: call_42
+                account_id: number_1
+                ivr_id: ivr_1
+                path:
+                  - menuId: main
+                    digits: "1"
+                    action:
+                      kind: submenu
+                      menuId: support
+                    at: 1790935200000
+                  - menuId: support
+                    digits: "2"
+                    action:
+                      kind: voicemail
+                    at: 1790935201000
+                final_action:
+                  kind: voicemail
+      responses:
+        "200":
+          description: Acknowledged

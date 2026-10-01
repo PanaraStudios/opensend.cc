@@ -468,6 +468,9 @@ describe("OpenAPI contract", () => {
       "GET /meta/webhook",
       "POST /meta/webhook",
       "POST /calling/gateway/events",
+      "POST /calling/gateway/ivr/start",
+      "POST /calling/gateway/ivr/next",
+      "GET /calling/ivr/audio/*",
       "GET /t/o/*",
       "GET /t/c/*",
       "GET /t/ask",
@@ -485,7 +488,9 @@ describe("OpenAPI contract", () => {
         contract.paths[path][method.toLowerCase()]["x-opensend-scope"]
       ).toBe(scopeName(scope))
       if (scope !== "full_access")
-        expect(scope.access).toBe(method === "GET" ? "read" : "write")
+        expect(scope.access).toBe(
+          method === "GET" || path === "/ivrs/{id}/validate" ? "read" : "write"
+        )
     }
     const ids = Object.values(contract.paths).flatMap((ops) =>
       Object.values(ops).map((op) => op.operationId)
@@ -1565,4 +1570,82 @@ test("calling REST settings, permissions, lifecycle and idempotent connect valid
     "POST",
     await call(`/whatsapp/calls/${created.id}/terminate`, "POST", {})
   )
+})
+
+test("IVR definitions, dry-run validation and customer completion sample validate against the public schemas", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-key-".repeat(6))
+  const f = await fixture()
+  const key = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: { name: "IVR schema", permission: "full_access", domainId: null },
+  })
+  const call = (path: string, method = "GET", body?: unknown) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${key.token}`,
+        "content-type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  }
+  const input = {
+    name: "Reception",
+    language: "en",
+    entryMenuId: "main",
+    menus: [
+      {
+        id: "main",
+        name: "Main",
+        prompt: { kind: "tts", text: "Press one" },
+        options: { "1": { kind: "voicemail" } },
+        noInputAction: { kind: "hangup" },
+        failureAction: { kind: "hangup" },
+      },
+    ],
+  }
+  const created = await response(
+    "/ivrs",
+    "POST",
+    await call("/ivrs", "POST", input),
+    201
+  )
+  await response("/ivrs", "GET", await call("/ivrs"))
+  await response("/ivrs/{id}", "GET", await call(`/ivrs/${created.id}`))
+  await response(
+    "/ivrs/{id}",
+    "PATCH",
+    await call(`/ivrs/${created.id}`, "PATCH", { name: "Updated" })
+  )
+  await response(
+    "/ivrs/{id}/validate",
+    "POST",
+    await call(`/ivrs/${created.id}/validate`, "POST", {
+      entryMenuId: "missing",
+    })
+  )
+  await response(
+    "/ivrs/{id}",
+    "DELETE",
+    await call(`/ivrs/${created.id}`, "DELETE")
+  )
+  const spec = contract as unknown as {
+    webhooks: {
+      whatsappCallIvrCompleted: {
+        post: {
+          requestBody: {
+            content: {
+              "application/json": { schema: AnySchema; example: unknown }
+            }
+          }
+        }
+      }
+    }
+  }
+  const sample =
+    spec.webhooks.whatsappCallIvrCompleted.post.requestBody.content[
+      "application/json"
+    ]
+  validateBody(sample.schema, sample.example)
 })

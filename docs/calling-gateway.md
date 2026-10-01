@@ -718,3 +718,13 @@ runtime contains drachtio-srf and 12 transitive dependency directories; the WASM
 codec, browser harness and root app dependencies are excluded. No Convex/dashboard
 files were changed. Only `opensend-calling-test` media containers/images/volumes were
 used; `c down` removed its containers/network and retained its data volumes.
+
+### Configurable IVRs (8d-3)
+
+An authenticated `/route` with `target: "ivr", ivrId` runs the
+[IVR engine](ivr.md) on the existing async/full outbound controller. It collects
+menu digits, requests a signed Convex decision, and preserves the channel for
+agent, voicemail or bot handoffs. Routing without `ivrId` retains the demo.
+`services/call-gateway/scripts/test-ivr-harness.sh` takes the shared harness lock,
+rebuilds only the `opensend-calling-test` images, runs the new IVR and existing
+media/agent regressions, and tears down that project before releasing the lock.

@@ -1,3 +1,4 @@
+import { completeOnHangup } from "../ivr/runtime"
 import { requireAvailable } from "./agentAccess"
 import { callPageValue, callDetailValue } from "./values"
 import { v } from "convex/values"
@@ -114,6 +115,9 @@ export async function payload(
     error: row.error ?? null,
     error_code: row.errorCode ?? null,
     assigned_agent: row.assignedAgent ?? null,
+    ivr_id: row.ivrId ?? null,
+    ivr_path: row.ivrPath ?? [],
+    ivr_outcome: row.ivrOutcome ?? null,
   }
 }
 export async function callEvent(
@@ -533,6 +537,8 @@ export const finish = internalMutation({
     const updated = (await ctx.db.get("calls", row._id))!
     if (updated.status !== row.status)
       await callEvent(ctx, updated, updated.status)
+    if (CALL_TERMINAL.has(updated.status))
+      await completeOnHangup(ctx, updated._id)
     if (updated.mode === "gateway" && CALL_TERMINAL.has(updated.status))
       await ctx.scheduler.runAfter(0, internal.calling.callActions.cleanup, {
         id: row._id,

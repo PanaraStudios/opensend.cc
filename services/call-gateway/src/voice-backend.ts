@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { CallGatewayClient } from "./client.js"
+import { IvrBackend } from "./ivr-runner.js"
 import type { VoiceToolCall, VoiceTranscript } from "./voice-adapter.js"
 import type { CallState } from "./call-state.js"
 
@@ -31,7 +31,7 @@ export type VoiceToolResult =
   { ok: true; result: unknown } | { ok: false; error: string }
 
 /** Uses the same signed JSON client as calling-core; destinations are fixed. */
-export class VoiceBackend extends CallGatewayClient {
+export class VoiceBackend extends IvrBackend {
   async event(callId: string, event: VoiceEvent) {
     await this.post(
       "/calling/gateway/voice/events",

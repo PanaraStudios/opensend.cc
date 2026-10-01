@@ -1,3 +1,4 @@
+import { Ivrs } from './ivrs/ivrs';
 import { Media } from './media/media';
 import { version } from '../package.json';
 import { ApiKeys } from './api-keys/api-keys';
@@ -79,6 +80,7 @@ export class Opensend {
   readonly messenger = new Messenger(this);
   readonly instagram = new Instagram(this);
   readonly whatsapp = new WhatsApp(this);
+  readonly ivrs = new Ivrs(this);
   readonly media = new Media(this);
 
   constructor(

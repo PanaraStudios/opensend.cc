@@ -1,4 +1,5 @@
 "use node"
+import { routing } from "../ivr/validators"
 import { v } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -22,6 +23,7 @@ const settingsArgs = {
   from: v.string(),
   calling: v.optional(v.record(v.string(), v.any())),
   mode: v.optional(handlingMode),
+  routing: v.optional(routing),
   announcementFileId: v.optional(v.string()),
 }
 async function settings(
@@ -32,12 +34,14 @@ async function settings(
     from: string
     calling?: Record<string, unknown>
     mode?: "gateway" | "api"
+    routing?: typeof routing.type
     announcementFileId?: string
   }
 ): Promise<{
   account_id: Id<"channelAccounts">
   handling_mode: "api" | "gateway"
   calling: Record<string, unknown>
+  routing: typeof routing.type
 }> {
   const target = await ctx.runQuery(internal.calling.rows.target, {
     organizationId: args.organizationId,
@@ -46,10 +50,11 @@ async function settings(
     write:
       args.calling !== undefined ||
       args.mode !== undefined ||
+      args.routing !== undefined ||
       args.announcementFileId !== undefined,
   })
   if (
-    args.mode === "gateway" &&
+    (args.mode === "gateway" || args.routing?.kind === "ivr") &&
     (!process.env.CALL_GATEWAY_URL || !process.env.CALL_GATEWAY_SECRET)
   )
     throw apiError(
@@ -57,6 +62,12 @@ async function settings(
       "gateway_unavailable",
       "The calling gateway is not configured."
     )
+  if (args.routing?.kind === "ivr")
+    await ctx.runQuery(internal.calling.settingsState.routingTarget, {
+      organizationId: args.organizationId,
+      caller: args.caller,
+      ivrId: args.routing.ivrId,
+    })
   const at = Date.now(),
     token = await decryptSecret(target.encryptedToken)
   let update = args.calling
@@ -145,18 +156,29 @@ async function settings(
     await ctx.runMutation(internal.calling.settingsState.store, {
       accountId: target.account._id,
       settings: JSON.stringify(calling),
-      mode: args.mode,
+      mode:
+        args.routing?.kind === "api"
+          ? "api"
+          : args.routing?.kind === "ivr"
+            ? "gateway"
+            : args.mode,
+      routing: args.routing,
       at,
     })
     return {
       account_id: target.account._id,
       handling_mode:
-        args.mode ??
+        (args.routing?.kind === "api"
+          ? "api"
+          : args.routing?.kind === "ivr"
+            ? "gateway"
+            : args.mode) ??
         target.settings?.mode ??
         (process.env.CALL_GATEWAY_URL && process.env.CALL_GATEWAY_SECRET
           ? "gateway"
           : "api"),
       calling,
+      routing: args.routing ?? target.settings?.routing ?? { kind: "agents" },
     }
   } catch (error) {
     callingFailure(error)
@@ -198,6 +220,7 @@ export const dashboardUpdate = action({
     from: v.string(),
     calling: v.optional(v.record(v.string(), v.any())),
     mode: v.optional(handlingMode),
+    routing: v.optional(routing),
     announcementFileId: v.optional(v.string()),
   },
   returns: v.any(),

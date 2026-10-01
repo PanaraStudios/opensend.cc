@@ -1,3 +1,4 @@
+import { ivrTables } from "./tables/ivr"
 import { callingTables } from "./tables/calling"
 import { storageTables } from "./tables/storage"
 import { receivedTables } from "./tables/received"
@@ -27,6 +28,7 @@ import { webhookTables } from "./tables/webhooks"
 /* Each feature owns one file in ./tables, so features can be built in
    parallel without editing the same lines here. */
 export default defineSchema({
+  ...ivrTables,
   ...callingTables,
   ...storageTables,
   ...broadcastTables,

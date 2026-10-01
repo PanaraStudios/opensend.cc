@@ -394,6 +394,10 @@ export async function performCall(
           callId: row._id,
           target: current.agentExtension ? "agent" : "ivr",
           extension: current.agentExtension,
+          ...(target.settings?.routing?.kind === "ivr" &&
+          !current.agentExtension
+            ? { ivrId: target.settings.routing.ivrId }
+            : {}),
         })
         await ctx.runMutation(internal.calling.rows.finish, {
           id: row._id,
@@ -495,6 +499,28 @@ export const gatewayConnect = internalAction({
           session: { sdp_type: "answer", sdp: answerSdp },
           preAcceptedSdp: answerSdp,
         })
+        if (target.settings?.routing?.kind === "ivr") {
+          await signal(ctx, target, {
+            action: "accept",
+            call_id: row.wacid,
+            session: { sdp_type: "answer", sdp: answerSdp },
+          })
+          const accepted = await ctx.runMutation(internal.calling.rows.finish, {
+            id,
+            status: "connected",
+          })
+          if (!CALL_TERMINAL.has(accepted.status)) {
+            await gateway().route({
+              callId: id,
+              target: "ivr",
+              ivrId: target.settings.routing.ivrId,
+            })
+            await ctx.runMutation(internal.calling.rows.finish, {
+              id,
+              routed: true,
+            })
+          }
+        }
         await ctx.scheduler.runAfter(
           Math.max(
             0,
