@@ -18,3 +18,5 @@ export * from "./webhooks.js"
 export { addChannelTools, channelToolOptions } from "./channelMessaging.js"
 
 export { addMediaTools } from "./media.js"
+
+export { addCallingTools } from "./calling.js"
