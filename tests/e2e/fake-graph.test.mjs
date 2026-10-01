@@ -197,7 +197,10 @@ test("fake Graph exchanges Facebook Login codes, returns Page tokens and linked 
       (await get("123?fields=first_name,last_name")).first_name,
       "Ada"
     )
-    assert.equal((await get("456?fields=name,username")).username, "grace_e2e")
+    assert.equal(
+      (await get("456?fields=name,username,profile_pic")).username,
+      "grace_e2e"
+    )
     const calls = await (await fetch(`${graph.origin}/__calls`)).json()
     assert.equal(
       calls.find((c) => c.path.endsWith("/messages")).authorization,

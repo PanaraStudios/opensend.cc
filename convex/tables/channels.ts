@@ -135,6 +135,7 @@ export const channelTables = {
     /** E.164, for WhatsApp. */
     phone: v.optional(v.string()),
     profileName: v.optional(v.string()),
+    username: v.optional(v.string()),
     /** WhatsApp error 131050: the person stopped marketing messages. */
     marketingOptOut: v.boolean(),
     lastInboundAt: v.optional(v.number()),
@@ -188,7 +189,8 @@ export const channelTables = {
       "accountId",
       "channelContactId",
     ])
-    .index("by_channelContactId", ["channelContactId"]),
+    .index("by_channelContactId", ["channelContactId"])
+    .index("by_contactId", ["contactId"]),
   channelMessages: defineTable({
     organizationId: v.string(),
     channel: messagingChannelValue,

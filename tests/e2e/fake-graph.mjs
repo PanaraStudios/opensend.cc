@@ -286,8 +286,13 @@ export const ROUTES = [
           ? FACEBOOK_PAGE
           : call.query.fields === "first_name,last_name"
             ? { id, first_name: "Ada", last_name: "E2E" }
-            : call.query.fields === "name,username"
-              ? { id, name: "Grace E2E", username: "grace_e2e" }
+            : call.query.fields === "name,username,profile_pic"
+              ? {
+                  id,
+                  name: "Grace E2E",
+                  username: "grace_e2e",
+                  profile_pic: "https://example.com/grace.png",
+                }
               : { id, name: "Opensend E2E" },
     }),
   },

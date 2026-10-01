@@ -67,13 +67,13 @@ describe("contact identity", () => {
     )
     assert.deepEqual(contactIdentity({}, channelIdentity), {
       label: "Page profile",
-      secondary: "1001",
+      secondary: "Messenger",
       kind: "channel",
       channel: "messenger",
     })
     assert.equal(
       contactIdentity({}, { ...channelIdentity, profileName: "" }).label,
-      "1001"
+      "Unknown contact"
     )
     assert.equal(contactIdentity({}).label, "Unknown contact")
   })
@@ -89,5 +89,72 @@ describe("contact identity", () => {
     })
     assert.equal(contactInputError({}, { linkedChannel: true }), null)
     assert.equal(contactInputError({ phone: "+12345678" }), null)
+  })
+})
+
+describe("channel usernames", () => {
+  const channelIdentity = {
+    channel: "instagram" as const,
+    externalId: "20000001",
+    username: "grace",
+    profileName: "Profile name",
+  }
+  it("prefers CRM name, email, phone, username, then profile name", () => {
+    assert.equal(
+      contactIdentity({
+        firstName: "CRM",
+        email: "a@example.com",
+        phone: "+12345678",
+        channelIdentity,
+      }).label,
+      "CRM"
+    )
+    assert.equal(
+      contactIdentity({
+        email: "a@example.com",
+        phone: "+12345678",
+        channelIdentity,
+      }).label,
+      "a@example.com"
+    )
+    assert.equal(
+      contactIdentity({ phone: "+12345678", channelIdentity }).label,
+      "+12345678"
+    )
+    assert.equal(contactIdentity({ channelIdentity }).label, "@grace")
+    assert.equal(
+      contactIdentity({
+        channelIdentity: { ...channelIdentity, username: undefined },
+      }).label,
+      "Profile name"
+    )
+    assert.equal(
+      contactIdentity({
+        channelIdentity: { ...channelIdentity, username: "@grace" },
+      }).label,
+      "@grace"
+    )
+  })
+  it("uses email, phone, username, then channel as secondary; never scoped ids", () => {
+    for (const [contact, secondary] of [
+      [{ email: "a@example.com", phone: "+12345678" }, "a@example.com"],
+      [{ phone: "+12345678" }, "+12345678"],
+      [{}, "@grace"],
+    ] as const)
+      assert.equal(
+        contactIdentity({ ...contact, channelIdentity }).secondary,
+        secondary
+      )
+    assert.deepEqual(
+      contactIdentity({
+        channelIdentity: { channel: "messenger", externalId: "10000001" },
+      }),
+      {
+        label: "Unknown contact",
+        secondary: "Messenger",
+        kind: "channel",
+        channel: "messenger",
+      }
+    )
   })
 })

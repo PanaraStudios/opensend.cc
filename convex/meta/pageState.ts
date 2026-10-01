@@ -112,18 +112,29 @@ export const profileTarget = internalQuery({
   },
 })
 export const profileComplete = internalMutation({
-  args: { identityId: v.id("channelContacts"), name: v.string() },
+  args: {
+    identityId: v.id("channelContacts"),
+    name: v.string(),
+    username: v.optional(v.string()),
+  },
   returns: v.null(),
-  handler: async (ctx, { identityId, name }) => {
+  handler: async (ctx, { identityId, name, username }) => {
     const identity = await ctx.db.get("channelContacts", identityId)
     if (
       !identity ||
-      !name.trim() ||
+      (!name.trim() && !username?.trim()) ||
       (await retirement(ctx, identity.organizationId))
     )
       return null
     const profileName = name.trim().slice(0, 256)
-    await ctx.db.patch("channelContacts", identityId, { profileName })
+    const handle =
+      identity.channel === "instagram"
+        ? username?.trim().replace(/^@/, "").slice(0, 256)
+        : undefined
+    await ctx.db.patch("channelContacts", identityId, {
+      ...(profileName ? { profileName } : {}),
+      ...(handle ? { username: handle } : {}),
+    })
     const contact = identity.contactId
       ? await ctx.db.get("contacts", identity.contactId)
       : null
@@ -131,7 +142,8 @@ export const profileComplete = internalMutation({
     if (
       contact?.organizationId === identity.organizationId &&
       !contact.firstName &&
-      !contact.lastName
+      !contact.lastName &&
+      profileName
     ) {
       const parts = profileNameParts(profileName)
       const updated = await patchContact(ctx, contact, parts)
@@ -147,7 +159,7 @@ export const profileComplete = internalMutation({
       await patchRow(ctx, "conversations", thread._id, {
         search: conversationSearch(
           identity.phone ?? identity.externalId,
-          profileName
+          [profileName, handle].filter(Boolean).join(" ")
         ),
       })
     return null
