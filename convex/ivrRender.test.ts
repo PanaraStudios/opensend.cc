@@ -132,3 +132,83 @@ test("an IVR cannot select another team's provider credential", async () => {
     })
   ).rejects.toBeDefined()
 })
+
+test("identical hashes are cached independently for different teams", async () => {
+  const f = await setup(),
+    wav = await pcmWav(new Uint8Array([1, 0])).arrayBuffer()
+  vi.spyOn(net, "publicFetch").mockResolvedValue(
+    Response.json({ audios: [Buffer.from(wav).toString("base64")] })
+  )
+  await f.t.action(internal.ivr.rendering.render, { id: f.id })
+  const key = await f.outsider.client.action(
+    api.voice.resources.dashboardWrite,
+    {
+      organizationId: f.outsider.team,
+      kind: "provider",
+      body: JSON.stringify({
+        provider: "sarvam",
+        label: "Other team",
+        key: "other-private-key-9876",
+      }),
+    }
+  )
+  const foreign = await f.outsider.client.action(
+    api.ivr.definitions.dashboardWrite,
+    {
+      organizationId: f.outsider.team,
+      kind: "create",
+      body: JSON.stringify({
+        ...f.input,
+        promptVoice: { ...f.input.promptVoice, credentialId: key.id },
+      }),
+    }
+  )
+  const own = await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  const other = await f.outsider.client.query(
+    api.ivr.definitions.dashboardGet,
+    { organizationId: f.outsider.team, id: foreign.id as string }
+  )
+  expect(own.prompt_renders[0].hash).toBe(other.prompt_renders[0].hash)
+  expect(own.prompt_renders[0].status).toBe("ready")
+  expect(other.prompt_renders[0].status).toBe("pending_render")
+  expect(other.prompt_renders[0].audio_url).toBeNull()
+  await expect(
+    f.owner.client.query(api.ivr.definitions.dashboardGet, {
+      organizationId: f.owner.team,
+      id: foreign.id as string,
+    })
+  ).rejects.toBeDefined()
+})
+
+test("PATCH null clears a saved provider voice and business hours", async () => {
+  const f = await setup()
+  await f.owner.client.action(api.ivr.definitions.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "update",
+    id: f.id,
+    body: JSON.stringify({
+      businessHours: { status: "DISABLED", closedAction: { kind: "hangup" } },
+    }),
+  })
+  await f.owner.client.action(api.ivr.definitions.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "update",
+    id: f.id,
+    body: JSON.stringify({ promptVoice: null, businessHours: null }),
+  })
+  const row = await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  expect(row.promptVoice).toBeUndefined()
+  expect(row.businessHours).toBeUndefined()
+  await expect(
+    f.owner.client.action(api.ivr.rendering.dashboardRender, {
+      organizationId: f.owner.team,
+      id: f.id,
+    })
+  ).rejects.toBeDefined()
+})

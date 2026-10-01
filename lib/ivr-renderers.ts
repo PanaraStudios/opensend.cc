@@ -106,11 +106,13 @@ export class PromptProviderError extends Error {
     )
   }
 }
-function status(response: Response) {
-  if (!response.ok)
+async function status(response: Response) {
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined)
     throw new PromptProviderError(
       response.status === 429 || response.status >= 500
     )
+  }
 }
 export class ElevenLabsPromptRenderer implements PromptRenderer {
   readonly name = promptRendererName("elevenlabs")
@@ -133,7 +135,9 @@ export class ElevenLabsPromptRenderer implements PromptRenderer {
         redirect: "error",
       }
     )
-    status(r)
+    await status(r)
+    if (r.headers.get("content-type")?.includes("json"))
+      throw new PromptProviderError(false)
     return { audio: pcmWav(await bounded(r)) }
   }
 }
@@ -161,7 +165,7 @@ export class SarvamPromptRenderer implements PromptRenderer {
       signal: AbortSignal.timeout(20000),
       redirect: "error",
     })
-    status(r)
+    await status(r)
     const value: unknown = JSON.parse(
       new TextDecoder().decode(await bounded(r, 24 * 1024 * 1024))
     )
@@ -184,7 +188,8 @@ export class SarvamPromptRenderer implements PromptRenderer {
       new TextDecoder().decode(audio.slice(8, 12)) !== "WAVE"
     )
       throw new Error("Invalid provider WAV audio")
-    let fmt = false
+    let fmt = false,
+      data = false
     for (let at = 12; at + 8 <= audio.length;) {
       const length = view.getUint32(at + 4, true)
       if (at + 8 + length > audio.length)
@@ -197,9 +202,12 @@ export class SarvamPromptRenderer implements PromptRenderer {
           view.getUint32(at + 12, true) === 16000 &&
           view.getUint16(at + 22, true) === 16
       }
+      if (new TextDecoder().decode(audio.slice(at, at + 4)) === "data")
+        data = length > 0 && length % 2 === 0
       at += 8 + length + (length % 2)
     }
-    if (!fmt) throw new Error("Provider must return 16 kHz mono PCM WAV")
+    if (!fmt || !data)
+      throw new Error("Provider must return 16 kHz mono PCM WAV")
     return { audio: new Blob([audio], { type: "audio/wav" }) }
   }
 }

@@ -1,6 +1,7 @@
 import { v } from "convex/values"
 import { internalMutation } from "../_generated/server"
 import { internal } from "../_generated/api"
+import { invalid } from "../api/caller"
 import { authorize, own, payload } from "./definitions"
 import { actor } from "./definitions"
 import { ivrPrompts } from "../../lib/ivr"
@@ -116,6 +117,10 @@ export const retry = internalMutation({
   handler: async (ctx, args) => {
     await authorize(ctx, args, true)
     const row = await own(ctx, args.organizationId, args.id)
+    if (!row.promptVoice)
+      throw invalid(
+        "Configure promptVoice with a team provider key before rendering"
+      )
     for (const p of ivrPrompts(row))
       if (p.kind === "tts") {
         const hash = await renderHash(row, p),
