@@ -1,9 +1,9 @@
+import { WABA, PHONE_ID } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page, type APIResponse } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import { client } from "./ses-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
-const PHONE_ID = "106540352242922"
 const SENDER = "16505551234"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const origin = () => process.env.OPENSEND_CALLBACK_ORIGIN!
@@ -13,7 +13,7 @@ async function statusWebhook(page: Page, id: string, status: string) {
     object: "whatsapp_business_account",
     entry: [
       {
-        id: "102290129340398",
+        id: WABA,
         changes: [
           {
             field: "messages",

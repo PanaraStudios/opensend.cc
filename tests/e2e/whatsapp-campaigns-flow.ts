@@ -1,11 +1,10 @@
+import { WABA, PHONE_ID as PHONE } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import type { Doc } from "../../convex/_generated/dataModel"
 import { backendRows, client } from "./ses-fixtures"
 
-const PHONE = "106540352242922"
-const WABA = "102290129340398"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const TEMPLATE = "e2e_order_update"
 const screenshot = (page: Page, name: string) =>
