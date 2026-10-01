@@ -363,7 +363,7 @@ From the repository root, generate an uncommitted harness env file:
 ```sh
 if [ ! -f .env.calling-test ]; then
   umask 077
-  for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET; do
+  for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET; do
     printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
   done > .env.calling-test
 fi
