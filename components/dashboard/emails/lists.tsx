@@ -166,7 +166,8 @@ export function EmailsView() {
             >
               {pageRows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>
+                  {/* Takes the free width; max-w-0 lets the preview truncate. */}
+                  <TableCell className="w-full max-w-0">
                     <LogCell row={row} />
                   </TableCell>
                   <TableCell>
@@ -209,10 +210,12 @@ function LogCell({ row }: { row: LogRow }) {
   return (
     <IconCell icon={channelIcon(row.channel)}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <Link href={row.href} className="font-medium hover:underline">
+        <Link href={row.href} className="truncate font-medium hover:underline">
           {row.party}
         </Link>
-        <span className="text-xs text-muted-foreground">{row.summary}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {row.summary}
+        </span>
       </div>
     </IconCell>
   )
@@ -295,7 +298,8 @@ export function ReceivingView() {
             >
               {pageRows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>
+                  {/* Takes the free width; max-w-0 lets the preview truncate. */}
+                  <TableCell className="w-full max-w-0">
                     <LogCell row={row} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">

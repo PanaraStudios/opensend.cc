@@ -1391,8 +1391,8 @@ export function IconCell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="icon-tile size-8 shrink-0 rounded-lg [&_svg]:size-4">
         <Icon />
       </span>
       {children}
