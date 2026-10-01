@@ -221,16 +221,16 @@ export function channelsTests(state: () => State) {
     try {
       await owner.goto("/channels")
       await expect(
-        owner.getByText("Embedded Signup is not set up", { exact: true })
+        owner
+          .getByRole("alert")
+          .filter({
+            hasText:
+              "Connect with Meta needs configuration IDs. You can still connect manually with an access token.",
+          })
       ).toBeVisible()
       await expect(
         owner.getByRole("button", { name: "Connect with Meta" }).first()
       ).toBeDisabled()
-      await expect(
-        owner.getByText("Facebook Login for Business is not set up", {
-          exact: true,
-        })
-      ).toBeVisible()
       await owner
         .getByRole("button", { name: "Connect channel", exact: true })
         .first()
@@ -250,7 +250,15 @@ export function channelsTests(state: () => State) {
       await screenshot(owner, "no-signup-config")
       await member.goto("/channels")
       await expect(
-        member.getByText("Embedded Signup is not set up", { exact: true })
+        member
+          .getByRole("alert")
+          .filter({
+            hasText:
+              "Connect with Meta needs configuration IDs. You can still connect manually with an access token.",
+          })
+      ).toBeVisible()
+      await expect(
+        member.getByText("Ask your instance admin", { exact: false })
       ).toBeVisible()
       await expect(
         member.getByRole("link", { name: "Set up the Meta app" })

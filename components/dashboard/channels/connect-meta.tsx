@@ -32,6 +32,13 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { DisabledTooltip } from "@/components/ui/tooltip"
+import { OptionSelect } from "@/components/dashboard/primitives"
+import { MESSAGING_CHANNELS, type MessagingChannel } from "@/lib/channels"
+import {
+  metaConnectUnavailable,
+  type MetaConnectConfig,
+} from "@/lib/meta/connect-availability"
 import { toast } from "@/components/ui/toast"
 import { channelHandle } from "@/lib/meta/account-display"
 import { actionError } from "@/lib/action-error"
@@ -110,17 +117,8 @@ type Signup = {
 export function ConnectMetaButton({
   config,
   onConnected,
-  onManualPage,
 }: {
-  onManualPage: () => void
-  config:
-    | {
-        configured: boolean
-        appId?: string
-        configIds: { whatsapp?: string; facebookLogin?: string }
-        graphVersion: string
-      }
-    | undefined
+  config: MetaConnectConfig | undefined
   onConnected: (result: ConnectedBusiness) => void
 }) {
   const { canWrite, exchangeSignup, connectFacebookLogin } =
@@ -243,6 +241,25 @@ export function ConnectMetaButton({
     }, signupLoginOptions(configId))
   }
 
+  const availability = { canWrite, sdkReady, pending }
+  const whatsappReason = metaConnectUnavailable(
+    config,
+    "whatsapp",
+    availability
+  )
+  const pageReason = metaConnectUnavailable(
+    config,
+    "facebookLogin",
+    availability
+  )
+  const mainFlow =
+    configId || !config?.configIds.facebookLogin ? "whatsapp" : "facebookLogin"
+  const mainReason = mainFlow === "whatsapp" ? whatsappReason : pageReason
+  const menuReason = !canWrite
+    ? "Create or join a team to connect a channel"
+    : pending
+      ? "Wait for the current connection to finish"
+      : null
   return (
     <>
       {appId && version ? (
@@ -262,47 +279,42 @@ export function ConnectMetaButton({
         />
       ) : null}
       <ButtonGroup aria-label="Connect a channel">
-        <Button
-          disabled={!canWrite || !configId || !sdkReady || pending}
-          onClick={start}
-        >
-          <PlusIcon />
-          {pending ? "Connecting…" : "Connect with Meta"}
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                aria-label="Connect channel"
-                disabled={!canWrite || pending}
-              />
-            }
+        <DisabledTooltip reason={mainReason}>
+          <Button
+            disabled={!!mainReason}
+            onClick={mainFlow === "whatsapp" ? start : startFacebookLogin}
           >
-            <ChevronDownIcon />
-          </DropdownMenuTrigger>
+            <PlusIcon />
+            {pending ? "Connecting…" : "Connect with Meta"}
+          </Button>
+        </DisabledTooltip>
+        <DropdownMenu>
+          <DisabledTooltip reason={menuReason}>
+            <DropdownMenuTrigger
+              render={
+                <Button aria-label="Connect channel" disabled={!!menuReason} />
+              }
+            >
+              <ChevronDownIcon />
+            </DropdownMenuTrigger>
+          </DisabledTooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                disabled={!configId || !sdkReady}
-                onClick={start}
-              >
-                <WhatsAppIcon />
-                WhatsApp
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!config?.configIds.facebookLogin || !sdkReady}
-                onClick={startFacebookLogin}
-              >
-                <MessengerIcon />
-                Facebook Page & Instagram
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!config?.configured}
-                onClick={onManualPage}
-              >
-                <MessengerIcon />
-                Connect Page manually
-              </DropdownMenuItem>
+              <DisabledTooltip reason={whatsappReason}>
+                <DropdownMenuItem disabled={!!whatsappReason} onClick={start}>
+                  <WhatsAppIcon />
+                  WhatsApp
+                </DropdownMenuItem>
+              </DisabledTooltip>
+              <DisabledTooltip reason={pageReason}>
+                <DropdownMenuItem
+                  disabled={!!pageReason}
+                  onClick={startFacebookLogin}
+                >
+                  <MessengerIcon />
+                  Facebook Page & Instagram
+                </DropdownMenuItem>
+              </DisabledTooltip>
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -317,15 +329,14 @@ export function ManualConnectDialog({
   open,
   onOpenChange,
   onConnected,
-  mode = "whatsapp",
 }: {
-  mode?: "whatsapp" | "page"
   open: boolean
   onOpenChange: (open: boolean) => void
   onConnected: (result: ConnectedBusiness) => void
 }) {
   const { connectManual, connectPageManual } = useChannelCommands()
-  const page = mode === "page"
+  const [channel, setChannel] = React.useState<MessagingChannel>("whatsapp")
+  const page = channel !== "whatsapp"
   const [wabaId, setWabaId] = React.useState("")
   const [token, setToken] = React.useState("")
   const [pending, setPending] = React.useState(false)
@@ -333,6 +344,7 @@ export function ManualConnectDialog({
 
   function close(next: boolean) {
     if (!next) {
+      setChannel("whatsapp")
       setWabaId("")
       setToken("")
       setError(null)
@@ -371,9 +383,7 @@ export function ManualConnectDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>
-              {page ? "Connect Page manually" : "Connect manually"}
-            </DialogTitle>
+            <DialogTitle>Connect manually</DialogTitle>
             <DialogDescription>
               {page
                 ? "Connect a Facebook Page and its linked Instagram professional account with a Page or system-user access token."
@@ -382,14 +392,32 @@ export function ManualConnectDialog({
           </DialogHeader>
           <FieldGroup className="py-4">
             <Field>
+              <FieldLabel htmlFor="manual-channel">Channel</FieldLabel>
+              <OptionSelect
+                id="manual-channel"
+                value={channel}
+                disabled={pending}
+                items={MESSAGING_CHANNELS.map((value) => ({
+                  value,
+                  label: CHANNEL_LABELS[value],
+                }))}
+                onChange={(value) => {
+                  setChannel(value as MessagingChannel)
+                  setWabaId("")
+                  setToken("")
+                  setError(null)
+                }}
+              />
+            </Field>
+            <Field>
               <FieldLabel htmlFor="channel-waba">
                 {page ? "Page ID" : "WhatsApp Business Account ID"}
               </FieldLabel>
               <Input
+                credential
                 id="channel-waba"
                 value={wabaId}
                 inputMode="numeric"
-                autoComplete="off"
                 autoFocus
                 required
                 onChange={(event) => {
@@ -403,10 +431,10 @@ export function ManualConnectDialog({
                 {page ? "Page access token" : "System user access token"}
               </FieldLabel>
               <Input
+                credential
                 id="channel-token"
                 type="password"
                 value={token}
-                autoComplete="off"
                 required
                 onChange={(event) => {
                   setToken(event.target.value)

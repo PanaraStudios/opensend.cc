@@ -62,4 +62,37 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+/** Disabled controls cannot receive pointer/focus events; keep their explanation reachable. */
+function DisabledTooltip({
+  reason,
+  children,
+}: {
+  reason: string | null
+  children: React.ReactNode
+}) {
+  if (!reason) return children
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            data-slot="disabled-tooltip"
+            className="flex rounded-lg [&>*]:flex-1 [&>*]:rounded-[inherit]"
+          />
+        }
+        tabIndex={0}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  DisabledTooltip,
+}

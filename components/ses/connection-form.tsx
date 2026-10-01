@@ -105,6 +105,7 @@ export function AwsConnectionForm({
           </div>
         )}
         <FormInput
+          credential
           name="accountId"
           label="AWS account ID"
           value={accountId}
@@ -139,6 +140,7 @@ export function AwsConnectionForm({
             <FieldGroup>
               <FormInput
                 key={`access-${imported?.revision}`}
+                credential
                 name="accessKeyId"
                 label="Access key ID"
                 defaultValue={imported?.accessKeyId}
@@ -147,6 +149,7 @@ export function AwsConnectionForm({
               />
               <FormInput
                 key={`secret-${imported?.revision}`}
+                credential
                 name="secretAccessKey"
                 label="Secret access key"
                 defaultValue={imported?.secretAccessKey}
@@ -184,6 +187,7 @@ export function AwsConnectionForm({
             </Field>
             {kind === "keys" && (
               <FormInput
+                credential
                 name="sessionToken"
                 label="Session token (optional)"
                 type="password"

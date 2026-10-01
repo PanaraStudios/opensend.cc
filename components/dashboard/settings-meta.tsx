@@ -152,7 +152,7 @@ export function SettingsMeta({ onboarding = false }: { onboarding?: boolean }) {
       <SettingsCard
         inline={onboarding}
         title="Webhook"
-        description="Meta sends WhatsApp, Messenger and Instagram webhooks to this address."
+        description="Meta sends WhatsApp, Messenger and Instagram messages and status updates to this address."
         footer={
           connected ? (
             <AsyncForm
@@ -296,6 +296,7 @@ function MetaAppForm({
     >
       <FieldGroup>
         <FormInput
+          credential
           name="appId"
           label="App ID"
           defaultValue={status.appId}
@@ -304,6 +305,7 @@ function MetaAppForm({
           autoComplete="off"
         />
         <FormInput
+          credential
           name="appSecret"
           label="App secret"
           type="password"
@@ -319,6 +321,7 @@ function MetaAppForm({
           </FieldDescription>
         )}
         <FormInput
+          credential
           name="whatsappConfigId"
           label="WhatsApp Embedded Signup config ID"
           defaultValue={status.configIds.whatsapp}
@@ -328,6 +331,7 @@ function MetaAppForm({
           autoComplete="off"
         />
         <FormInput
+          credential
           name="facebookLoginConfigId"
           label="Facebook Login config ID"
           defaultValue={status.configIds.facebookLogin}
