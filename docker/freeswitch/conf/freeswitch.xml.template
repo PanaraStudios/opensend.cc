@@ -9,8 +9,21 @@
         <load module="mod_dptools"/><load module="mod_hash"/><load module="mod_expr"/>
         <load module="mod_opus"/><load module="mod_sndfile"/><load module="mod_tone_stream"/>
         <load module="mod_event_socket"/><load module="mod_xml_curl"/><load module="mod_sofia"/>
-        <load module="mod_dialplan_xml"/>
+        <load module="mod_dialplan_xml"/><load module="mod_http_cache"/>
       </modules>
+    </configuration>
+    <configuration name="http_cache.conf" description="Cached IVR prompts">
+      <settings>
+        <param name="enable-file-formats" value="false"/>
+        <param name="location" value="/opt/freeswitch/cache/http"/>
+        <param name="max-urls" value="10000"/>
+        <param name="default-max-age" value="86400"/>
+        <param name="prefetch-thread-count" value="8"/>
+        <param name="prefetch-queue-size" value="100"/>
+        <param name="ssl-cacert" value="/etc/ssl/certs/ca-certificates.crt"/>
+        <param name="ssl-verifypeer" value="true"/>
+        <param name="ssl-verifyhost" value="true"/>
+      </settings>
     </configuration>
     <configuration name="xml_curl.conf" description="Uncached ephemeral agent and gateway directory">
       <bindings><binding name="opensend-agents">

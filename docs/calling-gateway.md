@@ -10,14 +10,14 @@ signaling with Meta's SIP mode **disabled**. All call legs stay on VoIP.
 | Component                        | Pin                                                                                                          | Official installation/reference                                                                                                                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Janus                            | 1.2.3, commit `a71f9cecb72b47fc3d3a7effc575ad6b21a1f4f4`                                                     | [Janus installation](https://janus.conf.meetecho.com/docs/README.html), [pinned README](https://github.com/meetecho/janus-gateway/blob/v1.2.3/README.md), [SIP plugin](https://janus.conf.meetecho.com/docs/sip.html) |
-| FreeSWITCH                       | 1.10.12, commit `a88d069d6ffb74df797bcaf001f7e63181c07a09`                                                   | [Official source/package installation](https://developer.signalwire.com/freeswitch/foundations/getting-started/), [release](https://github.com/signalwire/freeswitch/releases/tag/v1.10.12)                           |
-| Sofia-SIP, both images           | 1.13.17, commit `6198851a610b7889c17e2d98fb84617bc1dd7aec`                                                   | [Official release](https://github.com/freeswitch/sofia-sip/releases/tag/v1.13.17)                                                                                                                                     |
-| SpanDSP                          | commit `0d2e6ac65e0e8f53d652665a743015a88bf048d4`                                                            | [FreeSWITCH 1.10.12's dependency pin](https://github.com/signalwire/freeswitch/blob/v1.10.12/w32/download_spandsp.props)                                                                                              |
+| FreeSWITCH                       | 1.11.3, commit `ef32e205295e29f034f1453ad245ba5efb07b94a`                                                    | [Official source/package installation](https://developer.signalwire.com/freeswitch/foundations/getting-started/), [release](https://github.com/signalwire/freeswitch/releases/tag/v1.11.3)                            |
+| Sofia-SIP, both images           | 1.13.18, commit `ad36ac8f755308e8b87f98a505e83d4e408e5cc3`                                                   | [Official release](https://github.com/freeswitch/sofia-sip/releases/tag/v1.13.18)                                                                                                                                     |
+| SpanDSP                          | 3.1.1 (ABI 4), commit `8f1e1646bdec99eac5fd2cd92c35563f736b9b89`                                             | [Official release](https://github.com/freeswitch/spandsp/releases/tag/v3.1.1), [FreeSWITCH dependency pin](https://github.com/signalwire/freeswitch/blob/v1.11.3/w32/spandsp-version.props)                           |
 | Native image base                | Debian 12.11 slim, digest `sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef`          | [Official Debian image](https://hub.docker.com/_/debian)                                                                                                                                                              |
 | Controller/harness base          | Node 22.17.0 bookworm slim, digest `sha256:b04ce4ae4e95b522112c2e5c52f781471a5cbc3b594527bcddedee9bc48c03a0` | [Official Node image](https://hub.docker.com/_/node)                                                                                                                                                                  |
 | Package manager / fake Meta peer | pnpm 11.7.0 / werift 0.24.4                                                                                  | [pnpm](https://pnpm.io/installation), [werift](https://github.com/shinyoshiaki/werift-webrtc)                                                                                                                         |
 
-These media versions match Meta's **FreeSWITCH using Graph API with Janus** example
+The gateway architecture follows Meta's **FreeSWITCH using Graph API with Janus** example
 in [integration examples](https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/integration-examples).
 The official FreeSWITCH install docs now live at `foundations/getting-started`; the
 older `FreeSWITCH-Explained/Installation/Linux/Debian_67240088/` link redirects to the
@@ -26,8 +26,9 @@ build requires **no token**, builds Sofia and SpanDSP from fixed commits, select
 small module list, and uses `bootstrap.sh`, `configure`, `make`, `make install`.
 Janus uses the official `autogen.sh`, `configure`, `make`, `make install` sequence,
 building only the SIP plugin and HTTP transport. Native Debian dependencies come
-from the fixed `20250630T000000Z` bookworm archive snapshot. HTTP transport to the
-snapshot is authenticated by Debian's signed repository metadata.
+from the base image's Bookworm and security mirrors, authenticated by Debian's signed
+repository metadata. The base digest and source commits are fixed; apt package versions
+can change between builds.
 
 Three changes to pinned Janus are in `docker/janus/meta-interop.patch`:
 
@@ -41,13 +42,64 @@ Three changes to pinned Janus are in `docker/janus/meta-interop.patch`:
    The gate starts closed and opens only through `/route`. ICE/DTLS and RTCP may
    establish before routing; **RTP audio does not leave Janus** before routing.
 
-FreeSWITCH's `ecdsa-dtls.patch` keeps valid P-256 certificates: upstream 1.10.12
+FreeSWITCH's `ecdsa-dtls.patch` keeps valid P-256 certificates: upstream 1.11.3
 compares every key's bit length to 4096 and regenerates an EC key as RSA. P-256
 certificates are generated at startup for both media servers. WSS uses a separate
 certificate from FreeSWITCH DTLS. Production WSS needs a publicly trusted hostname
 certificate; self-signed DTLS certificates are expected and verified by SDP
 fingerprints. Janus's DTLS certificate/key persist in `janus-certs`; rotate them
 between calls, never during a call.
+
+### FreeSWITCH 1.11 upgrade (8d-0)
+
+Verified the [official release list](https://github.com/signalwire/freeswitch/releases)
+and tag commits on 2026-10-02: v1.11.3 is the latest release. The
+[1.11 release notes](https://github.com/signalwire/freeswitch/releases/tag/v1.11.0)
+cover the PCRE2 migration and roughly 30 legacy module removals; 1.11.1–1.11.3
+also include SIP, RTP/STUN, DTLS fingerprint and event-socket security fixes.
+The token-free build still follows the official source installation sequence and
+[tagged dependency build guide](https://github.com/signalwire/freeswitch/blob/v1.11.3/docker/build/base-image-from-source.Dockerfile).
+
+The tagged [configure.ac](https://github.com/signalwire/freeswitch/blob/v1.11.3/configure.ac)
+requires Sofia-SIP >= 1.13.18 and SpanDSP >= 3.1.1, so both source pins were bumped
+(Sofia in both Janus and FreeSWITCH). SpanDSP now supplies `libspandsp.so.4`.
+FreeSWITCH uses `libpcre2-dev` at build time and `libpcre2-8-0` at runtime.
+There is no libks pin in this minimal image: the configure check accepts
+libks2 >= 2.0.11 (or libks >= 1.8.2), but only requires it for `mod_verto` or
+`mod_signalwire`, neither of which we build. Base-image digests remain as listed.
+The P-256 certificate patch is still needed by the 1.11.3 certificate-size check.
+
+Every configured module remains in the tagged
+[module list](https://github.com/signalwire/freeswitch/blob/v1.11.3/build/modules.conf.in):
+
+| Module                           | Purpose                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `mod_console`                    | Container logs                                         |
+| `mod_commands`                   | ESL call and media controls                            |
+| `mod_dptools`                    | Park, bridge, playback, digits and recording           |
+| `mod_hash`, `mod_expr`           | Dialplan helpers                                       |
+| `mod_opus`                       | Opus media                                             |
+| `mod_sndfile`, `mod_tone_stream` | WAV prompts/recordings and generated tones             |
+| `mod_event_socket`               | Private ESL                                            |
+| `mod_xml_curl`                   | Ephemeral agent/gateway directory, loaded before Sofia |
+| `mod_sofia`                      | SIP and agent WSS                                      |
+| `mod_dialplan_xml`               | XML dialplan execution                                 |
+| `mod_http_cache` (added)         | Cached HTTP(S) IVR prompts and `http_prefetch`         |
+
+`mod_http_cache` is built and loaded with an explicit `http_cache.conf`, based on
+the [upstream configuration](https://github.com/signalwire/freeswitch/blob/v1.11.3/conf/vanilla/autoload_configs/http_cache.conf.xml).
+Use `http_cache://https://HOST/PROMPT.wav` for prompts and `http_prefetch` to warm
+the cache. HTTPS verifies both certificate and hostname using Debian's system CA
+bundle. Cache files live in `/opt/freeswitch/cache/http`, owned by the unprivileged
+FreeSWITCH user; they are disposable and recreated on container replacement.
+Direct `http://`/`https://` file formats remain disabled; `http_cache://` is available.
+`mod_httapi` is not required and is not added. The existing demo still uses local WAVs;
+the IVR engine and prompt generation belong to later 8d tasks.
+
+Rebuild both native images, restart between calls, then run both harness commands
+below. Operators moving from 1.10.12 should check custom dialplan regular expressions
+against PCRE2 and custom module selections against the removal list. This repository's
+module selections and existing call paths are covered by the 1.11.3 verification below.
 
 ## Configuration and operation
 
@@ -360,17 +412,63 @@ pnpm typecheck
 pnpm lint
 ```
 
-The isolated Docker harness was run on 2026-10-01; see the browser media
+The isolated Docker harness was run on 2026-10-02; see the FreeSWITCH 1.11.3
 verification below. Public NAT/UDP mapping, production WSS certificate trust,
 IVR DTMF with an actual Meta phone and real Meta interoperability remain runtime
-checks. These media source pins are deliberate for the documented Meta example;
-update sources/base digests together after proving the harness still passes.
+checks. These media source pins are verified by the isolated harness;
+prove the harness still passes whenever updating source pins or base digests.
 Queue/bot routes, durable callback recovery and upload workers remain separate.
 
 Wave 8c supplies expiring browser-agent sessions and `/control` for local
 hold/resume/transfer. The image now includes the required directory override;
 see [browser softphone deployment](browser-softphone.md). Convex code and backend
 deployments are unchanged by this infrastructure integration.
+
+## FreeSWITCH 1.11.3 verification (2026-10-02)
+
+Rebuilt `janus`, `freeswitch`, `call-gateway` and `meta-peer` using the exact
+`opensend-calling-test` function above. Only the test project's image tags were
+built. The existing ignored `.env.calling-test` lacked `FREESWITCH_DIRECTORY_SECRET`;
+added a fresh `openssl rand -hex 32` value and set file permissions to 0600.
+The first startup correctly refused that missing secret; after adding it, all
+three media/controller services became healthy.
+
+Runtime version:
+
+```text
+FreeSWITCH Version 1.11.3-release+git~20260828T204948Z~ef32e20529~64bit (git ef32e20 2026-08-28 20:49:48Z 64bit)
+```
+
+Both harness commands exited 0 with all six expected PASS lines:
+
+```text
+PASS inbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 36 RTP packets, one SSRC, callbacks and recording
+PASS outbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 36 RTP packets, one SSRC, callbacks and recording
+PASS agent registration: backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS
+PASS agent bridge: SIP.js answered, browser received 22 / sent 24 RTP packets; Meta received 115 / sent 98
+PASS inbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 116 RTP packets, one SSRC, callbacks and recording
+PASS agent revocation: old credential rejected by FreeSWITCH; no static/cache fallback
+```
+
+ESL `module_exists` returned `true` for all 13 configured modules in the table
+above. `show dialplan` included `XML,mod_dialplan_xml`; `show file` included
+`http_cache,mod_http_cache`. Runtime linking used `libpcre2-8.so.0`,
+`libspandsp.so.4` and `libsofia-sip-ua.so.0`. The patched DTLS certificate retained
+its 256-bit `prime256v1` key.
+
+A temporary WAV server inside the test project's call-gateway container served a
+9,644-byte prompt. `http_prefetch` returned `+OK`, `http_tryget` found the nonempty
+WAV under `/opt/freeswitch/cache/http`, and `http_get` returned the same path.
+The server counted exactly one HTTP request across these operations, proving
+prefetch/cache reuse. The system CA bundle was readable and the cache directory
+writable by FreeSWITCH. This smoke check exercised private HTTP retrieval; HTTPS
+certificate verification is configured but was not separately exercised.
+
+Root `pnpm typecheck` and `pnpm lint`, all 35 gateway tests, and gateway
+typecheck/build passed. No Convex or Next.js application code changed.
+Public NAT, trusted production WSS, actual Meta calls and HTTP prompt playback
+on a live call remain operator checks. `c down` removed only the test project's
+containers/network and retained its volumes; no other project was operated on.
 
 ## Browser media verification (2026-10-01)
 

@@ -6,7 +6,7 @@ services:
       JANUS_STUN_SERVER: ""
       JANUS_PUBLIC_IP: ""
   freeswitch:
-    image: opensend-calling-test-freeswitch:1.10.12
+    image: opensend-calling-test-freeswitch:1.11.3
     environment:
       FREESWITCH_PUBLIC_IP: auto
     # Always use this project's certificate volume, even with a production env in the shell.

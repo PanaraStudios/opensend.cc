@@ -50,6 +50,13 @@ previously generated user files on startup. Do not add static users or directory
 cache attributes as a fallback. Restart the old FreeSWITCH instance when upgrading
 so cached credentials and registrations cannot survive the change.
 
+The pinned image is now FreeSWITCH 1.11.3 with Sofia-SIP 1.13.18 and SpanDSP 3.1.1.
+The [8d-0 upgrade notes](calling-gateway.md#freeswitch-111-upgrade-8d-0) list dependency
+changes and verify that XML-CURL, Sofia, Opus, the XML dialplan and all other loaded
+modules survived the legacy module removals. `mod_http_cache` is added for future
+IVR prompts. Rebuild Janus and FreeSWITCH and restart between calls; rerun both
+the meta-peer and agent harness checks documented in that guide.
+
 The simpler secure design uses **call-gateway as the directory proxy**. Convex's
 existing authenticated `calling/softphone:session` action checks team/browser
 ownership, then issues/refreshes a credential through the controller's HMAC
@@ -159,7 +166,7 @@ Configuration was checked against [SIP.js's FreeSWITCH guide](https://sipjs.com/
 [DTMF](https://sipjs.com/guides/send-dtmf/),
 [SignalWire's WSS manual](https://developer.signalwire.com/freeswitch/users-and-endpoints/webrtc-sip/),
 [XML-CURL manual](https://developer.signalwire.com/freeswitch/integration/xml-curl/),
-and the pinned [FreeSWITCH 1.10.12 command implementation](https://github.com/signalwire/freeswitch/blob/v1.10.12/src/mod/applications/mod_commands/mod_commands.c).
+and the pinned [FreeSWITCH 1.11.3 command implementation](https://github.com/signalwire/freeswitch/blob/v1.11.3/src/mod/applications/mod_commands/mod_commands.c).
 SIP.js's installed 0.21.2 types were also checked: registration is considered ready
 only after `onRegistered`, logging is disabled, and media uses audio without video.
 
@@ -184,7 +191,7 @@ registers real headless Chromium/SIP.js with backend-issued credentials, answers
 a bridged inbound call, checks browser and fake-Meta RTP in both directions, and
 verifies that a revoked credential cannot register again. It uses a fake
 authenticated backend and bypasses only the local WSS certificate check. See
-[verification output](calling-gateway.md#browser-media-verification-2026-10-01).
+[verification output on FreeSWITCH 1.11.3](calling-gateway.md#freeswitch-1113-verification-2026-10-02).
 It does not validate production certificate trust or public NAT/firewall routing.
 Still verify trusted WSS, two browsers
 racing to answer, two-way audio, mute, hold RTP continuity, agent/queue transfer,

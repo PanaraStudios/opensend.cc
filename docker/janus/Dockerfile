@@ -1,7 +1,8 @@
 # Source build follows https://janus.conf.meetecho.com/docs/README.html
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef AS build
 ARG JANUS_COMMIT=a71f9cecb72b47fc3d3a7effc575ad6b21a1f4f4
-ARG SOFIA_COMMIT=6198851a610b7889c17e2d98fb84617bc1dd7aec
+# Sofia-SIP v1.13.18, shared with the FreeSWITCH image.
+ARG SOFIA_COMMIT=ad36ac8f755308e8b87f98a505e83d4e408e5cc3
 # Packages come from the base image's own bookworm + security mirrors; the base is pinned by digest.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential autoconf automake libtool pkg-config \
