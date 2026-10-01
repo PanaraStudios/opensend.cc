@@ -211,51 +211,64 @@ export const permissions = internalAction({
     bsuid: v.optional(v.boolean()),
   },
   returns: v.any(),
-  handler: async (
-    ctx,
-    { identity, bsuid, ...actor }
-  ): Promise<Record<string, unknown>> => {
-    const target = await ctx.runQuery(internal.calling.rows.target, actor)
-    const userId = await ctx.runQuery(
-      internal.calling.rows.permissionIdentity,
-      { ...actor, identity, bsuid }
-    )
-    try {
-      const observedAt = Date.now()
-      const data = object(
-        await graph({
-          token: await decryptSecret(target.encryptedToken),
-          version: target.version,
-          method: "GET",
-          path: `${target.account.externalId}/call_permissions`,
-          query: { recipient: userId },
-        })
-      )
-      const permission = object(data.permission)
-      if (
-        !CALL_PERMISSION_STATUSES.includes(
-          string(permission.status) as (typeof CALL_PERMISSION_STATUSES)[number]
-        )
-      )
-        throw apiError(
-          502,
-          "invalid_meta_response",
-          "Meta returned an unknown permission status."
-        )
-      await ctx.runMutation(internal.calling.settingsState.permission, {
-        organizationId: actor.organizationId,
-        caller: actor.caller,
-        accountId: target.account._id,
-        identity: userId,
-        data: JSON.stringify(data),
-        observedAt,
-      })
-      return { account_id: target.account._id, user_id: userId, ...data }
-    } catch (error) {
-      callingFailure(error)
-    }
-  },
+  handler: checkPermission,
 })
+export async function checkPermission(
+  ctx: ActionCtx,
+  {
+    identity,
+    bsuid,
+    ...actor
+  }: {
+    organizationId: string
+    caller?: import("../api/caller").Caller
+    from?: string
+    identity: string
+    bsuid?: boolean
+  }
+): Promise<Record<string, unknown>> {
+  const target = await ctx.runQuery(internal.calling.rows.target, actor)
+  const userId = await ctx.runQuery(internal.calling.rows.permissionIdentity, {
+    ...actor,
+    identity,
+    bsuid,
+  })
+  try {
+    const observedAt = Date.now()
+    const data = object(
+      await graph({
+        token: await decryptSecret(target.encryptedToken),
+        version: target.version,
+        method: "GET",
+        path: `${target.account.externalId}/call_permissions`,
+        query: { recipient: userId },
+      })
+    )
+    const permission = object(data.permission)
+    if (
+      !CALL_PERMISSION_STATUSES.includes(
+        string(permission.status) as (typeof CALL_PERMISSION_STATUSES)[number]
+      )
+    )
+      throw apiError(
+        502,
+        "invalid_meta_response",
+        "Meta returned an unknown permission status."
+      )
+    await ctx.runMutation(internal.calling.settingsState.permission, {
+      organizationId: actor.organizationId,
+      caller: actor.caller,
+      accountId: target.account._id,
+      identity: userId,
+      data: JSON.stringify(data),
+      observedAt,
+    })
+    return { account_id: target.account._id, user_id: userId, ...data }
+  } catch (error) {
+    callingFailure(error)
+  }
+}
+
 export const refresh = internalAction({
   args: { accountId: v.id("channelAccounts") },
   returns: v.null(),

@@ -1,3 +1,4 @@
+import { requireAvailable } from "./agentAccess"
 import { callPageValue, callDetailValue } from "./values"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
@@ -350,6 +351,8 @@ export const create = internalMutation({
     recipient: v.optional(v.string()),
     mode: v.optional(handlingMode),
     opaque: v.optional(v.string()),
+    agentPresenceId: v.optional(v.id("callAgents")),
+    agentLeaseId: v.optional(v.string()),
   },
   returns: v.id("calls"),
   handler: async (ctx, args) => {
@@ -383,11 +386,29 @@ export const create = internalMutation({
       preview: "Voice call",
       opensWindow: false,
     })
+    const agent = args.agentPresenceId
+      ? await ctx.db.get("callAgents", args.agentPresenceId)
+      : null
+    if (agent) {
+      if (
+        agent.organizationId !== args.organizationId ||
+        agent.leaseId !== args.agentLeaseId
+      )
+        throw notFound("Agent")
+      await requireAvailable(ctx, agent)
+    }
     const insert = async (): Promise<Id<"calls">> => {
       const id = await ctx.db.insert("calls", {
         organizationId: args.organizationId,
         accountId: account._id,
         direction: "outbound",
+        ...(agent
+          ? {
+              assignedAgent: agent.userId,
+              agentLeaseId: agent.leaseId,
+              agentExtension: agent.extension,
+            }
+          : {}),
         mode,
         status: "queued",
         userId,
@@ -520,11 +541,20 @@ export const finish = internalMutation({
   },
 })
 export const lease = internalMutation({
-  args: { id: v.id("calls"), operation: v.string() },
+  args: {
+    id: v.id("calls"),
+    operation: v.string(),
+    expectedAgentLeaseId: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("calls", args.id)
     if (!row) throw notFound("Call")
+    if (
+      args.expectedAgentLeaseId &&
+      row.agentLeaseId !== args.expectedAgentLeaseId
+    )
+      throw apiError(409, "call_claim_changed", "The call claim changed.")
     if (row.operation && (row.operationUntil ?? 0) > Date.now())
       throw apiError(
         409,
