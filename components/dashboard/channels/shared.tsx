@@ -30,7 +30,7 @@ import {
   MessengerIcon,
   WhatsAppIcon,
 } from "@/components/brand-icons"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -47,7 +47,8 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field"
-import { CodeInput } from "@/components/ui/input-otp"
+import { Input } from "@/components/ui/input"
+import { metaConfigurationNotice } from "@/lib/meta/connect-availability"
 import { toast } from "@/components/ui/toast"
 import {
   TypeToConfirmDialog,
@@ -185,46 +186,26 @@ const META_APP_PAGE = INSTANCE_PAGES.find((page) => page.title === "Meta app")!
 /** Why a Meta login cannot open yet: no app, or no channel configuration. The installation admin gets a link to fix it. */
 export function MetaAppAlert({
   config,
-  channel = "whatsapp",
 }: {
-  channel?: "whatsapp" | "page"
   config: {
     configured: boolean
     configIds: { whatsapp?: string; facebookLogin?: string }
   }
 }) {
   const installation = useInstanceChannels()
-  const page = channel === "page"
-  if (
-    config.configured &&
-    (page ? config.configIds.facebookLogin : config.configIds.whatsapp)
-  )
-    return null
   if (!config.configured) return <InstanceChannelConfiguration channel="meta" />
+  const notice = metaConfigurationNotice(config.configIds)
+  if (!notice) return null
   const admin = installation?.admin === true
   return (
     <Alert variant="warning">
       <TriangleAlertIcon />
-      <AlertTitle>
-        {config.configured
-          ? page
-            ? "Facebook Login for Business is not set up"
-            : "Embedded Signup is not set up"
-          : "Your administrator needs to set up the Meta app"}
-      </AlertTitle>
       <AlertDescription>
-        {config.configured
-          ? page
-            ? "Add the Facebook Login for Business configuration ID to connect a Facebook Page & Instagram. You can still connect with an access token."
-            : "Add the WhatsApp Embedded Signup configuration ID to the Meta app. You can still connect with an access token."
-          : admin
-            ? "Add your Meta app before teams connect WhatsApp, Messenger or Instagram."
-            : "Ask your installation administrator to add the Meta app before you connect WhatsApp, Messenger or Instagram."}
-        {admin && (
-          <>
-            {" "}
-            <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>.
-          </>
+        {notice}{" "}
+        {admin ? (
+          <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>
+        ) : (
+          "Ask your instance admin"
         )}
       </AlertDescription>
     </Alert>
@@ -289,12 +270,17 @@ export function RegisterNumberDialog({
             <FieldLabel htmlFor="channel-pin">
               Two-step verification PIN
             </FieldLabel>
-            <CodeInput
+            <Input
+              credential
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
               id="channel-pin"
               value={pin}
               autoFocus
-              onChange={(next) => {
-                setPin(next)
+              onChange={(event) => {
+                setPin(event.target.value)
                 setError(null)
               }}
             />

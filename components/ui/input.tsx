@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cn } from "cn"
+import { credentialInputProps } from "@/lib/credential-input"
 import {
   InputValidation,
   type InputValidationProps,
@@ -13,11 +14,13 @@ import {
 function Input({
   className,
   type,
+  credential = false,
   validationMessage,
   validationMessages,
   onValidationClear,
   ...props
-}: React.ComponentProps<"input"> & InputValidationProps) {
+}: React.ComponentProps<"input"> &
+  InputValidationProps & { credential?: boolean }) {
   return (
     <InputValidation
       validationMessage={validationMessage}
@@ -32,6 +35,7 @@ function Input({
           className
         )}
         {...props}
+        {...(credential ? credentialInputProps(type === "password") : {})}
       />
     </InputValidation>
   )
