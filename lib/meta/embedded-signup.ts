@@ -1,3 +1,4 @@
+import { object, string } from "./parse"
 import { facebookLoginOptions } from "./facebook-login"
 
 /* WhatsApp Embedded Signup v4 in the browser, as Meta documents it:
@@ -37,8 +38,7 @@ export type SignupMessage =
   | { type: "cancel"; step?: string }
   | { type: "error"; message: string }
 
-const text = (value: unknown) =>
-  typeof value === "string" && value.trim() ? value.trim() : undefined
+const text = (value: unknown) => string(value).trim() || undefined
 
 /** Reads a `WA_EMBEDDED_SIGNUP` window message; anything else is null.
     FINISH and its variants carry the WABA, business and (usually) phone
@@ -52,10 +52,9 @@ export function readSignupMessage(raw: unknown): SignupMessage | null {
       return null
     }
   if (!message || typeof message !== "object") return null
-  const { type, event, data } = message as Record<string, unknown>
+  const { type, event, data } = object(message)
   if (type !== "WA_EMBEDDED_SIGNUP") return null
-  const fields =
-    data && typeof data === "object" ? (data as Record<string, unknown>) : {}
+  const fields = object(data)
   const error = text(fields.error_message)
   if (event === "ERROR" || error)
     return { type: "error", message: error ?? "Meta could not finish signup" }

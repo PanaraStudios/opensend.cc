@@ -262,6 +262,23 @@ test("Instagram restricts tags and quick replies on media; HUMAN_AGENT has a sev
 
 test("channel strategies apply each channel's payload, endpoint and window rule", async () => {
   const { channelStrategies } = await import("./payloads")
+  const account = {
+    _id: "account",
+    externalId: "phone",
+    pageId: "page",
+    throughputMps: 1000,
+  }
+  assert.deepEqual(channelStrategies.whatsapp.replyContext("parent"), {
+    context: { message_id: "parent" },
+  })
+  assert.deepEqual(channelStrategies.whatsapp.identity("16505551234"), {
+    phone: "+16505551234",
+  })
+  assert.deepEqual(channelStrategies.whatsapp.rate(account), {
+    key: "account",
+    rate: 1000,
+  })
+  assert.equal(channelStrategies.whatsapp.requiresRegistration, true)
   const wa = channelStrategies.whatsapp.build({ to, text: "Hi" })
   assert.equal(wa.to, "16505551234")
   assert.throws(
@@ -276,6 +293,24 @@ test("channel strategies apply each channel's payload, endpoint and window rule"
     "phone"
   )
   for (const channel of ["messenger", "instagram"] as const) {
+    const strategy = channelStrategies[channel]
+    assert.equal(strategy.requiresRegistration, false)
+    assert.deepEqual(strategy.replyContext("parent"), {
+      reply_to: { mid: "parent" },
+    })
+    assert.deepEqual(strategy.identity("123"), {})
+    assert.deepEqual(strategy.rate(account), {
+      key: "page:page",
+      rate: 300,
+      mediaRate: 10,
+    })
+    const media = strategy.build({
+      to: "123",
+      attachment: { type: "image", id: "image1" },
+    })
+    assert.deepEqual(strategy.mediaData(media.payload, "image"), {
+      attachment_id: "image1",
+    })
     const result = channelStrategies[channel].build({
       to: "123",
       text: "Hi",

@@ -1,3 +1,4 @@
+import { CHANNELS, CHANNEL_IDS } from "../channels"
 import type { SkipReason } from "./types"
 import { format } from "date-fns"
 
@@ -337,15 +338,15 @@ export const CHANNEL_QUALITY_TONE: Record<ChannelQuality, BadgeTone> = {
   unknown: "secondary",
 }
 
-export const CHANNEL_LABELS: Record<MessagingChannel, string> = {
-  whatsapp: "WhatsApp",
-  messenger: "Messenger",
-  instagram: "Instagram",
-}
+export const CHANNEL_LABELS = Object.fromEntries(
+  CHANNEL_IDS.filter(
+    (channel): channel is MessagingChannel => channel !== "email"
+  ).map((channel) => [channel, CHANNELS[channel].label])
+) as Record<MessagingChannel, string>
 
 /** Email, or a messaging channel's name. */
 export function channelLabel(channel: Channel): string {
-  return channel === "email" ? "Email" : CHANNEL_LABELS[channel]
+  return CHANNELS[channel].label
 }
 
 /** Meta's messaging limit tier, `TIER_1K`, as people read it. */

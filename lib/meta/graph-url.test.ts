@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { DEFAULT_GRAPH_VERSION, graphUrl } from "./graph-url"
+import { DEFAULT_GRAPH_VERSION, graphUrl, requireFakeGraph } from "./graph-url"
 
 describe("graphUrl", () => {
   it("builds a versioned Graph URL with its query", () => {
@@ -29,4 +29,16 @@ describe("graphUrl", () => {
     for (const path of ["", "/", "../me", "a/./b"])
       assert.throws(() => graphUrl({ version: "v25.0", path }), /path/)
   })
+})
+
+it("fixtures require an explicit local Graph origin", () => {
+  requireFakeGraph("http://localhost:4010")
+  requireFakeGraph("http://host.docker.internal:4010")
+  for (const value of [
+    undefined,
+    "https://graph.facebook.com",
+    "https://localhost:4010",
+    "http://example.com",
+  ])
+    assert.throws(() => requireFakeGraph(value))
 })

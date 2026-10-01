@@ -1,3 +1,4 @@
+import { object as record, array, string } from "./parse"
 /* What Meta says about a WhatsApp Business Account's phone numbers and a
    business token, read into the shapes opensend.cc stores.
    https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-account/phone-number-management-api
@@ -30,7 +31,7 @@ export const NUMBER_LIMIT = 100
 
 /** Meta's default Cloud API throughput, and the upgraded one. */
 export const DEFAULT_THROUGHPUT_MPS = 80
-const HIGH_THROUGHPUT_MPS = 1000
+export const HIGH_THROUGHPUT_MPS = 1000
 
 export type PhoneNumberStatus = "pending" | "active" | "restricted" | "error"
 export type PhoneNumberQuality = "green" | "yellow" | "red" | "unknown"
@@ -49,12 +50,7 @@ export type PhoneNumber = {
   registered?: boolean
 }
 
-const text = (value: unknown) =>
-  typeof value === "string" && value.trim() ? value.trim() : undefined
-const record = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
+const text = (value: unknown) => string(value).trim() || undefined
 
 const RESTRICTED = new Set(["FLAGGED", "RESTRICTED", "RATE_LIMITED"])
 const FAILED = new Set(["BANNED", "DELETED", "DISCONNECTED"])
@@ -123,10 +119,9 @@ export function registration(
 
 /** The numbers in a `phone_numbers` page, skipping malformed entries. */
 export function readPhoneNumbers(raw: unknown): PhoneNumber[] {
-  const data = record(raw).data
-  return Array.isArray(data)
-    ? data.flatMap((entry) => readPhoneNumber(entry) ?? [])
-    : []
+  return array(record(raw).data).flatMap(
+    (entry) => readPhoneNumber(entry) ?? []
+  )
 }
 
 export type TokenInfo = {

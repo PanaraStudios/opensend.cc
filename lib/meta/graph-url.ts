@@ -1,3 +1,6 @@
+import { localHttpOrigin } from "../net/public-host"
+export { localHttpOrigin } from "../net/public-host"
+
 /** Meta's Graph API origin. */
 export const GRAPH_ORIGIN = "https://graph.facebook.com"
 /** The Graph API version a new Meta app starts on; the admin can change it. */
@@ -25,4 +28,10 @@ export function graphUrl(input: {
   for (const [key, value] of Object.entries(input.query ?? {}))
     if (value !== undefined) url.searchParams.set(key, String(value))
   return url
+}
+
+/** Only disposable installations explicitly using local Graph can run fixtures. */
+export function requireFakeGraph(origin: string | undefined) {
+  if (!origin || !localHttpOrigin(origin))
+    throw new Error("A local fake Graph server is required")
 }

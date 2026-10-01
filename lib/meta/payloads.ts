@@ -1,3 +1,7 @@
+import { fromWaId, normalizePhone, toWaId } from "../dashboard/phone"
+import { CHANNELS, type MessagingChannel, type PageChannel } from "../channels"
+import { object as record } from "./parse"
+
 /** Cloud API wire shapes, checked against Meta's Messages Object and examples:
  * https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/message-api
  * https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview#parameter-formats
@@ -287,7 +291,7 @@ export function whatsappPayload(input: WhatsAppBody): Record<
   type: WhatsAppSendType
   context?: { message_id: string }
 } {
-  if (typeof input.to !== "string" || !/^\+?[1-9]\d{6,14}$/.test(input.to))
+  if (typeof input.to !== "string" || !normalizePhone(fromWaId(input.to)))
     throw new Error("The `to` field must be an E.164 phone number or wa_id.")
   const present = WHATSAPP_SEND_TYPES.filter(
     (type) => input[type] !== undefined
@@ -349,7 +353,7 @@ export function whatsappPayload(input: WhatsAppBody): Record<
   return {
     messaging_product: "whatsapp" as const,
     recipient_type: "individual" as const,
-    to: input.to.replace(/^\+/, ""),
+    to: toWaId(normalizePhone(fromWaId(input.to))!),
     type,
     [type]: body,
     ...(input.reply_to !== undefined
@@ -404,7 +408,7 @@ export function quickReplies(value: unknown) {
  */
 export function pageMessageContent(
   input: Omit<PageBody, "to" | "reply_to">,
-  channel: "messenger" | "instagram"
+  channel: PageChannel
 ) {
   if ((input.text === undefined) === (input.attachment === undefined))
     throw new Error(
@@ -455,7 +459,7 @@ export function pageMessageContent(
   }
   return message
 }
-function pagePayload(input: PageBody, channel: "messenger" | "instagram") {
+function pagePayload(input: PageBody, channel: PageChannel) {
   if (typeof input.to !== "string" || !/^\d{1,32}$/.test(input.to))
     throw new Error("The `to` field must be a scoped recipient ID.")
   const message = pageMessageContent(input, channel)
@@ -492,8 +496,28 @@ type ChannelStrategy = {
   ) => void
   endpoint: (account: { externalId: string; pageId?: string }) => string
   windowErrorCode: number
+  notFoundLabel: string
+  inactiveLabel: string
+  requiresRegistration: boolean
+  replyContext: (externalId: string) => Record<string, unknown>
+  replyBody: (text: string) => Record<string, unknown>
+  mediaData: (
+    payload: Record<string, unknown>,
+    type: string
+  ) => Record<string, unknown>
+  identity: (recipient: string) => { phone?: string }
+  rate: (account: { pageId?: string; throughputMps: number; _id: string }) => {
+    key: string
+    rate: number
+    mediaRate?: number
+  }
 }
-function pageStrategy(build: typeof messengerPayload): ChannelStrategy {
+function pageStrategy(
+  channel: PageChannel,
+  build: typeof messengerPayload
+): ChannelStrategy {
+  const definition = CHANNELS[channel]
+  const accountLabel = `${definition.label} ${definition.accountNoun.toLowerCase()}`
   return {
     build: (body) => {
       const payload = build(body),
@@ -516,13 +540,28 @@ function pageStrategy(build: typeof messengerPayload): ChannelStrategy {
     },
     endpoint: (account) => account.pageId ?? account.externalId,
     windowErrorCode: 2018278,
+    notFoundLabel: accountLabel,
+    inactiveLabel: `The ${accountLabel} must have an active Meta connection.`,
+    requiresRegistration: definition.supports.registration,
+    replyContext: (mid) => ({ reply_to: { mid } }),
+    replyBody: (text) => ({ text }),
+    mediaData: (payload) =>
+      record(record(record(payload.message).attachment).payload),
+    identity: () => ({}),
+    rate: (account) => ({
+      key: account.pageId ? `page:${account.pageId}` : account._id,
+      rate: Math.max(
+        1,
+        account.pageId
+          ? Math.min(300, account.throughputMps)
+          : account.throughputMps
+      ),
+      ...(account.pageId ? { mediaRate: 10 } : {}),
+    }),
   }
 }
 /** Keep channel-specific wire shape, window rules and endpoints behind one adapter. */
-export const channelStrategies: Record<
-  "whatsapp" | "messenger" | "instagram",
-  ChannelStrategy
-> = {
+export const channelStrategies: Record<MessagingChannel, ChannelStrategy> = {
   whatsapp: {
     build: (body) => {
       const payload = whatsappPayload(body as WhatsAppBody),
@@ -547,7 +586,19 @@ export const channelStrategies: Record<
     },
     endpoint: (account) => account.externalId,
     windowErrorCode: 131047,
+    notFoundLabel: `${CHANNELS.whatsapp.label} ${CHANNELS.whatsapp.idLabel.replace(/ ID$/, "").toLowerCase()}`,
+    inactiveLabel:
+      "The WhatsApp phone number must be active and registered with an active Meta connection.",
+    requiresRegistration: CHANNELS.whatsapp.supports.registration,
+    replyContext: (message_id) => ({ context: { message_id } }),
+    replyBody: (body) => ({ type: "text", text: { body } }),
+    mediaData: (payload, type) => record(payload[type]),
+    identity: (recipient) => ({ phone: fromWaId(recipient) }),
+    rate: (account) => ({
+      key: account._id,
+      rate: Math.max(1, account.throughputMps),
+    }),
   },
-  messenger: pageStrategy(messengerPayload),
-  instagram: pageStrategy(instagramPayload),
+  messenger: pageStrategy("messenger", messengerPayload),
+  instagram: pageStrategy("instagram", instagramPayload),
 }
