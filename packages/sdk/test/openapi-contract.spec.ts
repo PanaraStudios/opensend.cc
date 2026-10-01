@@ -12,7 +12,7 @@ import { parse } from 'yaml';
 
 const root = join(__dirname, '..');
 const spec = parse(
-  readFileSync(join(root, '../../openapi/opensend.yaml'), 'utf8'),
+  readFileSync(join(root, '../../openapi/opensend.yaml'), 'utf8')
 ) as { paths: Record<string, Record<string, unknown>> };
 
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
@@ -42,6 +42,26 @@ function sdkRequests() {
   const found = new Set<string>();
   for (const file of sources(join(root, 'src'))) {
     const text = readFileSync(file, 'utf8');
+    // Shared channel adapters resolve their route from the subclass constructor.
+    const channel = text.match(
+      /super\(client, [\'"](whatsapp|messenger|instagram)[\'"]\)/
+    )?.[1];
+    if (channel && text.includes('extends ChannelConversations')) {
+      found.add(`GET /${channel}/conversations`);
+      found.add(`GET /${channel}/conversations/{}/messages`);
+    }
+    if (channel && text.includes('extends PageMessages')) {
+      found.add(`POST /${channel}/messages`);
+      found.add(`GET /${channel}/messages`);
+      found.add(`GET /${channel}/messages/{}`);
+    }
+    const accountPath = text.match(
+      /super\(client, [\'"](\/(?:messenger|instagram)\/(?:pages|accounts))[\'"]\)/
+    )?.[1];
+    if (accountPath && text.includes('extends ChannelAccounts')) {
+      found.add(`GET ${accountPath}`);
+      found.add(`GET ${accountPath}/{}`);
+    }
     const assignments: { at: number; name: string; literal: string }[] = [];
     for (const match of text.matchAll(/const (url|path) =([\s\S]*?);/g)) {
       const literal = firstLiteral(match[2]);
@@ -49,7 +69,7 @@ function sdkRequests() {
         assignments.push({ at: match.index, name: match[1], literal });
     }
     const calls = text.matchAll(
-      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['`])[\s\S]*?\3|\w+)/g,
+      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['`])[\s\S]*?\3|\w+)/g
     );
     for (const call of calls) {
       const [, method, argument] = call;
@@ -94,7 +114,26 @@ const NOT_EXPOSED = new Set<string>([
   'DELETE /audiences/{}',
 ]);
 
-describe('OpenAPI contract', () => {
+// Lane 5A supplies the REST/OpenAPI implementation at integration. These
+// exact operations come from meta-wave5-contract.md, independently of SDK paths.
+const WAVE5 = new Set([
+  'POST /messenger/messages',
+  'GET /messenger/messages',
+  'GET /messenger/messages/{}',
+  'GET /messenger/pages',
+  'GET /messenger/pages/{}',
+  'GET /messenger/conversations',
+  'GET /messenger/conversations/{}/messages',
+  'POST /instagram/messages',
+  'GET /instagram/messages',
+  'GET /instagram/messages/{}',
+  'GET /instagram/accounts',
+  'GET /instagram/accounts/{}',
+  'GET /instagram/conversations',
+  'GET /instagram/conversations/{}/messages',
+]);
+
+describe('OpenAPI and wave 5 binding contract', () => {
   const sdk = sdkRequests();
   const contract = contractOperations();
 
@@ -102,16 +141,22 @@ describe('OpenAPI contract', () => {
     expect(sdk.size).toBeGreaterThan(80);
   });
 
-  it('every SDK request is an operation in openapi/opensend.yaml', () => {
-    const missing = [...sdk].filter((op) => !contract.has(op) && !LEGACY.has(op));
+  it('every SDK request matches OpenAPI or the wave 5 binding contract', () => {
+    const missing = [...sdk].filter(
+      (op) => !contract.has(op) && !WAVE5.has(op) && !LEGACY.has(op)
+    );
     expect(missing.sort()).toEqual([]);
   });
 
   it('every contract operation has an SDK method', () => {
     const uncovered = [...contract].filter(
-      (op) => !sdk.has(op) && !NOT_EXPOSED.has(op),
+      (op) => !sdk.has(op) && !NOT_EXPOSED.has(op)
     );
     expect(uncovered.sort()).toEqual([]);
+  });
+
+  it('covers every wave 5 binding operation', () => {
+    expect([...WAVE5].filter((op) => !sdk.has(op))).toEqual([]);
   });
 
   it('keeps the exception lists current', () => {

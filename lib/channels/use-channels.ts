@@ -22,11 +22,19 @@ export type ConnectedBusiness = FunctionReturnType<
   typeof api.meta.connectActions.connectManual
 >
 
+export type ConnectedPageAccounts = FunctionReturnType<
+  typeof api.meta.pageConnectActions.connectPageManual
+>
+
 export function useChannelCommands() {
   const workspace = useWorkspace()
   const { canWrite } = useTeamRole()
   const manual = useAction(api.meta.connectActions.connectManual)
   const exchange = useAction(api.meta.connectActions.exchangeEmbeddedSignup)
+  const pageManual = useAction(api.meta.pageConnectActions.connectPageManual)
+  const facebookLogin = useAction(
+    api.meta.pageConnectActions.connectFacebookLogin
+  )
   const register = useAction(api.meta.connectActions.registerNumber)
   const sync = useAction(api.meta.connectActions.syncAccount)
   const disconnect = useMutation(api.meta.connect.disconnect)
@@ -44,6 +52,10 @@ export function useChannelCommands() {
       businessId: string
       phoneNumberId?: string
     }) => exchange({ ...input, organizationId: organizationId() }),
+    connectPageManual: (input: { pageId: string; token: string }) =>
+      pageManual({ ...input, organizationId: organizationId() }),
+    connectFacebookLogin: (code: string) =>
+      facebookLogin({ code, organizationId: organizationId() }),
     registerNumber: (accountId: string, pin: string) =>
       register({ accountId: accountId as Id<"channelAccounts">, pin }),
     syncAccount: (accountId: string) =>

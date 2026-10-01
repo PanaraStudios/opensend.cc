@@ -65,27 +65,40 @@ export const CHANNEL_ITEMS: readonly SelectOption[] = [
 
 const META_APP_PAGE = INSTANCE_PAGES.find((page) => page.title === "Meta app")!
 
-/** Why Embedded Signup cannot open yet: no Meta app, or no WhatsApp
-    configuration on it. The installation admin gets a link to fix it. */
+/** Why a Meta login cannot open yet: no app, or no channel configuration. The installation admin gets a link to fix it. */
 export function MetaAppAlert({
   config,
+  channel = "whatsapp",
 }: {
-  config: { configured: boolean; configIds: { whatsapp?: string } }
+  channel?: "whatsapp" | "page"
+  config: {
+    configured: boolean
+    configIds: { whatsapp?: string; facebookLogin?: string }
+  }
 }) {
   const installation = useQuery(api.installation.status)
-  if (config.configured && config.configIds.whatsapp) return null
+  const page = channel === "page"
+  if (
+    config.configured &&
+    (page ? config.configIds.facebookLogin : config.configIds.whatsapp)
+  )
+    return null
   const admin = installation?.admin === true
   return (
     <Alert variant="warning">
       <TriangleAlertIcon />
       <AlertTitle>
         {config.configured
-          ? "Embedded Signup is not set up"
+          ? page
+            ? "Facebook Login for Business is not set up"
+            : "Embedded Signup is not set up"
           : "Your administrator needs to set up the Meta app"}
       </AlertTitle>
       <AlertDescription>
         {config.configured
-          ? "Add the WhatsApp Embedded Signup configuration ID to the Meta app. You can still connect with an access token."
+          ? page
+            ? "Add the Facebook Login for Business configuration ID to connect a Facebook Page & Instagram. You can still connect with an access token."
+            : "Add the WhatsApp Embedded Signup configuration ID to the Meta app. You can still connect with an access token."
           : admin
             ? "Add your Meta app before teams connect WhatsApp, Messenger or Instagram."
             : "Ask your installation administrator to add the Meta app before you connect WhatsApp, Messenger or Instagram."}
@@ -216,7 +229,7 @@ export function DisconnectBusinessDialog({
       open={account !== null}
       onOpenChange={onOpenChange}
       title={`Disconnect ${account?.businessName ?? "business"}?`}
-      description="Every number from this business stops sending and receiving here. Messages and conversations stay, and you can connect the business again."
+      description="Every channel account from this business stops sending and receiving here. Messages and conversations stay, and you can connect the business again."
       phrase={account?.businessName ?? ""}
       confirmLabel="Disconnect"
       onConfirm={async () => {

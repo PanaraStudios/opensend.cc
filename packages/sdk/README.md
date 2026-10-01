@@ -31,11 +31,11 @@ const opensend = new Opensend('os_xxxxxxxx', {
 Or set `OPENSEND_API_KEY` and `OPENSEND_BASE_URL` and call `new Opensend()`.
 Without a base URL the constructor throws.
 
-| Option | Environment variable | Default |
-| --- | --- | --- |
-| key (first argument) | `OPENSEND_API_KEY` | none, required |
-| `baseUrl` | `OPENSEND_BASE_URL` | none, required |
-| `userAgent` | `OPENSEND_USER_AGENT` | `opensend-node:<version>` |
+| Option               | Environment variable  | Default                   |
+| -------------------- | --------------------- | ------------------------- |
+| key (first argument) | `OPENSEND_API_KEY`    | none, required            |
+| `baseUrl`            | `OPENSEND_BASE_URL`   | none, required            |
+| `userAgent`          | `OPENSEND_USER_AGENT` | `opensend-node:<version>` |
 
 ## Send an email
 
@@ -55,7 +55,14 @@ The `from` domain must be verified in your installation. Every other resource
 works as in Resend's SDK: `batch`, `domains`, `apiKeys`, `contacts`,
 `segments`, `topics`, `contactProperties`, `broadcasts`, `templates`,
 `automations`, `events`, `webhooks`, `suppressions`, `logs`, `usage` and
-`oauthGrants`.
+`oauthGrants`, `whatsapp`, `messenger` and `instagram`.
+
+Messaging resources expose `messages.send/get/list` and
+`conversations.list/messages`. WhatsApp also has `phoneNumbers.list/get`
+and `media.upload`; Messenger has `pages.list/get`, and Instagram has
+`accounts.list/get`. Sends accept an `idempotencyKey` in the second argument.
+Messenger and Instagram free-form messages require an open 24-hour window;
+otherwise pass a permitted `tag` (`HUMAN_AGENT` only within seven days).
 
 ## Migrating from `resend`
 

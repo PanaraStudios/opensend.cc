@@ -93,6 +93,7 @@ import type * as meta_fixtures from "../meta/fixtures.js";
 import type * as meta_graph from "../meta/graph.js";
 import type * as meta_http from "../meta/http.js";
 import type * as meta_ingest from "../meta/ingest.js";
+import type * as meta_pageConnectActions from "../meta/pageConnectActions.js";
 import type * as meta_projection from "../meta/projection.js";
 import type * as metricRows from "../metricRows.js";
 import type * as metrics from "../metrics.js";
@@ -278,6 +279,7 @@ declare const fullApi: ApiFromModules<{
   "meta/graph": typeof meta_graph;
   "meta/http": typeof meta_http;
   "meta/ingest": typeof meta_ingest;
+  "meta/pageConnectActions": typeof meta_pageConnectActions;
   "meta/projection": typeof meta_projection;
   metricRows: typeof metricRows;
   metrics: typeof metrics;

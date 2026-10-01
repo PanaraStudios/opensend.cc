@@ -1,9 +1,12 @@
 import type {
-  PaginationOptions,
-  PaginatedData,
-} from '../common/interfaces/pagination-options.interface';
-import type { PostOptions } from '../common/interfaces/post-option.interface';
-import type { IdempotentRequest } from '../common/interfaces/idempotent-request.interface';
+  ChannelMessage,
+  ChannelMessageEvents,
+  ChannelConversation,
+  ChannelMessageStatus,
+  ChannelRequestOptions,
+  ChannelPage,
+} from '../channels/interfaces';
+import type { PaginationOptions } from '../common/interfaces/pagination-options.interface';
 export type WhatsAppMessageType =
   | 'text'
   | 'template'
@@ -15,8 +18,7 @@ export type WhatsAppMessageType =
   | 'location'
   | 'interactive'
   | 'reaction';
-export type WhatsAppMessageStatus =
-  'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
+export type WhatsAppMessageStatus = ChannelMessageStatus;
 export type WhatsAppMediaReference =
   { id: string; link?: never } | { link: string; id?: never };
 export type WhatsAppTemplateParameter =
@@ -101,25 +103,16 @@ export type SendWhatsAppMessageOptions = {
     [P in Exclude<keyof Bodies, K>]?: never;
   };
 }[keyof Bodies];
-export type WhatsAppRequestOptions = PostOptions & IdempotentRequest;
+export type WhatsAppRequestOptions = ChannelRequestOptions;
 export type ListWhatsAppMessagesOptions = PaginationOptions & {
   status?: WhatsAppMessageStatus;
   direction?: 'inbound' | 'outbound';
   phoneNumberId?: string;
 };
-export interface WhatsAppMessage {
-  id: string;
-  channel: 'whatsapp';
-  account_id: string;
-  conversation_id: string;
-  from: string;
-  to: string;
-  type: WhatsAppMessageType | 'contacts' | 'button' | 'unsupported';
-  status: WhatsAppMessageStatus;
-  direction: 'inbound' | 'outbound';
-  external_id: string | null;
-  created_at: string;
-  text?: string;
+export interface WhatsAppMessage extends ChannelMessage<
+  'whatsapp',
+  WhatsAppMessageType | 'contacts' | 'button' | 'unsupported'
+> {
   template?: WhatsAppTemplate;
   location?: Bodies['location'];
   interactive?: WhatsAppInteractive;
@@ -129,26 +122,9 @@ export interface WhatsAppMessage {
   audio?: Bodies['audio'];
   document?: Bodies['document'];
   sticker?: Bodies['sticker'];
-  tags: { name: string; value: string }[];
-  error?: { code: number | null; title: string | null; message: string };
 }
-export interface WhatsAppMessageDetail extends WhatsAppMessage {
-  last_event: WhatsAppMessageStatus;
-  events: {
-    type: WhatsAppMessageStatus;
-    created_at: string;
-    details: unknown;
-  }[];
-  media: {
-    id: string | null;
-    content_type: string;
-    filename: string | null;
-    size: number | null;
-    download_url: string | null;
-    expires_at: string | null;
-    error: string | null;
-  }[];
-}
+export interface WhatsAppMessageDetail
+  extends Omit<WhatsAppMessage, 'media'>, ChannelMessageEvents {}
 export interface WhatsAppPhoneNumber {
   id: string;
   phone_number_id: string;
@@ -161,23 +137,11 @@ export interface WhatsAppPhoneNumber {
   waba_id: string | null;
   created_at: string;
 }
-export interface WhatsAppConversation {
-  id: string;
-  channel: 'whatsapp';
-  account_id: string | null;
-  channel_contact_id: string | null;
-  contact_id: string | null;
-  status: 'open' | 'closed';
-  last_message_at: string;
-  last_preview: string;
-  last_direction: 'inbound' | 'outbound';
-  window_expires_at: string | null;
-  unread: boolean;
-}
+export type WhatsAppConversation = ChannelConversation<'whatsapp'>;
 export type UploadWhatsAppMediaOptions = {
   file: Blob;
   filename?: string;
   from?: string;
   type?: string;
 };
-export type WhatsAppPage<T> = PaginatedData<T[]>;
+export type WhatsAppPage<T> = ChannelPage<T>;
