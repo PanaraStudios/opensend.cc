@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
 import * as React from "react"
@@ -244,12 +245,7 @@ function ContactPage({
       <DetailHeader
         backHref="/contacts"
         backLabel="Contacts"
-        title={
-          contact.email ||
-          [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
-          contact.phone ||
-          "Contact"
-        }
+        title={contactIdentity(contact).label}
         icon={UserIcon}
         description={`Created ${formatDate(contact.createdAt)}`}
         actions={
@@ -506,7 +502,7 @@ function ContactPage({
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
-        title={`Delete ${contact.email || contact.phone || "contact"}?`}
+        title={`Delete ${contactIdentity(contact).label}?`}
         description="The contact is removed from every segment. This cannot be undone."
         onConfirm={() => {
           onDelete(() => void deleteContacts([contact.id]))

@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
 import {
@@ -274,7 +275,7 @@ function CommandMenu({
                     value={`contact ${contact.email ?? ""} ${contact.phone ?? ""} ${contact.firstName} ${contact.lastName}`}
                     onSelect={() => go(`/contacts/${contact.id}`)}
                   >
-                    {contact.email || contact.phone || "Contact"}
+                    {contactIdentity(contact).label}
                   </CommandItem>
                 ))}
               </CommandGroup>
