@@ -1,3 +1,8 @@
+import type {
+  CallingRouting,
+  IvrPathEntry,
+  IvrAction,
+} from "../../ivrs/interfaces"
 import type { PaginationOptions } from "../../common/interfaces/pagination-options.interface"
 import type { WhatsAppTemplate } from "../catalog"
 export type CallHandlingMode = "gateway" | "api"
@@ -67,6 +72,9 @@ export interface WhatsAppCall {
   error: string | null
   error_code: number | null
   assigned_agent: string | null
+  ivr_id: string | null
+  ivr_path: IvrPathEntry[]
+  ivr_outcome: IvrAction | null
 }
 export interface WhatsAppCallDetail extends WhatsAppCall {
   events: { event: string; at: number; details: Record<string, unknown> }[]
@@ -107,11 +115,13 @@ export interface CallingSettings {
   }
 }
 export interface UpdateCallingSettings {
+  routing?: CallingRouting
   calling?: CallingSettings
   handling_mode?: CallHandlingMode
   announcement_file_id?: string
 }
 export interface PhoneNumberCalling {
+  routing: CallingRouting
   account_id: string
   handling_mode: CallHandlingMode
   calling: CallingSettings & {

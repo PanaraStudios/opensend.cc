@@ -1,3 +1,4 @@
+import { callingRouting } from "./ivrs.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type {
   Opensend,
@@ -213,6 +214,7 @@ export function addCallingTools(server: McpServer, opensend: Opensend) {
       inputSchema: {
         id: z.string(),
         calling: calling.optional(),
+        routing: callingRouting.optional(),
         handling_mode: z.enum(["api", "gateway"]).optional(),
         announcement_file_id: z.string().optional(),
         idempotencyKey: z.string().optional(),
