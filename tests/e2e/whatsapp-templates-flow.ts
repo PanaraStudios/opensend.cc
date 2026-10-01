@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import type { Doc } from "../../convex/_generated/dataModel"
 import { backendRows, testBackendValue } from "./ses-fixtures"
+import { choose } from "./whatsapp-campaigns-flow"
 
 /** The seeded WhatsApp account's WABA (convex/meta/fixtures.ts), and the
     app secret metaAppTests saved. */
@@ -86,10 +87,10 @@ export function whatsappTemplatesTests(
     await owner.getByTestId("editor-name").fill(NAME)
     await owner.getByTestId("editor-name").press("Tab")
     await expect(owner.getByTestId("editor-name")).toHaveValue(NAME)
-    await owner.getByLabel("Category", { exact: true }).selectOption("UTILITY")
-    await expect(owner.getByLabel("Language", { exact: true })).toHaveValue(
-      "en_US"
-    )
+    await choose(owner, "Category", "Utility")
+    await expect(
+      owner.getByRole("combobox", { name: "Language", exact: true })
+    ).toHaveText(/English \(US\)/)
     await owner.getByLabel("Body", { exact: true }).fill(BODY)
     await owner
       .getByLabel("Example for {{1}} in the body", { exact: true })

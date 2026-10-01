@@ -30,7 +30,8 @@ async function webhook(page: Page, value: unknown, field = "messages") {
   )
   expect(response.status()).toBe(200)
 }
-async function choose(page: Page, name: string, option: string) {
+/** Picks an option from one of the dashboard's own selects. */
+export async function choose(page: Page, name: string, option: string) {
   await page.getByRole("combobox", { name, exact: true }).click()
   await page.getByRole("option", { name: option, exact: true }).click()
 }
@@ -107,9 +108,7 @@ export function whatsappCampaignsTests(
       `${account.displayName} (${account.handle})`
     )
     await choose(owner, "Approved template", TEMPLATE)
-    await owner
-      .getByLabel("Source for {{1}}", { exact: true })
-      .selectOption("contact")
+    await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")
     await owner.getByLabel("Fallback for {{1}}", { exact: true }).fill("there")
     await choose(owner, "Audience", "WhatsApp campaigns E2E")
@@ -205,9 +204,7 @@ export function whatsappCampaignsTests(
       `${account.displayName} (${account.handle})`
     )
     await choose(owner, "Approved template", TEMPLATE)
-    await owner
-      .getByLabel("Source for {{1}}", { exact: true })
-      .selectOption("contact")
+    await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")
     await owner.getByLabel("Fallback for {{1}}", { exact: true }).fill("there")
     await expect
