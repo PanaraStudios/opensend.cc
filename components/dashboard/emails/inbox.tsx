@@ -1,6 +1,9 @@
 "use client"
 
+import type { EmailStatus } from "@/lib/dashboard/types"
 import * as React from "react"
+import { messageHref, threadHref } from "@/lib/messages/links"
+import { channelHandle } from "@/lib/meta/account-display"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -97,6 +100,7 @@ import {
   defaultFromAddress,
   formatDateTime,
   sentenceCase,
+  emailStatusLabel,
 } from "@/lib/dashboard/format"
 import { useDomainOptions } from "@/lib/domains/use-domains"
 import { senderDomainSearch } from "@/lib/dashboard/sender-options"
@@ -113,10 +117,6 @@ import {
   type ThreadMessage,
 } from "@/lib/messages/use-messages"
 import type { Id } from "@/convex/_generated/dataModel"
-
-/** The inbox with a thread open, or none. */
-const inboxHref = (id: string | null) =>
-  id ? `/emails/inbox?c=${id}` : "/emails/inbox"
 
 const STATE_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All conversations" },
@@ -138,7 +138,7 @@ export function InboxView() {
       id={selected}
       onBack={
         mobile
-          ? () => router.replace(inboxHref(null), { scroll: false })
+          ? () => router.replace(threadHref(null), { scroll: false })
           : undefined
       }
     />
@@ -244,7 +244,7 @@ function ConversationList({ selected }: { selected: string | null }) {
                   aria-current={conversation._id === selected || undefined}
                   render={
                     <Link
-                      href={inboxHref(conversation._id)}
+                      href={threadHref(conversation._id)}
                       replace
                       scroll={false}
                     />
@@ -330,8 +330,8 @@ function ConversationThread({
             <h2 className="truncate text-sm font-medium">{detail.name}</h2>
             <span className="truncate text-xs text-muted-foreground">
               {detail.handle}
-              {detail.account
-                ? ` · ${channelLabel(conversation.channel)} ${detail.account.handle}`
+              {detail.account && conversation.channel !== "email"
+                ? ` · ${channelLabel(conversation.channel)} ${channelHandle(conversation.channel, detail.account.handle)}`
                 : ""}
             </span>
           </div>
@@ -454,12 +454,7 @@ function LoadOlder({
 function ThreadBubble({ message }: { message: ThreadMessage }) {
   const outbound = message.direction === "outbound"
   const StatusIcon = STATUS_ICONS[message.status]
-  const href =
-    message.kind === "email"
-      ? `/emails/${message.id}`
-      : message.kind === "received"
-        ? `/emails/receiving/${message.id}`
-        : `/emails/messages/${message.id}`
+  const href = messageHref(message.kind, message.id)
   return (
     <Message align={outbound ? "end" : "start"} data-testid="thread-message">
       <MessageContent>
@@ -498,7 +493,9 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
               data-testid="message-status"
             >
               {StatusIcon ? <StatusIcon className="size-3.5" /> : null}
-              {sentenceCase(message.status)}
+              {message.kind === "email"
+                ? emailStatusLabel(message.status as EmailStatus)
+                : sentenceCase(message.status)}
             </span>
           ) : null}
         </MessageFooter>
