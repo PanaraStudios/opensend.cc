@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-for value in "${FREESWITCH_ESL_SECRET:-}" "${FREESWITCH_SIP_SECRET:-}" "${FREESWITCH_AGENT_SECRET:-}"; do
+for value in "${FREESWITCH_ESL_SECRET:-}" "${FREESWITCH_SIP_SECRET:-}" "${FREESWITCH_DIRECTORY_SECRET:-}"; do
   case "$value" in *[!a-zA-Z0-9_-]*|'') echo 'Set FreeSWITCH secrets (32+ safe characters)' >&2; exit 1;; esac
   [ "${#value}" -ge 32 ] || exit 1
 done
@@ -11,7 +11,7 @@ umask 077
 # Self-signed P-256 is fine for DTLS; production WSS needs a trusted hostname cert.
 if [ ! -s /certs/wss.pem ]; then
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
-    -keyout /certs/wss.key -out /certs/wss.crt -days 365 -subj /CN=opensend-freeswitch
+    -keyout /certs/wss.key -out /certs/wss.crt -days 365 -subj /CN=localhost -addext "subjectAltName=DNS:localhost,DNS:freeswitch,IP:127.0.0.1"
   cat /certs/wss.key /certs/wss.crt > /certs/wss.pem
 fi
 # FreeSWITCH's independent DTLS certificate also uses P-256.
@@ -21,21 +21,9 @@ if [ ! -s /opt/freeswitch/certs/dtls-srtp.pem ]; then
     -keyout /opt/freeswitch/certs/dtls.key -out /opt/freeswitch/certs/dtls.crt -days 365 -subj /CN=opensend-freeswitch-dtls
   cat /opt/freeswitch/certs/dtls.key /opt/freeswitch/certs/dtls.crt > /opt/freeswitch/certs/dtls-srtp.pem
 fi
-envsubst '${FREESWITCH_ESL_SECRET} ${FREESWITCH_PUBLIC_IP}' < /templates/freeswitch.xml.template > /opt/freeswitch/conf/freeswitch.xml
-# Bounded per-call gateway slots; browser-agent credentials use a separate secret.
-# FreeSWITCH's preprocessor needs <include> and </include> on their own lines.
-i=1000
-while [ "$i" -le 1099 ]; do
-  printf '<include>\n<user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="calling"/></variables></user>\n</include>\n' \
-    "$i" "$FREESWITCH_SIP_SECRET" > "/opt/freeswitch/conf/directory/$i.xml"
-  i=$((i + 1))
-done
-i=2000
-while [ "$i" -le 2099 ]; do
-  printf '<include>\n<user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="agents"/></variables></user>\n</include>\n' \
-    "$i" "$FREESWITCH_AGENT_SECRET" > "/opt/freeswitch/conf/directory/$i.xml"
-  i=$((i + 1))
-done
+# No static directory fallback: unknown/expired agents must fail closed.
+rm -f /opt/freeswitch/conf/directory/*.xml
+envsubst '${FREESWITCH_ESL_SECRET} ${FREESWITCH_PUBLIC_IP} ${FREESWITCH_DIRECTORY_SECRET}' < /templates/freeswitch.xml.template > /opt/freeswitch/conf/freeswitch.xml
 # Our rendered config lives in /opt/freeswitch/conf, not the stock etc/freeswitch samples.
 mkdir -p /opt/freeswitch/log /opt/freeswitch/db
 exec /opt/freeswitch/bin/freeswitch -nf -nonat -conf /opt/freeswitch/conf -log /opt/freeswitch/log -db /opt/freeswitch/db
