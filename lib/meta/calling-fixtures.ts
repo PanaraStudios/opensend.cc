@@ -1,0 +1,20 @@
+/** Complete, single-track SDP for fake Graph contracts. Media interoperability is tested by 8b's harness. */
+export const CALLING_TEST_SDP = [
+  "v=0",
+  "o=- 1 1 IN IP4 0.0.0.0",
+  "s=-",
+  "t=0 0",
+  "m=audio 50000 UDP/TLS/RTP/SAVPF 111",
+  "c=IN IP4 203.0.113.2",
+  "a=rtpmap:111 opus/48000/2",
+  "a=ptime:20",
+  "a=rtcp-mux",
+  "a=sendrecv",
+  "a=ice-ufrag:callingtest",
+  "a=ice-pwd:callingtestpassword123456",
+  `a=fingerprint:sha-256 ${Array(32).fill("11").join(":")}`,
+  "a=setup:active",
+  "a=candidate:1 1 UDP 2130706431 203.0.113.2 50000 typ host",
+  "a=end-of-candidates",
+  "",
+].join("\r\n")

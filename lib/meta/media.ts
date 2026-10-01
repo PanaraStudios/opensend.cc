@@ -53,15 +53,26 @@ export function whatsappMediaMultipart(
   bytes: Uint8Array,
   contentType: string,
   filename: string,
-  boundary: string
+  boundary: string,
+  fields: Record<string, string> = {}
 ) {
   if (!/^[a-zA-Z0-9_-]+$/.test(boundary))
     throw new Error("Invalid multipart boundary.")
   if (/[\r\n]/.test(contentType)) throw new Error("Invalid media MIME type.")
   const safeName = filename.replace(/[\r\n"\\]/g, "_")
   const encode = (text: string) => new TextEncoder().encode(text)
+  for (const [key, value] of Object.entries(fields))
+    if (!/^[a-z_]+$/.test(key) || /[\r\n]/.test(value))
+      throw new Error("Invalid multipart field.")
+  const extra = Object.entries(fields)
+    .map(
+      ([key, value]) =>
+        `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`
+    )
+    .join("")
   const head = encode(
-    `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\n${contentType}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeName}"\r\nContent-Type: ${contentType}\r\n\r\n`
+    extra +
+      `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\n${contentType}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeName}"\r\nContent-Type: ${contentType}\r\n\r\n`
   )
   const tail = encode(`\r\n--${boundary}--\r\n`)
   const body = new Uint8Array(head.length + bytes.length + tail.length)

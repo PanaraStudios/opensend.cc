@@ -72,6 +72,11 @@ export const TEAM_TABLES = [
   "metaConnections",
   "teamAssets",
   "storedFiles",
+  "calls",
+  "callEvents",
+  "callPermissions",
+  "callingSettings",
+  "gatewayEvents",
 ] as const
 
 export const CHILD_TABLES = [
