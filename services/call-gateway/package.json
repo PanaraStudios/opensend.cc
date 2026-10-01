@@ -21,6 +21,9 @@
   },
   "devDependencies": {
     "@types/node": "20.19.43",
+    "esbuild": "0.25.12",
+    "playwright": "1.63.0",
+    "sip.js": "0.21.2",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
     "werift": "0.24.4"
