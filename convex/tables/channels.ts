@@ -1,3 +1,4 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { RENDERED_HEADER_FORMATS } from "../../lib/meta/templates"
 import { v } from "convex/values"
@@ -76,8 +77,9 @@ export const CONVERSATION_STATUSES = ["open", "closed"] as const
 export const conversationStatusValue = literals(CONVERSATION_STATUSES)
 /** An inbound media reference is pending until its file is fetched. */
 export const channelMediaValue = v.object({
-  storageId: v.optional(v.id("_storage")),
+  ...fileReference,
   contentType: v.string(),
+  mimeType: v.optional(v.string()),
   filename: v.optional(v.string()),
   size: v.optional(v.number()),
   error: v.optional(v.string()),
@@ -312,7 +314,7 @@ export const channelTables = {
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
     mediaId: v.string(),
-    storageId: v.id("_storage"),
+    ...fileReference,
     contentType: v.string(),
     filename: v.string(),
     size: v.number(),

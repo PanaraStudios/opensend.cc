@@ -1,3 +1,4 @@
+import { deleteFile } from "./storage/files"
 import { deleteReceived } from "./received"
 import { v } from "convex/values"
 import type { OrderedQuery } from "convex/server"
@@ -69,6 +70,8 @@ export const TEAM_TABLES = [
   "channelAccounts",
   "whatsappBusinessAccounts",
   "metaConnections",
+  "teamAssets",
+  "storedFiles",
 ] as const
 
 export const CHILD_TABLES = [
@@ -171,8 +174,15 @@ export const purge = internalMutation({
       await next()
       return null
     }
-    if (name === "inboundMessages" && "storageId" in row && row.storageId)
-      await ctx.storage.delete(row.storageId)
+    if (name === "storedFiles")
+      await deleteFile(ctx, { fileId: row._id as Id<"storedFiles"> }, true)
+    if (name === "teamAssets" && "fileId" in row)
+      await deleteFile(ctx, { fileId: row.fileId })
+    if (
+      name === "inboundMessages" &&
+      (("storageId" in row && row.storageId) || ("fileId" in row && row.fileId))
+    )
+      await deleteFile(ctx, row)
     let pending = false
     if (name === "emails") {
       const id = row._id as Id<"emails">
@@ -189,7 +199,7 @@ export const purge = internalMutation({
         "channelMediaUploads",
         row._id as Id<"channelMediaUploads">
       )
-      if (file) await ctx.storage.delete(file.storageId)
+      if (file) await deleteFile(ctx, file)
     } else if (name === "broadcasts") {
       await retireBroadcastCounters(ctx, row._id as Id<"broadcasts">)
     } else if (name === "channelMessages") {
@@ -250,8 +260,11 @@ export const purge = internalMutation({
             q.eq("webhookId", row._id as Id<"webhooks">)
           )
       )
-    } else if (name === "exports" && "storageId" in row && row.storageId) {
-      await ctx.storage.delete(row.storageId)
+    } else if (
+      name === "exports" &&
+      (("storageId" in row && row.storageId) || ("fileId" in row && row.fileId))
+    ) {
+      await deleteFile(ctx, row)
     } else if (
       name === "automationRuns" &&
       "workflowId" in row &&

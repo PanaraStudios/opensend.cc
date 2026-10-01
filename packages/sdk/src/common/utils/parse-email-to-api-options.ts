@@ -5,9 +5,10 @@ import type {
 } from '../interfaces/email-api-options.interface';
 
 function parseAttachments(
-  attachments: CreateEmailOptions['attachments'],
+  attachments: CreateEmailOptions['attachments']
 ): EmailApiAttachment[] | undefined {
   return attachments?.map((attachment) => ({
+    ...(attachment.id ? { id: attachment.id } : {}),
     content: attachment.content,
     filename: attachment.filename,
     path: attachment.path,
@@ -17,7 +18,7 @@ function parseAttachments(
 }
 
 export function parseEmailToApiOptions(
-  email: CreateEmailOptions,
+  email: CreateEmailOptions
 ): EmailApiOptions {
   return {
     attachments: parseAttachments(email.attachments),

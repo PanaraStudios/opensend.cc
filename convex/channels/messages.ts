@@ -1,3 +1,4 @@
+import { messageFiles } from "../storage/media"
 import { isPageChannel } from "../../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
@@ -291,6 +292,12 @@ export async function createChannelMessage(
     )
   const now = Date.now()
   const data = strategy.mediaData(payload, type)
+  const storedMedia = await messageFiles(
+    ctx,
+    payload,
+    opts.organizationId,
+    account._id
+  )
   const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
     account,
@@ -411,8 +418,25 @@ export async function createChannelMessage(
     true
   )
   const references = channel === "whatsapp" ? whatsappMessageMedia(payload) : []
-  const files: NonNullable<Doc<"channelMessageContents">["media"]> = []
+  const files: NonNullable<Doc<"channelMessageContents">["media"]> = [
+    ...storedMedia,
+  ]
   for (const reference of references) {
+    const stored = storedMedia.find(
+      (file) => file.mediaId === reference.mediaId
+    )
+    if (stored) {
+      try {
+        validateWhatsAppMediaReference(
+          reference.type,
+          stored.contentType,
+          reference.type === "audio" && object(payload.audio).voice === true
+        )
+      } catch (error) {
+        throw invalid((error as Error).message)
+      }
+      continue
+    }
     const upload = await ctx.db
       .query("channelMediaUploads")
       .withIndex("by_team_and_mediaId", (q) =>
@@ -434,6 +458,7 @@ export async function createChannelMessage(
       files.push({
         mediaId: reference.mediaId,
         contentType: upload.contentType,
+        mimeType: upload.contentType,
         filename: upload.filename,
         size: upload.size,
       })
@@ -441,6 +466,7 @@ export async function createChannelMessage(
       files.push({
         mediaId: reference.mediaId,
         contentType: reference.contentType,
+        mimeType: reference.contentType,
         ...(reference.filename ? { filename: reference.filename } : {}),
         ...(reference.url ? { url: reference.url } : {}),
       })
@@ -459,6 +485,7 @@ export async function createChannelMessage(
       files.push({
         mediaId: upload.mediaId,
         contentType: upload.contentType,
+        mimeType: upload.contentType,
         filename: upload.filename,
         size: upload.size,
       })
@@ -537,7 +564,7 @@ export async function acceptChannelMessage(
   if (message.channel === "whatsapp") {
     const body = await content(ctx, message._id)
     for (const file of body?.media ?? []) {
-      if (!file.mediaId || file.storageId) continue
+      if (!file.mediaId || file.storageId || file.fileId) continue
       const upload = await ctx.db
         .query("channelMediaUploads")
         .withIndex("by_team_and_mediaId", (q) =>
@@ -620,6 +647,7 @@ export const claim = internalMutation({
       token: v.string(),
       version: v.string(),
       phoneNumberId: v.string(),
+      organizationId: v.string(),
       payload: v.string(),
       messagingType: v.optional(v.string()),
     })
@@ -724,6 +752,7 @@ export const claim = internalMutation({
       token,
       version: app.graphVersion,
       phoneNumberId: channelStrategies[message.channel].endpoint(account),
+      organizationId: message.organizationId,
       payload: body.payload,
       ...(typeof payload.messaging_type === "string"
         ? { messagingType: payload.messaging_type }

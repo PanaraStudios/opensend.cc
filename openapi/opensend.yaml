@@ -10931,6 +10931,89 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+  /media/uploads:
+    post:
+      operationId: media/uploads/create
+      tags: [Media]
+      summary: Create a direct file upload
+      description: Requires media:write. PUT to upload_url for object storage, or POST for local Convex storage. Then complete the upload. URLs expire in 15 minutes.
+      x-opensend-scope: media:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [use, filename, content_type, size]
+              properties:
+                use: { type: string, enum: [whatsapp, template, email, import] }
+                filename: { type: string, maxLength: 1024 }
+                content_type: { type: string, maxLength: 256 }
+                size: { type: integer, minimum: 1, maximum: 104857600 }
+                from:
+                  {
+                    type: string,
+                    description: WhatsApp account or phone number id,
+                  }
+                animated:
+                  {
+                    type: boolean,
+                    description: Whether a WebP sticker is animated,
+                  }
+      responses:
+        "200":
+          description: Pending upload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, upload_url, expires_at, provider]
+                properties:
+                  id: { type: string }
+                  upload_url: { type: string, format: uri }
+                  expires_at: { type: string, format: date-time }
+                  provider: { type: string, enum: [object, convex] }
+        "401": { $ref: "#/components/responses/Error401" }
+        "403": { $ref: "#/components/responses/Error403" }
+        "422": { $ref: "#/components/responses/Error422" }
+        "429": { $ref: "#/components/responses/Error429" }
+  /media/uploads/{id}/complete:
+    post:
+      operationId: media/uploads/complete
+      tags: [Media]
+      summary: Verify a direct file upload
+      description: Verifies size and content type. The completed id can be used in WhatsApp media and email attachments.
+      x-opensend-scope: media:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                storage_id:
+                  {
+                    type: string,
+                    description: Required for local Convex uploads; use storageId from the POST upload response,
+                  }
+      responses:
+        "200":
+          description: Ready upload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WhatsAppId" }
+        "401": { $ref: "#/components/responses/Error401" }
+        "403": { $ref: "#/components/responses/Error403" }
+        "422": { $ref: "#/components/responses/Error422" }
+        "429": { $ref: "#/components/responses/Error429" }
   /whatsapp/media:
     post:
       operationId: whatsapp/media/upload
@@ -10984,10 +11067,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WhatsAppMetaError"
-      description: "Upload binary media to Convex storage and Meta. MIME/size limits: JPEG/PNG 5 MB;
+      description:
+        "Legacy multipart uploads are limited to 20 MB including overhead. Use /media/uploads for larger files. With a bucket returns an Opensend media id; otherwise a Meta media id. MIME/size limits: JPEG/PNG 5 MB;
         supported audio/video 16 MB; documents 100 MB; WebP static stickers 100 KB or animated
         stickers 500 KB. OGG requires codecs=opus. Meta also validates codecs and image formats. The
-        deployment HTTP body limit can be lower. Returns Meta media id. Domain-restricted keys
+        deployment HTTP body limit can be lower. Domain-restricted keys
         receive 403."
       requestBody:
         required: true
@@ -15727,6 +15811,9 @@ components:
     Attachment:
       type: object
       properties:
+        id:
+          type: string
+          description: Completed direct-upload id. Filename and type come from the upload.
         content:
           type: string
           description: >-
@@ -15759,6 +15846,7 @@ components:
       required: []
       allOf:
         - anyOf:
+            - required: [id]
             - required:
                 - path
             - required:
@@ -17026,6 +17114,8 @@ components:
     ApiScope:
       type: string
       enum:
+        - media:read
+        - media:write
         - emails:read
         - emails:write
         - whatsapp:read
@@ -20781,9 +20871,13 @@ components:
         type: number
     CreateContactImportOptions:
       type: object
-      required:
-        - file
+      anyOf:
+        - required: [file]
+        - required: [file_id]
       properties:
+        file_id:
+          type: string
+          description: Completed direct upload with use=import, up to 256 KiB.
         file:
           type: string
           format: binary

@@ -11,8 +11,8 @@ import { parseScopes as parseOAuthScopes, oauthScopes } from "./oauth/policy"
 
 describe("API scopes", () => {
   it("has one catalog of grantable resources, excluding keys and team settings", () => {
-    assert.equal(API_RESOURCES.length, 14)
-    assert.equal(new Set(API_SCOPES).size, 28)
+    assert.equal(API_RESOURCES.length, 15)
+    assert.equal(new Set(API_SCOPES).size, 30)
     assert.deepEqual(
       [...new Set(API_RESOURCES.map((r) => r.group))],
       ["Messaging", "Audience", "Content", "Setup"]

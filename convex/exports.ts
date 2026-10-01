@@ -1,3 +1,6 @@
+import { fileReference } from "./tables/storage"
+import { fileUrl } from "./storage/urls"
+import { deleteFile } from "./storage/files"
 import { ConvexError, v } from "convex/values"
 import {
   paginationOptsValidator,
@@ -42,6 +45,7 @@ export const exportView = schema
   .doc("exports")
   .omit(
     "storageId",
+    "fileId",
     "filters",
     "fileName",
     "creatorEmail",
@@ -167,9 +171,13 @@ export const downloadUrl = query({
     const row = await ctx.db.get("exports", id)
     if (!row) return null
     await requireTeam(ctx, row.organizationId, "admin")
-    if (row.status !== "ready" || row.expiresAt <= Date.now() || !row.storageId)
+    if (
+      row.status !== "ready" ||
+      row.expiresAt <= Date.now() ||
+      (!row.storageId && !row.fileId)
+    )
       return null
-    return ctx.storage.getUrl(row.storageId)
+    return fileUrl(ctx, row, { filename: row.fileName })
   },
 })
 
@@ -286,7 +294,14 @@ export const run = internalAction({
       const storageId = await ctx.storage.store(
         new Blob(chunks, { type: "text/csv;charset=utf-8" })
       )
-      await ctx.runMutation(internal.exports.finish, { id, storageId, rows })
+      const file = await ctx.runAction(internal.storage.objects.adopt, {
+        organizationId: row.organizationId,
+        feature: "exports",
+        storageId,
+        contentType: "text/csv;charset=utf-8",
+        filename: row.fileName,
+      })
+      await ctx.runMutation(internal.exports.finish, { id, ...file, rows })
     } catch (error) {
       console.error("Export could not be completed")
       await ctx.runMutation(internal.exports.finish, {
@@ -304,12 +319,12 @@ export const run = internalAction({
 export const finish = internalMutation({
   args: {
     id: v.id("exports"),
-    storageId: v.optional(v.id("_storage")),
+    ...fileReference,
     rows: v.optional(v.number()),
     error: v.optional(v.string()),
   },
   returns: v.null(),
-  handler: async (ctx, { id, storageId, rows = 0, error }) => {
+  handler: async (ctx, { id, storageId, fileId, rows = 0, error }) => {
     const row = await ctx.db.get("exports", id)
     if (
       !row ||
@@ -317,18 +332,18 @@ export const finish = internalMutation({
       (await retirement(ctx, row.organizationId))
     ) {
       // Expired or gone while it ran: the file has no one to go to.
-      if (storageId) await ctx.storage.delete(storageId)
+      if (storageId || fileId) await deleteFile(ctx, { storageId, fileId })
       return null
     }
     await patchExport(
       ctx,
       id,
-      storageId
-        ? { status: "ready", storageId, rows }
+      storageId || fileId
+        ? { status: "ready", storageId, fileId, rows }
         : { status: "failed", error }
     )
     // Too long to come down in the browser: Resend emails the creator.
-    if (storageId && rows > AUTO_DOWNLOAD_ROWS)
+    if ((storageId || fileId) && rows > AUTO_DOWNLOAD_ROWS)
       await ctx.scheduler.runAfter(0, internal.exports.emailCreator, { id })
     return null
   },
@@ -377,10 +392,11 @@ export const expire = internalMutation({
           q.eq("status", status).lte("expiresAt", now)
         )
         .take(100)) {
-        if (row.storageId) await ctx.storage.delete(row.storageId)
+        await deleteFile(ctx, row)
         await patchExport(ctx, row._id, {
           status: "expired",
           storageId: undefined,
+          fileId: undefined,
         })
         due.push(row._id)
       }

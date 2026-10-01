@@ -4263,6 +4263,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     teams: {
+      storageMigrationPage: FunctionReference<"query", "internal", { cursor: string | null }, { continueCursor: string; isDone: boolean; page: Array<{ id: string; organizationId: string; storageId: string; url: string }> }, Name>;
+      storageMigrationDrop: FunctionReference<"mutation", "internal", { id: string; storageId: string }, null, Name>;
       cancelInvitation: FunctionReference<
         "mutation",
         "internal",

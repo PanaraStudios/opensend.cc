@@ -386,7 +386,7 @@ export function mediaFiles(
     ...(file.size !== undefined ? { size: file.size } : {}),
     ready:
       !!file.mediaId &&
-      (!!file.storageId || message.direction === "outbound") &&
+      (!!file.storageId || !!file.fileId || message.direction === "outbound") &&
       !file.error,
     ...(file.error ? { error: file.error } : {}),
   }))

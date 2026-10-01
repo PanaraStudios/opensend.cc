@@ -1,4 +1,5 @@
 "use client"
+import { FileUploadField } from "./file-upload"
 
 import * as React from "react"
 import { CHANNELS, type MessagingChannel } from "@/lib/channels"
@@ -261,6 +262,24 @@ export function WhatsAppCampaignFields({
               }
             />
           </Field>
+          {channel === "whatsapp" &&
+          (selected?.variables ?? []).includes("header_media") ? (
+            <FileUploadField
+              label="Upload header media"
+              use="whatsapp"
+              from={config.accountId}
+              disabled={!config.accountId}
+              onUploaded={(id) =>
+                onChange({
+                  ...config,
+                  variables: {
+                    ...config.variables,
+                    header_media: { value: `opensend-file:${id}` },
+                  },
+                })
+              }
+            />
+          ) : null}
           {(selected?.variables ?? []).map((name) => (
             <VariableMapping
               key={name}

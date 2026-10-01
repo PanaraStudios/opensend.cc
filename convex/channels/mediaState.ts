@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import { internalQuery, internalMutation } from "../_generated/server"
 import { retirement } from "../teamLifecycle"
 import { channelMediaValue } from "../tables/channels"
+import { deleteFile } from "../storage/files"
 
 export const context = internalQuery({
   args: { messageId: v.id("channelMessages"), mediaId: v.string() },
@@ -11,6 +12,7 @@ export const context = internalQuery({
     v.object({
       encryptedToken: v.string(),
       version: v.string(),
+      organizationId: v.string(),
       media: channelMediaValue,
       channel: v.union(
         v.literal("whatsapp"),
@@ -40,10 +42,12 @@ export const context = internalQuery({
       account.status !== "disconnected" &&
       app &&
       media &&
-      !media.storageId
+      !media.storageId &&
+      !media.fileId
       ? {
           encryptedToken: account.encryptedToken ?? connection.encryptedToken,
           version: app.graphVersion,
+          organizationId: message.organizationId,
           media,
           channel: message.channel,
           messageType: message.type,
@@ -71,15 +75,19 @@ export const complete = internalMutation({
       !message ||
       !media ||
       media.storageId ||
+      media.fileId ||
       (await retirement(ctx, message.organizationId))
     ) {
-      if (args.file?.storageId) await ctx.storage.delete(args.file.storageId)
+      if (args.file) await deleteFile(ctx, args.file)
       return null
     }
     await ctx.db.patch("channelMessageContents", content!._id, {
       media: content!.media!.map((m) =>
         m.mediaId === args.mediaId
-          ? (args.file ?? { ...m, error: args.error })
+          ? {
+              ...(args.file ?? { ...m, error: args.error }),
+              mimeType: m.mimeType ?? m.contentType,
+            }
           : m
       ),
     })
@@ -105,7 +113,7 @@ export const file = internalQuery({
       .unique()
     const file = content?.media?.find((m) => m.mediaId === args.mediaId)
     if (!file) return null
-    if (file.storageId) return file
+    if (file.storageId || file.fileId) return file
     const upload = await ctx.db
       .query("channelMediaUploads")
       .withIndex("by_team_and_mediaId", (q) =>
@@ -117,7 +125,7 @@ export const file = internalQuery({
     return upload &&
       upload.accountId === message.accountId &&
       upload.expiresAt > Date.now()
-      ? { ...file, storageId: upload.storageId }
+      ? { ...file, storageId: upload.storageId, fileId: upload.fileId }
       : null
   },
 })

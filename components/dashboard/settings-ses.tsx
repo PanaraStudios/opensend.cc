@@ -1,4 +1,5 @@
 "use client"
+import { FileStorageSettings } from "./file-storage"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
 import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
@@ -48,6 +49,7 @@ export function SettingsSes() {
   const callbackOrigin = installation?.callbackOrigin
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
+      <FileStorageSettings />
       <p className="text-sm text-muted-foreground">
         Manage the AWS connection used by all teams.
       </p>

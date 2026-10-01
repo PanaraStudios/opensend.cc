@@ -795,7 +795,14 @@ export function templateSendComponents(
     )
     sends.push({
       type: "header",
-      parameters: [{ type: media, [media]: { link } }],
+      parameters: [
+        {
+          type: media,
+          [media]: link.startsWith("opensend-file:")
+            ? { id: link.slice("opensend-file:".length) }
+            : { link },
+        },
+      ],
     })
   }
   const bodyParams = unique(textParams(text(find(components, "BODY")?.text)))

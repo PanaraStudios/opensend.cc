@@ -1,6 +1,12 @@
 /** Shared REST, OAuth and dashboard permission catalog. Write includes read. */
 export const API_RESOURCES = [
   {
+    id: "media",
+    label: "Media",
+    group: "Messaging",
+    description: "Direct file uploads for messaging and imports.",
+  },
+  {
     id: "emails",
     label: "Emails",
     group: "Messaging",

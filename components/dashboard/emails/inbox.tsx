@@ -1,4 +1,5 @@
 "use client"
+import { FileUploadField } from "../file-upload"
 
 import type { EmailStatus } from "@/lib/dashboard/types"
 import * as React from "react"
@@ -523,6 +524,8 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
   const { conversation } = detail
   const email = conversation.channel === "email"
   const [text, setText] = React.useState("")
+  const [fileId, setFileId] = React.useState<Id<"storedFiles">>()
+  const [filename, setFilename] = React.useState("")
   const { sending, send } = useSend()
   const [domainSearch, setDomainSearch] = React.useState("")
   const domains = useDomainOptions(
@@ -536,18 +539,46 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
 
   async function submit(event?: React.FormEvent) {
     event?.preventDefault()
-    if (!text.trim() || sending) return
+    if ((!text.trim() && !fileId) || sending) return
     if (
       await send({
         id: conversation._id,
         text,
+        fileId,
         ...(email ? { from: sender } : {}),
       })
-    )
+    ) {
       setText("")
+      setFileId(undefined)
+      setFilename("")
+    }
   }
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      {email || conversation.channel === "whatsapp" ? (
+        <FileUploadField
+          label="Attach file"
+          use={email ? "email" : "whatsapp"}
+          from={conversation.accountId}
+          disabled={sending}
+          onUploaded={(id, file) => {
+            setFileId(id)
+            setFilename(file.name)
+          }}
+        />
+      ) : null}
+      {fileId ? (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setFileId(undefined)
+            setFilename("")
+          }}
+        >
+          Remove {filename}
+        </Button>
+      ) : null}
       <InputGroup>
         <InputGroupTextarea
           aria-label="Reply"
@@ -585,7 +616,11 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
             variant="default"
             size="sm"
             className="ml-auto"
-            disabled={!text.trim() || sending || (email && !sender)}
+            disabled={
+              (!text.trim() && !fileId) ||
+              sending ||
+              (email && (!sender || !text.trim()))
+            }
           >
             <SendIcon data-icon="inline-start" />
             Send

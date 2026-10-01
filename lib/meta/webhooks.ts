@@ -71,6 +71,7 @@ export type InboundItem = {
   files: {
     mediaId: string
     contentType: string
+    mimeType?: string
     filename?: string
     url?: string
   }[]
@@ -190,6 +191,9 @@ export function whatsappWebhookItems(
                 mediaId,
                 contentType:
                   string(media.mime_type) || "application/octet-stream",
+                ...(string(media.mime_type)
+                  ? { mimeType: string(media.mime_type) }
+                  : {}),
                 ...(string(media.filename)
                   ? { filename: string(media.filename) }
                   : {}),

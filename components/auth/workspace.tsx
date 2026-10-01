@@ -1,10 +1,10 @@
 "use client"
+import { useFileUpload } from "@/lib/storage/use-upload"
 import { createContext, useContext, useEffect, useMemo } from "react"
 import {
   useQuery,
   useQueries,
   useMutation,
-  useAction,
   useConvexAuth,
   type OptionalRestArgsOrSkip,
   type RequestForQueries,
@@ -97,7 +97,8 @@ export function useTeamCommands() {
   const remove = useMutation(api.teams.remove)
   const invite = useMutation(api.teams.invite)
   const changeMember = useMutation(api.teams.changeMember)
-  const upload = useAction(api.teams.uploadAvatar)
+  const uploadFile = useFileUpload()
+  const setObjectAvatar = useMutation(api.storage.assets.set)
   const avatar = useMutation(api.teams.removeAvatar)
   return {
     switchTeam: (id: string) => switchTeam({ organizationId: id }),
@@ -115,11 +116,13 @@ export function useTeamCommands() {
     setTeamAvatar: async (id: string, data: string | undefined) => {
       if (!data) return avatar({ organizationId: id })
       const blob = await (await fetch(data)).blob()
-      return upload({
+      if (blob.size < 1) throw new Error("Choose an image")
+      const fileId = await uploadFile(blob, {
+        use: "asset",
+        filename: "avatar",
         organizationId: id,
-        bytes: await blob.arrayBuffer(),
-        contentType: blob.type,
       })
+      return setObjectAvatar({ organizationId: id, fileId })
     },
   }
 }

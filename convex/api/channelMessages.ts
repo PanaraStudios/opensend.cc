@@ -450,7 +450,9 @@ async function detail(
       (result.content?.media ?? []).map(async (file) => {
         const link =
           file.mediaId &&
-          (file.storageId || result.message.direction === "outbound")
+          (file.storageId ||
+            file.fileId ||
+            result.message.direction === "outbound")
             ? await mediaDownloadLink(ctx, result.message._id, file.mediaId)
             : null
         return {

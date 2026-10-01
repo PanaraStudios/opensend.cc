@@ -1,5 +1,8 @@
 # Self-hosted Opensend
 
+For R2, MinIO, or S3 file storage and direct transfers, see
+[S3-compatible file storage](object-storage.md).
+
 Opensend runs as a Docker Compose stack: the Next.js dashboard, a self-hosted Convex backend that stores every team's data and runs sending, events, webhooks and automations, and an optional SMTP gateway. Amazon SES sends and receives the mail. Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component.
 
 ## Install with the script
@@ -292,8 +295,7 @@ Dropdowns have no page controls. Custom properties use their existing team limit
 best name matches from the server, and always resolve the selected segment by id.
 A contact's segments page on its detail screen. Contacts, custom events and domains offer up to 100
 prefix matches; templates offer up to 100 search matches by name/alias. Search
-reads the whole team's index, so older options remain reachable beyond the initial
-100. The metrics chart's compact domain breakdown shows up to 100 domains in name
+reads the whole team's index, so older options remain reachable beyond the initial 100. The metrics chart's compact domain breakdown shows up to 100 domains in name
 order; searching and selecting a domain reads that domain directly. Headline
 metrics always cover the full selected scope. Tenant status badges use
 sentence-case labels and the existing success/warning tones.

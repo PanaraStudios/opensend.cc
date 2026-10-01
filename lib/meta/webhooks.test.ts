@@ -154,7 +154,7 @@ test("WhatsApp normalizes incoming messages and statuses without changing stored
   assert.equal(message.profileName, "Ada")
   assert.equal(message.at, 1749416383000)
   assert.deepEqual(message.files, [
-    { mediaId: "media1", contentType: "image/png" },
+    { mediaId: "media1", contentType: "image/png", mimeType: "image/png" },
   ])
   assert.equal(message.data, data)
   assert.equal(status.kind, "status")

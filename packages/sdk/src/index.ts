@@ -48,6 +48,7 @@ export * from "./instagram/interfaces"
 
 export { CHANNEL_SEND_STEPS, isChannelSendStep } from "./automations/channels"
 
+export type { CreateMediaUploadOptions, MediaUpload } from "./media/media"
 export * from "./whatsapp/schema"
 export * from "./whatsapp/validation"
 export * from "./whatsapp/normalize"

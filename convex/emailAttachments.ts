@@ -1,4 +1,6 @@
 "use node"
+import { storeFile } from "./storage/objects"
+import { Readable } from "node:stream"
 import { v, type Infer } from "convex/values"
 import { internalAction } from "./_generated/server"
 import { internal } from "./_generated/api"
@@ -25,7 +27,11 @@ export const fetchFile = internalAction({
       if (maxBytes < 0) throw new Error("Attachment limit exceeded")
       let url = path
       for (let redirects = 0; redirects <= 3; redirects++) {
-        const response = await publicFetch(url, { maxBytes, timeoutMs: 10000 })
+        const response = await publicFetch(url, {
+          maxBytes,
+          timeoutMs: 60_000,
+          stream: true,
+        })
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           const target = response.headers.get("location")
           if (!target) break
@@ -33,12 +39,22 @@ export const fetchFile = internalAction({
           continue
         }
         if (!response.ok) break
-        const blob = await response.blob()
-        return {
+        if (!response.body) break
+        const file = await storeFile(ctx, {
+          organizationId: caller.organizationId,
+          feature: "email",
           ...metadata,
-          size: blob.size,
-          storageId: await ctx.storage.store(blob),
-        }
+          body: Readable.fromWeb(
+            response.body as import("node:stream/web").ReadableStream<Uint8Array>
+          ),
+          maxBytes,
+        })
+        const size = file.fileId
+          ? (await ctx.runQuery(internal.storage.files.get, {
+              id: file.fileId,
+            }))!.size
+          : (await ctx.storage.get(file.storageId!))!.size
+        return { ...metadata, ...file, size }
       }
     } catch {
       throw apiError(

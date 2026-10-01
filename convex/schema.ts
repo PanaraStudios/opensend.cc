@@ -1,3 +1,4 @@
+import { storageTables } from "./tables/storage"
 import { receivedTables } from "./tables/received"
 import { broadcastTables } from "./tables/broadcasts"
 import { channelTables } from "./tables/channels"
@@ -25,6 +26,7 @@ import { webhookTables } from "./tables/webhooks"
 /* Each feature owns one file in ./tables, so features can be built in
    parallel without editing the same lines here. */
 export default defineSchema({
+  ...storageTables,
   ...broadcastTables,
   ...automationTables,
   ...sesTables,

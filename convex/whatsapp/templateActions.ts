@@ -1,4 +1,5 @@
 "use node"
+import { readFile } from "../storage/objects"
 import { v, ConvexError } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -50,27 +51,35 @@ const oneOf = <T extends string>(values: readonly T[], value: unknown) =>
 /** Uploads a media header's sample URL through Meta's Resumable Upload API
     (https://developers.facebook.com/docs/graph-api/guides/upload) and
     returns the handle template creation takes. */
-async function uploadSample(access: Access, token: string, url: string) {
-  const response = await publicFetch(url, {
-    timeoutMs: 30_000,
-    maxBytes: SAMPLE_BYTES,
-    localOrigin: graphLocalOrigin(),
-  })
-  if (!response.ok)
-    throw new ConvexError(`The sample file returned HTTP ${response.status}`)
-  const type = (response.headers.get("content-type") ?? "")
-    .split(";")[0]
-    .trim()
-    .toLowerCase()
-  if (!SAMPLE_TYPES.includes(type))
-    throw new ConvexError("Use a JPEG, PNG, MP4 or PDF file as the sample")
-  const bytes = new Uint8Array(await response.arrayBuffer())
+async function uploadSample(
+  access: Access,
+  token: string,
+  input: string | { blob: Blob; filename: string }
+) {
+  let blob: Blob
+  if (typeof input === "string") {
+    const response = await publicFetch(input, {
+      timeoutMs: 30_000,
+      maxBytes: SAMPLE_BYTES,
+      localOrigin: graphLocalOrigin(),
+    })
+    if (!response.ok)
+      throw new ConvexError(`The sample file returned HTTP ${response.status}`)
+    blob = await response.blob()
+  } else blob = input.blob
+  const type = blob.type.split(";")[0].trim().toLowerCase()
+  if (!SAMPLE_TYPES.includes(type) || !blob.size || blob.size > SAMPLE_BYTES)
+    throw new ConvexError("Use a JPEG, PNG, MP4 or PDF sample up to 16 MB")
+  const bytes = new Uint8Array(await blob.arrayBuffer())
   const session = await graph<{ id?: unknown }>({
     token,
     method: "POST",
     path: `${access.appId}/uploads`,
     query: {
-      file_name: url.split("/").pop()?.split("?")[0] || "sample",
+      file_name:
+        typeof input === "string"
+          ? input.split("/").pop()?.split("?")[0] || "sample"
+          : input.filename,
       file_length: bytes.byteLength,
       file_type: type,
     },
@@ -94,6 +103,9 @@ async function uploadSample(access: Access, token: string, url: string) {
 /** The components as Meta takes them: a media header's sample URL becomes
     an uploaded handle. */
 async function submittable(
+  ctx: ActionCtx,
+  templateId: Id<"templates">,
+  caller: Caller | undefined,
   access: Access,
   token: string,
   components: TemplateComponent[]
@@ -106,14 +118,24 @@ async function submittable(
       if (
         String(component.type).toUpperCase() !== "HEADER" ||
         typeof sample !== "string" ||
-        !/^https?:\/\//.test(sample)
+        (!/^https?:\/\//.test(sample) && !sample.startsWith("opensend-file:"))
       )
         return component
+      let input: string | { blob: Blob; filename: string } = sample
+      if (sample.startsWith("opensend-file:")) {
+        const file = await ctx.runQuery(
+          internal.whatsapp.templates.sampleFile,
+          { templateId, id: sample.slice("opensend-file:".length), caller }
+        )
+        const blob = await readFile(ctx, { fileId: file._id })
+        if (!blob) throw new ConvexError("Sample file is missing")
+        input = { blob, filename: file.filename ?? "sample" }
+      }
       return {
         ...component,
         example: {
           ...example,
-          header_handle: [await uploadSample(access, token, sample)],
+          header_handle: [await uploadSample(access, token, input)],
         },
       }
     })
@@ -147,7 +169,14 @@ async function submitTemplate(
   await friendly(
     ctx,
     async () => {
-      const sent = await submittable(access, token, components)
+      const sent = await submittable(
+        ctx,
+        templateId,
+        caller,
+        access,
+        token,
+        components
+      )
       if (!whatsapp.metaTemplateId) {
         const created = await graph<Record<string, unknown>>({
           token,

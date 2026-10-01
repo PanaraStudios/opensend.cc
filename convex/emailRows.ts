@@ -1,3 +1,4 @@
+import { deleteFile } from "./storage/files"
 import { recordBroadcastReport } from "./broadcastMetrics"
 import {
   recordMetric,
@@ -106,6 +107,6 @@ export async function deleteEmailContent(ctx: MutationCtx, id: Id<"emails">) {
   if (tracking) await ctx.db.delete("emailTracking", tracking._id)
   if (!content) return
   for (const attachment of content.attachments ?? [])
-    await ctx.storage.delete(attachment.storageId)
+    await deleteFile(ctx, attachment)
   await ctx.db.delete("emailContents", content._id)
 }

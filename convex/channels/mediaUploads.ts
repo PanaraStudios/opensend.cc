@@ -1,3 +1,5 @@
+import { fileReference } from "../tables/storage"
+import { deleteFile } from "../storage/files"
 import { v } from "convex/values"
 import { internalMutation } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -8,7 +10,7 @@ export const complete = internalMutation({
   args: {
     caller: callerValue,
     accountId: v.id("channelAccounts"),
-    storageId: v.id("_storage"),
+    ...fileReference,
     mediaId: v.string(),
     filename: v.string(),
     contentType: v.string(),
@@ -60,7 +62,7 @@ export const prune = internalMutation({
       .withIndex("by_expiresAt", (q) => q.lte("expiresAt", Date.now()))
       .take(100)
     for (const row of rows) {
-      await ctx.storage.delete(row.storageId)
+      await deleteFile(ctx, row)
       await ctx.db.delete("channelMediaUploads", row._id)
     }
     if (rows.length === 100)
