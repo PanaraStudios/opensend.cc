@@ -77,6 +77,13 @@ export function softphoneTests(
       })
       .toBe("missed")
     await owner.goto("/emails/calls")
+    await expect(owner).toHaveURL(/\/playground\/calls$/)
+    await expect(
+      owner.getByRole("heading", { name: "Playground", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("tab", { name: "Calls", exact: true })
+    ).toBeVisible()
     await expect(
       owner.getByRole("button", { name: "Go online", exact: true })
     ).toBeVisible()
@@ -94,6 +101,7 @@ export function softphoneTests(
     })
     expect(contactId).toBeTruthy()
     await owner.goto(`/contacts/${contactId}`)
+    await expect(owner.locator('[aria-label="Softphone"]')).toHaveCount(0)
     await owner
       .getByRole("button", { name: "Call", exact: true })
       .first()
