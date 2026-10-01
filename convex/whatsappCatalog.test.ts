@@ -867,3 +867,46 @@ test("approved template footers and static buttons need no invented send paramet
     { type: "body", parameters: [{ type: "text", text: "Ada" }] },
   ])
 })
+
+test("legacy unsupported rows normalize using the retained Meta type, and legacy reactions resolve their target from raw content", async () => {
+  const f = await setup()
+  await project(f, inbound(whatsappInboundExamples.order, "wamid.legacy-order"))
+  const order = await f.t.run((ctx) => ctx.db.query("channelMessages").first())
+  await f.t.run((ctx) =>
+    ctx.db.patch("channelMessages", order!._id, { type: "unsupported" })
+  )
+  expect(await read(f, order!._id)).toMatchObject({
+    type: "order",
+    content: whatsappInboundExamples.order.order,
+    raw: whatsappInboundExamples.order,
+  })
+  await project(f, inbound(whatsappInboundExamples.text, "wamid.target"))
+  await project(
+    f,
+    inbound(whatsappInboundExamples.reaction, "wamid.legacy-reaction")
+  )
+  const reaction = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelMessages")
+      .withIndex("by_channel_and_externalId", (q) =>
+        q.eq("channel", "whatsapp").eq("externalId", "wamid.legacy-reaction")
+      )
+      .unique()
+  )
+  await f.t.run((ctx) =>
+    ctx.db.patch("channelMessages", reaction!._id, {
+      reactionTargetExternalId: undefined,
+    })
+  )
+  const target = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelMessages")
+      .withIndex("by_channel_and_externalId", (q) =>
+        q.eq("channel", "whatsapp").eq("externalId", "wamid.target")
+      )
+      .unique()
+  )
+  expect(await read(f, reaction!._id)).toMatchObject({
+    reaction_target_id: target!._id,
+  })
+})

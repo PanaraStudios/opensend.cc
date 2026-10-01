@@ -18,13 +18,15 @@ export function channelMessagePayload(
     pageMessage.attachment ?? array(pageMessage.attachments)[0]
   )
   const postback = object(payload.postback)
-  return {
-    ...(message.channel === "whatsapp"
+  const normalized =
+    message.channel === "whatsapp"
       ? normalizeWhatsAppMessage(
           { ...payload, type: payload.type ?? message.type },
           identity
         )
-      : {}),
+      : null
+  return {
+    ...(normalized ?? {}),
     ...(message.channel === "whatsapp" ? { raw: payload } : {}),
     id: message._id,
     channel: message.channel,
@@ -32,7 +34,7 @@ export function channelMessagePayload(
     conversation_id: message.conversationId,
     from: message.from,
     to: message.to,
-    type: message.type,
+    type: normalized?.type ?? message.type,
     status: message.status,
     direction: message.direction,
     external_id: message.externalId ?? null,
@@ -218,14 +220,19 @@ export async function hydratedChannelMessage(
         })
     }
   }
+  const reactionTargetExternalId =
+    message.reactionTargetExternalId ??
+    (message.type === "reaction"
+      ? string(object(payload.reaction).message_id)
+      : undefined)
   let reactionTargetId = null
-  if (message.reactionTargetExternalId) {
+  if (reactionTargetExternalId) {
     const candidates = await ctx.db
       .query("channelMessages")
       .withIndex("by_channel_and_externalId", (q) =>
         q
           .eq("channel", message.channel)
-          .eq("externalId", message.reactionTargetExternalId)
+          .eq("externalId", reactionTargetExternalId)
       )
       .take(10)
     reactionTargetId =
