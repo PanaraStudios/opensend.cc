@@ -49,14 +49,14 @@ test("tool requests capture team/call authority, deduplicate ids, reject injecte
   const tool = {
     id: "1",
     name: "lookup_contact",
-    arguments: { query: "fixture" },
+    arguments: {},
   }
   assert.deepEqual(await tools.run(tool), await tools.run(tool))
   assert.equal(requests.length, 1)
   assert.equal(requests[0].organizationId, "team")
   assert.equal(requests[0].callId, "call")
   await assert.rejects(
-    tools.run({ ...tool, arguments: { query: "changed" } }),
+    tools.run({ ...tool, name: "end_call", arguments: {} }),
     /reused/
   )
   await assert.rejects(

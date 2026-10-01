@@ -70,12 +70,25 @@ export function validateRoute(request: RouteRequest): void {
     throw new GatewayError("INVALID_CODEC", "Expected L16 or PCMU")
   if (
     request.target === "bot" &&
-    (!request.organizationId || request.adapter !== "fake-echo")
+    (!request.organizationId ||
+      (!request.botId && request.adapter !== "fake-echo"))
   )
     throw new GatewayError(
       "INVALID_BOT",
-      "Bot foundation requires team and fake-echo adapter"
+      "Bot requires team and bot session reference"
     )
+  if (
+    request.botId !== undefined &&
+    !/^[a-zA-Z0-9._:-]{1,256}$/.test(request.botId)
+  )
+    throw new GatewayError("INVALID_BOT", "Invalid bot reference")
+  if (
+    request.silenceTimeoutSeconds !== undefined &&
+    (!Number.isInteger(request.silenceTimeoutSeconds) ||
+      request.silenceTimeoutSeconds < 1 ||
+      request.silenceTimeoutSeconds > 300)
+  )
+    throw new GatewayError("INVALID_DURATION", "Invalid silence timeout")
   if (request.record !== undefined && typeof request.record !== "boolean")
     throw new GatewayError("INVALID_RECORD", "record must be boolean")
 }
@@ -377,10 +390,14 @@ export class CallController implements GatewayApi {
   }
   async route(request: RouteRequest) {
     validateRoute(request)
-    if (request.target === "bot" && !this.voice?.fakeEnabled)
+    if (
+      request.target === "bot" &&
+      (!this.voice ||
+        (request.adapter === "fake-echo" && !this.voice.fakeEnabled))
+    )
       throw new GatewayError(
         "BOT_UNAVAILABLE",
-        "Fake adapter is disabled; provider adapters arrive in 8d-2",
+        "Voice adapter is unavailable",
         501
       )
     if (request.target === "voicemail" && !this.voice)
@@ -435,7 +452,9 @@ export class CallController implements GatewayApi {
           call.uuid!,
           request,
           call.machine,
-          (reason) => this.finish(call, reason)
+          (reason) => this.finish(call, reason),
+          (extension) =>
+            this.control({ callId: call.id, operation: "transfer", extension })
         )
       }
       // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.
@@ -510,6 +529,7 @@ export class CallController implements GatewayApi {
       this.voice?.reportState(call.id, call.machine)
       await this.voice?.stop(call.id)
     } catch (error) {
+      this.voice?.transferFailed(call.id)
       await this.finish(call, "Transfer failed")
       throw error
     }
@@ -532,15 +552,15 @@ export class CallController implements GatewayApi {
     call.ending = true
     call.machine.end()
     this.voice?.reportState(call.id, call.machine)
-    await this.voice?.stop(call.id)
-    const recording = call.uuid && this.recordings.get(call.uuid)
-    if (recording) recording.expires = Date.now() + 60000
-    this.ended.set(call.id, Date.now() + 300000)
-    this.notify(call, { event: "hangup", reason })
     if (call.uuid && this.fs.ready)
       await this.fs
         .api(`uuid_kill ${call.uuid} NORMAL_CLEARING`)
         .catch(() => undefined)
+    await this.voice?.stop(call.id, reason)
+    const recording = call.uuid && this.recordings.get(call.uuid)
+    if (recording) recording.expires = Date.now() + 60000
+    this.ended.set(call.id, Date.now() + 300000)
+    this.notify(call, { event: "hangup", reason })
     await call.janus.close()
     this.calls.delete(call.id)
   }

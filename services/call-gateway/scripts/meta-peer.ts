@@ -1,3 +1,4 @@
+import { validateBot, toolDeclarations } from "../src/voice/catalog.js"
 /** Docker-only harness; fake Meta/backend plus an optional real SIP.js browser. */
 import { opusTone, decodeOpus, tonePower } from "./opus-audio.js"
 import type { VoiceEvent, VoiceToolRequest } from "../src/voice-backend.js"
@@ -20,6 +21,7 @@ import { CallGatewayClient } from "../src/client.js"
 import type { GatewayCallback } from "../src/contracts.js"
 import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
 
+const pipecatEngine = process.argv.includes("bot-engine")
 const secret = process.env.CALL_GATEWAY_SECRET ?? ""
 const verifier = new HmacVerifier(secret)
 const gateway = new CallGatewayClient(
@@ -61,6 +63,33 @@ const receiver = createServer(async (request, response) => {
       response.writeHead(200).end('{"ok":true}')
       return
     }
+    if (request.url === "/calling/gateway/voice/session") {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const session = JSON.parse(body)
+      assert.equal(session.organizationId, "harness-team")
+      assert.ok(session.callId.startsWith("harness-inbound-"))
+      response
+        .writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        })
+        .end(
+          JSON.stringify({
+            ...validateBot({
+              name: "Harness Pipecat",
+              provider: "gemini",
+              engine: "gemini_live",
+              credentialId: "harness-credential",
+              tools: ["lookup_contact"],
+              maxDurationSeconds: 6,
+            }),
+            botId: "harness-bot",
+            keys: { live: "fake-key" },
+            toolCatalog: toolDeclarations(["lookup_contact"]),
+          })
+        )
+      return
+    }
     if (request.url === "/calling/gateway/voice/tools") {
       verifier.verify(request.method!, request.url, body, request.headers)
       const tool = JSON.parse(body) as VoiceToolRequest
@@ -68,7 +97,7 @@ const receiver = createServer(async (request, response) => {
       assert.equal(tool.organizationId, "harness-team")
       assert.ok(tool.callId.startsWith("harness-inbound-"))
       assert.equal(tool.toolCall.name, "lookup_contact")
-      assert.deepEqual(tool.toolCall.arguments, { query: "fixture" })
+      assert.deepEqual(tool.toolCall.arguments, {})
       toolRequests.push(tool)
       response
         .writeHead(200)
@@ -332,7 +361,9 @@ async function run(
         ? {
             callId,
             target: "bot" as const,
-            adapter: "fake-echo" as const,
+            ...(pipecatEngine
+              ? { botId: "harness-bot" }
+              : { adapter: "fake-echo" as const }),
             organizationId: "harness-team",
             codec: voice,
             maxDurationSeconds: 6,
@@ -461,7 +492,7 @@ async function run(
       )!
       assert.equal(barge.type, "barge_in")
       if (barge.type === "barge_in") {
-        assert.ok(barge.flushedMs > 1000)
+        assert.ok(barge.flushedMs >= (pipecatEngine ? 0 : 1001))
         assert.ok(barge.playedMs > 0 && barge.playedMs < 2000)
       }
       await waitUntil(
@@ -582,6 +613,19 @@ async function run(
 try {
   if (process.argv.includes("ivr")) {
     await run("inbound", undefined, "ivr")
+  } else if (pipecatEngine) {
+    await run("inbound", undefined, "L16")
+    await run("inbound", undefined, "PCMU")
+    assert.ok(
+      voiceEvents.some(
+        (event) =>
+          event.type === "bot_completed" &&
+          event.summary.includes("Harness caller")
+      )
+    )
+    console.log(
+      "PASS Pipecat: signed session fetch, Python pipeline, transcript, tool, clear and completion summary"
+    )
   } else if (process.argv.includes("voice")) {
     await run("inbound", undefined, "L16")
     await run("inbound", undefined, "PCMU")

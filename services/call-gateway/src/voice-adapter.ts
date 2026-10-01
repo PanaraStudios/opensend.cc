@@ -90,7 +90,7 @@ export class FakeEchoAdapter implements VoiceAgentAdapter {
       this.events.emit("tool", {
         id: "echo-tool-1",
         name: "lookup_contact",
-        arguments: { query: "fixture" },
+        arguments: {},
       })
   }
   sendToolResult(id: string, result: unknown) {

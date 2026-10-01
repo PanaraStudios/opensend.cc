@@ -1,3 +1,6 @@
+import { PipecatAdapter } from "./voice/index.js"
+import type { VoiceAdapterBase, VoiceUsage } from "./voice/base.js"
+import type { VoiceAgentAdapter } from "./voice-adapter.js"
 import type { RouteRequest } from "./contracts.js"
 import { CallStateMachine } from "./call-state.js"
 import { OutboundEslServer, type OutboundCall } from "./outbound-esl.js"
@@ -14,6 +17,15 @@ interface ControlledCall {
   socket?: OutboundCall
   releaseMedia?: () => Promise<void>
   tools?: VoiceTools
+  transfer?: (extension: string) => Promise<void>
+  adapter?: VoiceAgentAdapter & {
+    summarize?: (text: string) => Promise<string>
+  }
+  transcript?: string
+  usage?: VoiceUsage
+  outcome?: "transferred_agent" | "ended_by_bot" | "failed"
+  silence?: NodeJS.Timeout
+  lastActivity?: number
   stopped: boolean
   ready: Promise<void>
   commit: () => void
@@ -51,7 +63,12 @@ export class VoiceRuntime {
     }
   })
   constructor(
-    private readonly options: { port: number; fakeEnabled: boolean },
+    private readonly options: {
+      port: number
+      fakeEnabled: boolean
+      agentUrl?: string
+      agentSecret?: string
+    },
     private readonly media: VoiceMediaEndpoint,
     private readonly backend: VoiceBackend
   ) {}
@@ -70,7 +87,8 @@ export class VoiceRuntime {
     uuid: string,
     route: RouteRequest,
     machine: CallStateMachine,
-    end: ControlledCall["end"]
+    end: ControlledCall["end"],
+    transfer?: ControlledCall["transfer"]
   ) {
     let commit!: () => void
     const ready = new Promise<void>((resolve) => {
@@ -82,6 +100,7 @@ export class VoiceRuntime {
       route,
       machine,
       end,
+      transfer,
       stopped: false,
       ready,
       commit,
@@ -89,7 +108,7 @@ export class VoiceRuntime {
   }
   private event(call: ControlledCall, event: VoiceEvent) {
     // Timing metadata stays useful before the 8d-2 backend receiver is installed.
-    if (event.type !== "transcript")
+    if (["state", "barge_in", "media", "latency"].includes(event.type))
       console.log(
         JSON.stringify({ callId: call.callId, timestamp: Date.now(), ...event })
       )
@@ -119,9 +138,55 @@ export class VoiceRuntime {
       await socket.record("start")
       await socket.execute("park", "", 3600000)
     } else if (target === "bot") {
-      if (!this.options.fakeEnabled || call.route.adapter !== "fake-echo")
-        throw new Error("No provider adapter installed")
-      const adapter = new FakeEchoAdapter()
+      const fake = call.route.adapter === "fake-echo"
+      if (fake && !this.options.fakeEnabled)
+        throw new Error("Fake adapter disabled")
+      if (
+        !fake &&
+        (!call.route.botId ||
+          !this.options.agentSecret ||
+          !this.options.agentUrl)
+      )
+        throw new Error("Voice-agent is not configured")
+      const adapter = (call.adapter = fake
+        ? new FakeEchoAdapter()
+        : new PipecatAdapter(
+            {
+              callId: call.callId,
+              organizationId: call.route.organizationId!,
+              botId: call.route.botId!,
+            },
+            { url: this.options.agentUrl!, secret: this.options.agentSecret! }
+          ))
+      call.transcript = ""
+      call.usage = {}
+      call.lastActivity = Date.now()
+      if (!fake) {
+        call.silence = setInterval(() => {
+          if (
+            !call.stopped &&
+            Date.now() - call.lastActivity! >=
+              (call.route.silenceTimeoutSeconds ?? 20) * 1000
+          )
+            void call.end("Bot silence timeout")
+        }, 1000)
+        const provider = adapter as VoiceAdapterBase
+        provider.onActivity(() => {
+          call.lastActivity = Date.now()
+        })
+        provider.onUsage((usage) => {
+          for (const [key, value] of Object.entries(usage))
+            call.usage![key as keyof VoiceUsage] =
+              (call.usage![key as keyof VoiceUsage] ?? 0) + value
+          this.event(call, { type: "usage", usage })
+        })
+        provider.onLatency((timing) =>
+          this.event(call, { type: "latency", ...timing })
+        )
+      }
+      adapter.onAudio(() => {
+        call.lastActivity = Date.now()
+      })
       const tools = (call.tools = new VoiceTools(
         this.backend,
         call.callId,
@@ -131,7 +196,32 @@ export class VoiceRuntime {
         void tools
           .run(toolCall)
           .then((result) => {
-            if (!call.stopped) adapter.sendToolResult(toolCall.id, result)
+            if (call.stopped) return
+            adapter.sendToolResult(toolCall.id, result)
+            if (result.ok && !fake) {
+              const action = result.result as {
+                action?: string
+                extension?: string
+              }
+              if (
+                toolCall.name === "transfer_to_agent" &&
+                action.action === "transfer_to_agent" &&
+                /^20\d{2}$/.test(action.extension ?? "")
+              ) {
+                call.outcome = "transferred_agent"
+                void call
+                  .transfer?.(action.extension!)
+                  .catch(() => call.end("Bot transfer failed"))
+              } else if (
+                toolCall.name === "end_call" &&
+                action.action === "end_call"
+              ) {
+                call.outcome = "ended_by_bot"
+                setTimeout(() => {
+                  if (!call.stopped) void call.end("Ended by bot")
+                }, 3000).unref()
+              }
+            }
           })
           .catch(() => {
             if (!call.stopped)
@@ -142,7 +232,14 @@ export class VoiceRuntime {
           })
       })
       adapter.onTranscript((transcript) => {
-        if (!call.stopped) this.event(call, { type: "transcript", transcript })
+        if (!call.stopped) {
+          call.lastActivity = Date.now()
+          if (transcript.final)
+            call.transcript = (
+              call.transcript + `\n${transcript.role}: ${transcript.text}`
+            ).slice(-24000)
+          this.event(call, { type: "transcript", transcript })
+        }
       })
       const reserved = this.media.reserve({
         adapter,
@@ -156,7 +253,10 @@ export class VoiceRuntime {
         },
         end: (reason) => {
           if (reason === "Bot SIP leg ended") this.afterAnchor(call, reason)
-          else if (!call.stopped) void call.end(reason)
+          else if (!call.stopped) {
+            console.error("Voice session ended", call.callId, reason)
+            void call.end(reason)
+          }
         },
         attach: async (session) => {
           if (call.stopped) {
@@ -199,12 +299,47 @@ export class VoiceRuntime {
       call.tools?.stop()
     }
   }
-  async stop(callId: string) {
+  transferFailed(callId: string) {
+    const call = this.calls.get(callId)
+    if (call) call.outcome = "failed"
+  }
+  async stop(callId: string, reason = "Call ended") {
     const call = this.calls.get(callId)
     if (!call) return
+    const endedAt = Date.now()
     call.stopped = true
+    clearInterval(call.silence)
     call.tools?.stop()
     call.commit()
+    if (call.route.botId) {
+      let summary = ""
+      try {
+        summary = (await call.adapter?.summarize?.(call.transcript ?? "")) ?? ""
+      } catch {
+        /* Summary failures must not delay hangup or leak provider errors. */
+      }
+      const outcome =
+        call.outcome ??
+        (/failed|disconnect|unavailable/i.test(reason)
+          ? "failed"
+          : /timeout|ALLOTTED_TIMEOUT/i.test(reason)
+            ? "completed"
+            : "caller_hangup")
+      await this.backend
+        .event(call.callId, {
+          type: "bot_completed",
+          outcome,
+          summary,
+          endedAt,
+          usage: {
+            ...call.usage,
+            ...(call.adapter instanceof PipecatAdapter
+              ? call.adapter.usage
+              : {}),
+          },
+        })
+        .catch(() => console.error("Bot completion delivery failed"))
+    }
     await call.releaseMedia?.()
     call.socket?.close()
     this.calls.delete(callId)

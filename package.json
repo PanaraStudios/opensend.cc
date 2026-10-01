@@ -31,7 +31,10 @@
     "aws:cleanup": "node scripts/aws-cleanup.mjs",
     "test:e2e": "node scripts/test-e2e.mjs",
     "test:install": "node scripts/test-install.mjs",
-    "test:mcp": "pnpm --filter @opensendcc/mcp test"
+    "test:mcp": "pnpm --filter @opensendcc/mcp test",
+    "test:voice-agent": "node scripts/test-voice-agent.mjs",
+    "test:calling-harness": "sh scripts/test-calling-harness.sh",
+    "test:voice-live": "node scripts/test-voice-live.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1136.0",

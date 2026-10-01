@@ -9,7 +9,12 @@ import { AgentSessions } from "./agents.js"
 
 const options = config()
 const voice = new VoiceRuntime(
-  { port: options.voice.eslPort, fakeEnabled: options.voice.fakeEnabled },
+  {
+    port: options.voice.eslPort,
+    fakeEnabled: options.voice.fakeEnabled,
+    agentUrl: process.env.VOICE_AGENT_URL ?? "ws://voice-agent:8094/ws",
+    agentSecret: process.env.VOICE_AGENT_SECRET,
+  },
   new VoiceMediaEndpoint({ ...options.voice, fsHost: options.fsHost }),
   new VoiceBackend(options.convexUrl, options.secret)
 )
