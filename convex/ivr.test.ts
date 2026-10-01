@@ -381,60 +381,66 @@ test("business-hours closed action and pending TTS are safe, cached and do not c
     (await f.t.run((ctx) => ctx.db.get("calls", f.callId)))!.ivrPath![0]
   ).toMatchObject({ menuId: "business_hours", digits: "closed" })
 })
-test.each(["success", "timeout", "bad schema", "foreign submenu"])(
-  "webhook action signed POST and %s fallback",
-  async (mode) => {
-    const f = await setup()
-    const webhook = { kind: "webhook", url: "https://customer.example/ivr" }
-    const menu = {
-      ...f.definition.menus[0],
-      options: { "1": webhook },
-      failureAction: { kind: "voicemail" },
-    }
-    expect(
-      (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
-    ).toBe(200)
-    await f.start()
-    const spy = vi
-      .spyOn(net, "publicFetch")
-      .mockImplementation(async (_url, opts) => {
-        expect(opts?.timeoutMs).toBe(3000)
-        expect(opts?.maxBytes).toBe(8192)
-        const headers = opts!.headers!,
-          body = opts!.body as string
-        expect(headers["svix-signature"]).toBe(
-          (
-            await webhookHeaders({
-              id: headers["svix-id"],
-              timestamp: Number(headers["svix-timestamp"]),
-              body,
-              secret: f.ivr.webhook_signing_secret,
-            })
-          )["svix-signature"]
-        )
-        expect(JSON.parse(body)).toMatchObject({
-          call: { id: f.callId },
-          menuId: "main",
-          digits: "1",
-        })
-        if (mode === "timeout")
-          throw new DOMException("Timed out", "TimeoutError")
-        return Response.json(
-          mode === "bad schema"
-            ? { action: { kind: "execute", command: "bad" } }
-            : mode === "foreign submenu"
-              ? { action: { kind: "submenu", menuId: "foreign" } }
-              : { action: { kind: "hangup" } }
-        )
-      })
-    const result = await f.next("main", "1", 0)
-    expect(result.status).toBe(200)
-    expect((await result.json()).action).toEqual({
-      kind: mode === "success" ? "hangup" : "voicemail",
-    })
-    expect(spy).toHaveBeenCalledOnce()
+test.each([
+  "success",
+  "test success",
+  "timeout",
+  "bad schema",
+  "foreign submenu",
+])("webhook action signed POST and %s fallback", async (mode) => {
+  const f = await setup()
+  const webhook = { kind: "webhook", url: "https://customer.example/ivr" }
+  const menu = {
+    ...f.definition.menus[0],
+    options: { "1": webhook },
+    failureAction: { kind: "voicemail" },
   }
-)
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(200)
+  await f.start()
+  if (mode === "test success")
+    await f.t.run((ctx) => ctx.db.patch("calls", f.callId, { test: true }))
+  const spy = vi
+    .spyOn(net, "publicFetch")
+    .mockImplementation(async (_url, opts) => {
+      expect(opts?.timeoutMs).toBe(3000)
+      expect(opts?.maxBytes).toBe(8192)
+      const headers = opts!.headers!,
+        body = opts!.body as string
+      expect(headers["svix-signature"]).toBe(
+        (
+          await webhookHeaders({
+            id: headers["svix-id"],
+            timestamp: Number(headers["svix-timestamp"]),
+            body,
+            secret: f.ivr.webhook_signing_secret,
+          })
+        )["svix-signature"]
+      )
+      expect(JSON.parse(body).call.test === true).toBe(mode === "test success")
+      expect(JSON.parse(body)).toMatchObject({
+        call: { id: f.callId },
+        menuId: "main",
+        digits: "1",
+      })
+      if (mode === "timeout")
+        throw new DOMException("Timed out", "TimeoutError")
+      return Response.json(
+        mode === "bad schema"
+          ? { action: { kind: "execute", command: "bad" } }
+          : mode === "foreign submenu"
+            ? { action: { kind: "submenu", menuId: "foreign" } }
+            : { action: { kind: "hangup" } }
+      )
+    })
+  const result = await f.next("main", "1", 0)
+  expect(result.status).toBe(200)
+  expect((await result.json()).action).toEqual({
+    kind: mode.endsWith("success") ? "hangup" : "voicemail",
+  })
+  expect(spy).toHaveBeenCalledOnce()
+})
 
 test("remote termination completes an unfinished IVR once and forbids late decisions", async () => {
   const f = await setup()

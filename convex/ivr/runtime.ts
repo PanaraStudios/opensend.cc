@@ -423,6 +423,7 @@ export const webhookContext = internalQuery({
       throw notFound("Webhook secret")
     return {
       call: {
+        ...(call.test ? { test: true } : {}),
         id: call._id,
         account_id: call.accountId,
         contact_id: call.contactId ?? null,
