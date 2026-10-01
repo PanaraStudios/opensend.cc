@@ -200,7 +200,7 @@ export function inboxTests(
       (message) =>
         message.conversationId === conversationId && message.type === "template"
     )!
-    await owner.goto(`/emails/${templateMessage._id}`)
+    await owner.goto(`/emails/messages/${templateMessage._id}`)
     await expect(owner.getByTestId("whatsapp-preview")).toContainText(
       "Hi Pablo, your order is ready."
     )
