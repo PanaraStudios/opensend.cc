@@ -241,7 +241,7 @@ test("Instagram restricts tags and quick replies on media; HUMAN_AGENT has a sev
   )
   assert.throws(
     () => instagramPayload({ to: "1", text: "x", tag: "ACCOUNT_UPDATE" }),
-    /only supports/
+    /only supported message tag is HUMAN_AGENT/
   )
   assert.throws(() => instagramPayload({ to: "1", text: "x".repeat(1001) }))
   const now = 8 * 86400_000

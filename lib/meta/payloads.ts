@@ -411,13 +411,7 @@ export function pageMessageContent(
       "Provide exactly one of text, attachment or a stored template."
     )
   if (input.tag !== undefined && !MESSAGE_TAGS.some((tag) => tag === input.tag))
-    throw new Error("Invalid message tag.")
-  if (
-    channel === "instagram" &&
-    input.tag !== undefined &&
-    input.tag !== "HUMAN_AGENT"
-  )
-    throw new Error("Instagram only supports the HUMAN_AGENT tag.")
+    throw new Error("The only supported message tag is HUMAN_AGENT.")
   const message: {
     text?: string
     attachment?: { type: string; payload: Record<string, unknown> }
