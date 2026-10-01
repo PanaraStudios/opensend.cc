@@ -1084,6 +1084,12 @@ export function channelMessageStatusDotClassName(
   return badgeDotClassName(CHANNEL_MESSAGE_STATUS_TONE[status])
 }
 
+export function channelMessageStatusColor(
+  status: ChannelMessageStatus
+): string {
+  return badgeToneColor(CHANNEL_MESSAGE_STATUS_TONE[status])
+}
+
 export function broadcastStatusDotClassName(status: BroadcastStatus): string {
   return badgeDotClassName(BROADCAST_STATUS_TONE[status])
 }

@@ -3,7 +3,11 @@ import * as React from "react"
 import { useQueries } from "convex/react"
 import { eachDayOfInterval, startOfDay, endOfDay, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
-import type { FunctionReturnType } from "convex/server"
+import type {
+  FunctionArgs,
+  FunctionReference,
+  FunctionReturnType,
+} from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { useWorkspace, useTeamQuery } from "@/components/auth/workspace"
@@ -12,14 +16,8 @@ import { rangeBounds } from "@/lib/dashboard/email-range"
 import { rate } from "@/lib/dashboard/format"
 import type { EmailStatus } from "@/lib/dashboard/types"
 
-export function useMetrics(
-  range: DateRange,
-  domain: string,
-  status: EmailStatus | null
-) {
-  const { activeTeamId } = useWorkspace()
-  const domainId = domain === "all" ? undefined : (domain as Id<"domains">)
-  const spans = React.useMemo(
+export function useMetricsSpans(range: DateRange) {
+  return React.useMemo(
     () =>
       range.from
         ? eachDayOfInterval({
@@ -32,44 +30,60 @@ export function useMetrics(
         : [],
     [range]
   )
+}
+
+/** Every metrics series shares the email query's 31-span batching. */
+export function useMetricsChunks<Q extends FunctionReference<"query">>(
+  query: Q,
+  args: FunctionArgs<Q> | null,
+  spans: { from: number; to: number }[]
+): FunctionReturnType<Q> | undefined {
   const requests = React.useMemo(() => {
-    const result: Record<
-      string,
-      {
-        query: typeof api.metrics.summary
-        args: {
-          organizationId: string
-          domainId?: Id<"domains">
-          spans: typeof spans
-        }
-      }
-    > = {}
-    if (activeTeamId)
+    const result: Record<string, { query: Q; args: FunctionArgs<Q> }> = {}
+    if (args)
       for (let offset = 0; offset < spans.length; offset += 31)
         result[String(offset)] = {
-          query: api.metrics.summary,
-          args: {
-            organizationId: activeTeamId,
-            domainId,
-            spans: spans.slice(offset, offset + 31),
-          },
+          query,
+          args: { ...args, spans: spans.slice(offset, offset + 31) },
         }
     return result
-  }, [activeTeamId, domainId, spans])
+  }, [query, args, spans])
   const results = useQueries(requests) as Record<
     string,
-    FunctionReturnType<typeof api.metrics.summary> | Error | undefined
+    FunctionReturnType<Q> | Error | undefined
   >
   const chunks = Object.keys(requests).map((key) => results[key])
   const failure = chunks.find((chunk) => chunk instanceof Error)
-  const counts = chunks.every((chunk) => Array.isArray(chunk))
-    ? (chunks as FunctionReturnType<typeof api.metrics.summary>[]).flat()
-    : undefined
+  if (failure instanceof Error) throw failure
+  if (!args || !chunks.length || !chunks.every((chunk) => Array.isArray(chunk)))
+    return undefined
+  return chunks.flat() as FunctionReturnType<Q>
+}
+
+export function useMetrics(
+  range: DateRange,
+  domain: string,
+  status: EmailStatus | null
+) {
+  const { activeTeamId } = useWorkspace()
+  const domainId = domain === "all" ? undefined : (domain as Id<"domains">)
+  const spans = useMetricsSpans(range)
+  const args = React.useMemo(
+    () =>
+      activeTeamId
+        ? {
+            organizationId: activeTeamId,
+            domainId,
+            spans,
+          }
+        : null,
+    [activeTeamId, domainId, spans]
+  )
+  const counts = useMetricsChunks(api.metrics.summary, args, spans)
   const domains = useTeamQuery(api.metrics.breakdown, {
     ...rangeBounds(range),
     domainId,
   })
-  if (failure instanceof Error) throw failure
   const totals = {
     ...emptyEmailCounts(),
     Permanent: 0,
