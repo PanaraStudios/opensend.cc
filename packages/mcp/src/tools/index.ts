@@ -24,3 +24,5 @@ export {
 export { addMediaTools } from "./media.js"
 
 export { addCallingTools } from "./calling.js"
+
+export { addVoiceTools } from "./voice.js"

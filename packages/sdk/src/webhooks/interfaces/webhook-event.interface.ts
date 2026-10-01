@@ -4,7 +4,7 @@ import type {
 } from "../../whatsapp/calling/interfaces"
 import type { WhatsAppMessage } from "../../whatsapp/interfaces"
 export type WhatsAppCallEventType =
-  `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready"}`
+  `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready" | "bot_completed" | "transferred"}`
 export type WebhookEvent =
   | "whatsapp.message.read_receipt_sent"
   | "whatsapp.message.read_receipt_failed"

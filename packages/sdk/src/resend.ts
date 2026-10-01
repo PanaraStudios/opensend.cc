@@ -1,3 +1,5 @@
+import { VoiceBots } from './voice/bots';
+import { VoiceProviders } from './voice/providers';
 import { Media } from './media/media';
 import { version } from '../package.json';
 import { ApiKeys } from './api-keys/api-keys';
@@ -78,6 +80,8 @@ export class Opensend {
   readonly webhooks = new Webhooks(this);
   readonly messenger = new Messenger(this);
   readonly instagram = new Instagram(this);
+  readonly voiceBots = new VoiceBots(this);
+  readonly voiceProviders = new VoiceProviders(this);
   readonly whatsapp = new WhatsApp(this);
   readonly media = new Media(this);
 

@@ -43,6 +43,7 @@ tags:
   - name: Usage
   - name: Suppressions
   - name: WhatsApp
+  - name: Voice Bots
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
@@ -12708,6 +12709,49 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+    patch:
+      operationId: patchWhatsAppCalling
+      tags:
+        - WhatsApp
+      summary: update Calling
+      description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
+        DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
+        seconds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCallingSettings"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneNumberCalling"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
   /whatsapp/call-permissions:
     get:
       operationId: whatsapp/calling/getCallPermission
@@ -12788,6 +12832,351 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-bots:
+    post:
+      operationId: createVoiceBot
+      tags:
+        - Voice Bots
+      summary: createVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceBotInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    get:
+      operationId: listVoiceBots
+      tags:
+        - Voice Bots
+      summary: listVoiceBots
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceBotPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-bots/{id}:
+    get:
+      operationId: getVoiceBot
+      tags:
+        - Voice Bots
+      summary: getVoiceBot
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceBot"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: updateVoiceBot
+      tags:
+        - Voice Bots
+      summary: updateVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceBotPatch"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    delete:
+      operationId: deleteVoiceBot
+      tags:
+        - Voice Bots
+      summary: deleteVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-providers:
+    post:
+      operationId: createVoiceProvider
+      tags:
+        - Voice Bots
+      summary: createVoiceProvider
+      x-opensend-scope: voice_bots:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoiceProvider"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    get:
+      operationId: listVoiceProviders
+      tags:
+        - Voice Bots
+      summary: listVoiceProviders
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceProviderPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-providers/{id}:
+    delete:
+      operationId: deleteVoiceProvider
+      tags:
+        - Voice Bots
+      summary: deleteVoiceProvider
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/transcript:
+    get:
+      operationId: getWhatsAppCallTranscript
+      tags:
+        - Voice Bots
+      summary: getWhatsAppCallTranscript
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallTranscriptPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -18024,6 +18413,8 @@ components:
         - webhooks:write
         - logs:read
         - logs:write
+        - voice_bots:read
+        - voice_bots:write
     ApiKey:
       type: object
       properties:
@@ -21039,6 +21430,8 @@ components:
         - whatsapp.call.permission_updated
         - whatsapp.call.recording_ready
         - whatsapp.call.transcription_ready
+        - whatsapp.call.bot_completed
+        - whatsapp.call.transferred
         - whatsapp.message.sent
         - whatsapp.message.delivered
         - whatsapp.message.read
@@ -26268,6 +26661,36 @@ components:
     WhatsAppCall:
       type: object
       properties:
+        bot_id:
+          type:
+            - string
+            - "null"
+        bot_outcome:
+          enum:
+            - completed
+            - transferred_agent
+            - transferred_ivr
+            - ended_by_bot
+            - caller_hangup
+            - failed
+            - budget_exhausted
+            - null
+        bot_summary:
+          type:
+            - string
+            - "null"
+        bot_duration:
+          type:
+            - number
+            - "null"
+        bot_usage:
+          anyOf:
+            - $ref: "#/components/schemas/VoiceUsage"
+            - type: "null"
+        bot_fallback_reason:
+          type:
+            - string
+            - "null"
         object:
           const: whatsapp_call
         id:
@@ -26402,6 +26825,36 @@ components:
     WhatsAppCallDetail:
       type: object
       properties:
+        bot_id:
+          type:
+            - string
+            - "null"
+        bot_outcome:
+          enum:
+            - completed
+            - transferred_agent
+            - transferred_ivr
+            - ended_by_bot
+            - caller_hangup
+            - failed
+            - budget_exhausted
+            - null
+        bot_summary:
+          type:
+            - string
+            - "null"
+        bot_duration:
+          type:
+            - number
+            - "null"
+        bot_usage:
+          anyOf:
+            - $ref: "#/components/schemas/VoiceUsage"
+            - type: "null"
+        bot_fallback_reason:
+          type:
+            - string
+            - "null"
         object:
           const: whatsapp_call
         id:
@@ -26708,6 +27161,8 @@ components:
     UpdateCallingSettings:
       type: object
       properties:
+        routing:
+          $ref: "#/components/schemas/CallingRouting"
         calling:
           $ref: "#/components/schemas/CallingSettings"
         handling_mode:
@@ -26721,6 +27176,10 @@ components:
     PhoneNumberCalling:
       type: object
       properties:
+        routing:
+          anyOf:
+            - $ref: "#/components/schemas/CallingRouting"
+            - type: "null"
         account_id:
           type: string
         handling_mode:
@@ -26819,6 +27278,595 @@ components:
             - to
         - required:
             - recipient
+    VoiceBotInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - name
+        - provider
+        - credentialId
+      additionalProperties: false
+    VoiceBotPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required: []
+      additionalProperties: false
+    VoiceBot:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - name
+        - provider
+        - engine
+        - credentialId
+        - model
+        - voice
+        - language
+        - systemPrompt
+        - greeting
+        - tools
+        - handoff
+        - maxDurationSeconds
+        - silenceTimeoutSeconds
+        - recording
+        - disclosure
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    CreateVoiceProvider:
+      type: object
+      properties:
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        label:
+          type: string
+          minLength: 1
+          maxLength: 128
+        key:
+          type: string
+          writeOnly: true
+          minLength: 8
+          maxLength: 4096
+      required:
+        - provider
+        - label
+        - key
+      additionalProperties: false
+    VoiceProviderCredential:
+      type: object
+      properties:
+        id:
+          type: string
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        label:
+          type: string
+        lastFour:
+          type: string
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - provider
+        - label
+        - lastFour
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    VoiceUsage:
+      type: object
+      properties:
+        inputTokens:
+          type: number
+        outputTokens:
+          type: number
+        audioSeconds:
+          type: number
+        ttsCharacters:
+          type: number
+      required: []
+      additionalProperties: false
+    CallingRouting:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              const: agents
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              const: api
+          required:
+            - kind
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
+              const: bot
+            botId:
+              type: string
+          required:
+            - kind
+            - botId
+          additionalProperties: false
+    CallTranscriptLine:
+      type: object
+      properties:
+        id:
+          type: string
+        callId:
+          type: string
+        eventId:
+          type: string
+        kind:
+          enum:
+            - transcript
+            - tool
+            - note
+            - media
+        role:
+          enum:
+            - caller
+            - agent
+        text:
+          type: string
+        final:
+          type: boolean
+        timestampMs:
+          type: number
+        toolId:
+          type: string
+        toolName:
+          type: string
+        arguments:
+          type: string
+        result:
+          type: string
+      required:
+        - id
+        - callId
+        - eventId
+        - kind
+        - timestampMs
+      additionalProperties: false
+    VoiceBotPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceBot"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    VoiceProviderPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceProviderCredential"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    CallTranscriptPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallTranscriptLine"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
 webhooks:
   whatsappCall:
     post:
@@ -30912,6 +31960,130 @@ webhooks:
                       payment:
                         reference_id: order-1
                         currency: INR
+      responses:
+        "200":
+          description: Webhook acknowledged
+  voiceBotCompleted:
+    post:
+      summary: whatsapp.call.bot_completed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  const: whatsapp.call.bot_completed
+                created_at:
+                  type: string
+                data:
+                  $ref: "#/components/schemas/WhatsAppCall"
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+            example:
+              type: whatsapp.call.bot_completed
+              created_at: 2026-10-02T00:00:00Z
+              data:
+                object: whatsapp_call
+                id: call_123
+                account_id: account_123
+                direction: inbound
+                status: completed
+                handling_mode: gateway
+                created_at: 2026-10-02T00:00:00Z
+                observed_at: 1790899200000
+                wacid: null
+                user_id: null
+                from: null
+                to: null
+                contact_id: null
+                conversation_id: null
+                connected_at: null
+                ended_at: null
+                duration: null
+                biz_opaque_callback_data: null
+                cta_payload: null
+                deeplink_payload: null
+                session: null
+                recording: null
+                transcription: null
+                error: null
+                error_code: null
+                assigned_agent: null
+                bot_id: bot_123
+                bot_outcome: completed
+                bot_summary: Caller requested help with their order.
+                bot_duration: 45
+                bot_usage:
+                  inputTokens: 12
+                  outputTokens: 24
+                bot_fallback_reason: null
+      responses:
+        "200":
+          description: Webhook acknowledged
+  voiceCallTransferred:
+    post:
+      summary: whatsapp.call.transferred
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  const: whatsapp.call.transferred
+                created_at:
+                  type: string
+                data:
+                  $ref: "#/components/schemas/WhatsAppCall"
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+            example:
+              type: whatsapp.call.transferred
+              created_at: 2026-10-02T00:00:00Z
+              data:
+                object: whatsapp_call
+                id: call_123
+                account_id: account_123
+                direction: inbound
+                status: completed
+                handling_mode: gateway
+                created_at: 2026-10-02T00:00:00Z
+                observed_at: 1790899200000
+                wacid: null
+                user_id: null
+                from: null
+                to: null
+                contact_id: null
+                conversation_id: null
+                connected_at: null
+                ended_at: null
+                duration: null
+                biz_opaque_callback_data: null
+                cta_payload: null
+                deeplink_payload: null
+                session: null
+                recording: null
+                transcription: null
+                error: null
+                error_code: null
+                assigned_agent: null
+                bot_id: bot_123
+                bot_outcome: transferred_agent
+                bot_summary: Caller requested help with their order.
+                bot_duration: 45
+                bot_usage:
+                  inputTokens: 12
+                  outputTokens: 24
+                bot_fallback_reason: null
       responses:
         "200":
           description: Webhook acknowledged

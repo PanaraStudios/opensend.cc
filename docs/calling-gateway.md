@@ -112,6 +112,7 @@ FREESWITCH_ESL_SECRET=<different random 64-character hex secret>
 FREESWITCH_SIP_SECRET=<different random 64-character hex secret>
 FREESWITCH_DIRECTORY_SECRET=<different random 64-character hex secret>
 DRACHTIO_SECRET=<different random 64-character hex secret>
+VOICE_AGENT_SECRET=<different random 64-character hex secret>
 CALL_GATEWAY_CONVEX_HTTP_URL=http://convex:3211
 JANUS_STUN_SERVER=stun.l.google.com
 JANUS_STUN_PORT=19302
@@ -363,17 +364,22 @@ From the repository root, generate an uncommitted harness env file:
 ```sh
 if [ ! -f .env.calling-test ]; then
   umask 077
-  for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET; do
+  for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET VOICE_AGENT_SECRET; do
     printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
   done > .env.calling-test
 fi
 
 c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
-c build janus freeswitch drachtio call-gateway meta-peer
-c up -d janus freeswitch drachtio call-gateway
+(
+until mkdir /private/tmp/opensend-calling-harness.lock 2>/dev/null; do sleep 30; done
+trap 'c down --remove-orphans; rmdir /private/tmp/opensend-calling-harness.lock' EXIT
+c build janus freeswitch drachtio voice-agent call-gateway meta-peer
+c up -d janus freeswitch drachtio voice-agent call-gateway
 c run --rm --use-aliases meta-peer
 c run --rm --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts agent
-c down
+c run --rm --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts voice
+c run --rm --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts bot-engine
+)
 ```
 
 Expect two `PASS` lines for the default check, and registration, bridge, inbound and revocation
@@ -718,3 +724,75 @@ runtime contains drachtio-srf and 12 transitive dependency directories; the WASM
 codec, browser harness and root app dependencies are excluded. No Convex/dashboard
 files were changed. Only `opensend-calling-test` media containers/images/volumes were
 used; `c down` removed its containers/network and retained its data volumes.
+
+## Pipecat voice-agent service (8d-2)
+
+Production bot calls use a single Node `PipecatAdapter` connected to the private
+`voice-agent` FastAPI WebSocket service. Python runs **Pipecat 1.12.0**, pinned with
+`sarvam`, `elevenlabs`, `google` and `silero` extras in `services/voice-agent/uv.lock`.
+The Python 3.12.12 Bookworm image is pinned to
+`sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c` and the
+service runs as UID 10005. No voice-agent port is published.
+
+The full route is Meta → Janus → FreeSWITCH → drachtio/Node RTP → WebSocket →
+Pipecat → providers. Pipecat's WhatsApp/WebRTC transport is deliberately unused:
+FreeSWITCH remains the anchor for agent/IVR transfers, recording, caps and call
+identity. Gemini Live and every cascade use this same media path.
+
+Add `VOICE_AGENT_SECRET` (32–128 safe characters, e.g. `openssl rand -hex 32`) to
+`.env.calling` and the harness env-generation list above. Set it on call-gateway
+and voice-agent; keep it distinct from the other secrets. `VOICE_AGENT_URL` defaults
+to `ws://voice-agent:8094/ws`. Voice-agent receives `CALL_GATEWAY_SECRET` and
+`CALL_GATEWAY_CONVEX_HTTP_URL` to fetch config/tools on the existing signed channel.
+A one-use HMAC token binds `callId`, team and bot with a 45-second expiry. Only after
+validating it does Python fetch a config snapshot and decrypted stage keys. Keys are
+held only for the session and never sent to the gateway/browser or provider logs.
+
+The wire protocol is raw little-endian PCM16 mono 16 kHz in both directions, with
+JSON `start`, `ready`, `mark`, `clear`, `played_ms`, `activity`, `transcript`,
+`tool_call`/`tool_result`, `usage`, `latency` and `end` controls. Pipecat output transport
+resamples native Gemini 24 kHz output to 16 kHz; Node resamples to L16 or PCMU leg
+rate. `clear` flushes Node playback, and cancelled turn marks cannot reactivate
+stale audio. Played-ms feedback annotates interruption context. Summaries return
+with `end`; FreeSWITCH termination does not wait for model inference.
+
+Ordinary tools run through signed Convex calls from Python. Transfer/end tools go
+back through the gateway, which asks Convex to validate/authorize them before
+executing FreeSWITCH control. The catalog now uses `create_note`, current-caller
+lookup with no query argument, and server-selected handoff destinations. It replaces
+the placeholder tool schemas described in the 8d-1 section above.
+
+See [voice bot API/configuration and implementation report](voice-bots.md) for
+REST/SDK/MCP examples, model/language choices, provider documentation differences,
+budget reservation semantics and the remaining 8d-4 dashboard work.
+
+To add a provider, add its allowed credentials/models/languages to the pure catalog,
+add a Pipecat service constructor in `voice_agent/factory.py`, add per-config factory
+tests and update REST/OpenAPI/SDK/MCP shapes. Keep provider decisions in that factory
+and keep the gateway's PCM/control protocol stable.
+
+The harness adds `voice-agent` with `VOICE_AGENT_FAKE_ENABLED=true`, available only
+in the test overlay. `pnpm test:calling-harness` takes the shared
+`/private/tmp/opensend-calling-harness.lock`, rebuilds only `opensend-calling-test`
+images, runs the baseline, browser-agent, FakeEcho and Pipecat bot-engine checks,
+and always tears down that project and releases the lock. It never removes volumes.
+The `bot-engine` check proves a signed config fetch, Python Pipecat pipeline,
+L16/PCMU audio, tool round trip, interruption, recording, scheduled hangup and summary.
+
+Verified on 2026-10-02 with fresh scoped images and the shared lock. Every harness
+command exited 0: baseline inbound/outbound, SIP.js registration/bridge/revocation,
+FakeEcho L16/PCMU plus DTMF, and the Python Pipecat bot engine in both codecs.
+The Pipecat L16 call decoded 440 Hz echo power 1728 versus stale greeting power 6;
+barge-in flushed 60 ms after 380 ms played. PCMU decoded echo power 1801 versus
+stale power 9 and flushed 80 ms after 480 ms played. Both tool requests/results
+arrived once. FreeSWITCH enforced the six-second cap with `ALLOTTED_TIMEOUT`
+(callbacks at 5565/5556 ms, reflecting scheduler second granularity). RTP reports
+showed 234/267 and 236/272 received/sent frames, zero late packets, and maximum tick
+delays of 6/9 ms. The signed session fetch, transcript and final summary checks
+passed. Cleanup retained volumes and released the lock.
+
+The gateway build uses a cache scoped to the calling-test images and a numeric
+`fetchTimeout` in the image's workspace config. The standalone prune retains the
+repository's existing build approvals; dependency-policy verification remains
+active. The custom serializer filters Pipecat's RTVI frames so only our PCM/control
+protocol reaches Node.

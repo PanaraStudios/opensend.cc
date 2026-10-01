@@ -215,6 +215,13 @@ export function addCallingTools(server: McpServer, opensend: Opensend) {
         calling: calling.optional(),
         handling_mode: z.enum(["api", "gateway"]).optional(),
         announcement_file_id: z.string().optional(),
+        routing: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("agents") }),
+            z.object({ kind: z.literal("api") }),
+            z.object({ kind: z.literal("bot"), botId: z.string() }),
+          ])
+          .optional(),
         idempotencyKey: z.string().optional(),
       },
     },

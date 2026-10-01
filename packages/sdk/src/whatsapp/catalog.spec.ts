@@ -104,6 +104,7 @@ describe("WhatsApp catalog SDK contract", () => {
         status: "played",
         direction: "outbound",
         external_id: "wamid",
+        read_receipt_sent_at: null,
         created_at: "2026-10-01T00:00:00Z",
         tags: [],
         type: "audio",

@@ -54,3 +54,5 @@ export * from "./whatsapp/validation"
 export * from "./whatsapp/normalize"
 
 export type * from "./whatsapp/calling/interfaces"
+
+export type * from "./voice/interfaces"
