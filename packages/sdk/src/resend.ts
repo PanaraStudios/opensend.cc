@@ -1,3 +1,4 @@
+import { Media } from './media/media';
 import { version } from '../package.json';
 import { ApiKeys } from './api-keys/api-keys';
 import { Automations } from './automations/automations';
@@ -78,6 +79,7 @@ export class Opensend {
   readonly messenger = new Messenger(this);
   readonly instagram = new Instagram(this);
   readonly whatsapp = new WhatsApp(this);
+  readonly media = new Media(this);
 
   constructor(
     readonly key?: string,

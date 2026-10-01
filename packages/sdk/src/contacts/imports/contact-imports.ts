@@ -24,19 +24,19 @@ export class ContactImports {
 
   async create(
     payload: CreateContactImportOptions,
-    options: CreateContactImportRequestOptions = {},
+    options: CreateContactImportRequestOptions = {}
   ): Promise<CreateContactImportResponse> {
     const formData = this.buildCreateFormData(payload);
 
     return this.resend.post<CreateContactImportResponseSuccess>(
       '/contacts/imports',
       formData,
-      options,
+      options
     );
   }
 
   async list(
-    options: ListContactImportsOptions = {},
+    options: ListContactImportsOptions = {}
   ): Promise<ListContactImportsResponse> {
     const searchParams = new URLSearchParams(buildPaginationQuery(options));
 
@@ -54,19 +54,21 @@ export class ContactImports {
 
   async get(id: string): Promise<GetContactImportResponse> {
     return this.resend.get<GetContactImportResponseSuccess>(
-      `/contacts/imports/${id}`,
+      `/contacts/imports/${id}`
     );
   }
 
   private buildCreateFormData(payload: CreateContactImportOptions): FormData {
     const formData = new FormData();
 
-    formData.append('file', payload.file);
+    if (payload.fileId) formData.append('file_id', payload.fileId);
+    else if (payload.file) formData.append('file', payload.file);
+    else throw new Error('Provide file or fileId');
 
     this.appendField(
       formData,
       'column_map',
-      this.buildColumnMap(payload.columnMap ?? null),
+      this.buildColumnMap(payload.columnMap ?? null)
     );
     this.appendField(formData, 'on_conflict', payload.onConflict ?? null);
     this.appendField(formData, 'segments', payload.segments ?? null);
@@ -93,7 +95,7 @@ export class ContactImports {
   private appendField(
     formData: FormData,
     name: string,
-    value: ContactImportFormFieldValue,
+    value: ContactImportFormFieldValue
   ): void {
     if (value === null) {
       return;
@@ -101,7 +103,7 @@ export class ContactImports {
 
     formData.append(
       name,
-      typeof value === 'string' ? value : JSON.stringify(value),
+      typeof value === 'string' ? value : JSON.stringify(value)
     );
   }
 }
