@@ -1,6 +1,6 @@
 # Calling media gateway (wave 8b)
 
-The `calling` Compose profile supplies Janus, FreeSWITCH and a private Node controller.
+The `calling` Compose profile supplies Janus, FreeSWITCH, drachtio and a private Node controller.
 Convex remains responsible for Meta webhooks, Graph signaling, call authorization and
 tenant isolation. This task adds no Convex functions or dashboard screens. Use Graph
 signaling with Meta's SIP mode **disabled**. All call legs stay on VoIP.
@@ -111,6 +111,7 @@ JANUS_API_SECRET=<different random 64-character hex secret>
 FREESWITCH_ESL_SECRET=<different random 64-character hex secret>
 FREESWITCH_SIP_SECRET=<different random 64-character hex secret>
 FREESWITCH_DIRECTORY_SECRET=<different random 64-character hex secret>
+DRACHTIO_SECRET=<different random 64-character hex secret>
 CALL_GATEWAY_CONVEX_HTTP_URL=http://convex:3211
 JANUS_STUN_SERVER=stun.l.google.com
 JANUS_STUN_PORT=19302
@@ -129,8 +130,8 @@ actions require a separately secured HTTPS reverse proxy to this private service
 Build/start the media services without starting the app or deploying Convex:
 
 ```sh
-docker compose --env-file .env.calling --profile calling build janus freeswitch call-gateway
-docker compose --env-file .env.calling --profile calling up -d janus freeswitch call-gateway
+docker compose --env-file .env.calling --profile calling build janus freeswitch drachtio call-gateway
+docker compose --env-file .env.calling --profile calling up -d janus freeswitch drachtio call-gateway
 curl --fail http://127.0.0.1:8090/healthz
 docker compose --env-file .env.calling --profile calling logs --tail=100 janus freeswitch call-gateway
 ```
@@ -173,7 +174,9 @@ on the agent's `RTCPeerConnection`, not on Meta's side (see below). On Docker De
 the local harness uses container host candidates on the shared network and disables
 STUN; it does not validate public NAT/firewall behavior.
 
-Only Opus/48000/2 at 20 ms is used as a speech codec, including on SIP legs.
+Opus/48000/2 at 20 ms is used on the Meta/Janus SIP leg and browser agent legs.
+The private Path B bot leg uses mono L16/16000 with PCMU/8000 fallback; FreeSWITCH
+transcodes between these legs.
 `telephone-event/8000` is an optional DTMF payload retained when offered, so IVR
 digits work without adding a second speech codec. Video and data m-lines are
 rejected, G.711/RED/RTX are removed, Opus DTX is disabled, and FreeSWITCH uses
@@ -200,9 +203,9 @@ not change when Meta assigns a wacid. It must match `[a-zA-Z0-9._:-]{1,256}`.
 | `/route`        | `{ callId, target: "agent" \| "ivr" \| "queue" \| "bot", extension?, record? }` | `{ ok: true }`  |
 
 `agent` requires a local `2000`–`2099` extension. `ivr` runs the bundled spoken
-demo (1: tone, 2: repeat). `record: true` starts a mixed mono WAV in
-`/recordings/<FreeSWITCH UUID>.wav` before the route plays/bridges. `queue` and `bot`
-are recognized but return **501 ROUTE_NOT_IMPLEMENTED** because they belong to 8d.
+demo (1: tone, 2: repeat) through the async/full outbound ESL controller. `record: true` starts a mixed mono WAV in
+`/recordings/<FreeSWITCH UUID>.wav` before the route plays/bridges. `queue` returns **501 ROUTE_NOT_IMPLEMENTED**. `bot` now supports only the opt-in
+8d-1 fake adapter through Path B; provider adapters arrive in 8d-2.
 `outbound()` registers a per-call Janus SIP slot and uses FreeSWITCH ESL to originate
 an Opus/SDES-SRTP `user/<slot>@freeswitch` leg. Its SIP INVITE becomes the Janus
 WebRTC offer. `remoteAnswer()` applies the Meta answer with Janus SIP `accept`.
@@ -224,8 +227,8 @@ connect webhook's SDP answer → `remoteAnswer(callId, sdp)` → `route()`.
 No PSTN destinations can be selected through this API.
 
 The controller supports 100 simultaneous slots. Setup/routing must complete within
-60 seconds; abandoned parked calls are reaped. Established calls have no duration
-cap. Equal repeated setup/answer/route/hangup operations are idempotent; conflicting
+60 seconds; abandoned parked calls are reaped. Agent calls retain their existing lifetime; controlled IVR, bot and voicemail
+calls have a FreeSWITCH-side duration cap (300 seconds by default). Equal repeated setup/answer/route/hangup operations are idempotent; conflicting
 SDPs/routes return 409. Hangup interrupts setup and leaves a five-minute tombstone
 to refuse delayed recreation. Convex must persist dedupe/stale-event checks across
 controller restarts. Route changes/transfers and browser claiming belong to 8c.
@@ -366,10 +369,10 @@ if [ ! -f .env.calling-test ]; then
 fi
 
 c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
-c build janus freeswitch call-gateway meta-peer
-c up -d janus freeswitch call-gateway
+c build janus freeswitch drachtio call-gateway meta-peer
+c up -d janus freeswitch drachtio call-gateway
 c run --rm --use-aliases meta-peer
-c run --rm --use-aliases meta-peer pnpm --filter @opensendcc/call-gateway harness agent
+c run --rm --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts agent
 c down
 ```
 
@@ -497,3 +500,221 @@ coturn image built and started as an unprivileged user; public TURN allocation
 and restrictive-network media were not exercised. It remained excluded from the
 normal calling profile. Only test-project containers/images/volumes were used,
 and `c down` removed its containers and network while retaining its data volumes.
+
+## Voice control and Path B foundation (8d-1)
+
+User decisions: first providers are Gemini Live and Sarvam, both over WebSocket
+through our media path. No provider SIP transport, SIP gateway or provider webhook
+receiver is installed. This task supplies the transport, adapter boundary and fake
+adapter only. Provider credentials, bot/IVR configuration, Convex routes, provider
+reconnection, disclosures and silence/budget policies belong to 8d-2/8d-3.
+
+```mermaid
+flowchart LR
+  Meta[Meta Opus] <--> Janus
+  Janus <--> FS[FreeSWITCH anchored call]
+  FS -- socket async full --> Control[Node call controller]
+  FS -- SIP via drachtio --> Media[Node RTP endpoint]
+  FS <-- L16 16k / PCMU 8k --> Media
+  Media <--> Adapter[VoiceAgentAdapter]
+  Adapter -- signed tools/events --> Backend[Convex receiver in 8d-2]
+```
+
+FreeSWITCH transfers controlled calls to `voice-control`, which opens a private
+TCP socket to `call-gateway:8093` with `async full`. The controller correlates its
+`connect` headers against the pending call id **and** anchored channel UUID,
+subscribes with `myevents`, and uses `linger 5`. `sendmsg` applications use
+`event-lock: true` and a unique `Event-UUID`; their promises resolve on the matching
+`CHANNEL_EXECUTE_COMPLETE`, rather than on the command acknowledgement. Helpers
+cover playback, digit collection, break, local transfer, UUID recording and scheduled
+hangup. The call state machine serializes transitions among `route`, `ivr`, `bot`,
+`agent`, `voicemail`, `hangup`; terminal calls cannot be revived by late completions.
+Agent handoff disposes the adapter, tool requests, RTP socket and outbound ESL session.
+Voicemail plays a short beep, starts UUID recording, and parks until the cap or
+hangup. Mailbox prompts and storage/routing configuration belong to 8d-3.
+
+The duration cap is installed with `sched_hangup +N UUID ALLOTTED_TIMEOUT` **before**
+opening the Janus media gate. It runs in FreeSWITCH even if Node stalls or disconnects.
+The default is 300 seconds; signed requests can choose 1–3600 seconds. Repeated
+`/route` calls do not renew the cap. Agent handoff keeps a previously installed cap.
+Recording remains opt-in except for an explicitly selected voicemail route.
+
+Additional `/route` fields (all private/HMAC-authenticated):
+
+| Field                | Meaning                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `target`             | Existing agent/ivr/queue/bot plus voicemail/hangup                                       |
+| `organizationId`     | Required for bot tools; captured from the authorized backend route                       |
+| `adapter`            | Only `fake-echo` in this foundation                                                      |
+| `codec`              | Optional `L16` (default, with PCMU fallback) or forced `PCMU` for interoperability tests |
+| `maxDurationSeconds` | Controlled-call cap, integer 1–3600, default 300                                         |
+
+`CALL_VOICE_FAKE_ENABLED=true` enables fake routing only in the test overlay. The
+normal calling profile leaves it disabled (`501 BOT_UNAVAILABLE`); this is not a
+user-selectable production provider. `/route` remains the backend's confirmation
+that Graph accept/connect succeeded. SIP headers and adapter-generated arguments
+never supply team authority or arbitrary routing destinations.
+
+### drachtio pin and private network
+
+The wrapper image uses official `drachtio/drachtio-server:0.9.11` at manifest digest
+`sha256:b229fc724b88a9fca249610d8498ad199e5bfe65bb0004026e346d5f37403507` and runs
+as UID 10004. The gateway locks `drachtio-srf` to 5.0.29. The official server
+[README](https://github.com/drachtio/drachtio-server/tree/v0.9.11) requires srf >=5
+for server >=0.9. The server [configuration manual](https://drachtio.org/docs/drachtio-server)
+and [tagged Docker configuration](https://github.com/drachtio/drachtio-server/blob/v0.9.11/docker.drachtio.conf.xml)
+verify the admin XML, port 9022, shared secret, contacts and logging settings;
+[Srf API](https://drachtio.org/api) verifies `connect`, `invite`, `createUAS` and
+Dialog destroy/modify handling. Teardown uses the documented callback form of
+`Dialog.destroy`: srf 5.0.29 actually returns a Promise without a callback despite
+its bundled `void` type. This handles simultaneous FreeSWITCH/SIP BYE races
+(`ENODIALOG`) without an unhandled rejection. Routed calls briefly wait for the
+anchored FreeSWITCH cause before accepting Janus's generic terminal reason. Both selected versions and the image manifest were
+checked on 2026-10-02. The [FreeSWITCH event socket manual](https://developer.signalwire.com/freeswitch/integration/event-socket/)
+and [command reference](https://developer.signalwire.com/freeswitch/reference/cli-and-api/)
+cover the controller commands.
+
+Set a separate `DRACHTIO_SECRET` on both services. Its format matches the other
+32–128 character calling secrets. No drachtio ports are published. TCP 9022 is the
+admin connection from Node; UDP/TCP 5060 is SIP from FreeSWITCH. TCP 8093 is outbound
+ESL into Node. RTP uses an ephemeral UDP socket per call in Node, advertised via
+`CALL_VOICE_RTP_HOST` (default `call-gateway`), entirely inside the Compose network.
+The endpoint authorizes only a one-time random Request-URI token created before
+its bridge, checks FreeSWITCH's source address and SDP address, and binds RTP to
+the negotiated remote address/port. Other SIP requests, extra media, stereo L16,
+non-20ms audio and unsupported codecs are rejected. Re-INVITEs receive 488.
+
+Each endpoint maintains a bounded sequence/SSRC jitter buffer with three-frame
+startup delay and silence concealment. On complete underflow, it holds the expected
+sequence instead of running ahead of a slower/paused sender. A missing sequence
+with future packets buffered is skipped as a real gap. A 20ms timer drives one RTP packet per tick
+(including silence), with no catch-up bursts after stalls. RTP uses network-endian
+L16; adapters use little-endian PCM16 mono. A stateful windowed-sinc converter
+covers 8k/16k/24k in both directions and suppresses downsampling aliases. Input is
+normalized to 16k. Output accepts 8k/16k/24k and reblocks arbitrary provider chunks.
+The playback queue is capped at ten seconds. Barge-in atomically clears queued and
+partial audio, rejects late audio from cancelled turns, calls `interrupt(playedMs)`
+and uses `uuid_break UUID all` for FreeSWITCH prompt playback, with played/flushed timing logs. `playedMs` counts 20ms
+frames handed to UDP for the current turn; it cannot measure acoustic playback at
+the caller or retract packets already in FreeSWITCH/Janus/network buffers. Timing
+reports include first RTP input/output, packet counts, jitter loss/late packets and
+maximum timer delay. RTCP feedback and adaptive jitter control are future work.
+
+### Adapter and backend contract for 8d-2
+
+`src/voice-adapter.ts` exports exactly the reference's method surface:
+`kind`, `start`, `pushAudio`, `onAudio`, `onBargeIn`, `onToolCall`, `onTranscript`,
+`onEnd`, `sendToolResult`, `interrupt(playedMs)`, `stop`. `kind` is
+`realtime-ws | realtime-sip | pipeline` for interface compatibility; only a
+`realtime-ws` FakeEchoAdapter is implemented. Event registration returns an
+unsubscribe function. Audio includes `pcm`, `sampleRate`, relative `timestampMs`
+and `turnId`; providers must give new turns new ids and stop emitting an interrupted
+turn. Gemini can use 16k input and 24k output without changing the RTP endpoint.
+
+The gateway uses the existing signed JSON client and HMAC envelope (method, path,
+raw body, timestamp, fresh nonce). **Neither receiver below exists in Convex yet**;
+meta-peer implements both for tests. They are separate from the existing
+`/calling/gateway/events` receiver, so its 8a event schema remains unchanged.
+
+`POST /calling/gateway/voice/tools`:
+
+```json
+{
+  "version": 1,
+  "callId": "CALL_ID",
+  "organizationId": "TEAM_ID",
+  "toolCall": {
+    "id": "PROVIDER_TOOL_ID",
+    "name": "lookup_contact",
+    "arguments": { "query": "fixture" }
+  }
+}
+```
+
+Return `{"ok":true,"result":<JSON>}` or `{"ok":false,"error":"PUBLIC_ERROR"}`.
+No returned value is interpreted as an ESL command. Results pass to the requesting
+adapter unchanged. Calls time out after five seconds and abort on hangup; transport
+failures are not blindly retried. Gateway deduplication is per-call/tool id, rejects
+conflicting reuse, and permits at most eight concurrent/128 lifetime requests.
+Tool ids are 1–128 safe characters. All argument values are strings up to 4096
+characters; unknown keys and tool names are rejected. The initial schema boundary is:
+
+| Tool                  | Required arguments | Optional arguments     |
+| --------------------- | ------------------ | ---------------------- |
+| lookup_contact        | query              | —                      |
+| create_task           | title              | contactId, description |
+| send_whatsapp_message | contactId, text    | —                      |
+| transfer_to_agent     | extension          | —                      |
+| transfer_to_ivr       | ivrId              | —                      |
+| end_call              | —                  | —                      |
+
+These are foundation contracts, not shipped operations. In 8d-2 the backend must
+verify HMAC/replay protection, durably deduplicate `(callId, toolCall.id)`, resolve
+call ownership from persisted records, verify the provided team matches that call,
+validate tool enablement/schema and contact/task/message ownership, and apply
+existing WhatsApp permission/window checks. Handoff tools must use an authorized
+local controller action; returning provider-chosen SIP strings is never permitted.
+
+`POST /calling/gateway/voice/events` carries `{version:1,eventId,callId,timestamp,
+type,...}`. `timestamp` is epoch milliseconds; audio/transcript positions are
+relative milliseconds. Event variants are `state {state}`, `ivr_digits {digits}`,
+`transcript {transcript:{role,text,final,timestampMs}}`,
+`barge_in {playedMs,flushedMs,turnId?}` and
+`media {codec,received,sent,playedMs,lost,late,maxTickDelayMs,firstInputMs?,firstOutputMs?}`.
+Success is 200 JSON. This initial event path is best effort, bounded by a five-second
+request timeout; there is no durable transcript spool. Backend receivers must dedupe
+`eventId`, tolerate delivery reordering and preserve terminal call state. PII-bearing
+transcripts and tool results are not written to controller logs.
+
+### Voice harness
+
+Use only the isolated test project and explicitly named services:
+
+```sh
+c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
+c build drachtio janus freeswitch call-gateway meta-peer
+c up -d drachtio janus freeswitch call-gateway
+c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts voice
+c run --rm --no-deps --use-aliases meta-peer
+c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts agent
+c down
+```
+
+The voice harness sends a real 440Hz Opus tone, decodes returned Opus using a pinned libopus WASM codec,
+and checks echo power against the interrupted 880Hz greeting. It covers preferred
+L16 and forced PCMU, queued greeting flush, a signed tool request/result reaching
+the adapter, FreeSWITCH `ALLOTTED_TIMEOUT` without a Node hangup request, and RFC2833
+digit 1 through Meta/Janus to outbound ESL `play_and_get_digits`. [OpusScript](https://github.com/abalabahaha/opusscript) 0.1.1 (libopus 1.4) is a
+harness-only dev dependency; the gateway runtime contains no Opus WASM codec. It does not validate provider WebSocket behavior,
+production concurrency, public NAT/firewalls or caller-side acoustic echo.
+
+### 8d-1 verification (2026-10-02)
+
+Fresh images, without host source mounts, passed all three harness invocations:
+
+```text
+PASS Path B L16: decoded 440Hz echo=1781, stale 880Hz=10; RTP received 234 / sent 272; jitter lost 25, late 0; max tick delay 12ms
+PASS barge-in L16: played 440ms, flushed 2560ms; tool HMAC request/result delivered once; sched_hangup ALLOTTED_TIMEOUT at 5558ms
+PASS Path B PCMU: decoded 440Hz echo=1751, stale 880Hz=11; RTP received 228 / sent 273; jitter lost 31, late 0; max tick delay 8ms
+PASS barge-in PCMU: played 460ms, flushed 2540ms; tool HMAC request/result delivered once; sched_hangup ALLOTTED_TIMEOUT at 5534ms
+PASS IVR: RFC2833 digit 1 through Meta/Janus, async/full ESL play_and_get_digits completed
+PASS inbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 34 RTP packets, one SSRC, callbacks and recording
+PASS outbound: complete ICE, controlling Janus, DTLS client, gated/media-first audio, 34 RTP packets, one SSRC, callbacks and recording
+PASS agent registration: backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS
+PASS agent bridge: SIP.js answered, browser received 20 / sent 23 RTP packets; Meta received 115 / sent 100
+PASS agent revocation: old credential rejected by FreeSWITCH; no static/cache fallback
+```
+
+`lost` includes silence concealment during receive-buffer underflow, not just network
+packet loss. The fake Meta sender uses a JavaScript timer, so its clock can run slower
+than Node's paced media clock. The harness requires >70% input-frame acceptance and
+fewer than ten late packets, in addition to decoded audio checks. FreeSWITCH's scheduler
+has second granularity, so a `+6` cap can fire between five and six seconds after routing.
+
+Gateway typecheck/build, all **47** gateway tests, root `pnpm typecheck` and `pnpm lint`
+passed. Regressions cover streaming phase/anti-aliasing, receive underflow, terminal
+state races and preserving the FreeSWITCH cap cause against Janus termination. The
+runtime contains drachtio-srf and 12 transitive dependency directories; the WASM test
+codec, browser harness and root app dependencies are excluded. No Convex/dashboard
+files were changed. Only `opensend-calling-test` media containers/images/volumes were
+used; `c down` removed its containers/network and retained its data volumes.

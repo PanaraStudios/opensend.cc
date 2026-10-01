@@ -1,4 +1,6 @@
 /** Docker-only harness; fake Meta/backend plus an optional real SIP.js browser. */
+import { opusTone, decodeOpus, tonePower } from "./opus-audio.js"
+import type { VoiceEvent, VoiceToolRequest } from "../src/voice-backend.js"
 import assert from "node:assert/strict"
 import { createServer } from "node:http"
 import { randomUUID } from "node:crypto"
@@ -26,6 +28,13 @@ const gateway = new CallGatewayClient(
 )
 const janusAdmin = process.env.JANUS_ADMIN_URL ?? "http://janus:7088/admin"
 const callbacks: GatewayCallback[] = []
+const voiceEvents: (VoiceEvent & {
+  version: 1
+  callId: string
+  eventId: string
+  timestamp: number
+})[] = []
+const toolRequests: VoiceToolRequest[] = []
 const receiver = createServer(async (request, response) => {
   try {
     const chunks: Buffer[] = []
@@ -42,6 +51,30 @@ const receiver = createServer(async (request, response) => {
           "cache-control": "no-store",
         })
         .end(JSON.stringify(credential))
+      return
+    }
+    if (request.url === "/calling/gateway/voice/events") {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const event = JSON.parse(body) as (typeof voiceEvents)[number]
+      assert.equal(event.version, 1)
+      voiceEvents.push(event)
+      response.writeHead(200).end('{"ok":true}')
+      return
+    }
+    if (request.url === "/calling/gateway/voice/tools") {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const tool = JSON.parse(body) as VoiceToolRequest
+      assert.equal(tool.version, 1)
+      assert.equal(tool.organizationId, "harness-team")
+      assert.ok(tool.callId.startsWith("harness-inbound-"))
+      assert.equal(tool.toolCall.name, "lookup_contact")
+      assert.deepEqual(tool.toolCall.arguments, { query: "fixture" })
+      toolRequests.push(tool)
+      response
+        .writeHead(200)
+        .end(
+          JSON.stringify({ ok: true, result: { contactId: "fixture-contact" } })
+        )
       return
     }
     assert.equal(request.url, "/calling/gateway/events")
@@ -203,7 +236,8 @@ async function browserAgent() {
 
 async function run(
   direction: "inbound" | "outbound",
-  agent?: Awaited<ReturnType<typeof browserAgent>>
+  agent?: Awaited<ReturnType<typeof browserAgent>>,
+  voice?: "L16" | "PCMU" | "ivr"
 ) {
   const callId = `harness-${direction}-${randomUUID()}`
   const peer = new RTCPeerConnection({
@@ -219,21 +253,28 @@ async function run(
           channels: 2,
           payloadType: 111,
         }),
+        new RTCRtpCodecParameters({
+          mimeType: "audio/telephone-event",
+          clockRate: 8000,
+          payloadType: 101,
+        }),
       ],
     },
   })
   const track = new MediaStreamTrack({ kind: "audio" })
-  peer.addTrack(track)
+  const sender = peer.addTrack(track)
   let received = 0,
     sent = 0,
     opusPayload = 111
   const ssrcs = new Set<number>()
+  const captured: { payload: Buffer; time: number }[] = []
   peer.onTrack.subscribe((remote) =>
     remote.onReceiveRtp.subscribe((packet) => {
       // DTMF is negotiated separately; count only the Opus speech stream.
       if (packet.header.payloadType !== opusPayload) return
       assert.ok(packet.payload.length > 0)
       received++
+      captured.push({ payload: Buffer.from(packet.payload), time: Date.now() })
       ssrcs.add(packet.header.ssrc)
     })
   )
@@ -286,24 +327,41 @@ async function run(
       0,
       "Audio escaped before Graph accept confirmation via /route"
     )
-    const route = agent
-      ? {
-          callId,
-          target: "agent" as const,
-          extension: agent.extension,
-          record: true,
-        }
-      : { callId, target: "ivr" as const, record: true }
+    const route =
+      voice && voice !== "ivr"
+        ? {
+            callId,
+            target: "bot" as const,
+            adapter: "fake-echo" as const,
+            organizationId: "harness-team",
+            codec: voice,
+            maxDurationSeconds: 6,
+            record: true,
+          }
+        : agent
+          ? {
+              callId,
+              target: "agent" as const,
+              extension: agent.extension,
+              record: true,
+            }
+          : { callId, target: "ivr" as const, record: true }
+    const routeAt = Date.now()
     await gateway.route(route)
     await gateway.route(route)
     // Meta sends nothing yet: the business must send first to avoid deadlock.
-    await waitUntil(
-      () => received >= 10,
-      `${direction}: gateway did not send first`
-    )
+    await waitUntil(() => {
+      const ended = callbacks.find(
+        (event) => event.callId === callId && event.event === "hangup"
+      )
+      if (ended?.event === "hangup")
+        throw new Error(`Call ended before first audio: ${ended.reason}`)
+      return received >= 10
+    }, `${direction}: gateway did not send first`)
     const senderSsrc = 12345678
     let sequence = 1000,
       timestamp = 48000
+    const tonePackets = voice && voice !== "ivr" ? await opusTone(440) : []
     sending = setInterval(() => {
       track.writeRtp(
         new RtpPacket(
@@ -313,7 +371,9 @@ async function run(
             sequenceNumber: sequence++ & 0xffff,
             timestamp: timestamp >>> 0,
           }),
-          Buffer.from([0xf8, 0xff, 0xfe])
+          tonePackets.length
+            ? tonePackets[sent % tonePackets.length]
+            : Buffer.from([0xf8, 0xff, 0xfe])
         )
       )
       timestamp += 960
@@ -349,6 +409,132 @@ async function run(
       console.log(
         `PASS agent bridge: SIP.js answered, browser received ${stats!.inboundPackets} / sent ${stats!.outboundPackets} RTP packets; Meta received ${received} / sent ${sent}`
       )
+    }
+    if (voice === "ivr") {
+      clearInterval(sending)
+      const info = await infoFor(callId)
+      const negotiated = peer.remoteDescription!.sdp.match(
+        /a=rtpmap:(\d+) telephone-event\/8000/i
+      )
+      assert.ok(negotiated, "IVR did not negotiate DTMF")
+      const dtmfTimestamp = 8000
+      const pt = Number(negotiated[1])
+      for (let i = 0; i < 10; i++) {
+        const payload = Buffer.from([1, i >= 7 ? 0x8a : 0x0a, 0, 0])
+        payload.writeUInt16BE(Math.min(i + 1, 7) * 160, 2)
+        await sender.dtlsTransport.sendRtp(
+          payload,
+          new RtpHeader({
+            payloadType: pt,
+            ssrc: sender.ssrc,
+            sequenceNumber: (sequence + i) & 65535,
+            timestamp: dtmfTimestamp,
+            marker: i === 0,
+          })
+        )
+        await delay(20)
+      }
+      assert.ok(info.webrtc)
+      await waitUntil(
+        () =>
+          voiceEvents.some(
+            (event) =>
+              event.callId === callId &&
+              event.type === "ivr_digits" &&
+              event.digits === "1"
+          ),
+        "ESL play_and_get_digits did not receive RFC2833 digit 1"
+      )
+      console.log(
+        "PASS IVR: RFC2833 digit 1 through Meta/Janus, async/full ESL play_and_get_digits completed"
+      )
+    } else if (voice) {
+      await waitUntil(
+        () =>
+          voiceEvents.some(
+            (event) => event.callId === callId && event.type === "barge_in"
+          ),
+        "Fake bot did not interrupt"
+      )
+      const barge = voiceEvents.find(
+        (event) => event.callId === callId && event.type === "barge_in"
+      )!
+      assert.equal(barge.type, "barge_in")
+      if (barge.type === "barge_in") {
+        assert.ok(barge.flushedMs > 1000)
+        assert.ok(barge.playedMs > 0 && barge.playedMs < 2000)
+      }
+      await waitUntil(
+        () =>
+          voiceEvents.some(
+            (event) =>
+              event.callId === callId &&
+              event.type === "transcript" &&
+              event.transcript.text.includes("fixture-contact")
+          ),
+        "Tool result did not reach adapter"
+      )
+      assert.equal(
+        toolRequests.filter((tool) => tool.callId === callId).length,
+        1
+      )
+      await delay(1200)
+      const after = captured
+        .filter((packet) => packet.time > barge.timestamp + 300)
+        .map((packet) => packet.payload)
+      assert.ok(after.length >= 20)
+      const pcm = await decodeOpus(after)
+      const echoPower = tonePower(pcm, 440),
+        stalePower = tonePower(pcm, 880)
+      assert.ok(echoPower > 100, `Echo tone missing: ${echoPower}`)
+      assert.ok(
+        echoPower > stalePower * 8,
+        `Greeting survived barge-in: echo=${echoPower}, stale=${stalePower}`
+      )
+      await waitUntil(
+        () =>
+          callbacks.some(
+            (event) => event.callId === callId && event.event === "hangup"
+          ),
+        "FreeSWITCH sched_hangup did not enforce cap",
+        8000
+      )
+      const ended = callbacks.find(
+        (event) => event.callId === callId && event.event === "hangup"
+      )!
+      assert.ok(Date.now() - routeAt < 8500)
+      assert.equal(ended.event, "hangup")
+      if (ended.event === "hangup")
+        assert.equal(ended.reason, "ALLOTTED_TIMEOUT")
+      await waitUntil(
+        () =>
+          voiceEvents.some(
+            (event) => event.callId === callId && event.type === "media"
+          ),
+        "Missing media timing report"
+      )
+      const report = voiceEvents.find(
+        (event) => event.callId === callId && event.type === "media"
+      )!
+      if (report.type === "media") {
+        assert.equal(report.codec, voice)
+        assert.ok(report.received >= 20 && report.sent >= 20)
+        assert.ok(
+          report.received > report.sent * 0.7,
+          "Jitter buffer discarded most incoming audio"
+        )
+        assert.ok(
+          report.late < 10,
+          "Remote clock drift caused persistent late-packet loss"
+        )
+        console.log(
+          `PASS Path B ${voice}: decoded 440Hz echo=${echoPower.toFixed(0)}, stale 880Hz=${stalePower.toFixed(0)}; RTP received ${report.received} / sent ${report.sent}; jitter lost ${report.lost}, late ${report.late}; max tick delay ${report.maxTickDelayMs}ms`
+        )
+      }
+      if (barge.type === "barge_in")
+        console.log(
+          `PASS barge-in ${voice}: played ${barge.playedMs}ms, flushed ${barge.flushedMs}ms; tool HMAC request/result delivered once; sched_hangup ALLOTTED_TIMEOUT at ${ended.timestamp - routeAt}ms`
+        )
     }
     await gateway.hangup(callId)
     await gateway.hangup(callId)
@@ -394,7 +580,13 @@ async function run(
   }
 }
 try {
-  if (process.argv.includes("agent")) {
+  if (process.argv.includes("ivr")) {
+    await run("inbound", undefined, "ivr")
+  } else if (process.argv.includes("voice")) {
+    await run("inbound", undefined, "L16")
+    await run("inbound", undefined, "PCMU")
+    await run("inbound", undefined, "ivr")
+  } else if (process.argv.includes("agent")) {
     const agent = await browserAgent()
     try {
       await run("inbound", agent)

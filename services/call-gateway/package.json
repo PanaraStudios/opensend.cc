@@ -22,6 +22,7 @@
   "devDependencies": {
     "@types/node": "20.19.43",
     "esbuild": "0.25.12",
+    "opusscript": "0.1.1",
     "playwright": "1.63.0",
     "sip.js": "0.21.2",
     "tsx": "4.23.13",
