@@ -1,3 +1,4 @@
+import { IvrRunner } from "./ivr-runner.js"
 import type { RouteRequest } from "./contracts.js"
 import { CallStateMachine } from "./call-state.js"
 import { OutboundEslServer, type OutboundCall } from "./outbound-esl.js"
@@ -14,6 +15,7 @@ interface ControlledCall {
   socket?: OutboundCall
   releaseMedia?: () => Promise<void>
   tools?: VoiceTools
+  abort: AbortController
   stopped: boolean
   ready: Promise<void>
   commit: () => void
@@ -82,6 +84,7 @@ export class VoiceRuntime {
       route,
       machine,
       end,
+      abort: new AbortController(),
       stopped: false,
       ready,
       commit,
@@ -99,7 +102,53 @@ export class VoiceRuntime {
   }
   private async run(call: ControlledCall, socket: OutboundCall) {
     const target = call.route.target
-    if (target === "ivr") {
+    if (target === "ivr" && call.route.ivrId) {
+      const runner = new IvrRunner(this.backend)
+      await runner.run({
+        callId: call.callId,
+        ivrId: call.route.ivrId,
+        socket,
+        signal: call.abort.signal,
+        handoff: async (decision) => {
+          if (call.stopped) return
+          const action = decision.action
+          if (action.kind === "agents") {
+            call.stopped = true
+            try {
+              await call.machine.transition("agent", async () => {
+                await socket.api(
+                  `uuid_setvar ${socket.uuid} opensend_agent ${decision.extension}`
+                )
+                await socket.api(
+                  `uuid_transfer ${socket.uuid} agent-route XML calling`
+                )
+              })
+            } catch (error) {
+              if (!call.abort.signal.aborted) call.stopped = false
+              throw error
+            }
+            this.event(call, { type: "state", state: call.machine.state })
+          } else if (action.kind === "bot" || action.kind === "voicemail") {
+            const next = action.kind === "bot" ? "bot" : "voicemail"
+            await call.machine.transition(next, async () => {})
+            call.route = {
+              ...call.route,
+              target: next,
+              organizationId: decision.organizationId,
+              ...(action.kind === "bot" ? { botId: action.botId } : {}),
+            }
+            this.event(call, { type: "state", state: call.machine.state })
+            await this.run(call, socket)
+          } else {
+            if (action.kind === "playAndHangup") {
+              const { cachedPrompt } = await import("./ivr-runner.js")
+              await socket.play(cachedPrompt(decision.promptUrl!))
+            }
+            await call.end("IVR completed")
+          }
+        },
+      })
+    } else if (target === "ivr") {
       while (!call.stopped && call.machine.state === "ivr") {
         const digits = await socket.playAndGetDigits(
           "/opt/freeswitch/sounds/calling-welcome.wav",
@@ -195,6 +244,7 @@ export class VoiceRuntime {
   beginTransfer(callId: string) {
     const call = this.calls.get(callId)
     if (call) {
+      call.abort.abort()
       call.stopped = true
       call.tools?.stop()
     }
@@ -202,6 +252,7 @@ export class VoiceRuntime {
   async stop(callId: string) {
     const call = this.calls.get(callId)
     if (!call) return
+    call.abort.abort()
     call.stopped = true
     call.tools?.stop()
     call.commit()

@@ -134,3 +134,46 @@ test("session endpoints are HMAC-protected and the XML directory requires its ow
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
 })
+
+test("signed routing retains IVR and bot resource ids through the HTTP boundary", async () => {
+  const secret = "z".repeat(64),
+    routes: unknown[] = []
+  const api: GatewayApi = {
+    inbound: async () => ({ answerSdp: "" }),
+    outbound: async () => ({ offerSdp: "" }),
+    remoteAnswer: async () => {},
+    hangup: async () => {},
+    healthy: async () => true,
+    route: async (data) => {
+      routes.push(data)
+    },
+  }
+  const server = createGatewayServer(api, secret)
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  try {
+    const client = new CallGatewayClient(base, secret)
+    const ivr = { callId: "call", target: "ivr" as const, ivrId: "ivr-id" },
+      bot = {
+        callId: "call",
+        target: "bot" as const,
+        botId: "bot-id",
+        organizationId: "team",
+      }
+    await client.route(ivr)
+    await client.route(bot)
+    assert.deepEqual(routes, [ivr, bot])
+    const body = JSON.stringify({ callId: "call", target: "ivr", ivrId: 123 })
+    const invalid = await fetch(`${base}/route`, {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/json",
+        ...signRequest(secret, "POST", "/route", body),
+      },
+    })
+    assert.equal(invalid.status, 400)
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})

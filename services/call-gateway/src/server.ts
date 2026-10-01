@@ -199,7 +199,13 @@ export function createGatewayServer(
                 "Agent session expired",
                 409
               )
-            for (const field of ["organizationId", "adapter", "codec"])
+            for (const field of [
+              "organizationId",
+              "adapter",
+              "codec",
+              "ivrId",
+              "botId",
+            ])
               if (body[field] !== undefined && typeof body[field] !== "string")
                 throw new GatewayError(
                   "INVALID_REQUEST",
@@ -216,6 +222,12 @@ export function createGatewayServer(
             await api.route({
               callId,
               target: textField(body, "target") as RouteRequest["target"],
+              ...(body.ivrId !== undefined
+                ? { ivrId: body.ivrId as string }
+                : {}),
+              ...(body.botId !== undefined
+                ? { botId: body.botId as string }
+                : {}),
               ...(body.organizationId !== undefined
                 ? { organizationId: body.organizationId as string }
                 : {}),

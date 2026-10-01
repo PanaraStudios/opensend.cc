@@ -40,6 +40,9 @@ export function validateRoute(request: RouteRequest): void {
     )
   )
     throw new GatewayError("INVALID_ROUTE", "Unknown route target")
+  for (const id of [request.ivrId, request.botId])
+    if (id !== undefined && !/^[a-zA-Z0-9._:-]{1,256}$/.test(id))
+      throw new GatewayError("INVALID_ROUTE", "Invalid route id")
   if (request.target === "queue")
     throw new GatewayError(
       "ROUTE_NOT_IMPLEMENTED",
@@ -70,7 +73,8 @@ export function validateRoute(request: RouteRequest): void {
     throw new GatewayError("INVALID_CODEC", "Expected L16 or PCMU")
   if (
     request.target === "bot" &&
-    (!request.organizationId || request.adapter !== "fake-echo")
+    (!request.organizationId ||
+      (!request.botId && request.adapter !== "fake-echo"))
   )
     throw new GatewayError(
       "INVALID_BOT",
@@ -377,13 +381,17 @@ export class CallController implements GatewayApi {
   }
   async route(request: RouteRequest) {
     validateRoute(request)
-    if (request.target === "bot" && !this.voice?.fakeEnabled)
+    if (request.target === "bot" && !request.botId && !this.voice?.fakeEnabled)
       throw new GatewayError(
         "BOT_UNAVAILABLE",
         "Fake adapter is disabled; provider adapters arrive in 8d-2",
         501
       )
-    if (request.target === "voicemail" && !this.voice)
+    if (
+      (request.target === "voicemail" ||
+        (request.target === "ivr" && request.ivrId)) &&
+      !this.voice
+    )
       throw new GatewayError(
         "VOICE_UNAVAILABLE",
         "Voice controller unavailable",
