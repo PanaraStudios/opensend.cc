@@ -1,12 +1,13 @@
 # Token-free source route: https://developer.signalwire.com/freeswitch/foundations/getting-started/
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef AS build
-ARG FREESWITCH_COMMIT=a88d069d6ffb74df797bcaf001f7e63181c07a09
-ARG SOFIA_COMMIT=6198851a610b7889c17e2d98fb84617bc1dd7aec
-# FreeSWITCH 1.10.12's own w32/download_spandsp.props pins this revision (spandsp 3).
-ARG SPANDSP_COMMIT=0d2e6ac65e0e8f53d652665a743015a88bf048d4
+# v1.11.3; dependency minimums are checked in the tagged configure.ac.
+ARG FREESWITCH_COMMIT=ef32e205295e29f034f1453ad245ba5efb07b94a
+# Sofia-SIP v1.13.18 and SpanDSP v3.1.1 (ABI 4).
+ARG SOFIA_COMMIT=ad36ac8f755308e8b87f98a505e83d4e408e5cc3
+ARG SPANDSP_COMMIT=8f1e1646bdec99eac5fd2cd92c35563f736b9b89
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential autoconf automake libtool libtool-bin pkg-config patch \
-    libssl-dev libcurl4-openssl-dev libpcre3-dev libspeex-dev libspeexdsp-dev \
+    libssl-dev libcurl4-openssl-dev libpcre2-dev libspeex-dev libspeexdsp-dev \
     libsqlite3-dev libedit-dev libldns-dev libsndfile1-dev libopus-dev \
     libjpeg62-turbo-dev zlib1g-dev libtiff-dev uuid-dev yasm nasm python3 espeak \
     && rm -rf /var/lib/apt/lists/*
@@ -30,7 +31,7 @@ RUN cd freeswitch && patch -p1 < /src/ecdsa-dtls.patch \
 
 FROM debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 libcurl4 libpcre3 libspeex1 libspeexdsp1 libsqlite3-0 \
+    ca-certificates libssl3 libcurl4 libpcre2-8-0 libspeex1 libspeexdsp1 libsqlite3-0 \
     libedit2 libldns3 libsndfile1 libopus0 libjpeg62-turbo zlib1g libtiff6 libuuid1 \
     openssl gettext-base && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10002 freeswitch && mkdir -p /recordings /certs /opt/freeswitch \
