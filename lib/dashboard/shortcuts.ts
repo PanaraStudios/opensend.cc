@@ -65,6 +65,7 @@ export const NAVIGATION_SHORTCUTS: Record<string, string> = {
   "/logs": "l",
   "/api-keys": "k",
   "/webhooks": "w",
+  "/playground": "p",
   "/settings/team": "s",
 }
 

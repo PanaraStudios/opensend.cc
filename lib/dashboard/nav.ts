@@ -2,6 +2,7 @@ import {
   ChartColumnIcon,
   CloudIcon,
   FileCodeIcon,
+  FlaskConicalIcon,
   GlobeIcon,
   KeyRoundIcon,
   MailsIcon,
@@ -53,6 +54,7 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/logs", title: "Logs", icon: ScrollTextIcon },
   { href: "/api-keys", title: "API keys", icon: KeyRoundIcon },
   { href: "/webhooks", title: "Webhooks", icon: WebhookIcon },
+  { href: "/playground", title: "Playground", icon: FlaskConicalIcon },
   {
     href: SETTINGS_NAV_INDEX,
     title: "Settings",
@@ -64,13 +66,18 @@ export const DASHBOARD_NAV: NavItem[] = [
 export type SectionTab = { href: string; title: string }
 export type SectionTabs = readonly [SectionTab, ...SectionTab[]]
 
-/** The Messages section: every channel's threads, then the logs. */
+/** Delivery logs across every channel; manual testing lives in Playground. */
 export const EMAIL_TABS: SectionTabs = [
-  { href: "/emails/inbox", title: "Inbox" },
   { href: "/emails", title: "Sending" },
   { href: "/emails/receiving", title: "Receiving" },
-  { href: "/emails/calls", title: "Calls" },
   { href: "/emails/suppressions", title: "Suppressions" },
+]
+
+export const PLAYGROUND_TABS: SectionTabs = [
+  { href: "/playground/inbox", title: "Inbox" },
+  { href: "/playground/calls", title: "Calls" },
+  { href: "/playground/ivr", title: "IVR" },
+  { href: "/playground/voice-bot", title: "Voice bot" },
 ]
 
 export const AUTOMATION_TABS: SectionTabs = [
@@ -118,6 +125,7 @@ const TEAM_SAFE_PATHS = new Set<string>([
   ...INSTANCE_PAGES.map((item) => item.href),
   ...DASHBOARD_NAV.flatMap((item) => item.match ?? [item.href]),
   ...EMAIL_TABS.map((item) => item.href),
+  ...PLAYGROUND_TABS.map((item) => item.href),
   ...AUDIENCE_TABS.map((item) => item.href),
   ...AUTOMATION_TABS.map((item) => item.href),
   ...SETTINGS_NAV.map((item) => item.href),

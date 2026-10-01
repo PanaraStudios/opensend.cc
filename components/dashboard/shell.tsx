@@ -88,6 +88,7 @@ import {
 import { Toaster } from "@/components/ui/toast"
 import {
   DASHBOARD_NAV,
+  PLAYGROUND_TABS,
   SETTINGS_NAV,
   INSTANCE_PAGES,
   STANDALONE_PAGES,
@@ -209,6 +210,15 @@ function CommandMenu({
               >
                 {item.title}
                 <NavigationKeys href={item.href} />
+              </CommandItem>
+            ))}
+            {PLAYGROUND_TABS.map((item) => (
+              <CommandItem
+                key={item.href}
+                value={`Playground ${item.title}`}
+                onSelect={() => go(item.href)}
+              >
+                Playground · {item.title}
               </CommandItem>
             ))}
             {/* The first tab is where Settings itself opens, listed above. */}

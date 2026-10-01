@@ -83,8 +83,9 @@ test("navigation prefix expires at one second", () => {
 })
 
 test("navigation has every requested destination and no duplicate keys", () => {
-  assert.equal(Object.keys(NAVIGATION_SHORTCUTS).length, 12)
-  assert.equal(new Set(Object.values(NAVIGATION_SHORTCUTS)).size, 12)
+  assert.equal(Object.keys(NAVIGATION_SHORTCUTS).length, 13)
+  assert.equal(new Set(Object.values(NAVIGATION_SHORTCUTS)).size, 13)
+  assert.equal(NAVIGATION_SHORTCUTS["/playground"], "p")
   assert.equal(NAVIGATION_SHORTCUTS["/contacts"], "c")
   assert.equal(NAVIGATION_SHORTCUTS["/channels"], "h")
   assert.equal(NAVIGATION_SHORTCUTS["/settings/team"], "s")
