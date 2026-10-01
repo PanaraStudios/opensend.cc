@@ -59,8 +59,7 @@ can emit the same state with enriched data. Event timestamps and the call's
 `observed_at` are milliseconds; delivery order is not guaranteed.
 
 Meta recordings/transcripts refresh the five-minute media URL, verify the supplied
-SHA-256, and stream through `convex/storage/objects.storeFile` (Convex storage or
-configured S3-compatible storage). Failed downloads retry and surface a media error.
+SHA-256, and are stored through `convex/storage/objects.storeFile` in Convex storage. Failed downloads retry and surface a media error.
 Download links are generated from storage references on reads. Gateway callbacks
 carry a finalized local path, not an HTTP download URL. For gateway recordings,
 mount the recordings volume **read-only into the Convex Node action environment**

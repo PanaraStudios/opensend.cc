@@ -1,7 +1,7 @@
 # Self-hosted Opensend
 
-For R2, MinIO, or S3 file storage and direct transfers, see
-[S3-compatible file storage](object-storage.md).
+For direct file uploads and configuring Convex’s built-in S3-compatible backend,
+see [Convex file storage](object-storage.md).
 
 Opensend runs as a Docker Compose stack: the Next.js dashboard, a self-hosted Convex backend that stores every team's data and runs sending, events, webhooks and automations, and an optional SMTP gateway. Amazon SES sends and receives the mail. Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component.
 
