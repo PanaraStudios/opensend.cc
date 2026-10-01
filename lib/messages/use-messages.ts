@@ -14,7 +14,6 @@ import type { Doc, Id } from "@/convex/_generated/dataModel"
 import type { ThreadMessage } from "@/convex/conversations"
 import { useTeamList } from "@/components/dashboard/primitives"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { sendableStatus } from "@/lib/meta/templates"
 import { asEmail } from "@/lib/emails/use-emails"
 import { asReceived } from "@/lib/received/use-received"
 import type {
@@ -187,19 +186,17 @@ export function useApprovedTemplates(
   wabaId: string | null | undefined,
   search: string
 ) {
-  const rows = useTeamQuery(
-    api.templates.options,
-    { channel: "whatsapp", search },
-    { enabled: !!wabaId }
-  )
-  return React.useMemo(
-    () =>
-      (rows ?? []).filter(
-        (row) =>
-          row.whatsapp?.wabaId === wabaId &&
-          sendableStatus(row.whatsapp?.metaStatus)
-      ),
-    [rows, wabaId]
+  return (
+    useTeamQuery(
+      api.templates.options,
+      {
+        channel: "whatsapp",
+        wabaId: wabaId ?? undefined,
+        approvedOnly: true,
+        search,
+      },
+      { enabled: !!wabaId }
+    ) ?? []
   )
 }
 
