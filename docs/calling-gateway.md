@@ -270,22 +270,33 @@ for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITC
   printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
 done > .env.calling-test
 
-docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml \
-  --profile calling --profile calling-test config --quiet
-docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml \
-  --profile calling --profile calling-test build janus freeswitch call-gateway meta-peer
-docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml \
-  --profile calling --profile calling-test up -d janus freeswitch call-gateway
-docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml \
-  --profile calling --profile calling-test run --rm --use-aliases meta-peer
+c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
+c build janus freeswitch call-gateway meta-peer; c up -d --force-recreate janus freeswitch call-gateway; c run --rm --use-aliases meta-peer
+c down
 ```
 
 Expect two `PASS` lines and exit 0. `--use-aliases` lets callback requests resolve
 the ephemeral `meta-peer` container. The test override disables external STUN and
 sets the callback base to `http://meta-peer:8091`. For diagnosis use the same Compose
-arguments with `logs --tail=200 janus freeswitch call-gateway`. Stop only these
-services afterwards with `stop call-gateway freeswitch janus`; do not use `down -v`
-on a shared application stack. Remove the test overlay when restoring real callbacks.
+function with `c logs --tail=200 janus freeswitch call-gateway`. The explicit project
+name isolates these containers, network and named volumes from the application.
+`c down` removes the test containers/network and retains its certificates and
+recordings. Do not use `-v` or operate on another project's containers or volumes.
+Remove the test overlay when restoring real callbacks.
+
+If registration succeeds but an inbound call gets SIP `404 Not Found` with
+`NO_ROUTE_DESTINATION`, check the dialplan provider as well as the XML data:
+
+```sh
+c exec -T freeswitch sh -c '/opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$FREESWITCH_ESL_SECRET" -x "show dialplan"'
+c exec -T freeswitch sh -c '/opt/freeswitch/bin/fs_cli -H 127.0.0.1 -p "$FREESWITCH_ESL_SECRET" -x "sofia global siptrace on"'
+```
+
+`show dialplan` must include `XML` from `mod_dialplan_xml`. The module is built in
+`docker/freeswitch/modules.conf` and loaded by the rendered configuration. Having
+the `calling` context in `xml_locate dialplan` alone does not prove it can execute.
+The controller lets setup waiters consume terminal SIP events before closing the
+Janus session, so a rejected INVITE reports its SIP cause instead of `Session closed`.
 
 Local checks:
 
@@ -298,12 +309,12 @@ pnpm typecheck
 pnpm lint
 ```
 
-Docker builds, media connectivity and the harness were **not run in this lane**.
-Source patch application, config syntax, TypeScript and unit/protocol tests were
-checked locally. The lead must run the commands above before integration. Public
-NAT/UDP mapping, trusted browser WSS, IVR DTMF with an actual Meta phone, source
-build linkage on the target architecture and Meta interoperability remain runtime
-checks. These older pins are deliberate for the documented Meta example, not a
+The isolated Docker harness was run on 2026-10-01: both inbound and outbound
+printed `PASS` and the command exited 0. Root typecheck/lint and all 30 gateway
+unit/protocol tests passed. Public NAT/UDP mapping, trusted browser WSS, IVR DTMF
+with an actual Meta phone, source build linkage on other target architectures and
+real Meta interoperability remain runtime checks. These older pins are deliberate
+for the documented Meta example, not a
 claim of current security patch level; update pinned sources, base digests and
 Debian snapshot together after proving the harness still passes. Queue/bot routes,
 per-agent credential provisioning, durable callback recovery, upload workers,

@@ -168,10 +168,13 @@ export class CallController implements GatewayApi {
         result?.event === "hangup" ||
         result?.event === "updatingcall"
       )
-        void this.finish(
-          call,
-          result?.reason ?? "Janus call ended or renegotiation requested"
-        )
+        // Let setup waiters consume the terminal SIP event before close() rejects them.
+        queueMicrotask(() => {
+          void this.finish(
+            call,
+            result?.reason ?? "Janus call ended or renegotiation requested"
+          )
+        })
     })
     janus.on("failure", () => {
       if (!call.ending) void this.finish(call, "Janus connection lost")

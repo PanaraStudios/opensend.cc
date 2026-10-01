@@ -9,7 +9,7 @@ import type { CallbackPayload } from "../src/contracts.js"
 import { config } from "../src/config.js"
 import { offer, answer } from "./fixtures.js"
 
-function fixture() {
+function fixture(inviteFailure?: string) {
   const commands: string[] = [],
     sessions: FakeJanus[] = [],
     events: CallbackPayload[] = []
@@ -58,6 +58,15 @@ function fixture() {
       queueMicrotask(() => {
         let event = "registered"
         if (body.request === "call") {
+          if (inviteFailure) {
+            this.emit("event", {
+              janus: "event",
+              plugindata: {
+                data: { result: { event: "hangup", reason: inviteFailure } },
+              },
+            })
+            return
+          }
           event = "accepted"
           fs.emit("event", {
             "Event-Name": "CHANNEL_PARK",
@@ -79,6 +88,7 @@ function fixture() {
     }
     override async close() {
       commands.push("janus:destroy")
+      await super.close()
     }
   }
   const callbacks = new (class extends ConvexCallbacks {
@@ -112,6 +122,21 @@ function fixture() {
   })
   return { controller, commands, events, fs, sessions }
 }
+
+test("a rejected SIP INVITE preserves its cause when controller teardown closes the session", async () => {
+  const f = fixture("Not Found")
+  try {
+    await assert.rejects(f.controller.inbound(offer, "rejected"), {
+      code: "SIP_ERROR",
+      message: "Not Found",
+      status: 502,
+    })
+    assert.equal(f.commands.filter((command) => command === "janus:destroy").length, 1)
+    assert.equal(f.events.filter((event) => event.event === "hangup").length, 1)
+  } finally {
+    await f.controller.close()
+  }
+})
 
 test("inbound waits for SDP, blocks media until route, reuses answer and handles late finalized recordings", async () => {
   const f = fixture()

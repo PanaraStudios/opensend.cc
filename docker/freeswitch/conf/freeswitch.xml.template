@@ -9,6 +9,7 @@
         <load module="mod_dptools"/><load module="mod_hash"/><load module="mod_expr"/>
         <load module="mod_opus"/><load module="mod_sndfile"/><load module="mod_tone_stream"/>
         <load module="mod_event_socket"/><load module="mod_sofia"/>
+        <load module="mod_dialplan_xml"/>
       </modules>
     </configuration>
     <configuration name="switch.conf" description="Media ports">
@@ -78,7 +79,7 @@
     <domain name="freeswitch">
       <params><param name="dial-string" value="{presence_id=${dialed_user}@${dialed_domain}}${sofia_contact(${dialed_user}@${dialed_domain})}"/></params>
       <groups><group name="calling"><users>
-        <X-PRE-PROCESS cmd="include" data="directory/*.xml"/>
+        <X-PRE-PROCESS cmd="include" data="/opt/freeswitch/conf/directory/*.xml"/>
       </users></group></groups>
     </domain>
   </section>
