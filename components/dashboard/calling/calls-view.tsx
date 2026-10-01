@@ -1,4 +1,9 @@
 "use client"
+import Link from "next/link"
+import {
+  ivrActionLabel,
+  ivrPathSummary,
+} from "@/lib/dashboard/voice-playground"
 import { useEffect, useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -71,6 +76,7 @@ export function CallsView() {
                 <Th>Call</Th>
                 <Th>Status</Th>
                 <Th>Contact</Th>
+                <Th>Outcome</Th>
                 <Th>When</Th>
               </>
             }
@@ -78,16 +84,29 @@ export function CallsView() {
             {log.data.map((call) => (
               <TableRow key={call.id}>
                 <TableCell>
-                  <CallEventBubble
-                    direction={call.direction}
-                    status={call.status}
-                    duration={call.duration}
-                    time={new Date(call.observed_at).toLocaleTimeString()}
-                  />
+                  <Link href={`/playground/calls/${call.id}`} className="block">
+                    <CallEventBubble
+                      direction={call.direction}
+                      status={call.status}
+                      duration={call.duration}
+                      time={new Date(call.observed_at).toLocaleTimeString()}
+                    />
+                  </Link>
+                  {call.test ? <Badge variant="secondary">Test</Badge> : null}
                 </TableCell>
                 <TableCell>{call.status}</TableCell>
                 <TableCell>
                   {call.user_id ?? call.from ?? call.to ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <span className="block">
+                    {ivrPathSummary(call.ivr_path) || "—"}
+                  </span>
+                  {call.ivr_outcome ? (
+                    <span className="text-sm text-muted-foreground">
+                      {ivrActionLabel(call.ivr_outcome)}
+                    </span>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <RelativeTime at={Date.parse(call.created_at)} />

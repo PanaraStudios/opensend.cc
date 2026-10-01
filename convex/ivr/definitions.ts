@@ -362,3 +362,10 @@ export const validate = internalQuery({
     }
   },
 })
+
+export const dashboardValidate = action({
+  args: { organizationId: v.string(), id: v.string(), body: v.string() },
+  returns: v.object({ valid: v.boolean(), errors: v.array(v.string()) }),
+  handler: (ctx, args): Promise<{ valid: boolean; errors: string[] }> =>
+    ctx.runQuery(internal.ivr.definitions.validate, args),
+})

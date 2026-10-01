@@ -79,4 +79,59 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
       ).status()
     ).toBe(404)
   })
+  test("Playground IVR editor creates two menus, validates, shows readiness and the unconfigured tester", async () => {
+    const { owner } = state()
+    await owner.goto("/playground/ivr/new")
+    await owner.getByLabel("Name", { exact: true }).fill("Playground reception")
+    await owner
+      .getByLabel("Prompt text", { exact: true })
+      .fill("Press one for support")
+    await owner.getByRole("button", { name: "Add menu", exact: true }).click()
+    const menus = owner
+      .locator("section")
+      .filter({ has: owner.getByLabel("Menu ID", { exact: true }) })
+    await menus.nth(1).getByLabel("Menu ID", { exact: true }).fill("support")
+    await menus.nth(1).getByLabel("Menu name", { exact: true }).fill("Support")
+    await menus
+      .nth(1)
+      .getByLabel("Prompt text", { exact: true })
+      .fill("Leave a message")
+    await menus
+      .nth(0)
+      .getByRole("button", { name: "Add option", exact: true })
+      .click()
+    await menus
+      .nth(0)
+      .getByRole("combobox", { name: "Action for 1", exact: true })
+      .click()
+    await owner.getByRole("option", { name: "Submenu", exact: true }).click()
+    await menus
+      .nth(0)
+      .getByRole("combobox", { name: "Submenu", exact: true })
+      .click()
+    await owner
+      .getByRole("option", { name: "Support (support)", exact: true })
+      .click()
+    await owner.getByRole("button", { name: "Validate", exact: true }).click()
+    await expect(owner.getByText("IVR is valid", { exact: true })).toBeVisible()
+    await owner.getByRole("button", { name: "Save", exact: true }).click()
+    await expect(owner).toHaveURL(/\/playground\/ivr\/[^/]+$/)
+    await expect(
+      owner.getByText("pending_render", { exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("heading", {
+        name: "Calling stack is not configured",
+        exact: true,
+      })
+    ).toBeVisible()
+    await owner.screenshot({
+      path: `${process.env.OPENSEND_TEST_RESULTS}/playground-ivr-editor.png`,
+      fullPage: true,
+    })
+    await owner.getByRole("button", { name: "Delete", exact: true }).click()
+    await owner.getByRole("textbox").last().fill("Playground reception")
+    await owner.getByRole("button", { name: "Delete IVR", exact: true }).click()
+    await expect(owner).toHaveURL(/\/playground\/ivr$/)
+  })
 }

@@ -50,6 +50,17 @@ interface SoftphoneContext {
   callLabel: string
   open: () => void
   toggleOnline: () => void
+  currentId: Id<"calls"> | null
+  phase: SoftphonePhase
+  muted: boolean
+  mute: () => void
+  dtmf: (digit: string) => Promise<void>
+  hangup: () => Promise<void>
+  testCall: (
+    accountId: Id<"channelAccounts">,
+    ivrId: Id<"ivrs">,
+    contactId?: Id<"contacts">
+  ) => Promise<Id<"calls">>
   outbound: (
     accountId: Id<"channelAccounts">,
     recipient: string
@@ -152,6 +163,9 @@ function TeamSoftphone({
   const answerAction = useAction(api.calling.softphone.answer)
   const hangupAction = useAction(api.calling.softphone.hangup)
   const outboundAction = useAction(api.calling.softphone.outbound)
+  const startTest = useAction(api.calling.playground.start)
+  const hangupTest = useAction(api.calling.playground.hangup)
+  const testCallId = useRef<Id<"calls"> | null>(null)
   const controlAction = useAction(api.calling.softphone.control)
   const presence = useMutation(api.calling.softphoneState.presence)
   const claim = useMutation(api.calling.softphoneState.claim)
@@ -172,6 +186,7 @@ function TeamSoftphone({
 
   function reset() {
     active.current = null
+    testCallId.current = null
     seen.current = null
     setCurrentId(null)
     setMuted(false)
@@ -191,7 +206,11 @@ function TeamSoftphone({
     const browser = phone.current
     phone.current = null
     try {
-      if (active.current) await hangupAction({ ...args, id: active.current })
+      if (active.current)
+        await (testCallId.current ? hangupTest : hangupAction)({
+          ...args,
+          id: active.current,
+        })
     } catch (reason) {
       fail(reason)
     } finally {
@@ -239,7 +258,8 @@ function TeamSoftphone({
               started.current = Date.now()
               dispatch("answer")
               setCurrentId(call._id)
-              setOpen(true)
+              if (call.test) testCallId.current = call._id
+              else setOpen(true)
               return true
             }
             await new Promise((resolve) => setTimeout(resolve, 100))
@@ -249,7 +269,7 @@ function TeamSoftphone({
         connected: () => {
           if (alive.current) {
             dispatch("connected")
-            setOpen(true)
+            if (!testCallId.current) setOpen(true)
           }
         },
         ended: () => {
@@ -334,7 +354,10 @@ function TeamSoftphone({
     operation.current = true
     dispatch("hangup")
     try {
-      await hangupAction({ ...args, id: active.current })
+      await (testCallId.current ? hangupTest : hangupAction)({
+        ...args,
+        id: active.current,
+      })
       await phone.current?.hangup()
       reset()
     } catch (reason) {
@@ -376,7 +399,7 @@ function TeamSoftphone({
       clearInterval(tick)
       ring.current?.close()
       if (active.current)
-        void hangupAction({
+        void (testCallId.current ? hangupTest : hangupAction)({
           organizationId,
           browserId,
           id: active.current,
@@ -385,7 +408,7 @@ function TeamSoftphone({
       if (phone.current)
         void revoke({ organizationId, browserId }).catch(() => undefined)
     }
-  }, [organizationId, browserId, hangupAction, revoke])
+  }, [organizationId, browserId, hangupAction, hangupTest, revoke])
   useEffect(() => {
     if (!online) return
     let stopped = false,
@@ -479,6 +502,28 @@ function TeamSoftphone({
         open: () => setOpen(true),
         toggleOnline: () => {
           void (online ? goAway() : goOnline()).catch(fail)
+        },
+        currentId,
+        phase,
+        muted,
+        mute: () => {
+          phone.current?.mute(!muted)
+          setMuted(!muted)
+        },
+        dtmf: async (digit) => {
+          await phone.current?.dtmf(digit)
+        },
+        hangup,
+        testCall: async (accountId, ivrId, contactId) => {
+          if (!online || active.current || operation.current || !phone.current)
+            throw new Error("Go online and finish your current call first")
+          operation.current = true
+          try {
+            await phone.current.microphone()
+            return await startTest({ ...args, accountId, ivrId, contactId })
+          } finally {
+            operation.current = false
+          }
         },
         outbound,
       }}
