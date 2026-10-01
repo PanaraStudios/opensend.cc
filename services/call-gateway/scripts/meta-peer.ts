@@ -3,7 +3,7 @@ import { opusTone, decodeOpus, tonePower } from "./opus-audio.js"
 import type { VoiceEvent, VoiceToolRequest } from "../src/voice-backend.js"
 import assert from "node:assert/strict"
 import { createServer } from "node:http"
-import { randomUUID } from "node:crypto"
+import { createHmac, randomUUID } from "node:crypto"
 import { readFile, stat } from "node:fs/promises"
 import { setTimeout as delay } from "node:timers/promises"
 import {
@@ -35,11 +35,111 @@ const voiceEvents: (VoiceEvent & {
   timestamp: number
 })[] = []
 const toolRequests: VoiceToolRequest[] = []
+const ivrPaths: {
+  callId: string
+  menuId: string
+  digits: string
+  action: { kind: string; menuId?: string }
+  at: number
+}[] = []
+let ivrAudioFetches = 0
+function fixturePrompt() {
+  const expires = Date.now() + 600_000
+  const signature = createHmac("sha256", secret)
+    .update(String(expires))
+    .digest("hex")
+  return `http://meta-peer:8091/test/ivr/prompt.wav?expires=${expires}&signature=${signature}`
+}
+function fixtureMenu(id: string, step: number) {
+  return {
+    step,
+    organizationId: "harness-team",
+    action: { kind: "submenu", menuId: id },
+    menu: {
+      id,
+      promptUrl: fixturePrompt(),
+      timeoutSeconds: 5,
+      retries: 2,
+      maxDigits: 1,
+      digits: [id === "main" ? "1" : "2"],
+    },
+  }
+}
+function promptWav() {
+  const samples = 16000,
+    wav = Buffer.alloc(44 + samples * 2)
+  wav.write("RIFF")
+  wav.writeUInt32LE(wav.length - 8, 4)
+  wav.write("WAVEfmt ", 8)
+  wav.writeUInt32LE(16, 16)
+  wav.writeUInt16LE(1, 20)
+  wav.writeUInt16LE(1, 22)
+  wav.writeUInt32LE(16000, 24)
+  wav.writeUInt32LE(32000, 28)
+  wav.writeUInt16LE(2, 32)
+  wav.writeUInt16LE(16, 34)
+  wav.write("data", 36)
+  wav.writeUInt32LE(samples * 2, 40)
+  for (let i = 0; i < samples; i++)
+    wav.writeInt16LE(
+      Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / 16000)),
+      44 + i * 2
+    )
+  return wav
+}
 const receiver = createServer(async (request, response) => {
   try {
+    if (request.url?.startsWith("/test/ivr/prompt.wav")) {
+      const q = new URL(request.url, "http://meta-peer:8091").searchParams
+      const expires = Number(q.get("expires"))
+      assert.ok(expires > Date.now())
+      assert.equal(
+        q.get("signature"),
+        createHmac("sha256", secret).update(String(expires)).digest("hex")
+      )
+      ivrAudioFetches++
+      response.writeHead(200, { "content-type": "audio/wav" }).end(promptWav())
+      return
+    }
     const chunks: Buffer[] = []
     for await (const chunk of request) chunks.push(Buffer.from(chunk))
     const body = Buffer.concat(chunks).toString()
+    if (
+      request.url === "/calling/gateway/ivr/start" ||
+      request.url === "/calling/gateway/ivr/next"
+    ) {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const input = JSON.parse(body)
+      assert.equal(input.ivrId, "harness-ivr")
+      if (request.url.endsWith("start")) {
+        response.writeHead(200).end(JSON.stringify(fixtureMenu("main", 0)))
+      } else {
+        const path = ivrPaths.filter((p) => p.callId === input.callId)
+        assert.equal(input.step, path.length)
+        assert.equal(input.menuId, path.length ? "support" : "main")
+        assert.equal(input.digits, path.length ? "2" : "1")
+        const action = path.length
+          ? { kind: "voicemail" }
+          : { kind: "submenu", menuId: "support" }
+        ivrPaths.push({
+          callId: input.callId,
+          menuId: input.menuId,
+          digits: input.digits,
+          action,
+          at: Date.now(),
+        })
+        response
+          .writeHead(200)
+          .end(
+            JSON.stringify(
+              path.length
+                ? { step: 2, organizationId: "harness-team", action }
+                : fixtureMenu("support", 1)
+            )
+          )
+      }
+      return
+    }
     // Fake authenticated Convex action: exercises the exact 8c HMAC issuance API.
     if (request.url === "/test/agent/session") {
       verifier.verify(request.method!, request.url, body, request.headers)
@@ -237,7 +337,7 @@ async function browserAgent() {
 async function run(
   direction: "inbound" | "outbound",
   agent?: Awaited<ReturnType<typeof browserAgent>>,
-  voice?: "L16" | "PCMU" | "ivr"
+  voice?: "L16" | "PCMU" | "ivr" | "ivr-engine"
 ) {
   const callId = `harness-${direction}-${randomUUID()}`
   const peer = new RTCPeerConnection({
@@ -328,7 +428,7 @@ async function run(
       "Audio escaped before Graph accept confirmation via /route"
     )
     const route =
-      voice && voice !== "ivr"
+      voice && voice !== "ivr" && voice !== "ivr-engine"
         ? {
             callId,
             target: "bot" as const,
@@ -345,7 +445,12 @@ async function run(
               extension: agent.extension,
               record: true,
             }
-          : { callId, target: "ivr" as const, record: true }
+          : {
+              callId,
+              target: "ivr" as const,
+              record: true,
+              ...(voice === "ivr-engine" ? { ivrId: "harness-ivr" } : {}),
+            }
     const routeAt = Date.now()
     await gateway.route(route)
     await gateway.route(route)
@@ -361,7 +466,10 @@ async function run(
     const senderSsrc = 12345678
     let sequence = 1000,
       timestamp = 48000
-    const tonePackets = voice && voice !== "ivr" ? await opusTone(440) : []
+    const tonePackets =
+      voice && voice !== "ivr" && voice !== "ivr-engine"
+        ? await opusTone(440)
+        : []
     sending = setInterval(() => {
       track.writeRtp(
         new RtpPacket(
@@ -410,44 +518,89 @@ async function run(
         `PASS agent bridge: SIP.js answered, browser received ${stats!.inboundPackets} / sent ${stats!.outboundPackets} RTP packets; Meta received ${received} / sent ${sent}`
       )
     }
-    if (voice === "ivr") {
+    if (voice === "ivr" || voice === "ivr-engine") {
       clearInterval(sending)
       const info = await infoFor(callId)
       const negotiated = peer.remoteDescription!.sdp.match(
         /a=rtpmap:(\d+) telephone-event\/8000/i
       )
       assert.ok(negotiated, "IVR did not negotiate DTMF")
-      const dtmfTimestamp = 8000
       const pt = Number(negotiated[1])
-      for (let i = 0; i < 10; i++) {
-        const payload = Buffer.from([1, i >= 7 ? 0x8a : 0x0a, 0, 0])
-        payload.writeUInt16BE(Math.min(i + 1, 7) * 160, 2)
-        await sender.dtlsTransport.sendRtp(
-          payload,
-          new RtpHeader({
-            payloadType: pt,
-            ssrc: sender.ssrc,
-            sequenceNumber: (sequence + i) & 65535,
-            timestamp: dtmfTimestamp,
-            marker: i === 0,
-          })
+      const sendDigit = async (digit: number, offset: number) => {
+        for (let i = 0; i < 10; i++) {
+          const payload = Buffer.from([digit, i >= 7 ? 0x8a : 0x0a, 0, 0])
+          payload.writeUInt16BE(Math.min(i + 1, 7) * 160, 2)
+          await sender.dtlsTransport.sendRtp(
+            payload,
+            new RtpHeader({
+              payloadType: pt,
+              ssrc: sender.ssrc,
+              sequenceNumber: (sequence + offset + i) & 65535,
+              timestamp: 8000 + offset * 160,
+              marker: i === 0,
+            })
+          )
+          await delay(20)
+        }
+      }
+      await sendDigit(1, 0)
+      if (voice === "ivr-engine") {
+        await waitUntil(
+          () =>
+            ivrPaths.some(
+              (p) => p.callId === callId && p.action.kind === "submenu"
+            ),
+          "IVR main menu decision was not recorded"
         )
-        await delay(20)
+        await delay(1000)
+        await sendDigit(2, 100)
+        await waitUntil(
+          () => ivrPaths.filter((p) => p.callId === callId).length === 2,
+          "IVR submenu decision was not recorded"
+        )
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (e) =>
+                e.callId === callId &&
+                e.type === "state" &&
+                e.state === "voicemail"
+            ),
+          "IVR did not enter voicemail"
+        )
+        assert.deepEqual(
+          ivrPaths
+            .filter((p) => p.callId === callId)
+            .map((p) => [p.menuId, p.digits, p.action.kind]),
+          [
+            ["main", "1", "submenu"],
+            ["support", "2", "voicemail"],
+          ]
+        )
+        assert.ok(
+          ivrAudioFetches >= 2,
+          "http_cache/prefetch did not fetch signed prompt audio"
+        )
+        console.log(
+          "PASS IVR engine: signed http_cache prompts; RFC2833 main 1 → support 2 → voicemail; two path entries recorded by fake backend"
+        )
       }
       assert.ok(info.webrtc)
-      await waitUntil(
-        () =>
-          voiceEvents.some(
-            (event) =>
-              event.callId === callId &&
-              event.type === "ivr_digits" &&
-              event.digits === "1"
-          ),
-        "ESL play_and_get_digits did not receive RFC2833 digit 1"
-      )
-      console.log(
-        "PASS IVR: RFC2833 digit 1 through Meta/Janus, async/full ESL play_and_get_digits completed"
-      )
+      if (voice === "ivr") {
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (event) =>
+                event.callId === callId &&
+                event.type === "ivr_digits" &&
+                event.digits === "1"
+            ),
+          "ESL play_and_get_digits did not receive RFC2833 digit 1"
+        )
+        console.log(
+          "PASS IVR: RFC2833 digit 1 through Meta/Janus, async/full ESL play_and_get_digits completed"
+        )
+      }
     } else if (voice) {
       await waitUntil(
         () =>
@@ -580,7 +733,9 @@ async function run(
   }
 }
 try {
-  if (process.argv.includes("ivr")) {
+  if (process.argv.includes("ivr-engine")) {
+    await run("inbound", undefined, "ivr-engine")
+  } else if (process.argv.includes("ivr")) {
     await run("inbound", undefined, "ivr")
   } else if (process.argv.includes("voice")) {
     await run("inbound", undefined, "L16")

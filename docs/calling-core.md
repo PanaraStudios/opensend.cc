@@ -84,3 +84,8 @@ Wave 8c now supplies [browser agents](browser-softphone.md): accepted calls clai
 by an agent route to that agent's session extension. Unclaimed API/integrator calls
 retain the demo IVR route. Browser outbound calls snapshot their agent assignment
 in the creation transaction and use it when the remote answer arrives.
+
+Wave 8d-3 adds the [IVR API and runtime](ivr.md). A gateway number with
+`routing: {kind: "ivr", ivrId}` automatically accepts inbound calls through Graph
+and routes into its configured menu tree. Call reads include the IVR path/outcome;
+`whatsapp.call.ivr_completed` reports the final menu action or handoff.
