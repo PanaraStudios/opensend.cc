@@ -24,6 +24,13 @@ Variables map keys to strings, { contact: "firstName" | "lastName" | "email" | "
 Text outside the 24-hour service window is skipped with window_closed; phone-less contacts are skipped with no_phone.
 Use trigger eventName "opensend:whatsapp.message.received" to start on inbound messages; the same event can resume wait_for_event.
 
+### send_messenger / send_instagram — send a Page or Instagram reply
+Config: { accountId, mode: "template", templateId, variables? } or { accountId, mode: "text", text }.
+Use the same variable mappings as send_whatsapp. Templates must be published for the step's channel; their quick replies are sent as defined.
+The contact needs an identity on this Page/account or the step skips with no_channel_identity. Text and templates outside the 24-hour window skip with window_closed. Automations never use HUMAN_AGENT.
+Use trigger eventName "opensend:messenger.message.received" or "opensend:instagram.message.received"; either can resume wait_for_event.
+Uses "next".
+
 ### send_email — send an email using a published template
 config: { "template": { "id": "<template_id>", "variables": { "<key>": "<value>" } }, "from": "Name <sender@example.com>", "replyTo": "<address>" }
 The published template must supply the subject. Opensend does not accept step-level subject overrides or structured template variables. "from" can override the template sender; "replyTo" is optional. Use list-domains to find verified sender domains.
@@ -108,7 +115,7 @@ const workflowSchema = z
           type: z
             .string()
             .describe(
-              "Step type: trigger, send_email, send_whatsapp, delay, condition, wait_for_event, contact_update, contact_delete, add_to_segment."
+              "Step type: trigger, send_email, send_whatsapp, send_messenger, send_instagram, delay, condition, wait_for_event, contact_update, contact_delete, add_to_segment."
             ),
           config: z
             .record(z.string(), z.unknown())

@@ -460,3 +460,48 @@ it("preserves WhatsApp step mappings in both workflow directions", () => {
   )
   expect(result).toEqual(workflow)
 })
+
+for (const type of ["send_messenger", "send_instagram"] as const) {
+  for (const mode of ["text", "template"] as const) {
+    it(`preserves ${type} ${mode} config through workflow and REST responses`, () => {
+      const config: Record<string, unknown> = {
+        accountId: "page",
+        mode,
+        ...(mode === "text"
+          ? { text: "Thanks" }
+          : {
+              templateId: "published",
+              variables: { name: { contact: "firstName", fallback: "friend" } },
+            }),
+      }
+      const workflow: WorkflowDefinition = {
+        steps: [
+          {
+            key: "start",
+            type: "trigger",
+            config: { eventName: `opensend:${type.slice(5)}.message.received` },
+            next: "reply",
+          },
+          { key: "reply", type, config, next: null },
+        ],
+      }
+      const sdk = workflowToSdkOptions(workflow)
+      expect(sdk.steps[1]).toEqual({ key: "reply", type, config })
+      const wire = {
+        account_id: config.accountId,
+        mode,
+        ...(mode === "text"
+          ? { text: config.text }
+          : { template_id: config.templateId, variables: config.variables }),
+      }
+      const result = sdkResponseToWorkflow(
+        [
+          { key: "start", type: "trigger", config: workflow.steps[0].config },
+          { key: "reply", type, config: wire },
+        ],
+        [{ from: "start", to: "reply", type: "default" }]
+      )
+      expect(result).toEqual(workflow)
+    })
+  }
+}
