@@ -24,6 +24,7 @@ export const store = internalMutation({
       receivedAt: Date.now(),
     })
     await ctx.scheduler.runAfter(0, internal.meta.projection.project, { id })
+    await ctx.scheduler.runAfter(0, internal.calling.projection.project, { id })
     return id
   },
 })

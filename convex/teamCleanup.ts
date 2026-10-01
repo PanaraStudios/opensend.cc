@@ -179,6 +179,17 @@ export const purge = internalMutation({
       await next()
       return null
     }
+    if (name === "calls") {
+      const call = await ctx.db.get("calls", row._id as Id<"calls">)
+      if (call?.recording) await deleteFile(ctx, call.recording)
+      if (call?.transcription) await deleteFile(ctx, call.transcription)
+      if (call?.mode === "gateway")
+        await ctx.scheduler.runAfter(
+          0,
+          internal.calling.callActions.disposeGateway,
+          { id: call._id }
+        )
+    }
     if (name === "storedFiles")
       await deleteFile(ctx, { fileId: row._id as Id<"storedFiles"> }, true)
     if (name === "teamAssets" && "fileId" in row)

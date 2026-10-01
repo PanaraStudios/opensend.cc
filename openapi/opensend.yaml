@@ -20151,6 +20151,14 @@ components:
         - email.failed
         - email.scheduled
         - email.suppressed
+        - whatsapp.call.ringing
+        - whatsapp.call.connected
+        - whatsapp.call.completed
+        - whatsapp.call.failed
+        - whatsapp.call.missed
+        - whatsapp.call.permission_updated
+        - whatsapp.call.recording_ready
+        - whatsapp.call.transcription_ready
         - whatsapp.message.sent
         - whatsapp.message.delivered
         - whatsapp.message.read
