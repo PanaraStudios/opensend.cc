@@ -215,7 +215,7 @@ export function channelsTests(state: () => State) {
       backend.action(api.meta.app.save, {
         appId: status.appId!,
         graphVersion: status.graphVersion,
-        configIds: { ...status.configIds, whatsapp },
+        configIds: { ...status.configIds, whatsapp, facebookLogin: undefined },
       })
     await save(undefined)
     try {
@@ -226,9 +226,26 @@ export function channelsTests(state: () => State) {
       await expect(
         owner.getByRole("button", { name: "Connect with Meta" }).first()
       ).toBeDisabled()
+      await expect(
+        owner.getByText("Facebook Login for Business is not set up", {
+          exact: true,
+        })
+      ).toBeVisible()
+      await owner
+        .getByRole("button", { name: "Connect channel", exact: true })
+        .first()
+        .click()
+      await expect(
+        owner.getByRole("menuitem", {
+          name: "Facebook Page & Instagram",
+          exact: true,
+        })
+      ).toBeDisabled()
+      await screenshot(owner, "connect-menu")
+      await owner.keyboard.press("Escape")
       // The administrator gets a way to fix it; a member does not.
       await expect(
-        owner.getByRole("link", { name: "Set up the Meta app" })
+        owner.getByRole("link", { name: "Set up the Meta app" }).first()
       ).toHaveAttribute("href", "/instance/meta")
       await screenshot(owner, "no-signup-config")
       await member.goto("/channels")
@@ -240,7 +257,11 @@ export function channelsTests(state: () => State) {
       ).toHaveCount(0)
       await screenshot(member, "member")
     } finally {
-      await save(status.configIds.whatsapp)
+      await backend.action(api.meta.app.save, {
+        appId: status.appId!,
+        graphVersion: status.graphVersion,
+        configIds: status.configIds,
+      })
     }
   })
 }

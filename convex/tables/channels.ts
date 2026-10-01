@@ -85,6 +85,8 @@ export const channelTables = {
     externalId: v.string(),
     connectionId: v.id("metaConnections"),
     wabaId: v.optional(v.string()),
+    /** The Facebook Page linked to an Instagram professional account. */
+    pageId: v.optional(v.string()),
     displayName: v.string(),
     /** The display phone number, Page name or Instagram username. */
     handle: v.string(),
