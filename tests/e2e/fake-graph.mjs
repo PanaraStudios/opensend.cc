@@ -9,7 +9,9 @@
    - POST /__reset      forget calls and overrides
    - POST /__responses  { method?, path, status?, body } answers every call
                         whose path (without the version) matches the regex
-                        `path` until the next reset, e.g. to simulate errors */
+                        `path` until the next reset, e.g. to simulate errors
+   - POST /__templates/{id}  { status } sets a submitted template's review
+                        status, as Meta's listing reports it after review */
 import { createServer } from "node:http"
 
 /** A Graph-shaped error body. */
@@ -332,6 +334,13 @@ export async function startFakeGraph(port) {
     if (url.pathname === "/__reset" && method === "POST") {
       calls = []
       overrides = []
+      return send(response, 200, { ok: true })
+    }
+    const reviewed = /^\/__templates\/(\d+)$/.exec(url.pathname)
+    if (reviewed && method === "POST") {
+      const template = templates.get(reviewed[1])?.template
+      if (!template) return send(response, 404, { ok: false })
+      template.status = JSON.parse(raw || "{}").status
       return send(response, 200, { ok: true })
     }
     if (url.pathname === "/__responses" && method === "POST") {

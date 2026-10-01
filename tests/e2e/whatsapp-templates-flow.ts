@@ -136,11 +136,15 @@ export function whatsappTemplatesTests(
       ""
     )
 
-    // Meta approves it by webhook; the list shows Approved.
+    // Meta approves it: its listing says so, and a webhook tells us. The
+    // list shows Approved, and later syncs keep it approved.
     const row = backendRows<Doc<"templates">>("templates").find(
       (template) => template.name === NAME
     )!
     const metaTemplateId = row.whatsapp!.metaTemplateId!
+    await owner.request.post(`${fakeGraph()}/__templates/${metaTemplateId}`, {
+      data: { status: "APPROVED" },
+    })
     await templateWebhook(owner, {
       event: "APPROVED",
       message_template_id: Number(metaTemplateId),

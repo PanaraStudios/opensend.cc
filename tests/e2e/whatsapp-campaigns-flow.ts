@@ -12,10 +12,10 @@ const screenshot = (page: Page, name: string) =>
     path: `${process.env.OPENSEND_TEST_RESULTS}/whatsapp-campaigns-${name}.png`,
     fullPage: true,
   })
-async function webhook(page: Page, value: unknown, field = "messages") {
+async function webhook(page: Page, value: unknown) {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
-    entry: [{ id: WABA, changes: [{ field, value }] }],
+    entry: [{ id: WABA, changes: [{ field: "messages", value }] }],
   })
   const response = await page.request.post(
     `${process.env.OPENSEND_CALLBACK_ORIGIN}/meta/webhook`,
@@ -61,25 +61,9 @@ export function whatsappCampaignsTests(
   test("WhatsApp broadcast previews and sends a phone audience, tracks receipts, and an inbound reply starts an automation", async () => {
     const { owner, organizationId } = state()
     const c = await client(owner)
-    const template = backendRows<Doc<"templates">>("templates").find(
-      (row) => row.organizationId === organizationId && row.name === TEMPLATE
-    )!
     const account = backendRows<Doc<"channelAccounts">>("channelAccounts").find(
       (row) => row.organizationId === organizationId && row.externalId === PHONE
     )!
-    // The preceding sync reads the fake server's PENDING submission. Apply
-    // Meta's approval again so this lane always starts from an approved asset.
-    await webhook(
-      owner,
-      {
-        event: "APPROVED",
-        message_template_id: Number(template.whatsapp!.metaTemplateId!),
-        message_template_name: TEMPLATE,
-        message_template_language: "en_US",
-        reason: "NONE",
-      },
-      "message_template_status_update"
-    )
     const segmentId = await c.mutation(api.segments.create, {
       organizationId,
       name: "WhatsApp campaigns E2E",
