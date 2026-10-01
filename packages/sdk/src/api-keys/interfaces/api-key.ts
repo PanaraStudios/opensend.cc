@@ -3,4 +3,6 @@ export interface ApiKey {
   id: string;
   last_used_at: string | null;
   name: string;
+  permission: 'full_access' | 'sending_access' | 'custom';
+  scopes: string[];
 }

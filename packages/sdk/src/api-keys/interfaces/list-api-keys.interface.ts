@@ -7,7 +7,10 @@ export type ListApiKeysOptions = PaginationOptions;
 export type ListApiKeysResponseSuccess = {
   object: 'list';
   has_more: boolean;
-  data: Pick<ApiKey, 'name' | 'id' | 'created_at' | 'last_used_at'>[];
+  data: Pick<
+    ApiKey,
+    'name' | 'id' | 'created_at' | 'last_used_at' | 'permission' | 'scopes'
+  >[];
 };
 
 export type ListApiKeysResponse = Response<ListApiKeysResponseSuccess>;

@@ -96,6 +96,36 @@ describe("create-api-key", () => {
     })
   })
 
+  it("forwards custom resource scopes and a sending domain", async () => {
+    const client = await makeClient()
+    const result = await client.callTool({
+      name: "create-api-key",
+      arguments: {
+        name: "CRM",
+        permission: "custom",
+        scopes: ["whatsapp:write", "contacts:read", "emails:write"],
+        domainId: "dom_1",
+      },
+    })
+    expect(result.isError).toBeFalsy()
+    expect(create).toHaveBeenCalledWith({
+      name: "CRM",
+      permission: "custom",
+      scopes: ["whatsapp:write", "contacts:read", "emails:write"],
+      domain_id: "dom_1",
+    })
+  })
+
+  it("rejects malformed scope inputs", async () => {
+    const client = await makeClient()
+    const result = await client.callTool({
+      name: "create-api-key",
+      arguments: { name: "CRM", permission: "custom", scopes: "contacts:read" },
+    })
+    expect(result.isError).toBe(true)
+    expect(create).not.toHaveBeenCalled()
+  })
+
   it("surfaces SDK errors", async () => {
     create.mockResolvedValueOnce({ error: { message: "nope" } })
     const client = await makeClient()
@@ -129,6 +159,32 @@ describe("list-api-keys", () => {
     expect(text).toContain("Found 1 API key:")
     expect(text).toContain("Name: My Key")
     expect(text).toContain("ID: key_1")
+  })
+
+  it("lists permission and scopes", async () => {
+    list.mockResolvedValue({
+      data: {
+        has_more: false,
+        data: [
+          {
+            name: "CRM",
+            id: "key_1",
+            created_at: "2026-01-01",
+            permission: "custom",
+            scopes: ["whatsapp:write", "contacts:read"],
+          },
+        ],
+      },
+    })
+    const client = await makeClient()
+    const result = await client.callTool({
+      name: "list-api-keys",
+      arguments: {},
+    })
+    expect(textOf(result as never)).toContain("Permission: custom")
+    expect(textOf(result as never)).toContain(
+      "Scopes: whatsapp:write, contacts:read"
+    )
   })
 
   it("reports when none are found", async () => {

@@ -9,16 +9,22 @@ const CREATE_API_KEY_TOOL = {
   inputSchema: {
     name: z.string().nonempty().describe("API key name"),
     permission: z
-      .enum(["full_access", "sending_access"])
+      .enum(["full_access", "sending_access", "custom"])
       .optional()
       .describe(
-        'Access level. "full_access" grants complete resource management. "sending_access" restricts to email delivery only.'
+        'Access level. "full_access" grants complete resource management. "sending_access" restricts to email delivery only. "custom" grants the supplied resource scopes.'
+      ),
+    scopes: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Resource scopes for custom permission, such as whatsapp:write or contacts:read. Write includes read."
       ),
     domainId: z
       .string()
       .optional()
       .describe(
-        'Restrict API key to send emails from a specific domain. Only applicable when permission is "sending_access".'
+        "Restrict API key to send emails from a specific domain. Applies to sending_access or custom with emails:write."
       ),
   },
 } as const
@@ -72,10 +78,11 @@ export function addApiKeyTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-api-key",
     CREATE_API_KEY_TOOL,
-    async ({ name, permission, domainId }) => {
+    async ({ name, permission, scopes, domainId }) => {
       const response = await opensend.apiKeys.create({
         name,
         permission,
+        scopes,
         domain_id: domainId,
       })
 
@@ -91,7 +98,7 @@ export function addApiKeyTools(server: McpServer, opensend: Opensend) {
           { type: "text", text: "API key created successfully." },
           {
             type: "text",
-            text: `Name: ${name}\nID: ${created.id}\nToken: ${created.token}`,
+            text: `Name: ${name}\nPermission: ${permission}\nScopes: ${(scopes ?? []).join(", ")}\nID: ${created.id}\nToken: ${created.token}`,
           },
           {
             type: "text",
@@ -143,9 +150,9 @@ export function addApiKeyTools(server: McpServer, opensend: Opensend) {
             type: "text",
             text: `Found ${apiKeys.length} API key${apiKeys.length === 1 ? "" : "s"}:`,
           },
-          ...apiKeys.map(({ name, id, created_at }) => ({
+          ...apiKeys.map(({ name, id, created_at, permission, scopes }) => ({
             type: "text" as const,
-            text: `Name: ${name}\nID: ${id}\nCreated at: ${created_at}`,
+            text: `Name: ${name}\nPermission: ${permission}\nScopes: ${(scopes ?? []).join(", ")}\nID: ${id}\nCreated at: ${created_at}`,
           })),
           ...(hasMore
             ? [

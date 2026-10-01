@@ -39,9 +39,8 @@ describe('API Keys', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.apiKeys.create(payload),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.apiKeys.create(payload)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "430eed87-632a-4ea6-90db-0aace67ec228",
@@ -112,9 +111,8 @@ describe('API Keys', () => {
 
         const resend = new Resend('os_test00000000000000000000000000001');
 
-        await expect(
-          resend.apiKeys.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.apiKeys.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "id": "430eed87-632a-4ea6-90db-0aace67ec228",
@@ -147,9 +145,8 @@ describe('API Keys', () => {
 
         const resend = new Resend('os_test00000000000000000000000000001');
 
-        await expect(
-          resend.apiKeys.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.apiKeys.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": {
               "id": "430eed87-632a-4ea6-90db-0aace67ec228",
@@ -184,9 +181,8 @@ describe('API Keys', () => {
           permission: 'wrong_access' as 'sending_access' | 'full_access',
         };
 
-        await expect(
-          resend.apiKeys.create(payload),
-        ).resolves.toMatchInlineSnapshot(`
+        await expect(resend.apiKeys.create(payload)).resolves
+          .toMatchInlineSnapshot(`
           {
             "data": null,
             "error": {
@@ -276,6 +272,25 @@ describe('API Keys', () => {
     // });
   });
 
+  it('creates a custom key and forwards scopes and domain restrictions', async () => {
+    const payload: CreateApiKeyOptions = {
+      name: 'CRM',
+      permission: 'custom',
+      scopes: ['whatsapp:write', 'contacts:read', 'emails:write'],
+      domain_id: 'domain_1',
+    };
+    mockSuccessResponse({ id: 'key_1', token: 'os_custom' }, { headers: {} });
+    const resend = new Resend('os_full');
+    expect((await resend.apiKeys.create(payload)).data).toEqual({
+      id: 'key_1',
+      token: 'os_custom',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.opensend.test/api-keys',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) })
+    );
+  });
+
   describe('list', () => {
     const response: ListApiKeysResponseSuccess = {
       object: 'list',
@@ -284,12 +299,16 @@ describe('API Keys', () => {
         {
           id: '5262504e-8ed7-4fac-bd16-0d4be94bc9f2',
           name: 'My API Key 1',
+          permission: 'custom',
+          scopes: ['whatsapp:write', 'contacts:read'],
           created_at: '2023-04-07 20:29:10.666968+00',
           last_used_at: '2023-04-08 12:00:00+00',
         },
         {
           id: '98c37b35-1473-4afe-a627-78e975a36fab',
           name: 'My API Key 2',
+          permission: 'full_access',
+          scopes: [],
           created_at: '2023-04-06 23:09:49.093947+00',
           last_used_at: null,
         },
@@ -318,7 +337,7 @@ describe('API Keys', () => {
           expect.objectContaining({
             method: 'GET',
             headers: expect.any(Headers),
-          }),
+          })
         );
       });
     });
@@ -344,7 +363,7 @@ describe('API Keys', () => {
           expect.objectContaining({
             method: 'GET',
             headers: expect.any(Headers),
-          }),
+          })
         );
       });
 
@@ -371,7 +390,7 @@ describe('API Keys', () => {
           expect.objectContaining({
             method: 'GET',
             headers: expect.any(Headers),
-          }),
+          })
         );
       });
 
@@ -398,7 +417,7 @@ describe('API Keys', () => {
           expect.objectContaining({
             method: 'GET',
             headers: expect.any(Headers),
-          }),
+          })
         );
       });
     });
@@ -425,9 +444,8 @@ describe('API Keys', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.apiKeys.update(id, payload),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.apiKeys.update(id, payload)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "5262504e-8ed7-4fac-bd16-0d4be94bc9f2",
@@ -495,7 +513,7 @@ describe('API Keys', () => {
 
       const result = resend.apiKeys.update(
         '34bd250e-615a-400c-be11-5912572ee15b',
-        { name: 'New name' },
+        { name: 'New name' }
       );
 
       await expect(result).resolves.toMatchInlineSnapshot(`
@@ -597,7 +615,7 @@ describe('API Keys', () => {
       const resend = new Resend('os_test00000000000000000000000000001');
 
       const result = resend.apiKeys.remove(
-        '34bd250e-615a-400c-be11-5912572ee15b',
+        '34bd250e-615a-400c-be11-5912572ee15b'
       );
 
       await expect(result).resolves.toMatchInlineSnapshot(`
