@@ -40,8 +40,14 @@ export class VoiceRuntime {
     try {
       await call.ready
       if (!call.stopped) await this.run(call, socket)
-    } catch {
-      if (!call.stopped) await call.end("Voice control failed")
+    } catch (error) {
+      if (call.stopped) return
+      console.error(
+        "Voice control failed",
+        call.callId,
+        error instanceof Error ? error.message : "Unknown control error"
+      )
+      await call.end("Voice control failed")
     }
   })
   constructor(
@@ -166,7 +172,7 @@ export class VoiceRuntime {
         call.route.codec === "PCMU" ? "PCMU" : "L16@16000h@20i,PCMU"
       await socket.execute(
         "bridge",
-        `{absolute_codec_string='${codecs}',rtp_secure_media=false,media_webrtc=false,hangup_after_bridge=true,originate_timeout=10}${reserved.uri}`,
+        `{absolute_codec_string='${codecs}',rtp_secure_media=false,media_webrtc=false,hangup_after_bridge=true,originate_timeout=10}sofia/internal/${reserved.uri.slice(4)}`,
         3600000
       )
       this.afterAnchor(call, "Bot bridge completed")

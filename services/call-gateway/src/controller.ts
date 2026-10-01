@@ -210,14 +210,18 @@ export class CallController implements GatewayApi {
         event.janus === "hangup" ||
         result?.event === "hangup" ||
         result?.event === "updatingcall"
-      )
-        // Let setup waiters consume the terminal SIP event before close() rejects them.
-        queueMicrotask(() => {
+      ) {
+        const finish = () => {
           void this.finish(
             call,
             result?.reason ?? "Janus call ended or renegotiation requested"
           )
-        })
+        }
+        // Routed calls prefer the anchored FreeSWITCH cause. Setup waiters must
+        // consume the terminal SIP event before close() rejects them.
+        if (call.routed && call.uuid) setTimeout(finish, 100).unref()
+        else queueMicrotask(finish)
+      }
     })
     janus.on("failure", () => {
       if (!call.ending) void this.finish(call, "Janus connection lost")

@@ -62,11 +62,23 @@ test("jitter buffer reorders wrapped sequences, conceals loss, and bounds late/d
   assert.deepEqual(jitter.take(), packet(1))
   assert.deepEqual(jitter.take(), packet(2))
   assert.deepEqual(jitter.take(), packet(3))
+  jitter.push(2, 1, packet(4))
   assert.equal(jitter.take(), undefined)
   jitter.push(0, 1, packet(99))
-  jitter.push(2, 1, packet(4))
   assert.deepEqual(jitter.take(), packet(4))
   assert.deepEqual(jitter.stats, { received: 4, late: 1, lost: 1, rejected: 2 })
+})
+
+test("jitter underflow conceals without permanently discarding a slower or paused sender", () => {
+  const jitter = new JitterBuffer()
+  jitter.push(10, 1, Buffer.from([10]))
+  jitter.take()
+  jitter.take()
+  assert.deepEqual(jitter.take(), Buffer.from([10]))
+  for (let i = 0; i < 100; i++) assert.equal(jitter.take(), undefined)
+  jitter.push(11, 1, Buffer.from([11]))
+  assert.deepEqual(jitter.take(), Buffer.from([11]))
+  assert.equal(jitter.stats.late, 0)
 })
 
 test("barge-in counts only handed-off audio, removes partial frames and refuses late chunks of cancelled turns", () => {

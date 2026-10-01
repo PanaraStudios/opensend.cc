@@ -408,3 +408,30 @@ test("fake routes require explicit runtime enablement and bounded, trusted input
     await f.controller.close()
   }
 })
+
+test("anchored FreeSWITCH hangup cause wins a racing Janus SIP termination", async () => {
+  const f = fixture()
+  try {
+    await f.controller.inbound(offer, "cap-cause")
+    await f.controller.route({ callId: "cap-cause", target: "ivr" })
+    const uuid = f.commands
+      .find((command) => command.startsWith("uuid_transfer"))!
+      .split(" ")[1]
+    f.sessions[0].emit("event", {
+      janus: "hangup",
+      plugindata: {
+        data: { result: { event: "hangup", reason: "Session Terminated" } },
+      },
+    })
+    f.fs.emit("event", {
+      "Event-Name": "CHANNEL_HANGUP",
+      "Unique-ID": uuid,
+      "Hangup-Cause": "ALLOTTED_TIMEOUT",
+    })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const ended = f.events.filter((event) => event.event === "hangup")
+    assert.deepEqual(ended, [{ event: "hangup", reason: "ALLOTTED_TIMEOUT" }])
+  } finally {
+    await f.controller.close()
+  }
+})

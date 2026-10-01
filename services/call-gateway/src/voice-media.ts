@@ -13,6 +13,19 @@ import {
 import type { SampleRate, VoiceAgentAdapter } from "./voice-adapter.js"
 import type { VoiceEvent } from "./voice-backend.js"
 
+/** The bundled srf types say void, but destroy() without a callback returns a
+ * Promise. Use the documented callback form so simultaneous FS/SIP hangups
+ * (ENODIALOG) cannot become an unhandled rejection and crash the gateway. */
+function closeSipDialog(dialog: Srf.Dialog) {
+  try {
+    dialog.destroy({ headers: {} }, () => {
+      /* FreeSWITCH owns anchored termination. */
+    })
+  } catch {
+    /* Already closed or disconnected; local RTP cleanup still proceeds. */
+  }
+}
+
 export interface MediaOffer {
   address: string
   port: number
@@ -340,7 +353,7 @@ export class VoiceMediaEndpoint {
         const session = this.sessions.get(token)
         if (session) {
           this.sessions.delete(token)
-          session.dialog.destroy()
+          closeSipDialog(session.dialog)
           await session.media.stop()
         } else await reservation.adapter.stop()
       },
@@ -401,7 +414,7 @@ export class VoiceMediaEndpoint {
       )
       const dialog = await this.srf.createUAS(request, response, { localSdp })
       if (reservation.closed) {
-        dialog.destroy()
+        closeSipDialog(dialog)
         await media.stop()
         return
       }
@@ -414,7 +427,11 @@ export class VoiceMediaEndpoint {
         reservation.end("Bot SIP leg ended")
       })
       await reservation.attach(media)
-    } catch {
+    } catch (error) {
+      console.error(
+        "Voice media setup failed",
+        error instanceof Error ? error.message : "Unknown media error"
+      )
       this.sessions.delete(token)
       this.reservations.delete(token)
       if (!response.finalResponseSent && !cancelled) response.send(488)
@@ -428,7 +445,7 @@ export class VoiceMediaEndpoint {
   }
   async close() {
     for (const { media, dialog } of this.sessions.values()) {
-      dialog.destroy()
+      closeSipDialog(dialog)
       await media.stop()
     }
     this.sessions.clear()

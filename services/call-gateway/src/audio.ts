@@ -99,6 +99,13 @@ export class JitterBuffer {
       if (++this.waits < 3) return undefined
       this.started = true
     }
+    // On complete underflow, conceal at the local clock without running the
+    // expected sequence ahead of a slower/paused remote clock. Once a future
+    // packet is present, an absent sequence is a real gap and can be skipped.
+    if (!this.packets.size) {
+      this.stats.lost++
+      return undefined
+    }
     const result = this.packets.get(this.next)
     this.packets.delete(this.next)
     this.next = (this.next + 1) & 65535
