@@ -553,6 +553,7 @@ export function SettingsCard({
   actions,
   footer,
   flush = false,
+  inline = false,
   children,
 }: {
   title?: string
@@ -561,8 +562,20 @@ export function SettingsCard({
   actions?: React.ReactNode
   footer?: React.ReactNode
   flush?: boolean
+  inline?: boolean
   children?: React.ReactNode
 }) {
+  if (inline)
+    return (
+      <DetailSection title={title ?? ""} actions={actions}>
+        {heading}
+        {description && (
+          <p className="text-sm text-muted-foreground">{description}</p>
+        )}
+        {children}
+        {footer}
+      </DetailSection>
+    )
   return (
     <CardFrame>
       <Card>

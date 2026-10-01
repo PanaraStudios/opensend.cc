@@ -25,6 +25,11 @@ import {
 } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
+import {
+  emailSetupRequired,
+  nextSetupStep,
+} from "../lib/dashboard/installation-setup"
+import { requireProvidersReady } from "./installation"
 import { retirement } from "./teamLifecycle"
 const role = v.union(v.literal("admin"), v.literal("member"))
 /** A team is deleted only once it has no domains; its tenants go with it. */
@@ -84,9 +89,9 @@ export const create = mutation({
       if (
         !access.admin ||
         installation?.setupStep !== "team" ||
-        (!installation.accountId && !installation.emailDeferredAt) ||
+        (emailSetupRequired(installation) && !installation.accountId) ||
         !installation.environmentCheckedAt ||
-        (!installation.emailDeferredAt &&
+        (emailSetupRequired(installation) &&
           !allRegionsReady(await listRegions(ctx))) ||
         (
           await ctx.runQuery(components.betterAuth.teams.snapshot, {
@@ -98,6 +103,8 @@ export const create = mutation({
           "Create your first team at the team step of installation setup"
         )
     }
+    if (installation && !installation.completedAt)
+      await requireProvidersReady(ctx, installation)
     const id = await ctx.runMutation(components.betterAuth.teams.create, {
       ...args,
       sessionId: sid,
@@ -111,7 +118,7 @@ export const create = mutation({
       await ensureTeamTenant(ctx, id, installation.defaultRegion)
     if (installation && !installation.completedAt)
       await ctx.db.patch("installation", installation._id, {
-        setupStep: installation.emailDeferredAt ? "team" : "domain",
+        setupStep: nextSetupStep(installation, "team"),
       })
     return id
   },

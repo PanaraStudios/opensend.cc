@@ -1,5 +1,18 @@
 "use client"
 import * as React from "react"
+import Link from "next/link"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSet,
+  FieldLegend,
+  FieldTitle,
+} from "@/components/ui/field"
+import { SettingsMeta } from "@/components/dashboard/settings-meta"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
@@ -39,6 +52,8 @@ import { actionError } from "@/lib/action-error"
 import { resourcePrefix } from "@/convex/ses/contracts"
 import {
   setupSteps,
+  nextSetupStep,
+  emailSetupRequired,
   inferredSetupStep,
   type SetupStep as Step,
 } from "@/lib/dashboard/installation-setup"
@@ -50,6 +65,18 @@ const copy: Record<
     label: "Welcome",
     title: "Set up Opensend",
     description: "Connect messaging channels for your team. Email is optional.",
+  },
+  channels: {
+    label: "Choose channels",
+    title: "Choose channels",
+    description:
+      "Choose what this instance uses. You can add either channel later.",
+  },
+  meta: {
+    label: "Meta app",
+    title: "Set up your Meta app",
+    description:
+      "One app connects WhatsApp, Messenger and Instagram for every team.",
   },
   aws: {
     label: "AWS account",
@@ -86,6 +113,8 @@ export function InstallationWizard() {
   const provision = useMutation(api.installation.provisionRegion)
   const complete = useMutation(api.installation.complete)
   const deferEmail = useMutation(api.installation.deferEmail)
+  const deferMeta = useMutation(api.installation.deferMeta)
+  const chooseChannels = useMutation(api.installation.chooseChannels)
   const [editingConnection, setEditingConnection] = React.useState(false)
   const [addOpen, setAddOpen] = React.useState(false)
   const [error, setError] = React.useState("")
@@ -98,10 +127,17 @@ export function InstallationWizard() {
   const active = workspace.teams.find(
     (team) => team.id === workspace.activeTeamId
   )
-  const emailDeferred = !!installation?.emailDeferredAt
-  const steps = setupSteps(emailDeferred)
-  const inferred = inferredSetupStep(installation, ready, !!active)
-  const step = installation?.setupStep ?? inferred
+  const needsEmail = emailSetupRequired(installation ?? {})
+  const steps = setupSteps(installation ?? {})
+  const inferred = inferredSetupStep(
+    installation,
+    ready,
+    !!active,
+    !!status?.channels.meta
+  )
+  const saved = installation?.setupStep
+  const step =
+    saved && (steps.includes(saved) || saved === "channels") ? saved : inferred
   const index = steps.indexOf(step)
   const domains = useQuery(
     api.domains.list,
@@ -223,6 +259,74 @@ export function InstallationWizard() {
             />
           </>
         )}
+        {step === "channels" && (
+          <AsyncForm
+            fullWidth
+            submitLabel="Continue"
+            success={false}
+            onSubmit={(form) =>
+              chooseChannels({
+                email: form.get("email") !== null,
+                meta: form.get("meta") !== null,
+              })
+            }
+          >
+            <FieldSet>
+              <FieldLegend>Messaging channels</FieldLegend>
+              <FieldDescription>Choose at least one.</FieldDescription>
+              <FieldGroup>
+                {(
+                  [
+                    {
+                      name: "email",
+                      title: "Email",
+                      description: "Amazon SES; send, receive, broadcasts.",
+                    },
+                    {
+                      name: "meta",
+                      title: "WhatsApp, Messenger & Instagram",
+                      description: "One Meta app for this install.",
+                    },
+                  ] as const
+                ).map((choice) => (
+                  <FieldLabel key={choice.name}>
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        name={choice.name}
+                        defaultChecked={!!installation?.channels?.[choice.name]}
+                      />
+                      <FieldContent>
+                        <FieldTitle>{choice.title}</FieldTitle>
+                        <FieldDescription>
+                          {choice.description}
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </FieldLabel>
+                ))}
+              </FieldGroup>
+            </FieldSet>
+          </AsyncForm>
+        )}
+        {step === "meta" && (
+          <>
+            <SettingsMeta onboarding />
+            <Button
+              disabled={moving || !status.channels.meta}
+              onClick={() => void go(nextSetupStep(installation ?? {}, step))}
+            >
+              Continue
+              <ArrowRightIcon data-icon="inline-end" />
+            </Button>
+            <AsyncForm
+              submitLabel="Set up later"
+              submitVariant="outline"
+              fullWidth
+              success={false}
+              onSubmit={() => deferMeta({})}
+            />
+          </>
+        )}
         {step === "aws" &&
           (installation?.accountId && !editingConnection ? (
             <>
@@ -233,7 +337,12 @@ export function InstallationWizard() {
                 </ItemContent>
                 <Badge variant="success">Connected</Badge>
               </Item>
-              <Button disabled={moving} onClick={() => void go("callback")}>
+              <Button
+                disabled={moving}
+                onClick={() =>
+                  void go(nextSetupStep(installation ?? {}, "aws"))
+                }
+              >
                 Continue
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
@@ -277,7 +386,10 @@ export function InstallationWizard() {
               </p>
             </SetupDetails>
             {ready ? (
-              <Button disabled={moving} onClick={() => void go("team")}>
+              <Button
+                disabled={moving}
+                onClick={() => void go(nextSetupStep(installation ?? {}, step))}
+              >
                 Continue
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
@@ -302,7 +414,7 @@ export function InstallationWizard() {
           ) : active ? (
             <>
               <p className="text-sm">{active.name}</p>
-              {emailDeferred ? (
+              {!needsEmail ? (
                 <AsyncForm
                   fullWidth
                   submitLabel="Finish setup"
@@ -341,6 +453,14 @@ export function InstallationWizard() {
           </>
         )}
       </section>
+      {index === steps.length - 1 && (
+        <p className="text-sm text-muted-foreground">
+          <Link href="/instance/ses">Email</Link>:{" "}
+          {status.channels.email ? "set up" : "set up later"} ·{" "}
+          <Link href="/instance/meta">Meta</Link>:{" "}
+          {status.channels.meta ? "set up" : "set up later"}
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

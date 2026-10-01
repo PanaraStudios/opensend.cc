@@ -3,6 +3,8 @@ import { isPublicHostname } from "../../lib/net/public-host"
 import { env } from "../_generated/server"
 export const setupStepValue = v.union(
   v.literal("welcome"),
+  v.literal("channels"),
+  v.literal("meta"),
   v.literal("aws"),
   v.literal("callback"),
   v.literal("resources"),

@@ -10,10 +10,47 @@ export const findInstallation = (ctx: QueryCtx | MutationCtx) =>
     .query("installation")
     .withIndex("by_key", (q) => q.eq("key", "installation"))
     .unique()
+export const findMetaApp = (ctx: QueryCtx | MutationCtx) =>
+  ctx.db
+    .query("metaApps")
+    .withIndex("by_key", (q) => q.eq("key", "metaApp"))
+    .unique()
+export const metaAppReady = (
+  app: Pick<Doc<"metaApps">, "verifiedAt" | "webhookSubscribedAt"> | null
+) => !!app?.verifiedAt && !!app.webhookSubscribedAt
+/** One capability check for dashboard state and backend guards. Legacy
+ * installations have no explicit selection and keep connected channels. */
+export async function instanceChannels(ctx: QueryCtx | MutationCtx) {
+  const installation = await findInstallation(ctx)
+  const app = await findMetaApp(ctx)
+  return {
+    email: emailConfigured(installation),
+    meta:
+      (installation?.channels?.meta ?? true) &&
+      !installation?.metaDeferredAt &&
+      metaAppReady(app),
+  }
+}
+export async function requireMetaConfigured(ctx: QueryCtx | MutationCtx) {
+  if (!(await instanceChannels(ctx)).meta)
+    throw new ConvexError({
+      statusCode: 403,
+      name: "channel_not_configured",
+      message: "Meta messaging is not set up on this instance",
+    })
+  return (await findMetaApp(ctx))!
+}
 /** Email capability is separate from installation setup and Meta channels. */
 export const emailConfigured = (
-  installation: Pick<Doc<"installation">, "accountId" | "credentialKind"> | null
-) => !!installation?.accountId && !!installation.credentialKind
+  installation: Pick<
+    Doc<"installation">,
+    "accountId" | "credentialKind" | "channels" | "emailDeferredAt"
+  > | null
+) =>
+  !!installation?.accountId &&
+  !!installation.credentialKind &&
+  !installation.emailDeferredAt &&
+  (installation.channels?.email ?? true)
 
 export async function requireEmailConfigured(ctx: QueryCtx | MutationCtx) {
   const installation = await findInstallation(ctx)

@@ -5,12 +5,12 @@ import {
   internalQuery,
   mutation,
   query,
-  type MutationCtx,
-  type QueryCtx,
 } from "../_generated/server"
 import { internal } from "../_generated/api"
 import {
   findInstallation,
+  findMetaApp,
+  instanceChannels,
   requireInstallationAdmin,
   requireTeam,
 } from "../access"
@@ -26,12 +26,7 @@ export const META_WEBHOOK_PATH = "/meta/webhook"
 export const metaWebhookUrl = (callbackOrigin: string) =>
   `${callbackOrigin}${META_WEBHOOK_PATH}`
 
-/** The installation's Meta app, a singleton. */
-export const findMetaApp = (ctx: QueryCtx | MutationCtx) =>
-  ctx.db
-    .query("metaApps")
-    .withIndex("by_key", (q) => q.eq("key", "metaApp"))
-    .unique()
+export { findMetaApp } from "../access"
 
 const requireAdmin = (ctx: Parameters<typeof requireInstallationAdmin>[0]) =>
   requireInstallationAdmin(ctx, ADMIN_ONLY)
@@ -105,7 +100,7 @@ export const publicConfig = query({
         graphVersion: DEFAULT_GRAPH_VERSION,
       }
     return {
-      configured: true,
+      configured: (await instanceChannels(ctx)).meta,
       appId: app.appId,
       configIds: app.configIds,
       graphVersion: app.graphVersion,
@@ -181,6 +176,14 @@ export const store = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx)
+    const installation = await findInstallation(ctx)
+    if (installation)
+      await ctx.db.patch("installation", installation._id, {
+        metaDeferredAt: undefined,
+        ...(installation.channels
+          ? { channels: { ...installation.channels, meta: true } }
+          : {}),
+      })
     const app = await findMetaApp(ctx)
     const newApp = app?.appId !== args.appId
     if ((!app || newApp) && !args.encryptedAppSecret)

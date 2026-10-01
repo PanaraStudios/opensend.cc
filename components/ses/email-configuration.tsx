@@ -2,47 +2,58 @@
 
 import type { ReactNode } from "react"
 import Link from "next/link"
-import { useQuery } from "convex/react"
-import { MailIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { MailIcon, RadioTowerIcon } from "lucide-react"
 import { EmptyState } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 
-/** Reused by email-only screens and email filters in multichannel screens. */
-export function EmailConfiguration({
+/** The same unavailable state for every provider-dependent dashboard surface. */
+export function InstanceChannelConfiguration({
   children,
+  channel,
   required = true,
 }: {
   children?: ReactNode
+  channel: "email" | "meta"
   required?: boolean
 }) {
-  const status = useQuery(api.installation.status, required ? {} : "skip")
+  const channels = useInstanceChannels(required)
   if (!required) return children
-  if (!status) return <Skeleton className="h-40 w-full" />
-  if (status.emailConfigured) return children
+  if (!channels) return <Skeleton className="h-40 w-full" />
+  if (channels[channel]) return children
+  const email = channel === "email"
   return (
     <EmptyState
-      icon={MailIcon}
-      title="Connect Amazon SES to send email"
+      icon={email ? MailIcon : RadioTowerIcon}
+      title={
+        email
+          ? "Email isn't set up on this instance"
+          : "Meta isn't set up on this instance"
+      }
       description={
-        status.admin
-          ? "Set up email in instance settings, or connect a messaging channel."
-          : "Ask your instance admin to connect Amazon SES, or connect a messaging channel."
+        channels.admin
+          ? email
+            ? "Connect Amazon SES to send email."
+            : "Set up the Meta app to connect WhatsApp, Messenger and Instagram."
+          : "Ask your instance admin."
       }
     >
-      {status.admin && (
-        <Button nativeButton={false} render={<Link href="/instance/ses" />}>
-          Connect Amazon SES
+      {channels.admin && (
+        <Button
+          nativeButton={false}
+          render={<Link href={email ? "/instance/ses" : "/instance/meta"} />}
+        >
+          Set it up
         </Button>
       )}
-      <Button
-        variant="outline"
-        nativeButton={false}
-        render={<Link href="/channels" />}
-      >
-        Connect a channel
-      </Button>
     </EmptyState>
   )
+}
+/** Existing email-only screens use the shared provider state. */
+export function EmailConfiguration(props: {
+  children?: ReactNode
+  required?: boolean
+}) {
+  return <InstanceChannelConfiguration channel="email" {...props} />
 }

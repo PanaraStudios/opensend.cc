@@ -25,6 +25,9 @@ async function fresh() {
   await owner.client.action(api.installationActions.initialize)
   const installation = (await owner.client.query(api.installation.status))
     .installation!._id
+  await f.t.run((ctx) =>
+    ctx.db.patch("installation", installation, { setupStep: "aws" })
+  )
   return { ...f, owner, installation }
 }
 
@@ -105,6 +108,11 @@ describe("email-optional installation", () => {
   test("a team connects a manual Meta channel without an AWS account", async () => {
     const f = await deferred()
     await f.owner.client.action(api.meta.app.save, META_APP)
+    await f.owner.client.mutation(internal.meta.app.record, {
+      appId: META_APP.appId,
+      verifiedAt: Date.now(),
+      webhookSubscribedAt: Date.now(),
+    })
     const graph = fakeGraph([
       {
         path: "/debug_token",

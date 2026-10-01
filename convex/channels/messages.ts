@@ -11,7 +11,7 @@ import { internal, components } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { insertRow, patchRow } from "../counts"
 import { retirement } from "../teamLifecycle"
-import { findMetaApp } from "../meta/app"
+import { findMetaApp, requireMetaConfigured } from "../access"
 import { live } from "../meta/connect"
 import { teamRow } from "../lists"
 import { decryptSecret } from "../secrets"
@@ -54,6 +54,7 @@ export async function channelAccountAccess(
   from: string | undefined,
   channel: Doc<"channelAccounts">["channel"]
 ) {
+  await requireMetaConfigured(ctx)
   const account = await findChannelAccount(ctx, organizationId, from, channel)
   const strategy = channelStrategies[channel]
   if (!account) throw notFound(strategy.notFoundLabel)

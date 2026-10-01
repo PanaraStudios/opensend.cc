@@ -1,3 +1,4 @@
+import { chooseEmailSetup } from "./setup-channels-flow"
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
 import {
   client,
@@ -261,6 +262,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await owner
       .getByRole("button", { name: "Get started", exact: true })
       .click()
+    await chooseEmailSetup(owner)
     await expect(
       owner.getByRole("heading", {
         name: "Connect your AWS account",
@@ -297,13 +299,23 @@ test.describe.serial("Docker self-hosted authentication", () => {
         exact: true,
       })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Back", exact: true }).click()
+    for (const heading of [
+      "Public callback URL",
+      "Choose channels",
+      "Set up Opensend",
+    ]) {
+      await owner.getByRole("button", { name: "Back", exact: true }).click()
+      await expect(
+        owner.getByRole("heading", { name: heading, exact: true })
+      ).toBeVisible()
+    }
     await expect(
       owner.getByRole("heading", { name: "Set up Opensend", exact: true })
     ).toBeVisible()
     await owner
       .getByRole("button", { name: "Get started", exact: true })
       .click()
+    await chooseEmailSetup(owner)
     await expect(
       owner.getByRole("heading", {
         name: "Connect your AWS account",

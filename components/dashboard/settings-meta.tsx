@@ -57,7 +57,7 @@ const PREREQUISITES = [
   },
 ] as const
 
-export function SettingsMeta() {
+export function SettingsMeta({ onboarding = false }: { onboarding?: boolean }) {
   const installation = useQuery(api.installation.status)
   const status = useQuery(
     api.meta.app.status,
@@ -85,7 +85,16 @@ export function SettingsMeta() {
         Manage the Meta app every team uses to connect WhatsApp, Messenger and
         Instagram.
       </p>
+      {onboarding && !connected && (
+        <MetaAppForm
+          status={status}
+          onSaved={() =>
+            toast.add({ type: "success", title: "Meta app saved" })
+          }
+        />
+      )}
       <SettingsCard
+        inline={onboarding}
         title="Meta app"
         actions={
           <Badge variant={connected ? "success" : "warning"} dot>
@@ -101,10 +110,12 @@ export function SettingsMeta() {
                 onSubmit={() => verify({})}
               />
             )}
-            <Button variant="outline" onClick={() => setEditing(true)}>
-              <KeyRoundIcon data-icon="inline-start" />
-              {connected ? "Update app" : "Add app"}
-            </Button>
+            {(!onboarding || connected) && (
+              <Button variant="outline" onClick={() => setEditing(true)}>
+                <KeyRoundIcon data-icon="inline-start" />
+                {connected ? "Update app" : "Add app"}
+              </Button>
+            )}
             {connected && (
               <Button variant="ghost" onClick={() => setDisconnecting(true)}>
                 <UnplugIcon data-icon="inline-start" />
@@ -139,12 +150,13 @@ export function SettingsMeta() {
         )}
       </SettingsCard>
       <SettingsCard
+        inline={onboarding}
         title="Webhook"
-        description="Meta sends WhatsApp messages and status updates to this address."
+        description="Meta sends WhatsApp, Messenger and Instagram webhooks to this address."
         footer={
           connected ? (
             <AsyncForm
-              submitLabel="Subscribe"
+              submitLabel={onboarding ? "Subscribe webhooks" : "Subscribe"}
               success="Webhooks subscribed"
               onSubmit={() => subscribe({})}
             />
@@ -173,27 +185,30 @@ export function SettingsMeta() {
           )}
         </p>
       </SettingsCard>
+      {!onboarding && (
+        <SettingsCard
+          title="Signup configuration"
+          description="The Facebook Login for Business configurations teams sign in with."
+        >
+          <dl className="grid gap-5 sm:grid-cols-2">
+            <DetailField label="WhatsApp Embedded Signup config ID">
+              <MonoValue copyValue={configIds.whatsapp}>
+                {configIds.whatsapp ?? "Not configured"}
+              </MonoValue>
+            </DetailField>
+            <DetailField label="Facebook Login config ID">
+              <MonoValue copyValue={configIds.facebookLogin}>
+                {configIds.facebookLogin ?? "Not configured"}
+              </MonoValue>
+            </DetailField>
+            <DetailField label="Graph API version">
+              <MonoValue>{status.graphVersion}</MonoValue>
+            </DetailField>
+          </dl>
+        </SettingsCard>
+      )}
       <SettingsCard
-        title="Signup configuration"
-        description="The Facebook Login for Business configurations teams sign in with."
-      >
-        <dl className="grid gap-5 sm:grid-cols-2">
-          <DetailField label="WhatsApp Embedded Signup config ID">
-            <MonoValue copyValue={configIds.whatsapp}>
-              {configIds.whatsapp ?? "Not configured"}
-            </MonoValue>
-          </DetailField>
-          <DetailField label="Facebook Login config ID">
-            <MonoValue copyValue={configIds.facebookLogin}>
-              {configIds.facebookLogin ?? "Not configured"}
-            </MonoValue>
-          </DetailField>
-          <DetailField label="Graph API version">
-            <MonoValue>{status.graphVersion}</MonoValue>
-          </DetailField>
-        </dl>
-      </SettingsCard>
-      <SettingsCard
+        inline={onboarding}
         title="Checklist"
         description="Finish these in Meta before teams connect. Until App Review passes, only businesses in your own portfolio can connect."
       >
