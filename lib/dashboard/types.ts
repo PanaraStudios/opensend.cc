@@ -10,7 +10,9 @@ import type {
 import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
 import type {
   channelAccountStatusValue,
+  channelMessageStatusValue,
   channelQualityValue,
+  channelValue,
   messagingChannelValue,
 } from "../../convex/tables/channels"
 import type {
@@ -66,6 +68,9 @@ export type EmailStatus = Infer<typeof emailStatusValue>
 
 export type BroadcastStatus = Infer<typeof broadcastStatusValue>
 export type MessagingChannel = Infer<typeof messagingChannelValue>
+/** Email or a messaging channel: what a conversation is on. */
+export type Channel = Infer<typeof channelValue>
+export type ChannelMessageStatus = Infer<typeof channelMessageStatusValue>
 export type ChannelAccountStatus = Infer<typeof channelAccountStatusValue>
 export type ChannelQuality = Infer<typeof channelQualityValue>
 

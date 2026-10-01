@@ -6,7 +6,9 @@ import type {
   AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
+  Channel,
   ChannelAccountStatus,
+  ChannelMessageStatus,
   ChannelQuality,
   DomainStatus,
   EmailStatus,
@@ -285,6 +287,19 @@ export const CHANNEL_ACCOUNT_STATUS_TONE: Record<
   disconnected: "secondary",
 }
 
+/** A WhatsApp (Messenger, Instagram) message's delivery, toned like email's. */
+export const CHANNEL_MESSAGE_STATUS_TONE: Record<
+  ChannelMessageStatus,
+  BadgeTone
+> = {
+  queued: "warning",
+  sent: "outline",
+  delivered: "success",
+  read: "success",
+  failed: "destructive",
+  received: "secondary",
+}
+
 /** WhatsApp's phone number quality rating. */
 export const CHANNEL_QUALITY_TONE: Record<ChannelQuality, BadgeTone> = {
   green: "success",
@@ -297,6 +312,11 @@ export const CHANNEL_LABELS: Record<MessagingChannel, string> = {
   whatsapp: "WhatsApp",
   messenger: "Messenger",
   instagram: "Instagram",
+}
+
+/** Email, or a messaging channel's name. */
+export function channelLabel(channel: Channel): string {
+  return channel === "email" ? "Email" : CHANNEL_LABELS[channel]
 }
 
 /** Meta's messaging limit tier, `TIER_1K`, as people read it. */

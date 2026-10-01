@@ -46,7 +46,6 @@ import {
   useListSearch,
 } from "@/components/dashboard/primitives"
 import {
-  TEMPLATE_CHANNEL_ITEMS,
   TEMPLATE_STATUS_ITEMS,
   TemplateBadge,
   TemplateMenu,
@@ -58,7 +57,11 @@ import { UNTITLED_TEMPLATE } from "@/lib/dashboard/template"
 import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
 
 type TemplateChannel = "email" | "whatsapp"
-import { CHANNEL_LABELS } from "@/lib/dashboard/format"
+import { CHANNEL_LABELS, channelLabel } from "@/lib/dashboard/format"
+import {
+  MESSAGE_CHANNEL_ITEMS,
+  channelIcon,
+} from "@/components/dashboard/channels/shared"
 import {
   asTemplate,
   useTemplateCommands,
@@ -233,7 +236,7 @@ export function TemplatesView() {
           {
             value: channel,
             onChange: setChannel,
-            items: TEMPLATE_CHANNEL_ITEMS,
+            items: MESSAGE_CHANNEL_ITEMS,
             "aria-label": "Filter by channel",
           },
           {
@@ -304,14 +307,8 @@ export function TemplatesView() {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <IconCell
-                      icon={
-                        item.channel === "whatsapp" ? WhatsAppIcon : MailIcon
-                      }
-                    >
-                      {item.channel === "whatsapp"
-                        ? CHANNEL_LABELS.whatsapp
-                        : "Email"}
+                    <IconCell icon={channelIcon(item.channel ?? "email")}>
+                      {channelLabel(item.channel ?? "email")}
                     </IconCell>
                   </TableCell>
                   <TableCell>
