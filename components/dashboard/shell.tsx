@@ -1,4 +1,5 @@
 "use client"
+import { SoftphoneProvider } from "@/components/dashboard/calling/softphone-provider"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
@@ -550,7 +551,7 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
         <SidebarInset className="min-w-0 bg-background">
           <div className="flex min-h-0 w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
             <SidebarTrigger className="-ml-1 md:hidden" />
-            {children}
+            <SoftphoneProvider>{children}</SoftphoneProvider>
           </div>
         </SidebarInset>
         {!setupPending && (

@@ -308,3 +308,8 @@ claim of current security patch level; update pinned sources, base digests and
 Debian snapshot together after proving the harness still passes. Queue/bot routes,
 per-agent credential provisioning, durable callback recovery, upload workers,
 browser UI and real Graph signaling remain in their separate tasks.
+
+Wave 8c adds expiring browser-agent sessions, an authenticated XML-CURL directory,
+and `/control` for local hold/resume/transfer. See [browser softphone deployment](browser-softphone.md)
+for the required FreeSWITCH directory override; the static 8b agent password must
+be removed before using browser agents. Docker configuration is unchanged.

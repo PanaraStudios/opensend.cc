@@ -1,4 +1,5 @@
 "use client"
+import { CallButton } from "@/components/dashboard/calling/call-button"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
@@ -618,9 +619,23 @@ function ContactChannels({ contactId }: { contactId: string }) {
                   : identity.phone || "—"}
               </TableCell>
               <TableCell>
-                {accounts.length
-                  ? accounts.map((account) => account.name).join(", ")
-                  : "—"}
+                {accounts.length ? (
+                  <div className="flex flex-col gap-2">
+                    {accounts.map((account) => (
+                      <div key={account.id} className="flex items-center gap-2">
+                        <span>{account.name}</span>
+                        {identity.channel === "whatsapp" ? (
+                          <CallButton
+                            accountId={account.id}
+                            recipient={identity.userId ?? identity.externalId}
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  "—"
+                )}
               </TableCell>
               <TableCell>
                 {identity.lastInboundAt

@@ -121,14 +121,24 @@ export const ROUTES = [
   {
     method: "GET",
     path: /^\/\d+\/call_permissions$/,
-    respond: () => ({
+    respond: (_, call) => ({
       body: {
         messaging_product: "whatsapp",
-        permission: { status: "permanent" },
+        permission: {
+          status:
+            call.query.recipient === "US.13491208655302741919"
+              ? "no_permission"
+              : "permanent",
+        },
         actions: [
           {
-            action_name: "start_call",
+            action_name: "send_call_permission_request",
             can_perform_action: true,
+          },
+          {
+            action_name: "start_call",
+            can_perform_action:
+              call.query.recipient !== "US.13491208655302741919",
             limits: [
               { time_period: "P1D", max_allowed: 100, current_usage: 0 },
             ],
