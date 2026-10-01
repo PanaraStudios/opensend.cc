@@ -54,4 +54,11 @@ export class Ivrs {
       options
     )
   }
+  render(id: string, options: PostOptions = {}) {
+    return this.resend.post<Ivr>(
+      `/ivrs/${encodeURIComponent(id)}/render`,
+      {},
+      options
+    )
+  }
 }

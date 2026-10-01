@@ -110,6 +110,8 @@ import type * as installationActions from "../installationActions.js";
 import type * as installationAdmin from "../installationAdmin.js";
 import type * as ivr_definitions from "../ivr/definitions.js";
 import type * as ivr_gatewayHttp from "../ivr/gatewayHttp.js";
+import type * as ivr_renderState from "../ivr/renderState.js";
+import type * as ivr_rendering from "../ivr/rendering.js";
 import type * as ivr_routes from "../ivr/routes.js";
 import type * as ivr_runtime from "../ivr/runtime.js";
 import type * as ivr_validators from "../ivr/validators.js";
@@ -343,6 +345,8 @@ declare const fullApi: ApiFromModules<{
   installationAdmin: typeof installationAdmin;
   "ivr/definitions": typeof ivr_definitions;
   "ivr/gatewayHttp": typeof ivr_gatewayHttp;
+  "ivr/renderState": typeof ivr_renderState;
+  "ivr/rendering": typeof ivr_rendering;
   "ivr/routes": typeof ivr_routes;
   "ivr/runtime": typeof ivr_runtime;
   "ivr/validators": typeof ivr_validators;

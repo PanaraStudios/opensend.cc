@@ -37,6 +37,14 @@ export const definition = v.object({
   language: v.string(),
   entryMenuId: v.string(),
   menus: v.array(menu),
+  promptVoice: v.optional(
+    v.object({
+      provider: v.union(v.literal("elevenlabs"), v.literal("sarvam")),
+      voice: v.string(),
+      language: v.string(),
+      credentialId: v.id("voiceProviders"),
+    })
+  ),
   businessHours: v.optional(
     v.object({
       status: v.union(v.literal("ENABLED"), v.literal("DISABLED")),

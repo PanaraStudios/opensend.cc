@@ -28,6 +28,14 @@ const action = z.union([
   z.object({ kind: z.literal("hangup") }),
 ])
 const definition = {
+  promptVoice: z
+    .object({
+      provider: z.enum(["elevenlabs", "sarvam"]),
+      voice: z.string(),
+      language: z.string(),
+      credentialId: z.string(),
+    })
+    .optional(),
   name: z.string().min(1).max(256),
   language: z.string(),
   entryMenuId: z.string(),
@@ -100,7 +108,7 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     {
       title: "Create IVR",
       description:
-        "Create a team IVR menu tree. TTS remains pending_render until a renderer is configured.",
+        "Create a team IVR menu tree. Configure promptVoice with a team provider credential to render typed prompts.",
       inputSchema: { ...definition, idempotencyKey: z.string().optional() },
       annotations: write,
     },
@@ -178,5 +186,16 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
         "IVR",
         await opensend.ivrs.validate(id, input as Partial<IvrDefinition>)
       )
+  )
+  server.registerTool(
+    "render-ivr",
+    {
+      title: "Render IVR prompts",
+      description:
+        "Retry failed IVR prompts using the saved team provider key. Returns per-prompt render statuses.",
+      inputSchema: { id: z.string() },
+      annotations: write,
+    },
+    async ({ id }) => channelOutput("IVR", await opensend.ivrs.render(id))
   )
 }

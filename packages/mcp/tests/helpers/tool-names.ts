@@ -107,6 +107,7 @@ export const toolNames = [
   "remove-topic",
   "remove-voice-bot",
   "remove-webhook",
+  "render-ivr",
   "replay-webhook-event",
   "request-whatsapp-call-permission",
   "revoke-oauth-grant",

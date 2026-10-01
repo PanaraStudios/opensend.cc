@@ -33,6 +33,7 @@ export function ivrFormPayload(value: IvrDefinition): IvrDefinition {
     language: value.language,
     entryMenuId: value.entryMenuId,
     menus: value.menus,
+    ...(value.promptVoice ? { promptVoice: value.promptVoice } : {}),
     ...(value.businessHours ? { businessHours: value.businessHours } : {}),
   })
 }

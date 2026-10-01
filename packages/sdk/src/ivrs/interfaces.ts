@@ -46,6 +46,12 @@ export interface IvrDefinition {
   language: string
   entryMenuId: string
   menus: IvrMenu[]
+  promptVoice?: {
+    provider: "elevenlabs" | "sarvam"
+    voice: string
+    language: string
+    credentialId: string
+  }
   businessHours?: IvrBusinessHours
 }
 export interface Ivr extends IvrDefinition {
@@ -54,7 +60,17 @@ export interface Ivr extends IvrDefinition {
   created_at: string
   updated_at: string
   webhook_signing_secret: string
-  prompt_status: "ready" | "pending_render"
+  prompt_status: "ready" | "pending_render" | "failed"
+  prompt_renders?: {
+    kind: "audio" | "tts"
+    status: "ready" | "pending_render" | "rendering" | "failed"
+    fileId?: string
+    hash?: string
+    voice?: string | null
+    text?: string
+    error?: string | null
+    audio_url: string | null
+  }[]
 }
 export interface IvrPathEntry {
   menuId: string

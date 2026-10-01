@@ -13088,6 +13088,34 @@ paths:
           $ref: "#/components/responses/Error422"
         "429":
           $ref: "#/components/responses/Error429"
+  /ivrs/{id}/render:
+    post:
+      operationId: ivrs/render
+      tags: [IVRs]
+      summary: Retry failed IVR prompts
+      description: Re-render failed prompts with the saved team provider credential; cached ready prompts are reused.
+      x-opensend-scope: ivrs:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: IVR with per-prompt render statuses
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ivr" }
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
   /voice-bots:
     post:
       operationId: createVoiceBot
@@ -27770,6 +27798,15 @@ components:
     IvrDefinition:
       type: object
       properties: &a2
+        promptVoice:
+          type: object
+          properties:
+            provider: { type: string, enum: [elevenlabs, sarvam] }
+            voice: { type: string }
+            language: { type: string }
+            credentialId: { type: string }
+          required: [provider, voice, language, credentialId]
+          additionalProperties: false
         name: &a3
           type: string
           minLength: 1
@@ -27801,6 +27838,30 @@ components:
     Ivr:
       type: object
       properties:
+        prompt_renders:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [audio, tts] }
+              status: { type: string, enum: [pending_render, rendering, ready, failed] }
+              text: { type: string }
+              voice: { type: [string, "null"] }
+              hash: { type: string }
+              fileId: { type: string }
+              error: { type: [string, "null"] }
+              audio_url: { type: [string, "null"] }
+            required: [kind, status, audio_url]
+            additionalProperties: false
+        promptVoice:
+          type: object
+          properties:
+            provider: { type: string, enum: [elevenlabs, sarvam] }
+            voice: { type: string }
+            language: { type: string }
+            credentialId: { type: string }
+          required: [provider, voice, language, credentialId]
+          additionalProperties: false
         object:
           type: string
           const: ivr
@@ -27822,6 +27883,7 @@ components:
           enum:
             - ready
             - pending_render
+            - failed
       required:
         - object
         - id

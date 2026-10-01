@@ -1,9 +1,11 @@
+import { internal } from "../_generated/api"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
 import {
   internalMutation,
   internalQuery,
   query,
+  action,
   type QueryCtx,
 } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
@@ -298,11 +300,17 @@ export const remove = internalMutation({
           )
           .first(),
       ])
-      if (references.some(Boolean))
+      const ivr = await ctx.db
+        .query("ivrs")
+        .withIndex("by_promptVoice_credentialId", (q) =>
+          q.eq("promptVoice.credentialId", row._id)
+        )
+        .first()
+      if (references.some(Boolean) || ivr)
         throw apiError(
           409,
           "credential_in_use",
-          "Delete bots using this credential first"
+          "Remove bots or IVR prompt voices using this credential first"
         )
       await ctx.db.delete("voiceProviders", row._id)
     } else {
@@ -327,12 +335,15 @@ export const transcript = internalQuery({
   returns: v.any(),
   handler: async (ctx, args) => {
     // Transcripts require the existing WhatsApp scope, independently of bot CRUD.
-    if (!args.caller || args.caller.organizationId !== args.organizationId)
-      throw notFound("Call")
-    await requireCaller(ctx, args.caller, {
-      resource: "whatsapp",
-      access: "read",
-    })
+    if (args.caller) {
+      if (args.caller.organizationId !== args.organizationId)
+        throw notFound("Call")
+      await requireCaller(ctx, args.caller, {
+        resource: "whatsapp",
+        access: "read",
+      })
+    } else await requireTeam(ctx, args.organizationId, "read")
+    await requireActiveTeam(ctx, args.organizationId)
     const id = ctx.db.normalizeId("calls", args.id),
       call = id ? await ctx.db.get("calls", id) : null
     if (!call || call.organizationId !== args.organizationId)
@@ -367,4 +378,50 @@ export const transcript = internalQuery({
       }),
     }
   },
+})
+
+export const dashboardGet = query({
+  args: { organizationId: v.string(), id: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    return publicBot(await ownedBot(ctx, args.organizationId, args.id))
+  },
+})
+export const dashboardWrite = action({
+  args: {
+    organizationId: v.string(),
+    kind: v.union(
+      v.literal("bot"),
+      v.literal("provider"),
+      v.literal("removeBot"),
+      v.literal("removeProvider")
+    ),
+    id: v.optional(v.string()),
+    body: v.string(),
+  },
+  returns: v.any(),
+  handler: (ctx, args): Promise<{ id: string; deleted?: boolean }> =>
+    args.kind === "bot"
+      ? ctx.runMutation(internal.voice.resources.save, {
+          organizationId: args.organizationId,
+          id: args.id,
+          input: JSON.parse(args.body),
+        })
+      : args.kind === "provider"
+        ? ctx.runMutation(internal.voice.resources.credential, {
+            organizationId: args.organizationId,
+            input: JSON.parse(args.body),
+          })
+        : ctx.runMutation(internal.voice.resources.remove, {
+            organizationId: args.organizationId,
+            id: args.id!,
+            providers: args.kind === "removeProvider",
+          }),
+})
+export const dashboardTranscript = query({
+  args: { organizationId: v.string(), id: v.string(), ...listArgs },
+  returns: v.any(),
+  handler: (ctx, args): Promise<{ object: string; has_more: boolean; data: unknown[] }> =>
+    ctx.runQuery(internal.voice.resources.transcript, args),
 })

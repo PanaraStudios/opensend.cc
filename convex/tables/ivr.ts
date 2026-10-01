@@ -8,7 +8,9 @@ export const ivrTables = {
     webhookSecret: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_promptVoice_credentialId", ["promptVoice.credentialId"]),
   ivrPromptRenders: defineTable({
     organizationId: v.string(),
     hash: v.string(),
@@ -16,7 +18,15 @@ export const ivrTables = {
     language: v.string(),
     voice: v.optional(v.string()),
     renderer: v.string(),
-    status: v.union(v.literal("pending_render"), v.literal("ready")),
+    status: v.union(
+      v.literal("pending_render"),
+      v.literal("rendering"),
+      v.literal("ready"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+    lease: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
     fileId: v.optional(v.id("storedFiles")),
   })
     .index("by_organizationId_and_hash", ["organizationId", "hash"])

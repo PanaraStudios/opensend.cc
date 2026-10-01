@@ -17,7 +17,7 @@ import {
   type IvrAction,
   type IvrPrompt,
 } from "../../lib/ivr"
-import { promptHash, IVR_RENDERER, signPrompt } from "../../lib/ivr-prompts"
+import { renderHash, signPrompt } from "../../lib/ivr-prompts"
 import { audioFile, own, readDefinition, checkAction } from "./definitions"
 import { action } from "./validators"
 import { decryptSecret } from "../secrets"
@@ -79,12 +79,7 @@ async function promptUrl(
 ) {
   let fileId = p.kind === "audio" ? p.fileId : undefined
   if (p.kind === "tts") {
-    const hash = await promptHash(
-      p.text,
-      s.definition.language,
-      p.voice,
-      IVR_RENDERER
-    )
+    const hash = await renderHash(s.definition, p)
     const render = await ctx.db
       .query("ivrPromptRenders")
       .withIndex("by_organizationId_and_hash", (q) =>

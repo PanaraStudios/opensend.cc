@@ -44,7 +44,13 @@ it("IVR tools expose CRUD, validation, routing and reject malformed inputs befor
         (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].headers
       ).get("idempotency-key")
     ).toBe("once")
-    for (const name of ["get-ivr", "update-ivr", "remove-ivr", "validate-ivr"])
+    for (const name of [
+      "get-ivr",
+      "update-ivr",
+      "remove-ivr",
+      "validate-ivr",
+      "render-ivr",
+    ])
       expect(
         (
           await f.client.callTool({

@@ -1,3 +1,4 @@
+import { SARVAM_PROMPT_VOICES, type IvrPromptVoice } from "./ivr-renderers"
 import { webhookEndpointError } from "./dashboard/webhooks"
 
 export type IvrPrompt =
@@ -48,6 +49,7 @@ export interface IvrDefinition {
   language: string
   entryMenuId: string
   menus: IvrMenu[]
+  promptVoice?: IvrPromptVoice
   businessHours?: IvrBusinessHours
 }
 export const IVR_LIMITS = {
@@ -254,7 +256,14 @@ export function ivrPrompts(d: IvrDefinition): IvrPrompt[] {
 /** Pure, bounded validator shared by REST, Convex and the future editor. */
 export function parseIvr(value: unknown): IvrDefinition {
   const d = obj(value)
-  keys(d, ["name", "language", "entryMenuId", "menus", "businessHours"])
+  keys(d, [
+    "name",
+    "language",
+    "entryMenuId",
+    "menus",
+    "businessHours",
+    "promptVoice",
+  ])
   if (
     !Array.isArray(d.menus) ||
     !d.menus.length ||
@@ -298,11 +307,45 @@ export function parseIvr(value: unknown): IvrDefinition {
       failureAction: parseIvrAction(m.failureAction),
     }
   })
+  let promptVoice: IvrPromptVoice | undefined
+  if (d.promptVoice !== undefined) {
+    const p = obj(d.promptVoice)
+    keys(p, ["provider", "voice", "language", "credentialId"])
+    if (p.provider !== "sarvam" && p.provider !== "elevenlabs")
+      throw new Error("Choose ElevenLabs or Sarvam for IVR prompts")
+    const voice = str(p.voice, 128),
+      language = str(p.language, 64),
+      credentialId = str(p.credentialId)
+    if (!/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(language))
+      throw new Error("Invalid prompt language")
+    if (
+      p.provider === "sarvam" &&
+      (!SARVAM_PROMPT_VOICES.includes(
+        voice as (typeof SARVAM_PROMPT_VOICES)[number]
+      ) ||
+        ![
+          "en-IN",
+          "hi-IN",
+          "bn-IN",
+          "ta-IN",
+          "te-IN",
+          "kn-IN",
+          "ml-IN",
+          "mr-IN",
+          "gu-IN",
+          "pa-IN",
+          "od-IN",
+        ].includes(language))
+    )
+      throw new Error("Unsupported Sarvam prompt voice/language")
+    promptVoice = { provider: p.provider, voice, language, credentialId }
+  }
   const result = {
     name: str(d.name),
     language: str(d.language, 64),
     entryMenuId: identifier(d.entryMenuId),
     menus,
+    ...(promptVoice ? { promptVoice } : {}),
     ...(d.businessHours === undefined
       ? {}
       : { businessHours: hours(d.businessHours) }),
