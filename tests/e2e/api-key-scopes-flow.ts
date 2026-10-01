@@ -184,6 +184,7 @@ export function apiKeyScopesTests(
       ])
     )
     await row.getByRole("link", { name: "Custom CRM E2E", exact: true }).click()
+    await owner.waitForURL(/\/api-keys\/[^/?]+$/)
     await owner
       .getByRole("button", { name: "More options", exact: true })
       .click()
