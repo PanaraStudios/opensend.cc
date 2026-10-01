@@ -236,8 +236,9 @@ export function useTemplateVariables(
 }
 
 export function useConversationCommands() {
+  const typing = useMutation(api.conversations.typing)
   const markRead = useMutation(api.conversations.markRead)
   const setStatus = useMutation(api.conversations.setStatus)
   const reply = useMutation(api.conversations.reply)
-  return { markRead, setStatus, reply }
+  return { markRead, setStatus, reply, typing }
 }

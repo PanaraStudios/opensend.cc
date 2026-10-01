@@ -55,6 +55,8 @@ import type * as broadcastMetrics from "../broadcastMetrics.js";
 import type * as broadcastSend from "../broadcastSend.js";
 import type * as broadcastWhatsApp from "../broadcastWhatsApp.js";
 import type * as broadcasts from "../broadcasts.js";
+import type * as channels_controlActions from "../channels/controlActions.js";
+import type * as channels_controls from "../channels/controls.js";
 import type * as channels_deliver from "../channels/deliver.js";
 import type * as channels_downloads from "../channels/downloads.js";
 import type * as channels_identity from "../channels/identity.js";
@@ -261,6 +263,8 @@ declare const fullApi: ApiFromModules<{
   broadcastSend: typeof broadcastSend;
   broadcastWhatsApp: typeof broadcastWhatsApp;
   broadcasts: typeof broadcasts;
+  "channels/controlActions": typeof channels_controlActions;
+  "channels/controls": typeof channels_controls;
   "channels/deliver": typeof channels_deliver;
   "channels/downloads": typeof channels_downloads;
   "channels/identity": typeof channels_identity;

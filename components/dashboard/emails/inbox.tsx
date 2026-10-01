@@ -269,6 +269,14 @@ function ConversationThread({
     if (conversationId && unread && canWrite)
       void markRead({ id: conversationId }).catch(() => undefined)
   }, [conversationId, unread, canWrite, markRead])
+  React.useEffect(() => {
+    const focus = () => {
+      if (conversationId && unread && canWrite)
+        void markRead({ id: conversationId }).catch(() => undefined)
+    }
+    window.addEventListener("focus", focus)
+    return () => window.removeEventListener("focus", focus)
+  }, [conversationId, unread, canWrite, markRead])
 
   if (detail === undefined) return <Skeleton className="m-4 h-40" />
   if (detail === null)
@@ -523,6 +531,19 @@ function useSend() {
 function TextComposer({ detail }: { detail: ConversationDetail }) {
   const { conversation } = detail
   const email = conversation.channel === "email"
+  const { typing } = useConversationCommands()
+  const lastTyping = React.useRef({ id: conversation._id, at: 0 })
+  function indicateTyping(on: boolean) {
+    if (email || (!on && conversation.channel === "whatsapp")) return
+    if (
+      on &&
+      lastTyping.current.id === conversation._id &&
+      Date.now() - lastTyping.current.at < 20_000
+    )
+      return
+    lastTyping.current = { id: conversation._id, at: on ? Date.now() : 0 }
+    void typing({ id: conversation._id, on }).catch(() => undefined)
+  }
   const [text, setText] = React.useState("")
   const [fileId, setFileId] = React.useState<Id<"storedFiles">>()
   const [filename, setFilename] = React.useState("")
@@ -587,7 +608,11 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
           }
           value={text}
           rows={2}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value)
+            if (event.target.value) indicateTyping(true)
+          }}
+          onBlur={() => indicateTyping(false)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey))
               void submit()

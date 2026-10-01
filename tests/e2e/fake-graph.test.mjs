@@ -210,3 +210,43 @@ test("fake Graph exchanges Facebook Login codes, returns Page tokens and linked 
     await graph.close()
   }
 })
+
+test("fake Graph accepts receipts and sender actions without allocating message ids", async () => {
+  const graph = await startFakeGraph(0)
+  try {
+    for (const body of [
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: "wamid.inbound",
+      },
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: "wamid.inbound",
+        typing_indicator: { type: "text" },
+      },
+      ...["mark_seen", "typing_on", "typing_off"].map((sender_action) => ({
+        recipient: { id: "scoped-user" },
+        sender_action,
+      })),
+    ]) {
+      const response = await fetch(`${graph.origin}/v25.0/123/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      assert.equal(response.status, 200)
+      assert.deepEqual(
+        await response.json(),
+        body.recipient ? { recipient_id: "scoped-user" } : { success: true }
+      )
+    }
+    assert.equal(
+      (await (await fetch(`${graph.origin}/__calls`)).json()).length,
+      5
+    )
+  } finally {
+    await graph.close()
+  }
+})

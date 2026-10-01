@@ -244,6 +244,37 @@ describe("OpenAPI contract", () => {
       },
       { path: `/${PHONE_ID}/media`, respond: () => ({ id: "media-contract" }) },
     ])
+    const inboundMessage = await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").order("desc").first()
+    )
+    await response(
+      "/whatsapp/messages/{id}/read",
+      "POST",
+      await call(`/whatsapp/messages/${inboundMessage!._id}/read`, "POST", {
+        typing: true,
+      })
+    )
+    await response(
+      "/whatsapp/messages/{id}/read",
+      "POST",
+      await call(`/whatsapp/messages/${inboundMessage!._id}/read`, "POST", {}),
+      202
+    )
+    await response(
+      "/whatsapp/messages/{id}",
+      "GET",
+      await call(`/whatsapp/messages/${inboundMessage!._id}`)
+    )
+    await response(
+      "/whatsapp/conversations/{id}/typing",
+      "POST",
+      await call(
+        `/whatsapp/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: true }
+      ),
+      202
+    )
     const body = { to: SENDER, text: { body: "Contract", preview_url: true } }
     validateBody(contract.components.schemas.SendWhatsAppMessage, body)
     validateBody(contract.components.schemas.SendWhatsAppMessage, {
@@ -1244,6 +1275,51 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       ctx.db.query("metaWebhookEvents").order("desc").first()
     )
     await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const inboundMessage = await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").order("desc").first()
+    )
+    await response(
+      `/${channel}/messages/{id}/read`,
+      "POST",
+      await call(`/${channel}/messages/${inboundMessage!._id}/read`, "POST", {
+        typing: true,
+      })
+    )
+    await response(
+      `/${channel}/messages/{id}/read`,
+      "POST",
+      await call(
+        `/${channel}/messages/${inboundMessage!._id}/read`,
+        "POST",
+        {}
+      ),
+      202
+    )
+    await response(
+      `/${channel}/messages/{id}`,
+      "GET",
+      await call(`/${channel}/messages/${inboundMessage!._id}`)
+    )
+    await response(
+      `/${channel}/conversations/{id}/typing`,
+      "POST",
+      await call(
+        `/${channel}/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: false }
+      ),
+      202
+    )
+    vi.advanceTimersByTime(5000)
+    await response(
+      `/${channel}/conversations/{id}/typing`,
+      "POST",
+      await call(
+        `/${channel}/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: false }
+      )
+    )
     const to = channel === "messenger" ? PSID : IGSID,
       resource = channel === "messenger" ? "pages" : "accounts",
       externalId = channel === "messenger" ? PAGE_ID : IG_ID

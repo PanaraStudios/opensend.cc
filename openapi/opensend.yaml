@@ -11930,6 +11930,378 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /whatsapp/messages/{id}/read:
+    post:
+      operationId: whatsapp/messages/read
+      tags:
+        - WhatsApp
+      summary: Mark Message Read
+      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                typing:
+                  type: boolean
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+  /whatsapp/conversations/{id}/typing:
+    post:
+      operationId: whatsapp/conversations/typing
+      tags:
+        - WhatsApp
+      summary: Set Typing Indicator
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                on:
+                  type: boolean
+              required:
+                - on
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+  /messenger/messages/{id}/read:
+    post:
+      operationId: messenger/messages/read
+      tags:
+        - Messenger
+      summary: Mark Message Read
+      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: messenger:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                typing:
+                  type: boolean
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+  /messenger/conversations/{id}/typing:
+    post:
+      operationId: messenger/conversations/typing
+      tags:
+        - Messenger
+      summary: Set Typing Indicator
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: messenger:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                on:
+                  type: boolean
+              required:
+                - on
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+  /instagram/messages/{id}/read:
+    post:
+      operationId: instagram/messages/read
+      tags:
+        - Instagram
+      summary: Mark Message Read
+      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: instagram:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                typing:
+                  type: boolean
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+  /instagram/conversations/{id}/typing:
+    post:
+      operationId: instagram/conversations/typing
+      tags:
+        - Instagram
+      summary: Set Typing Indicator
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      x-opensend-scope: instagram:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                on:
+                  type: boolean
+              required:
+                - on
+      responses:
+        "200":
+          description: Meta accepted the control.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "202":
+          description: Accepted without another Meta call because the conversation is throttled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageControlResponse"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
 components:
   headers:
     ratelimit_limit:
@@ -12125,6 +12497,13 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    MessageControlResponse:
+      type: object
+      properties:
+        id:
+          type: string
+      required: [id]
+      additionalProperties: false
     PageChannelMessage:
       type: object
       properties:
@@ -12177,6 +12556,9 @@ components:
           type:
             - string
             - 'null'
+        read_receipt_sent_at:
+          type: [string, 'null']
+          format: date-time
         created_at:
           type: string
           format: date-time
@@ -14686,6 +15068,9 @@ components:
             - failed
             - received
             - payment_updated
+            - read_receipt_sent
+            - read_receipt_failed
+            - typing_failed
         created_at:
           type: string
           format: date-time
@@ -15244,6 +15629,9 @@ components:
           type:
             - string
             - "null"
+        read_receipt_sent_at:
+          type: [string, 'null']
+          format: date-time
         created_at:
           type: string
           format: date-time
@@ -20167,6 +20555,15 @@ components:
         - instagram.message.read
         - instagram.message.failed
         - instagram.message.received
+        - whatsapp.message.read_receipt_sent
+        - whatsapp.message.read_receipt_failed
+        - whatsapp.message.typing_failed
+        - messenger.message.read_receipt_sent
+        - messenger.message.read_receipt_failed
+        - messenger.message.typing_failed
+        - instagram.message.read_receipt_sent
+        - instagram.message.read_receipt_failed
+        - instagram.message.typing_failed
         - whatsapp.template.status_updated
         - whatsapp.phone_number.updated
         - contact.created

@@ -38,6 +38,10 @@ export function channelMessagePayload(
     status: message.status,
     direction: message.direction,
     external_id: message.externalId ?? null,
+    read_receipt_sent_at:
+      message.readReceiptSentAt === undefined
+        ? null
+        : new Date(message.readReceiptSentAt).toISOString(),
     tags: message.tags ?? [],
     created_at: new Date(message._creationTime).toISOString(),
     ...(message.type === "text" ||

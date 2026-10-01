@@ -1,4 +1,5 @@
 "use client"
+import { object } from "@/lib/meta/parse"
 import { fromWaId } from "@/lib/dashboard/phone"
 
 import * as React from "react"
@@ -89,7 +90,13 @@ import { MessageFiles } from "./shared"
 type TimelineEvent = {
   id: string
   at: number
-  type?: EmailStatus | ChannelMessageStatus | "payment_updated"
+  type?:
+    | EmailStatus
+    | ChannelMessageStatus
+    | "payment_updated"
+    | "read_receipt_sent"
+    | "read_receipt_failed"
+    | "typing_failed"
   label?: string
 }
 
@@ -153,6 +160,9 @@ function eventLabel(type: TimelineEvent["type"]) {
   return type === "read" ||
     type === "played" ||
     type === "payment_updated" ||
+    type === "read_receipt_sent" ||
+    type === "read_receipt_failed" ||
+    type === "typing_failed" ||
     type === "received"
     ? sentenceCase(type)
     : emailStatusLabel(type)
@@ -569,6 +579,16 @@ export function ChannelMessageDetail() {
           id: event._id,
           type: event.type,
           at: event.at,
+          ...(event.details &&
+          (event.type === "read_receipt_failed" ||
+            event.type === "typing_failed")
+            ? {
+                label: String(
+                  object(JSON.parse(event.details)).message ??
+                    eventLabel(event.type)
+                ),
+              }
+            : {}),
         }))}
       />
       {found.media.length ? (

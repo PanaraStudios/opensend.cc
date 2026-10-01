@@ -15,6 +15,10 @@ export * from "./templates.js"
 export * from "./topics.js"
 export * from "./usage.js"
 export * from "./webhooks.js"
-export { addChannelTools, channelToolOptions } from "./channelMessaging.js"
+export {
+  addChannelTools,
+  addChannelControlTools,
+  channelToolOptions,
+} from "./channelMessaging.js"
 
 export { addMediaTools } from "./media.js"

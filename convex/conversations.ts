@@ -1,3 +1,8 @@
+import {
+  latestInbound,
+  scheduleControl,
+  typingMessage,
+} from "./channels/controls"
 import { contactIdentity } from "../lib/dashboard/contacts"
 import { primaryContactIdentity, teamRow } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
@@ -548,11 +553,28 @@ export const markRead = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const conversation = await writableThread(ctx, id)
-    if (conversation.unread || conversation.unreadCount)
+    if (conversation.unread || conversation.unreadCount) {
+      if (conversation.channel !== "email") {
+        const message = await latestInbound(ctx, id)
+        if (message) await scheduleControl(ctx, message, true)
+      }
       await patchRow(ctx, "conversations", id, {
         unread: false,
         unreadCount: 0,
       })
+    }
+    return null
+  },
+})
+
+export const typing = mutation({
+  args: { id: v.id("conversations"), on: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, { id, on }) => {
+    const conversation = await writableThread(ctx, id)
+    if (conversation.channel === "email") return null
+    const message = await typingMessage(ctx, conversation)
+    if (message) await scheduleControl(ctx, message, false, on)
     return null
   },
 })

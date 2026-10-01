@@ -35,6 +35,12 @@ export class ChannelMessages<
       options
     )
   }
+  markRead(id: string, options: { typing?: boolean } = {}) {
+    return this.client.post<{ id: string }>(
+      `/${this.channel}/messages/${encodeURIComponent(id)}/read`,
+      options
+    )
+  }
   get(id: string) {
     return this.client.get<D>(
       `/${this.channel}/messages/${encodeURIComponent(id)}`
