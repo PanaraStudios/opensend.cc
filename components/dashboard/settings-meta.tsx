@@ -24,6 +24,7 @@ import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { toast } from "@/components/ui/toast"
 import {
   ConfirmDialog,
+  DetailField,
   EmptyState,
   MonoValue,
   RelativeTime,
@@ -55,21 +56,6 @@ const PREREQUISITES = [
     href: "https://developers.facebook.com/docs/whatsapp/embedded-signup/implementation",
   },
 ] as const
-
-function Detail({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm break-all">{children}</dd>
-    </div>
-  )
-}
 
 export function SettingsMeta() {
   const installation = useQuery(api.installation.status)
@@ -129,20 +115,22 @@ export function SettingsMeta() {
         }
       >
         <dl className="grid gap-5 sm:grid-cols-2">
-          <Detail label="App ID">
+          <DetailField label="App ID">
             <MonoValue copyValue={status.appId}>
               {status.appId ?? "Not connected"}
             </MonoValue>
-          </Detail>
-          <Detail label="App secret">
+          </DetailField>
+          <DetailField label="App secret">
             {status.secretLast4
               ? `Ending in ${status.secretLast4}`
               : "Not configured"}
-          </Detail>
-          <Detail label="App name">{status.appName ?? "Not verified"}</Detail>
-          <Detail label="Verified">
+          </DetailField>
+          <DetailField label="App name">
+            {status.appName ?? "Not verified"}
+          </DetailField>
+          <DetailField label="Verified">
             <RelativeTime at={status.verifiedAt ?? null} fallback="Never" />
-          </Detail>
+          </DetailField>
         </dl>
         {status.error && (
           <p role="alert" className="text-sm text-destructive">
@@ -164,16 +152,16 @@ export function SettingsMeta() {
         }
       >
         <dl className="grid gap-5">
-          <Detail label="Callback URL">
+          <DetailField label="Callback URL">
             <MonoValue copyValue={status.callbackUrl ?? undefined}>
               {status.callbackUrl ?? "Not configured"}
             </MonoValue>
-          </Detail>
-          <Detail label="Verify token">
+          </DetailField>
+          <DetailField label="Verify token">
             <MonoValue copyValue={status.verifyToken}>
               {status.verifyToken ?? "Created when you add the app"}
             </MonoValue>
-          </Detail>
+          </DetailField>
         </dl>
         <p className="text-xs text-muted-foreground">
           {status.webhookSubscribedAt ? (
@@ -190,19 +178,19 @@ export function SettingsMeta() {
         description="The Facebook Login for Business configurations teams sign in with."
       >
         <dl className="grid gap-5 sm:grid-cols-2">
-          <Detail label="WhatsApp Embedded Signup config ID">
+          <DetailField label="WhatsApp Embedded Signup config ID">
             <MonoValue copyValue={configIds.whatsapp}>
               {configIds.whatsapp ?? "Not configured"}
             </MonoValue>
-          </Detail>
-          <Detail label="Facebook Login config ID">
+          </DetailField>
+          <DetailField label="Facebook Login config ID">
             <MonoValue copyValue={configIds.facebookLogin}>
               {configIds.facebookLogin ?? "Not configured"}
             </MonoValue>
-          </Detail>
-          <Detail label="Graph API version">
+          </DetailField>
+          <DetailField label="Graph API version">
             <MonoValue>{status.graphVersion}</MonoValue>
-          </Detail>
+          </DetailField>
         </dl>
       </SettingsCard>
       <SettingsCard

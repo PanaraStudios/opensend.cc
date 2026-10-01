@@ -54,6 +54,7 @@ export const NAVIGATION_SHORTCUTS: Record<string, string> = {
   "/contacts": "c",
   "/metrics": "m",
   "/domains": "d",
+  "/channels": "h",
   "/logs": "l",
   "/api-keys": "k",
   "/webhooks": "w",

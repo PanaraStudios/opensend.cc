@@ -169,6 +169,8 @@ import {
   statusLabel,
   TEMPLATE_STATUS_TONE,
   templateStatusLabel,
+  CHANNEL_ACCOUNT_STATUS_TONE,
+  CHANNEL_QUALITY_TONE,
   type BadgeTone,
 } from "@/lib/dashboard/format"
 import { rangeLabel } from "@/lib/dashboard/email-range"
@@ -187,6 +189,8 @@ import type {
   AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
+  ChannelAccountStatus,
+  ChannelQuality,
   DomainStatus,
   EmailStatus,
   ExportStatus,
@@ -427,7 +431,7 @@ export function DetailHeader({
   backHref: string
   backLabel: string
   title: string
-  icon?: LucideIcon
+  icon?: LucideIcon | BrandMark
   description?: string
   badge?: React.ReactNode
   actions?: React.ReactNode
@@ -468,6 +472,25 @@ export function DetailHeader({
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** A brand mark from components/brand-icons.tsx, sized like a Lucide icon. */
+type BrandMark = (props: { className?: string }) => React.ReactNode
+
+/** One labelled fact in a `<dl>` grid: a settings card's or a record's. */
+export function DetailField({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm break-all">{children}</dd>
     </div>
   )
 }
@@ -1083,6 +1106,30 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   )
 }
 
+/** A channel account: a WhatsApp number, a Page, an Instagram account. */
+export function ChannelAccountStatusBadge({
+  status,
+}: {
+  status: ChannelAccountStatus
+}) {
+  return (
+    <ToneBadge
+      tone={CHANNEL_ACCOUNT_STATUS_TONE[status]}
+      label={sentenceCase(status)}
+    />
+  )
+}
+
+/** WhatsApp's quality rating for a phone number. */
+export function ChannelQualityBadge({ quality }: { quality: ChannelQuality }) {
+  return (
+    <ToneBadge
+      tone={CHANNEL_QUALITY_TONE[quality]}
+      label={sentenceCase(quality)}
+    />
+  )
+}
+
 /** An HTTP response code, toned by its class: a request log, a delivery. */
 export function HttpStatusBadge({ status }: { status: number }) {
   return (
@@ -1244,7 +1291,8 @@ export function IconCell({
   icon: Icon,
   children,
 }: {
-  icon: LucideIcon
+  /** A Lucide icon, or a brand mark from components/brand-icons.tsx. */
+  icon: LucideIcon | BrandMark
   children: React.ReactNode
 }) {
   return (

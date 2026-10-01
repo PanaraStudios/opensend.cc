@@ -402,6 +402,15 @@ export const counters = {
       ],
     }
   ),
+  /** The team's connected sending endpoints, by channel. */
+  channelAccounts: new Counter<"channelAccounts", string>(
+    components.channelAccountCounts,
+    {
+      namespace: team,
+      key: (account) => [account.channel],
+      where: (account) => account.disconnectedAt === undefined,
+    }
+  ),
   /** Each channel broadcast's messages by status: its stats. */
   broadcastMessages: new Counter<"channelMessages", Id<"broadcasts">>(
     components.broadcastMessageCounts,
@@ -457,6 +466,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   domains: [counters.domains],
   channelMessages: [counters.channelMessages, counters.broadcastMessages],
   conversations: [counters.conversations],
+  channelAccounts: [counters.channelAccounts],
 }
 export type CountedTable =
   | "contactImports"
@@ -490,6 +500,7 @@ export type CountedTable =
   | "domains"
   | "channelMessages"
   | "conversations"
+  | "channelAccounts"
 export const COUNTED_TABLES = Object.keys(COUNTED) as CountedTable[]
 
 // A database writer belongs to one transaction; never reuse checks across calls.

@@ -9,6 +9,11 @@ import type {
 } from "../../convex/tables/audience"
 import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
 import type {
+  channelAccountStatusValue,
+  channelQualityValue,
+  messagingChannelValue,
+} from "../../convex/tables/channels"
+import type {
   emailStatusValue,
   suppressionReasonValue,
 } from "../../convex/tables/emails"
@@ -56,6 +61,9 @@ export type MemberRole = "admin" | "member"
 export type EmailStatus = Infer<typeof emailStatusValue>
 
 export type BroadcastStatus = Infer<typeof broadcastStatusValue>
+export type MessagingChannel = Infer<typeof messagingChannelValue>
+export type ChannelAccountStatus = Infer<typeof channelAccountStatusValue>
+export type ChannelQuality = Infer<typeof channelQualityValue>
 
 export type TemplateStatus = Infer<typeof templateStatusValue>
 export type AutomationStatus = "enabled" | "disabled"
@@ -76,6 +84,13 @@ export const WEBHOOK_EVENTS = [
   "email.failed",
   "email.scheduled",
   "email.suppressed",
+  "whatsapp.message.sent",
+  "whatsapp.message.delivered",
+  "whatsapp.message.read",
+  "whatsapp.message.failed",
+  "whatsapp.message.received",
+  "whatsapp.template.status_updated",
+  "whatsapp.phone_number.updated",
   "contact.created",
   "contact.updated",
   "contact.deleted",

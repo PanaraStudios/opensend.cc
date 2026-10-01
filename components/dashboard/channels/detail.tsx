@@ -1,0 +1,275 @@
+"use client"
+
+import * as React from "react"
+import { useParams } from "next/navigation"
+import {
+  BadgeCheckIcon,
+  CircleAlertIcon,
+  CopyIcon,
+  KeyRoundIcon,
+  PlugIcon,
+  RefreshCwIcon,
+  ShieldCheckIcon,
+  UnplugIcon,
+} from "lucide-react"
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "@/components/ui/toast"
+import {
+  ChannelAccountStatusBadge,
+  ChannelQualityBadge,
+  DetailField,
+  DetailHeader,
+  DetailSection,
+  DocsButton,
+  EventTrail,
+  MetaStrip,
+  MonoValue,
+  MoreMenu,
+  NotFoundState,
+  RelativeTime,
+  Surface,
+  copyToClipboard,
+  useDeleteRecord,
+  type EventTrailStep,
+} from "@/components/dashboard/primitives"
+import {
+  CHANNEL_ICONS,
+  ChannelsIcon,
+  DisconnectBusinessDialog,
+  RegisterNumberDialog,
+} from "@/components/dashboard/channels/shared"
+import { actionError } from "@/lib/action-error"
+import { formatDateTime, messagingLimitLabel } from "@/lib/dashboard/format"
+import {
+  useChannelAccount,
+  useChannelCommands,
+} from "@/lib/channels/use-channels"
+
+const METHOD_LABELS = {
+  embedded_signup: "Embedded Signup",
+  manual_token: "System user token",
+  facebook_login: "Facebook Login",
+} as const
+
+export function ChannelDetail() {
+  const { id } = useParams<{ id: string }>()
+  const result = useChannelAccount(id)
+  const { canWrite, syncAccount } = useChannelCommands()
+  const { leaving, deleteAndLeave } = useDeleteRecord("/channels")
+  const [registering, setRegistering] = React.useState(false)
+  const [disconnecting, setDisconnecting] = React.useState(false)
+  const [syncing, setSyncing] = React.useState(false)
+
+  if (result === undefined) return <Skeleton className="h-64 w-full" />
+  if (!result) {
+    if (leaving) return null
+    return (
+      <NotFoundState icon={ChannelsIcon} noun="channel" backHref="/channels" />
+    )
+  }
+  const { account, connection } = result
+  const registered = account.registeredAt !== undefined
+
+  async function sync() {
+    setSyncing(true)
+    try {
+      await syncAccount(account._id)
+      toast.add({ type: "success", title: "Number synced" })
+    } catch (e) {
+      toast.add({ type: "error", title: actionError(e) })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const steps: EventTrailStep[] = [
+    {
+      id: "connected",
+      icon: PlugIcon,
+      label: "Connected",
+      caption: formatDateTime(account._creationTime),
+    },
+    {
+      id: "registered",
+      icon: BadgeCheckIcon,
+      label: "Registered",
+      caption: registered ? formatDateTime(account.registeredAt!) : undefined,
+    },
+    {
+      id: "checked",
+      icon: ShieldCheckIcon,
+      label: "Last checked",
+      caption:
+        connection.checkedAt === undefined
+          ? undefined
+          : formatDateTime(connection.checkedAt),
+    },
+  ]
+
+  return (
+    <div className="flex flex-col gap-6">
+      <DetailHeader
+        backHref="/channels"
+        backLabel="Channels"
+        title={account.displayName}
+        description={account.handle}
+        icon={CHANNEL_ICONS[account.channel]}
+        actions={
+          <>
+            <DocsButton />
+            {registered ? null : (
+              <Button
+                variant="outline"
+                disabled={!canWrite}
+                onClick={() => setRegistering(true)}
+              >
+                <KeyRoundIcon data-icon="inline-start" />
+                Register number
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              disabled={!canWrite || syncing}
+              onClick={() => void sync()}
+            >
+              <RefreshCwIcon data-icon="inline-start" />
+              {syncing ? "Syncing…" : "Sync"}
+            </Button>
+            <MoreMenu>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onClick={() => void copyToClipboard(account.handle, "Number")}
+                >
+                  <CopyIcon />
+                  Copy number
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={!canWrite}
+                  onClick={() => setDisconnecting(true)}
+                >
+                  <UnplugIcon />
+                  Disconnect business
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </MoreMenu>
+          </>
+        }
+      />
+      <MetaStrip
+        items={[
+          {
+            label: "Status",
+            value: <ChannelAccountStatusBadge status={account.status} />,
+          },
+          {
+            label: "Quality",
+            value: (
+              <ChannelQualityBadge quality={account.quality ?? "unknown"} />
+            ),
+          },
+          {
+            label: "Throughput",
+            value: `${account.throughputMps} messages/s`,
+          },
+          {
+            label: "Messaging limit",
+            value: messagingLimitLabel(account.messagingLimit),
+          },
+          {
+            label: "Registered",
+            value: (
+              <RelativeTime
+                at={account.registeredAt ?? null}
+                fallback="Not registered"
+              />
+            ),
+          },
+          { label: "Business", value: account.businessName },
+        ]}
+      />
+      {connection.status === "error" ? (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>Reconnect this business</AlertTitle>
+          <AlertDescription>
+            {connection.error ?? "Meta refused the business token."}
+          </AlertDescription>
+        </Alert>
+      ) : account.error ? (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>This number needs attention</AlertTitle>
+          <AlertDescription>{account.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <DetailSection title="Channel events">
+        <EventTrail steps={steps} />
+      </DetailSection>
+      <Surface>
+        <h2 className="text-base font-medium">Connection</h2>
+        <dl className="grid gap-5 sm:grid-cols-2">
+          <DetailField label="Phone number ID">
+            <MonoValue copyValue={account.externalId}>
+              {account.externalId}
+            </MonoValue>
+          </DetailField>
+          <DetailField label="WhatsApp Business Account">
+            {account.wabaId ? (
+              <MonoValue copyValue={account.wabaId}>
+                {result.wabaName
+                  ? `${result.wabaName} (${account.wabaId})`
+                  : account.wabaId}
+              </MonoValue>
+            ) : (
+              "—"
+            )}
+          </DetailField>
+          <DetailField label="Business ID">
+            <MonoValue copyValue={connection.businessId}>
+              {connection.businessId}
+            </MonoValue>
+          </DetailField>
+          <DetailField label="Connected with">
+            {METHOD_LABELS[connection.method]}
+          </DetailField>
+          <DetailField label="Access token">
+            Ending in {connection.tokenLast4}
+          </DetailField>
+          <DetailField label="Last checked">
+            <RelativeTime at={connection.checkedAt ?? null} fallback="Never" />
+          </DetailField>
+        </dl>
+      </Surface>
+      <RegisterNumberDialog
+        account={
+          registering ? { id: account._id, handle: account.handle } : null
+        }
+        onOpenChange={setRegistering}
+      />
+      <DisconnectBusinessDialog
+        account={
+          disconnecting
+            ? {
+                connectionId: account.connectionId,
+                businessName: account.businessName,
+              }
+            : null
+        }
+        onOpenChange={setDisconnecting}
+        onDisconnected={() => deleteAndLeave(() => {})}
+      />
+    </div>
+  )
+}

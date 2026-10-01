@@ -31,6 +31,13 @@ crons.interval(
   {}
 )
 
+crons.interval(
+  "meta connection health",
+  { hours: 6 },
+  internal.meta.connect.dispatchHealthChecks,
+  {}
+)
+
 crons.interval("sent email retention", { hours: 1 }, internal.emails.prune, {})
 
 crons.interval(
@@ -43,6 +50,7 @@ crons.interval(
 for (const name of [
   "emailShares",
   "ses",
+  "meta",
   "inbound",
   "broadcasts",
   "automations",

@@ -75,6 +75,7 @@ test("tabs and nested detail pages resolve to the most specific guide", () => {
     ["/settings/smtp", "/self-hosting/smtp-gateway"],
     ["/instance/ses", "/self-hosting/aws-ses"],
     ["/instance/meta", "/self-hosting/requirements"],
+    ["/channels/account-id", "/self-hosting/requirements"],
   ]) {
     assert.equal(
       docsHrefForRoute(route),
