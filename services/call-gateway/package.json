@@ -1,0 +1,28 @@
+{
+  "name": "@opensendcc/call-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./dist/client.js",
+    "./auth": "./dist/auth.js",
+    "./contracts": "./dist/contracts.js"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "harness": "tsx scripts/meta-peer.ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "werift": "0.24.4"
+  }
+}

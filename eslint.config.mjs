@@ -33,6 +33,7 @@ const eslintConfig = defineConfig([
     "convex/betterAuth/_generated/**",
     // Workspace packages ship their own ESLint config.
     "packages/**",
+    "services/*/dist/**",
     // Agent worktrees are separate checkouts of this repo.
     ".claude/**",
   ]),

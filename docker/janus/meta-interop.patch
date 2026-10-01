@@ -1,0 +1,71 @@
+--- a/src/ice.c
++++ b/src/ice.c
+@@ -3603,7 +3603,8 @@
+ 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
+ 
+ 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
+-	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
++	/* OpenSend: this SIP-only image always peers with Meta ICE-lite. */
++	handle->controlling = janus_ice_lite_enabled ? FALSE : TRUE;
+ 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
+ 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
+ 	handle->agent = g_object_new(NICE_TYPE_AGENT,
+--- a/src/janus.c
++++ b/src/janus.c
+@@ -4038,7 +4038,7 @@
+ 			}
+ 			if(waiting && (waiting % 5000) == 0) {
+-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Waited 5s for candidates, that's way too much... going on with what we have (WebRTC setup might fail)\n", ice_handle->handle_id);
++				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Slow ICE gathering; waiting for complete candidates\n", ice_handle->handle_id);
+-				break;
++				/* OpenSend: never publish an incomplete non-trickle SDP. */
+ 			}
+ 			if(waiting && (waiting % 1000) == 0) {
+ 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] %s for candidates-done callback... (slow gathering, are you using STUN or TURN for Janus too, instead of just for users? Consider enabling full-trickle instead)\n",
+--- a/src/plugins/janus_sip.c
++++ b/src/plugins/janus_sip.c
+@@ -1026,6 +1026,7 @@
+ 	srtp_policy_t audio_remote_policy, audio_local_policy;
+ 	char *audio_srtp_local_profile, *audio_srtp_local_crypto;
+ 	gboolean audio_send, audio_recv;
++	gint opensend_media_enabled; /* Zero-initialized: no RTP before Graph accept. */
+ 	janus_sdp_mdirection hold_audio_dir, pre_hold_audio_dir;
+ 	gboolean has_video;
+ 	int video_rtp_fd, video_rtcp_fd;
+@@ -4504,6 +4505,16 @@
+ 			/* Send an ack back */
+ 			result = json_object();
+ 			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
++		} else if(!strcasecmp(request_text, "opensend_media")) {
++			json_t *enabled = json_object_get(root, "enabled");
++			if(!json_is_boolean(enabled)) {
++				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
++				g_snprintf(error_cause, 512, "enabled must be boolean");
++				goto error;
++			}
++			g_atomic_int_set(&session->media.opensend_media_enabled, json_is_true(enabled));
++			result = json_object();
++			json_object_set_new(result, "event", json_string("media_gate"));
+ 		} else if(!strcasecmp(request_text, "hangup")) {
+ 			/* Hangup an ongoing call */
+ 			if(!janus_sip_call_is_established(session) && session->status != janus_sip_call_status_inviting) {
+@@ -7250,7 +7261,8 @@
+ 							rtp.extensions.audio_level_vad = vad;
+ 						}
+ 					}
+-					gateway->relay_rtp(session->handle, &rtp);
++					if(g_atomic_int_get(&session->media.opensend_media_enabled))
++						gateway->relay_rtp(session->handle, &rtp);
+ 					continue;
+ 				} else if(session->media.audio_rtcp_fd != -1 && fds[i].fd == session->media.audio_rtcp_fd) {
+ 					/* Got something audio (RTCP) */
+@@ -7335,7 +7347,8 @@
+ 							rtp.extensions.video_flipped = f;
+ 						}
+ 					}
+-					gateway->relay_rtp(session->handle, &rtp);
++					if(g_atomic_int_get(&session->media.opensend_media_enabled))
++						gateway->relay_rtp(session->handle, &rtp);
+ 					continue;
+ 				} else if(session->media.video_rtcp_fd != -1 && fds[i].fd == session->media.video_rtcp_fd) {
+ 					/* Got something video (RTCP) */

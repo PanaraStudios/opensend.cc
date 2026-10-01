@@ -1,0 +1,31 @@
+general: {
+  configs_folder = "/opt/janus/etc/janus"
+  plugins_folder = "/opt/janus/lib/janus/plugins"
+  transports_folder = "/opt/janus/lib/janus/transports"
+  debug_level = 3
+  debug_colors = false
+  api_secret = "${JANUS_API_SECRET}"
+  admin_secret = "${JANUS_API_SECRET}"
+  session_timeout = 60
+}
+certificates: {
+  cert_pem = "/certs/dtls.crt"
+  cert_key = "/certs/dtls.key"
+  rsa_private_key = false
+}
+media: {
+  rtp_port_range = "20000-20199"
+  dtls_mtu = 1200
+  no_media_timer = 5
+}
+nat: {
+  ice_lite = false
+  full_trickle = false
+  ice_nomination = "regular"
+  ice_tcp = false
+  ice_ignore_list = "lo"
+  hangup_on_failed = true
+}
+plugins: {
+  disable = "libjanus_videoroom.so,libjanus_videocall.so"
+}

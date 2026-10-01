@@ -1,0 +1,23 @@
+--- a/src/switch_core_cert.c
++++ b/src/switch_core_cert.c
+@@ -341,6 +341,7 @@
+ 	FILE *fp = NULL;
+ 	EVP_PKEY *pkey = NULL;
+ 	int bits = 0;
++	int key_type = 0;
+ 
+ 	if (switch_is_file_path(file)) {
+ 		pem = strdup(file);
+@@ -369,9 +370,11 @@
+ 	}
+ 
+ 	bits = EVP_PKEY_bits(pkey);
++	key_type = EVP_PKEY_base_id(pkey);
+ 	EVP_PKEY_free(pkey);
+ 
+-	if (bits < 4096) {
++	/* OpenSend: retain P-256 EC certificates instead of regenerating RSA. */
++	if ((key_type == EVP_PKEY_EC && bits < 256) || (key_type != EVP_PKEY_EC && bits < 4096)) {
+ 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "%s cryptographic length is too short (%d), it will be regenerated\n", pem, bits);
+ 		goto rename_pem;
+ 	}

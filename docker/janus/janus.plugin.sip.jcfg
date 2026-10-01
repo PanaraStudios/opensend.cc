@@ -1,0 +1,7 @@
+general: {
+  behind_nat = false
+  register_ttl = 120
+  keepalive_interval = 30
+  rtp_port_range = "20200-20399"
+  sip_timer_t1x64 = 32000
+}

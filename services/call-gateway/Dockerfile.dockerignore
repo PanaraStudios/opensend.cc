@@ -1,0 +1,9 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!services/
+!services/call-gateway/
+!services/call-gateway/**
+services/call-gateway/node_modules
+services/call-gateway/dist
