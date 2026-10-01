@@ -21,6 +21,7 @@ import {
 } from "@/lib/meta/softphone"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import {
   Dialog,
   DialogContent,
@@ -39,12 +40,16 @@ import {
   PhoneOffIcon,
   ArrowRightLeftIcon,
 } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 
 interface SoftphoneContext {
   online: boolean
   busy: boolean
+  available: boolean
+  connecting: boolean
+  working: boolean
+  callLabel: string
+  open: () => void
+  toggleOnline: () => void
   outbound: (
     accountId: Id<"channelAccounts">,
     recipient: string
@@ -55,6 +60,45 @@ export function useSoftphone() {
   const value = useContext(Context)
   if (!value) throw new Error("Softphone is unavailable")
   return value
+}
+
+/** Full controls belong in the page header's actions slot. */
+export function SoftphoneActions() {
+  const phone = useSoftphone()
+  if (!phone.available) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2" aria-label="Softphone">
+      <Badge variant="secondary">{phone.online ? "Online" : "Away"}</Badge>
+      <Button
+        disabled={phone.working || phone.connecting}
+        onClick={phone.toggleOnline}
+      >
+        {phone.online ? "Set away" : "Go online"}
+      </Button>
+      <Button variant="outline" onClick={phone.open}>
+        <PhoneIcon data-icon="inline-start" />
+        {phone.callLabel}
+      </Button>
+    </div>
+  )
+}
+
+/** Keep active/incoming calls reachable without adding a row to every page. */
+export function SoftphoneSidebarEntry() {
+  const phone = useSoftphone()
+  if (!phone.available) return null
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={phone.open}
+        aria-label="Open softphone"
+        tooltip={`${phone.callLabel} · ${phone.online ? "Online" : "Away"}`}
+      >
+        <PhoneIcon />
+        <span>{phone.callLabel}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
 }
 export function SoftphoneProvider({ children }: { children: ReactNode }) {
   const { activeTeamId } = useWorkspace()
@@ -75,7 +119,6 @@ function TeamSoftphone({
   organizationId: string
   children: ReactNode
 }) {
-  const pathname = usePathname()
   const [browserId] = useState(() => crypto.randomUUID())
   const [phase, dispatch] = useReducer(
     softphoneTransition,
@@ -425,42 +468,22 @@ function TeamSoftphone({
       value={{
         online,
         busy: !!currentId || working || phase === "connecting",
+        available: !!organizationId,
+        connecting: phase === "connecting",
+        working,
+        callLabel: incoming
+          ? "Incoming call"
+          : currentId
+            ? "Current call"
+            : "Softphone",
+        open: () => setOpen(true),
+        toggleOnline: () => {
+          void (online ? goAway() : goOnline()).catch(fail)
+        },
         outbound,
       }}
     >
       <audio ref={audio} autoPlay aria-label="Call audio" />
-      {organizationId && pathname === "/playground/calls" ? (
-        <div
-          className="flex flex-wrap items-center justify-end gap-2"
-          aria-label="Softphone"
-        >
-          <Badge variant="secondary">{online ? "Online" : "Away"}</Badge>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={working || phase === "connecting"}
-            onClick={() => {
-              void (online ? goAway() : goOnline()).catch(fail)
-            }}
-          >
-            {online ? "Set away" : "Go online"}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            <PhoneIcon />
-            {incoming
-              ? "Incoming call"
-              : currentId
-                ? "Current call"
-                : "Softphone"}
-          </Button>
-          <Link
-            href="/playground/calls"
-            className="text-sm underline underline-offset-4"
-          >
-            Calls
-          </Link>
-        </div>
-      ) : null}
       {children}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -1,5 +1,8 @@
 "use client"
-import { SoftphoneProvider } from "@/components/dashboard/calling/softphone-provider"
+import {
+  SoftphoneProvider,
+  SoftphoneSidebarEntry,
+} from "@/components/dashboard/calling/softphone-provider"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
@@ -399,6 +402,7 @@ function DashboardSidebar({
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          {!setupPending && <SoftphoneSidebarEntry />}
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onShortcuts}
@@ -549,30 +553,35 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="hatch min-h-svh">
-      <SidebarProvider>
-        {!setupPending && <NavigationShortcuts />}
-        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-        <DashboardSidebar
-          setupPending={setupPending}
-          installationAdmin={installationAdmin}
-          onSearch={() => setSearchOpen(true)}
-          onShortcuts={() => setShortcutsOpen(true)}
-        />
-        <SidebarInset className="min-w-0 bg-background">
-          <div className="flex min-h-0 w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
-            <SidebarTrigger className="-ml-1 md:hidden" />
-            <SoftphoneProvider>{children}</SoftphoneProvider>
-          </div>
-        </SidebarInset>
-        {!setupPending && (
-          <CommandMenu
-            onShortcuts={() => setShortcutsOpen(true)}
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-            installationAdmin={installationAdmin}
+      <SoftphoneProvider>
+        <SidebarProvider>
+          {!setupPending && <NavigationShortcuts />}
+          <ShortcutsDialog
+            open={shortcutsOpen}
+            onOpenChange={setShortcutsOpen}
           />
-        )}
-      </SidebarProvider>
+          <DashboardSidebar
+            setupPending={setupPending}
+            installationAdmin={installationAdmin}
+            onSearch={() => setSearchOpen(true)}
+            onShortcuts={() => setShortcutsOpen(true)}
+          />
+          <SidebarInset className="min-w-0 bg-background">
+            <div className="flex min-h-0 w-full flex-1 flex-col gap-6 px-6 py-8 md:px-10">
+              <SidebarTrigger className="-ml-1 md:hidden" />
+              {children}
+            </div>
+          </SidebarInset>
+          {!setupPending && (
+            <CommandMenu
+              onShortcuts={() => setShortcutsOpen(true)}
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              installationAdmin={installationAdmin}
+            />
+          )}
+        </SidebarProvider>
+      </SoftphoneProvider>
     </div>
   )
 }

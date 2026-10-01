@@ -9,6 +9,24 @@ export function formatMediaTime(seconds: number) {
     : `${minutes}:${remainder}`
 }
 
+/** Preserve signed URLs and caller-provided fragments; thumbnails take priority. */
+export function videoPreviewSource(src: string, poster?: string) {
+  return poster || src.includes("#") ? src : `${src}#t=0.001`
+}
+
+export function showVideoDurationBadge(
+  playing: boolean,
+  started: boolean,
+  controlsVisible: boolean
+) {
+  return !playing && !started && !controlsVisible
+}
+
+/** WhatsApp video notes have square frames, with the circle encoded in the video. */
+export function isVideoNoteFrame(width: number, height: number) {
+  return width > 0 && Number.isFinite(width) && width === height
+}
+
 export function nextPlaybackSpeed(speed: number) {
   const speeds = [1, 1.5, 2]
   return speeds[(speeds.indexOf(speed) + 1) % speeds.length]

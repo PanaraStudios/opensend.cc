@@ -13,6 +13,7 @@ const audioCoordinator = createAudioCoordinator()
 export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
   const ref = React.useRef<T>(null)
   const [playing, setPlaying] = React.useState(false)
+  const [started, setStarted] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string>()
   const [position, setPosition] = React.useState(0)
@@ -21,29 +22,7 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
   React.useEffect(() => {
     const media = ref.current
     if (!media) return
-    // Fetch metadata only once the player is near the viewport.
-    const load = () => {
-      if (media.preload === "none") {
-        media.preload = "metadata"
-        media.load()
-      }
-    }
-    const observer =
-      typeof IntersectionObserver !== "undefined"
-        ? new IntersectionObserver(
-            (entries) => {
-              if (entries.some((entry) => entry.isIntersecting)) {
-                load()
-                observer?.disconnect()
-              }
-            },
-            { rootMargin: "100px" }
-          )
-        : undefined
-    if (observer) observer.observe(media.parentElement ?? media)
-    else load()
     return () => {
-      observer?.disconnect()
       media.pause()
       if (exclusive) audioCoordinator.release(media)
     }
@@ -89,16 +68,22 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
       seek(action.position)
     }
   }
+  function updateDuration() {
+    const value = ref.current?.duration ?? 0
+    setDuration(Number.isFinite(value) ? value : 0)
+  }
   const events = {
     onLoadStart() {
       setLoading(true)
     },
     onLoadedMetadata() {
+      updateDuration()
       setLoading(false)
     },
     onPlay() {
       if (exclusive && ref.current) audioCoordinator.claim(ref.current)
       setPlaying(true)
+      setStarted(true)
     },
     onPlaying() {
       setLoading(false)
@@ -121,14 +106,12 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
     onTimeUpdate() {
       setPosition(ref.current?.currentTime ?? 0)
     },
-    onDurationChange() {
-      const value = ref.current?.duration ?? 0
-      setDuration(Number.isFinite(value) ? value : 0)
-    },
+    onDurationChange: updateDuration,
   }
   return {
     ref,
     playing,
+    started,
     loading,
     error,
     position,

@@ -8,6 +8,7 @@ import {
   Th,
   RelativeTime,
   EmptyState,
+  MetaStrip,
 } from "@/components/dashboard/primitives"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { PhoneIcon } from "lucide-react"
 import { CallEventBubble } from "./call-event-bubble"
+import { SoftphoneActions } from "./softphone-provider"
 export function CallsView() {
   const [now, setNow] = useState(0)
   useEffect(() => {
@@ -27,21 +29,32 @@ export function CallsView() {
   const log = useTeamQuery(api.calling.rows.dashboardList, { limit: 25, after })
   const state = useTeamQuery(api.calling.softphoneState.state)
   return (
-    <SectionChrome title="Playground" tabs={PLAYGROUND_TABS}>
-      <section className="flex flex-col gap-3" aria-label="Agent presence">
-        <h2 className="text-sm font-medium">Agents</h2>
-        <div className="flex flex-wrap gap-2">
-          {state?.agents.map((agent) => (
-            <Badge key={agent.userId} variant="secondary">
-              {agent.name} ·{" "}
-              {agent.availableUntil > now ? agent.status : "away"}
-            </Badge>
-          ))}
-          {state?.agents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No team members.</p>
-          ) : null}
-        </div>
-      </section>
+    <SectionChrome
+      title="Playground"
+      tabs={PLAYGROUND_TABS}
+      actions={<SoftphoneActions />}
+    >
+      <MetaStrip
+        items={[
+          {
+            label: "Agents",
+            value: !state ? (
+              <Skeleton className="h-4 w-32" />
+            ) : state.agents.length === 0 ? (
+              "No team members."
+            ) : (
+              <span className="flex flex-wrap gap-2">
+                {state.agents.map((agent) => (
+                  <Badge key={agent.userId} variant="secondary">
+                    {agent.name} ·{" "}
+                    {agent.availableUntil > now ? agent.status : "away"}
+                  </Badge>
+                ))}
+              </span>
+            ),
+          },
+        ]}
+      />
       {!log ? (
         <Skeleton className="h-40 w-full" />
       ) : log.data.length === 0 ? (
