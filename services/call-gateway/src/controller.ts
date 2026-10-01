@@ -449,11 +449,11 @@ export class CallController implements GatewayApi {
       const controlled =
         !!this.voice && ["ivr", "bot", "voicemail"].includes(request.target)
       if (request.record || request.target === "voicemail") {
-        if (controlled && request.target !== "voicemail")
-          await this.startRecording(call)
-        else {
-          if (!controlled)
-            await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
+        if (controlled) {
+          // Voicemail starts recording after its beep through the same callback.
+          if (request.target !== "voicemail") await this.startRecording(call)
+        } else {
+          await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
           this.recordings.set(call.uuid!, { call, expires: Infinity })
         }
       }

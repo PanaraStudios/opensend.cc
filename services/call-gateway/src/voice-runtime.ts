@@ -189,7 +189,8 @@ export class VoiceRuntime {
     } else if (target === "voicemail") {
       await socket.play("tone_stream://%(200,0,1000)")
       if (call.stopped) return
-      await socket.record("start")
+      if (call.record) await call.record()
+      else await socket.record("start")
       await socket.execute("park", "", 3600000)
     } else if (target === "bot") {
       const botRoute = call.route
