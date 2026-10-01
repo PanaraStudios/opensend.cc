@@ -1,4 +1,5 @@
 "use client"
+import { FileUploadField } from "../file-upload"
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
@@ -380,6 +381,14 @@ export function WhatsAppTemplateEditorScreen({
                         placeholder="https://example.com/sample.png"
                         onChange={(event) =>
                           patch({ headerSample: event.target.value })
+                        }
+                      />
+                      <FileUploadField
+                        label="Upload sample file"
+                        use="template"
+                        disabled={readOnly}
+                        onUploaded={(id) =>
+                          patch({ headerSample: `opensend-file:${id}` })
                         }
                       />
                       <FieldDescription>
