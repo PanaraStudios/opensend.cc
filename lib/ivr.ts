@@ -308,7 +308,7 @@ export function parseIvr(value: unknown): IvrDefinition {
     }
   })
   let promptVoice: IvrPromptVoice | undefined
-  if (d.promptVoice !== undefined) {
+  if (d.promptVoice !== undefined && d.promptVoice !== null) {
     const p = obj(d.promptVoice)
     keys(p, ["provider", "voice", "language", "credentialId"])
     if (p.provider !== "sarvam" && p.provider !== "elevenlabs")
@@ -346,7 +346,7 @@ export function parseIvr(value: unknown): IvrDefinition {
     entryMenuId: identifier(d.entryMenuId),
     menus,
     ...(promptVoice ? { promptVoice } : {}),
-    ...(d.businessHours === undefined
+    ...(d.businessHours === undefined || d.businessHours === null
       ? {}
       : { businessHours: hours(d.businessHours) }),
   }

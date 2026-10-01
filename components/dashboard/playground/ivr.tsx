@@ -31,6 +31,7 @@ import {
   newIvr,
   newIvrMenu,
   ivrFormPayload,
+  ivrFormPatch,
 } from "@/lib/dashboard/voice-playground"
 import { validateIvr, type IvrDefinition } from "@/lib/ivr"
 import { VoiceField, MenuFields, BusinessHoursFields } from "./ivr-fields"
@@ -189,7 +190,7 @@ function IvrForm({ row }: { row?: IvrResource }) {
         organizationId: activeTeamId!,
         kind: row ? "update" : "create",
         id: row?.id,
-        body: JSON.stringify(ivrFormPayload(draft)),
+        body: JSON.stringify(row ? ivrFormPatch(draft) : ivrFormPayload(draft)),
       })
       toast.add({ type: "success", title: "IVR saved" })
       if (!row) router.push(`/playground/ivr/${result.id}`)
@@ -207,7 +208,7 @@ function IvrForm({ row }: { row?: IvrResource }) {
         ? await validate({
             organizationId: activeTeamId!,
             id: row.id,
-            body: JSON.stringify(draft),
+            body: JSON.stringify(ivrFormPatch(draft)),
           })
         : validateIvr(draft)
       if (!result.valid) setError(result.errors.join("; "))

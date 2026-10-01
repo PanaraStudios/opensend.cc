@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend, IvrDefinition } from "@opensendcc/sdk"
+import type { Opensend, IvrDefinition, IvrPatch } from "@opensendcc/sdk"
 import { z } from "zod"
 import {
   channelOutput,
@@ -146,9 +146,14 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     },
     async ({ id }) => channelOutput("IVR", await opensend.ivrs.get(id))
   )
-  const partial = Object.fromEntries(
+  const optionalFields = Object.fromEntries(
     Object.entries(definition).map(([k, v]) => [k, v.optional()])
   )
+  const partial = {
+    ...optionalFields,
+    promptVoice: definition.promptVoice.nullable(),
+    businessHours: definition.businessHours.nullable(),
+  }
   server.registerTool(
     "update-ivr",
     {
@@ -158,10 +163,7 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
       annotations: { ...write, idempotentHint: true },
     },
     async ({ id, ...input }) =>
-      channelOutput(
-        "IVR",
-        await opensend.ivrs.update(id, input as Partial<IvrDefinition>)
-      )
+      channelOutput("IVR", await opensend.ivrs.update(id, input as IvrPatch))
   )
   server.registerTool(
     "remove-ivr",
@@ -182,10 +184,7 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
       annotations: read,
     },
     async ({ id, ...input }) =>
-      channelOutput(
-        "IVR",
-        await opensend.ivrs.validate(id, input as Partial<IvrDefinition>)
-      )
+      channelOutput("IVR", await opensend.ivrs.validate(id, input as IvrPatch))
   )
   server.registerTool(
     "render-ivr",

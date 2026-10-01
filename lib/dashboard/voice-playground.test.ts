@@ -64,3 +64,13 @@ test("call outcomes describe routing and preserve timeout/invalid evidence", () 
     "Bot: support"
   )
 })
+
+test("clearing optional IVR settings emits explicit PATCH nulls", async () => {
+  const { ivrFormPatch } = await import("./voice-playground")
+  const d = newIvr()
+  d.name = "Reception"
+  d.menus[0].prompt = { kind: "tts", text: "Hello" }
+  const patch = ivrFormPatch(d)
+  assert.equal(patch.businessHours, null)
+  assert.equal(patch.promptVoice, null)
+})

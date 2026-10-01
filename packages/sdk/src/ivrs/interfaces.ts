@@ -79,3 +79,11 @@ export interface IvrPathEntry {
   at: number
 }
 export type { CallingRouting } from "../whatsapp/calling/routing"
+
+export type IvrPatch = Omit<
+  Partial<IvrDefinition>,
+  "promptVoice" | "businessHours"
+> & {
+  promptVoice?: IvrDefinition["promptVoice"] | null
+  businessHours?: IvrDefinition["businessHours"] | null
+}

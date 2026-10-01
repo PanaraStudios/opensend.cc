@@ -61,3 +61,13 @@ export function ivrPathSummary(
 ) {
   return path.map((p) => `${p.menuId}: ${p.digits}`).join(" → ")
 }
+
+/** Explicit null clears optional settings on a REST PATCH instead of retaining the saved value. */
+export function ivrFormPatch(value: IvrDefinition) {
+  const definition = ivrFormPayload(value)
+  return {
+    ...definition,
+    promptVoice: definition.promptVoice ?? null,
+    businessHours: definition.businessHours ?? null,
+  }
+}

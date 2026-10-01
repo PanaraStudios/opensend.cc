@@ -193,7 +193,11 @@ export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
                 }
               }}
             >
-              {busy ? "Connecting…" : `Test ${kind.toUpperCase()}`}
+              {busy
+                ? "Connecting…"
+                : kind === "ivr"
+                  ? "Test IVR"
+                  : "Test voice bot"}
             </Button>
           </div>
           {error ? (

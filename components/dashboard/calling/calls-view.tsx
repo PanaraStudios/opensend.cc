@@ -32,7 +32,6 @@ export function CallsView() {
   const [after, setAfter] = useState<string>()
   const [history, setHistory] = useState<(string | undefined)[]>([])
   const log = useTeamQuery(api.calling.rows.dashboardList, { limit: 25, after })
-  const bots = useTeamQuery(api.voice.resources.dashboardList, { limit: 100 })
   const state = useTeamQuery(api.calling.softphoneState.state)
   return (
     <SectionChrome
@@ -108,10 +107,8 @@ export function CallsView() {
                   </span>
                   {call.bot_id ? (
                     <span className="block">
-                      {bots?.data.flatMap((b) =>
-                        b.id === call.bot_id && "name" in b ? [b.name] : []
-                      )[0] ?? "Voice bot"}{" "}
-                      · {call.bot_outcome ?? "In progress"}
+                      {call.bot_name ?? "Voice bot"} ·{" "}
+                      {call.bot_outcome ?? "In progress"}
                     </span>
                   ) : null}
                   {call.ivr_outcome ? (

@@ -27061,6 +27061,9 @@ components:
           type:
             - string
             - "null"
+        bot_name:
+          type: [string, "null"]
+          description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
             - string
@@ -27259,6 +27262,9 @@ components:
               - at
               - details
             additionalProperties: false
+        bot_name:
+          type: [string, "null"]
+          description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
             - string
@@ -27832,7 +27838,19 @@ components:
       additionalProperties: false
     IvrPatch:
       type: object
-      properties: *a2
+      properties:
+        name: *a3
+        language: *a4
+        entryMenuId: *a1
+        menus: *a5
+        promptVoice:
+          anyOf:
+            - $ref: "#/components/schemas/IvrDefinition/properties/promptVoice"
+            - type: "null"
+        businessHours:
+          anyOf:
+            - $ref: "#/components/schemas/IvrBusinessHours"
+            - type: "null"
       required: []
       additionalProperties: false
     Ivr:

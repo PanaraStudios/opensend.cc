@@ -120,6 +120,7 @@ export async function payload(
     ivr_path: row.ivrPath ?? [],
     ivr_outcome: row.ivrOutcome ?? null,
     bot_id: row.botId ?? null,
+    bot_name: row.botConfig?.name ?? null,
     bot_outcome: row.botOutcome ?? null,
     bot_summary: row.botSummary ?? null,
     bot_duration: row.botDuration ?? null,

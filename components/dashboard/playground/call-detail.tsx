@@ -31,6 +31,9 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
       <MetaStrip
         items={[
           { label: "Status", value: call.status },
+          ...(call.bot_id
+            ? [{ label: "Bot", value: call.bot_name ?? "Voice bot" }]
+            : []),
           { label: "Direction", value: call.direction },
           {
             label: "Duration",
