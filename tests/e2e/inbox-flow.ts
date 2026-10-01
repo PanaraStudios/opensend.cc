@@ -414,7 +414,7 @@ export function inboxTests(
       exact: true,
     })
     await start.locator("#send-account").click()
-    await owner.getByRole("option", { name: /Lucky Shrub/ }).click()
+    await owner.getByRole("option", { name: /Opensend E2E/ }).click()
     await start
       .getByRole("button", { name: "Continue to conversation", exact: true })
       .click()
