@@ -190,6 +190,8 @@ export function whatsappCampaignsTests(
     await owner.waitForURL(/\/automations\/[^/]+$/)
     const automationId = new URL(owner.url()).pathname.split("/")[2]
     await owner.getByTestId("workflow-node-start").click()
+    // System events are suggested in the trigger's event box.
+    await owner.getByPlaceholder("Type or select an event").click()
     await owner
       .getByRole("option", { name: "WhatsApp message received", exact: true })
       .click()
