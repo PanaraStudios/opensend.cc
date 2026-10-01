@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import {
   canGoNext,
+  pagedListState,
   hasPages,
   knownTotal,
   lastLoadedPage,
@@ -101,5 +102,56 @@ describe("paging", () => {
     assert.equal(lastLoadedPage({ loaded: 0, pageSize: 40 }), 0)
     assert.equal(lastLoadedPage({ loaded: 40, pageSize: 40 }), 0)
     assert.equal(lastLoadedPage({ loaded: 41, pageSize: 40 }), 1)
+  })
+})
+
+describe("skipped lists", () => {
+  it("exhausts skipped first pages and drops stale loaded results without loading more", () => {
+    let loads = 0
+    for (const status of [
+      "LoadingFirstPage",
+      "CanLoadMore",
+      "LoadingMore",
+      "Exhausted",
+    ] as const) {
+      const result = pagedListState(
+        {
+          results: ["old contact"],
+          isLoading: true,
+          status,
+          loadMore: (numItems: number) => {
+            assert.equal(numItems, 40)
+            loads++
+          },
+        },
+        true
+      )
+      assert.deepEqual(result.results, [])
+      assert.equal(result.status, "Exhausted")
+      assert.equal(result.isLoading, false)
+      result.loadMore(40)
+    }
+    assert.equal(loads, 0)
+  })
+  it("preserves loading and pagination for enabled callers", () => {
+    let loads = 0
+    for (const status of [
+      "LoadingFirstPage",
+      "CanLoadMore",
+      "LoadingMore",
+      "Exhausted",
+    ] as const) {
+      const query = {
+        results: ["contact"],
+        status,
+        loadMore: (numItems: number) => {
+          assert.equal(numItems, 40)
+          loads++
+        },
+      }
+      assert.equal(pagedListState(query, false), query)
+      pagedListState(query, false).loadMore(40)
+    }
+    assert.equal(loads, 4)
   })
 })
