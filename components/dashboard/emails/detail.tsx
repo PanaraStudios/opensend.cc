@@ -78,9 +78,10 @@ import {
   useEmailEvents,
 } from "@/lib/emails/use-emails"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
-import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 import { useChannelMessage } from "@/lib/messages/use-messages"
+import { threadHref } from "@/lib/messages/links"
+import { ConversationThread } from "@/components/dashboard/conversation/conversation-thread"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
@@ -548,7 +549,7 @@ export function ChannelMessageDetail() {
           {
             label: "Conversation",
             value: (
-              <MonoLink href={`/emails/inbox?c=${message.conversationId}`}>
+              <MonoLink href={threadHref(message.conversationId)}>
                 Open in Inbox
               </MonoLink>
             ),
@@ -591,11 +592,16 @@ export function ChannelMessageDetail() {
             : {}),
         }))}
       />
+      <div className="frame h-[calc(100svh-14rem)] min-h-0">
+        <div className="panel h-full min-h-0 overflow-hidden p-0">
+          <ConversationThread
+            key={message.conversationId}
+            id={message.conversationId}
+          />
+        </div>
+      </div>
       {found.media.length ? (
         <MessageFiles messageId={message._id} media={found.media} />
-      ) : null}
-      {found.rendered ? (
-        <WhatsAppTemplatePreview rendered={found.rendered} />
       ) : null}
       <JsonSection title="Payload" value={payload} />
     </div>
