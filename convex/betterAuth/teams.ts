@@ -768,3 +768,38 @@ export const invitations = query({
     }
   },
 })
+
+/** Parent-only maintenance APIs used by the resumable object-storage migration. */
+export const storageMigrationPage = query({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }) => {
+    const page = await paginator(ctx.db, schema)
+      .query("avatar")
+      .paginate({ cursor, numItems: 10 })
+    return {
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+      page: await Promise.all(
+        page.page.map(async (row) => ({
+          id: row._id,
+          organizationId: row.organizationId,
+          storageId: row.storageId,
+          url: (await ctx.storage.getUrl(row.storageId))!,
+        }))
+      ),
+    }
+  },
+})
+export const storageMigrationDrop = mutation({
+  args: { id: v.string(), storageId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { id, storageId }) => {
+    const normalized = ctx.db.normalizeId("avatar", id)
+    const row = normalized ? await ctx.db.get("avatar", normalized) : null
+    if (row?.storageId === storageId) {
+      await ctx.storage.delete(row.storageId)
+      await ctx.db.delete("avatar", row._id)
+    }
+    return null
+  },
+})

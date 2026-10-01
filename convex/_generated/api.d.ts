@@ -157,6 +157,8 @@ import type * as storage_config from "../storage/config.js";
 import type * as storage_downloads from "../storage/downloads.js";
 import type * as storage_files from "../storage/files.js";
 import type * as storage_media from "../storage/media.js";
+import type * as storage_migrate from "../storage/migrate.js";
+import type * as storage_migration from "../storage/migration.js";
 import type * as storage_objects from "../storage/objects.js";
 import type * as storage_urls from "../storage/urls.js";
 import type * as suppressions from "../suppressions.js";
@@ -361,6 +363,8 @@ declare const fullApi: ApiFromModules<{
   "storage/downloads": typeof storage_downloads;
   "storage/files": typeof storage_files;
   "storage/media": typeof storage_media;
+  "storage/migrate": typeof storage_migrate;
+  "storage/migration": typeof storage_migration;
   "storage/objects": typeof storage_objects;
   "storage/urls": typeof storage_urls;
   suppressions: typeof suppressions;
