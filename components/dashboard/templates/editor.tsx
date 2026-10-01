@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation"
 import { FileCodeIcon } from "lucide-react"
 
+import { EmailConfiguration } from "@/components/ses/email-configuration"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
 import {
@@ -53,18 +54,20 @@ export function TemplateEditor() {
       ? WhatsAppTemplateEditorScreen
       : TemplateEditorScreen
   return (
-    <Screen
-      key={item.id}
-      item={item}
-      onDelete={() =>
-        deleteAndLeave(
-          () =>
-            void deleteTemplate(item).catch((error) =>
-              toast.add({ type: "error", title: actionError(error) })
-            )
-        )
-      }
-    />
+    <EmailConfiguration required={!item.channel || item.channel === "email"}>
+      <Screen
+        key={item.id}
+        item={item}
+        onDelete={() =>
+          deleteAndLeave(
+            () =>
+              void deleteTemplate(item).catch((error) =>
+                toast.add({ type: "error", title: actionError(error) })
+              )
+          )
+        }
+      />
+    </EmailConfiguration>
   )
 }
 

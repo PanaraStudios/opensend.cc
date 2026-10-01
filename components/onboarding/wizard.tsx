@@ -37,15 +37,11 @@ import { DeliveryUrlForm } from "@/components/ses/delivery-form"
 import { SesRegions } from "@/components/ses/regions"
 import { actionError } from "@/lib/action-error"
 import { resourcePrefix } from "@/convex/ses/contracts"
-const steps = [
-  "welcome",
-  "aws",
-  "callback",
-  "resources",
-  "team",
-  "domain",
-] as const
-type Step = (typeof steps)[number]
+import {
+  setupSteps,
+  inferredSetupStep,
+  type SetupStep as Step,
+} from "@/lib/dashboard/installation-setup"
 const copy: Record<
   Step,
   { label: string; title: string; description: string }
@@ -53,17 +49,17 @@ const copy: Record<
   welcome: {
     label: "Welcome",
     title: "Set up Opensend",
-    description: "Bring your AWS account and a domain you own.",
+    description: "Connect messaging channels for your team. Email is optional.",
   },
   aws: {
     label: "AWS account",
     title: "Connect your AWS account",
-    description: "Choose a region and add your AWS access keys.",
+    description: "Connect Amazon SES for email, or set it up later.",
   },
   callback: {
-    label: "Delivery updates",
-    title: "Receive delivery updates",
-    description: "Give AWS an address for delivery and bounce events.",
+    label: "Public callback URL",
+    title: "Public callback URL",
+    description: "Receive email delivery updates and Meta webhooks.",
   },
   resources: {
     label: "Email delivery",
@@ -89,6 +85,7 @@ export function InstallationWizard() {
   const navigate = useMutation(api.installation.navigate)
   const provision = useMutation(api.installation.provisionRegion)
   const complete = useMutation(api.installation.complete)
+  const deferEmail = useMutation(api.installation.deferEmail)
   const [editingConnection, setEditingConnection] = React.useState(false)
   const [addOpen, setAddOpen] = React.useState(false)
   const [error, setError] = React.useState("")
@@ -101,15 +98,9 @@ export function InstallationWizard() {
   const active = workspace.teams.find(
     (team) => team.id === workspace.activeTeamId
   )
-  const inferred: Step = installation?.accountId
-    ? installation.environmentCheckedAt
-      ? ready
-        ? active
-          ? "domain"
-          : "team"
-        : "resources"
-      : "callback"
-    : "welcome"
+  const emailDeferred = !!installation?.emailDeferredAt
+  const steps = setupSteps(emailDeferred)
+  const inferred = inferredSetupStep(installation, ready, !!active)
   const step = installation?.setupStep ?? inferred
   const index = steps.indexOf(step)
   const domains = useQuery(
@@ -198,7 +189,8 @@ export function InstallationWizard() {
                 {
                   Icon: CloudIcon,
                   title: "Connect AWS",
-                  description: "Use your own Amazon SES account.",
+                  description:
+                    "Optional: use your Amazon SES account for email.",
                 },
                 {
                   Icon: UsersIcon,
@@ -207,8 +199,9 @@ export function InstallationWizard() {
                 },
                 {
                   Icon: GlobeIcon,
-                  title: "Add a domain",
-                  description: "Finish DNS setup from your dashboard.",
+                  title: "Connect channels",
+                  description:
+                    "Connect WhatsApp, Messenger or Instagram from your dashboard.",
                 },
               ].map(({ Icon, title, description }) => (
                 <Item key={title} size="sm">
@@ -252,10 +245,21 @@ export function InstallationWizard() {
               </Button>
             </>
           ) : (
-            <AwsConnectionForm
-              status={status}
-              updating={!!installation?.accountId}
-            />
+            <>
+              <AwsConnectionForm
+                status={status}
+                updating={!!installation?.accountId}
+              />
+              {!installation?.accountId && (
+                <AsyncForm
+                  submitLabel="Set up email later"
+                  submitVariant="outline"
+                  fullWidth
+                  success={false}
+                  onSubmit={() => deferEmail({})}
+                />
+              )}
+            </>
           ))}
         {step === "callback" && <DeliveryUrlForm status={status} />}
         {step === "resources" && (
@@ -298,10 +302,22 @@ export function InstallationWizard() {
           ) : active ? (
             <>
               <p className="text-sm">{active.name}</p>
-              <Button disabled={moving} onClick={() => void go("domain")}>
-                Continue
-                <ArrowRightIcon data-icon="inline-end" />
-              </Button>
+              {emailDeferred ? (
+                <AsyncForm
+                  fullWidth
+                  submitLabel="Finish setup"
+                  success={false}
+                  onSubmit={async () => {
+                    await complete({ organizationId: active.id })
+                    router.replace("/channels")
+                  }}
+                />
+              ) : (
+                <Button disabled={moving} onClick={() => void go("domain")}>
+                  Continue
+                  <ArrowRightIcon data-icon="inline-end" />
+                </Button>
+              )}
             </>
           ) : (
             <CreateTeamForm />

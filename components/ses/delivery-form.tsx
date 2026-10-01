@@ -26,7 +26,8 @@ export function DeliveryUrlForm({ status }: { status: SesStatus }) {
           <AlertTitle>Start a local tunnel</AlertTitle>
           <AlertDescription>
             <p>
-              AWS cannot reach localhost. Run this command and keep it open:
+              Messaging providers cannot reach localhost. Run this command and
+              keep it open:
             </p>
             <div className="flex min-w-0 items-center gap-2">
               <code className="min-w-0 flex-1 text-xs break-all">
@@ -50,7 +51,7 @@ export function DeliveryUrlForm({ status }: { status: SesStatus }) {
         <FieldGroup>
           <FormInput
             name="callbackOrigin"
-            label="Public backend URL"
+            label="Public callback URL"
             type="url"
             pattern="https://.+"
             title="Use an HTTPS URL for your Opensend backend"

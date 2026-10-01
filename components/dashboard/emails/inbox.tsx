@@ -215,7 +215,7 @@ function ConversationList({ selected }: { selected: string | null }) {
             size="sm"
             icon={InboxIcon}
             title="No conversations"
-            description="Replies to your WhatsApp numbers and mail to your receiving domains start conversations here."
+            description="Connect a channel to receive messages and start conversations here."
           >
             <Button
               variant="outline"

@@ -1,5 +1,6 @@
 "use client"
 
+import { EmailConfiguration } from "@/components/ses/email-configuration"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 
 import * as React from "react"
@@ -177,114 +178,124 @@ export function AddDomainDialog({
       }}
     >
       <DialogContent className="sm:max-w-md">
-        <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Add domain</DialogTitle>
-            <DialogDescription>
-              Use a domain you own. A subdomain such as{" "}
-              <span className="font-mono">updates.example.com</span> keeps
-              transactional reputation separate from marketing.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="py-4">
-            <Field>
-              <FieldLabel htmlFor="domain-name">Name</FieldLabel>
-              <Input
-                id="domain-name"
-                value={name}
-                onChange={(event) => {
-                  setInUse(false)
-                  setName(event.target.value)
-                  setError(null)
-                }}
-                placeholder="updates.example.com"
-                autoFocus
-              />
-              {error ? (
-                <FieldError>{error}</FieldError>
-              ) : (
-                <FieldDescription>
-                  Do not include http:// or a trailing path.
-                </FieldDescription>
-              )}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="domain-region">Region</FieldLabel>
-              <OptionSelect
-                id="domain-region"
-                className="w-full"
-                value={region}
-                onChange={(next) => setRegion(next as Region)}
-                items={REGION_ITEMS.filter((item) =>
-                  installation?.regions.some(
-                    (saved) =>
-                      saved.region === item.value && saved.phase === "ready"
-                  )
-                )}
-              />
-              <FieldDescription>
-                The AWS region your SES identity lives in.
-              </FieldDescription>
-            </Field>
-            <SetupDetails
-              label="Advanced options"
-              className="group -ml-2 w-fit text-foreground"
-              iconClassName="-rotate-90 transition-transform group-data-[panel-open]:rotate-0"
-            >
+        <DialogHeader>
+          <DialogTitle>Add domain</DialogTitle>
+          <DialogDescription>
+            Use a domain you own. A subdomain such as{" "}
+            <span className="font-mono">updates.example.com</span> keeps
+            transactional reputation separate from marketing.
+          </DialogDescription>
+        </DialogHeader>
+        <EmailConfiguration>
+          <form onSubmit={submit}>
+            <FieldGroup className="py-4">
               <Field>
-                <FieldLabel htmlFor="domain-return-path">
-                  Custom Return-Path
-                </FieldLabel>
+                <FieldLabel htmlFor="domain-name">Name</FieldLabel>
                 <Input
-                  id="domain-return-path"
-                  value={returnPath}
+                  id="domain-name"
+                  value={name}
                   onChange={(event) => {
-                    setReturnPath(event.target.value)
+                    setInUse(false)
+                    setName(event.target.value)
                     setError(null)
                   }}
-                  placeholder={DEFAULT_RETURN_PATH}
+                  placeholder="updates.example.com"
+                  autoFocus
+                />
+                {error ? (
+                  <FieldError>{error}</FieldError>
+                ) : (
+                  <FieldDescription>
+                    Do not include http:// or a trailing path.
+                  </FieldDescription>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="domain-region">Region</FieldLabel>
+                <OptionSelect
+                  id="domain-region"
+                  className="w-full"
+                  value={region}
+                  onChange={(next) => setRegion(next as Region)}
+                  items={REGION_ITEMS.filter((item) =>
+                    installation?.regions.some(
+                      (saved) =>
+                        saved.region === item.value && saved.phase === "ready"
+                    )
+                  )}
                 />
                 <FieldDescription>
-                  Subdomain that carries the MX and SPF records for bounces. It
-                  cannot be changed later.
+                  The AWS region your SES identity lives in.
                 </FieldDescription>
               </Field>
-            </SetupDetails>
-          </FieldGroup>
-          {inUse && (
-            <Alert variant="warning" className="mb-4">
-              <AlertTitle>Domain already in use</AlertTitle>
-              <AlertDescription>
-                This domain is registered by another team. If you own it, add a
-                TXT record to claim it.
-              </AlertDescription>
-            </Alert>
-          )}
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              Cancel
-            </DialogClose>
-            {inUse ? (
-              <Button
-                type="button"
-                disabled={pending}
-                onClick={() => void claim()}
+              <SetupDetails
+                label="Advanced options"
+                className="group -ml-2 w-fit text-foreground"
+                iconClassName="-rotate-90 transition-transform group-data-[panel-open]:rotate-0"
               >
-                {pending ? "Starting claim…" : "Claim domain"}
-              </Button>
-            ) : (
-              <Button type="submit" disabled={pending}>
-                {pending ? "Adding…" : "Add domain"}
-              </Button>
+                <Field>
+                  <FieldLabel htmlFor="domain-return-path">
+                    Custom Return-Path
+                  </FieldLabel>
+                  <Input
+                    id="domain-return-path"
+                    value={returnPath}
+                    onChange={(event) => {
+                      setReturnPath(event.target.value)
+                      setError(null)
+                    }}
+                    placeholder={DEFAULT_RETURN_PATH}
+                  />
+                  <FieldDescription>
+                    Subdomain that carries the MX and SPF records for bounces.
+                    It cannot be changed later.
+                  </FieldDescription>
+                </Field>
+              </SetupDetails>
+            </FieldGroup>
+            {inUse && (
+              <Alert variant="warning" className="mb-4">
+                <AlertTitle>Domain already in use</AlertTitle>
+                <AlertDescription>
+                  This domain is registered by another team. If you own it, add
+                  a TXT record to claim it.
+                </AlertDescription>
+              </Alert>
             )}
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                Cancel
+              </DialogClose>
+              {inUse ? (
+                <Button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => void claim()}
+                >
+                  {pending ? "Starting claim…" : "Claim domain"}
+                </Button>
+              ) : (
+                <Button type="submit" disabled={pending}>
+                  {pending ? "Adding…" : "Add domain"}
+                </Button>
+              )}
+            </DialogFooter>
+          </form>
+        </EmailConfiguration>
       </DialogContent>
     </Dialog>
   )
 }
 
 export function DomainsView() {
+  return (
+    <EmailConfiguration>
+      <ConfiguredDomainsView />
+    </EmailConfiguration>
+  )
+}
+
+function ConfiguredDomainsView() {
   const { organizationId, canWrite, deleteDomain } = useDomainCommands()
   const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")

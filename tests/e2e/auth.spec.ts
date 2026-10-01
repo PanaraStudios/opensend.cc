@@ -256,7 +256,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       pendingClient.mutation(api.teams.create, { name: "Bypass setup" })
     ).rejects.toBeTruthy()
-    await expect(owner.getByLabel("Public backend URL")).toHaveCount(0)
+    await expect(owner.getByLabel("Public callback URL")).toHaveCount(0)
     await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
     await owner
       .getByRole("button", { name: "Get started", exact: true })
@@ -382,13 +382,15 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await seedSesConnection(owner)
     await expect(
       owner.getByRole("heading", {
-        name: "Receive delivery updates",
+        name: "Public callback URL",
         exact: true,
       })
     ).toBeVisible()
-    await expect(owner.getByLabel("Public backend URL")).toHaveValue("")
+    await expect(owner.getByLabel("Public callback URL")).toHaveValue("")
     await expect(
-      owner.getByText("AWS cannot reach localhost.", { exact: false })
+      owner.getByText("Messaging providers cannot reach localhost.", {
+        exact: false,
+      })
     ).toBeVisible()
     await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
     await owner.screenshot({
