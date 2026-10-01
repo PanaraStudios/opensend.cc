@@ -4,6 +4,7 @@ import { whatsappMediaLimit } from "../meta/media"
 export const HTTP_MULTIPART_LIMIT = 20 * 1024 * 1024
 export const UPLOAD_TTL = 15 * 60_000
 export const STORAGE_USES = [
+  "ivr",
   "whatsapp",
   "template",
   "email",
@@ -29,6 +30,19 @@ export function validateUpload(input: {
       : use === "email"
         ? 30 * 1024 * 1024
         : 1024 * 1024
+  if (use === "ivr") {
+    if (
+      ![
+        "audio/wav",
+        "audio/x-wav",
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/ogg",
+      ].includes(contentType.split(";")[0].trim().toLowerCase())
+    )
+      throw new Error("Upload a WAV, MP3 or OGG IVR prompt")
+    limit = 16 * 1024 * 1024
+  }
   if (use === "template") {
     if (
       !["image/jpeg", "image/png", "video/mp4", "application/pdf"].includes(
