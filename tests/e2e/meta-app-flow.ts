@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
 import { INSTANCE_PAGES } from "../../lib/dashboard/nav"
+import {
+  INSTAGRAM_WEBHOOK_FIELDS,
+  PAGE_WEBHOOK_FIELDS,
+} from "../../lib/meta/page-account"
 
 type State = { owner: Page; member: Page }
 /** A request tests/e2e/fake-graph.mjs recorded. */
@@ -119,20 +123,27 @@ export function metaAppTests(state: () => State) {
     ).toBeVisible()
     await expect(settings.getByText(/^Subscribed /)).toBeVisible()
     expect(await graphCalls(owner)).toEqual([
-      {
+      // One subscription per webhook object: WhatsApp, Pages and Instagram.
+      ...(
+        [
+          ["whatsapp_business_account", WEBHOOK_FIELDS],
+          ["page", PAGE_WEBHOOK_FIELDS.join(",")],
+          ["instagram", INSTAGRAM_WEBHOOK_FIELDS.join(",")],
+        ] as const
+      ).map(([object, fields]) => ({
         method: "POST",
         version: "v25.0",
         path: `/${APP_ID}/subscriptions`,
         query: {},
         body: {
-          object: "whatsapp_business_account",
+          object,
           callback_url: callbackUrl,
           verify_token: verifyToken,
-          fields: WEBHOOK_FIELDS,
+          fields,
           include_values: "true",
         },
         authorization: `Bearer ${APP_ID}|${APP_SECRET}`,
-      },
+      })),
     ])
     await screenshot(owner, "connected")
 
