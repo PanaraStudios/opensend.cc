@@ -67,8 +67,24 @@ test("playground calls reserve the browser, are marked test and are isolated", a
     f.createArgs
   )
   expect(call.test).toBe(true)
+  expect(call.status).toBe("ringing")
+  expect(call.connectedAt).toBeUndefined()
   expect(call.wacid).toBeUndefined()
   expect(call.agentExtension).toBe("2000")
+  await f.t.mutation(internal.calling.gatewayState.consume, {
+    nonce: "test-media",
+    expiresAt: Date.now() + 60000,
+    data: {
+      eventId: "test-media-event",
+      callId: call._id,
+      event: "media_up",
+      timestamp: Date.now(),
+    },
+  })
+  expect((await f.t.run((ctx) => ctx.db.get("calls", call._id)))?.status).toBe(
+    "connected"
+  )
+
   // A test route is authorized by its saved target, independently of live number routing.
   const decision = await f.t.mutation(internal.ivr.runtime.start, {
     callId: call._id,

@@ -83,9 +83,19 @@ export const ended = internalAction({
   args: { id: v.id("calls"), at: v.number(), reason: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const row = await ctx.runQuery(internal.calling.rows.cleanupContext, {
+      id: args.id,
+    })
+    if (!row?.test) return null
     await ctx.runMutation(internal.calling.rows.finish, {
       id: args.id,
-      status: "completed",
+      status: row.connectedAt ? "completed" : "failed",
+      ...(row.connectedAt
+        ? {}
+        : {
+            error:
+              "Test call was not answered. Check the browser session and calling configuration.",
+          }),
     })
     await gateway()
       .hangup(args.id)

@@ -253,7 +253,7 @@ function TeamSoftphone({
               (c) =>
                 (c.agentLeaseId === expectedLease.current ||
                   (c.test && c.testBrowserId === browserId)) &&
-                c.status === "connected"
+                (c.status === "connected" || (c.test && c.status === "ringing"))
             )
             if (call) {
               active.current = call._id
