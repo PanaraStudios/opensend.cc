@@ -7,7 +7,10 @@ import { contactIdentity } from "../lib/dashboard/contacts"
 import { primaryContactIdentity, teamRow } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
 import { object } from "../lib/meta/parse"
-import { channelMessagePayload } from "./channels/payload"
+import {
+  channelMessagePayload,
+  hydratedChannelMessage,
+} from "./channels/payload"
 import {
   renderedChannelTemplate,
   type TemplatePageCache,
@@ -39,6 +42,13 @@ import { createChannelMessage } from "./channels/messages"
 import { upsertEmailThread } from "./channels/identity"
 import { resolveWhatsAppTemplate } from "./whatsapp/templates"
 import { mediaFiles } from "./messages"
+import { channelAccountAccess } from "./channels/messages"
+import { upsertChannelThread } from "./channels/identity"
+import { toWaId } from "../lib/dashboard/phone"
+import type {
+  WhatsAppContext,
+  WhatsAppReferral,
+} from "../packages/sdk/src/whatsapp/catalog"
 import {
   CHANNELS,
   CONVERSATION_STATUSES,
@@ -359,6 +369,7 @@ const threadMessage = v.object({
   status: v.string(),
   text: v.string(),
   rendered: v.optional(renderedTemplateValue),
+  normalized: v.optional(v.any()),
   subject: v.optional(v.string()),
   error: v.optional(v.string()),
   media: v.array(
@@ -373,7 +384,12 @@ const threadMessage = v.object({
   ),
 })
 type EmailThreadRow = Doc<"receivedEmails"> | Doc<"emailRecipients">
-export type ThreadMessage = Infer<typeof threadMessage>
+export type ThreadMessage = Omit<Infer<typeof threadMessage>, "normalized"> & {
+  normalized?: Awaited<ReturnType<typeof hydratedChannelMessage>> & {
+    context?: WhatsAppContext
+    referral?: WhatsAppReferral
+  }
+}
 /** A bubble shows the start of a long email; its page has the rest. */
 const TEXT_LIMIT = 4000
 /** Email bodies are read with their rows, so a page stays small. */
@@ -460,6 +476,12 @@ export const messages = query({
               }
             : {}),
           media: mediaFiles(message, content),
+          normalized: await hydratedChannelMessage(
+            ctx,
+            message,
+            Date.now(),
+            content
+          ),
         }
       })
     )
@@ -598,6 +620,7 @@ export const reply = mutation({
     fileId: v.optional(v.id("storedFiles")),
     id: v.id("conversations"),
     text: v.optional(v.string()),
+    body: v.optional(v.record(v.string(), v.any())),
     template: v.optional(
       v.object({
         id: v.id("templates"),
@@ -607,13 +630,17 @@ export const reply = mutation({
     from: v.optional(v.string()),
   },
   returns: v.string(),
-  handler: async (ctx, { id, text, template, from, fileId }) => {
+  handler: async (ctx, { id, text, template, from, fileId, body }) => {
     const conversation = await writableThread(ctx, id)
     const organizationId = conversation.organizationId
-    if (!text?.trim() && !template && !fileId)
+    if (!text?.trim() && !template && !fileId && !body)
       throw new ConvexError("Write a message or choose a template")
     try {
       if (conversation.channel === "email") {
+        if (body)
+          throw new ConvexError(
+            "Interactive messages require a messaging channel"
+          )
         const address = conversation.emailAddress
         if (!address || !text?.trim()) throw new ConvexError("Write a message")
         const last = await lastReceived(ctx, conversation)
@@ -672,41 +699,48 @@ export const reply = mutation({
           channel: conversation.channel,
           from: conversation.accountId,
           to: identity.externalId,
-          body: fileId
-            ? await (async () => {
-                const file = await ctx.db.get("storedFiles", fileId)
-                if (!file || conversation.channel !== "whatsapp")
-                  throw new ConvexError(
-                    "File replies are supported for WhatsApp and email"
-                  )
-                const kind =
-                  file.contentType === "image/webp"
-                    ? "sticker"
-                    : file.contentType.startsWith("image/")
-                      ? "image"
-                      : file.contentType.startsWith("video/")
-                        ? "video"
-                        : file.contentType.startsWith("audio/")
-                          ? "audio"
-                          : "document"
-                return {
-                  type: kind,
-                  [kind]: {
-                    id: fileId,
-                    ...(kind === "document" ? { filename: file.filename } : {}),
-                    ...(["image", "video", "document"].includes(kind) &&
-                    text?.trim()
-                      ? { caption: text.trim() }
-                      : {}),
-                  },
-                }
-              })()
-            : template
-              ? {
-                  type: "template",
-                  template: { id: template.id, variables: template.variables },
-                }
-              : channelStrategies[conversation.channel].replyBody(text!),
+          body:
+            body ??
+            (fileId
+              ? await (async () => {
+                  const file = await ctx.db.get("storedFiles", fileId)
+                  if (!file || conversation.channel !== "whatsapp")
+                    throw new ConvexError(
+                      "File replies are supported for WhatsApp and email"
+                    )
+                  const kind =
+                    file.contentType === "image/webp"
+                      ? "sticker"
+                      : file.contentType.startsWith("image/")
+                        ? "image"
+                        : file.contentType.startsWith("video/")
+                          ? "video"
+                          : file.contentType.startsWith("audio/")
+                            ? "audio"
+                            : "document"
+                  return {
+                    type: kind,
+                    [kind]: {
+                      id: fileId,
+                      ...(kind === "document"
+                        ? { filename: file.filename }
+                        : {}),
+                      ...(["image", "video", "document"].includes(kind) &&
+                      text?.trim()
+                        ? { caption: text.trim() }
+                        : {}),
+                    },
+                  }
+                })()
+              : template
+                ? {
+                    type: "template",
+                    template: {
+                      id: template.id,
+                      variables: template.variables,
+                    },
+                  }
+                : channelStrategies[conversation.channel].replyBody(text!)),
         },
         { organizationId, source: "dashboard" }
       )
@@ -716,5 +750,87 @@ export const reply = mutation({
       if (message) throw new ConvexError(message)
       throw error
     }
+  },
+})
+
+/** Open a compose destination without pretending a customer wrote to us.
+ * Existing threads retain their preview, unread state and service window. */
+export const start = mutation({
+  args: {
+    organizationId: v.string(),
+    contactId: v.id("contacts"),
+    channel: channelValue,
+    accountId: v.optional(v.id("channelAccounts")),
+  },
+  returns: v.id("conversations"),
+  handler: async (ctx, { organizationId, contactId, channel, accountId }) => {
+    await requireTeam(ctx, organizationId, "write")
+    const contact = await teamRow(ctx, "contacts", organizationId, contactId)
+    if (channel === "email") {
+      if (!contact.email)
+        throw new ConvexError("This contact has no email address")
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_organizationId_and_emailAddress", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("emailAddress", contact.email!)
+        )
+        .unique()
+      if (existing) return existing._id
+      return await upsertEmailThread(ctx, {
+        organizationId,
+        address: contact.email,
+        at: Date.now(),
+        direction: "outbound",
+        preview: "",
+      })
+    }
+    if (!accountId) throw new ConvexError("Choose a sending account")
+    const { account, connection } = await channelAccountAccess(
+      ctx,
+      organizationId,
+      accountId,
+      channel
+    )
+    const identities = await ctx.db
+      .query("channelContacts")
+      .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+      .take(100)
+    const identity = identities.find(
+      (row) =>
+        row.organizationId === organizationId &&
+        row.channel === channel &&
+        (channel === "whatsapp"
+          ? !!row.phone || row.userScopeId === connection.businessId
+          : row.scopeId === account.externalId)
+    )
+    if (!identity && (channel !== "whatsapp" || !contact.phone))
+      throw new ConvexError(
+        `This contact has no ${channel} identity for this account`
+      )
+    if (identity) {
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_accountId_and_channelContactId", (q) =>
+          q.eq("accountId", account._id).eq("channelContactId", identity._id)
+        )
+        .unique()
+      if (existing) return existing._id
+    }
+    const phone =
+      identity?.phone ?? (channel === "whatsapp" ? contact.phone : undefined)
+    const result = await upsertChannelThread(ctx, account, {
+      externalId: phone ? toWaId(phone)! : identity!.externalId,
+      ...(phone ? { phone } : {}),
+      ...(identity?.userId ? { userId: identity.userId } : {}),
+      profileName: [contact.firstName, contact.lastName]
+        .filter(Boolean)
+        .join(" "),
+      at: Date.now(),
+      direction: "outbound",
+      preview: "",
+    })
+    return result.conversationId
   },
 })

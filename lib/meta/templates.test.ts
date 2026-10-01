@@ -448,7 +448,11 @@ describe("renderTemplate", () => {
         body: "Your code SUMMER20 expires in 10 days.",
         footer: "Lucky Shrub",
         buttons: [
-          { type: "URL", text: "See deals" },
+          {
+            type: "URL",
+            text: "See deals",
+            url: "https://shrub.example/d/summer",
+          },
           { type: "QUICK_REPLY", text: "Unsubscribe" },
         ],
       }
@@ -568,4 +572,79 @@ describe("renderTemplate", () => {
       named.body
     )
   })
+})
+
+it("snapshots carousel bodies and action parameters with each card's index", () => {
+  const rendered = renderTemplate(
+    [
+      { type: "BODY", text: "Choose an item" },
+      {
+        type: "CAROUSEL",
+        cards: [
+          {
+            components: [
+              { type: "BODY", text: "First {{1}}" },
+              {
+                type: "BUTTONS",
+                buttons: [
+                  {
+                    type: "URL",
+                    text: "Visit",
+                    url: "https://example.test/{{1}}",
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            components: [
+              { type: "HEADER", format: "IMAGE" },
+              { type: "BODY", text: "Second {{1}}" },
+              {
+                type: "BUTTONS",
+                buttons: [{ type: "COPY_CODE", text: "Copy" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    [
+      {
+        type: "carousel",
+        cards: [
+          {
+            card_index: 1,
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "B" }] },
+              {
+                type: "button",
+                index: 0,
+                parameters: [{ type: "coupon_code", coupon_code: "SAVE20" }],
+              },
+            ],
+          },
+          {
+            card_index: 0,
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "A" }] },
+              {
+                type: "button",
+                index: 0,
+                parameters: [{ type: "text", text: "offer" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+  )
+  assert.equal(rendered.cards?.[0].body, "First A")
+  assert.deepEqual(rendered.cards?.[0].buttons, [
+    { type: "URL", text: "Visit", url: "https://example.test/offer" },
+  ])
+  assert.equal(rendered.cards?.[1].body, "Second B")
+  assert.deepEqual(rendered.cards?.[1].buttons, [
+    { type: "COPY_CODE", text: "Copy", code: "SAVE20" },
+  ])
 })

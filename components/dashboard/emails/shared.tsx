@@ -1,4 +1,5 @@
 "use client"
+import { SendMessageAction } from "../conversation/send-message-action"
 
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
@@ -143,7 +144,16 @@ export function EmailsChrome({
   children?: React.ReactNode
 }) {
   return (
-    <SectionChrome title="Messages" tabs={EMAIL_TABS} actions={actions}>
+    <SectionChrome
+      title="Messages"
+      tabs={EMAIL_TABS}
+      actions={
+        <>
+          <SendMessageAction />
+          {actions}
+        </>
+      }
+    >
       {children}
     </SectionChrome>
   )

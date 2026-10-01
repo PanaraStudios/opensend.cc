@@ -271,6 +271,76 @@ export function inboxTests(
       await expect(owner.getByText(step, { exact: true }).last()).toBeVisible()
     await expect(owner.getByText("Payload", { exact: true })).toBeVisible()
     await shots(owner, "detail")
+    // Reusable conversation module: independent scroll and interactive sends.
+    await inbound(
+      owner,
+      "wamid.inbox-rich",
+      "*Ready* _to ship_ https://example.test/order"
+    )
+    await owner.goto(`/emails/inbox?c=${conversationId}`)
+    const threadPanel = owner.getByTestId("conversation-thread")
+    await expect(
+      threadPanel.locator("strong").filter({ hasText: "Ready" })
+    ).toBeVisible()
+    const geometry = await owner
+      .getByTestId("inbox-layout")
+      .evaluate((node) => ({
+        height: node.getBoundingClientRect().height,
+        viewport: window.innerHeight,
+      }))
+    expect(geometry.height).toBeLessThan(geometry.viewport)
+    await owner
+      .getByRole("button", { name: "More message options", exact: true })
+      .click()
+    await owner
+      .getByRole("button", { name: "Interactive message", exact: true })
+      .click()
+    const interactive = owner.getByRole("dialog", {
+      name: "Send interactive message",
+      exact: true,
+    })
+    await interactive
+      .getByLabel("Message", { exact: true })
+      .fill("Choose a delivery time")
+    await interactive.getByLabel("Option 1", { exact: true }).fill("Morning")
+    await interactive
+      .getByRole("button", { name: "Send interactive message", exact: true })
+      .click()
+    await expect(interactive).toBeHidden()
+    await expect(
+      owner
+        .getByTestId("thread-message")
+        .filter({ hasText: "Choose a delivery time" })
+    ).toContainText("Morning")
+    await shots(owner, "interactive")
+    // Send message from contact detail and Messages opens the same thread.
+    const threadRow = backendRows<Doc<"conversations">>("conversations").find(
+      (item) => item._id === conversationId
+    )!
+    await owner.goto(`/contacts/${threadRow.contactId}`)
+    await owner
+      .getByRole("button", { name: "Send message", exact: true })
+      .click()
+    const start = owner.getByRole("dialog", {
+      name: "Send message",
+      exact: true,
+    })
+    await start.locator("#send-account").click()
+    await owner.getByRole("option", { name: /Lucky Shrub/ }).click()
+    await start
+      .getByRole("button", { name: "Continue to conversation", exact: true })
+      .click()
+    await expect
+      .poll(() => new URL(owner.url()).searchParams.get("c"))
+      .toBe(conversationId)
+    await owner
+      .getByRole("button", { name: "Send message", exact: true })
+      .click()
+    await expect(
+      start.getByRole("combobox", { name: "Contact", exact: true })
+    ).toBeVisible()
+    await start.getByRole("button", { name: "Close", exact: true }).click()
+    await shots(owner, "start-conversation")
     await owner.request.post(`${fakeGraph()}/__reset`)
   })
 }

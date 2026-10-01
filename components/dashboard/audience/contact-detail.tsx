@@ -1,4 +1,5 @@
 "use client"
+import { SendMessageAction } from "../conversation/send-message-action"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
@@ -266,9 +267,12 @@ function ContactPage({
         icon={UserIcon}
         description={`Created ${formatDate(contact.createdAt)}`}
         actions={
-          <Button variant="outline" onClick={() => setPendingDelete(true)}>
-            Delete
-          </Button>
+          <>
+            <SendMessageAction contact={contact} />
+            <Button variant="outline" onClick={() => setPendingDelete(true)}>
+              Delete
+            </Button>
+          </>
         }
       />
 
