@@ -78,8 +78,20 @@ export function validateRoute(request: RouteRequest): void {
   )
     throw new GatewayError(
       "INVALID_BOT",
-      "Bot foundation requires team and fake-echo adapter"
+      "Bot requires team and bot session reference"
     )
+  if (
+    request.botId !== undefined &&
+    !/^[a-zA-Z0-9._:-]{1,256}$/.test(request.botId)
+  )
+    throw new GatewayError("INVALID_BOT", "Invalid bot reference")
+  if (
+    request.silenceTimeoutSeconds !== undefined &&
+    (!Number.isInteger(request.silenceTimeoutSeconds) ||
+      request.silenceTimeoutSeconds < 1 ||
+      request.silenceTimeoutSeconds > 300)
+  )
+    throw new GatewayError("INVALID_DURATION", "Invalid silence timeout")
   if (request.record !== undefined && typeof request.record !== "boolean")
     throw new GatewayError("INVALID_RECORD", "record must be boolean")
 }
@@ -379,12 +391,23 @@ export class CallController implements GatewayApi {
       504
     )
   }
+  private async startRecording(call: Call) {
+    if (this.recordings.has(call.uuid!)) return
+    await this.fs.api(
+      `uuid_record ${call.uuid} start /recordings/${call.uuid}.wav`
+    )
+    this.recordings.set(call.uuid!, { call, expires: Infinity })
+  }
   async route(request: RouteRequest) {
     validateRoute(request)
-    if (request.target === "bot" && !request.botId && !this.voice?.fakeEnabled)
+    if (
+      request.target === "bot" &&
+      (!this.voice ||
+        (request.adapter === "fake-echo" && !this.voice.fakeEnabled))
+    )
       throw new GatewayError(
         "BOT_UNAVAILABLE",
-        "Fake adapter is disabled; provider adapters arrive in 8d-2",
+        "Voice adapter is unavailable",
         501
       )
     if (
@@ -427,12 +450,12 @@ export class CallController implements GatewayApi {
         !!this.voice && ["ivr", "bot", "voicemail"].includes(request.target)
       if (request.record || request.target === "voicemail") {
         if (controlled && request.target !== "voicemail")
-          await this.fs.api(
-            `uuid_record ${call.uuid} start /recordings/${call.uuid}.wav`
-          )
-        else if (!controlled)
-          await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
-        this.recordings.set(call.uuid!, { call, expires: Infinity })
+          await this.startRecording(call)
+        else {
+          if (!controlled)
+            await this.fs.api(`uuid_setvar ${call.uuid} opensend_record true`)
+          this.recordings.set(call.uuid!, { call, expires: Infinity })
+        }
       }
       if (controlled) {
         await this.fs.api(
@@ -443,7 +466,10 @@ export class CallController implements GatewayApi {
           call.uuid!,
           request,
           call.machine,
-          (reason) => this.finish(call, reason)
+          (reason) => this.finish(call, reason),
+          (extension) =>
+            this.control({ callId: call.id, operation: "transfer", extension }),
+          () => this.startRecording(call)
         )
       }
       // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.
@@ -508,8 +534,13 @@ export class CallController implements GatewayApi {
       await this.fs.api(
         `uuid_setvar ${call.uuid} opensend_agent ${request.extension}`
       )
+    await this.fs.api(`sched_del ${call.uuid}`)
+    await this.fs.api(`uuid_setvar ${call.uuid} hangup_after_bridge false`)
     this.voice?.beginTransfer(call.id)
     try {
+      // Finish the bot bridge while the outbound controller still owns the channel.
+      // Closing a socket with socket_resume=true can reset a newly executing route.
+      await this.voice?.releaseForTransfer(call.id)
       await call.machine.transition("agent", async () => {
         await this.fs.api(
           `uuid_transfer ${call.uuid} ${request.queue ? `queue-${request.organizationId}-${request.queue}` : "agent-route"} XML calling`
@@ -518,6 +549,7 @@ export class CallController implements GatewayApi {
       this.voice?.reportState(call.id, call.machine)
       await this.voice?.stop(call.id)
     } catch (error) {
+      this.voice?.transferFailed(call.id)
       await this.finish(call, "Transfer failed")
       throw error
     }
@@ -540,15 +572,15 @@ export class CallController implements GatewayApi {
     call.ending = true
     call.machine.end()
     this.voice?.reportState(call.id, call.machine)
-    await this.voice?.stop(call.id)
-    const recording = call.uuid && this.recordings.get(call.uuid)
-    if (recording) recording.expires = Date.now() + 60000
-    this.ended.set(call.id, Date.now() + 300000)
-    this.notify(call, { event: "hangup", reason })
     if (call.uuid && this.fs.ready)
       await this.fs
         .api(`uuid_kill ${call.uuid} NORMAL_CLEARING`)
         .catch(() => undefined)
+    await this.voice?.stop(call.id, reason)
+    const recording = call.uuid && this.recordings.get(call.uuid)
+    if (recording) recording.expires = Date.now() + 60000
+    this.ended.set(call.id, Date.now() + 300000)
+    this.notify(call, { event: "hangup", reason })
     await call.janus.close()
     this.calls.delete(call.id)
   }

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { callingRoutingSchema } from "../services/call-gateway/src/voice/routing"
 import { resolve } from "node:path"
 import SwaggerParser from "@apidevtools/swagger-parser"
 import Ajv2020, { type AnySchema } from "ajv/dist/2020"
@@ -471,6 +472,9 @@ describe("OpenAPI contract", () => {
       "POST /calling/gateway/ivr/start",
       "POST /calling/gateway/ivr/next",
       "GET /calling/ivr/audio/*",
+      "POST /calling/gateway/voice/session",
+      "POST /calling/gateway/voice/tools",
+      "POST /calling/gateway/voice/events",
       "GET /t/o/*",
       "GET /t/c/*",
       "GET /t/ask",
@@ -1648,4 +1652,10 @@ test("IVR definitions, dry-run validation and customer completion sample validat
       "application/json"
     ]
   validateBody(sample.schema, sample.example)
+})
+
+test("calling routing contract derives all four targets from the shared definition", () => {
+  expect(contract.components.schemas.CallingRouting).toEqual(
+    callingRoutingSchema
+  )
 })

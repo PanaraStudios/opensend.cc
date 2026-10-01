@@ -17,6 +17,12 @@ export class WhatsAppPhoneNumbers extends ChannelAccounts<WhatsAppPhoneNumber> {
       `/whatsapp/phone-numbers/${encodeURIComponent(id)}/calling`
     )
   }
+  patchCalling(id: string, input: UpdateCallingSettings) {
+    return this.resend.patch<PhoneNumberCalling>(
+      `/whatsapp/phone-numbers/${encodeURIComponent(id)}/calling`,
+      input
+    )
+  }
   updateCalling(
     id: string,
     input: UpdateCallingSettings,

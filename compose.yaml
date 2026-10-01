@@ -170,6 +170,23 @@ services:
       timeout: 5s
       retries: 15
       start_period: 20s
+  voice-agent:
+    profiles: [calling]
+    image: opensend-voice-agent:0.1.0
+    build:
+      context: .
+      dockerfile: services/voice-agent/Dockerfile
+    restart: unless-stopped
+    environment:
+      VOICE_AGENT_SECRET: ${VOICE_AGENT_SECRET:-}
+      CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      CALL_GATEWAY_CONVEX_HTTP_URL: ${CALL_GATEWAY_CONVEX_HTTP_URL:-http://convex:3211}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8094/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
   drachtio:
     profiles: [calling]
     image: opensend-drachtio:0.9.11
@@ -196,6 +213,8 @@ services:
     ports:
       - "127.0.0.1:${CALL_GATEWAY_PORT:-8090}:8090"
     environment:
+      VOICE_AGENT_URL: ws://voice-agent:8094/ws
+      VOICE_AGENT_SECRET: ${VOICE_AGENT_SECRET:-}
       CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
       CALL_GATEWAY_CONVEX_HTTP_URL: ${CALL_GATEWAY_CONVEX_HTTP_URL:-http://convex:3211}
       JANUS_URL: http://janus:8088/janus

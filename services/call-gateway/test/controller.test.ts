@@ -321,6 +321,9 @@ test("controlled bot routing installs the cap before opening media, records via 
     }
     override reportState() {}
     override beginTransfer() {}
+    override async releaseForTransfer() {
+      f.commands.push("voice:release")
+    }
     override async stop() {
       stopped++
     }
@@ -364,6 +367,12 @@ test("controlled bot routing installs the cap before opening media, records via 
       operation: "transfer",
       extension: "2001",
     })
+    assert.ok(
+      f.commands.indexOf("voice:release") <
+        f.commands.findIndex((command) =>
+          command.endsWith("agent-route XML calling")
+        )
+    )
     assert.equal(machine?.state, "agent")
     assert.equal(stopped, 1)
     await f.controller.hangup("bot")

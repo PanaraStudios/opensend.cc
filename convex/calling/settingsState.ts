@@ -1,3 +1,4 @@
+import { ownedBot } from "../voice/resources"
 import { routing } from "../ivr/validators"
 import { own as ownIvr } from "../ivr/definitions"
 import { emitEvent } from "../events"
@@ -23,9 +24,9 @@ export const cached = query({
       throw invalid("Phone number not found.")
     const row = await numberSettings(ctx, args.accountId)
     return {
+      routing: row?.routing ?? null,
       handling_mode: row?.mode ?? defaultMode(),
       calling: JSON.parse(row?.settings ?? "{}"),
-      routing: row?.routing ?? { kind: "agents" },
       restrictions: row?.restrictions ? JSON.parse(row.restrictions) : null,
     }
   },
@@ -44,6 +45,8 @@ export const store = internalMutation({
     if (!account || (await retirement(ctx, account.organizationId))) return null
     if (args.routing?.kind === "ivr")
       await ownIvr(ctx, account.organizationId, args.routing.ivrId)
+    if (args.routing?.kind === "bot")
+      await ownedBot(ctx, account.organizationId, args.routing.botId)
     const previous = await numberSettings(ctx, args.accountId)
     if (previous && args.at !== undefined && args.at < previous.updatedAt)
       return null

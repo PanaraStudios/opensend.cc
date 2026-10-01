@@ -97,6 +97,12 @@ export const API_RESOURCES = [
     group: "Setup",
     description: "API request logs.",
   },
+  {
+    id: "voice_bots",
+    label: "Voice bots",
+    group: "Messaging",
+    description: "Voice bots and write-only provider credentials.",
+  },
 ] as const
 export type ApiResource = (typeof API_RESOURCES)[number]["id"]
 export type ScopeAccess = "read" | "write"

@@ -10,7 +10,7 @@ export const prompt = v.union(
 export const action = v.union(
   v.object({ kind: v.literal("submenu"), menuId: v.string() }),
   v.object({ kind: v.literal("agents") }),
-  v.object({ kind: v.literal("bot"), botId: v.string() }),
+  v.object({ kind: v.literal("bot"), botId: v.id("voiceBots") }),
   v.object({ kind: v.literal("voicemail") }),
   v.object({ kind: v.literal("playAndHangup"), prompt }),
   v.object({
@@ -81,8 +81,4 @@ export const pathEntry = v.object({
   action,
   at: v.number(),
 })
-export const routing = v.union(
-  v.object({ kind: v.literal("agents") }),
-  v.object({ kind: v.literal("api") }),
-  v.object({ kind: v.literal("ivr"), ivrId: v.id("ivrs") })
-)
+export { callingRouting as routing } from "../calling/routingValue"

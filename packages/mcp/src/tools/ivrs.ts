@@ -84,11 +84,6 @@ const definition = {
     })
     .optional(),
 }
-export const callingRouting = z.union([
-  z.object({ kind: z.literal("agents") }),
-  z.object({ kind: z.literal("api") }),
-  z.object({ kind: z.literal("ivr"), ivrId: z.string() }),
-])
 export function addIvrTools(server: McpServer, opensend: Opensend) {
   const read = {
       readOnlyHint: true,

@@ -1,9 +1,25 @@
+import { validateTool, type VoiceSessionConfig } from "./voice/catalog.js"
 import { randomUUID } from "node:crypto"
 import { IvrBackend } from "./ivr-runner.js"
 import type { VoiceToolCall, VoiceTranscript } from "./voice-adapter.js"
 import type { CallState } from "./call-state.js"
 
 export type VoiceEvent =
+  | { type: "usage"; usage: import("./voice/base.js").VoiceUsage }
+  | { type: "latency"; turnId: string; latencyMs: number }
+  | {
+      type: "bot_completed"
+      outcome:
+        | "completed"
+        | "transferred_agent"
+        | "transferred_ivr"
+        | "ended_by_bot"
+        | "caller_hangup"
+        | "failed"
+      summary: string
+      endedAt?: number
+      usage: import("./voice/base.js").VoiceUsage
+    }
   | { type: "state"; state: CallState }
   | { type: "ivr_digits"; digits: string }
   | { type: "transcript"; transcript: VoiceTranscript }
@@ -32,6 +48,16 @@ export type VoiceToolResult =
 
 /** Uses the same signed JSON client as calling-core; destinations are fixed. */
 export class VoiceBackend extends IvrBackend {
+  async session(
+    callId: string,
+    organizationId: string
+  ): Promise<VoiceSessionConfig> {
+    return this.post(
+      "/calling/gateway/voice/session",
+      { version: 1, callId, organizationId },
+      AbortSignal.timeout(5000)
+    )
+  }
   async event(callId: string, event: VoiceEvent) {
     await this.post(
       "/calling/gateway/voice/events",
@@ -65,39 +91,7 @@ export class VoiceBackend extends IvrBackend {
   }
 }
 
-const schemas: Record<string, { required: string[]; optional: string[] }> = {
-  lookup_contact: { required: ["query"], optional: [] },
-  create_task: { required: ["title"], optional: ["contactId", "description"] },
-  send_whatsapp_message: { required: ["contactId", "text"], optional: [] },
-  transfer_to_agent: { required: ["extension"], optional: [] },
-  transfer_to_ivr: { required: ["ivrId"], optional: [] },
-  end_call: { required: [], optional: [] },
-}
-
-export function validateTool(call: VoiceToolCall) {
-  const schema = schemas[call.name]
-  if (
-    typeof call.id !== "string" ||
-    typeof call.name !== "string" ||
-    !Object.hasOwn(schemas, call.name) ||
-    !/^[a-zA-Z0-9._:-]{1,128}$/.test(call.id) ||
-    !schema ||
-    !call.arguments ||
-    typeof call.arguments !== "object" ||
-    Array.isArray(call.arguments)
-  )
-    throw new Error("Invalid voice tool")
-  for (const key of schema.required)
-    if (typeof call.arguments[key] !== "string" || !call.arguments[key])
-      throw new Error(`Missing ${key}`)
-  for (const [key, value] of Object.entries(call.arguments))
-    if (
-      ![...schema.required, ...schema.optional].includes(key) ||
-      typeof value !== "string" ||
-      value.length > 4096
-    )
-      throw new Error("Invalid tool arguments")
-}
+export { validateTool } from "./voice/catalog.js"
 
 /** Per-call deduplication, bounded concurrency, and cancellation on hangup.
  * The backend must re-authorize call/team ownership and durably deduplicate id. */

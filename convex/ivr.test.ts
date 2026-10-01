@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 import { signRequest } from "../services/call-gateway/src/auth"
 import * as net from "../lib/net/public-fetch"
+import { minuteUsage } from "./voice/usage"
 import { webhookHeaders } from "../lib/webhooks/signing"
 const secret = "a".repeat(64),
   hangup = { kind: "hangup" }
@@ -293,9 +294,27 @@ test.each([
         updatedAt: Date.now(),
       })
     )
+  let botId
+  if (kind === "bot") {
+    const credential = await (
+      await f.request("/voice-providers", "POST", {
+        provider: "gemini",
+        label: "IVR bot",
+        key: "fixture-key",
+      })
+    ).json()
+    const bot = await (
+      await f.request("/voice-bots", "POST", {
+        name: "IVR bot",
+        provider: "gemini",
+        credentialId: credential.id,
+      })
+    ).json()
+    botId = bot.id
+  }
   const chosen =
     kind === "bot"
-      ? { kind, botId: "future-bot" }
+      ? { kind, botId }
       : kind === "playAndHangup"
         ? { kind, prompt: { kind: "audio", fileId: f.upload } }
         : kind === "timeout" || kind === "invalid"
@@ -585,4 +604,183 @@ test("an open menu with pending TTS takes its failure action without exposing an
   expect(
     (await f.t.run((ctx) => ctx.db.get("calls", f.callId)))!.ivrOutcome
   ).toEqual({ kind: "voicemail" })
+})
+
+test("IVR → bot → configured IVR keeps one call, enforces tenant ownership and authorizes one re-entry", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "IVR bot",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Reception bot",
+      provider: "gemini",
+      credentialId: credential.id,
+      tools: ["transfer_to_ivr"],
+      handoff: { agents: true, ivrId: f.ivr.id },
+    })
+  ).json()
+  const menu = {
+    ...f.definition.menus[0],
+    options: { "1": { kind: "bot", botId: bot.id } },
+  }
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(200)
+  expect(
+    await f.t.mutation(internal.voice.routing.select, { id: f.callId })
+  ).toMatchObject({ target: "ivr", ivrId: f.ivr.id })
+  await f.start()
+  const decision = await (await f.next("main", "1", 0)).json()
+  expect(decision).toMatchObject({
+    action: { kind: "bot", botId: bot.id },
+    route: { target: "bot", botId: bot.id, organizationId: f.owner.team },
+  })
+  const call = await f.t.run((ctx) => ctx.db.get("calls", f.callId))
+  expect(call).toMatchObject({
+    botActive: true,
+    botId: bot.id,
+    ivrOutcome: { kind: "bot", botId: bot.id },
+  })
+  const tool = await f.signed("/calling/gateway/voice/tools", {
+    version: 1,
+    callId: f.callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "handoff", name: "transfer_to_ivr", arguments: {} },
+  })
+  expect(await tool.json()).toMatchObject({
+    ok: true,
+    result: { action: "transfer_to_ivr", ivrId: f.ivr.id },
+  })
+  vi.setSystemTime(Date.now() + 2000)
+  // Completion must reach Convex before the gateway starts the IVR.
+  expect((await f.start()).status).toBe(409)
+  expect(
+    (
+      await f.signed("/calling/gateway/voice/events", {
+        version: 1,
+        callId: f.callId,
+        eventId: crypto.randomUUID(),
+        timestamp: Date.now(),
+        type: "bot_completed",
+        outcome: "transferred_ivr",
+        summary: "Returning to menu",
+        usage: { inputTokens: 4 },
+      })
+    ).status
+  ).toBe(200)
+  expect((await f.start()).status).toBe(200)
+  expect((await f.start()).status).toBe(409)
+  expect(await f.t.run((ctx) => ctx.db.get("calls", f.callId))).toMatchObject({
+    status: "connected",
+    botActive: false,
+    botOutcome: "transferred_ivr",
+  })
+  // A later bot visit retains measured minutes and ignores the old session's expiry.
+  expect(await (await f.next("main", "1", 0)).json()).toMatchObject({
+    action: { kind: "bot", botId: bot.id },
+  })
+  await f.t.mutation(internal.voice.routing.expire, {
+    id: f.callId,
+    startedAt: call!.botSessionStartedAt,
+  })
+  expect(await f.t.run((ctx) => ctx.db.get("calls", f.callId))).toMatchObject({
+    botActive: true,
+    botDuration: 2,
+    botUsage: { inputTokens: 4 },
+  })
+  expect(
+    await f.t.run((ctx) => minuteUsage.sum(ctx, { namespace: f.owner.team }))
+  ).toBe(602)
+  vi.setSystemTime(Date.now() + 3000)
+  expect(
+    (
+      await f.signed("/calling/gateway/voice/events", {
+        version: 1,
+        callId: f.callId,
+        eventId: crypto.randomUUID(),
+        timestamp: Date.now(),
+        type: "usage",
+        usage: { inputTokens: 2 },
+      })
+    ).status
+  ).toBe(200)
+  expect(
+    (
+      await f.signed("/calling/gateway/voice/events", {
+        version: 1,
+        callId: f.callId,
+        eventId: crypto.randomUUID(),
+        timestamp: Date.now(),
+        type: "bot_completed",
+        outcome: "completed",
+        summary: "Resolved",
+        usage: { inputTokens: 3 },
+      })
+    ).status
+  ).toBe(200)
+  expect(await f.t.run((ctx) => ctx.db.get("calls", f.callId))).toMatchObject({
+    botDuration: 5,
+    botUsage: { inputTokens: 7 },
+  })
+  expect(
+    await f.t.run((ctx) => minuteUsage.sum(ctx, { namespace: f.owner.team }))
+  ).toBe(5)
+  await f.t.run((ctx) =>
+    ctx.db.patch("voiceBots", bot.id, { organizationId: f.outsider.team })
+  )
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(404)
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}/validate`, "POST", { menus: [menu] }))
+      .status
+  ).toBe(200)
+  expect(
+    (
+      await (
+        await f.request(`/ivrs/${f.ivr.id}/validate`, "POST", { menus: [menu] })
+      ).json()
+    ).valid
+  ).toBe(false)
+})
+
+test("IVR bot admission falls back when budget is exhausted", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Bot",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Bot",
+      provider: "gemini",
+      credentialId: credential.id,
+      monthlyMinuteBudget: 0,
+    })
+  ).json()
+  const menu = {
+    ...f.definition.menus[0],
+    options: { "1": { kind: "bot", botId: bot.id } },
+  }
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(200)
+  await f.start()
+  expect(await (await f.next("main", "1", 0)).json()).toMatchObject({
+    action: { kind: "voicemail" },
+    route: { target: "voicemail" },
+  })
+  expect(await f.t.run((ctx) => ctx.db.get("calls", f.callId))).toMatchObject({
+    botFallbackReason: "budget_exhausted",
+    botOutcome: "budget_exhausted",
+    ivrOutcome: { kind: "voicemail" },
+  })
 })

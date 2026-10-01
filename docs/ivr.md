@@ -24,13 +24,16 @@ recognition is out of scope and requires 8d-2 streaming STT.
   "name": "Reception",
   "language": "en",
   "entryMenuId": "main",
-  "menus": [{
-    "id": "main", "name": "Main",
-    "prompt": {"kind": "audio", "fileId": "FINALIZED_TEAM_FILE_ID"},
-    "options": {"1": {"kind": "voicemail"}},
-    "noInputAction": {"kind": "hangup"},
-    "failureAction": {"kind": "hangup"}
-  }]
+  "menus": [
+    {
+      "id": "main",
+      "name": "Main",
+      "prompt": { "kind": "audio", "fileId": "FINALIZED_TEAM_FILE_ID" },
+      "options": { "1": { "kind": "voicemail" } },
+      "noInputAction": { "kind": "hangup" },
+      "failureAction": { "kind": "hangup" }
+    }
+  ]
 }
 ```
 
@@ -85,7 +88,7 @@ The existing FreeSWITCH duration cap and remote hangup cancel control requests.
 Agent actions reserve an available, authorized browser agent and transfer to
 `agent-route`; absence takes the menu failure action. Voicemail uses 8d-1's recorder.
 Bot actions pass `target: "bot"`, botId and the persisted team to the voice runtime;
-provider adapters and bot authorization are supplied by the 8d-2 merge.
+bot admission and authorization use the shared voice runtime.
 
 Webhook actions POST `{call, ivrId, menuId, digits}` to a public HTTPS endpoint through
 `publicFetch` (DNS-pinned, no redirects, 3-second timeout, 8 KB response limit).
@@ -114,8 +117,7 @@ components. No dashboard screens are added by this task.
 Schema changes are new `ivrs`, `ivrPromptRenders`, `ivrSessions`, optional fields on
 calls/settings, and a routing-reference index. Team cleanup includes all new tables.
 Hand-registered Convex API types need normal codegen during integration, without
-running a backend from this lane. The branch includes `agents | api | ivr`; add the
-`bot` routing member with `v.id("voiceBots")` when 8d-2 lands.
+running a backend from this lane. The integrated union is `agents | api | bot | ivr`, derived from the shared routing definition. Bot and IVR references use typed Convex IDs; both routing indexes are retained.
 
 The runtime syntax was checked against the official
 [application reference](https://developer.signalwire.com/freeswitch/dialplan/dptools/),
@@ -142,7 +144,7 @@ from this lane.
   hashed `pending_render` entries and `PromptRenderer` are ready for 8d-3b/Sarvam.
 - **DONE — runtime and routing:** async ESL menu collection, submenu, agents, bot
   handoff contract, voicemail, final playback, webhook and hangup; configured inbound
-  routing; interrupted-call completion. Bot providers require the parallel 8d-2 merge.
+  routing; interrupted-call completion. Bot providers use the integrated Pipecat voice-agent.
 - **DONE — outputs and clients:** bounded call path/outcome, registered completion
   webhook with sample, REST/OpenAPI, scoped SDK methods and MCP CRUD/validation tools.
 - **DONE — checks:** `pnpm typecheck`, `pnpm lint`, `pnpm test` (522),
@@ -161,6 +163,7 @@ from this lane.
 - **SKIPPED — speech keywords and dashboard screens:** speech needs streaming STT;
   editors/tester screens belong to 8d-4. Its API contract and shared validation entry
   points are described above.
-- **MERGE NOTE:** routing is `agents | api | ivr` here; the lead adds the exact `bot`
-  member with `v.id("voiceBots")` when integrating 8d-2. Schema changes are additive;
+- **INTEGRATED:** the shared routing union is `agents | api | bot | ivr` and includes `bot` with `v.id("voiceBots")` and `ivr` with `v.id("ivrs")`. Schema changes are additive;
   no deployment, `convex dev`, production container operations or push was performed.
+
+IVR bot actions validate an existing bot owned by the IVR team. Admission reserves a bot session and enforces its concurrency/minute budget; unavailable capacity falls back to an agent or voicemail. Bots can return to their configured IVR through `transfer_to_ivr`, using a single-use persisted handoff authorization.

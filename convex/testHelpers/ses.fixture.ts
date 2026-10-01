@@ -19,6 +19,7 @@ const COUNT_COMPONENTS = [
   "usageReceivedCounts",
   "usageAutomationCounts",
   "channelMessageCounts",
+  "voiceMinuteUsage",
   "conversationCounts",
   "broadcastMessageCounts",
   "channelAccountCounts",

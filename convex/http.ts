@@ -1,4 +1,5 @@
 import { registerIvrGatewayRoutes } from "./ivr/gatewayHttp"
+import { registerVoiceGatewayRoutes } from "./voice/http"
 import { registerCallingGatewayRoutes } from "./calling/gatewayHttp"
 import { registerEmailShareRoutes } from "./api/emailShares"
 import { registerReceivedDownloadRoutes } from "./receivedDownloads"
@@ -19,6 +20,7 @@ import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
 const http = httpRouter()
 registerIvrGatewayRoutes(http)
 registerCallingGatewayRoutes(http)
+registerVoiceGatewayRoutes(http)
 registerTrackingRoutes(http)
 registerSmtpRoutes(http)
 registerSesRoutes(http)

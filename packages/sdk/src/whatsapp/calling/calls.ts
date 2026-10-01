@@ -1,3 +1,5 @@
+import type { PaginationOptions } from "../../common/interfaces/pagination-options.interface"
+import type { CallTranscriptLine } from "../../voice/interfaces"
 import type { Opensend } from "../../resend"
 import type {
   ChannelPage,
@@ -22,6 +24,14 @@ export class WhatsAppCalls {
         )
     return this.resend.get<ChannelPage<WhatsAppCall>>(
       `/whatsapp/calls?${query}`
+    )
+  }
+  transcript(id: string, options: PaginationOptions = {}) {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(options))
+      if (value !== undefined) query.set(key, String(value))
+    return this.resend.get<ChannelPage<CallTranscriptLine>>(
+      `/whatsapp/calls/${encodeURIComponent(id)}/transcript?${query}`
     )
   }
   get(id: string) {

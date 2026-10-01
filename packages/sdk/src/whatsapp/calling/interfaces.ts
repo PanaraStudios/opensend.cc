@@ -1,8 +1,12 @@
+import type { CallingRouting } from "./routing"
 import type {
-  CallingRouting,
   IvrPathEntry,
   IvrAction,
 } from "../../ivrs/interfaces"
+import type {
+  BotOutcome,
+  VoiceUsage,
+} from "../../voice/interfaces"
 import type { PaginationOptions } from "../../common/interfaces/pagination-options.interface"
 import type { WhatsAppTemplate } from "../catalog"
 export type CallHandlingMode = "gateway" | "api"
@@ -75,6 +79,12 @@ export interface WhatsAppCall {
   ivr_id: string | null
   ivr_path: IvrPathEntry[]
   ivr_outcome: IvrAction | null
+  bot_id: string | null
+  bot_outcome: BotOutcome | null
+  bot_summary: string | null
+  bot_duration: number | null
+  bot_usage: VoiceUsage | null
+  bot_fallback_reason: string | null
 }
 export interface WhatsAppCallDetail extends WhatsAppCall {
   events: { event: string; at: number; details: Record<string, unknown> }[]
@@ -121,7 +131,7 @@ export interface UpdateCallingSettings {
   announcement_file_id?: string
 }
 export interface PhoneNumberCalling {
-  routing: CallingRouting
+  routing: CallingRouting | null
   account_id: string
   handling_mode: CallHandlingMode
   calling: CallingSettings & {

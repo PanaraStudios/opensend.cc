@@ -1,6 +1,7 @@
-import { routing, pathEntry, action as ivrAction } from "../ivr/validators"
+import { pathEntry, action as ivrAction } from "../ivr/validators"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import { botConfig, botOutcome, voiceUsage } from "./voice"
 import { fileReference } from "./storage"
 
 export const callStatus = v.union(
@@ -28,6 +29,8 @@ export const callMedia = v.object({
   contentType: v.optional(v.string()),
   error: v.optional(v.string()),
 })
+import { callingRouting } from "../calling/routingValue"
+export { callingRouting } from "../calling/routingValue"
 export const callingTables = {
   callAgents: defineTable({
     organizationId: v.string(),
@@ -84,11 +87,29 @@ export const callingTables = {
     gatewayAt: v.optional(v.number()),
     gatewayRouted: v.optional(v.boolean()),
     ivrId: v.optional(v.id("ivrs")),
+    ivrHandoffId: v.optional(v.id("ivrs")),
     ivrPath: v.optional(v.array(pathEntry)),
     ivrOutcome: v.optional(ivrAction),
+    botId: v.optional(v.id("voiceBots")),
+    botConfig: v.optional(botConfig),
+    botOutcome: v.optional(botOutcome),
+    botSummary: v.optional(v.string()),
+    botFallbackReason: v.optional(v.string()),
+    botStartedAt: v.optional(v.number()),
+    botSessionStartedAt: v.optional(v.number()),
+    botEndedAt: v.optional(v.number()),
+    botActive: v.optional(v.boolean()),
+    botDuration: v.optional(v.number()),
+    botUsage: v.optional(voiceUsage),
+    botSessionUsage: v.optional(voiceUsage),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_organizationId_and_botActive", ["organizationId", "botActive"])
+    .index("by_organizationId_and_botStartedAt", [
+      "organizationId",
+      "botStartedAt",
+    ])
     .index("by_organizationId_and_assignedAgent_and_status", [
       "organizationId",
       "assignedAgent",
@@ -130,13 +151,14 @@ export const callingTables = {
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
     mode: handlingMode,
+    routing: v.optional(callingRouting),
     settings: v.string(),
     updatedAt: v.number(),
     restrictions: v.optional(v.string()),
-    routing: v.optional(routing),
   })
     .index("by_routingIvrId", ["routing.kind", "routing.ivrId"])
     .index("by_accountId", ["accountId"])
+    .index("by_routing_botId", ["routing.botId"])
     .index("by_organizationId", ["organizationId"]),
   gatewayEvents: defineTable({
     organizationId: v.string(),

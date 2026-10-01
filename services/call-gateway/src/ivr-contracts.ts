@@ -6,6 +6,7 @@ export type IvrRouteAction =
   | { kind: "playAndHangup" }
   | { kind: "hangup" }
 export interface IvrDecision {
+  route?: import("./contracts.js").RouteRequest
   step: number
   organizationId: string
   action: IvrRouteAction

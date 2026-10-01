@@ -1,10 +1,9 @@
 "use node"
-import { routing } from "../ivr/validators"
 import { v } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { actorArgs } from "./rows"
-import { handlingMode } from "../tables/calling"
+import { callingRouting, handlingMode } from "../tables/calling"
 import { graph } from "../meta/graph"
 import { decryptSecret } from "../secrets"
 import { readFile } from "../storage/objects"
@@ -23,7 +22,7 @@ const settingsArgs = {
   from: v.string(),
   calling: v.optional(v.record(v.string(), v.any())),
   mode: v.optional(handlingMode),
-  routing: v.optional(routing),
+  routing: v.optional(v.record(v.string(), v.any())),
   announcementFileId: v.optional(v.string()),
 }
 async function settings(
@@ -34,14 +33,14 @@ async function settings(
     from: string
     calling?: Record<string, unknown>
     mode?: "gateway" | "api"
-    routing?: typeof routing.type
+    routing?: Record<string, unknown>
     announcementFileId?: string
   }
 ): Promise<{
   account_id: Id<"channelAccounts">
   handling_mode: "api" | "gateway"
   calling: Record<string, unknown>
-  routing: typeof routing.type
+  routing: typeof callingRouting.type | null
 }> {
   const target = await ctx.runQuery(internal.calling.rows.target, {
     organizationId: args.organizationId,
@@ -54,7 +53,8 @@ async function settings(
       args.announcementFileId !== undefined,
   })
   if (
-    (args.mode === "gateway" || args.routing?.kind === "ivr") &&
+    (args.mode === "gateway" ||
+      (args.routing !== undefined && args.routing.kind !== "api")) &&
     (!process.env.CALL_GATEWAY_URL || !process.env.CALL_GATEWAY_SECRET)
   )
     throw apiError(
@@ -62,12 +62,14 @@ async function settings(
       "gateway_unavailable",
       "The calling gateway is not configured."
     )
-  if (args.routing?.kind === "ivr")
-    await ctx.runQuery(internal.calling.settingsState.routingTarget, {
-      organizationId: args.organizationId,
-      caller: args.caller,
-      ivrId: args.routing.ivrId,
-    })
+  const routing = args.routing
+    ? await ctx.runQuery(internal.voice.routing.validate, {
+        organizationId: args.organizationId,
+        caller: args.caller,
+        input: args.routing,
+        mode: args.routing.kind === "api" ? "api" : "gateway",
+      })
+    : undefined
   const at = Date.now(),
     token = await decryptSecret(target.encryptedToken)
   let update = args.calling
@@ -159,18 +161,25 @@ async function settings(
       mode:
         args.routing?.kind === "api"
           ? "api"
-          : args.routing?.kind === "ivr"
+          : args.routing !== undefined && args.routing.kind !== "api"
             ? "gateway"
             : args.mode,
-      routing: args.routing,
       at,
     })
+    if (routing)
+      await ctx.runMutation(internal.voice.routing.set, {
+        organizationId: args.organizationId,
+        caller: args.caller,
+        accountId: target.account._id,
+        routing,
+      })
     return {
+      routing: routing ?? target.settings?.routing ?? null,
       account_id: target.account._id,
       handling_mode:
         (args.routing?.kind === "api"
           ? "api"
-          : args.routing?.kind === "ivr"
+          : args.routing !== undefined && args.routing.kind !== "api"
             ? "gateway"
             : args.mode) ??
         target.settings?.mode ??
@@ -178,7 +187,6 @@ async function settings(
           ? "gateway"
           : "api"),
       calling,
-      routing: args.routing ?? target.settings?.routing ?? { kind: "agents" },
     }
   } catch (error) {
     callingFailure(error)
@@ -220,7 +228,7 @@ export const dashboardUpdate = action({
     from: v.string(),
     calling: v.optional(v.record(v.string(), v.any())),
     mode: v.optional(handlingMode),
-    routing: v.optional(routing),
+    routing: v.optional(callingRouting),
     announcementFileId: v.optional(v.string()),
   },
   returns: v.any(),

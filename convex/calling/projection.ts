@@ -194,7 +194,10 @@ async function lifecycle(
       organizationId: account.organizationId,
       accountId: account._id,
       wacid,
-      mode: settings?.mode ?? defaultMode(),
+      mode:
+        settings?.routing?.kind === "api"
+          ? "api"
+          : (settings?.mode ?? defaultMode()),
       direction,
       status: "queued",
       observedAt: 0,

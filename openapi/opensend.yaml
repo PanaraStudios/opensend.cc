@@ -44,6 +44,7 @@ tags:
   - name: Usage
   - name: Suppressions
   - name: WhatsApp
+  - name: Voice Bots
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
@@ -10935,9 +10936,11 @@ paths:
   /media/uploads:
     post:
       operationId: media/uploads/create
-      tags: [Media]
+      tags: [ Media ]
       summary: Create a direct file upload
-      description: Requires media:write. POST the file to the Convex upload_url with Content-Type, then complete using storage_id from its JSON response. Complete within 15 minutes. Upload POSTs have a 2 minute timeout; per-kind size limits apply.
+      description: Requires media:write. POST the file to the Convex upload_url with Content-Type, then
+        complete using storage_id from its JSON response. Complete within 15 minutes. Upload POSTs
+        have a 2 minute timeout; per-kind size limits apply.
       x-opensend-scope: media:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -10947,22 +10950,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [use, filename, content_type, size]
+              required: [ use, filename, content_type, size ]
               properties:
-                use: { type: string, enum: [ivr, whatsapp, template, email, import] }
+                use: { type: string, enum: [ ivr, whatsapp, template, email, import ] }
                 filename: { type: string, maxLength: 1024 }
                 content_type: { type: string, maxLength: 256 }
                 size: { type: integer, minimum: 1, maximum: 104857600 }
-                from:
-                  {
-                    type: string,
-                    description: WhatsApp account or phone number id,
-                  }
-                animated:
-                  {
-                    type: boolean,
-                    description: Whether a WebP sticker is animated,
-                  }
+                from: { type: string, description: WhatsApp account or phone number id }
+                animated: { type: boolean, description: Whether a WebP sticker is animated }
       responses:
         "200":
           description: Pending upload
@@ -10970,12 +10965,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id, upload_url, expires_at, provider]
+                required: [ id, upload_url, expires_at, provider ]
                 properties:
                   id: { type: string }
                   upload_url: { type: string, format: uri }
                   expires_at: { type: string, format: date-time }
-                  provider: { type: string, enum: [convex] }
+                  provider: { type: string, enum: [ convex ] }
         "401": { $ref: "#/components/responses/Error401" }
         "403": { $ref: "#/components/responses/Error403" }
         "422": { $ref: "#/components/responses/Error422" }
@@ -10983,9 +10978,10 @@ paths:
   /media/uploads/{id}/complete:
     post:
       operationId: media/uploads/complete
-      tags: [Media]
+      tags: [ Media ]
       summary: Verify a direct file upload
-      description: Verifies size and content type. The completed id can be used in WhatsApp media and email attachments.
+      description: Verifies size and content type. The completed id can be used in WhatsApp media and
+        email attachments.
       x-opensend-scope: media:write
       parameters:
         - name: id
@@ -11003,7 +10999,7 @@ paths:
                 storage_id:
                   {
                     type: string,
-                    description: Required for Convex uploads; use storageId from the POST upload response,
+                    description: Required for Convex uploads; use storageId from the POST upload response
                   }
       responses:
         "200":
@@ -11068,12 +11064,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WhatsAppMetaError"
-      description:
-        "Legacy multipart uploads are limited to 20 MB including overhead. Use /media/uploads for larger files. With a bucket returns an Opensend media id; otherwise a Meta media id. MIME/size limits: JPEG/PNG 5 MB;
-        supported audio/video 16 MB; documents 100 MB; WebP static stickers 100 KB or animated
-        stickers 500 KB. OGG requires codecs=opus. Meta also validates codecs and image formats. The
-        deployment HTTP body limit can be lower. Domain-restricted keys
-        receive 403."
+      description: "Legacy multipart uploads are limited to 20 MB including overhead. Use /media/uploads
+        for larger files. With a bucket returns an Opensend media id; otherwise a Meta media id.
+        MIME/size limits: JPEG/PNG 5 MB; supported audio/video 16 MB; documents 100 MB; WebP static
+        stickers 100 KB or animated stickers 500 KB. OGG requires codecs=opus. Meta also validates
+        codecs and image formats. The deployment HTTP body limit can be lower. Domain-restricted
+        keys receive 403."
       requestBody:
         required: true
         content:
@@ -11937,7 +11933,9 @@ paths:
       tags:
         - WhatsApp
       summary: Mark Message Read
-      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      description: Send a read receipt for an inbound team message received within 30 days. typing
+        optionally shows a typing indicator. Calls are throttled per conversation to one read per 2
+        seconds; repeated calls return 202 without calling Meta.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -11987,7 +11985,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -11998,7 +11997,10 @@ paths:
       tags:
         - WhatsApp
       summary: Set Typing Indicator
-      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound
+        message read; Messenger and Instagram support on and off. Calls are throttled per
+        conversation to one typing call per 5 seconds; repeated calls return 202 without calling
+        Meta.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12050,7 +12052,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -12061,7 +12064,9 @@ paths:
       tags:
         - Messenger
       summary: Mark Message Read
-      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      description: Send a read receipt for an inbound team message received within 30 days. typing
+        optionally shows a typing indicator. Calls are throttled per conversation to one read per 2
+        seconds; repeated calls return 202 without calling Meta.
       x-opensend-scope: messenger:write
       parameters:
         - in: path
@@ -12111,7 +12116,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -12122,7 +12128,10 @@ paths:
       tags:
         - Messenger
       summary: Set Typing Indicator
-      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound
+        message read; Messenger and Instagram support on and off. Calls are throttled per
+        conversation to one typing call per 5 seconds; repeated calls return 202 without calling
+        Meta.
       x-opensend-scope: messenger:write
       parameters:
         - in: path
@@ -12174,7 +12183,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -12185,7 +12195,9 @@ paths:
       tags:
         - Instagram
       summary: Mark Message Read
-      description: Send a read receipt for an inbound team message received within 30 days. typing optionally shows a typing indicator. Calls are throttled per conversation to one read per 2 seconds; repeated calls return 202 without calling Meta.
+      description: Send a read receipt for an inbound team message received within 30 days. typing
+        optionally shows a typing indicator. Calls are throttled per conversation to one read per 2
+        seconds; repeated calls return 202 without calling Meta.
       x-opensend-scope: instagram:write
       parameters:
         - in: path
@@ -12235,7 +12247,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -12246,7 +12259,10 @@ paths:
       tags:
         - Instagram
       summary: Set Typing Indicator
-      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound message read; Messenger and Instagram support on and off. Calls are throttled per conversation to one typing call per 5 seconds; repeated calls return 202 without calling Meta.
+      description: Set typing for the conversation. WhatsApp supports on only and marks the latest inbound
+        message read; Messenger and Instagram support on and off. Calls are throttled per
+        conversation to one typing call per 5 seconds; repeated calls return 202 without calling
+        Meta.
       x-opensend-scope: instagram:write
       parameters:
         - in: path
@@ -12298,7 +12314,8 @@ paths:
         "500":
           $ref: "#/components/responses/Error500"
         "502":
-          description: Meta refused the control or could not be reached. The failure is recorded on the message event trail.
+          description: Meta refused the control or could not be reached. The failure is recorded on the
+            message event trail.
           content:
             application/json:
               schema:
@@ -12357,9 +12374,8 @@ paths:
       tags:
         - WhatsApp
       summary: connect Call
-      description: Start a call using gateway media or your complete SDP offer.
-        recipient is a BSUID; to must resolve to a known BSUID. Meta enforces
-        permissions and country restrictions.
+      description: Start a call using gateway media or your complete SDP offer. recipient is a BSUID; to
+        must resolve to a known BSUID. Meta enforces permissions and country restrictions.
       x-opensend-scope: whatsapp:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -12437,9 +12453,8 @@ paths:
       tags:
         - WhatsApp
       summary: pre_accept Call
-      description: Gateway mode uses its prepared SDP. API mode supplies a complete
-        answer. pre_accept and accept must use identical SDP; media is released
-        only after accept succeeds.
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
+        accept must use identical SDP; media is released only after accept succeeds.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12490,9 +12505,8 @@ paths:
       tags:
         - WhatsApp
       summary: accept Call
-      description: Gateway mode uses its prepared SDP. API mode supplies a complete
-        answer. pre_accept and accept must use identical SDP; media is released
-        only after accept succeeds.
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
+        accept must use identical SDP; media is released only after accept succeeds.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12543,9 +12557,8 @@ paths:
       tags:
         - WhatsApp
       summary: reject Call
-      description: Gateway mode uses its prepared SDP. API mode supplies a complete
-        answer. pre_accept and accept must use identical SDP; media is released
-        only after accept succeeds.
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
+        accept must use identical SDP; media is released only after accept succeeds.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12590,9 +12603,8 @@ paths:
       tags:
         - WhatsApp
       summary: terminate Call
-      description: Gateway mode uses its prepared SDP. API mode supplies a complete
-        answer. pre_accept and accept must use identical SDP; media is released
-        only after accept succeeds.
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
+        accept must use identical SDP; media is released only after accept succeeds.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12671,9 +12683,52 @@ paths:
       tags:
         - WhatsApp
       summary: update Calling
-      description: call_hours replaces the complete schedule, including holidays. SIP
-        remains disabled and DTLS is enforced. announcement_file_id references a
-        finalized team Ogg Opus file under 60 seconds.
+      description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
+        DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
+        seconds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCallingSettings"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneNumberCalling"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: patchWhatsAppCalling
+      tags:
+        - WhatsApp
+      summary: update Calling
+      description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
+        DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
+        seconds.
       x-opensend-scope: whatsapp:write
       parameters:
         - in: path
@@ -12715,8 +12770,8 @@ paths:
       tags:
         - WhatsApp
       summary: get Call Permission
-      description: Supply recipient (BSUID) or to. Meta returns permission and
-        available actions/limits in either documented status vocabulary.
+      description: Supply recipient (BSUID) or to. Meta returns permission and available actions/limits in
+        either documented status vocabulary.
       x-opensend-scope: whatsapp:read
       parameters:
         - in: query
@@ -12757,8 +12812,8 @@ paths:
       tags:
         - WhatsApp
       summary: request Call Permission
-      description: Free-form requests require an open service window; templates must
-        be approved call-permission templates. Meta enforces limits.
+      description: Free-form requests require an open service window; templates must be approved
+        call-permission templates. Meta enforces limits.
       x-opensend-scope: whatsapp:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -12801,9 +12856,8 @@ paths:
       tags:
         - IVRs
       summary: create
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -12835,9 +12889,8 @@ paths:
       tags:
         - IVRs
       summary: list
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:read
       parameters:
         - name: limit
@@ -12892,9 +12945,8 @@ paths:
       tags:
         - IVRs
       summary: get
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:read
       parameters:
         - &a2
@@ -12924,9 +12976,8 @@ paths:
       tags:
         - IVRs
       summary: update
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:write
       parameters:
         - *a2
@@ -12958,9 +13009,8 @@ paths:
       tags:
         - IVRs
       summary: remove
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:write
       parameters:
         - *a2
@@ -13000,9 +13050,8 @@ paths:
       tags:
         - IVRs
       summary: validate
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are
-        pending_render in this release. Audio uses finalized WAV/MP3/OGG files
-        (use=ivr, media:write, at most 16 MiB).
+      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
+        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
       x-opensend-scope: ivrs:read
       parameters:
         - *a2
@@ -13039,6 +13088,351 @@ paths:
           $ref: "#/components/responses/Error422"
         "429":
           $ref: "#/components/responses/Error429"
+  /voice-bots:
+    post:
+      operationId: createVoiceBot
+      tags:
+        - Voice Bots
+      summary: createVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceBotInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    get:
+      operationId: listVoiceBots
+      tags:
+        - Voice Bots
+      summary: listVoiceBots
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceBotPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-bots/{id}:
+    get:
+      operationId: getVoiceBot
+      tags:
+        - Voice Bots
+      summary: getVoiceBot
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceBot"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: updateVoiceBot
+      tags:
+        - Voice Bots
+      summary: updateVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceBotPatch"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    delete:
+      operationId: deleteVoiceBot
+      tags:
+        - Voice Bots
+      summary: deleteVoiceBot
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-providers:
+    post:
+      operationId: createVoiceProvider
+      tags:
+        - Voice Bots
+      summary: createVoiceProvider
+      x-opensend-scope: voice_bots:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoiceProvider"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    get:
+      operationId: listVoiceProviders
+      tags:
+        - Voice Bots
+      summary: listVoiceProviders
+      x-opensend-scope: voice_bots:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceProviderPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /voice-providers/{id}:
+    delete:
+      operationId: deleteVoiceProvider
+      tags:
+        - Voice Bots
+      summary: deleteVoiceProvider
+      x-opensend-scope: voice_bots:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/transcript:
+    get:
+      operationId: getWhatsAppCallTranscript
+      tags:
+        - Voice Bots
+      summary: getWhatsAppCallTranscript
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallTranscriptPage"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
 components:
   headers:
     ratelimit_limit:
@@ -13239,7 +13633,7 @@ components:
       properties:
         id:
           type: string
-      required: [id]
+      required: [ id ]
       additionalProperties: false
     PageChannelMessage:
       type: object
@@ -13294,7 +13688,7 @@ components:
             - string
             - 'null'
         read_receipt_sent_at:
-          type: [string, 'null']
+          type: [ string, 'null' ]
           format: date-time
         created_at:
           type: string
@@ -16367,7 +16761,7 @@ components:
             - string
             - "null"
         read_receipt_sent_at:
-          type: [string, 'null']
+          type: [ string, 'null' ]
           format: date-time
         created_at:
           type: string
@@ -16971,7 +17365,7 @@ components:
       required: []
       allOf:
         - anyOf:
-            - required: [id]
+            - required: [ id ]
             - required:
                 - path
             - required:
@@ -18271,6 +18665,8 @@ components:
         - webhooks:write
         - logs:read
         - logs:write
+        - voice_bots:read
+        - voice_bots:write
     ApiKey:
       type: object
       properties:
@@ -21287,6 +21683,8 @@ components:
         - whatsapp.call.permission_updated
         - whatsapp.call.recording_ready
         - whatsapp.call.transcription_ready
+        - whatsapp.call.bot_completed
+        - whatsapp.call.transferred
         - whatsapp.message.sent
         - whatsapp.message.delivered
         - whatsapp.message.read
@@ -22017,8 +22415,8 @@ components:
     CreateContactImportOptions:
       type: object
       anyOf:
-        - required: [file]
-        - required: [file_id]
+        - required: [ file ]
+        - required: [ file_id ]
       properties:
         file_id:
           type: string
@@ -26632,6 +27030,36 @@ components:
           type:
             - string
             - "null"
+        bot_id:
+          type:
+            - string
+            - "null"
+        bot_outcome:
+          enum:
+            - completed
+            - transferred_agent
+            - transferred_ivr
+            - ended_by_bot
+            - caller_hangup
+            - failed
+            - budget_exhausted
+            - null
+        bot_summary:
+          type:
+            - string
+            - "null"
+        bot_duration:
+          type:
+            - number
+            - "null"
+        bot_usage:
+          anyOf:
+            - $ref: "#/components/schemas/VoiceUsage"
+            - type: "null"
+        bot_fallback_reason:
+          type:
+            - string
+            - "null"
       required:
         - object
         - id
@@ -26797,6 +27225,36 @@ components:
               - at
               - details
             additionalProperties: false
+        bot_id:
+          type:
+            - string
+            - "null"
+        bot_outcome:
+          enum:
+            - completed
+            - transferred_agent
+            - transferred_ivr
+            - ended_by_bot
+            - caller_hangup
+            - failed
+            - budget_exhausted
+            - null
+        bot_summary:
+          type:
+            - string
+            - "null"
+        bot_duration:
+          type:
+            - number
+            - "null"
+        bot_usage:
+          anyOf:
+            - $ref: "#/components/schemas/VoiceUsage"
+            - type: "null"
+        bot_fallback_reason:
+          type:
+            - string
+            - "null"
       required:
         - object
         - id
@@ -26998,7 +27456,9 @@ components:
       type: object
       properties:
         routing:
-          $ref: "#/components/schemas/CallingRouting"
+          anyOf:
+            - $ref: "#/components/schemas/CallingRouting"
+            - type: "null"
         account_id:
           type: string
         handling_mode:
@@ -27014,6 +27474,7 @@ components:
         - account_id
         - handling_mode
         - calling
+        - routing
       additionalProperties: false
     CallPermission:
       type: object
@@ -27387,7 +27848,6 @@ components:
         - type: object
           properties:
             kind:
-              type: string
               const: agents
           required:
             - kind
@@ -27395,7 +27855,6 @@ components:
         - type: object
           properties:
             kind:
-              type: string
               const: api
           required:
             - kind
@@ -27403,22 +27862,594 @@ components:
         - type: object
           properties:
             kind:
+              const: bot
+            botId:
               type: string
+          required:
+            - kind
+            - botId
+          additionalProperties: false
+        - type: object
+          properties:
+            kind:
               const: ivr
-            ivrId: *a1
+            ivrId:
+              type: string
           required:
             - kind
             - ivrId
           additionalProperties: false
+    VoiceBotInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - name
+        - provider
+        - credentialId
+      additionalProperties: false
+    VoiceBotPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required: []
+      additionalProperties: false
+    VoiceBot:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        engine:
+          enum:
+            - gemini_live
+            - cascade
+        credentialId:
+          type: string
+        model:
+          type: string
+        voice:
+          type: string
+        language:
+          type: string
+        stt:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            language:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        llm:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - gemini
+            model:
+              type: string
+            credentialId:
+              type: string
+          required:
+            - provider
+            - credentialId
+          additionalProperties: false
+        tts:
+          type: object
+          properties:
+            provider:
+              enum:
+                - sarvam
+                - elevenlabs
+            model:
+              type: string
+            credentialId:
+              type: string
+            voice:
+              type: string
+          required:
+            - provider
+            - credentialId
+            - voice
+          additionalProperties: false
+        systemPrompt:
+          type: string
+          maxLength: 16000
+        greeting:
+          type: string
+        tools:
+          type: array
+          items:
+            enum:
+              - lookup_contact
+              - create_note
+              - send_whatsapp_message
+              - transfer_to_agent
+              - transfer_to_ivr
+              - end_call
+          maxItems: 6
+          uniqueItems: true
+        handoff:
+          type: object
+          properties:
+            agents:
+              type: boolean
+            ivrId:
+              type: string
+          required:
+            - agents
+          additionalProperties: false
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          default: 600
+        silenceTimeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 20
+        recording:
+          type: boolean
+          default: false
+        disclosure:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          default: This call is answered by an AI assistant and may be recorded.
+        monthlyMinuteBudget:
+          type: number
+          minimum: 0
+          maximum: 10000000
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - name
+        - provider
+        - engine
+        - credentialId
+        - model
+        - voice
+        - language
+        - systemPrompt
+        - greeting
+        - tools
+        - handoff
+        - maxDurationSeconds
+        - silenceTimeoutSeconds
+        - recording
+        - disclosure
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    CreateVoiceProvider:
+      type: object
+      properties:
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        label:
+          type: string
+          minLength: 1
+          maxLength: 128
+        key:
+          type: string
+          writeOnly: true
+          minLength: 8
+          maxLength: 4096
+      required:
+        - provider
+        - label
+        - key
+      additionalProperties: false
+    VoiceProviderCredential:
+      type: object
+      properties:
+        id:
+          type: string
+        provider:
+          enum:
+            - gemini
+            - sarvam
+            - elevenlabs
+        label:
+          type: string
+        lastFour:
+          type: string
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - provider
+        - label
+        - lastFour
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    VoiceUsage:
+      type: object
+      properties:
+        inputTokens:
+          type: number
+        outputTokens:
+          type: number
+        audioSeconds:
+          type: number
+        ttsCharacters:
+          type: number
+      required: []
+      additionalProperties: false
+    CallTranscriptLine:
+      type: object
+      properties:
+        id:
+          type: string
+        callId:
+          type: string
+        eventId:
+          type: string
+        kind:
+          enum:
+            - transcript
+            - tool
+            - note
+            - media
+        role:
+          enum:
+            - caller
+            - agent
+        text:
+          type: string
+        final:
+          type: boolean
+        timestampMs:
+          type: number
+        toolId:
+          type: string
+        toolName:
+          type: string
+        arguments:
+          type: string
+        result:
+          type: string
+      required:
+        - id
+        - callId
+        - eventId
+        - kind
+        - timestampMs
+      additionalProperties: false
+    VoiceBotPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceBot"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    VoiceProviderPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceProviderCredential"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    CallTranscriptPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallTranscriptLine"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
 webhooks:
   whatsappCall:
     post:
       operationId: webhooks/whatsapp/call
       summary: WhatsApp call lifecycle and media events
-      description: Signed using Standard Webhooks. API-mode call events include remote
-        SDP. Duplicates and out-of-order delivery are possible; id is stable and
-        observed_at is milliseconds. Media download URLs appear after storage
-        completes; re-read the call for a fresh URL.
+      description: Signed using Standard Webhooks. API-mode call events include remote SDP. Duplicates and
+        out-of-order delivery are possible; id is stable and observed_at is milliseconds. Media
+        download URLs appear after storage completes; re-read the call for a fresh URL.
       requestBody:
         required: true
         content:
@@ -31573,3 +32604,133 @@ webhooks:
       responses:
         "200":
           description: Acknowledged
+  voiceBotCompleted:
+    post:
+      summary: whatsapp.call.bot_completed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  const: whatsapp.call.bot_completed
+                created_at:
+                  type: string
+                data:
+                  $ref: "#/components/schemas/WhatsAppCall"
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+            example:
+              type: whatsapp.call.bot_completed
+              created_at: 2026-10-02T00:00:00Z
+              data:
+                object: whatsapp_call
+                id: call_123
+                account_id: account_123
+                direction: inbound
+                status: completed
+                handling_mode: gateway
+                created_at: 2026-10-02T00:00:00Z
+                observed_at: 1790899200000
+                wacid: null
+                user_id: null
+                from: null
+                to: null
+                contact_id: null
+                conversation_id: null
+                connected_at: null
+                ended_at: null
+                duration: null
+                biz_opaque_callback_data: null
+                cta_payload: null
+                deeplink_payload: null
+                session: null
+                recording: null
+                transcription: null
+                error: null
+                error_code: null
+                assigned_agent: null
+                bot_id: bot_123
+                bot_outcome: completed
+                bot_summary: Caller requested help with their order.
+                bot_duration: 45
+                bot_usage:
+                  inputTokens: 12
+                  outputTokens: 24
+                bot_fallback_reason: null
+                ivr_id: null
+                ivr_path: []
+                ivr_outcome: null
+      responses:
+        "200":
+          description: Webhook acknowledged
+  voiceCallTransferred:
+    post:
+      summary: whatsapp.call.transferred
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  const: whatsapp.call.transferred
+                created_at:
+                  type: string
+                data:
+                  $ref: "#/components/schemas/WhatsAppCall"
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+            example:
+              type: whatsapp.call.transferred
+              created_at: 2026-10-02T00:00:00Z
+              data:
+                object: whatsapp_call
+                id: call_123
+                account_id: account_123
+                direction: inbound
+                status: completed
+                handling_mode: gateway
+                created_at: 2026-10-02T00:00:00Z
+                observed_at: 1790899200000
+                wacid: null
+                user_id: null
+                from: null
+                to: null
+                contact_id: null
+                conversation_id: null
+                connected_at: null
+                ended_at: null
+                duration: null
+                biz_opaque_callback_data: null
+                cta_payload: null
+                deeplink_payload: null
+                session: null
+                recording: null
+                transcription: null
+                error: null
+                error_code: null
+                assigned_agent: null
+                bot_id: bot_123
+                bot_outcome: transferred_agent
+                bot_summary: Caller requested help with their order.
+                bot_duration: 45
+                bot_usage:
+                  inputTokens: 12
+                  outputTokens: 24
+                bot_fallback_reason: null
+                ivr_id: null
+                ivr_path: []
+                ivr_outcome: null
+      responses:
+        "200":
+          description: Webhook acknowledged
