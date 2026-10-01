@@ -10176,6 +10176,12 @@ components:
     CreateBroadcastOptions:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -10241,18 +10247,23 @@ components:
           description: >-
             Send time, used only when send is true, in ISO 8601 or natural language up to 30 days ahead with
             UTC as the default timezone.
-      required:
-        - from
-        - subject
-      description: Create a broadcast with nonempty HTML or text, merge tags, and personalized unsubscribe links.
+      description: Create an email broadcast with nonempty HTML or text, or an approved WhatsApp template campaign.
       anyOf:
+        - required: [channel, whatsapp]
+          properties:
+            channel:
+              const: whatsapp
         - required:
+            - from
+            - subject
             - html
           properties:
             html:
               type: string
               minLength: 1
         - required:
+            - from
+            - subject
             - text
           properties:
             text:
@@ -10261,6 +10272,12 @@ components:
     UpdateBroadcastOptions:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -10339,6 +10356,10 @@ components:
     BroadcastListItem:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
         id:
           type: string
           description: The opaque resource ID returned by Opensend; IDs are not UUIDs.
@@ -10416,6 +10437,12 @@ components:
     GetBroadcastResponseSuccess:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         object:
           type: string
           enum:
@@ -12439,6 +12466,84 @@ components:
           description: Workflow connections forming a tree, without cycles, joins, or arbitrary fan-out.
           items:
             $ref: '#/components/schemas/AutomationConnection'
+    WhatsAppVariableSource:
+      oneOf:
+        - type: string
+          maxLength: 4096
+        - type: object
+          required: [contact]
+          properties:
+            contact:
+              type: string
+              enum: [firstName, lastName, email, phone]
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+        - type: object
+          required: [property]
+          properties:
+            property:
+              type: string
+              pattern: '^[A-Za-z0-9_]+$'
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+        - type: object
+          required: [value]
+          properties:
+            value:
+              type: string
+              maxLength: 4096
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+    WhatsAppBroadcastConfiguration:
+      type: object
+      required: [account_id, template_id, variables]
+      properties:
+        account_id:
+          type: string
+        template_id:
+          type: string
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/WhatsAppVariableSource'
+      additionalProperties: false
+    SendWhatsAppStepConfig:
+      type: object
+      required: [account_id, mode]
+      properties:
+        account_id:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum: [template, text]
+        template_id:
+          type: string
+          minLength: 1
+        text:
+          type: string
+          minLength: 1
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/WhatsAppVariableSource'
+      oneOf:
+        - required: [template_id]
+          properties:
+            mode:
+              const: template
+        - required: [text]
+          properties:
+            mode:
+              const: text
     AutomationStep:
       type: object
       description: A step in an automation workflow. The `config` object varies based on the step `type`.
@@ -12446,6 +12551,15 @@ components:
         - key
         - type
         - config
+      allOf:
+        - if:
+            properties:
+              type:
+                const: send_whatsapp
+          then:
+            properties:
+              config:
+                $ref: '#/components/schemas/SendWhatsAppStepConfig'
       properties:
         key:
           type: string
@@ -12455,6 +12569,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition
@@ -12462,13 +12577,16 @@ components:
             - contact_delete
             - add_to_segment
           description: >-
-            Step type determining the required configuration: trigger, send_email, delay, wait_for_event,
+            Step type determining the required configuration: trigger, send_email, send_whatsapp, delay, wait_for_event,
             condition, contact_update, contact_delete, or add_to_segment.
         config:
           type: object
           description: >-
             Step-specific settings such as event_name, template, duration, condition rules, contact fields, or
-            segment_id; subject overrides, structured template variables, mixed nested conditions, null
+            segment_id. send_whatsapp requires account_id and mode (template with template_id or text with text);
+            variables map to strings or contact/property/value sources with optional fallback. The
+            opensend:whatsapp.message.received system event is supported for triggers and waits.
+            Subject overrides, structured template variables, mixed nested conditions, null
             comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30 days to
             activate.
     AutomationConnection:
@@ -12617,6 +12735,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition
@@ -12847,6 +12966,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition

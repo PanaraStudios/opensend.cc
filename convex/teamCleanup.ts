@@ -188,6 +188,10 @@ export const purge = internalMutation({
         row._id as Id<"channelMediaUploads">
       )
       if (file) await ctx.storage.delete(file.storageId)
+    } else if (name === "broadcasts") {
+      await counters.broadcastMessages.aggregate.clear(ctx, {
+        namespace: row._id as Id<"broadcasts">,
+      })
     } else if (name === "channelMessages") {
       const id = row._id as Id<"channelMessages">
       pending = await children(

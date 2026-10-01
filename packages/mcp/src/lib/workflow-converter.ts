@@ -69,7 +69,8 @@ export function workflowToSdkOptions(workflow: WorkflowDefinition): {
   const connections: AutomationConnection[] = []
 
   for (const step of workflow.steps) {
-    // Pass config through to SDK as-is
+    // Pass config through to SDK as-is, including send_whatsapp mappings;
+    // the SDK owns accountId/templateId wire conversion.
     steps.push({
       key: step.key,
       type: step.type,
@@ -128,6 +129,18 @@ export function sdkResponseToWorkflow(
 
   for (const step of responseSteps) {
     const conns = connectionsByFrom.get(step.key)
+    // GET definitions use REST field names; workflows feed camelCase SDK options.
+    const config = { ...step.config }
+    if (step.type === "send_whatsapp") {
+      if ("account_id" in config) {
+        config.accountId = config.account_id
+        delete config.account_id
+      }
+      if ("template_id" in config) {
+        config.templateId = config.template_id
+        delete config.template_id
+      }
+    }
     const branchTypes =
       BRANCHING_STEP_TYPES[step.type as keyof typeof BRANCHING_STEP_TYPES]
 
@@ -139,14 +152,14 @@ export function sdkResponseToWorkflow(
       steps.push({
         key: step.key,
         type: step.type,
-        config: step.config,
+        config,
         branches,
       })
     } else {
       steps.push({
         key: step.key,
         type: step.type,
-        config: step.config,
+        config,
         next: conns?.get("default") ?? null,
       })
     }

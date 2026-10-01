@@ -1,5 +1,9 @@
 import type { AutomationStep, AutomationRule } from "../../lib/dashboard/types"
 import { AUTOMATION_RULE_OPERATORS } from "../../lib/dashboard/types"
+import {
+  variableSourcesError,
+  type VariableSource,
+} from "../../lib/meta/variables"
 import { readGraph } from "../automationDefinition"
 import { invalid } from "./caller"
 import { objectBody, stringField } from "./route"
@@ -73,6 +77,7 @@ export function parseAutomationGraph(
         "condition",
         "wait_for_event",
         "send_email",
+        "send_whatsapp",
         "contact_update",
         "contact_delete",
         "add_to_segment",
@@ -152,6 +157,25 @@ export function parseAutomationGraph(
       case "add_to_segment":
         node = { key, type: s.type, segmentId: text(c, "segment_id") }
         break
+      case "send_whatsapp": {
+        const mode = text(c, "mode")
+        if (mode !== "template" && mode !== "text")
+          throw invalid("WhatsApp mode must be template or text.")
+        const variables = c.variables ?? {}
+        const error = variableSourcesError(variables)
+        if (error) throw invalid(error)
+        node = {
+          key,
+          type: "send_whatsapp",
+          accountId: text(c, "account_id"),
+          mode,
+          ...(mode === "template"
+            ? { templateId: text(c, "template_id") }
+            : { text: text(c, "text") }),
+          variables: variables as Record<string, VariableSource>,
+        }
+        break
+      }
       case "send_email": {
         if (c.subject !== undefined)
           throw invalid("Unsupported send_email step option: subject override.")
@@ -266,6 +290,16 @@ export function automationGraph(row: {
       switch (node.type) {
         case "delay":
           config = { duration: node.duration }
+          break
+        case "send_whatsapp":
+          config = {
+            account_id: node.accountId,
+            mode: node.mode,
+            variables: node.variables,
+            ...(node.mode === "template"
+              ? { template_id: node.templateId }
+              : { text: node.text }),
+          }
           break
         case "send_email":
           config = {

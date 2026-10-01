@@ -5,9 +5,14 @@ import type { Id } from "@/convex/_generated/dataModel"
 import Link from "next/link"
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
+import { WhatsAppCampaignFields } from "@/components/dashboard/whatsapp-campaign-fields"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
@@ -29,6 +34,7 @@ import {
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import {
+  SYSTEM_EVENTS,
   CONTACT_FIELDS,
   contactFieldLabel,
   operatorTakesValue,
@@ -144,14 +150,37 @@ function EventNameInput(props: {
       : "skip"
   )
   return (
-    <SuggestInput
-      {...props}
-      options={options ?? []}
-      onSearch={setSearch}
-      placeholder="Type or select an event"
-      createLabel="Create event"
-      className="font-mono"
-    />
+    <div className="flex flex-col gap-2">
+      <SuggestInput
+        {...props}
+        options={[...(options ?? []), ...SYSTEM_EVENTS]}
+        selectedItem={SYSTEM_EVENTS.find(
+          (event) => event.value === props.value
+        )}
+        onSearch={setSearch}
+        placeholder="Type or select an event"
+        createLabel="Create event"
+        className="font-mono"
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+          System events
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>System events</DropdownMenuLabel>
+            {SYSTEM_EVENTS.map((event) => (
+              <DropdownMenuItem
+                key={event.value}
+                onClick={() => props.onChange(event.value)}
+              >
+                {event.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
 
@@ -177,7 +206,14 @@ export function TriggerCard({
     <WorkflowCard
       data-testid="workflow-node-start"
       icon={EventIcon}
-      title={selected ? "Custom event" : automation.trigger || "Custom event"}
+      title={
+        selected
+          ? "Event"
+          : (SYSTEM_EVENTS.find((event) => event.value === automation.trigger)
+              ?.label ??
+              automation.trigger) ||
+            "Custom event"
+      }
       tone={automation.trigger ? undefined : "warning"}
       onSelect={locked ? undefined : onSelect}
     >
@@ -290,6 +326,22 @@ function StepBody({
       )
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
+    case "send_whatsapp":
+      return (
+        <WhatsAppCampaignFields
+          config={step}
+          allowText
+          onChange={(config) =>
+            onChange({
+              ...step,
+              ...config,
+              mode: config.mode ?? "template",
+              templateId: config.templateId ?? "",
+              text: config.text ?? "",
+            })
+          }
+        />
+      )
     case "send_email":
       return (
         <SendEmailBody

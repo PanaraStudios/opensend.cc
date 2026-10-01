@@ -223,7 +223,11 @@ export const counters = {
     components.broadcastRecipientCounts,
     {
       namespace: (row) => row.broadcastId,
-      key: (row) => [row.settled, row.failed],
+      // Preserve legacy email aggregate keys; only channel skips add a suffix.
+      key: (row) =>
+        row.skipReason
+          ? [row.settled, row.failed, row.skipReason]
+          : [row.settled, row.failed],
     }
   ),
   broadcastHistory: new Counter<"broadcastRecipients", string>(
@@ -418,6 +422,7 @@ export const counters = {
       namespace: (message) => message.broadcastId!,
       key: (message) => [message.status],
       where: (message) => message.broadcastId !== undefined,
+      retainDeleted: true,
     }
   ),
 }

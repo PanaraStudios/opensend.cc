@@ -23,6 +23,12 @@ import {
   updateContact,
   upsertContact,
 } from "./audience"
+import {
+  createChannelMessage,
+  resolveWhatsAppAccount,
+} from "./channels/messages"
+import { resolveVariables } from "../lib/meta/variables"
+import { resolveWhatsAppTemplate } from "./whatsapp/templates"
 import { createEmail } from "./emails"
 import { publishedTemplate, renderTemplate } from "./templates"
 import { unsubscribeLinks } from "./unsubscribe"
@@ -332,6 +338,82 @@ export const effect = internalMutation({
         await teamRow(ctx, "segments", run.organizationId, segmentId)
         await joinSegments(ctx, [contact], [segmentId])
         break
+      }
+      case "send_whatsapp": {
+        if (
+          !contact ||
+          contact.organizationId !== run.organizationId ||
+          contact.unsubscribed
+        )
+          return {
+            skipped: true,
+            output: { reason: contact ? "unsubscribed" : "contact_deleted" },
+          }
+        if (!contact.phone)
+          return { skipped: true, output: { reason: "no_phone" } }
+        const account = await resolveWhatsAppAccount(
+          ctx,
+          run.organizationId,
+          node.accountId
+        )
+        const identity = await ctx.db
+          .query("channelContacts")
+          .withIndex(
+            "by_organizationId_and_channel_and_scopeId_and_externalId",
+            (q) =>
+              q
+                .eq("organizationId", run.organizationId)
+                .eq("channel", "whatsapp")
+                .eq("scopeId", "whatsapp")
+                .eq("externalId", contact.phone!.slice(1))
+          )
+          .unique()
+        if (node.mode === "text") {
+          const conversation = identity
+            ? await ctx.db
+                .query("conversations")
+                .withIndex("by_accountId_and_channelContactId", (q) =>
+                  q
+                    .eq("accountId", account._id)
+                    .eq("channelContactId", identity._id)
+                )
+                .unique()
+            : null
+          if ((conversation?.windowExpiresAt ?? 0) <= Date.now())
+            return { skipped: true, output: { reason: "window_closed" } }
+        } else {
+          const template = await resolveWhatsAppTemplate(
+            ctx,
+            run.organizationId,
+            { id: node.templateId, wabaId: account.wabaId }
+          )
+          if (template.category === "MARKETING" && identity?.marketingOptOut)
+            return { skipped: true, output: { reason: "marketing_opt_out" } }
+        }
+        const messageId = await createChannelMessage(
+          ctx,
+          {
+            from: account._id,
+            to: contact.phone,
+            body:
+              node.mode === "text"
+                ? { type: "text", text: { body: node.text } }
+                : {
+                    type: "template",
+                    template: {
+                      id: node.templateId,
+                      variables: resolveVariables(node.variables, contact),
+                    },
+                  },
+          },
+          {
+            organizationId: run.organizationId,
+            source: "automation",
+            automationRunId: id,
+          }
+        )
+        await patchRow(ctx, "automationRuns", id, { sent: run.sent + 1 })
+        return { output: { message_id: messageId } }
       }
       case "send_email": {
         if (!contact || contact.unsubscribed)

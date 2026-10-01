@@ -40,6 +40,10 @@ import {
   stringField,
   stringListField,
 } from "./route"
+import {
+  variableSourcesError,
+  type VariableSource,
+} from "../../lib/meta/variables"
 import { parseScheduledAt } from "../../lib/dashboard/email-send"
 
 function own(ctx: QueryCtx, organizationId: string, value: string) {
@@ -50,6 +54,32 @@ function inputFields(
   input: Record<string, unknown>,
   required = false
 ): BroadcastInput {
+  const channel = enumField(input, "channel", ["email", "whatsapp"])
+  let whatsapp: BroadcastInput["whatsapp"]
+  if (input.whatsapp !== undefined) {
+    const config = objectBody(input.whatsapp)
+    const accountId = ctx.db.normalizeId(
+      "channelAccounts",
+      stringField(config, "account_id", true)!
+    )
+    const templateId = ctx.db.normalizeId(
+      "templates",
+      stringField(config, "template_id", true)!
+    )
+    if (!accountId || !templateId)
+      throw invalid("Invalid WhatsApp account or template id.")
+    const variables = config.variables ?? {}
+    const error = variableSourcesError(variables)
+    if (error) throw invalid(error)
+    whatsapp = {
+      accountId,
+      templateId,
+      variables: variables as Record<string, VariableSource>,
+    }
+  }
+  if (required && channel === "whatsapp" && !whatsapp)
+    throw invalid("Missing whatsapp configuration.")
+  const emailRequired = required && channel !== "whatsapp"
   const segment = input.segment_id ?? input.audience_id
   const segmentId =
     segment == null
@@ -72,9 +102,11 @@ function inputFields(
     message: "Invalid `reply_to` field.",
   })
   const result = {
+    ...(channel ? { channel } : {}),
+    ...(whatsapp ? { whatsapp } : {}),
     name: stringField(input, "name"),
-    from: stringField(input, "from", required),
-    subject: stringField(input, "subject", required),
+    from: stringField(input, "from", emailRequired),
+    subject: stringField(input, "subject", emailRequired),
     html: stringField(input, "html"),
     text: stringField(input, "text"),
     preview: stringField(input, "preview_text"),
@@ -87,7 +119,7 @@ function inputFields(
       ? { replyToAddresses, replyTo: replyToAddresses[0] ?? "" }
       : {}),
   }
-  if (required && !result.html && !result.text)
+  if (emailRequired && !result.html && !result.text)
     throw invalid("Missing `html` or `text` field.")
   return result
 }
@@ -413,6 +445,7 @@ function summary(row: Doc<"broadcasts">) {
   return {
     id: row._id,
     name: row.name,
+    ...(row.channel === "whatsapp" ? { channel: "whatsapp" as const } : {}),
     topic_id: row.topicId,
     segment_id: row.segmentId,
     audience_id: row.segmentId,
@@ -528,6 +561,15 @@ export function registerBroadcastRoutes(http: HttpRouter) {
         body: {
           object: "broadcast",
           ...summary(row),
+          ...(row.channel === "whatsapp" && row.whatsapp
+            ? {
+                whatsapp: {
+                  account_id: row.whatsapp.accountId,
+                  template_id: row.whatsapp.templateId,
+                  variables: row.whatsapp.variables,
+                },
+              }
+            : {}),
           from: row.from ?? null,
           subject: row.subject,
           reply_to:
