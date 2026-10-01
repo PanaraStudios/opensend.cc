@@ -28,16 +28,14 @@ function fixture() {
     override async bgapi(command: string) {
       commands.push(command)
       queueMicrotask(() =>
-        sessions
-          .at(-1)!
-          .emit("event", {
-            janus: "event",
-            plugindata: { data: { result: { event: "incomingcall" } } },
-            jsep: {
-              type: "offer",
-              sdp: answer.replace("setup:active", "setup:actpass"),
-            },
-          })
+        sessions.at(-1)!.emit("event", {
+          janus: "event",
+          plugindata: { data: { result: { event: "incomingcall" } } },
+          jsep: {
+            type: "offer",
+            sdp: answer.replace("setup:active", "setup:actpass"),
+          },
+        })
       )
     }
     override close() {}
@@ -189,6 +187,73 @@ test("outbound bridges to its own SIP slot, requires an answer before routing, a
       /already routed/
     )
   } finally {
+    await f.controller.close()
+  }
+})
+
+test("hold/resume gate audio without SIP/Meta renegotiation; transfers use local extensions and configured queues", async () => {
+  const f = fixture()
+  const previousQueues = process.env.CALL_AGENT_QUEUES
+  process.env.CALL_AGENT_QUEUES = JSON.stringify({ "team-a": ["support"] })
+  try {
+    await f.controller.inbound(offer, "agent-controls")
+    await f.controller.route({
+      callId: "agent-controls",
+      target: "agent",
+      extension: "2000",
+    })
+    const before = f.commands.filter((c) => c.startsWith("janus:")).length
+    await f.controller.control({ callId: "agent-controls", operation: "hold" })
+    assert.ok(
+      f.commands.some((c) => /uuid_audio .* start read mute 1$/.test(c))
+    )
+    assert.ok(
+      f.commands.some((c) => /uuid_audio .* start write mute 1$/.test(c))
+    )
+    await f.controller.control({
+      callId: "agent-controls",
+      operation: "resume",
+    })
+    assert.ok(f.commands.some((c) => /uuid_audio .* stop$/.test(c)))
+    assert.equal(
+      f.commands.filter((c) => c.startsWith("janus:")).length,
+      before
+    )
+    await assert.rejects(
+      f.controller.control({
+        callId: "agent-controls",
+        operation: "transfer",
+        extension: "18005550123",
+      }),
+      /2000/
+    )
+    await assert.rejects(
+      f.controller.control({
+        callId: "agent-controls",
+        operation: "transfer",
+        queue: "support;api status",
+        organizationId: "team-a",
+      }),
+      /not configured/
+    )
+    await f.controller.control({
+      callId: "agent-controls",
+      operation: "transfer",
+      extension: "2001",
+    })
+    assert.ok(f.commands.some((c) => c.endsWith("opensend_agent 2001")))
+    await f.controller.control({
+      callId: "agent-controls",
+      operation: "transfer",
+      queue: "support",
+      organizationId: "team-a",
+    })
+    assert.ok(
+      f.commands.some((c) => c.endsWith("queue-team-a-support XML calling"))
+    )
+  } finally {
+    if (previousQueues === undefined) delete process.env.CALL_AGENT_QUEUES
+    else process.env.CALL_AGENT_QUEUES = previousQueues
     await f.controller.close()
   }
 })

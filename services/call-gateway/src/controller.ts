@@ -1,7 +1,13 @@
+import { agentQueues } from "./queues.js"
 import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
 import type { Config } from "./config.js"
-import type { CallbackPayload, GatewayApi, RouteRequest } from "./contracts.js"
+import type {
+  AgentControl,
+  CallbackPayload,
+  GatewayApi,
+  RouteRequest,
+} from "./contracts.js"
 import { ConvexCallbacks } from "./callbacks.js"
 import { FreeSwitch } from "./esl.js"
 import { GatewayError } from "./errors.js"
@@ -367,6 +373,55 @@ export class CallController implements GatewayApi {
     } catch (error) {
       await this.finish(call, "Routing failed")
       throw error
+    }
+  }
+  async control(request: AgentControl) {
+    const call = this.get(request.callId)
+    if (!call.routed || !call.uuid)
+      throw new GatewayError("CALL_NOT_BRIDGED", "Call is not bridged", 409)
+    if (request.operation === "hold" || request.operation === "resume") {
+      // Gate audio locally. uuid_hold on the Janus SIP leg would re-INVITE
+      // Janus and violate Meta's prohibition on renegotiation.
+      if (request.operation === "resume")
+        await this.fs.api(`uuid_audio ${call.uuid} stop`)
+      else {
+        await this.fs.api(`uuid_audio ${call.uuid} start read mute 1`)
+        await this.fs.api(`uuid_audio ${call.uuid} start write mute 1`)
+      }
+      return
+    }
+    if (request.operation !== "transfer")
+      throw new GatewayError("INVALID_CONTROL", "Unknown control")
+    if (request.queue) {
+      if (
+        !request.organizationId ||
+        !agentQueues(
+          process.env.CALL_AGENT_QUEUES,
+          request.organizationId
+        ).includes(request.queue)
+      )
+        throw new GatewayError(
+          "INVALID_QUEUE",
+          "Queue is not configured for this team"
+        )
+    } else
+      validateRoute({
+        callId: request.callId,
+        target: "agent",
+        extension: request.extension,
+      })
+    await this.fs.api(`uuid_audio ${call.uuid} stop`)
+    if (request.extension)
+      await this.fs.api(
+        `uuid_setvar ${call.uuid} opensend_agent ${request.extension}`
+      )
+    await this.fs.api(
+      `uuid_transfer ${call.uuid} ${request.queue ? `queue-${request.organizationId}-${request.queue}` : "agent-route"} XML calling`
+    )
+    call.routed = {
+      callId: request.callId,
+      target: request.queue ? "queue" : "agent",
+      extension: request.extension,
     }
   }
   async hangup(callId: string) {

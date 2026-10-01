@@ -70,3 +70,67 @@ test("five plan endpoints round-trip through the signed client, and reject unsig
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
 })
+
+test("session endpoints are HMAC-protected and the XML directory requires its own secret", async () => {
+  const { AgentSessions } = await import("../src/agents.js")
+  const sessions = new AgentSessions()
+  const secret = "g".repeat(64),
+    directorySecret = "d".repeat(64)
+  const api: GatewayApi = {
+    inbound: async () => ({ answerSdp: "answer" }),
+    outbound: async () => ({ offerSdp: "offer" }),
+    remoteAnswer: async () => {},
+    route: async () => {},
+    hangup: async () => {},
+    healthy: async () => true,
+  }
+  const server = createGatewayServer(api, secret, {
+    sessions,
+    directorySecret,
+    sipSecret: "s".repeat(64),
+    control: async () => {},
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  try {
+    const client = new CallGatewayClient(base, secret)
+    const row = await client.agentSession("session-one")
+    assert.match(row.extension, /^20\d{2}$/)
+    assert.equal(
+      (
+        await fetch(`${base}/agents/session`, {
+          method: "POST",
+          body: JSON.stringify({ sessionId: "session-two" }),
+          headers: { "content-type": "application/json" },
+        })
+      ).status,
+      401
+    )
+    const request = (password = directorySecret) =>
+      fetch(`${base}/agents/directory`, {
+        method: "POST",
+        body: new URLSearchParams({
+          section: "directory",
+          domain: "freeswitch",
+          user: row.extension,
+        }),
+        headers: {
+          authorization: `Basic ${Buffer.from(`directory:${password}`).toString("base64")}`,
+        },
+      })
+    assert.equal((await request("wrong")).status, 401)
+    assert.match(await (await request()).text(), new RegExp(row.password))
+    await client.revokeAgent("session-one")
+    assert.match(await (await request()).text(), /not found/)
+    await assert.rejects(
+      client.route({
+        callId: "call",
+        target: "agent",
+        extension: row.extension,
+      }),
+      /expired/
+    )
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})

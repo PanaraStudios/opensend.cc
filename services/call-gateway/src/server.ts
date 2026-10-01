@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage } from "node:http"
 import { HmacVerifier } from "./auth.js"
 import type { GatewayApi, RouteRequest } from "./contracts.js"
+import { AgentSessions, directoryAuthorized } from "./agents.js"
+import type { AgentControl } from "./contracts.js"
 import { GatewayError } from "./errors.js"
 
 async function bodyOf(request: IncomingMessage): Promise<string> {
@@ -30,7 +32,16 @@ const textField = (body: Record<string, unknown>, key: string): string => {
   return body[key]
 }
 
-export function createGatewayServer(api: GatewayApi, secret: string) {
+export function createGatewayServer(
+  api: GatewayApi,
+  secret: string,
+  agents?: {
+    sessions: AgentSessions
+    directorySecret: string
+    sipSecret: string
+    control: (request: AgentControl) => Promise<void>
+  }
+) {
   const verifier = new HmacVerifier(secret)
   const operations = new Map<string, Promise<unknown>>()
   const server = createServer(async (request, response) => {
@@ -38,6 +49,36 @@ export function createGatewayServer(api: GatewayApi, secret: string) {
     response.setHeader("cache-control", "no-store")
     try {
       const path = request.url ?? "/"
+      if (request.method === "POST" && path === "/agents/directory" && agents) {
+        if (
+          !directoryAuthorized(
+            request.headers.authorization,
+            agents.directorySecret
+          )
+        )
+          throw new GatewayError(
+            "DIRECTORY_UNAUTHORIZED",
+            "Unauthorized directory request",
+            401
+          )
+        const form = new URLSearchParams(await bodyOf(request))
+        if (
+          form.get("section") !== "directory" ||
+          (form.get("domain") ?? form.get("key_value")) !== "freeswitch"
+        )
+          throw new GatewayError(
+            "INVALID_DIRECTORY",
+            "Invalid directory lookup"
+          )
+        response.setHeader("content-type", "text/xml")
+        response.end(
+          agents.sessions.directory(
+            form.get("user") ?? form.get("sip_auth_username") ?? "",
+            agents.sipSecret
+          )
+        )
+        return
+      }
       if (request.method === "GET" && path === "/healthz") {
         const ok = await api.healthy()
         response.writeHead(ok ? 200 : 503).end(JSON.stringify({ ok }))
@@ -51,6 +92,9 @@ export function createGatewayServer(api: GatewayApi, secret: string) {
           "/remoteAnswer",
           "/hangup",
           "/route",
+          "/agents/session",
+          "/agents/revoke",
+          "/control",
         ].includes(path)
       )
         throw new GatewayError("NOT_FOUND", "Unknown endpoint", 404)
@@ -67,12 +111,63 @@ export function createGatewayServer(api: GatewayApi, secret: string) {
       } catch {
         throw new GatewayError("INVALID_JSON", "Expected a JSON object")
       }
+      if (path === "/agents/session" || path === "/agents/revoke") {
+        if (!agents?.directorySecret)
+          throw new GatewayError(
+            "AGENTS_UNAVAILABLE",
+            "Dynamic agent directory is not configured",
+            503
+          )
+        const sessionId = textField(body, "sessionId")
+        if (!/^[a-zA-Z0-9._:-]{1,256}$/.test(sessionId))
+          throw new GatewayError("INVALID_SESSION", "Invalid session")
+        if (path === "/agents/revoke") {
+          agents.sessions.revoke(sessionId)
+          response.end(JSON.stringify({ ok: true }))
+        } else response.end(JSON.stringify(agents.sessions.issue(sessionId)))
+        return
+      }
       const callId = textField(body, "callId")
       // Safe in SIP headers and ESL variable lists. Convex ids and wacids fit this alphabet.
       if (!/^[a-zA-Z0-9._:-]{1,256}$/.test(callId))
         throw new GatewayError("INVALID_CALL_ID", "Invalid callId")
       const run = async () => {
         switch (path) {
+          case "/control":
+            if (!agents)
+              throw new GatewayError(
+                "AGENTS_UNAVAILABLE",
+                "Browser controls unavailable",
+                503
+              )
+            if (
+              body.extension !== undefined &&
+              (typeof body.extension !== "string" ||
+                !agents.sessions.active(body.extension))
+            )
+              throw new GatewayError(
+                "AGENT_OFFLINE",
+                "Agent session expired",
+                409
+              )
+            if (body.queue !== undefined && typeof body.queue !== "string")
+              throw new GatewayError("INVALID_QUEUE", "Invalid queue")
+            if (
+              body.organizationId !== undefined &&
+              typeof body.organizationId !== "string"
+            )
+              throw new GatewayError("INVALID_TEAM", "Invalid team")
+            await agents.control({
+              callId,
+              organizationId: body.organizationId as string | undefined,
+              operation: textField(
+                body,
+                "operation"
+              ) as AgentControl["operation"],
+              extension: body.extension as string | undefined,
+              queue: body.queue as string | undefined,
+            })
+            return { ok: true }
           case "/inbound":
             return api.inbound(textField(body, "offerSdp"), callId)
           case "/outbound":
@@ -94,6 +189,16 @@ export function createGatewayServer(api: GatewayApi, secret: string) {
               )
             if (body.record !== undefined && typeof body.record !== "boolean")
               throw new GatewayError("INVALID_RECORD", "record must be boolean")
+            if (
+              body.target === "agent" &&
+              agents &&
+              !agents.sessions.active(String(body.extension))
+            )
+              throw new GatewayError(
+                "AGENT_OFFLINE",
+                "Agent session expired",
+                409
+              )
             await api.route({
               callId,
               target: textField(body, "target") as RouteRequest["target"],
