@@ -452,44 +452,6 @@ export async function startFakeGraph(port) {
           call,
           `http://host.docker.internal:${server.address().port}`
         )
-        // Behave like Meta fetching a presigned media link, without buffering it.
-        const media =
-          call.body?.image ??
-          call.body?.document ??
-          call.body?.video ??
-          call.body?.audio
-        if (
-          path.endsWith("/messages") &&
-          media?.link &&
-          new URL(media.link).searchParams.has("X-Amz-Signature")
-        ) {
-          const url = new URL(media.link)
-          if (
-            !["host.docker.internal", "127.0.0.1", "localhost"].includes(
-              url.hostname
-            )
-          )
-            return send(
-              response,
-              400,
-              graphError("Unexpected test bucket host", 100)
-            )
-          const host = url.host
-          url.hostname = "127.0.0.1"
-          const file = await fetch(url, { headers: { Host: host } })
-          if (!file.ok)
-            return send(
-              response,
-              400,
-              graphError(`Media fetch returned ${file.status}`, 100)
-            )
-          let size = 0
-          for await (const chunk of file.body) size += chunk.byteLength
-          call.fetchedMedia = {
-            size,
-            contentType: file.headers.get("content-type"),
-          }
-        }
         if (contentType) {
           response.writeHead(status, { "content-type": contentType })
           response.end(body)

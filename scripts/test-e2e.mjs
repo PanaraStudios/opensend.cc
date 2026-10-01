@@ -1,8 +1,3 @@
-import {
-  S3Client,
-  CreateBucketCommand,
-  PutBucketCorsCommand,
-} from "@aws-sdk/client-s3"
 import { randomBytes } from "node:crypto"
 import {
   existsSync,
@@ -18,8 +13,9 @@ import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 import { startFakeGraph } from "../tests/e2e/fake-graph.mjs"
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
 const filename = resolve(`.env.playwright-${project}`)
-const [appPort, convexPort, sitePort, oidcPort, graphPort, minioPort] =
-  await Promise.all(Array.from({ length: 6 }, freePort))
+const [appPort, convexPort, sitePort, oidcPort, graphPort] = await Promise.all(
+  Array.from({ length: 5 }, freePort)
+)
 const resultDir = resolve("test-results", project)
 mkdirSync(resultDir, { recursive: true })
 const realm = JSON.parse(readFileSync("docker/oidc-realm.json", "utf8"))
@@ -33,8 +29,6 @@ const compose = [
   "compose",
   "-f",
   "compose.yaml",
-  "-f",
-  "compose.e2e.yaml",
   "--env-file",
   filename,
   "-p",
@@ -52,12 +46,6 @@ const local = existsSync(".env.docker")
   : {}
 const values = {
   INSTANCE_NAME: project,
-  MINIO_PORT: minioPort,
-  OBJECT_STORAGE_ENDPOINT: `http://host.docker.internal:${minioPort}`,
-  OBJECT_STORAGE_REGION: "us-east-1",
-  OBJECT_STORAGE_BUCKET: "opensend-e2e",
-  OBJECT_STORAGE_ACCESS_KEY_ID: "opensend-e2e",
-  OBJECT_STORAGE_SECRET_ACCESS_KEY: randomBytes(32).toString("hex"),
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
   BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
   SSO_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
@@ -91,7 +79,7 @@ const env = {
   ...process.env,
   OPENSEND_ENV_FILE: filename,
   COMPOSE_PROJECT_NAME: project,
-  COMPOSE_FILE: "compose.yaml:compose.e2e.yaml",
+  COMPOSE_FILE: "compose.yaml",
   OPENSEND_BASE_URL: values.SITE_URL,
   OPENSEND_CONVEX_URL: values.CONVEX_PUBLIC_URL,
   OPENSEND_CALLBACK_ORIGIN: values.CONVEX_PUBLIC_SITE_URL,
@@ -105,36 +93,6 @@ let graph
 let status = 1
 try {
   graph = await startFakeGraph(graphPort)
-  run("docker", [...compose, "up", "-d", "--build", "--wait", "minio"])
-  const bucket = new S3Client({
-    endpoint: `http://127.0.0.1:${minioPort}`,
-    region: "us-east-1",
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: values.OBJECT_STORAGE_ACCESS_KEY_ID,
-      secretAccessKey: values.OBJECT_STORAGE_SECRET_ACCESS_KEY,
-    },
-  })
-  await bucket.send(
-    new CreateBucketCommand({ Bucket: values.OBJECT_STORAGE_BUCKET })
-  )
-  await bucket.send(
-    new PutBucketCorsCommand({
-      Bucket: values.OBJECT_STORAGE_BUCKET,
-      CORSConfiguration: {
-        CORSRules: [
-          {
-            AllowedOrigins: [values.SITE_URL],
-            AllowedMethods: ["PUT", "GET", "HEAD"],
-            AllowedHeaders: ["content-type"],
-            ExposeHeaders: ["ETag"],
-            MaxAgeSeconds: 3600,
-          },
-        ],
-      },
-    })
-  )
-  bucket.destroy()
   run("node", ["scripts/setup.mjs"], { env })
   // Setup may normalize a loopback URL for requests originating inside Docker.
   env.OPENSEND_CALLBACK_ORIGIN = parse(
