@@ -9,7 +9,8 @@ export const start = action({
     organizationId: v.string(),
     browserId: v.string(),
     accountId: v.id("channelAccounts"),
-    ivrId: v.id("ivrs"),
+    ivrId: v.optional(v.id("ivrs")),
+    botId: v.optional(v.id("voiceBots")),
     contactId: v.optional(v.id("contacts")),
   },
   returns: v.id("calls"),
@@ -28,10 +29,15 @@ export const start = action({
       })
       await gateway().route({
         callId: call._id,
-        target: "ivr",
-        ivrId: args.ivrId,
+        target: args.botId ? "bot" : "ivr",
+        ...(args.botId ? { botId: args.botId } : { ivrId: args.ivrId }),
         organizationId: args.organizationId,
-        maxDurationSeconds: 300,
+        maxDurationSeconds: Math.min(
+          300,
+          call.botConfig?.maxDurationSeconds ?? 300
+        ),
+        silenceTimeoutSeconds: call.botConfig?.silenceTimeoutSeconds,
+        record: call.botConfig?.recording,
       })
       await ctx.runMutation(internal.calling.rows.finish, {
         id: call._id,

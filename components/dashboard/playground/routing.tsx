@@ -13,7 +13,13 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { actionError } from "@/lib/action-error"
-export function VoiceRouting({ kind, id }: { kind: "ivr"; id: string }) {
+export function VoiceRouting({
+  kind,
+  id,
+}: {
+  kind: "ivr" | "bot"
+  id: string
+}) {
   const setup = useTeamQuery(api.calling.playgroundState.setup)
   const { activeTeamId } = useWorkspace()
   const update = useAction(api.calling.settings.dashboardUpdate)
@@ -56,7 +62,7 @@ export function VoiceRouting({ kind, id }: { kind: "ivr"; id: string }) {
                 <TableCell>
                   <Button
                     variant="outline"
-                    disabled={!!busy || !setup.configured}
+                    disabled={!!busy || !setup.routingConfigured}
                     onClick={async () => {
                       setBusy(n.id)
                       setError("")
@@ -66,7 +72,9 @@ export function VoiceRouting({ kind, id }: { kind: "ivr"; id: string }) {
                           from: n.id,
                           routing: assigned
                             ? { kind: "agents" }
-                            : { kind: "ivr", ivrId: id as Id<"ivrs"> },
+                            : kind === "ivr"
+                              ? { kind: "ivr", ivrId: id as Id<"ivrs"> }
+                              : { kind: "bot", botId: id as Id<"voiceBots"> },
                         })
                       } catch (e) {
                         setError(actionError(e))

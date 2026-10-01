@@ -1,3 +1,4 @@
+import { selectBot } from "../voice/routing"
 import { ConvexError } from "convex/values"
 import schema from "../schema"
 import { internal } from "../_generated/api"
@@ -13,6 +14,7 @@ export const setup = query({
   args: { organizationId: v.string() },
   returns: v.object({
     configured: v.boolean(),
+    routingConfigured: v.boolean(),
     numbers: v.array(
       v.object({
         id: v.id("channelAccounts"),
@@ -30,6 +32,8 @@ export const setup = query({
       )
       .take(100)
     return {
+      routingConfigured:
+        !!process.env.CALL_GATEWAY_URL && !!process.env.CALL_GATEWAY_SECRET,
       configured:
         !!process.env.CALL_GATEWAY_URL &&
         !!process.env.CALL_GATEWAY_SECRET &&
@@ -48,7 +52,9 @@ export const setup = query({
               routing:
                 s?.routing?.kind === "ivr"
                   ? `ivr:${s.routing.ivrId}`
-                  : (s?.routing?.kind ?? null),
+                  : s?.routing?.kind === "bot"
+                    ? `bot:${s.routing.botId}`
+                    : (s?.routing?.kind ?? null),
             }
           })
       ),
@@ -90,7 +96,8 @@ export const create = internalMutation({
     organizationId: v.string(),
     browserId: v.string(),
     accountId: v.id("channelAccounts"),
-    ivrId: v.id("ivrs"),
+    ivrId: v.optional(v.id("ivrs")),
+    botId: v.optional(v.id("voiceBots")),
     contactId: v.optional(v.id("contacts")),
   },
   returns: schema.doc("calls"),
@@ -98,7 +105,9 @@ export const create = internalMutation({
     await authorize(ctx, args, true)
     const agent = await agentPresence(ctx, args.organizationId, args.browserId)
     await requireAvailable(ctx, agent)
-    await ownIvr(ctx, args.organizationId, args.ivrId)
+    if (Number(!!args.ivrId) + Number(!!args.botId) !== 1)
+      throw new ConvexError("Choose an IVR or a voice bot")
+    if (args.ivrId) await ownIvr(ctx, args.organizationId, args.ivrId)
     const account = await ctx.db.get("channelAccounts", args.accountId)
     if (
       !account ||
@@ -130,6 +139,15 @@ export const create = internalMutation({
       observedAt: Date.now(),
       offeredAt: Date.now(),
     })
+    if (args.botId) {
+      const selected = await selectBot(
+        ctx,
+        (await ctx.db.get("calls", id))!,
+        args.botId
+      )
+      if (selected.target !== "bot")
+        throw new ConvexError("Bot provider credentials are unavailable")
+    }
     await ctx.scheduler.runAfter(330000, internal.calling.playground.ended, {
       id,
       at: Date.now() + 330000,
@@ -155,5 +173,27 @@ export const owned = internalQuery({
     )
       throw new ConvexError("Test call belongs to another browser")
     return call
+  },
+})
+
+export const contacts = query({
+  args: { organizationId: v.string() },
+  returns: v.array(v.object({ id: v.id("contacts"), label: v.string() })),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const rows = await ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId)
+      )
+      .take(100)
+    return rows.map((c) => ({
+      id: c._id,
+      label:
+        [c.firstName, c.lastName].filter(Boolean).join(" ") ||
+        c.email ||
+        c.phone ||
+        "Contact",
+    }))
   },
 })

@@ -6,6 +6,7 @@ import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
+import { BotDiagnostics } from "./bot-diagnostics"
 import { DtmfKeypad } from "@/components/dashboard/calling/dtmf-keypad"
 import { useSoftphone } from "@/components/dashboard/calling/softphone-provider"
 import {
@@ -55,8 +56,10 @@ export function IvrPath({
     <p className="text-sm text-muted-foreground">Waiting for menu input…</p>
   )
 }
-export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
+export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
   const setup = useTeamQuery(api.calling.playgroundState.setup)
+  const contacts = useTeamQuery(api.calling.playgroundState.contacts)
+  const [contactId, setContactId] = useState("none")
   const phone = useSoftphone()
   const { activeTeamId } = useWorkspace()
   const health = useAction(api.calling.playground.health)
@@ -132,6 +135,19 @@ export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <OptionSelect
+              aria-label="Test contact"
+              value={contactId}
+              items={[
+                { value: "none", label: "No test contact" },
+                ...(contacts ?? []).map((c) => ({
+                  value: c.id,
+                  label: c.label,
+                })),
+              ]}
+              onChange={setContactId}
+              disabled={live || busy}
+            />
+            <OptionSelect
               aria-label="Test number"
               value={accountId}
               placeholder="Choose a number"
@@ -162,7 +178,12 @@ export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
                   setCallId(
                     await phone.testCall(
                       accountId as Id<"channelAccounts">,
-                      id as Id<"ivrs">
+                      kind === "ivr"
+                        ? { ivrId: id as Id<"ivrs"> }
+                        : { botId: id as Id<"voiceBots"> },
+                      contactId === "none"
+                        ? undefined
+                        : (contactId as Id<"contacts">)
                     )
                   )
                 } catch (e) {
@@ -231,7 +252,8 @@ export function VoiceTester({ kind, id }: { kind: "ivr"; id: string }) {
                   />
                 </>
               ) : null}
-              <IvrPath path={call.ivr_path} />
+              {call.ivr_id ? <IvrPath path={call.ivr_path} /> : null}
+              {call.bot_id ? <BotDiagnostics call={call} /> : null}
               {call.error ? (
                 <p role="alert" className="text-destructive">
                   {call.error}

@@ -59,7 +59,7 @@ interface SoftphoneContext {
   hangup: () => Promise<void>
   testCall: (
     accountId: Id<"channelAccounts">,
-    ivrId: Id<"ivrs">,
+    target: { ivrId: Id<"ivrs"> } | { botId: Id<"voiceBots"> },
     contactId?: Id<"contacts">
   ) => Promise<Id<"calls">>
   outbound: (
@@ -519,13 +519,13 @@ function TeamSoftphone({
           await phone.current?.dtmf(digit)
         },
         hangup,
-        testCall: async (accountId, ivrId, contactId) => {
+        testCall: async (accountId, target, contactId) => {
           if (!online || active.current || operation.current || !phone.current)
             throw new Error("Go online and finish your current call first")
           operation.current = true
           try {
             await phone.current.microphone()
-            return await startTest({ ...args, accountId, ivrId, contactId })
+            return await startTest({ ...args, accountId, ...target, contactId })
           } finally {
             operation.current = false
           }

@@ -114,6 +114,11 @@ export const callingTables = {
       "status",
     ])
     .index("by_organizationId_and_botActive", ["organizationId", "botActive"])
+    .index("by_organizationId_and_botActive_and_test", [
+      "organizationId",
+      "botActive",
+      "test",
+    ])
     .index("by_organizationId_and_botStartedAt", [
       "organizationId",
       "botStartedAt",

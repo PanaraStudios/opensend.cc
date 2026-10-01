@@ -140,3 +140,131 @@ test("playground refuses an IVR and account from another team before external IO
     0
   )
 })
+
+test("bot tests bypass production budgets and concurrency accounting, expose diagnostics and never send a customer message", async () => {
+  const f = await setup()
+  const key = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "provider",
+    body: JSON.stringify({
+      provider: "gemini",
+      label: "Testing",
+      key: "test-provider-key",
+    }),
+  })
+  const bot = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "bot",
+    body: JSON.stringify({
+      name: "Support",
+      provider: "gemini",
+      credentialId: key.id,
+      monthlyMinuteBudget: 0,
+      maxConcurrentCalls: 1,
+      tools: ["lookup_contact", "send_whatsapp_message"],
+    }),
+  })
+  const input = {
+    ...f.args,
+    accountId: f.account,
+    botId: bot.id as import("./_generated/dataModel").Id<"voiceBots">,
+  }
+  const call = await f.owner.client.mutation(
+    internal.calling.playgroundState.create,
+    input
+  )
+  expect(call.botActive).toBe(true)
+  expect(call.botFallbackReason).toBeUndefined()
+  const args = { organizationId: f.owner.team, browserId: "member-playground" }
+  const agent = await f.member.client.mutation(
+    internal.calling.softphoneState.begin,
+    args
+  )
+  await f.member.client.mutation(internal.calling.softphoneState.provisioned, {
+    ...args,
+    leaseId: agent.leaseId,
+    extension: "2001",
+    expiresAt: Date.now() + 120000,
+  })
+  await f.member.client.mutation(api.calling.softphoneState.presence, {
+    ...args,
+    status: "online",
+  })
+  const second = await f.member.client.mutation(
+    internal.calling.playgroundState.create,
+    { ...input, ...args }
+  )
+  expect(second.botActive).toBe(true)
+  const envelope = (data: Record<string, unknown>) => ({
+    nonce: crypto.randomUUID(),
+    expiresAt: Date.now() + 60000,
+    data: {
+      version: 1,
+      callId: call._id,
+      timestamp: Date.now(),
+      eventId: crypto.randomUUID(),
+      ...data,
+    },
+  })
+  const result = await f.t.mutation(
+    internal.voice.gateway.tool,
+    envelope({
+      organizationId: f.owner.team,
+      toolCall: {
+        id: "send-test",
+        name: "send_whatsapp_message",
+        arguments: { text: "Hello" },
+      },
+    })
+  )
+  expect(result).toMatchObject({
+    ok: true,
+    result: { test: true, message: "Test preview; no message sent" },
+  })
+  await f.t.mutation(
+    internal.voice.gateway.event,
+    envelope({ type: "latency", turnId: "turn-1", latencyMs: 123 })
+  )
+  await f.t.mutation(
+    internal.voice.gateway.event,
+    envelope({
+      type: "transcript",
+      transcript: {
+        role: "agent",
+        text: "Hello [interrupted]",
+        final: true,
+        timestampMs: 200,
+      },
+    })
+  )
+  await f.t.mutation(
+    internal.voice.gateway.event,
+    envelope({
+      type: "bot_completed",
+      outcome: "completed",
+      summary: "Test complete",
+      usage: { inputTokens: 12, audioSeconds: 1 },
+    })
+  )
+  const transcript = await f.owner.client.query(
+    api.voice.resources.dashboardTranscript,
+    { organizationId: f.owner.team, id: call._id, limit: 100 }
+  )
+  expect(transcript.data).toHaveLength(4)
+  await expect(
+    f.outsider.client.query(api.voice.resources.dashboardTranscript, {
+      organizationId: f.outsider.team,
+      id: call._id,
+      limit: 100,
+    })
+  ).rejects.toBeDefined()
+  const events = await f.t.run((ctx) =>
+    ctx.db
+      .query("events")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", f.owner.team)
+      )
+      .take(100)
+  )
+  expect(events.some((e) => e.type.startsWith("whatsapp.call."))).toBe(false)
+})

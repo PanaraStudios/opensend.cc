@@ -11,6 +11,7 @@ import {
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AudioPlayer } from "@/components/ui/audio-player"
+import { BotDiagnostics } from "./bot-diagnostics"
 import { IvrPath } from "./tester"
 import { ivrActionLabel } from "@/lib/dashboard/voice-playground"
 export function PlaygroundCallDetail({ id }: { id: string }) {
@@ -35,7 +36,10 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
             label: "Duration",
             value: call.duration === null ? "—" : `${call.duration}s`,
           },
-          { label: "Outcome", value: ivrActionLabel(call.ivr_outcome) },
+          {
+            label: "Outcome",
+            value: call.bot_outcome ?? ivrActionLabel(call.ivr_outcome),
+          },
           {
             label: "Transfer target",
             value:
@@ -54,6 +58,7 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
       <DetailSection title="IVR path">
         <IvrPath path={call.ivr_path} />
       </DetailSection>
+      {call.bot_id ? <BotDiagnostics call={call} /> : null}
       {call.recording?.download_url ? (
         <AudioPlayer src={call.recording.download_url} label="Call recording" />
       ) : null}

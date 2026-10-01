@@ -99,6 +99,7 @@ export async function availableAgent(ctx: MutationCtx, call: Doc<"calls">) {
     )
     .take(100)
   for (const agent of agents) {
+    if (call.test && agent.userId === call.testUserId) continue
     try {
       await requireAvailable(ctx, agent, call._id)
     } catch {
@@ -171,14 +172,25 @@ export async function selectBot(
     date = new Date(now),
     monthStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)
   const cap = bot.maxConcurrentCalls ?? 100
-  const active = await ctx.db
-    .query("calls")
-    .withIndex("by_organizationId_and_botActive", (q) =>
-      q.eq("organizationId", call.organizationId).eq("botActive", true)
-    )
-    .take(cap)
-  if (active.length >= cap) reason = "concurrency_exhausted"
-  if (!reason && bot.monthlyMinuteBudget !== undefined) {
+  const active = call.test
+    ? []
+    : (
+        await Promise.all(
+          [undefined, false].map((test) =>
+            ctx.db
+              .query("calls")
+              .withIndex("by_organizationId_and_botActive_and_test", (q) =>
+                q
+                  .eq("organizationId", call.organizationId)
+                  .eq("botActive", true)
+                  .eq("test", test)
+              )
+              .take(cap)
+          )
+        )
+      ).flat()
+  if (!call.test && active.length >= cap) reason = "concurrency_exhausted"
+  if (!call.test && !reason && bot.monthlyMinuteBudget !== undefined) {
     const seconds = await minuteUsage.sum(ctx, {
       namespace: call.organizationId,
       bounds: {
@@ -221,11 +233,12 @@ export async function selectBot(
       botFallbackReason: undefined,
       botSessionUsage: undefined,
     })
-    await minuteUsage.replaceOrInsert(
-      ctx,
-      call,
-      (await ctx.db.get("calls", call._id))!
-    )
+    if (!call.test)
+      await minuteUsage.replaceOrInsert(
+        ctx,
+        call,
+        (await ctx.db.get("calls", call._id))!
+      )
     // Release orphaned reservations even if the gateway never starts or callbacks are lost.
     await ctx.scheduler.runAfter(
       (bot.maxDurationSeconds + 30) * 1000,
@@ -270,11 +283,12 @@ export const expire = internalMutation({
           (call.botDuration ?? 0) + (call.botConfig?.maxDurationSeconds ?? 600),
         botOutcome: "failed",
       })
-      await minuteUsage.replaceOrInsert(
-        ctx,
-        call,
-        (await ctx.db.get("calls", id))!
-      )
+      if (!call.test)
+        await minuteUsage.replaceOrInsert(
+          ctx,
+          call,
+          (await ctx.db.get("calls", id))!
+        )
     }
     return null
   },
