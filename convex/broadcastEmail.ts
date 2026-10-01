@@ -1,3 +1,4 @@
+import { requireEmailConfigured } from "./access"
 import { ConvexError } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -20,6 +21,7 @@ export async function validateEmailBroadcast(
   if (input.whatsapp)
     throw new ConvexError("WhatsApp configuration requires channel=whatsapp")
   if (!sending) return
+  await requireEmailConfigured(ctx)
   if (!input.subject?.trim())
     throw new ConvexError("Add a subject line to continue")
   if (!input.html && !input.text)

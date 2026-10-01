@@ -1,3 +1,4 @@
+import { requireEmailConfigured } from "../access"
 import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
@@ -68,6 +69,7 @@ export const authorizeSending = internalQuery({
   returns: v.null(),
   handler: async (ctx, { caller }) => {
     await requireCaller(ctx, caller, "sending")
+    await requireEmailConfigured(ctx)
     return null
   },
 })
@@ -151,6 +153,7 @@ export const batchSend = internalMutation({
       caller,
       async () => {
         await requireCaller(ctx, caller, "sending")
+        await requireEmailConfigured(ctx)
         const items: unknown = JSON.parse(body)
         if (!Array.isArray(items))
           throw invalid("The request body must be an array of emails.")

@@ -16,6 +16,7 @@ import {
 } from "./_generated/server"
 import {
   findInstallation,
+  requireEmailConfigured,
   findRegion,
   requireTeam,
   requireInstallationAdmin,
@@ -443,6 +444,7 @@ export async function createDomain(
   } & TrackingSettings,
   placeholder = false
 ): Promise<Id<"domains">> {
+  await requireEmailConfigured(ctx)
   const name = normalizeDomainName(args.name)
   const customReturnPath = args.customReturnPath.trim().toLowerCase()
   const error =
@@ -592,6 +594,7 @@ export async function updateDomain(
   domain: Doc<"domains">,
   args: Infer<typeof domainChanges>
 ) {
+  await requireEmailConfigured(ctx)
   // A refresh or TLS change that failed left the provisioned domain intact,
   // so its settings stay editable; an unfinished provision or removal does not.
   if (domain.claimId || domain.transferClaimId)

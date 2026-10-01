@@ -12,7 +12,7 @@ import { query, mutation, internalQuery } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
-import { requireTeam } from "./access"
+import { requireTeam, requireEmailConfigured } from "./access"
 import { renderEmail } from "./email/render"
 import {
   countValue,
@@ -994,6 +994,7 @@ export async function publishTemplate(
   ctx: MutationCtx,
   template: Doc<"templates">
 ) {
+  if (rowChannel(template) === "email") await requireEmailConfigured(ctx)
   const id = template._id
   const draft = await findDraft(ctx, id)
   const page =

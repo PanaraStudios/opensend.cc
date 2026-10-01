@@ -1,7 +1,7 @@
 import { v, ConvexError } from "convex/values"
 import { internalQuery, type QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
-import { findInstallation, findRegion } from "../access"
+import { requireEmailConfigured, findRegion } from "../access"
 import { verifiesDomain } from "./records"
 import {
   POLICY_REVISION,
@@ -25,7 +25,9 @@ export async function sendContext(
   loadedDomain?: Doc<"domains">
 ) {
   // No recorded revision is the setup-only policy, which cannot send.
-  if (((await findInstallation(ctx))?.policyRevision ?? 1) < POLICY_REVISION)
+  if (
+    ((await requireEmailConfigured(ctx)).policyRevision ?? 1) < POLICY_REVISION
+  )
     throw new ConvexError("Ask your administrator to update AWS permissions")
   const domain = loadedDomain ?? (await ctx.db.get("domains", args.domainId))
   if (

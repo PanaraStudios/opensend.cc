@@ -32,7 +32,12 @@ import {
 import { components, internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
-import { findInstallation, findRegion, requireTeam } from "./access"
+import {
+  findInstallation,
+  findRegion,
+  requireTeam,
+  requireEmailConfigured,
+} from "./access"
 import { apiError, invalid, missing } from "./api/caller"
 import { emitEvent } from "./events"
 import {
@@ -195,6 +200,7 @@ export async function validateSender(
   organizationId: string,
   from: string
 ) {
+  await requireEmailConfigured(ctx)
   const mailbox = parseMailbox(from)
   if (!mailbox) throw invalid("Invalid from address")
   const domain = await sendingDomain(
@@ -227,6 +233,7 @@ export async function createEmail(
     senders?: Map<string, ResolvedSender>
   }
 ) {
+  await requireEmailConfigured(ctx)
   let { from, subject, html, text } = input
   let replyTo = input.replyTo
   let templateId: string | undefined

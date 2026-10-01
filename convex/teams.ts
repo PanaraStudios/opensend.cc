@@ -84,9 +84,10 @@ export const create = mutation({
       if (
         !access.admin ||
         installation?.setupStep !== "team" ||
-        !installation.accountId ||
+        (!installation.accountId && !installation.emailDeferredAt) ||
         !installation.environmentCheckedAt ||
-        !allRegionsReady(await listRegions(ctx)) ||
+        (!installation.emailDeferredAt &&
+          !allRegionsReady(await listRegions(ctx))) ||
         (
           await ctx.runQuery(components.betterAuth.teams.snapshot, {
             sessionId: sid,
@@ -110,7 +111,7 @@ export const create = mutation({
       await ensureTeamTenant(ctx, id, installation.defaultRegion)
     if (installation && !installation.completedAt)
       await ctx.db.patch("installation", installation._id, {
-        setupStep: "domain",
+        setupStep: installation.emailDeferredAt ? "team" : "domain",
       })
     return id
   },

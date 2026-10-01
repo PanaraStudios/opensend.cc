@@ -10,6 +10,22 @@ export const findInstallation = (ctx: QueryCtx | MutationCtx) =>
     .query("installation")
     .withIndex("by_key", (q) => q.eq("key", "installation"))
     .unique()
+/** Email capability is separate from installation setup and Meta channels. */
+export const emailConfigured = (
+  installation: Pick<Doc<"installation">, "accountId" | "credentialKind"> | null
+) => !!installation?.accountId && !!installation.credentialKind
+
+export async function requireEmailConfigured(ctx: QueryCtx | MutationCtx) {
+  const installation = await findInstallation(ctx)
+  if (!emailConfigured(installation))
+    throw new ConvexError({
+      statusCode: 403,
+      name: "email_not_configured",
+      message: "Email sending is not set up on this instance",
+    })
+  return installation!
+}
+
 export async function requireConnection(ctx: QueryCtx | MutationCtx) {
   const installation = await findInstallation(ctx)
   if (!installation?.accountId || !installation.credentialKind)
