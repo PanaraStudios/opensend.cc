@@ -65,6 +65,7 @@ const workflow = {
 const overrides: Record<string, Record<string, unknown>> = {
   "batch-remove-suppressions": { ids: ["test-id"] },
   "send-email": { text: "Hello" },
+  "send-whatsapp-message": { to: "16505551234", text: "Hello" },
   "send-batch-emails": {
     emails: [
       {
@@ -76,6 +77,8 @@ const overrides: Record<string, Record<string, unknown>> = {
     ],
   },
   "create-broadcast": { text: "Hello" },
+  // html is optional in the schema, since WhatsApp templates have none.
+  "create-template": { html: "<p>Hello</p>" },
   "create-contact-import": { content: "email\nperson@example.com" },
   "create-automation": { workflow },
   "update-automation": { workflow },

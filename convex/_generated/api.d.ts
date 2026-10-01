@@ -15,6 +15,7 @@ import type * as api_automationGraph from "../api/automationGraph.js";
 import type * as api_automations from "../api/automations.js";
 import type * as api_broadcasts from "../api/broadcasts.js";
 import type * as api_caller from "../api/caller.js";
+import type * as api_channelMessages from "../api/channelMessages.js";
 import type * as api_domains from "../api/domains.js";
 import type * as api_emailShares from "../api/emailShares.js";
 import type * as api_emails from "../api/emails.js";
@@ -34,6 +35,7 @@ import type * as api_suppressions from "../api/suppressions.js";
 import type * as api_templates from "../api/templates.js";
 import type * as api_usage from "../api/usage.js";
 import type * as api_webhooks from "../api/webhooks.js";
+import type * as api_whatsapp from "../api/whatsapp.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as audience from "../audience.js";
 import type * as auth from "../auth.js";
@@ -49,9 +51,14 @@ import type * as automations from "../automations.js";
 import type * as broadcastMetrics from "../broadcastMetrics.js";
 import type * as broadcastSend from "../broadcastSend.js";
 import type * as broadcasts from "../broadcasts.js";
+import type * as channels_deliver from "../channels/deliver.js";
 import type * as channels_downloads from "../channels/downloads.js";
+import type * as channels_identity from "../channels/identity.js";
 import type * as channels_media from "../channels/media.js";
 import type * as channels_mediaState from "../channels/mediaState.js";
+import type * as channels_mediaUpload from "../channels/mediaUpload.js";
+import type * as channels_mediaUploads from "../channels/mediaUploads.js";
+import type * as channels_messages from "../channels/messages.js";
 import type * as channels_payload from "../channels/payload.js";
 import type * as channels_rows from "../channels/rows.js";
 import type * as contactImports from "../contactImports.js";
@@ -175,6 +182,9 @@ import type * as unsubscribeHttp from "../unsubscribeHttp.js";
 import type * as usage from "../usage.js";
 import type * as webhookDelivery from "../webhookDelivery.js";
 import type * as webhooks from "../webhooks.js";
+import type * as whatsapp_rows from "../whatsapp/rows.js";
+import type * as whatsapp_templateActions from "../whatsapp/templateActions.js";
+import type * as whatsapp_templates from "../whatsapp/templates.js";
 
 import type {
   ApiFromModules,
@@ -190,6 +200,7 @@ declare const fullApi: ApiFromModules<{
   "api/automations": typeof api_automations;
   "api/broadcasts": typeof api_broadcasts;
   "api/caller": typeof api_caller;
+  "api/channelMessages": typeof api_channelMessages;
   "api/domains": typeof api_domains;
   "api/emailShares": typeof api_emailShares;
   "api/emails": typeof api_emails;
@@ -209,6 +220,7 @@ declare const fullApi: ApiFromModules<{
   "api/templates": typeof api_templates;
   "api/usage": typeof api_usage;
   "api/webhooks": typeof api_webhooks;
+  "api/whatsapp": typeof api_whatsapp;
   apiKeys: typeof apiKeys;
   audience: typeof audience;
   auth: typeof auth;
@@ -224,9 +236,14 @@ declare const fullApi: ApiFromModules<{
   broadcastMetrics: typeof broadcastMetrics;
   broadcastSend: typeof broadcastSend;
   broadcasts: typeof broadcasts;
+  "channels/deliver": typeof channels_deliver;
   "channels/downloads": typeof channels_downloads;
+  "channels/identity": typeof channels_identity;
   "channels/media": typeof channels_media;
   "channels/mediaState": typeof channels_mediaState;
+  "channels/mediaUpload": typeof channels_mediaUpload;
+  "channels/mediaUploads": typeof channels_mediaUploads;
+  "channels/messages": typeof channels_messages;
   "channels/payload": typeof channels_payload;
   "channels/rows": typeof channels_rows;
   contactImports: typeof contactImports;
@@ -350,6 +367,9 @@ declare const fullApi: ApiFromModules<{
   usage: typeof usage;
   webhookDelivery: typeof webhookDelivery;
   webhooks: typeof webhooks;
+  "whatsapp/rows": typeof whatsapp_rows;
+  "whatsapp/templateActions": typeof whatsapp_templateActions;
+  "whatsapp/templates": typeof whatsapp_templates;
 }>;
 
 /**

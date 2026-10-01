@@ -18,6 +18,7 @@ export type RESEND_ERROR_CODE_KEY =
   | 'daily_quota_exceeded'
   | 'rate_limit_exceeded'
   | 'security_error'
+  | 'meta_api_error'
   | 'application_error'
   | 'internal_server_error';
 

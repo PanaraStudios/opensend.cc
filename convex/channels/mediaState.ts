@@ -95,9 +95,21 @@ export const file = internalQuery({
       .query("channelMessageContents")
       .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
       .unique()
-    return (
-      content?.media?.find((m) => m.mediaId === args.mediaId && m.storageId) ??
-      null
-    )
+    const file = content?.media?.find((m) => m.mediaId === args.mediaId)
+    if (!file) return null
+    if (file.storageId) return file
+    const upload = await ctx.db
+      .query("channelMediaUploads")
+      .withIndex("by_team_and_mediaId", (q) =>
+        q
+          .eq("organizationId", message.organizationId)
+          .eq("mediaId", args.mediaId)
+      )
+      .unique()
+    return upload &&
+      upload.accountId === message.accountId &&
+      upload.expiresAt > Date.now()
+      ? { ...file, storageId: upload.storageId }
+      : null
   },
 })

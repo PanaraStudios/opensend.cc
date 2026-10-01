@@ -168,6 +168,8 @@ import {
   sentenceCase,
   statusLabel,
   TEMPLATE_STATUS_TONE,
+  META_TEMPLATE_STATUS_TONE,
+  metaTemplateStatusLabel,
   templateStatusLabel,
   CHANNEL_ACCOUNT_STATUS_TONE,
   CHANNEL_QUALITY_TONE,
@@ -195,6 +197,7 @@ import type {
   EmailStatus,
   ExportStatus,
   TemplateStatus,
+  MetaTemplateStatus,
 } from "@/lib/dashboard/types"
 
 /* ------------------------------------------------------------------ layout */
@@ -1102,6 +1105,20 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
     <ToneBadge
       tone={TEMPLATE_STATUS_TONE[status]}
       label={templateStatusLabel(status)}
+    />
+  )
+}
+
+/** Meta's review of a WhatsApp template: Pending, Approved, Rejected… */
+export function MetaTemplateStatusBadge({
+  status,
+}: {
+  status: MetaTemplateStatus
+}) {
+  return (
+    <ToneBadge
+      tone={META_TEMPLATE_STATUS_TONE[status]}
+      label={metaTemplateStatusLabel(status)}
     />
   )
 }

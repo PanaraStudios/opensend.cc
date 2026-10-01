@@ -1,5 +1,7 @@
 "use node"
-import { env } from "../_generated/server"
+import { env, type ActionCtx } from "../_generated/server"
+import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
 import { decryptSecret } from "../secrets"
 import { publicFetch } from "../../lib/net/public-fetch"
 import { localHttpOrigin } from "../../lib/net/public-host"
@@ -32,6 +34,8 @@ export async function graph<T = unknown>(input: {
     | { json: unknown }
     | { form: Record<string, string> }
     | { bytes: Uint8Array; contentType: string }
+  /** Replaces default headers, like the upload API's `OAuth` scheme. */
+  headers?: Record<string, string>
   localOrigin?: string
 }): Promise<T> {
   const localOrigin = input.localOrigin ?? graphLocalOrigin()
@@ -56,6 +60,7 @@ export async function graph<T = unknown>(input: {
     headers["content-type"] = input.body.contentType
     body = input.body.bytes
   }
+  Object.assign(headers, input.headers)
   const response = await publicFetch(url, {
     method: input.method,
     headers,
@@ -75,4 +80,31 @@ export function graphFailure(error: unknown) {
     : error instanceof MetaError
       ? `Meta refused the request: ${error.message}`
       : "Could not reach Meta. Try again."
+}
+
+export const TOKEN_REFUSED =
+  "Meta refused the business token. Reconnect the business."
+
+/** Runs Graph calls for the dashboard: failures become messages it can
+    show, and a refused token (190) flags the connection for reconnecting. */
+export async function friendly<T>(
+  ctx: ActionCtx,
+  run: () => Promise<T>,
+  connectionId?: Id<"metaConnections">
+): Promise<T> {
+  try {
+    return await run()
+  } catch (e) {
+    if (e instanceof MetaError && e.action === "token_invalid") {
+      if (!connectionId)
+        throw new ConvexError("Meta refused the token. Check it and try again.")
+      await ctx.runMutation(internal.meta.connect.markConnection, {
+        connectionId,
+        status: "error",
+        error: TOKEN_REFUSED,
+      })
+      throw new ConvexError(TOKEN_REFUSED)
+    }
+    throw new ConvexError(graphFailure(e))
+  }
 }

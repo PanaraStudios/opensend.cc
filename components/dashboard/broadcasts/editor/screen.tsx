@@ -41,7 +41,7 @@ const VIEW_ITEMS = [
   { value: "html" as const, label: "HTML code editor", icon: CodeXmlIcon },
 ]
 
-function SaveIndicator({ save }: { save: SaveState }) {
+export function SaveIndicator({ save }: { save: SaveState }) {
   if (save === "idle") return null
   return (
     <span

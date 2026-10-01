@@ -21,6 +21,7 @@ export function EditorTopBar({
   name,
   onRename,
   badge,
+  nameReadOnly = false,
   children,
 }: {
   /** What the record is called in copy: "broadcast", "automation". */
@@ -30,6 +31,8 @@ export function EditorTopBar({
   name: string
   onRename: (name: string) => void
   badge: React.ReactNode
+  /** The name can no longer change, like a template Meta has. */
+  nameReadOnly?: boolean
   /** The closing actions: undo, a send, a start. */
   children?: React.ReactNode
 }) {
@@ -68,6 +71,7 @@ export function EditorTopBar({
             else setDraft(name)
           }}
           aria-label={`${sentenceCase(noun)} name`}
+          readOnly={nameReadOnly}
           data-testid="editor-name"
           placeholder="Untitled"
           /* A long name ends in an ellipsis until the field is focused, when

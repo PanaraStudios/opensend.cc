@@ -9,6 +9,7 @@ export type GraphErrorInfo = {
   subcode?: number
   isTransient: boolean
   message: string
+  title?: string
   fbtraceId?: string
 }
 
@@ -51,6 +52,7 @@ export class MetaError extends Error {
   readonly code?: number
   readonly subcode?: number
   readonly isTransient: boolean
+  readonly title?: string
   readonly fbtraceId?: string
   constructor(info: GraphErrorInfo) {
     super(info.message)
@@ -59,6 +61,7 @@ export class MetaError extends Error {
     this.code = info.code
     this.subcode = info.subcode
     this.isTransient = info.isTransient
+    this.title = info.title
     this.fbtraceId = info.fbtraceId
   }
   get action() {
@@ -86,6 +89,7 @@ export function parseGraphError(status: number, body: string): GraphErrorInfo {
     )
       error = parsed.error as Record<string, unknown>
   } catch {}
+  const title = stringOr(error.error_user_title) ?? stringOr(error.title)
   return {
     status,
     code: numberOr(error.code),
@@ -95,6 +99,7 @@ export function parseGraphError(status: number, body: string): GraphErrorInfo {
       stringOr(error.message) ??
       stringOr(error.error_user_msg) ??
       `Meta returned HTTP ${status}`,
+    ...(title ? { title } : {}),
     fbtraceId: stringOr(error.fbtrace_id),
   }
 }

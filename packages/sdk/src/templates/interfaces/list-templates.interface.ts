@@ -2,7 +2,10 @@ import type { PaginationOptions } from '../../common/interfaces';
 import type { Response } from '../../interfaces';
 import type { Template } from './template';
 
-export type ListTemplatesOptions = PaginationOptions;
+export type ListTemplatesOptions = PaginationOptions & {
+  /** Only templates of this channel. */
+  channel?: 'email' | 'whatsapp';
+};
 
 interface TemplateListItem
   extends Pick<
@@ -14,7 +17,10 @@ interface TemplateListItem
     | 'status'
     | 'published_at'
     | 'alias'
-  > {}
+    | 'channel'
+  > {
+  whatsapp?: Omit<NonNullable<Template['whatsapp']>, 'components'>;
+}
 
 export interface ListTemplatesResponseSuccess {
   object: 'list';

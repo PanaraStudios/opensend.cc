@@ -3,14 +3,17 @@ import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { insertRow, patchRow } from "../counts"
-import { upsertContact } from "../audience"
+import { upsertWhatsAppThread } from "../channels/identity"
 import { emitEvent } from "../events"
 import { customEventType } from "../automationEvents"
 import { retirement } from "../teamLifecycle"
 import { normalizePhone } from "../../lib/dashboard/phone"
 import { CHANNEL_MESSAGE_TYPES } from "../tables/channels"
+import { acceptChannelMessage } from "../channels/messages"
 import { channelMessagePayload } from "../channels/payload"
 import { live } from "./connect"
+import { templateWebhook } from "../whatsapp/templates"
+import { TEMPLATE_WEBHOOK_FIELDS } from "../../lib/meta/templates"
 import {
   array,
   object,
@@ -19,16 +22,36 @@ import {
   MEDIA_TYPES,
   STATUS_RANK,
   outboundStatus,
-  profileNameParts,
 } from "../../lib/meta/webhooks"
 
-const messageByExternalId = (ctx: MutationCtx, id: string) =>
+/** Messages with a wamid. Meta's ids are unique, but a lookup must not
+    throw on a duplicate row, so callers pick the row they mean. */
+const messagesByExternalId = (ctx: MutationCtx, id: string) =>
   ctx.db
     .query("channelMessages")
     .withIndex("by_channel_and_externalId", (q) =>
       q.eq("channel", "whatsapp").eq("externalId", id)
     )
-    .unique()
+    .take(10)
+const messageByExternalId = async (ctx: MutationCtx, id: string) =>
+  (await messagesByExternalId(ctx, id))[0] ?? null
+/** The outbound message a status is about: this number's send of that wamid
+    to the status's recipient. */
+const statusMessage = async (
+  ctx: MutationCtx,
+  account: Doc<"channelAccounts">,
+  data: Record<string, unknown>
+) => {
+  const recipient = string(data.recipient_id)
+  return (
+    (await messagesByExternalId(ctx, string(data.id))).find(
+      (message) =>
+        message.direction === "outbound" &&
+        message.accountId === account._id &&
+        (!recipient || message.to === recipient)
+    ) ?? null
+  )
+}
 /** The connected row for a phone number id; disconnected teams' rows stay. */
 const accountByExternalId = async (ctx: MutationCtx, id: string) =>
   (
@@ -49,7 +72,7 @@ async function receive(
 ) {
   const data = object(raw)
   const externalId = string(data.id)
-  const sender = string(data.from)
+  const sender = string(data.from).replace(/^\+/, "")
   const phone = normalizePhone(sender.startsWith("+") ? sender : `+${sender}`)
   if (
     !externalId ||
@@ -63,51 +86,6 @@ async function receive(
     .map(object)
     .find((contact) => string(contact.wa_id) === sender)
   const profileName = string(object(profile?.profile).name)
-  const identity = await ctx.db
-    .query("channelContacts")
-    .withIndex(
-      "by_organizationId_and_channel_and_scopeId_and_externalId",
-      (q) =>
-        q
-          .eq("organizationId", account.organizationId)
-          .eq("channel", "whatsapp")
-          .eq("scopeId", "whatsapp")
-          .eq("externalId", sender)
-    )
-    .unique()
-  const linked = identity?.contactId
-    ? await ctx.db.get("contacts", identity.contactId)
-    : null
-  const contactId =
-    linked?.organizationId === account.organizationId
-      ? linked._id
-      : (
-          await upsertContact(
-            ctx,
-            account.organizationId,
-            { phone, ...profileNameParts(profileName) },
-            { properties: [], segmentIds: [], skipExisting: true }
-          )
-        ).id
-  const changes = {
-    contactId,
-    phone,
-    ...(profileName ? { profileName } : {}),
-    lastInboundAt: Math.max(at, identity?.lastInboundAt ?? 0),
-  }
-  let channelContactId
-  if (identity) {
-    await ctx.db.patch("channelContacts", identity._id, changes)
-    channelContactId = identity._id
-  } else
-    channelContactId = await ctx.db.insert("channelContacts", {
-      organizationId: account.organizationId,
-      channel: "whatsapp",
-      scopeId: "whatsapp",
-      externalId: sender,
-      marketingOptOut: false,
-      ...changes,
-    })
   const type =
     CHANNEL_MESSAGE_TYPES.find((type) => type === data.type) ?? "unsupported"
   const media = object(data[type])
@@ -116,56 +94,15 @@ async function receive(
       ? string(object(data.text).body)
       : string(media.caption) || `[${type}]`
   ).slice(0, 1000)
-  const conversation = await ctx.db
-    .query("conversations")
-    .withIndex("by_accountId_and_channelContactId", (q) =>
-      q.eq("accountId", account._id).eq("channelContactId", channelContactId)
-    )
-    .unique()
-  const lastInboundAt = Math.max(at, conversation?.lastInboundAt ?? 0)
-  const conversationChanges = {
-    contactId,
-    lastInboundAt,
-    windowExpiresAt: lastInboundAt + 24 * 3600_000,
-    unread: true,
-    unreadCount:
-      (conversation?.unreadCount ?? (conversation?.unread ? 1 : 0)) + 1,
-    ...(!conversation || at >= conversation.lastMessageAt
-      ? {
-          lastMessageAt: at,
-          lastPreview: preview,
-          lastDirection: "inbound" as const,
-        }
-      : {}),
-    search: [phone, profileName || identity?.profileName].join(" "),
-  }
-  const conversationId = conversation
-    ? (
-        await patchRow(
-          ctx,
-          "conversations",
-          conversation._id,
-          conversationChanges
-        )
-      )._id
-    : (
-        await insertRow(
-          ctx,
-          "conversations",
-          {
-            organizationId: account.organizationId,
-            channel: "whatsapp",
-            accountId: account._id,
-            channelContactId,
-            status: "open",
-            lastMessageAt: at,
-            lastPreview: preview,
-            lastDirection: "inbound",
-            ...conversationChanges,
-          },
-          true
-        )
-      )._id
+  const { contactId, channelContactId, conversationId } =
+    await upsertWhatsAppThread(ctx, account, {
+      externalId: sender,
+      phone,
+      profileName,
+      at,
+      preview,
+      direction: "inbound",
+    })
   const message = await insertRow(
     ctx,
     "channelMessages",
@@ -244,13 +181,17 @@ async function status(
   const data = object(raw)
   const next = outboundStatus(data.status)
   if (!next) return
-  const message = await messageByExternalId(ctx, string(data.id))
-  if (
-    !message ||
-    message.accountId !== account._id ||
-    message.direction !== "outbound"
-  )
+  const message = await statusMessage(ctx, account, data)
+  if (!message) return
+  if (next === "sent") {
+    await acceptChannelMessage(
+      ctx,
+      message,
+      string(data.id),
+      timestamp(data.timestamp, event.receivedAt)
+    )
     return
+  }
   const errors = array(data.errors).map(object)
   const error = errors[0]
   const advances = STATUS_RANK[next] > STATUS_RANK[message.status]
@@ -263,6 +204,9 @@ async function status(
                 string(error?.message) ||
                 string(error?.title) ||
                 "WhatsApp delivery failed",
+              ...(string(error?.title)
+                ? { errorTitle: string(error?.title) }
+                : {}),
               ...(typeof error?.code === "number"
                 ? { errorCode: error.code }
                 : {}),
@@ -357,7 +301,7 @@ export const project = internalMutation({
             for (const rawStatus of array(value.statuses)) {
               const data = object(rawStatus)
               if (!outboundStatus(data.status) || !string(data.id)) continue
-              if (!(await messageByExternalId(ctx, string(data.id)))) {
+              if (!(await statusMessage(ctx, account, data))) {
                 if (attempt < 6) {
                   await ctx.scheduler.runAfter(
                     10000 * 2 ** attempt,
@@ -388,21 +332,14 @@ export const project = internalMutation({
         for (const update of array(change.value.statuses))
           await status(ctx, change.account, update, event)
       } else if (
-        ["message_template_status_update", "template_category_update"].includes(
-          change.field
-        )
+        TEMPLATE_WEBHOOK_FIELDS.some((field) => field === change.field)
       ) {
-        // Lane 4A owns template fields. Keep Meta's full update in the outbox.
-        await emitEvent(
+        await templateWebhook(
           ctx,
           change.organizationId,
-          "whatsapp.template.status_updated",
-          {
-            channel: "whatsapp",
-            waba_id: change.wabaId,
-            field: change.field,
-            ...change.value,
-          }
+          change.wabaId,
+          change.field,
+          change.value
         )
       } else if (
         [

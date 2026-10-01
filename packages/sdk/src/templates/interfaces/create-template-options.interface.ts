@@ -1,7 +1,11 @@
 import type { PostOptions } from '../../common/interfaces';
 import type { RequireAtLeastOne } from '../../common/interfaces/require-at-least-one';
 import type { Response } from '../../interfaces';
-import type { Template, TemplateVariable } from './template';
+import type {
+  Template,
+  TemplateVariable,
+  WhatsAppTemplateOptions,
+} from './template';
 
 type TemplateContentCreationOptions = RequireAtLeastOne<{
   html: string;
@@ -27,9 +31,22 @@ type TemplateOptionalFieldsForCreation = Partial<
   variables?: TemplateVariableCreationOptions[];
 };
 
-export type CreateTemplateOptions = Pick<Template, 'name'> &
+export type CreateEmailTemplateOptions = Pick<Template, 'name'> &
   TemplateOptionalFieldsForCreation &
-  TemplateContentCreationOptions;
+  TemplateContentCreationOptions & { channel?: 'email' };
+
+/** A WhatsApp template: its Meta name (lowercase letters, numbers and
+    underscores) and Meta's components, submitted to Meta when published. */
+export interface CreateWhatsAppTemplateOptions {
+  name: string;
+  alias?: string | null;
+  channel: 'whatsapp';
+  whatsapp?: WhatsAppTemplateOptions;
+}
+
+export type CreateTemplateOptions =
+  | CreateEmailTemplateOptions
+  | CreateWhatsAppTemplateOptions;
 
 export interface CreateTemplateRequestOptions extends PostOptions {}
 

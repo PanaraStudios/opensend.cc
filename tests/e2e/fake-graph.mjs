@@ -26,6 +26,8 @@ export const graphError = (message, code, extra = {}) => ({
 /* WhatsApp state the connect routes share: every WABA has one phone
    number, `${wabaId}0`, which `/register` moves onto Cloud API. It lives for
    the server's lifetime; /__reset clears only calls and overrides. */
+let messageSequence = 0
+let mediaSequence = 0
 const numbers = new Map()
 const phoneNumberOf = (wabaId) => {
   const id = `${wabaId}0`
@@ -46,12 +48,48 @@ const phoneNumber = (id) => {
     whatsapp_business_manager_messaging_limit: "TIER_1K",
   }
 }
+/* Message templates per WABA: POST creates one PENDING, DELETE removes it,
+   and every listing also carries SYNCED_TEMPLATE, as if it were made in
+   WhatsApp Manager. Template ids are numeric like Meta's. */
+const templates = new Map()
+let nextTemplateId = 9900001
+export const SYNCED_TEMPLATE = {
+  id: "9900000",
+  name: "e2e_synced_offer",
+  language: "en_US",
+  category: "MARKETING",
+  status: "APPROVED",
+  parameter_format: "POSITIONAL",
+  components: [{ type: "BODY", text: "Our spring offer is live." }],
+}
+const listTemplates = (wabaId) => [
+  ...[...templates.values()]
+    .filter((entry) => entry.wabaId === wabaId)
+    .map((entry) => entry.template),
+  SYNCED_TEMPLATE,
+]
+
 /** The app ID in an app access token, `Bearer {app-id}|{secret}`. */
 const appIdOf = (authorization = "") =>
   /^Bearer (\d+)\|/.exec(authorization)?.[1]
 
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
+  {
+    method: "POST",
+    path: /^\/\d+\/messages$/,
+    respond: () => ({
+      body: {
+        messaging_product: "whatsapp",
+        messages: [{ id: `wamid.${++messageSequence}` }],
+      },
+    }),
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/media$/,
+    respond: () => ({ body: { id: `meta-upload-${++mediaSequence}` } }),
+  },
   // Embedded Signup: the token code becomes a business token.
   {
     method: "GET",
@@ -131,6 +169,79 @@ export const ROUTES = [
     path: /^\/media-download\/meta-inbound-media$/,
     unversioned: true,
     respond: () => ({ body: Buffer.from([1, 2, 3]), contentType: "image/png" }),
+  },
+  // Message templates: create, list, delete, and edit or read by id.
+  {
+    method: "POST",
+    path: /^\/(\d+)\/message_templates$/,
+    respond: ([, wabaId], call) => {
+      const id = String(nextTemplateId++)
+      templates.set(id, {
+        wabaId,
+        template: {
+          id,
+          name: call.body?.name,
+          language: call.body?.language,
+          category: call.body?.category,
+          status: "PENDING",
+          parameter_format: String(call.body?.parameter_format).toUpperCase(),
+          components: call.body?.components ?? [],
+        },
+      })
+      return {
+        body: { id, status: "PENDING", category: call.body?.category },
+      }
+    },
+  },
+  {
+    method: "GET",
+    path: /^\/(\d+)\/message_templates$/,
+    respond: ([, wabaId]) => ({
+      body: {
+        data: listTemplates(wabaId),
+        paging: { cursors: { before: "before", after: "after" } },
+      },
+    }),
+  },
+  {
+    method: "DELETE",
+    path: /^\/(\d+)\/message_templates$/,
+    respond: (_, call) => {
+      templates.delete(call.query.hsm_id)
+      return { body: { success: true } }
+    },
+  },
+  {
+    method: "POST",
+    path: /^\/(99\d{5})$/,
+    respond: ([, id], call) => {
+      const template = templates.get(id)?.template
+      if (!template)
+        return { status: 400, body: graphError("Template not found", 100) }
+      Object.assign(template, {
+        components: call.body?.components ?? template.components,
+        status: "PENDING",
+      })
+      return { body: { success: true } }
+    },
+  },
+  {
+    method: "GET",
+    path: /^\/(99\d{5})$/,
+    respond: ([, id]) => ({
+      body: templates.get(id)?.template ?? { id, status: "APPROVED" },
+    }),
+  },
+  // Media header samples: the Resumable Upload API's session and upload.
+  {
+    method: "POST",
+    path: /^\/\d+\/uploads$/,
+    respond: () => ({ body: { id: "upload:e2e-session" } }),
+  },
+  {
+    method: "POST",
+    path: /^\/upload:[\w-]+$/,
+    respond: () => ({ body: { h: "4::e2e-sample-handle" } }),
   },
   // One object by ID: a phone number, or the Meta app (verification) and
   // WABAs, which only need an ID and a name.

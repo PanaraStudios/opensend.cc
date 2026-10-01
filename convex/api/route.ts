@@ -33,7 +33,7 @@ export type ApiRouteOptions = {
   permission: "full_access" | "sending"
   /** Largest accepted request body, in bytes. Default 1 MB. */
   maxBody?: number
-  bodyFormat?: "multipart"
+  bodyFormat?: "multipart" | "multipart-binary"
   source?: "smtp"
   idempotencyHeaders?: Record<string, string>
   /** Materialize a sensitive response only at the wire, also on replay. */
@@ -212,8 +212,14 @@ function dispatch(patterns: Pattern[]) {
     const auth = await credential(ctx, request)
     if (auth.error) return refuse(auth.error)
     let text: string
+    let rawBody: Uint8Array<ArrayBuffer> | undefined
     try {
-      text = await limitedBody(request, options.maxBody ?? MAX_BODY)
+      if (options.bodyFormat === "multipart-binary") {
+        rawBody = await limitedBody(request, options.maxBody ?? MAX_BODY, {
+          raw: true,
+        })
+        text = rawBody.length ? "[multipart]" : ""
+      } else text = await limitedBody(request, options.maxBody ?? MAX_BODY)
     } catch (e) {
       if (!(e instanceof BodyTooLarge)) throw e
       return refuse({
@@ -227,16 +233,20 @@ function dispatch(patterns: Pattern[]) {
     let body: unknown
     if (text.trim())
       try {
-        if (options.bodyFormat === "multipart") {
+        if (
+          options.bodyFormat === "multipart" ||
+          options.bodyFormat === "multipart-binary"
+        ) {
           const contentType = request.headers.get("content-type") ?? ""
           if (!contentType.toLowerCase().startsWith("multipart/form-data;"))
             throw new Error("Expected multipart/form-data")
           const form = await new Request(request.url, {
             method: "POST",
             headers: { "content-type": contentType },
-            body: text,
+            body: rawBody ?? text,
           }).formData()
           const fields: Record<string, unknown> = {}
+          const fingerprint: Record<string, unknown> = {}
           const entries: [string, FormDataEntryValue][] = []
           form.forEach((value, key) => entries.push([key, value]))
           for (const [key, value] of entries.sort(([a], [b]) =>
@@ -245,25 +255,42 @@ function dispatch(patterns: Pattern[]) {
             if (Object.hasOwn(fields, key))
               throw new Error("Duplicate form field")
             if (typeof value === "string") {
-              if (key === "file") throw new Error("Expected CSV file")
+              if (key === "file") throw new Error("Expected file")
               fields[key] = value
+              fingerprint[key] = value
             } else {
               if (key !== "file") throw new Error("Unexpected file field")
-              fields.file = await value.text()
+              if (options.bodyFormat === "multipart-binary") {
+                fields.file = value
+                const digest = await crypto.subtle.digest(
+                  "SHA-256",
+                  await value.arrayBuffer()
+                )
+                fingerprint.file = {
+                  name: value.name,
+                  type: value.type,
+                  size: value.size,
+                  sha256: Array.from(new Uint8Array(digest), (b) =>
+                    b.toString(16).padStart(2, "0")
+                  ).join(""),
+                }
+              } else {
+                fields.file = await value.text()
+                fingerprint.file = fields.file
+              }
             }
           }
           body = fields
           // Multipart boundaries change between retries; hash the actual fields.
-          text = JSON.stringify(fields)
+          text = JSON.stringify(fingerprint)
         } else body = JSON.parse(text)
       } catch {
         problem = {
           statusCode: 400,
           name: "validation_error",
-          message:
-            options.bodyFormat === "multipart"
-              ? "The request body is not valid multipart form data."
-              : "The request body is not valid JSON.",
+          message: options.bodyFormat?.startsWith("multipart")
+            ? "The request body is not valid multipart form data."
+            : "The request body is not valid JSON.",
         }
       }
     const idempotencyKey =

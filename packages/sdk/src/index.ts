@@ -31,3 +31,4 @@ export * from './templates/interfaces';
 export * from './topics/interfaces';
 export * from './usage/interfaces';
 export * from './webhooks/interfaces';
+export * from './whatsapp/interfaces';

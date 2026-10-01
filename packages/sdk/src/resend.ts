@@ -25,6 +25,7 @@ import { Templates } from './templates/templates';
 import { Topics } from './topics/topics';
 import { Usage } from './usage/usage';
 import { Webhooks } from './webhooks/webhooks';
+import { WhatsApp } from './whatsapp/whatsapp';
 
 const defaultUserAgent = `opensend-node:${version}`;
 
@@ -72,6 +73,7 @@ export class Opensend {
   readonly topics = new Topics(this);
   readonly usage = new Usage(this);
   readonly webhooks = new Webhooks(this);
+  readonly whatsapp = new WhatsApp(this);
 
   constructor(
     readonly key?: string,

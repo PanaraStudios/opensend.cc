@@ -18,7 +18,11 @@ import type {
   suppressionReasonValue,
 } from "../../convex/tables/emails"
 import type { exportStatusValue } from "../../convex/tables/exports"
-import type { templateStatusValue } from "../../convex/tables/templates"
+import type {
+  metaTemplateStatusValue,
+  templateStatusValue,
+  whatsappTemplateValue,
+} from "../../convex/tables/templates"
 
 export type Region = (typeof regions)[number]
 
@@ -66,6 +70,9 @@ export type ChannelAccountStatus = Infer<typeof channelAccountStatusValue>
 export type ChannelQuality = Infer<typeof channelQualityValue>
 
 export type TemplateStatus = Infer<typeof templateStatusValue>
+/** Meta's review status of a WhatsApp template. */
+export type MetaTemplateStatus = Infer<typeof metaTemplateStatusValue>
+export type WhatsAppTemplateInfo = Infer<typeof whatsappTemplateValue>
 export type AutomationStatus = "enabled" | "disabled"
 export type PropertyType = Infer<typeof propertyTypeValue>
 export type SuppressionReason = Infer<typeof suppressionReasonValue>
@@ -290,6 +297,12 @@ export type EmailTemplate = EmailDraft & {
       that has been live may still have callers. An edit after this is not
       live yet. */
   publishedAt: number | null
+  /** Set on WhatsApp templates; absent means email. */
+  channel?: "whatsapp"
+  /** A WhatsApp template's Meta settings and review state. */
+  whatsapp?: WhatsAppTemplateInfo
+  /** A WhatsApp draft's components, in Meta's creation format. */
+  components?: unknown
 }
 
 export const AUTOMATION_RULE_OPERATORS = [

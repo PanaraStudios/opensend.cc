@@ -49,3 +49,109 @@ test("fake Graph serves authenticated media metadata and download bytes and reco
     await graph.close()
   }
 })
+
+test("fake Graph sends unique wamids, uploads media and forces Graph errors", async () => {
+  const graph = await startFakeGraph(0)
+  try {
+    const send = () =>
+      fetch(`${graph.origin}/v25.0/123/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: "16505551234",
+          type: "text",
+          text: { body: "Hi" },
+        }),
+      })
+    const first = await (await send()).json(),
+      second = await (await send()).json()
+    assert.match(first.messages[0].id, /^wamid\.\d+$/)
+    assert.notEqual(first.messages[0].id, second.messages[0].id)
+    const form = new FormData()
+    form.append("messaging_product", "whatsapp")
+    form.append(
+      "file",
+      new Blob([new Uint8Array([255, 0, 128])], { type: "image/png" }),
+      "file.png"
+    )
+    assert.match(
+      (
+        await (
+          await fetch(`${graph.origin}/v25.0/123/media`, {
+            method: "POST",
+            body: form,
+          })
+        ).json()
+      ).id,
+      /^meta-upload-/
+    )
+    const calls = await (await fetch(`${graph.origin}/__calls`)).json()
+    assert.equal(calls.length, 3)
+    assert.equal(calls[2].path, "/123/media")
+    assert.match(calls[2].body, /name="messaging_product"/)
+    await fetch(`${graph.origin}/__responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        method: "POST",
+        path: "^/123/messages$",
+        status: 400,
+        body: { error: { code: 131047 } },
+      }),
+    })
+    const forced = await send()
+    assert.equal(forced.status, 400)
+    assert.equal((await forced.json()).error.code, 131047)
+  } finally {
+    await graph.close()
+  }
+})
+
+test("fake Graph keeps message templates per WABA and lists a synced one", async () => {
+  const graph = await startFakeGraph(0)
+  const json = { "content-type": "application/json" }
+  try {
+    const created = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          name: "order_update",
+          language: "en_US",
+          category: "UTILITY",
+          parameter_format: "positional",
+          components: [{ type: "BODY", text: "Hi" }],
+        }),
+      })
+    ).json()
+    assert.equal(created.status, "PENDING")
+    const listed = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      listed.data.map((template) => template.name),
+      ["order_update", "e2e_synced_offer"]
+    )
+    assert.equal(listed.paging.next, undefined)
+    const edited = await fetch(`${graph.origin}/v25.0/${created.id}`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ components: [{ type: "BODY", text: "Hello" }] }),
+    })
+    assert.equal(edited.status, 200)
+    await fetch(
+      `${graph.origin}/v25.0/5551/message_templates?name=order_update&hsm_id=${created.id}`,
+      { method: "DELETE" }
+    )
+    const after = await (
+      await fetch(`${graph.origin}/v25.0/5551/message_templates`)
+    ).json()
+    assert.deepEqual(
+      after.data.map((template) => template.name),
+      ["e2e_synced_offer"]
+    )
+  } finally {
+    await graph.close()
+  }
+})
