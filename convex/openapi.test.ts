@@ -1377,3 +1377,119 @@ test("WhatsApp catalog request, response and customer webhook examples validate 
     validateBody(webhook.schema, webhook.examples[name].value)
   }
 })
+
+test("calling REST settings, permissions, lifecycle and idempotent connect validate real response schemas", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "calling-contract-key-".repeat(3))
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+  const { CALLING_TEST_SDP: sdp } = await import("../lib/meta/calling-fixtures")
+  const f = await inboundFixture()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  const { token } = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: {
+      name: "Calling contract",
+      permission: "full_access",
+      domainId: null,
+    },
+  })
+  const call = (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    idempotencyKey?: string
+  ) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+  }
+  const calling = {
+    status: "ENABLED",
+    call_icon_visibility: "DEFAULT",
+    call_hours: { status: "DISABLED" },
+  }
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling }),
+    },
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        messaging_product: "whatsapp",
+        permission: { status: "granted" },
+        actions: [],
+      }),
+    },
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (c) =>
+        (c.body as { action: string }).action === "connect"
+          ? { calls: [{ id: "wacid.contract" }] }
+          : { success: true },
+    },
+  ])
+  await response(
+    "/whatsapp/phone-numbers/{id}/calling",
+    "POST",
+    await call(`/whatsapp/phone-numbers/${PHONE_ID}/calling`, "POST", {
+      calling,
+      handling_mode: "api",
+    })
+  )
+  await response(
+    "/whatsapp/phone-numbers/{id}/calling",
+    "GET",
+    await call(`/whatsapp/phone-numbers/${PHONE_ID}/calling`)
+  )
+  await response(
+    "/whatsapp/call-permissions",
+    "GET",
+    await call("/whatsapp/call-permissions?recipient=US.42")
+  )
+  const input = {
+    recipient: "US.42",
+    route: "api",
+    session: { sdp_type: "offer", sdp },
+  }
+  validateBody(contract.components.schemas.ConnectWhatsAppCall, input)
+  const created = await response(
+    "/whatsapp/calls",
+    "POST",
+    await call("/whatsapp/calls", "POST", input, "connect-contract")
+  )
+  expect(
+    await response(
+      "/whatsapp/calls",
+      "POST",
+      await call("/whatsapp/calls", "POST", input, "connect-contract")
+    )
+  ).toEqual(created)
+  expect(graph.to(`/${PHONE_ID}/calls`)).toHaveLength(1)
+  await response("/whatsapp/calls", "GET", await call("/whatsapp/calls"))
+  await response(
+    "/whatsapp/calls/{id}",
+    "GET",
+    await call(`/whatsapp/calls/${created.id}`)
+  )
+  await response(
+    "/whatsapp/calls/{id}/terminate",
+    "POST",
+    await call(`/whatsapp/calls/${created.id}/terminate`, "POST", {})
+  )
+})

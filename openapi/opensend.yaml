@@ -11930,6 +11930,498 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /whatsapp/calls:
+    get:
+      operationId: whatsapp/calling/listCalls
+      tags:
+        - WhatsApp
+      summary: list Calls
+      description: ""
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: after
+          schema:
+            type: string
+        - in: query
+          name: before
+          schema:
+            type: string
+        - in: query
+          name: phone_number_id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppCallList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: whatsapp/calling/connectCall
+      tags:
+        - WhatsApp
+      summary: connect Call
+      description: Start a call using gateway media or your complete SDP offer.
+        recipient is a BSUID; to must resolve to a known BSUID. Meta enforces
+        permissions and country restrictions.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectWhatsAppCall"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}:
+    get:
+      operationId: whatsapp/calling/getCall
+      tags:
+        - WhatsApp
+      summary: get Call
+      description: ""
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppCallDetail"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/pre_accept:
+    post:
+      operationId: whatsapp/calling/pre_acceptCall
+      tags:
+        - WhatsApp
+      summary: pre_accept Call
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete
+        answer. pre_accept and accept must use identical SDP; media is released
+        only after accept succeeds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptWhatsAppCall"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  success:
+                    type: boolean
+                required:
+                  - id
+                  - success
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/accept:
+    post:
+      operationId: whatsapp/calling/acceptCall
+      tags:
+        - WhatsApp
+      summary: accept Call
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete
+        answer. pre_accept and accept must use identical SDP; media is released
+        only after accept succeeds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptWhatsAppCall"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  success:
+                    type: boolean
+                required:
+                  - id
+                  - success
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/reject:
+    post:
+      operationId: whatsapp/calling/rejectCall
+      tags:
+        - WhatsApp
+      summary: reject Call
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete
+        answer. pre_accept and accept must use identical SDP; media is released
+        only after accept succeeds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  success:
+                    type: boolean
+                required:
+                  - id
+                  - success
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/calls/{id}/terminate:
+    post:
+      operationId: whatsapp/calling/terminateCall
+      tags:
+        - WhatsApp
+      summary: terminate Call
+      description: Gateway mode uses its prepared SDP. API mode supplies a complete
+        answer. pre_accept and accept must use identical SDP; media is released
+        only after accept succeeds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  success:
+                    type: boolean
+                required:
+                  - id
+                  - success
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/phone-numbers/{id}/calling:
+    get:
+      operationId: whatsapp/calling/getCalling
+      tags:
+        - WhatsApp
+      summary: get Calling
+      description: ""
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneNumberCalling"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: whatsapp/calling/updateCalling
+      tags:
+        - WhatsApp
+      summary: update Calling
+      description: call_hours replaces the complete schedule, including holidays. SIP
+        remains disabled and DTLS is enforced. announcement_file_id references a
+        finalized team Ogg Opus file under 60 seconds.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCallingSettings"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneNumberCalling"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/call-permissions:
+    get:
+      operationId: whatsapp/calling/getCallPermission
+      tags:
+        - WhatsApp
+      summary: get Call Permission
+      description: Supply recipient (BSUID) or to. Meta returns permission and
+        available actions/limits in either documented status vocabulary.
+      x-opensend-scope: whatsapp:read
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+        - in: query
+          name: to
+          schema:
+            type: string
+        - in: query
+          name: recipient
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallPermission"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: whatsapp/calling/requestCallPermission
+      tags:
+        - WhatsApp
+      summary: request Call Permission
+      description: Free-form requests require an open service window; templates must
+        be approved call-permission templates. Meta enforces limits.
+      x-opensend-scope: whatsapp:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestCallPermission"
+      responses:
+        "200":
+          description: Successful request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
 components:
   headers:
     ratelimit_limit:
@@ -12125,6 +12617,667 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    CallSession:
+      type: object
+      properties:
+        sdp_type:
+          type: string
+          enum:
+            - offer
+            - answer
+        sdp:
+          type: string
+          maxLength: 98304
+      required:
+        - sdp_type
+        - sdp
+      additionalProperties: false
+    CallOptIn:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 250
+        announcement_language:
+          type: string
+      required:
+        - status
+      additionalProperties: false
+    ConnectWhatsAppCall:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        recipient:
+          type: string
+        route:
+          type: string
+          enum:
+            - api
+            - gateway
+        session:
+          $ref: "#/components/schemas/CallSession"
+        recording:
+          $ref: "#/components/schemas/CallOptIn"
+        transcription:
+          $ref: "#/components/schemas/CallOptIn"
+        biz_opaque_callback_data:
+          type: string
+          maxLength: 512
+      additionalProperties: false
+      anyOf:
+        - required:
+            - recipient
+        - required:
+            - to
+      allOf:
+        - if:
+            properties:
+              route:
+                const: gateway
+            required:
+              - route
+          then:
+            not:
+              required:
+                - session
+    AcceptWhatsAppCall:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/CallSession"
+        recording:
+          $ref: "#/components/schemas/CallOptIn"
+        transcription:
+          $ref: "#/components/schemas/CallOptIn"
+        biz_opaque_callback_data:
+          type: string
+          maxLength: 512
+      additionalProperties: false
+    CallFile:
+      type: object
+      properties:
+        fileId:
+          type: string
+        storageId:
+          type: string
+        mediaId:
+          type: string
+        sha256:
+          type: string
+        contentType:
+          type: string
+        error:
+          type: string
+        download_url:
+          type:
+            - string
+            - "null"
+      required:
+        - download_url
+      additionalProperties: false
+    WhatsAppCall:
+      type: object
+      properties:
+        object:
+          const: whatsapp_call
+        id:
+          type: string
+        account_id:
+          type: string
+        wacid:
+          type:
+            - string
+            - "null"
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        status:
+          type: string
+          enum:
+            - queued
+            - ringing
+            - connected
+            - completed
+            - failed
+            - missed
+            - rejected
+        handling_mode:
+          type: string
+          enum:
+            - api
+            - gateway
+        user_id:
+          type:
+            - string
+            - "null"
+        from:
+          type:
+            - string
+            - "null"
+        to:
+          type:
+            - string
+            - "null"
+        contact_id:
+          type:
+            - string
+            - "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+          format: date-time
+        observed_at:
+          type: number
+        connected_at:
+          type:
+            - number
+            - "null"
+        ended_at:
+          type:
+            - number
+            - "null"
+        duration:
+          type:
+            - number
+            - "null"
+        biz_opaque_callback_data:
+          type:
+            - string
+            - "null"
+        cta_payload:
+          type:
+            - string
+            - "null"
+        deeplink_payload:
+          type:
+            - string
+            - "null"
+        session:
+          anyOf:
+            - $ref: "#/components/schemas/CallSession"
+            - type: "null"
+        recording:
+          anyOf:
+            - $ref: "#/components/schemas/CallFile"
+            - type: "null"
+        transcription:
+          anyOf:
+            - $ref: "#/components/schemas/CallFile"
+            - type: "null"
+        error:
+          type:
+            - string
+            - "null"
+        error_code:
+          type:
+            - number
+            - "null"
+        assigned_agent:
+          type:
+            - string
+            - "null"
+      required:
+        - object
+        - id
+        - account_id
+        - wacid
+        - direction
+        - status
+        - handling_mode
+        - user_id
+        - from
+        - to
+        - contact_id
+        - conversation_id
+        - created_at
+        - observed_at
+        - connected_at
+        - ended_at
+        - duration
+        - biz_opaque_callback_data
+        - cta_payload
+        - deeplink_payload
+        - session
+        - recording
+        - transcription
+        - error
+        - error_code
+        - assigned_agent
+      additionalProperties: false
+    WhatsAppCallDetail:
+      type: object
+      properties:
+        object:
+          const: whatsapp_call
+        id:
+          type: string
+        account_id:
+          type: string
+        wacid:
+          type:
+            - string
+            - "null"
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        status:
+          type: string
+          enum:
+            - queued
+            - ringing
+            - connected
+            - completed
+            - failed
+            - missed
+            - rejected
+        handling_mode:
+          type: string
+          enum:
+            - api
+            - gateway
+        user_id:
+          type:
+            - string
+            - "null"
+        from:
+          type:
+            - string
+            - "null"
+        to:
+          type:
+            - string
+            - "null"
+        contact_id:
+          type:
+            - string
+            - "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+          format: date-time
+        observed_at:
+          type: number
+        connected_at:
+          type:
+            - number
+            - "null"
+        ended_at:
+          type:
+            - number
+            - "null"
+        duration:
+          type:
+            - number
+            - "null"
+        biz_opaque_callback_data:
+          type:
+            - string
+            - "null"
+        cta_payload:
+          type:
+            - string
+            - "null"
+        deeplink_payload:
+          type:
+            - string
+            - "null"
+        session:
+          anyOf:
+            - $ref: "#/components/schemas/CallSession"
+            - type: "null"
+        recording:
+          anyOf:
+            - $ref: "#/components/schemas/CallFile"
+            - type: "null"
+        transcription:
+          anyOf:
+            - $ref: "#/components/schemas/CallFile"
+            - type: "null"
+        error:
+          type:
+            - string
+            - "null"
+        error_code:
+          type:
+            - number
+            - "null"
+        assigned_agent:
+          type:
+            - string
+            - "null"
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              event:
+                type: string
+              at:
+                type: number
+              details:
+                type: object
+                properties: {}
+                additionalProperties: true
+            required:
+              - event
+              - at
+              - details
+            additionalProperties: false
+      required:
+        - object
+        - id
+        - account_id
+        - wacid
+        - direction
+        - status
+        - handling_mode
+        - user_id
+        - from
+        - to
+        - contact_id
+        - conversation_id
+        - created_at
+        - observed_at
+        - connected_at
+        - ended_at
+        - duration
+        - biz_opaque_callback_data
+        - cta_payload
+        - deeplink_payload
+        - session
+        - recording
+        - transcription
+        - error
+        - error_code
+        - assigned_agent
+        - events
+      additionalProperties: false
+    WhatsAppCallList:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppCall"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    CallingSettings:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        call_icon_visibility:
+          type: string
+          enum:
+            - DEFAULT
+            - DISABLE_ALL
+        callback_permission_status:
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        call_icons:
+          type: object
+          properties:
+            restrict_to_user_countries:
+              type: array
+              items:
+                type: string
+                pattern: ^[A-Z]{2}$
+          required:
+            - restrict_to_user_countries
+          additionalProperties: false
+        audio:
+          type: object
+          properties:
+            additional_codecs:
+              type: array
+              items:
+                type: string
+                enum:
+                  - PCMA
+                  - PCMU
+          required:
+            - additional_codecs
+          additionalProperties: false
+        call_hours:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - ENABLED
+                - DISABLED
+            timezone_id:
+              type: string
+            weekly_operating_hours:
+              type: array
+              items:
+                type: object
+                properties:
+                  day_of_week:
+                    type: string
+                    enum:
+                      - MONDAY
+                      - TUESDAY
+                      - WEDNESDAY
+                      - THURSDAY
+                      - FRIDAY
+                      - SATURDAY
+                      - SUNDAY
+                  open_time:
+                    type: string
+                    pattern: ^(?:[01]\d|2[0-3])[0-5]\d$
+                  close_time:
+                    type: string
+                required:
+                  - day_of_week
+                  - open_time
+                  - close_time
+                additionalProperties: false
+            holiday_schedule:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  start_time:
+                    type: string
+                  end_time:
+                    type: string
+                required:
+                  - date
+                  - start_time
+                  - end_time
+                additionalProperties: false
+              maxItems: 20
+          required:
+            - status
+          additionalProperties: false
+        voicemail:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - ENABLED
+                - DISABLED
+            triggers:
+              type: array
+              items:
+                type: string
+                enum:
+                  - REJECT
+                  - TIMEOUT
+            audio:
+              type: object
+              properties:
+                default:
+                  type: object
+                  properties:
+                    announcement_media_id:
+                      type:
+                        - string
+                        - number
+                    timeout_seconds:
+                      type: number
+                      minimum: 0
+                      maximum: 30
+                  required:
+                    - timeout_seconds
+                  additionalProperties: false
+              required:
+                - default
+              additionalProperties: false
+          required:
+            - status
+          additionalProperties: false
+      additionalProperties: false
+    UpdateCallingSettings:
+      type: object
+      properties:
+        calling:
+          $ref: "#/components/schemas/CallingSettings"
+        handling_mode:
+          type: string
+          enum:
+            - api
+            - gateway
+        announcement_file_id:
+          type: string
+      additionalProperties: false
+    PhoneNumberCalling:
+      type: object
+      properties:
+        account_id:
+          type: string
+        handling_mode:
+          type: string
+          enum:
+            - api
+            - gateway
+        calling:
+          type: object
+          properties: {}
+          additionalProperties: true
+      required:
+        - account_id
+        - handling_mode
+        - calling
+      additionalProperties: false
+    CallPermission:
+      type: object
+      properties:
+        account_id:
+          type: string
+        user_id:
+          type: string
+        messaging_product:
+          type: string
+        permission:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - no_permission
+                - temporary
+                - permanent
+                - granted
+                - pending
+                - denied
+                - expired
+            expiration_time:
+              type: number
+            expiration:
+              type: number
+          required:
+            - status
+          additionalProperties: true
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              action_name:
+                type: string
+                enum:
+                  - start_call
+                  - send_call_permission_request
+              can_perform_action:
+                type: boolean
+              limits:
+                type: array
+                items:
+                  type: object
+                  properties: {}
+                  additionalProperties: true
+            required:
+              - action_name
+              - can_perform_action
+            additionalProperties: true
+      required:
+        - account_id
+        - user_id
+        - permission
+      additionalProperties: true
+    RequestCallPermission:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        recipient:
+          type: string
+        text:
+          type: string
+        template:
+          type: object
+          properties: {}
+          additionalProperties: true
+      additionalProperties: false
+      oneOf:
+        - required:
+            - text
+        - required:
+            - template
+      anyOf:
+        - required:
+            - to
+        - required:
+            - recipient
     PageChannelMessage:
       type: object
       properties:
@@ -25270,6 +26423,68 @@ components:
           required:
             - link
 webhooks:
+  whatsappCall:
+    post:
+      operationId: webhooks/whatsapp/call
+      summary: WhatsApp call lifecycle and media events
+      description: Signed using Standard Webhooks. API-mode call events include remote
+        SDP. Duplicates and out-of-order delivery are possible; id is stable and
+        observed_at is milliseconds. Media download URLs appear after storage
+        completes; re-read the call for a fresh URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - whatsapp.call.ringing
+                    - whatsapp.call.connected
+                    - whatsapp.call.completed
+                    - whatsapp.call.failed
+                    - whatsapp.call.missed
+                    - whatsapp.call.permission_updated
+                    - whatsapp.call.recording_ready
+                    - whatsapp.call.transcription_ready
+                created_at:
+                  type: string
+                data:
+                  anyOf:
+                    - $ref: "#/components/schemas/WhatsAppCall"
+                    - type: object
+                      properties:
+                        account_id:
+                          type: string
+                        user_id:
+                          type: string
+                        permission:
+                          type: object
+                          properties: {}
+                          additionalProperties: true
+                        response_source:
+                          type:
+                            - string
+                            - "null"
+                        context_id:
+                          type:
+                            - string
+                            - "null"
+                      required:
+                        - account_id
+                        - user_id
+                        - permission
+                      additionalProperties: true
+              required:
+                - type
+                - created_at
+                - data
+              additionalProperties: false
+      responses:
+        "200":
+          description: Webhook acknowledged
   whatsappMessage:
     post:
       operationId: webhooks/whatsapp/message

@@ -1,3 +1,4 @@
+import { registerCallingRoutes } from "./calling"
 import { registerMediaRoutes } from "./media"
 import { registerPageMessageRoutes } from "./channelMessages"
 import { registerWhatsAppRoutes } from "./whatsapp"
@@ -21,6 +22,7 @@ import { registerLogRoutes } from "./logs"
 /** The public REST API. Each resource registers its routes with `apiRoute`
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
+  registerCallingRoutes(http)
   registerMediaRoutes(http)
   registerWhatsAppRoutes(http)
   registerPageMessageRoutes(http)
