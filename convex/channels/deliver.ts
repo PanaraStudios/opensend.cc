@@ -14,7 +14,7 @@ export const deliver = internalAction({
     const claim = await ctx.runMutation(internal.channels.messages.claim, args)
     if (!claim) return null
     let outcome:
-      | { kind: "sent"; externalId: string }
+      | { kind: "sent"; externalId: string; response?: string }
       | {
           kind: "failed"
           error: string
@@ -45,7 +45,7 @@ export const deliver = internalAction({
       // A malformed success is ambiguous; do not resend.
       if (!externalId)
         throw new Error("Meta accepted the call without a message id")
-      outcome = { kind: "sent", externalId }
+      outcome = { kind: "sent", externalId, response: JSON.stringify(result) }
     } catch (error) {
       if (isUnreachableError(error)) {
         outcome = {

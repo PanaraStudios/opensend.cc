@@ -4,10 +4,11 @@ import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { graph, metaFetch } from "../meta/graph"
 import { decryptSecret } from "../secrets"
+import { validateWhatsAppMedia } from "../../lib/meta/media"
 import { MetaError } from "../../lib/meta/errors"
 import { object, string } from "../../lib/meta/webhooks"
 
-const MAX_BYTES = 25 * 1024 * 1024
+const PAGE_MAX_BYTES = 25 * 1024 * 1024
 /** Refresh Meta's short-lived media URL on every attempt. The file stays in
     Convex storage; both HTTP calls go through the public-host guard.
     https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media */
@@ -24,34 +25,54 @@ export const fetch = internalAction({
       mediaId,
     })
     if (!context) return null
-    const label = context.media.url ? "Channel" : "WhatsApp"
+    const whatsapp = context.channel === "whatsapp"
+    const publicLink =
+      !!context.media.url && (!whatsapp || context.direction === "outbound")
+    const maxBytes = whatsapp
+      ? (context.media.contentType === "image/webp"
+          ? 0.5
+          : context.messageType === "document" ||
+              context.media.contentType === "application/octet-stream"
+            ? 100
+            : context.media.contentType.startsWith("image/")
+              ? 5
+              : 16) *
+        1024 *
+        1024
+      : PAGE_MAX_BYTES
+    const allowedBytes =
+      whatsapp && context.media.contentType === "image/webp"
+        ? 500 * 1024
+        : maxBytes
+    const label = whatsapp ? "WhatsApp" : "Channel"
     try {
       const token = await decryptSecret(context.encryptedToken)
-      const metadata = context.media.url
-        ? { url: context.media.url }
-        : object(
-            await graph({
-              token,
-              method: "GET",
-              path: mediaId,
-              version: context.version,
-            })
-          )
+      const metadata =
+        publicLink && context.media.url
+          ? { url: context.media.url }
+          : object(
+              await graph({
+                token,
+                method: "GET",
+                path: mediaId,
+                version: context.version,
+              })
+            )
       if (
         !string(metadata.url) ||
         (typeof metadata.file_size === "number" &&
-          metadata.file_size > MAX_BYTES)
+          metadata.file_size > allowedBytes)
       )
         throw new MetaError({
           status: 413,
           isTransient: false,
-          message: `${label} media is missing or exceeds 25 MB`,
+          message: `${label} media is missing or exceeds ${allowedBytes} bytes`,
         })
       const response = await metaFetch(string(metadata.url), {
-        ...(context.media.url
+        ...(publicLink && context.media.url
           ? {}
           : { headers: { authorization: `Bearer ${token}` } }),
-        maxBytes: MAX_BYTES,
+        maxBytes: allowedBytes,
         timeoutMs: 30_000,
       })
       if (!response.ok)
@@ -61,16 +82,18 @@ export const fetch = internalAction({
           message: `${label} media returned HTTP ${response.status}`,
         })
       const bytes = await response.arrayBuffer()
-      if (bytes.byteLength > MAX_BYTES)
+      if (bytes.byteLength > allowedBytes)
         throw new MetaError({
           status: 413,
           isTransient: false,
-          message: `${label} media exceeds 25 MB`,
+          message: `${label} media exceeds ${allowedBytes} bytes`,
         })
       const contentType =
         string(metadata.mime_type) ||
         (context.media.url ? response.headers.get("content-type") : null) ||
         context.media.contentType
+      if (whatsapp && contentType.split(";")[0] === "image/webp")
+        validateWhatsAppMedia(new Uint8Array(bytes), contentType)
       const storageId = await ctx.storage.store(
         new Blob([bytes], { type: contentType })
       )

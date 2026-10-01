@@ -302,7 +302,9 @@ export async function broadcastMessageMetric(
     .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
     .unique()
   if (!recipient || recipient.organizationId !== message.organizationId) return
-  const terminal = ["delivered", "read", "failed"].includes(message.status)
+  const terminal = ["delivered", "read", "played", "failed"].includes(
+    message.status
+  )
   if (!recipient.sent && message.sentAt !== undefined)
     await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
   if (!recipient.settled && terminal) {
@@ -443,6 +445,7 @@ export async function readWhatsAppStats(ctx: QueryCtx, id: Id<"broadcasts">) {
       ["delivered"],
       ["read"],
       ["failed"],
+      ["played"],
     ]),
     counters.broadcastRecipients.prefixTotals(
       ctx,
@@ -450,12 +453,12 @@ export async function readWhatsAppStats(ctx: QueryCtx, id: Id<"broadcasts">) {
       skipReasonValue.members.map(({ value }) => [true, false, value])
     ),
   ])
-  const [queued, sent, delivered, read, failed] = messages
+  const [queued, sent, delivered, read, failed, played] = messages
   return {
-    recipients: queued + sent + delivered + read + failed,
-    sent: sent + delivered + read,
-    delivered: delivered + read,
-    read,
+    recipients: queued + sent + delivered + read + failed + played,
+    sent: sent + delivered + read + played,
+    delivered: delivered + read + played,
+    read: read + played,
     failed,
     skipped: skipCounts.reduce((sum, count) => sum + count, 0),
   }

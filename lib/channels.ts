@@ -20,6 +20,7 @@ export const CHANNEL_MESSAGE_STATUSES = [
   "sent",
   "delivered",
   "read",
+  "played",
   "failed",
   "received",
 ] as const

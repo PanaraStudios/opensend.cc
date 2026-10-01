@@ -2,7 +2,10 @@ import { CHANNEL_MESSAGE_STATUSES } from "./channels"
 import { rate } from "./dashboard/format"
 
 export type MessageMetricStatus = (typeof CHANNEL_MESSAGE_STATUSES)[number]
-export type MessageStatusCounts = Record<MessageMetricStatus, number>
+export type MessageStatusCounts = Record<
+  Exclude<MessageMetricStatus, "played">,
+  number
+> & { played?: number }
 export type ChannelMetricCounts = Record<
   "sent" | "delivered" | "read" | "failed" | "received",
   number
@@ -22,9 +25,10 @@ export function rollupChannelCounts(
       status.sent +
       status.delivered +
       status.read +
+      (status.played ?? 0) +
       status.failed,
-    delivered: status.delivered + status.read,
-    read: status.read,
+    delivered: status.delivered + status.read + (status.played ?? 0),
+    read: status.read + (status.played ?? 0),
     failed: status.failed,
     received: status.received,
   }

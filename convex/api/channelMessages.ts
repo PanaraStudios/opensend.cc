@@ -25,7 +25,10 @@ import {
   directionValue,
   messagingChannelValue,
 } from "../tables/channels"
-import { channelMessagePayload } from "../channels/payload"
+import {
+  channelMessagePayload,
+  hydratedChannelMessage,
+} from "../channels/payload"
 import { mediaDownloadLink } from "../channels/downloads"
 import { callerValue, requireCaller, notFound, type Caller } from "./caller"
 import {
@@ -65,20 +68,31 @@ async function ownConversation(
   })
 }
 export const get = internalQuery({
-  args: { caller: callerValue, channel: messagingChannelValue, id: v.string() },
+  args: {
+    caller: callerValue,
+    channel: messagingChannelValue,
+    id: v.string(),
+    now: v.optional(v.number()),
+  },
   returns: v.union(
     v.null(),
     v.object({
       message: schema.doc("channelMessages"),
       content: v.union(v.null(), schema.doc("channelMessageContents")),
       events: v.array(schema.doc("channelMessageEvents")),
+      normalized: v.record(v.string(), v.any()),
     })
   ),
-  handler: async (ctx, { caller, channel, id }) => {
+  handler: async (ctx, { caller, channel, id, now }) => {
     await requireCaller(ctx, caller)
     const message = await ownMessage(ctx, caller, channel, id)
     if (!message) return null
     return {
+      normalized: await hydratedChannelMessage(
+        ctx,
+        message,
+        now ?? message._creationTime
+      ),
       message,
       content: await ctx.db
         .query("channelMessageContents")
@@ -101,10 +115,12 @@ export const list = internalQuery({
     direction: v.optional(directionValue),
     phoneNumberId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    now: v.optional(v.number()),
   },
   returns: v.object({
     has_more: v.boolean(),
     data: v.array(schema.doc("channelMessages")),
+    normalized: v.array(v.record(v.string(), v.any())),
   }),
   handler: async (
     ctx,
@@ -115,6 +131,7 @@ export const list = internalQuery({
       direction,
       phoneNumberId,
       conversationId,
+      now,
       ...page
     }
   ) => {
@@ -133,7 +150,7 @@ export const list = internalQuery({
       (!direction || row.direction === direction) &&
       (!account || row.accountId === account._id) &&
       (!conversation || row.conversationId === conversation._id)
-    return cursorPage(
+    const result = await cursorPage(
       page,
       async (id) => {
         const row = await ownMessage(ctx, caller, channel, id)
@@ -156,6 +173,14 @@ export const list = internalQuery({
         )
       }
     )
+    return {
+      ...result,
+      normalized: await Promise.all(
+        result.data.map((m) =>
+          hydratedChannelMessage(ctx, m, now ?? m._creationTime)
+        )
+      ),
+    }
   },
 })
 async function findAccount(
@@ -316,11 +341,14 @@ export function channelMessageRoutes(channel: Channel) {
           caller,
           channel,
           ...listParams(query),
+          now: Date.now(),
           status: enumField(filters, "status", CHANNEL_MESSAGE_STATUSES),
           direction: enumField(filters, "direction", DIRECTIONS),
           phoneNumberId: query.get(definition.idParam) ?? undefined,
         })
-        return { body: listBody(result, (m) => channelMessagePayload(m)) }
+        return {
+          body: listBody({ ...result, data: result.normalized }, (m) => m),
+        }
       },
     })
     apiRoute(http, {
@@ -378,17 +406,18 @@ export function channelMessageRoutes(channel: Channel) {
       method: "GET",
       path: `${prefix}/conversations/{id}/messages`,
       scope: { resource: channel, access: "read" },
-      handler: async (ctx, { caller, query, params }) => ({
-        body: listBody(
-          await ctx.runQuery(internal.api.channelMessages.list, {
-            caller,
-            channel,
-            ...listParams(query),
-            conversationId: params.id,
-          }),
-          (m) => channelMessagePayload(m)
-        ),
-      }),
+      handler: async (ctx, { caller, query, params }) => {
+        const result = await ctx.runQuery(internal.api.channelMessages.list, {
+          caller,
+          channel,
+          ...listParams(query),
+          conversationId: params.id,
+          now: Date.now(),
+        })
+        return {
+          body: listBody({ ...result, data: result.normalized }, (m) => m),
+        }
+      },
     })
   }
 }
@@ -402,6 +431,7 @@ async function detail(
     caller,
     channel,
     id,
+    now: Date.now(),
   })
   if (!result) throw notFound("Message")
   const payload = result.content
@@ -409,6 +439,7 @@ async function detail(
     : {}
   return {
     ...channelMessagePayload(result.message, payload),
+    ...result.normalized,
     last_event: result.message.status,
     events: result.events.map((e) => ({
       type: e.type,
@@ -448,7 +479,12 @@ export function channelSendInput(body: unknown, channel: Channel) {
   })
   const fields =
     channel === "whatsapp"
-      ? WHATSAPP_SEND_TYPES
+      ? [
+          ...WHATSAPP_SEND_TYPES,
+          "recipient",
+          "context",
+          "biz_opaque_callback_data",
+        ]
       : ["text", "attachment", "template", "quick_replies", "tag"]
   const messageBody = Object.fromEntries(
     fields
@@ -462,9 +498,17 @@ export function channelSendInput(body: unknown, channel: Channel) {
   return {
     channel,
     from: stringField(input, "from"),
-    to: stringField(input, "to", true)!,
+    to: stringField(
+      input,
+      "to",
+      channel !== "whatsapp" || input.recipient === undefined
+    ),
     body: messageBody,
-    replyTo: stringField(input, "reply_to"),
+    replyTo:
+      stringField(input, "reply_to") ??
+      (channel === "whatsapp" && input.context
+        ? stringField(objectBody(input.context), "message_id", true)
+        : undefined),
     tags,
   }
 }

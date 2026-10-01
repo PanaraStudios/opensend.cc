@@ -89,7 +89,7 @@ import { MessageFiles } from "./shared"
 type TimelineEvent = {
   id: string
   at: number
-  type?: EmailStatus | ChannelMessageStatus
+  type?: EmailStatus | ChannelMessageStatus | "payment_updated"
   label?: string
 }
 
@@ -150,7 +150,10 @@ function emailMeta(email: {
 function eventLabel(type: TimelineEvent["type"]) {
   if (!type) return "Event"
   // Only channel messages are read, or received as events.
-  return type === "read" || type === "received"
+  return type === "read" ||
+    type === "played" ||
+    type === "payment_updated" ||
+    type === "received"
     ? sentenceCase(type)
     : emailStatusLabel(type)
 }

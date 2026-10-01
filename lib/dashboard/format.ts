@@ -332,6 +332,7 @@ export const CHANNEL_MESSAGE_STATUS_TONE: Record<
   sent: "outline",
   delivered: "success",
   read: "success",
+  played: "success",
   failed: "destructive",
   received: "secondary",
 }

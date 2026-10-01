@@ -73,3 +73,94 @@ export function whatsappMediaMultipart(
     contentType: `multipart/form-data; boundary=${boundary}`,
   }
 }
+
+/** Media can sit at the root, in interactive headers or template parameters. */
+export function whatsappMessageMedia(payload: Record<string, unknown>) {
+  const files: {
+    mediaId: string
+    type: string
+    contentType: string
+    filename?: string
+    url?: string
+  }[] = []
+  const seen = new Set<string>()
+  const mime: Record<string, string> = {
+    image: "image/jpeg",
+    video: "video/mp4",
+    audio: "audio/mpeg",
+    document: "application/octet-stream",
+    sticker: "image/webp",
+  }
+  function visit(value: unknown, depth: number) {
+    if (!value || typeof value !== "object" || depth > 12) return
+    if (Array.isArray(value)) {
+      value.forEach((v) => visit(v, depth + 1))
+      return
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (
+        key in mime &&
+        child &&
+        typeof child === "object" &&
+        !Array.isArray(child)
+      ) {
+        const media = child as Record<string, unknown>,
+          id = typeof media.id === "string" ? media.id : undefined,
+          url = typeof media.link === "string" ? media.link : undefined
+        const identity = id ?? url
+        if (identity && !seen.has(identity)) {
+          seen.add(identity)
+          files.push({
+            mediaId: id ?? `link:${files.length}`,
+            type: key,
+            contentType: mime[key],
+            ...(typeof media.filename === "string"
+              ? { filename: media.filename }
+              : {}),
+            ...(url ? { url } : {}),
+          })
+        }
+      }
+      visit(child, depth + 1)
+    }
+  }
+  visit(payload, 0)
+  return files
+}
+
+export function validateWhatsAppMediaReference(
+  type: string,
+  contentType: string,
+  voice = false
+) {
+  const mime = contentType.split(";")[0].toLowerCase().trim()
+  const valid =
+    type === "image"
+      ? ["image/jpeg", "image/png"].includes(mime)
+      : type === "video"
+        ? ["video/mp4", "video/3gpp"].includes(mime)
+        : type === "sticker"
+          ? mime === "image/webp"
+          : type === "document"
+            ? DOCUMENTS.includes(mime)
+            : type === "audio"
+              ? [
+                  "audio/aac",
+                  "audio/amr",
+                  "audio/mpeg",
+                  "audio/mp4",
+                  "audio/ogg",
+                ].includes(mime)
+              : false
+  if (!valid)
+    throw new Error(
+      `${type}: the uploaded media MIME type ${contentType} is incompatible.`
+    )
+  if (
+    voice &&
+    (mime !== "audio/ogg" ||
+      !/codecs\s*=\s*"?opus"?/i.test(contentType) ||
+      /channels\s*=\s*"?[2-9]/i.test(contentType))
+  )
+    throw new Error("audio.voice requires OGG OPUS mono media.")
+}

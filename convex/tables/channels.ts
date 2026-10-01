@@ -64,6 +64,10 @@ export const CHANNEL_MESSAGE_TYPES = [
   "button",
   "reaction",
   "unsupported",
+  "order",
+  "system",
+  "edit",
+  "revoke",
 ] as const
 export const channelMessageTypeValue = literals(CHANNEL_MESSAGE_TYPES)
 export const DIRECTIONS = ["inbound", "outbound"] as const
@@ -143,6 +147,10 @@ export const channelTables = {
     phone: v.optional(v.string()),
     profileName: v.optional(v.string()),
     username: v.optional(v.string()),
+    userId: v.optional(v.string()),
+    parentUserId: v.optional(v.string()),
+    userScopeId: v.optional(v.string()),
+    identityKeyHash: v.optional(v.string()),
     /** WhatsApp error 131050: the person stopped marketing messages. */
     marketingOptOut: v.boolean(),
     lastInboundAt: v.optional(v.number()),
@@ -156,6 +164,26 @@ export const channelTables = {
       "externalId",
     ])
     .index("by_contactId", ["contactId"]),
+  /** BSUIDs are business-scoped aliases of the stable channel identity. */
+  whatsappUserAliases: defineTable({
+    organizationId: v.string(),
+    businessId: v.string(),
+    userId: v.string(),
+    channelContactId: v.id("channelContacts"),
+    parentUserId: v.optional(v.string()),
+    username: v.optional(v.string()),
+    identityKeyHash: v.optional(v.string()),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_businessId_and_userId", [
+      "organizationId",
+      "businessId",
+      "userId",
+    ])
+    .index("by_channelContactId_and_businessId", [
+      "channelContactId",
+      "businessId",
+    ]),
   /** One thread per person and account, on any channel; received email
       threads are keyed by the sender's address. */
   conversations: defineTable({
@@ -216,6 +244,9 @@ export const channelTables = {
     broadcastId: v.optional(v.id("broadcasts")),
     automationRunId: v.optional(v.id("automationRuns")),
     replyToId: v.optional(v.id("channelMessages")),
+    reactionTargetExternalId: v.optional(v.string()),
+    observedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
     tags: v.optional(v.array(tagValue)),
     source: v.optional(
       v.union(
@@ -272,7 +303,11 @@ export const channelTables = {
       "direction",
     ])
     .index("by_conversationId", ["conversationId"])
-    .index("by_channel_and_externalId", ["channel", "externalId"]),
+    .index("by_channel_and_externalId", ["channel", "externalId"])
+    .index("by_accountId_and_reactionTargetExternalId", [
+      "accountId",
+      "reactionTargetExternalId",
+    ]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
@@ -290,6 +325,9 @@ export const channelTables = {
     messageId: v.id("channelMessages"),
     /** The channel's message object as JSON. */
     payload: v.string(),
+    sendResponse: v.optional(v.string()),
+    paymentState: v.optional(v.string()),
+    statusState: v.optional(v.string()),
     /** What the customer received, independent of later template edits. */
     rendered: v.optional(renderedTemplateValue),
     /** A message carries at most a few files. */
@@ -298,7 +336,7 @@ export const channelTables = {
   /** The message's timeline; status webhooks append to it. */
   channelMessageEvents: defineTable({
     messageId: v.id("channelMessages"),
-    type: channelMessageStatusValue,
+    type: v.union(channelMessageStatusValue, v.literal("payment_updated")),
     at: v.number(),
     webhookEventId: v.optional(v.id("metaWebhookEvents")),
     /** Extra details as JSON, like Meta's error object. */

@@ -96,7 +96,11 @@ test("channelSummary counts current statuses, rollups and day boundaries for eve
   vi.setSystemTime(FROM)
   for (const [i, channel] of MESSAGING_CHANNELS.entries()) {
     for (const status of CHANNEL_MESSAGE_STATUSES) {
-      if (channel === "instagram" && status === "delivered") continue
+      if (
+        (channel === "instagram" && status === "delivered") ||
+        (channel !== "whatsapp" && status === "played")
+      )
+        continue
       await inserts[i](status)
     }
   }
@@ -129,9 +133,9 @@ test("channelSummary counts current statuses, rollups and day boundaries for eve
       all.map((rows) => rows.filter((row) => row.channel === channel))
     )
     expect(selected[0][0].counts).toEqual({
-      sent: channel === "instagram" ? 5 : 6,
-      delivered: channel === "instagram" ? 2 : 3,
-      read: 2,
+      sent: channel === "instagram" ? 5 : channel === "whatsapp" ? 7 : 6,
+      delivered: channel === "instagram" ? 2 : channel === "whatsapp" ? 4 : 3,
+      read: channel === "whatsapp" ? 3 : 2,
       failed: 1,
       received: 1,
     })
@@ -139,6 +143,7 @@ test("channelSummary counts current statuses, rollups and day boundaries for eve
       queued: 1,
       sent: 1,
       delivered: channel === "instagram" ? 0 : 1,
+      played: channel === "whatsapp" ? 1 : 0,
       read: 2,
       failed: 1,
       received: 1,

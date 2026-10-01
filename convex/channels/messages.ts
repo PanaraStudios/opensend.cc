@@ -19,8 +19,16 @@ import { invalid, notFound } from "../api/caller"
 import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
-import { upsertChannelThread } from "./identity"
-import { channelMessagePayload } from "./payload"
+import {
+  upsertChannelThread,
+  recordWhatsAppUser,
+  recordWhatsAppPhone,
+} from "./identity"
+import { hydratedChannelMessage } from "./payload"
+import {
+  whatsappMessageMedia,
+  validateWhatsAppMediaReference,
+} from "../../lib/meta/media"
 import { channelStrategies } from "../../lib/meta/payloads"
 import { resolveLocalTemplate, whatsappTemplateComponents } from "./templates"
 import {
@@ -29,6 +37,7 @@ import {
   type RenderedTemplate,
 } from "../../lib/meta/templates"
 import { messagingChannelValue } from "../tables/channels"
+import { namesakes } from "../whatsapp/rows"
 import { resolveWhatsAppTemplate } from "../whatsapp/templates"
 import { STATUS_RANK, object, string } from "../../lib/meta/webhooks"
 import { TAG_PATTERN } from "../../lib/dashboard/email-send"
@@ -39,7 +48,7 @@ const limiter = new RateLimiter(components.rateLimiter)
 export const channelInputValue = v.object({
   channel: messagingChannelValue,
   from: v.optional(v.string()),
-  to: v.string(),
+  to: v.optional(v.string()),
   /** Validated by the channel adapter before any writes. */
   body: v.record(v.string(), v.any()),
   replyTo: v.optional(v.string()),
@@ -122,7 +131,8 @@ async function storedTemplate(
   wabaId: string | undefined,
   value: unknown
 ) {
-  if (typeof value !== "object" || value === null) return { value }
+  if (typeof value !== "object" || value === null)
+    return { value, category: undefined }
   if ("components" in value) {
     const ref = object(value)
     const components = await whatsappTemplateComponents(
@@ -131,8 +141,19 @@ async function storedTemplate(
       wabaId,
       ref
     )
+    const language =
+      typeof ref.language === "string"
+        ? ref.language
+        : string(object(ref.language).code)
+    const template =
+      string(ref.name) && language
+        ? (
+            await namesakes(ctx, organizationId, string(ref.name), language)
+          ).find((row) => row.whatsapp?.wabaId === wabaId)
+        : null
     return {
       value,
+      category: template?.whatsapp?.category,
       ...(components
         ? { rendered: renderTemplate(components, ref.components) }
         : {}),
@@ -166,6 +187,7 @@ async function storedTemplate(
         : {}
     const components = template.sendComponents(variables)
     return {
+      category: template.category,
       value: { name: template.name, language: template.language, components },
       rendered: renderTemplate(
         storedComponents(template.components),
@@ -178,7 +200,7 @@ async function storedTemplate(
       error instanceof ConvexError &&
       error.data === "WhatsApp template not found"
     )
-      return { value }
+      return { value, category: undefined }
     throw error
   }
 }
@@ -219,6 +241,14 @@ export async function createChannelMessage(
           account.wabaId,
           body.template
         )
+        if (
+          body.recipient &&
+          !input.to &&
+          resolved.category === "AUTHENTICATION"
+        )
+          throw new Error(
+            "Authentication templates cannot be sent to a BSUID; use to with a phone number."
+          )
         body = { ...body, template: resolved.value }
         rendered = resolved.rendered
       } else {
@@ -266,14 +296,42 @@ export async function createChannelMessage(
     account,
     {
       externalId: recipient,
-      ...strategy.identity(recipient),
+      ...(channel === "whatsapp" && payload.recipient && !payload.to
+        ? { userId: String(payload.recipient) }
+        : strategy.identity(recipient)),
       at: now,
       preview,
       direction: "outbound",
     }
   )
+  if (channel === "whatsapp" && type === "reaction") {
+    const targetId = string(object(payload.reaction).message_id)
+    const candidates = await ctx.db
+      .query("channelMessages")
+      .withIndex("by_channel_and_externalId", (q) =>
+        q.eq("channel", "whatsapp").eq("externalId", targetId)
+      )
+      .take(10)
+    const target = candidates.find(
+      (m) => m.accountId === account._id && m.conversationId === conversationId
+    )
+    if (
+      target &&
+      (target.type === "reaction" ||
+        target.revokedAt !== undefined ||
+        now - (target.observedAt ?? target.sentAt ?? target._creationTime) >
+          30 * 86400_000)
+    )
+      throw invalid(
+        "Reactions require a non-deleted, non-reaction target no older than 30 days."
+      )
+  }
   let replyToId: Id<"channelMessages"> | undefined
   if (input.replyTo) {
+    if (channel === "whatsapp" && ["reaction", "template"].includes(type))
+      throw invalid(
+        "Reply context is not supported for reactions or templates."
+      )
     const id = ctx.db.normalizeId("channelMessages", input.replyTo)
     const reply = id
       ? await ctx.db.get("channelMessages", id)
@@ -327,8 +385,16 @@ export async function createChannelMessage(
       from: account.externalId,
       to: recipient,
       type,
+      ...(type === "reaction" && channel === "whatsapp"
+        ? {
+            reactionTargetExternalId: string(
+              object(payload.reaction).message_id
+            ),
+          }
+        : {}),
       ...(templateId ? { templateId } : {}),
       status: "queued",
+      observedAt: now,
       preview,
       source: opts.source,
       ...(opts.apiKeyId ? { apiKeyId: opts.apiKeyId } : {}),
@@ -344,31 +410,64 @@ export async function createChannelMessage(
     },
     true
   )
-  const mediaId = string(data.id)
-  const upload = mediaId
-    ? await ctx.db
-        .query("channelMediaUploads")
-        .withIndex("by_team_and_mediaId", (q) =>
-          q.eq("organizationId", opts.organizationId).eq("mediaId", mediaId)
+  const references = channel === "whatsapp" ? whatsappMessageMedia(payload) : []
+  const files: NonNullable<Doc<"channelMessageContents">["media"]> = []
+  for (const reference of references) {
+    const upload = await ctx.db
+      .query("channelMediaUploads")
+      .withIndex("by_team_and_mediaId", (q) =>
+        q
+          .eq("organizationId", opts.organizationId)
+          .eq("mediaId", reference.mediaId)
+      )
+      .unique()
+    if (upload && upload.accountId === account._id) {
+      try {
+        validateWhatsAppMediaReference(
+          reference.type,
+          upload.contentType,
+          reference.type === "audio" && object(payload.audio).voice === true
         )
-        .unique()
-    : null
+      } catch (error) {
+        throw invalid((error as Error).message)
+      }
+      files.push({
+        mediaId: reference.mediaId,
+        contentType: upload.contentType,
+        filename: upload.filename,
+        size: upload.size,
+      })
+    } else
+      files.push({
+        mediaId: reference.mediaId,
+        contentType: reference.contentType,
+        ...(reference.filename ? { filename: reference.filename } : {}),
+        ...(reference.url ? { url: reference.url } : {}),
+      })
+  }
+  // Preserve the Page sender's existing handling of uploaded media ids.
+  if (channel !== "whatsapp" && string(data.id)) {
+    const upload = await ctx.db
+      .query("channelMediaUploads")
+      .withIndex("by_team_and_mediaId", (q) =>
+        q
+          .eq("organizationId", opts.organizationId)
+          .eq("mediaId", string(data.id))
+      )
+      .unique()
+    if (upload?.accountId === account._id)
+      files.push({
+        mediaId: upload.mediaId,
+        contentType: upload.contentType,
+        filename: upload.filename,
+        size: upload.size,
+      })
+  }
   await ctx.db.insert("channelMessageContents", {
     messageId: message._id,
     payload: JSON.stringify(payload),
     ...(rendered ? { rendered } : {}),
-    ...(upload && upload.accountId === account._id
-      ? {
-          media: [
-            {
-              mediaId,
-              contentType: upload.contentType,
-              filename: upload.filename,
-              size: upload.size,
-            },
-          ],
-        }
-      : {}),
+    ...(files.length ? { media: files } : {}),
   })
   await ctx.db.insert("channelMessageEvents", {
     messageId: message._id,
@@ -408,9 +507,52 @@ export async function acceptChannelMessage(
   ctx: MutationCtx,
   message: Doc<"channelMessages">,
   externalId: string,
-  at: number
+  at: number,
+  response?: string
 ) {
+  if (response) {
+    const body = await content(ctx, message._id)
+    if (body)
+      await ctx.db.patch("channelMessageContents", body._id, {
+        sendResponse: response,
+      })
+    if (message.channel === "whatsapp") {
+      const contact = object(
+        (object(JSON.parse(response)).contacts as unknown[] | undefined)?.[0]
+      )
+      const userId = string(contact.user_id)
+      const account = await ctx.db.get("channelAccounts", message.accountId)
+      if (userId && account)
+        await recordWhatsAppUser(ctx, account, message.channelContactId, userId)
+      if (account && string(contact.wa_id))
+        await recordWhatsAppPhone(
+          ctx,
+          account,
+          message.channelContactId,
+          string(contact.wa_id)
+        )
+    }
+  }
   if (message.sentAt !== undefined) return message
+  if (message.channel === "whatsapp") {
+    const body = await content(ctx, message._id)
+    for (const file of body?.media ?? []) {
+      if (!file.mediaId || file.storageId) continue
+      const upload = await ctx.db
+        .query("channelMediaUploads")
+        .withIndex("by_team_and_mediaId", (q) =>
+          q
+            .eq("organizationId", message.organizationId)
+            .eq("mediaId", file.mediaId!)
+        )
+        .unique()
+      if (!upload || upload.accountId !== message.accountId)
+        await ctx.scheduler.runAfter(0, internal.channels.media.fetch, {
+          messageId: message._id,
+          mediaId: file.mediaId,
+        })
+    }
+  }
   const current = await patchRow(ctx, "channelMessages", message._id, {
     externalId,
     sentAt: at,
@@ -425,14 +567,14 @@ export async function acceptChannelMessage(
     at,
   })
   await broadcastMessageMetric(ctx, current)
-  const body = await content(ctx, message._id)
   await emitEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.sent`,
-    channelMessagePayload(
+    await hydratedChannelMessage(
+      ctx,
       { ...current, status: "sent" },
-      body ? object(JSON.parse(body.payload)) : {}
+      Date.now()
     )
   )
   return current
@@ -463,12 +605,11 @@ async function fail(
     }),
   })
   await broadcastMessageMetric(ctx, current)
-  const body = await content(ctx, message._id)
   await emitEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.failed`,
-    channelMessagePayload(current, body ? object(JSON.parse(body.payload)) : {})
+    await hydratedChannelMessage(ctx, current, Date.now())
   )
 }
 export const claim = internalMutation({
@@ -591,7 +732,11 @@ export const claim = internalMutation({
   },
 })
 const outcomeValue = v.union(
-  v.object({ kind: v.literal("sent"), externalId: v.string() }),
+  v.object({
+    kind: v.literal("sent"),
+    externalId: v.string(),
+    response: v.optional(v.string()),
+  }),
   v.object({
     kind: v.literal("failed"),
     error: v.string(),
@@ -626,7 +771,13 @@ async function recordOutcome(
       message.status === "queued" ||
       message.externalId === outcome.externalId
     )
-      await acceptChannelMessage(ctx, message, outcome.externalId, Date.now())
+      await acceptChannelMessage(
+        ctx,
+        message,
+        outcome.externalId,
+        Date.now(),
+        outcome.response
+      )
     return
   }
   if (message.status !== "queued" || message.sentAt !== undefined) return

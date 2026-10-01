@@ -12,6 +12,13 @@ export const context = internalQuery({
       encryptedToken: v.string(),
       version: v.string(),
       media: channelMediaValue,
+      channel: v.union(
+        v.literal("whatsapp"),
+        v.literal("messenger"),
+        v.literal("instagram")
+      ),
+      messageType: v.string(),
+      direction: v.union(v.literal("inbound"), v.literal("outbound")),
     })
   ),
   handler: async (ctx, { messageId, mediaId }) => {
@@ -38,6 +45,9 @@ export const context = internalQuery({
           encryptedToken: account.encryptedToken ?? connection.encryptedToken,
           version: app.graphVersion,
           media,
+          channel: message.channel,
+          messageType: message.type,
+          direction: message.direction,
         }
       : null
   },

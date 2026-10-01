@@ -108,6 +108,8 @@ export const WEBHOOK_EVENTS = [
   "whatsapp.message.sent",
   "whatsapp.message.delivered",
   "whatsapp.message.read",
+  "whatsapp.message.played",
+  "whatsapp.message.payment_updated",
   "whatsapp.message.failed",
   "whatsapp.message.received",
   "messenger.message.sent",

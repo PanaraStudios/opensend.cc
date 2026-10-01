@@ -64,6 +64,7 @@ export const TEAM_TABLES = [
   "channelMediaUploads",
   "channelMessages",
   "conversations",
+  "whatsappUserAliases",
   "channelContacts",
   "channelAccounts",
   "whatsappBusinessAccounts",
