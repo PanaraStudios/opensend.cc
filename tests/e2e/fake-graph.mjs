@@ -92,19 +92,23 @@ export const ROUTES = [
     method: "POST",
     path: /^\/\d+\/messages$/,
     respond: (_, call) =>
-      call.body?.recipient
-        ? {
-            body: {
-              recipient_id: call.body.recipient.id,
-              message_id: `mid.${++messageSequence}`,
-            },
-          }
-        : {
-            body: {
-              messaging_product: "whatsapp",
-              messages: [{ id: `wamid.${++messageSequence}` }],
-            },
-          },
+      call.body?.status === "read"
+        ? { body: { success: true } }
+        : call.body?.sender_action
+          ? { body: { recipient_id: call.body.recipient.id } }
+          : call.body?.recipient
+            ? {
+                body: {
+                  recipient_id: call.body.recipient.id,
+                  message_id: `mid.${++messageSequence}`,
+                },
+              }
+            : {
+                body: {
+                  messaging_product: "whatsapp",
+                  messages: [{ id: `wamid.${++messageSequence}` }],
+                },
+              },
   },
   {
     method: "POST",

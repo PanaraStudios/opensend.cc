@@ -85,12 +85,17 @@ const status = (page: Page, id: string, value: string) =>
   webhook(page, {
     statuses: [{ id, status: value, recipient_id: CUSTOMER, timestamp: now() }],
   })
-async function sends(page: Page) {
+async function controls(page: Page) {
   const calls: GraphCall[] = await (
     await page.request.get(`${fakeGraph()}/__calls`)
   ).json()
   return calls.filter(
     (call) => call.method === "POST" && call.path === `/${PHONE_ID}/messages`
+  )
+}
+async function sends(page: Page) {
+  return (await controls(page)).filter(
+    (call) => !(call.body as { status?: string })?.status
   )
 }
 async function filterChannel(page: Page, label: string) {
@@ -133,6 +138,15 @@ export function inboxTests(
     const conversationId = new URL(owner.url()).searchParams.get("c")!
     await expect(row.getByLabel("Unread", { exact: true })).toHaveCount(0)
     await expect(owner.getByText("Is my order ready?").last()).toBeVisible()
+
+    await expect
+      .poll(async () => (await controls(owner)).map((call) => call.body))
+      .toContainEqual({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: "wamid.inbox-e2e-1",
+      })
+    await shots(owner, "read-receipt")
 
     // A reply goes to Graph and its ticks follow the status webhooks.
     await owner.getByLabel("Reply", { exact: true }).fill("On its way!")
