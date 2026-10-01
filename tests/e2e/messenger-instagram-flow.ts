@@ -201,12 +201,18 @@ export function messengerInstagramTests(
         .toBeGreaterThan(0)
       await owner.goto("/contacts")
       await expect(
-        owner.getByRole("row").filter({ hasText: "Ada E2E" })
+        // First and last name are separate columns.
+        owner
+          .getByRole("row")
+          .filter({ hasText: "Ada" })
+          .filter({ hasText: "E2E" })
       ).toBeVisible()
       await owner.goto("/channels")
+      // The Instagram row names the same Page as its business.
       const messenger = owner
         .getByRole("row")
         .filter({ hasText: "Opensend Messenger E2E" })
+        .filter({ hasNotText: "opensend_ig_e2e" })
       const instagram = owner
         .getByRole("row")
         .filter({ hasText: "opensend_ig_e2e" })
