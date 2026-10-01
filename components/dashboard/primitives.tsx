@@ -168,8 +168,11 @@ import {
   sentenceCase,
   statusLabel,
   TEMPLATE_STATUS_TONE,
+  META_TEMPLATE_STATUS_TONE,
+  metaTemplateStatusLabel,
   templateStatusLabel,
   CHANNEL_ACCOUNT_STATUS_TONE,
+  CHANNEL_MESSAGE_STATUS_TONE,
   CHANNEL_QUALITY_TONE,
   type BadgeTone,
 } from "@/lib/dashboard/format"
@@ -190,11 +193,13 @@ import type {
   AutomationStatus,
   BroadcastStatus,
   ChannelAccountStatus,
+  ChannelMessageStatus,
   ChannelQuality,
   DomainStatus,
   EmailStatus,
   ExportStatus,
   TemplateStatus,
+  MetaTemplateStatus,
 } from "@/lib/dashboard/types"
 
 /* ------------------------------------------------------------------ layout */
@@ -227,7 +232,7 @@ export function PageHeader({
   )
 }
 
-/** Page header plus route tabs. Used by Emails, Audience, and Settings.
+/** Page header plus route tabs. Used by Messages, Audience, and Settings.
     Tabs are real links so modifier clicks and prefetch keep working. */
 export function SectionChrome({
   title,
@@ -1061,6 +1066,12 @@ export function emailStatusDotClassName(status: EmailStatus): string {
   return badgeDotClassName(EMAIL_STATUS_TONE[status])
 }
 
+export function channelMessageStatusDotClassName(
+  status: ChannelMessageStatus
+): string {
+  return badgeDotClassName(CHANNEL_MESSAGE_STATUS_TONE[status])
+}
+
 export function broadcastStatusDotClassName(status: BroadcastStatus): string {
   return badgeDotClassName(BROADCAST_STATUS_TONE[status])
 }
@@ -1106,6 +1117,20 @@ export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   )
 }
 
+/** Meta's review of a WhatsApp template: Pending, Approved, Rejected… */
+export function MetaTemplateStatusBadge({
+  status,
+}: {
+  status: MetaTemplateStatus
+}) {
+  return (
+    <ToneBadge
+      tone={META_TEMPLATE_STATUS_TONE[status]}
+      label={metaTemplateStatusLabel(status)}
+    />
+  )
+}
+
 /** A channel account: a WhatsApp number, a Page, an Instagram account. */
 export function ChannelAccountStatusBadge({
   status,
@@ -1115,6 +1140,20 @@ export function ChannelAccountStatusBadge({
   return (
     <ToneBadge
       tone={CHANNEL_ACCOUNT_STATUS_TONE[status]}
+      label={sentenceCase(status)}
+    />
+  )
+}
+
+/** A WhatsApp (Messenger, Instagram) message: queued, sent, read… */
+export function ChannelMessageStatusBadge({
+  status,
+}: {
+  status: ChannelMessageStatus
+}) {
+  return (
+    <ToneBadge
+      tone={CHANNEL_MESSAGE_STATUS_TONE[status]}
       label={sentenceCase(status)}
     />
   )

@@ -3,6 +3,10 @@ import { v, ConvexError } from "convex/values"
 import { action, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { decryptSecret } from "../secrets"
+import {
+  PAGE_WEBHOOK_FIELDS,
+  INSTAGRAM_WEBHOOK_FIELDS,
+} from "../../lib/meta/page-account"
 import { appAccessToken, graph, graphFailure } from "./graph"
 
 /** The WhatsApp Business Account fields opensend.cc projects. */
@@ -90,24 +94,30 @@ export const subscribeWebhooks = action({
       async (app) => {
         if (!app.callbackUrl)
           throw new ConvexError("Set the backend URL on the Amazon SES page")
-        const result = await graph<{ success?: boolean }>({
-          token: app.token,
-          method: "POST",
-          path: `${app.appId}/subscriptions`,
-          version: app.graphVersion,
-          body: {
-            form: {
-              object: "whatsapp_business_account",
-              callback_url: app.callbackUrl,
-              verify_token: app.verifyToken,
-              fields: WHATSAPP_WEBHOOK_FIELDS.join(","),
-              include_values: "true",
+        for (const [object, fields] of [
+          ["whatsapp_business_account", WHATSAPP_WEBHOOK_FIELDS],
+          ["page", PAGE_WEBHOOK_FIELDS],
+          ["instagram", INSTAGRAM_WEBHOOK_FIELDS],
+        ] as const) {
+          const result = await graph<{ success?: boolean }>({
+            token: app.token,
+            method: "POST",
+            path: `${app.appId}/subscriptions`,
+            version: app.graphVersion,
+            body: {
+              form: {
+                object,
+                callback_url: app.callbackUrl,
+                verify_token: app.verifyToken,
+                fields: fields.join(","),
+                include_values: "true",
+              },
             },
-          },
-        })
-        if (result.success !== true)
-          throw new ConvexError("Meta did not confirm the subscription")
-        return result
+          })
+          if (result.success !== true)
+            throw new ConvexError("Meta did not confirm the subscription")
+        }
+        return null
       },
       () => ({ webhookSubscribedAt: Date.now() })
     ),

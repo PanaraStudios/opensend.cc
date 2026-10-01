@@ -12,11 +12,17 @@ import {
   MegaphoneIcon,
   PencilIcon,
   PlusIcon,
+  MailIcon,
+  ChevronDownIcon,
   Trash2Icon,
 } from "lucide-react"
 
+import { WhatsAppIcon } from "@/components/brand-icons"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
@@ -70,6 +76,7 @@ export function BroadcastsView() {
     toast.add({ type: "error", title: actionError(error) })
   const saveAsTemplate = useSaveAsTemplate()
   const [query, setQuery] = React.useState("")
+  const [channel, setChannel] = React.useState("all")
   const [status, setStatus] = React.useState("all")
   const [audience, setAudience] = React.useState("all")
   const [audienceSearch, setAudienceSearch] = React.useState("")
@@ -83,6 +90,7 @@ export function BroadcastsView() {
 
   const filters = {
     search: query,
+    channel: channel === "all" ? undefined : (channel as "email" | "whatsapp"),
     status: status === "all" ? undefined : (status as BroadcastStatus),
     audience: audience === "all" ? undefined : audience,
   }
@@ -94,10 +102,11 @@ export function BroadcastsView() {
   )
   const { rows, pageRows, pagination } = list
 
-  async function createBroadcast() {
+  async function createBroadcast(channel: "email" | "whatsapp") {
     try {
       const created = await addBroadcast({
         name: "Untitled",
+        channel,
         subject: "",
         preview: "",
         segmentId: null,
@@ -122,14 +131,32 @@ export function BroadcastsView() {
     filters,
   })
 
+  const createMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button data-testid="create-broadcast" />}>
+        <PlusIcon data-icon="inline-start" />
+        Create broadcast
+        <ChevronDownIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => void createBroadcast("email")}>
+            <MailIcon />
+            Email
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void createBroadcast("whatsapp")}>
+            <WhatsAppIcon />
+            WhatsApp
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
   return (
     <>
       <PageHeader title="Broadcasts">
         <DocsButton />
-        <Button onClick={createBroadcast}>
-          <PlusIcon data-icon="inline-start" />
-          Create broadcast
-        </Button>
+        {createMenu}
       </PageHeader>
       {exporting.dialog}
       <ListToolbar
@@ -137,6 +164,16 @@ export function BroadcastsView() {
         onQueryChange={setQuery}
         placeholder="Search broadcasts…"
         filters={[
+          {
+            value: channel,
+            onChange: setChannel,
+            items: [
+              { value: "all", label: "All channels" },
+              { value: "email", label: "Email" },
+              { value: "whatsapp", label: "WhatsApp" },
+            ],
+            "aria-label": "Filter by channel",
+          },
           {
             value: status,
             onChange: setStatus,
@@ -162,12 +199,9 @@ export function BroadcastsView() {
         <EmptyState
           icon={MegaphoneIcon}
           title="No broadcasts"
-          description="Create a broadcast to email a segment at once."
+          description="Create a broadcast to message a segment at once."
         >
-          <Button onClick={createBroadcast}>
-            <PlusIcon data-icon="inline-start" />
-            Create broadcast
-          </Button>
+          {createMenu}
         </EmptyState>
       ) : (
         <>
@@ -175,6 +209,7 @@ export function BroadcastsView() {
             headers={
               <>
                 <Th>Name</Th>
+                <Th>Channel</Th>
                 <Th>Status</Th>
                 <Th>Updated</Th>
                 <Th className="w-10" />
@@ -197,6 +232,16 @@ export function BroadcastsView() {
                       </span>
                     ) : null}
                   </div>
+                </TableCell>
+                <TableCell>
+                  <span className="flex items-center gap-2">
+                    {item.channel === "whatsapp" ? (
+                      <WhatsAppIcon className="size-4 shrink-0" />
+                    ) : (
+                      <MailIcon className="size-4 shrink-0" />
+                    )}
+                    {item.channel === "whatsapp" ? "WhatsApp" : "Email"}
+                  </span>
                 </TableCell>
                 <TableCell>
                   <BroadcastStatusBadge status={item.status} />
@@ -241,7 +286,10 @@ export function BroadcastsView() {
                         <CopyIcon />
                         Duplicate
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => cloneAsTemplate(item)}>
+                      <DropdownMenuItem
+                        disabled={item.channel === "whatsapp"}
+                        onClick={() => cloneAsTemplate(item)}
+                      >
                         <LayoutTemplateIcon />
                         Clone as template
                       </DropdownMenuItem>

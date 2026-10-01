@@ -1,3 +1,5 @@
+import { facebookLoginOptions } from "./facebook-login"
+
 /* WhatsApp Embedded Signup v4 in the browser, as Meta documents it:
    https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/implementation/ */
 
@@ -7,9 +9,7 @@ export const FACEBOOK_SDK_URL = "https://connect.facebook.net/en_US/sdk.js"
 /** `FB.login` options that open Embedded Signup and return a token code
     (exchangeable for 30 seconds) instead of a user token. */
 export const signupLoginOptions = (configId: string) => ({
-  config_id: configId,
-  response_type: "code",
-  override_default_response_type: true,
+  ...facebookLoginOptions(configId),
   extras: { setup: {} },
 })
 

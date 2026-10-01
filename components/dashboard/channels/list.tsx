@@ -42,6 +42,7 @@ import {
   ManualConnectDialog,
 } from "@/components/dashboard/channels/connect-meta"
 import { api } from "@/convex/_generated/api"
+import { channelHandle } from "@/lib/meta/account-display"
 import { actionError } from "@/lib/action-error"
 import type { MessagingChannel } from "@/lib/dashboard/types"
 import {
@@ -55,7 +56,9 @@ export function ChannelsView() {
   const { organizationId, canWrite, syncAccount } = useChannelCommands()
   const config = useMetaPublicConfig()
   const [channel, setChannel] = React.useState("all")
-  const [manualOpen, setManualOpen] = React.useState(false)
+  const [manualOpen, setManualOpen] = React.useState<
+    "whatsapp" | "page" | null
+  >(null)
   const [registering, setRegistering] = React.useState<{
     id: string
     handle: string
@@ -89,7 +92,13 @@ export function ChannelsView() {
     setSyncing(id)
     try {
       await syncAccount(id)
-      toast.add({ type: "success", title: "Number synced" })
+      toast.add({
+        type: "success",
+        title:
+          rows.find((row) => row._id === id)?.channel === "whatsapp"
+            ? "Number synced"
+            : "Account synced",
+      })
     } catch (e) {
       toast.add({ type: "error", title: actionError(e) })
     } finally {
@@ -102,12 +111,16 @@ export function ChannelsView() {
       <Button
         variant="outline"
         disabled={!canWrite || !config?.configured}
-        onClick={() => setManualOpen(true)}
+        onClick={() => setManualOpen("whatsapp")}
       >
         <KeyRoundIcon />
         Connect manually
       </Button>
-      <ConnectMetaButton config={config} onConnected={connected} />
+      <ConnectMetaButton
+        config={config}
+        onConnected={connected}
+        onManualPage={() => setManualOpen("page")}
+      />
     </>
   )
 
@@ -115,12 +128,19 @@ export function ChannelsView() {
     <>
       <PageHeader
         title="Channels"
-        description="Connect WhatsApp numbers from your Meta business to send and receive messages. Meta keeps the numbers on your business account."
+        description="Connect WhatsApp numbers, Facebook Pages and Instagram professional accounts to send and receive messages."
       >
         {connectButtons}
         <DocsButton />
       </PageHeader>
-      {config ? <MetaAppAlert config={config} /> : null}
+      {config ? (
+        <>
+          <MetaAppAlert config={config} />
+          {config.configured ? (
+            <MetaAppAlert config={config} channel="page" />
+          ) : null}
+        </>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <ToolbarFilters
           filters={[
@@ -141,7 +161,7 @@ export function ChannelsView() {
           title={unfiltered ? "No channels" : "No channels found"}
           description={
             unfiltered
-              ? "Connect a WhatsApp Business Account to send and receive messages on its numbers."
+              ? "Connect a WhatsApp Business Account or Facebook Page and its linked Instagram account."
               : "No channels match this filter."
           }
         >
@@ -173,7 +193,7 @@ export function ChannelsView() {
                         {account.displayName}
                       </Link>
                       <span className="text-caption text-muted-foreground">
-                        {account.handle}
+                        {channelHandle(account.channel, account.handle)}
                       </span>
                     </div>
                   </IconCell>
@@ -185,7 +205,13 @@ export function ChannelsView() {
                   <ChannelAccountStatusBadge status={account.status} />
                 </TableCell>
                 <TableCell>
-                  <ChannelQualityBadge quality={account.quality ?? "unknown"} />
+                  {account.channel === "whatsapp" ? (
+                    <ChannelQualityBadge
+                      quality={account.quality ?? "unknown"}
+                    />
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <RelativeTime at={account._creationTime} />
@@ -195,11 +221,16 @@ export function ChannelsView() {
                     <DropdownMenuGroup>
                       <DropdownMenuItem
                         onClick={() =>
-                          void copyToClipboard(account.handle, "Number")
+                          void copyToClipboard(
+                            account.handle,
+                            account.channel === "whatsapp" ? "Number" : "Handle"
+                          )
                         }
                       >
                         <CopyIcon />
-                        Copy number
+                        {account.channel === "whatsapp"
+                          ? "Copy number"
+                          : "Copy handle"}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={!canWrite || syncing === account._id}
@@ -208,7 +239,8 @@ export function ChannelsView() {
                         <RefreshCwIcon />
                         Sync
                       </DropdownMenuItem>
-                      {account.registeredAt === undefined ? (
+                      {account.channel === "whatsapp" &&
+                      account.registeredAt === undefined ? (
                         <DropdownMenuItem
                           disabled={!canWrite}
                           onClick={() =>
@@ -243,8 +275,11 @@ export function ChannelsView() {
         </>
       )}
       <ManualConnectDialog
-        open={manualOpen}
-        onOpenChange={setManualOpen}
+        open={manualOpen !== null}
+        mode={manualOpen ?? "whatsapp"}
+        onOpenChange={(open) => {
+          if (!open) setManualOpen(null)
+        }}
         onConnected={connected}
       />
       <RegisterNumberDialog

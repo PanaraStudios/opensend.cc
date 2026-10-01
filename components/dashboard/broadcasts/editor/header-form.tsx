@@ -7,6 +7,7 @@ import { CalendarIcon, ChevronDownIcon, ClockIcon } from "lucide-react"
 import {
   Combobox,
   ComboboxContent,
+  ComboboxInput,
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox"
@@ -149,12 +150,14 @@ function whenText(option: ScheduleOption): string {
   return option.at === null ? option.label : formatScheduleHint(option.at)
 }
 
-function WhenField({
+export function WhenField({
   sendAt,
   onSendAtChange,
+  paper = true,
 }: {
   sendAt: number | null
   onSendAtChange: (value: number | null) => void
+  paper?: boolean
 }) {
   const [selected, setSelected] = React.useState<ScheduleOption | null>(() =>
     sendAt === null ? null : { label: "", at: sendAt }
@@ -193,12 +196,20 @@ function WhenField({
         onSendAtChange(option?.at ?? null)
       }}
     >
-      <ComboboxPrimitive.Input
-        className={VALUE}
-        aria-label="When"
-        data-testid="header-when"
-        placeholder="Enter a date or time…"
-      />
+      {paper ? (
+        <ComboboxPrimitive.Input
+          className={VALUE}
+          aria-label="When"
+          data-testid="header-when"
+          placeholder="Enter a date or time…"
+        />
+      ) : (
+        <ComboboxInput
+          aria-label="When"
+          data-testid="header-when"
+          placeholder="Enter a date or time…"
+        />
+      )}
       <ComboboxContent className="min-w-80">
         <ComboboxList>
           {(option: ScheduleOption) => (

@@ -31,3 +31,17 @@ export * from './templates/interfaces';
 export * from './topics/interfaces';
 export * from './usage/interfaces';
 export * from './webhooks/interfaces';
+export * from './whatsapp/interfaces';
+// Stored template definitions and send payloads have different component shapes.
+export type {
+  WhatsAppTemplate,
+  WhatsAppTemplateComponent,
+} from './templates/interfaces';
+export type {
+  WhatsAppTemplate as WhatsAppMessageTemplate,
+  WhatsAppTemplateComponent as WhatsAppMessageTemplateComponent,
+} from './whatsapp/interfaces';
+
+export * from './channels/interfaces';
+export * from './messenger/interfaces';
+export * from './instagram/interfaces';

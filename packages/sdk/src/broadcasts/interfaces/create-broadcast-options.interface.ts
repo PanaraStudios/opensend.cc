@@ -1,3 +1,4 @@
+import type { WhatsAppVariableSource } from '../../automations/interfaces/automation-step.interface';
 import type * as React from 'react';
 import type { PostOptions } from '../../common/interfaces';
 import type { RequireAtLeastOne } from '../../common/interfaces/require-at-least-one';
@@ -74,6 +75,7 @@ type SendBroadcastOnCreationOptions =
     };
 
 interface CreateBroadcastBaseOptions {
+  channel?: 'email';
   /**
    * The name of the broadcast
    *
@@ -112,10 +114,33 @@ interface CreateBroadcastBaseOptions {
   topicId?: string | null;
 }
 
-export type CreateBroadcastOptions = RequireAtLeastOne<EmailRenderOptions> &
+export type EmailBroadcastOptions = RequireAtLeastOne<EmailRenderOptions> &
   RequireAtLeastOne<SegmentOptions> &
   CreateBroadcastBaseOptions &
   SendBroadcastOnCreationOptions;
+
+export type WhatsAppBroadcastConfiguration = {
+  accountId: string;
+  templateId: string;
+  variables: Record<string, WhatsAppVariableSource>;
+};
+export type WhatsAppBroadcastOptions = Omit<
+  CreateBroadcastBaseOptions,
+  'from' | 'subject' | 'channel'
+> &
+  RequireAtLeastOne<SegmentOptions> &
+  SendBroadcastOnCreationOptions & {
+    channel: 'whatsapp';
+    whatsapp: WhatsAppBroadcastConfiguration;
+    from?: never;
+    subject?: never;
+    html?: never;
+    text?: never;
+    react?: never;
+    replyTo?: never;
+  };
+export type CreateBroadcastOptions =
+  EmailBroadcastOptions | WhatsAppBroadcastOptions;
 
 export interface CreateBroadcastRequestOptions extends PostOptions {}
 

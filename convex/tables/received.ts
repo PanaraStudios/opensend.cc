@@ -45,6 +45,9 @@ export const receivedTables = {
       "sender",
       "receivedAt",
     ])
+    /** A sender's mail in creation order, so an inbox email thread merges
+        it with the team's sends to that address. */
+    .index("by_organizationId_and_sender", ["organizationId", "sender"])
     .index("by_inboundId", ["inboundId"])
     .index("by_expiresAt", ["expiresAt"]),
   receivedContents: defineTable({

@@ -46,6 +46,7 @@ import {
   DisconnectBusinessDialog,
   RegisterNumberDialog,
 } from "@/components/dashboard/channels/shared"
+import { channelHandle } from "@/lib/meta/account-display"
 import { actionError } from "@/lib/action-error"
 import { formatDateTime, messagingLimitLabel } from "@/lib/dashboard/format"
 import {
@@ -76,13 +77,17 @@ export function ChannelDetail() {
     )
   }
   const { account, connection } = result
+  const whatsapp = account.channel === "whatsapp"
   const registered = account.registeredAt !== undefined
 
   async function sync() {
     setSyncing(true)
     try {
       await syncAccount(account._id)
-      toast.add({ type: "success", title: "Number synced" })
+      toast.add({
+        type: "success",
+        title: whatsapp ? "Number synced" : "Account synced",
+      })
     } catch (e) {
       toast.add({ type: "error", title: actionError(e) })
     } finally {
@@ -97,12 +102,18 @@ export function ChannelDetail() {
       label: "Connected",
       caption: formatDateTime(account._creationTime),
     },
-    {
-      id: "registered",
-      icon: BadgeCheckIcon,
-      label: "Registered",
-      caption: registered ? formatDateTime(account.registeredAt!) : undefined,
-    },
+    ...(whatsapp
+      ? [
+          {
+            id: "registered",
+            icon: BadgeCheckIcon,
+            label: "Registered",
+            caption: registered
+              ? formatDateTime(account.registeredAt!)
+              : undefined,
+          },
+        ]
+      : []),
     {
       id: "checked",
       icon: ShieldCheckIcon,
@@ -120,12 +131,12 @@ export function ChannelDetail() {
         backHref="/channels"
         backLabel="Channels"
         title={account.displayName}
-        description={account.handle}
+        description={channelHandle(account.channel, account.handle)}
         icon={CHANNEL_ICONS[account.channel]}
         actions={
           <>
             <DocsButton />
-            {registered ? null : (
+            {!whatsapp || registered ? null : (
               <Button
                 variant="outline"
                 disabled={!canWrite}
@@ -146,10 +157,15 @@ export function ChannelDetail() {
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem
-                  onClick={() => void copyToClipboard(account.handle, "Number")}
+                  onClick={() =>
+                    void copyToClipboard(
+                      account.handle,
+                      whatsapp ? "Number" : "Handle"
+                    )
+                  }
                 >
                   <CopyIcon />
-                  Copy number
+                  {whatsapp ? "Copy number" : "Copy handle"}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -173,29 +189,35 @@ export function ChannelDetail() {
             label: "Status",
             value: <ChannelAccountStatusBadge status={account.status} />,
           },
-          {
-            label: "Quality",
-            value: (
-              <ChannelQualityBadge quality={account.quality ?? "unknown"} />
-            ),
-          },
-          {
-            label: "Throughput",
-            value: `${account.throughputMps} messages/s`,
-          },
-          {
-            label: "Messaging limit",
-            value: messagingLimitLabel(account.messagingLimit),
-          },
-          {
-            label: "Registered",
-            value: (
-              <RelativeTime
-                at={account.registeredAt ?? null}
-                fallback="Not registered"
-              />
-            ),
-          },
+          ...(whatsapp
+            ? [
+                {
+                  label: "Quality",
+                  value: (
+                    <ChannelQualityBadge
+                      quality={account.quality ?? "unknown"}
+                    />
+                  ),
+                },
+                {
+                  label: "Throughput",
+                  value: `${account.throughputMps} messages/s`,
+                },
+                {
+                  label: "Messaging limit",
+                  value: messagingLimitLabel(account.messagingLimit),
+                },
+                {
+                  label: "Registered",
+                  value: (
+                    <RelativeTime
+                      at={account.registeredAt ?? null}
+                      fallback="Not registered"
+                    />
+                  ),
+                },
+              ]
+            : []),
           { label: "Business", value: account.businessName },
         ]}
       />
@@ -210,7 +232,7 @@ export function ChannelDetail() {
       ) : account.error ? (
         <Alert variant="destructive">
           <CircleAlertIcon />
-          <AlertTitle>This number needs attention</AlertTitle>
+          <AlertTitle>This account needs attention</AlertTitle>
           <AlertDescription>{account.error}</AlertDescription>
         </Alert>
       ) : null}
@@ -220,22 +242,47 @@ export function ChannelDetail() {
       <Surface>
         <h2 className="text-base font-medium">Connection</h2>
         <dl className="grid gap-5 sm:grid-cols-2">
-          <DetailField label="Phone number ID">
+          <DetailField
+            label={
+              whatsapp
+                ? "Phone number ID"
+                : account.channel === "messenger"
+                  ? "Page ID"
+                  : "Instagram account ID"
+            }
+          >
             <MonoValue copyValue={account.externalId}>
               {account.externalId}
             </MonoValue>
           </DetailField>
-          <DetailField label="WhatsApp Business Account">
-            {account.wabaId ? (
-              <MonoValue copyValue={account.wabaId}>
-                {result.wabaName
-                  ? `${result.wabaName} (${account.wabaId})`
-                  : account.wabaId}
-              </MonoValue>
-            ) : (
-              "—"
-            )}
-          </DetailField>
+          {whatsapp ? (
+            <DetailField label="WhatsApp Business Account">
+              {account.wabaId ? (
+                <MonoValue copyValue={account.wabaId}>
+                  {result.wabaName
+                    ? `${result.wabaName} (${account.wabaId})`
+                    : account.wabaId}
+                </MonoValue>
+              ) : (
+                "—"
+              )}
+            </DetailField>
+          ) : account.channel === "instagram" ? (
+            <>
+              <DetailField label="Instagram username">
+                {channelHandle(account.channel, account.handle)}
+              </DetailField>
+              <DetailField label="Linked Page">
+                {account.pageId ? (
+                  <MonoValue copyValue={account.pageId}>
+                    {account.pageId}
+                  </MonoValue>
+                ) : (
+                  "—"
+                )}
+              </DetailField>
+            </>
+          ) : null}
           <DetailField label="Business ID">
             <MonoValue copyValue={connection.businessId}>
               {connection.businessId}

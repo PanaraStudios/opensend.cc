@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { internal, api } from "./_generated/api"
+import type { Doc } from "./_generated/dataModel"
 import { insertRow } from "./counts"
 import { upsertContact } from "./audience"
 import {
@@ -688,4 +689,27 @@ test("routes a phone number id to its connected team when another team's disconn
     accountId: f.account,
     direction: "inbound",
   })
+})
+
+test("a status finds its message by wamid and recipient even beside a duplicate wamid", async () => {
+  const f = await inboundFixture()
+  const mine = (await outbound(f, "wamid.shared")) as Doc<"channelMessages">
+  const { _id, _creationTime, ...fields } = mine
+  void _id
+  void _creationTime
+  const other = await f.t.run((ctx) =>
+    insertRow(ctx, "channelMessages", {
+      ...fields,
+      to: "14155550100",
+      preview: "Other",
+      search: "Other",
+    })
+  )
+  await project(f, statusPayload("wamid.shared", "delivered"))
+  const [a, b] = await f.t.run(async (ctx) => [
+    await ctx.db.get("channelMessages", mine._id),
+    await ctx.db.get("channelMessages", other),
+  ])
+  expect(a?.status).toBe("delivered")
+  expect(b?.status).toBe("sent")
 })

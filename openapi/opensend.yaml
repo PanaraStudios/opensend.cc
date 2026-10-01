@@ -41,6 +41,7 @@ tags:
   - name: Webhooks
   - name: Usage
   - name: Suppressions
+  - name: WhatsApp
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
@@ -1634,8 +1635,9 @@ paths:
         - Templates
       summary: Create Template
       description: >-
-        Create a draft email template (requires full access). Variables are inferred from inline merge tags
-        unless explicit definitions are supplied.
+        Create a draft template (requires full access). An email template's variables are inferred from inline
+        merge tags unless explicit definitions are supplied. With `channel: whatsapp`, the draft is a WhatsApp
+        template made of Meta's components, submitted to Meta for review when published.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1682,12 +1684,22 @@ paths:
       tags:
         - Templates
       summary: List Templates
-      description: List templates for your team (requires full access).
+      description: List templates for your team (requires full access), optionally of one channel.
       x-opensend-permission: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
         - $ref: '#/components/parameters/PaginationBefore'
+        - name: channel
+          in: query
+          description: Only templates of this channel.
+          schema:
+            type: string
+            enum:
+              - email
+              - whatsapp
+              - messenger
+              - instagram
       responses:
         '200':
           description: The requested resource list.
@@ -1828,7 +1840,9 @@ paths:
       tags:
         - Templates
       summary: Delete Template
-      description: Delete a template, including its draft and published version (requires full access).
+      description: >-
+        Delete a template, including its draft and published version (requires full access). A WhatsApp
+        template submitted to Meta is deleted at Meta first.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -2599,7 +2613,8 @@ paths:
       summary: Publish Template
       description: >-
         Publish the current template draft for sending (requires full access). Nonempty HTML is required, and
-        publishing replaces the previous published version.
+        publishing replaces the previous published version. A WhatsApp template is submitted to Meta instead
+        (or its edit, once Meta approved or rejected it); it can be sent once `whatsapp.status` is APPROVED.
       x-opensend-permission: full_access
       parameters:
         - name: id
@@ -5929,6 +5944,1068 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /whatsapp/messages:
+    post:
+      operationId: whatsapp/messages/send
+      tags:
+        - WhatsApp
+      summary: Send WhatsApp Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          headers: &a1
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppId"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+      description:
+        Queue a message and return its stable id. The number must be active and registered;
+        from may be a phone number id or account id and is required unless exactly one live number is
+        connected. Every non-template type requires an open 24-hour window. Template variables use
+        consecutive keys 1, 2, ... for positional parameters or Meta parameter names for named
+        parameters. reply_to accepts an Opensend message id or wamid within the recipient
+        conversation. Domain-restricted sending keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendWhatsAppMessage"
+    get:
+      operationId: whatsapp/messages/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Messages
+      x-opensend-permission: full_access
+      parameters:
+        - &a3
+          $ref: "#/components/parameters/PaginationLimit"
+        - &a4
+          $ref: "#/components/parameters/PaginationAfter"
+        - &a5
+          $ref: "#/components/parameters/PaginationBefore"
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: phone_number_id
+          required: false
+          schema: &a2
+            type: string
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/messages/{id}:
+    get:
+      operationId: whatsapp/messages/get
+      tags:
+        - WhatsApp
+      summary: Get WhatsApp Message
+      x-opensend-permission: full_access
+      parameters:
+        - &a6
+          in: path
+          name: id
+          required: true
+          schema: *a2
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageDetail"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/media:
+    post:
+      operationId: whatsapp/media/upload
+      tags:
+        - WhatsApp
+      summary: Upload WhatsApp Media
+      x-opensend-permission: sending
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppId"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          description: Invalid media or a final Meta API rejection.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/Error422"
+                  - $ref: "#/components/schemas/WhatsAppMetaError"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "502":
+          description: Meta did not return a media id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+        "503":
+          description: Meta temporarily refused the upload. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMetaError"
+      description:
+        "Upload binary media to Convex storage and Meta. MIME/size limits: JPEG/PNG 5 MB;
+        supported audio/video 16 MB; documents 100 MB; WebP static stickers 100 KB or animated
+        stickers 500 KB. OGG requires codecs=opus. Meta also validates codecs and image formats. The
+        deployment HTTP body limit can be lower. Returns Meta media id. Domain-restricted keys receive
+        403."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                from: *a2
+                type:
+                  type: string
+                  description:
+                    MIME type; defaults to the uploaded file Content-Type. For OGG use audio/ogg;
+                    codecs=opus.
+              required:
+                - file
+  /whatsapp/phone-numbers:
+    get:
+      operationId: whatsapp/phoneNumbers/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Phone Numbers
+      x-opensend-permission: full_access
+      parameters: &a7
+        - *a3
+        - *a4
+        - *a5
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppPhoneNumberList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/phone-numbers/{id}:
+    get:
+      operationId: whatsapp/phoneNumbers/get
+      tags:
+        - WhatsApp
+      summary: Get WhatsApp Phone Number
+      x-opensend-permission: full_access
+      parameters:
+        - *a6
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppPhoneNumber"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/conversations:
+    get:
+      operationId: whatsapp/conversations/list
+      tags:
+        - WhatsApp
+      summary: List WhatsApp Conversations
+      x-opensend-permission: full_access
+      parameters: *a7
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppConversationList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /whatsapp/conversations/{id}/messages:
+    get:
+      operationId: whatsapp/conversations/messages
+      tags:
+        - WhatsApp
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - *a6
+        - *a3
+        - *a4
+        - *a5
+      responses:
+        "200":
+          description: Successful request.
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessageList"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /messenger/messages:
+    post:
+      operationId: messenger/messages/send
+      tags:
+        - Messenger
+      summary: Send Messenger Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppId'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: >-
+        Queue a Page-backed message with a stable id and idempotency. Inside 24 hours sends use
+        RESPONSE; outside the window a permitted tag is required. HUMAN_AGENT is limited to seven
+        days. Local templates do not open the window. Domain-restricted keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessengerMessage'
+    get:
+      operationId: messenger/messages/list
+      tags:
+        - Messenger
+      summary: List Messenger Messages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: page_id
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/messages/{id}:
+    get:
+      operationId: messenger/messages/get
+      tags:
+        - Messenger
+      summary: Get Messenger Message
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageDetail'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/pages:
+    get:
+      operationId: messenger/pages/list
+      tags:
+        - Messenger
+      summary: List Messenger Pages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccountList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/pages/{id}:
+    get:
+      operationId: messenger/pages/get
+      tags:
+        - Messenger
+      summary: Get Messenger Page
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccount'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/conversations:
+    get:
+      operationId: messenger/conversations/list
+      tags:
+        - Messenger
+      summary: List Messenger Conversations
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelConversationList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/conversations/{id}/messages:
+    get:
+      operationId: messenger/conversations/messages
+      tags:
+        - Messenger
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/messages:
+    post:
+      operationId: instagram/messages/send
+      tags:
+        - Instagram
+      summary: Send Instagram Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppId'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: >-
+        Queue a Page-backed message with a stable id and idempotency. Inside 24 hours sends use
+        RESPONSE; outside the window a permitted tag is required. HUMAN_AGENT is limited to seven
+        days. Local templates do not open the window. Domain-restricted keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendInstagramMessage'
+    get:
+      operationId: instagram/messages/list
+      tags:
+        - Instagram
+      summary: List Instagram Messages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: account_id
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/messages/{id}:
+    get:
+      operationId: instagram/messages/get
+      tags:
+        - Instagram
+      summary: Get Instagram Message
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageDetail'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/accounts:
+    get:
+      operationId: instagram/accounts/list
+      tags:
+        - Instagram
+      summary: List Instagram Accounts
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccountList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/accounts/{id}:
+    get:
+      operationId: instagram/accounts/get
+      tags:
+        - Instagram
+      summary: Get Instagram Account
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccount'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/conversations:
+    get:
+      operationId: instagram/conversations/list
+      tags:
+        - Instagram
+      summary: List Instagram Conversations
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelConversationList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/conversations/{id}/messages:
+    get:
+      operationId: instagram/conversations/messages
+      tags:
+        - Instagram
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
 components:
   headers:
     ratelimit_limit:
@@ -6121,6 +7198,1318 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    PageChannelMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        account_id:
+          type: string
+        conversation_id:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+            - contacts
+            - button
+            - unsupported
+        status:
+          type: string
+          enum:
+            - queued
+            - sent
+            - delivered
+            - read
+            - failed
+            - received
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        external_id:
+          type:
+            - string
+            - 'null'
+        created_at:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+        text:
+          type: string
+        template:
+          type: object
+        location:
+          type:
+            - object
+            - 'null'
+        interactive:
+          type:
+            - object
+            - 'null'
+        reaction:
+          type:
+            - object
+            - 'null'
+        media:
+          type:
+            - object
+            - array
+            - 'null'
+        error:
+          type: object
+          properties:
+            code:
+              type:
+                - number
+                - 'null'
+            title:
+              type:
+                - string
+                - 'null'
+            message:
+              type: string
+          required:
+            - code
+            - title
+            - message
+        quick_replies:
+          type: array
+          items:
+            type: object
+        button:
+          type: object
+        quick_reply:
+          type: object
+      required:
+        - id
+        - channel
+        - account_id
+        - conversation_id
+        - from
+        - to
+        - type
+        - status
+        - direction
+        - external_id
+        - created_at
+        - tags
+    PageChannelMessageDetail:
+      allOf:
+        - $ref: '#/components/schemas/PageChannelMessage'
+        - type: object
+          properties:
+            last_event:
+              type: string
+              enum:
+                - queued
+                - sent
+                - delivered
+                - read
+                - failed
+                - received
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/WhatsAppEvent'
+            media:
+              type: array
+              items:
+                $ref: '#/components/schemas/WhatsAppStoredMedia'
+          required:
+            - last_event
+            - events
+            - media
+    PageChannelMessageList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelMessage'
+      required:
+        - object
+        - has_more
+        - data
+    PageChannelConversation:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        account_id:
+          type:
+            - string
+            - 'null'
+        channel_contact_id:
+          type:
+            - string
+            - 'null'
+        contact_id:
+          type:
+            - string
+            - 'null'
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        last_message_at:
+          type: string
+          format: date-time
+        last_preview:
+          type: string
+        last_direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        window_expires_at:
+          type:
+            - string
+            - 'null'
+        unread:
+          type: boolean
+      required:
+        - id
+        - channel
+        - account_id
+        - channel_contact_id
+        - contact_id
+        - status
+        - last_message_at
+        - last_preview
+        - last_direction
+        - window_expires_at
+        - unread
+    PageChannelConversationList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelConversation'
+      required:
+        - object
+        - has_more
+        - data
+    PageChannelAccount:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        external_id:
+          type: string
+        page_id:
+          type: string
+        instagram_account_id:
+          type: string
+        name:
+          type: string
+        handle:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - restricted
+            - error
+            - disconnected
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - channel
+        - external_id
+        - page_id
+        - name
+        - handle
+        - status
+        - created_at
+      additionalProperties: false
+    PageChannelAccountList:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelAccount'
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    PageQuickReplies:
+      type: array
+      maxItems: 13
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+            minLength: 1
+            maxLength: 20
+          payload:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        required:
+          - title
+          - payload
+        additionalProperties: false
+    PageMessageTemplate:
+      oneOf:
+        - type: string
+          minLength: 1
+        - type: object
+          properties:
+            id:
+              type: string
+            alias:
+              type: string
+            variables:
+              type: object
+              additionalProperties:
+                type:
+                  - string
+                  - number
+          anyOf:
+            - required:
+                - id
+            - required:
+                - alias
+    SendMessengerMessage:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+          pattern: ^\d{1,32}$
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachment:
+          type: object
+          properties:
+            type:
+              enum:
+                - image
+                - video
+                - audio
+                - file
+            url:
+              type: string
+              format: uri
+            id:
+              type: string
+          required:
+            - type
+          oneOf:
+            - required:
+                - url
+              not:
+                required:
+                  - id
+            - required:
+                - id
+              not:
+                required:
+                  - url
+          additionalProperties: false
+        template:
+          $ref: '#/components/schemas/PageMessageTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
+        tag:
+          type: string
+          enum:
+            - HUMAN_AGENT
+          description: >-
+            HUMAN_AGENT is for human replies within seven days of the person's last message. Meta
+            rejects the legacy Messenger tags since April 27, 2026, so they are not accepted.
+        reply_to:
+          type: string
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          not:
+            anyOf:
+              - required:
+                  - attachment
+              - required:
+                  - template
+        - required:
+            - attachment
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+        - required:
+            - template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - attachment
+    SendInstagramMessage:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+          pattern: ^\d{1,32}$
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        attachment:
+          type: object
+          properties:
+            type:
+              enum:
+                - image
+                - video
+                - audio
+                - file
+            url:
+              type: string
+              format: uri
+            id:
+              type: string
+          required:
+            - type
+          oneOf:
+            - required:
+                - url
+              not:
+                required:
+                  - id
+            - required:
+                - id
+              not:
+                required:
+                  - url
+          additionalProperties: false
+        template:
+          $ref: '#/components/schemas/PageMessageTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
+        tag:
+          type: string
+          enum:
+            - HUMAN_AGENT
+          description: >-
+            HUMAN_AGENT is for human replies within seven days. Meta rejects the legacy Messenger tags
+            with error 100 since April 27, 2026.
+        reply_to:
+          type: string
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          not:
+            anyOf:
+              - required:
+                  - attachment
+              - required:
+                  - template
+        - required:
+            - attachment
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+        - required:
+            - template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - attachment
+      if:
+        required:
+          - attachment
+      then:
+        not:
+          required:
+            - quick_replies
+    WhatsAppMetaError:
+      type: object
+      required: [statusCode, name, message]
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: integer
+          enum: [422, 502, 503]
+        name:
+          type: string
+          const: meta_api_error
+        message:
+          type: string
+    WhatsAppMediaReference:
+      type: object
+      properties:
+        id: &a1
+          type: string
+        link:
+          type: string
+          format: uri
+      required: []
+      oneOf:
+        - required:
+            - id
+          not:
+            required:
+              - link
+        - required:
+            - link
+          not:
+            required:
+              - id
+    WhatsAppMessageTemplate:
+      type: object
+      description: >-
+        The template to send. Name an approved template stored in opensend by
+        id, alias, or name and language, and pass variables; opensend fills
+        that template's header, body and buttons and rejects missing
+        variables. Or pass Meta components directly with a name and language.
+      properties:
+        id:
+          type: string
+          description: The template's opensend id.
+        alias:
+          type: string
+          description: The template's alias.
+        name:
+          type: string
+          pattern: ^[a-z0-9_]+$
+        language:
+          oneOf:
+            - *a1
+            - type: object
+              properties:
+                code: *a1
+              required:
+                - code
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  - header
+                  - body
+                  - button
+              parameters:
+                type: array
+                items:
+                  type: object
+              sub_type: *a1
+              index: *a1
+            required:
+              - type
+              - parameters
+        variables:
+          type: object
+          additionalProperties:
+            type:
+              - string
+              - number
+      anyOf:
+        - required:
+            - name
+            - language
+        - required:
+            - id
+        - required:
+            - alias
+      not:
+        required:
+          - components
+          - variables
+    WhatsAppText:
+      oneOf:
+        - type: string
+          minLength: 1
+          maxLength: 4096
+        - type: object
+          properties:
+            body:
+              type: string
+              minLength: 1
+              maxLength: 4096
+            preview_url:
+              type: boolean
+          required:
+            - body
+    WhatsAppLocation:
+      type: object
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        name: *a1
+        address: *a1
+      required:
+        - latitude
+        - longitude
+    WhatsAppInteractive:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - button
+            - list
+        body:
+          type: object
+          properties:
+            text: *a1
+          required:
+            - text
+        action:
+          type: object
+        header:
+          type: object
+        footer:
+          type: object
+          properties:
+            text: *a1
+          required:
+            - text
+      required:
+        - type
+        - body
+        - action
+    WhatsAppReaction:
+      type: object
+      properties:
+        message_id: *a1
+        emoji:
+          type: string
+          maxLength: 16
+      required:
+        - message_id
+        - emoji
+    WhatsAppEvent:
+      type: object
+      properties:
+        type: &a3
+          type: string
+          enum:
+            - queued
+            - sent
+            - delivered
+            - read
+            - failed
+            - received
+        created_at:
+          type: string
+          format: date-time
+        details: {}
+      required:
+        - type
+        - created_at
+        - details
+    WhatsAppStoredMedia:
+      type: object
+      properties:
+        id: &a2
+          type:
+            - string
+            - "null"
+        content_type: *a1
+        filename: *a2
+        size:
+          type:
+            - number
+            - "null"
+        download_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        expires_at: *a2
+        error: *a2
+      required:
+        - id
+        - content_type
+        - filename
+        - size
+        - download_url
+        - expires_at
+        - error
+    WhatsAppPhoneNumber:
+      type: object
+      properties:
+        id: *a1
+        phone_number_id: *a1
+        display_phone_number: *a1
+        verified_name: *a1
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - restricted
+            - error
+            - disconnected
+        quality:
+          type: string
+          enum:
+            - green
+            - yellow
+            - red
+            - unknown
+        throughput:
+          type: number
+        messaging_limit: *a2
+        waba_id: *a2
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - phone_number_id
+        - display_phone_number
+        - verified_name
+        - status
+        - quality
+        - throughput
+        - messaging_limit
+        - waba_id
+        - created_at
+    WhatsAppConversation:
+      type: object
+      properties:
+        id: *a1
+        channel:
+          type: string
+          const: whatsapp
+        account_id: *a2
+        channel_contact_id: *a2
+        contact_id: *a2
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        last_message_at:
+          type: string
+          format: date-time
+        last_preview: *a1
+        last_direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        window_expires_at: *a2
+        unread:
+          type: boolean
+      required:
+        - id
+        - channel
+        - account_id
+        - channel_contact_id
+        - contact_id
+        - status
+        - last_message_at
+        - last_preview
+        - last_direction
+        - window_expires_at
+        - unread
+    WhatsAppId:
+      type: object
+      properties:
+        id: *a1
+      required:
+        - id
+    SendWhatsAppMessage:
+      type: object
+      properties:
+        from: *a1
+        to:
+          type: string
+          pattern: ^\+?[1-9]\d{6,14}$
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+        text:
+          $ref: "#/components/schemas/WhatsAppText"
+        template:
+          $ref: "#/components/schemas/WhatsAppMessageTemplate"
+        location:
+          $ref: "#/components/schemas/WhatsAppLocation"
+        interactive:
+          $ref: "#/components/schemas/WhatsAppInteractive"
+        reaction:
+          $ref: "#/components/schemas/WhatsAppReaction"
+        reply_to: *a1
+        tags: &a4
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name: *a1
+              value: *a1
+            required:
+              - name
+              - value
+        image:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+              required: []
+        video:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+              required: []
+        audio:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties: {}
+              required: []
+        document:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties:
+                caption:
+                  type: string
+                  maxLength: 1024
+                filename: *a1
+              required: []
+        sticker:
+          allOf:
+            - $ref: "#/components/schemas/WhatsAppMediaReference"
+            - type: object
+              properties: {}
+              required: []
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          properties:
+            type:
+              const: text
+          not:
+            anyOf:
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - template
+          properties:
+            type:
+              const: template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - image
+          properties:
+            type:
+              const: image
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - video
+          properties:
+            type:
+              const: video
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - audio
+          properties:
+            type:
+              const: audio
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - document
+          properties:
+            type:
+              const: document
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - sticker
+          properties:
+            type:
+              const: sticker
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - location
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - location
+          properties:
+            type:
+              const: location
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - interactive
+              - required:
+                  - reaction
+        - required:
+            - interactive
+          properties:
+            type:
+              const: interactive
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - reaction
+        - required:
+            - reaction
+          properties:
+            type:
+              const: reaction
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+              - required:
+                  - image
+              - required:
+                  - video
+              - required:
+                  - audio
+              - required:
+                  - document
+              - required:
+                  - sticker
+              - required:
+                  - location
+              - required:
+                  - interactive
+    WhatsAppMessage:
+      type: object
+      properties:
+        id: *a1
+        channel:
+          type: string
+          const: whatsapp
+        account_id: *a1
+        conversation_id: *a1
+        from: *a1
+        to: *a1
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+            - contacts
+            - button
+            - unsupported
+        status: *a3
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        external_id: *a2
+        created_at:
+          type: string
+          format: date-time
+        tags: *a4
+        text: *a1
+        template:
+          $ref: "#/components/schemas/WhatsAppMessageTemplate"
+        location:
+          type:
+            - object
+            - "null"
+        interactive:
+          type:
+            - object
+            - "null"
+        reaction:
+          type:
+            - object
+            - "null"
+        media:
+          type:
+            - object
+            - array
+            - "null"
+        error:
+          type: object
+          properties:
+            code:
+              type:
+                - number
+                - "null"
+            title: *a2
+            message: *a1
+          required:
+            - code
+            - title
+            - message
+      required:
+        - id
+        - channel
+        - account_id
+        - conversation_id
+        - from
+        - to
+        - type
+        - status
+        - direction
+        - external_id
+        - created_at
+        - tags
+    WhatsAppMessageDetail:
+      allOf:
+        - $ref: "#/components/schemas/WhatsAppMessage"
+        - type: object
+          properties:
+            last_event: *a3
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/WhatsAppEvent"
+            media:
+              type: array
+              items:
+                $ref: "#/components/schemas/WhatsAppStoredMedia"
+          required:
+            - last_event
+            - events
+            - media
+    WhatsAppMessageList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppMessage"
+      required:
+        - object
+        - has_more
+        - data
+    WhatsAppPhoneNumberList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppPhoneNumber"
+      required:
+        - object
+        - has_more
+        - data
+    WhatsAppConversationList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppConversation"
+      required:
+        - object
+        - has_more
+        - data
     ShareEmailOptions:
       type: object
       properties:
@@ -8537,18 +10926,57 @@ components:
             - type: string
             - type: 'null'
           description: >-
-            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit empty
-            string stays empty.
+            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit
+            empty string stays empty.
         variables:
           type: array
           items:
             $ref: '#/components/schemas/TemplateVariableInput'
           maxItems: 50
           description: Up to 50 unique string or number variable definitions, overriding inferred inline variables.
+        channel:
+          type: string
+          enum:
+            - email
+            - whatsapp
+            - messenger
+            - instagram
+          description: The template's channel, email when omitted. It cannot change.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplateInput'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - name
-        - html
-      description: Create a template draft; inline merge tags infer variables unless explicit definitions are supplied.
+      if:
+        properties:
+          channel:
+            const: whatsapp
+        required:
+          - channel
+      then:
+        properties:
+          name:
+            pattern: ^[a-z0-9_]+$
+            description: Meta's template name, of lowercase letters, numbers and underscores.
+      else:
+        if:
+          properties:
+            channel:
+              enum:
+                - messenger
+                - instagram
+          required:
+            - channel
+        then:
+          required:
+            - text
+        else:
+          required:
+            - html
+      description: >-
+        Create a template draft; inline merge tags infer variables unless explicit definitions are
+        supplied.
     UpdateTemplateOptions:
       type: object
       properties:
@@ -8593,15 +11021,156 @@ components:
             - type: string
             - type: 'null'
           description: >-
-            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit empty
-            string stays empty.
+            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit
+            empty string stays empty.
         variables:
           type: array
           items:
             $ref: '#/components/schemas/TemplateVariableInput'
           maxItems: 50
           description: Up to 50 unique string or number variable definitions, overriding inferred inline variables.
+        channel:
+          type: string
+          enum:
+            - email
+            - whatsapp
+            - messenger
+            - instagram
+          description: The template's channel, email when omitted. It cannot change.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplateInput'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       description: Edit the current template draft without changing the published version.
+    WhatsAppTemplateInput:
+      type: object
+      properties:
+        waba_id:
+          type: string
+          description: >-
+            The WhatsApp Business Account the template belongs to, the team's first one when omitted. Fixed once
+            submitted.
+        language:
+          type: string
+          description: Meta's template language code, like en_US, en_US when omitted. Fixed once submitted.
+        category:
+          type: string
+          enum:
+            - MARKETING
+            - UTILITY
+            - AUTHENTICATION
+          description: The template category, MARKETING when omitted. Fixed once Meta approved it.
+        parameter_format:
+          type: string
+          enum:
+            - named
+            - positional
+          description: >-
+            Optional check: the components' variables decide the format ({{first_name}} is named, {{1}}
+            positional).
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/WhatsAppTemplateComponent'
+          description: Meta's template components in the creation format, with an example for every variable.
+      additionalProperties: false
+      description: A WhatsApp template's Meta settings and components.
+    WhatsAppTemplateComponent:
+      type: object
+      properties:
+        type:
+          type: string
+          description: HEADER, BODY, FOOTER or BUTTONS.
+      required:
+        - type
+      additionalProperties: true
+      description: >-
+        One of Meta's template components, as Meta documents it:
+        https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/components
+    WhatsAppTemplate:
+      type: object
+      properties:
+        waba_id:
+          type: string
+          description: The WhatsApp Business Account the template belongs to.
+        language:
+          type: string
+          description: Meta's template language code.
+        category:
+          type: string
+          enum:
+            - MARKETING
+            - UTILITY
+            - AUTHENTICATION
+        parameter_format:
+          type: string
+          enum:
+            - named
+            - positional
+        meta_template_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Meta's template ID, once submitted.
+        status:
+          anyOf:
+            - type: string
+              enum:
+                - PENDING
+                - APPROVED
+                - REJECTED
+                - PAUSED
+                - DISABLED
+                - IN_APPEAL
+                - LIMIT_EXCEEDED
+                - ARCHIVED
+                - PENDING_DELETION
+                - DELETED
+            - type: 'null'
+          description: Meta's review status; null until submitted. Sends need APPROVED.
+        rejected_reason:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Why Meta rejected the template.
+        quality:
+          anyOf:
+            - type: string
+              enum:
+                - GREEN
+                - YELLOW
+                - RED
+                - UNKNOWN
+            - type: 'null'
+          description: Meta's quality rating of the template.
+        submitted_at:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: When the template was last submitted to Meta.
+        synced_at:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: When a sync from Meta last saw the template.
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/WhatsAppTemplateComponent'
+          description: The draft's components; only on a retrieved template.
+      required:
+        - waba_id
+        - language
+        - category
+        - parameter_format
+        - meta_template_id
+        - status
+        - rejected_reason
+        - quality
+        - submitted_at
+        - synced_at
+      additionalProperties: false
+      description: A WhatsApp template's place at Meta.
     TemplateListItem:
       type: object
       properties:
@@ -8632,6 +11201,17 @@ components:
               description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
             - type: 'null'
           description: Timestamp indicating when the template was published.
+        channel:
+          type: string
+          enum:
+            - whatsapp
+            - messenger
+            - instagram
+          description: Present on WhatsApp templates; absent means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - id
         - name
@@ -8708,6 +11288,17 @@ components:
         has_unpublished_versions:
           type: boolean
           description: Indicates whether the template has unpublished versions.
+        channel:
+          type: string
+          enum:
+            - whatsapp
+            - messenger
+            - instagram
+          description: Present on WhatsApp templates; absent means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - object
         - id
@@ -8830,6 +11421,12 @@ components:
     CreateBroadcastOptions:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -8895,18 +11492,23 @@ components:
           description: >-
             Send time, used only when send is true, in ISO 8601 or natural language up to 30 days ahead with
             UTC as the default timezone.
-      required:
-        - from
-        - subject
-      description: Create a broadcast with nonempty HTML or text, merge tags, and personalized unsubscribe links.
+      description: Create an email broadcast with nonempty HTML or text, or an approved WhatsApp template campaign.
       anyOf:
+        - required: [channel, whatsapp]
+          properties:
+            channel:
+              const: whatsapp
         - required:
+            - from
+            - subject
             - html
           properties:
             html:
               type: string
               minLength: 1
         - required:
+            - from
+            - subject
             - text
           properties:
             text:
@@ -8915,6 +11517,12 @@ components:
     UpdateBroadcastOptions:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -8993,6 +11601,10 @@ components:
     BroadcastListItem:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
         id:
           type: string
           description: The opaque resource ID returned by Opensend; IDs are not UUIDs.
@@ -9070,6 +11682,12 @@ components:
     GetBroadcastResponseSuccess:
       type: object
       properties:
+        channel:
+          type: string
+          enum: [email, whatsapp]
+          description: Missing means email.
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
         object:
           type: string
           enum:
@@ -10218,6 +12836,15 @@ components:
         - whatsapp.message.read
         - whatsapp.message.failed
         - whatsapp.message.received
+        - messenger.message.sent
+        - messenger.message.delivered
+        - messenger.message.read
+        - messenger.message.failed
+        - messenger.message.received
+        - instagram.message.sent
+        - instagram.message.read
+        - instagram.message.failed
+        - instagram.message.received
         - whatsapp.template.status_updated
         - whatsapp.phone_number.updated
         - contact.created
@@ -11093,6 +13720,84 @@ components:
           description: Workflow connections forming a tree, without cycles, joins, or arbitrary fan-out.
           items:
             $ref: '#/components/schemas/AutomationConnection'
+    WhatsAppVariableSource:
+      oneOf:
+        - type: string
+          maxLength: 4096
+        - type: object
+          required: [contact]
+          properties:
+            contact:
+              type: string
+              enum: [firstName, lastName, email, phone]
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+        - type: object
+          required: [property]
+          properties:
+            property:
+              type: string
+              pattern: '^[A-Za-z0-9_]+$'
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+        - type: object
+          required: [value]
+          properties:
+            value:
+              type: string
+              maxLength: 4096
+            fallback:
+              type: string
+              maxLength: 4096
+          additionalProperties: false
+    WhatsAppBroadcastConfiguration:
+      type: object
+      required: [account_id, template_id, variables]
+      properties:
+        account_id:
+          type: string
+        template_id:
+          type: string
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/WhatsAppVariableSource'
+      additionalProperties: false
+    SendWhatsAppStepConfig:
+      type: object
+      required: [account_id, mode]
+      properties:
+        account_id:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum: [template, text]
+        template_id:
+          type: string
+          minLength: 1
+        text:
+          type: string
+          minLength: 1
+        variables:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/WhatsAppVariableSource'
+      oneOf:
+        - required: [template_id]
+          properties:
+            mode:
+              const: template
+        - required: [text]
+          properties:
+            mode:
+              const: text
     AutomationStep:
       type: object
       description: A step in an automation workflow. The `config` object varies based on the step `type`.
@@ -11100,6 +13805,15 @@ components:
         - key
         - type
         - config
+      allOf:
+        - if:
+            properties:
+              type:
+                const: send_whatsapp
+          then:
+            properties:
+              config:
+                $ref: '#/components/schemas/SendWhatsAppStepConfig'
       properties:
         key:
           type: string
@@ -11109,6 +13823,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition
@@ -11116,13 +13831,16 @@ components:
             - contact_delete
             - add_to_segment
           description: >-
-            Step type determining the required configuration: trigger, send_email, delay, wait_for_event,
+            Step type determining the required configuration: trigger, send_email, send_whatsapp, delay, wait_for_event,
             condition, contact_update, contact_delete, or add_to_segment.
         config:
           type: object
           description: >-
             Step-specific settings such as event_name, template, duration, condition rules, contact fields, or
-            segment_id; subject overrides, structured template variables, mixed nested conditions, null
+            segment_id. send_whatsapp requires account_id and mode (template with template_id or text with text);
+            variables map to strings or contact/property/value sources with optional fallback. The
+            opensend:whatsapp.message.received system event is supported for triggers and waits.
+            Subject overrides, structured template variables, mixed nested conditions, null
             comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30 days to
             activate.
     AutomationConnection:
@@ -11271,6 +13989,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition
@@ -11501,6 +14220,7 @@ components:
           enum:
             - trigger
             - send_email
+            - send_whatsapp
             - delay
             - wait_for_event
             - condition

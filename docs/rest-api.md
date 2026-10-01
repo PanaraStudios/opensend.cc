@@ -787,3 +787,59 @@ Self-hosted semantics:
 **Upgrade:** after deployment, run the existing `migrations:backfillCounts` runner, which now includes the separately named `countUsageSent`, `countUsageReceived`, and `countUsageAutomationRuns` migrations. They are idempotent and can run alongside writes. They populate usage from surviving sent milestones, received emails and automation runs. Counts are incomplete until backfill finishes; already-pruned historical records cannot be reconstructed. No new IAM permission is needed.
 
 References: [Resend usage limits](https://resend.com/docs/api-reference/rate-limit), [resend-node usage types](https://github.com/resend/resend-node/blob/canary/src/usage/interfaces/get-usage.interface.ts).
+
+## WhatsApp Cloud API
+
+The team-scoped `/whatsapp/*` API is documented in `openapi/opensend.yaml`.
+`POST /whatsapp/messages` queues a message and returns `{ id }`. Its `from`
+accepts the connected phone number id or Opensend account id, and is required
+unless the team has exactly one live number. The number must be active and
+registered. Every type except `template` requires a customer service window
+opened by an inbound message within the last 24 hours. The sender checks the
+window again immediately before delivery.
+
+Use an approved Meta template directly as `{ name, language, components }`
+or `{ name, language, variables }`. Language accepts a code string or `{ code }`.
+Positional variable keys must be consecutive (`"1"`, `"2"`, …); named keys
+become Meta `parameter_name` values. `resolveWhatsAppTemplate` is the seam for
+resolving stored templates when template management is integrated.
+`reply_to` accepts an Opensend message id or wamid in the recipient's thread.
+
+Uploads use `POST /whatsapp/media` with multipart fields `file`, optional
+`from`, and optional `type` (MIME type, otherwise the file's Content-Type).
+The response `{ id }` contains Meta's media id, usable in a media message.
+Files are kept in Convex storage for 30 days, with cleanup on team retirement.
+JPEG/PNG: 5 MiB; audio and video: 16 MiB; supported documents: 100 MiB;
+static WebP stickers: 100 KiB; animated WebP stickers: 500 KiB. OGG must declare
+`audio/ogg; codecs=opus`. Meta checks image format and audio/video codecs.
+The deployment's HTTP body and memory limits may be lower than Meta's limit.
+
+Sending or full-access keys can send and upload; domain-restricted sending
+keys receive 403. Read endpoints require full access. Both POST endpoints
+support the usual `Idempotency-Key`, and media replay hashes the actual bytes,
+filename, MIME type and fields rather than the multipart boundary. API logs
+record file metadata and the hash, without binary content. Read endpoints use
+`limit`, `after` or `before` cursors. Messages also filter by `status`,
+`direction` and `phone_number_id`. Message detail includes the event timeline
+and signed media downloads. Delivery status never regresses. Retryable Graph
+errors back off; an interrupted send is failed without an automatic resend,
+because Graph provides no send idempotency token.
+
+The SDK exposes `opensend.whatsapp.messages.send/get/list`, `media.upload`,
+`phoneNumbers.list/get` and `conversations.list/messages`. The four MCP tools
+are `send-whatsapp-message`, `list-whatsapp-messages`, `get-whatsapp-message`
+and `list-whatsapp-phone-numbers`.
+
+Payloads and limits were checked on 2026-10-01 against Meta's official
+[Messages API](https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/message-api),
+[message guides](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/text-messages),
+[template parameter formats](https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview#parameter-formats),
+[media guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media)
+and [Media Upload API](https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-phone-number/media-upload-api).
+All requests use the installation's configured Graph version.
+
+The disposable end-to-end backend uses `META_GRAPH_ORIGIN` for the local fake
+Graph server. Only when that origin is local, the reserved fixture endpoint
+`https://whatsapp-send.invalid/events` is delivered to its `/__webhooks`
+receiver, so the suite can inspect real signed customer deliveries. Every
+other customer endpoint keeps the public HTTPS and DNS checks.

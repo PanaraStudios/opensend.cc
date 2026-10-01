@@ -4,7 +4,13 @@ import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { decryptSecret, encryptSecret } from "../secrets"
-import { appAccessToken, graph, graphFailure } from "./graph"
+import {
+  TOKEN_REFUSED,
+  appAccessToken,
+  friendly,
+  graph,
+  graphFailure,
+} from "./graph"
 import { MetaError } from "../../lib/meta/errors"
 import {
   NUMBER_LIMIT,
@@ -24,13 +30,16 @@ import {
    the app subscribes to its webhooks and its numbers are stored. Every
    public action checks the caller may write to the team first. */
 
-type App = { appId: string; graphVersion: string; encryptedAppSecret: string }
+export type App = {
+  appId: string
+  graphVersion: string
+  encryptedAppSecret: string
+}
 type Connected = {
   connectionId: Id<"metaConnections">
   accounts: { id: Id<"channelAccounts">; handle: string; registered: boolean }[]
 }
 
-const TOKEN_REFUSED = "Meta refused the business token. Reconnect the business."
 const connectedValue = v.object({
   connectionId: v.id("metaConnections"),
   accounts: v.array(
@@ -42,39 +51,15 @@ const connectedValue = v.object({
   ),
 })
 
-function numericId(value: string, label: string) {
+export function numericId(value: string, label: string) {
   const id = value.trim()
   if (!/^\d{1,32}$/.test(id))
     throw new ConvexError(`Enter the numeric ${label}`)
   return id
 }
 
-/** Runs Graph calls for the dashboard: failures become messages it can
-    show, and a refused token (190) flags the connection for reconnecting. */
-async function friendly<T>(
-  ctx: ActionCtx,
-  run: () => Promise<T>,
-  connectionId?: Id<"metaConnections">
-): Promise<T> {
-  try {
-    return await run()
-  } catch (e) {
-    if (e instanceof MetaError && e.action === "token_invalid") {
-      if (!connectionId)
-        throw new ConvexError("Meta refused the token. Check it and try again.")
-      await ctx.runMutation(internal.meta.connect.markConnection, {
-        connectionId,
-        status: "error",
-        error: TOKEN_REFUSED,
-      })
-      throw new ConvexError(TOKEN_REFUSED)
-    }
-    throw new ConvexError(graphFailure(e))
-  }
-}
-
 /** `GET /debug_token` with the app token. */
-async function debugToken(app: App, token: string): Promise<TokenInfo> {
+export async function debugToken(app: App, token: string): Promise<TokenInfo> {
   return readTokenInfo(
     await graph({
       token: await appAccessToken(app),
@@ -137,13 +122,12 @@ async function nameOf(token: string, version: string, id: string) {
   }
 }
 
-/** Imports the WABA's message templates once it is attached. Template sync
-    belongs to the templates lane, which fills this in; connecting does not
-    wait on it. */
-const syncWabaTemplates: (
-  ctx: ActionCtx,
-  waba: { connectionId: Id<"metaConnections">; wabaId: string }
-) => Promise<void> = async () => {}
+/** Imports the WABA's message templates once it is attached. Connecting
+    does not wait on it, and a failed sync is retried by the hourly one. */
+const syncWabaTemplates = (ctx: ActionCtx, waba: { wabaId: string }) =>
+  ctx.scheduler.runAfter(0, internal.whatsapp.templateActions.syncAccount, {
+    wabaId: waba.wabaId,
+  })
 
 /** Attaches a WABA with a checked business token: refuses a WABA another
     team holds, subscribes the app to its webhooks
@@ -204,7 +188,7 @@ async function attachWaba(
     wabaName,
     numbers,
   })
-  await syncWabaTemplates(ctx, { connectionId: connected.connectionId, wabaId })
+  await syncWabaTemplates(ctx, { wabaId })
   return connected
 }
 
@@ -299,6 +283,8 @@ export const registerNumber = action({
     const target = await ctx.runQuery(internal.meta.connect.accountTarget, {
       accountId,
     })
+    if (target.channel !== "whatsapp")
+      throw new ConvexError("Only WhatsApp numbers require registration")
     await friendly(
       ctx,
       async () => {
@@ -330,6 +316,10 @@ export const syncAccount = action({
     const target = await ctx.runQuery(internal.meta.connect.accountTarget, {
       accountId,
     })
+    if (target.channel !== "whatsapp") {
+      await ctx.runAction(internal.meta.pageConnectActions.sync, { accountId })
+      return null
+    }
     const number = await friendly(
       ctx,
       async () =>
@@ -373,6 +363,12 @@ export const checkConnection = internalAction({
       })
     try {
       const token = await decryptSecret(target.encryptedToken)
+      if (target.pages.length) {
+        await ctx.runAction(internal.meta.pageConnectActions.checkConnection, {
+          connectionId,
+        })
+        return null
+      }
       const info = await debugToken(target, token)
       const problem = [undefined, ...target.wabaIds]
         .map((wabaId) => tokenProblem(info, { appId: target.appId, wabaId }))

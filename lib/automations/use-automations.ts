@@ -18,7 +18,10 @@ export function useStepContext(steps: AutomationStep[]) {
     templateIds: [
       ...new Set(
         flat.flatMap((step) =>
-          step.type === "send_email" ? [step.templateId] : []
+          step.type === "send_email" ||
+          (step.type === "send_whatsapp" && step.templateId)
+            ? [step.templateId!]
+            : []
         )
       ),
     ],

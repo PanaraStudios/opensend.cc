@@ -3,8 +3,8 @@ import { v } from "convex/values"
 import { internalMutation } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import schema from "./schema"
-import { deleteRow, patchRow } from "./counts"
-import { readBroadcastStats } from "./broadcastMetrics"
+import { counters, deleteRow, patchRow } from "./counts"
+import { readBroadcastStats, readWhatsAppStats } from "./broadcastMetrics"
 
 const DAY = 86_400_000
 export const retentionPage = {
@@ -75,6 +75,14 @@ export const broadcasts = internalMutation({
         (row.settledAt ?? row.sentAt ?? row.updatedAt) >= Date.now() - 30 * DAY
       )
         continue
+      if (row.channel === "whatsapp" && !row.retainedWhatsAppStats) {
+        await patchRow(ctx, "broadcasts", row._id, {
+          retainedWhatsAppStats: await readWhatsAppStats(ctx, row._id),
+        })
+        await counters.broadcastMessages.aggregate.clear(ctx, {
+          namespace: row._id,
+        })
+      }
       if (!row.retainedStats)
         await patchRow(ctx, "broadcasts", row._id, {
           retainedStats: await readBroadcastStats(ctx, row._id),

@@ -1,16 +1,37 @@
 "use client"
 
+import { DownloadIcon, FileIcon } from "lucide-react"
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/components/ui/attachment"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
+import { useMediaDownload, type MediaFile } from "@/lib/messages/use-messages"
+
 import {
   SectionChrome,
+  channelMessageStatusDotClassName,
   emailStatusDotClassName,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import {
   emailStatusLabel,
+  sentenceCase,
   suppressionReasonLabel,
 } from "@/lib/dashboard/format"
 import { EMAIL_TABS } from "@/lib/dashboard/nav"
-import type { EmailStatus, SuppressionReason } from "@/lib/dashboard/types"
+import type {
+  ChannelMessageStatus,
+  EmailStatus,
+  SuppressionReason,
+} from "@/lib/dashboard/types"
 
 export { defaultEmailRange } from "@/lib/dashboard/email-range"
 
@@ -38,6 +59,44 @@ export const STATUS_ITEMS: readonly SelectOption[] = [
     dotClassName: emailStatusDotClassName(value),
   })),
 ]
+
+/** A sent WhatsApp message's statuses; `read` is the one email lacks. */
+const CHANNEL_STATUSES: ChannelMessageStatus[] = [
+  "queued",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+]
+const channelStatusItem = (value: ChannelMessageStatus): SelectOption => ({
+  value,
+  label: sentenceCase(value),
+  dotClassName: channelMessageStatusDotClassName(value),
+})
+
+/** The Sending log's status filter for a channel filter value. All
+    channels offer email's statuses plus `read`; a status filters each
+    channel that has it. */
+export function sendingStatusItems(channel: string): readonly SelectOption[] {
+  if (channel === "email") return STATUS_ITEMS
+  if (channel === "whatsapp")
+    return [STATUS_ITEMS[0], ...CHANNEL_STATUSES.map(channelStatusItem)]
+  return [...STATUS_ITEMS, channelStatusItem("read")]
+}
+
+export function sendingStatus(
+  value: string
+): EmailStatus | ChannelMessageStatus | undefined {
+  return isFilterableStatus(value) ||
+    (CHANNEL_STATUSES as string[]).includes(value)
+    ? (value as EmailStatus | ChannelMessageStatus)
+    : undefined
+}
+
+/** A channel filter value as the logs take it; "all" is no filter. */
+export function logChannel(value: string): "email" | "whatsapp" | undefined {
+  return value === "email" || value === "whatsapp" ? value : undefined
+}
 
 const SUPPRESSION_REASONS: SuppressionReason[] = [
   "manual",
@@ -71,8 +130,59 @@ export function EmailsChrome({
   children?: React.ReactNode
 }) {
   return (
-    <SectionChrome title="Emails" tabs={EMAIL_TABS} actions={actions}>
+    <SectionChrome title="Messages" tabs={EMAIL_TABS} actions={actions}>
       {children}
     </SectionChrome>
+  )
+}
+
+/** A message's files: each downloads once it is stored, and one Meta
+    could not hand over says why. */
+export function MessageFiles({
+  messageId,
+  media,
+}: {
+  messageId: string
+  media: readonly MediaFile[]
+}) {
+  const download = useMediaDownload()
+  return (
+    <AttachmentGroup>
+      {media.map((file, index) => (
+        <Attachment
+          key={file.mediaId ?? index}
+          size="sm"
+          state={file.error ? "error" : file.ready ? "done" : "processing"}
+        >
+          <AttachmentMedia>
+            <FileIcon />
+          </AttachmentMedia>
+          <AttachmentContent>
+            <AttachmentTitle>
+              {file.filename ?? file.contentType}
+            </AttachmentTitle>
+            <AttachmentDescription>
+              {file.error ?? file.contentType}
+            </AttachmentDescription>
+          </AttachmentContent>
+          {file.ready && file.mediaId ? (
+            <AttachmentActions>
+              <AttachmentAction
+                aria-label={`Download ${file.filename ?? "file"}`}
+                onClick={async () => {
+                  try {
+                    await download(messageId, file.mediaId!)
+                  } catch (error) {
+                    toast.add({ type: "error", title: actionError(error) })
+                  }
+                }}
+              >
+                <DownloadIcon />
+              </AttachmentAction>
+            </AttachmentActions>
+          ) : null}
+        </Attachment>
+      ))}
+    </AttachmentGroup>
   )
 }

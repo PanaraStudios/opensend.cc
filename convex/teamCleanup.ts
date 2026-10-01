@@ -60,6 +60,7 @@ export const TEAM_TABLES = [
   "contactImports",
   "webhookAttempts",
   "emailShares",
+  "channelMediaUploads",
   "channelMessages",
   "conversations",
   "channelContacts",
@@ -181,6 +182,16 @@ export const purge = internalMutation({
           .withIndex("by_emailId_and_at", (q) => q.eq("emailId", id))
       )
       if (!pending) await deleteEmailContent(ctx, id)
+    } else if (name === "channelMediaUploads") {
+      const file = await ctx.db.get(
+        "channelMediaUploads",
+        row._id as Id<"channelMediaUploads">
+      )
+      if (file) await ctx.storage.delete(file.storageId)
+    } else if (name === "broadcasts") {
+      await counters.broadcastMessages.aggregate.clear(ctx, {
+        namespace: row._id as Id<"broadcasts">,
+      })
     } else if (name === "channelMessages") {
       const id = row._id as Id<"channelMessages">
       pending = await children(

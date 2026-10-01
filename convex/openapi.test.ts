@@ -18,6 +18,25 @@ import { api, components, internal } from "./_generated/api"
 import { WEBHOOK_EVENTS } from "../lib/dashboard/types"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
+import {
+  inboundFixture,
+  fakeGraph,
+  graphError,
+  incoming,
+  signedWebhook,
+  APP_SECRET,
+  PHONE_ID,
+  SENDER,
+} from "./testHelpers/meta.fixture"
+import {
+  pagesFixture,
+  pageGraphRoutes,
+  pageEnvelope,
+  PAGE_ID,
+  IG_ID,
+  PSID,
+  IGSID,
+} from "./testHelpers/pages.fixture"
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
@@ -180,6 +199,154 @@ async function setup() {
 }
 
 describe("OpenAPI contract", () => {
+  test("WhatsApp send, media and all read route responses validate against their schemas", async () => {
+    vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-encryption-key-".repeat(3))
+    const f = await inboundFixture()
+    await f.t.run((ctx) =>
+      patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+    )
+    expect(
+      (
+        await f.t.fetch(
+          "/meta/webhook",
+          await signedWebhook(APP_SECRET, incoming())
+        )
+      ).status
+    ).toBe(200)
+    const event = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").first()
+    )
+    await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const { token } = await f.member.client.action(api.apiKeys.create, {
+      organizationId: f.owner.team,
+      input: {
+        name: "WhatsApp contract",
+        permission: "full_access",
+        domainId: null,
+      },
+    })
+    const call = (path: string, method = "GET", body?: unknown) => {
+      vi.setSystemTime(Date.now() + 1100)
+      return f.t.fetch(path, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
+    }
+    const graph = fakeGraph([
+      {
+        path: `/${PHONE_ID}/messages`,
+        respond: () => ({ messages: [{ id: "wamid.contract" }] }),
+      },
+      { path: `/${PHONE_ID}/media`, respond: () => ({ id: "media-contract" }) },
+    ])
+    const body = { to: SENDER, text: { body: "Contract", preview_url: true } }
+    validateBody(contract.components.schemas.SendWhatsAppMessage, body)
+    validateBody(contract.components.schemas.SendWhatsAppMessage, {
+      to: SENDER,
+      template: { name: "hello", language: "en", variables: { "1": "Ada" } },
+    })
+    const sent = await response(
+      "/whatsapp/messages",
+      "POST",
+      await call("/whatsapp/messages", "POST", body)
+    )
+    await f.t.action(internal.channels.deliver.deliver, {
+      id: sent.id,
+      generation: 0,
+    })
+    const detail = await response(
+      "/whatsapp/messages/{id}",
+      "GET",
+      await call(`/whatsapp/messages/${sent.id}`)
+    )
+    expect(detail).toMatchObject({
+      status: "sent",
+      text: "Contract",
+      external_id: "wamid.contract",
+    })
+    await response(
+      "/whatsapp/messages",
+      "GET",
+      await call("/whatsapp/messages?status=sent")
+    )
+    await response(
+      "/whatsapp/phone-numbers",
+      "GET",
+      await call("/whatsapp/phone-numbers")
+    )
+    await response(
+      "/whatsapp/phone-numbers/{id}",
+      "GET",
+      await call(`/whatsapp/phone-numbers/${PHONE_ID}`)
+    )
+    await response(
+      "/whatsapp/conversations",
+      "GET",
+      await call("/whatsapp/conversations")
+    )
+    await response(
+      "/whatsapp/conversations/{id}/messages",
+      "GET",
+      await call(`/whatsapp/conversations/${detail.conversation_id}/messages`)
+    )
+    const form = new FormData()
+    form.append(
+      "file",
+      new Blob([new Uint8Array([255, 0, 128])], { type: "image/png" }),
+      "file.png"
+    )
+    vi.setSystemTime(Date.now() + 1100)
+    await response(
+      "/whatsapp/media",
+      "POST",
+      await f.t.fetch("/whatsapp/media", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+    )
+    for (const [code, status] of [
+      [130429, 503],
+      [100, 422],
+      [0, 502],
+    ]) {
+      graph.use({
+        path: `/${PHONE_ID}/media`,
+        respond: () => (code ? graphError("Meta upload refused", code) : {}),
+      })
+      vi.setSystemTime(Date.now() + 1100)
+      await response(
+        "/whatsapp/media",
+        "POST",
+        await f.t.fetch("/whatsapp/media", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        }),
+        status
+      )
+    }
+    await response(
+      "/whatsapp/messages",
+      "POST",
+      await call("/whatsapp/messages", "POST", {
+        to: "16505550000",
+        text: "Closed",
+      }),
+      422
+    )
+    await response(
+      "/whatsapp/messages/{id}",
+      "GET",
+      await call("/whatsapp/messages/missing"),
+      404
+    )
+  })
+
   test("validates domain claim creation, retrieval, verification, resumption and ownership conflict", async () => {
     const f = await setup()
     const key = await f.outsider.client.action(api.apiKeys.create, {
@@ -440,6 +607,85 @@ describe("OpenAPI contract", () => {
     )
     expect(published.current_version_id).toBe(draft.current_version_id)
     expect(published.published_at).toEqual(expect.any(String))
+  })
+
+  test("WhatsApp template requests and responses match the contract", async () => {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("metaConnections", {
+        organizationId: f.owner.team,
+        businessId: "business",
+        businessName: "Contract",
+        method: "manual_token",
+        encryptedToken: "unused",
+        tokenLast4: "used",
+        scopes: [],
+        status: "active",
+      })
+      await ctx.db.insert("whatsappBusinessAccounts", {
+        organizationId: f.owner.team,
+        wabaId: "102290129340398",
+        connectionId,
+      })
+    })
+    const request = {
+      name: "order_shipped",
+      channel: "whatsapp",
+      whatsapp: {
+        language: "en_US",
+        category: "UTILITY",
+        parameter_format: "named",
+        components: [
+          {
+            type: "BODY",
+            text: "Hi {{first_name}}, your order has shipped.",
+            example: {
+              body_text_named_params: [
+                { param_name: "first_name", example: "Pablo" },
+              ],
+            },
+          },
+        ],
+      },
+    }
+    const create = contract.paths["/templates"].post
+    validateBody(
+      create.requestBody!.content["application/json"].schema,
+      request
+    )
+    const { id } = await response(
+      "/templates",
+      "POST",
+      await f.call("/templates", "POST", request)
+    )
+    const got = await response(
+      "/templates/{id}",
+      "GET",
+      await f.call(`/templates/${id}`)
+    )
+    expect(got).toMatchObject({
+      channel: "whatsapp",
+      whatsapp: { parameter_format: "named", status: null },
+      variables: [{ key: "first_name", fallback_value: null }],
+    })
+    const list = await response(
+      "/templates",
+      "GET",
+      await f.call("/templates?channel=whatsapp")
+    )
+    expect(list.data).toHaveLength(1)
+    const update = { whatsapp: { category: "MARKETING" } }
+    validateBody(
+      contract.paths["/templates/{id}"].patch.requestBody!.content[
+        "application/json"
+      ].schema,
+      update
+    )
+    await response(
+      "/templates/{id}",
+      "PATCH",
+      await f.call(`/templates/${id}`, "PATCH", update)
+    )
   })
 
   test("team isolation refuses dashboard access with permission and REST resource access with 404", async () => {
@@ -938,4 +1184,128 @@ test("webhook event subscriptions use the shared catalogue including WhatsApp", 
   expect(typeof eventType === "object" && eventType.enum).toEqual([
     ...WEBHOOK_EVENTS,
   ])
+})
+
+test("Messenger and Instagram send, read routes and local templates validate real responses with Ajv", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "contract-pages-encryption-".repeat(3))
+  fakeGraph(pageGraphRoutes())
+  const f = await pagesFixture()
+  const { token } = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: {
+      name: "Page contracts",
+      permission: "full_access",
+      domainId: null,
+    },
+  })
+  const call = (path: string, method = "GET", body?: unknown) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  }
+  for (const channel of ["messenger", "instagram"] as const) {
+    await f.t.fetch(
+      "/meta/webhook",
+      await signedWebhook(
+        APP_SECRET,
+        pageEnvelope(channel, {
+          message: { mid: `mid.contract.${channel}`, text: "Hello" },
+        })
+      )
+    )
+    const event = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").order("desc").first()
+    )
+    await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const to = channel === "messenger" ? PSID : IGSID,
+      resource = channel === "messenger" ? "pages" : "accounts",
+      externalId = channel === "messenger" ? PAGE_ID : IG_ID
+    const request = {
+      to,
+      text: "Reply",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    }
+    validateBody(
+      contract.paths[`/${channel}/messages`].post.requestBody!.content[
+        "application/json"
+      ].schema,
+      request
+    )
+    const { id } = await response(
+      `/${channel}/messages`,
+      "POST",
+      await call(`/${channel}/messages`, "POST", request)
+    )
+    const detail = await response(
+      `/${channel}/messages/{id}`,
+      "GET",
+      await call(`/${channel}/messages/${id}`)
+    )
+    expect(detail).toMatchObject({
+      channel,
+      text: "Reply",
+      last_event: "queued",
+    })
+    await response(
+      `/${channel}/messages`,
+      "GET",
+      await call(`/${channel}/messages`)
+    )
+    await response(
+      `/${channel}/${resource}`,
+      "GET",
+      await call(`/${channel}/${resource}`)
+    )
+    await response(
+      `/${channel}/${resource}/{id}`,
+      "GET",
+      await call(`/${channel}/${resource}/${externalId}`)
+    )
+    await response(
+      `/${channel}/conversations`,
+      "GET",
+      await call(`/${channel}/conversations`)
+    )
+    await response(
+      `/${channel}/conversations/{id}/messages`,
+      "GET",
+      await call(`/${channel}/conversations/${detail.conversation_id}/messages`)
+    )
+    const templateRequest = {
+      channel,
+      name: `${channel} welcome`,
+      text: "Hello {{{name}}}",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    }
+    validateBody(
+      contract.components.schemas.CreateTemplateRequest,
+      templateRequest
+    )
+    const template = await response(
+      "/templates",
+      "POST",
+      await call("/templates", "POST", templateRequest)
+    )
+    await response(
+      "/templates/{id}",
+      "GET",
+      await call(`/templates/${template.id}`)
+    )
+    await response(
+      "/templates",
+      "GET",
+      await call(`/templates?channel=${channel}`)
+    )
+    await response(
+      "/templates/{id}/publish",
+      "POST",
+      await call(`/templates/${template.id}/publish`, "POST", {})
+    )
+  }
 })

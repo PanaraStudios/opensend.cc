@@ -17,6 +17,7 @@ import {
   TemplateMenu,
   usePublishTemplate,
 } from "@/components/dashboard/templates/shared"
+import { WhatsAppTemplateEditorScreen } from "@/components/dashboard/templates/whatsapp-editor"
 import { actionError } from "@/lib/action-error"
 import { templatePublishLabel } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
@@ -47,14 +48,18 @@ export function TemplateEditor() {
     )
   }
 
+  const Screen =
+    item.channel === "whatsapp"
+      ? WhatsAppTemplateEditorScreen
+      : TemplateEditorScreen
   return (
-    <TemplateEditorScreen
+    <Screen
       key={item.id}
       item={item}
       onDelete={() =>
         deleteAndLeave(
           () =>
-            void deleteTemplate(item.id).catch((error) =>
+            void deleteTemplate(item).catch((error) =>
               toast.add({ type: "error", title: actionError(error) })
             )
         )
@@ -98,7 +103,7 @@ function TemplateEditorScreen({
             disabled={!publishLabel || editor.empty}
             onClick={async () => {
               /* What goes live is the email on screen, so it is saved first. */
-              if (await editor.flush()) await publish(item.id)
+              if (await editor.flush()) await publish(item)
             }}
           >
             {publishLabel ?? "Published"}

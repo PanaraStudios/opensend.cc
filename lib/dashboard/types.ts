@@ -1,3 +1,4 @@
+import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
 import type { Infer } from "convex/values"
 import { regions } from "../../convex/ses/contracts"
@@ -10,7 +11,9 @@ import type {
 import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
 import type {
   channelAccountStatusValue,
+  channelMessageStatusValue,
   channelQualityValue,
+  channelValue,
   messagingChannelValue,
 } from "../../convex/tables/channels"
 import type {
@@ -18,7 +21,11 @@ import type {
   suppressionReasonValue,
 } from "../../convex/tables/emails"
 import type { exportStatusValue } from "../../convex/tables/exports"
-import type { templateStatusValue } from "../../convex/tables/templates"
+import type {
+  metaTemplateStatusValue,
+  templateStatusValue,
+  whatsappTemplateValue,
+} from "../../convex/tables/templates"
 
 export type Region = (typeof regions)[number]
 
@@ -62,10 +69,16 @@ export type EmailStatus = Infer<typeof emailStatusValue>
 
 export type BroadcastStatus = Infer<typeof broadcastStatusValue>
 export type MessagingChannel = Infer<typeof messagingChannelValue>
+/** Email or a messaging channel: what a conversation is on. */
+export type Channel = Infer<typeof channelValue>
+export type ChannelMessageStatus = Infer<typeof channelMessageStatusValue>
 export type ChannelAccountStatus = Infer<typeof channelAccountStatusValue>
 export type ChannelQuality = Infer<typeof channelQualityValue>
 
 export type TemplateStatus = Infer<typeof templateStatusValue>
+/** Meta's review status of a WhatsApp template. */
+export type MetaTemplateStatus = Infer<typeof metaTemplateStatusValue>
+export type WhatsAppTemplateInfo = Infer<typeof whatsappTemplateValue>
 export type AutomationStatus = "enabled" | "disabled"
 export type PropertyType = Infer<typeof propertyTypeValue>
 export type SuppressionReason = Infer<typeof suppressionReasonValue>
@@ -89,6 +102,15 @@ export const WEBHOOK_EVENTS = [
   "whatsapp.message.read",
   "whatsapp.message.failed",
   "whatsapp.message.received",
+  "messenger.message.sent",
+  "messenger.message.delivered",
+  "messenger.message.read",
+  "messenger.message.failed",
+  "messenger.message.received",
+  "instagram.message.sent",
+  "instagram.message.read",
+  "instagram.message.failed",
+  "instagram.message.received",
   "whatsapp.template.status_updated",
   "whatsapp.phone_number.updated",
   "contact.created",
@@ -268,7 +290,22 @@ export type EmailDraft = {
   replyTo?: string
 }
 
+export type WhatsAppBroadcastStats = {
+  recipients: number
+  sent: number
+  delivered: number
+  read: number
+  failed: number
+  skipped: number
+}
 export type Broadcast = EmailDraft & {
+  channel?: "email" | "whatsapp"
+  whatsapp?: {
+    accountId: string
+    templateId: string
+    variables: Record<string, VariableSource>
+  }
+  whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
   segmentId: string | null
   topicId: string | null
@@ -290,6 +327,12 @@ export type EmailTemplate = EmailDraft & {
       that has been live may still have callers. An edit after this is not
       live yet. */
   publishedAt: number | null
+  /** Set on WhatsApp templates; absent means email. */
+  channel?: "whatsapp"
+  /** A WhatsApp template's Meta settings and review state. */
+  whatsapp?: WhatsAppTemplateInfo
+  /** A WhatsApp draft's components, in Meta's creation format. */
+  components?: unknown
 }
 
 export const AUTOMATION_RULE_OPERATORS = [
@@ -328,6 +371,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
+  "send_whatsapp",
   "contact_update",
   "contact_delete",
   "add_to_segment",
@@ -361,6 +405,14 @@ export type AutomationStep = { key: string } & (
       /** What fills each of the template's variables: a literal, or a
           reference such as `event.first_name`. */
       variables: Record<string, string>
+    }
+  | {
+      type: "send_whatsapp"
+      accountId: string
+      mode: "template" | "text"
+      templateId?: string
+      variables: Record<string, VariableSource>
+      text?: string
     }
   | { type: "contact_update"; fields: AutomationContactField[] }
   | { type: "contact_delete" }

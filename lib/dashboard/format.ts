@@ -6,13 +6,16 @@ import type {
   AutomationRunStatus,
   AutomationStatus,
   BroadcastStatus,
+  Channel,
   ChannelAccountStatus,
+  ChannelMessageStatus,
   ChannelQuality,
   DomainStatus,
   EmailStatus,
   ExportStatus,
   MemberRole,
   MessagingChannel,
+  MetaTemplateStatus,
   Region,
   SuppressionReason,
   TemplateStatus,
@@ -284,6 +287,19 @@ export const CHANNEL_ACCOUNT_STATUS_TONE: Record<
   disconnected: "secondary",
 }
 
+/** A WhatsApp (Messenger, Instagram) message's delivery, toned like email's. */
+export const CHANNEL_MESSAGE_STATUS_TONE: Record<
+  ChannelMessageStatus,
+  BadgeTone
+> = {
+  queued: "warning",
+  sent: "outline",
+  delivered: "success",
+  read: "success",
+  failed: "destructive",
+  received: "secondary",
+}
+
 /** WhatsApp's phone number quality rating. */
 export const CHANNEL_QUALITY_TONE: Record<ChannelQuality, BadgeTone> = {
   green: "success",
@@ -298,6 +314,11 @@ export const CHANNEL_LABELS: Record<MessagingChannel, string> = {
   instagram: "Instagram",
 }
 
+/** Email, or a messaging channel's name. */
+export function channelLabel(channel: Channel): string {
+  return channel === "email" ? "Email" : CHANNEL_LABELS[channel]
+}
+
 /** Meta's messaging limit tier, `TIER_1K`, as people read it. */
 export function messagingLimitLabel(tier: string | undefined): string {
   if (!tier) return "Unknown"
@@ -308,6 +329,26 @@ export function messagingLimitLabel(tier: string | undefined): string {
 export const TEMPLATE_STATUS_TONE: Record<TemplateStatus, BadgeTone> = {
   draft: "secondary",
   published: "success",
+}
+
+/** Meta's review of a WhatsApp template. */
+export const META_TEMPLATE_STATUS_TONE: Record<MetaTemplateStatus, BadgeTone> =
+  {
+    PENDING: "warning",
+    APPROVED: "success",
+    REJECTED: "destructive",
+    PAUSED: "warning",
+    DISABLED: "destructive",
+    IN_APPEAL: "warning",
+    LIMIT_EXCEEDED: "destructive",
+    ARCHIVED: "secondary",
+    PENDING_DELETION: "secondary",
+    DELETED: "secondary",
+  }
+
+/** `IN_APPEAL` as "In appeal". */
+export function metaTemplateStatusLabel(status: MetaTemplateStatus): string {
+  return sentenceCase(status.toLowerCase().replaceAll("_", " "))
 }
 
 export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {

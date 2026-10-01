@@ -19,10 +19,13 @@ import { toast } from "@/components/ui/toast"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import {
   ConfirmDialog,
+  MetaTemplateStatusBadge,
   MoreMenu,
+  TemplateStatusBadge,
   TextFieldDialog,
   type SelectOption,
 } from "@/components/dashboard/primitives"
+import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { actionError } from "@/lib/action-error"
 import { templateStatusLabel } from "@/lib/dashboard/format"
 import {
@@ -30,6 +33,7 @@ import {
   templatePublishLabel,
 } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
+import { formFromComponents, storedComponents } from "@/lib/meta/templates"
 import { useTemplateCommands } from "@/lib/templates/use-templates"
 
 /* The email itself, drawn small: a 600px sheet at half size, cut off by the
@@ -37,8 +41,19 @@ import { useTemplateCommands } from "@/lib/templates/use-templates"
 export function TemplateThumbnail({
   item,
 }: {
-  item: Pick<EmailTemplate, "name" | "html">
+  item: Pick<EmailTemplate, "name" | "html" | "channel" | "components">
 }) {
+  if (item.channel === "whatsapp")
+    return (
+      <div
+        inert
+        className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted p-4"
+      >
+        <WhatsAppTemplatePreview
+          form={formFromComponents(storedComponents(item.components)).form}
+        />
+      </div>
+    )
   return (
     <div
       inert
@@ -61,6 +76,21 @@ export const TEMPLATE_STATUS_ITEMS: readonly SelectOption[] = [
   })),
 ]
 
+/** A template's status: a submitted WhatsApp template shows Meta's
+    review, anything else draft or published. */
+export function TemplateBadge({
+  item,
+}: {
+  item: Pick<EmailTemplate, "status" | "whatsapp">
+}) {
+  const review = item.status === "published" && item.whatsapp?.metaStatus
+  return review ? (
+    <MetaTemplateStatusBadge status={review} />
+  ) : (
+    <TemplateStatusBadge status={item.status} />
+  )
+}
+
 /** Runs a template command, and says how it went. */
 async function report(run: () => Promise<unknown>, title: string) {
   try {
@@ -73,7 +103,13 @@ async function report(run: () => Promise<unknown>, title: string) {
 
 export function usePublishTemplate() {
   const { publishTemplate } = useTemplateCommands()
-  return (id: string) => report(() => publishTemplate(id), "Template published")
+  return (item: Pick<EmailTemplate, "id" | "channel">) =>
+    report(
+      () => publishTemplate(item),
+      item.channel === "whatsapp"
+        ? "Template submitted to Meta"
+        : "Template published"
+    )
 }
 
 /** The "…" menu of one template, with the dialogs it opens. The list's card,
@@ -134,12 +170,12 @@ export function TemplateMenu({
             Duplicate
           </DropdownMenuItem>
           {!inEditor && publishLabel ? (
-            <DropdownMenuItem onClick={() => void publish(item.id)}>
+            <DropdownMenuItem onClick={() => void publish(item)}>
               <RocketIcon />
               {publishLabel}
             </DropdownMenuItem>
           ) : null}
-          {item.status === "published" ? (
+          {item.status === "published" && item.channel !== "whatsapp" ? (
             <DropdownMenuItem
               onClick={() =>
                 void report(
@@ -180,10 +216,14 @@ export function TemplateMenu({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${item.name}?`}
-        description="Emails already sent keep their rendered copy. New API calls cannot use this template."
+        description={
+          item.whatsapp?.metaTemplateId
+            ? "The template is deleted at Meta too. Messages already sent stay. After an approved template is deleted, Meta keeps its name for 30 days."
+            : "Emails already sent keep their rendered copy. New API calls cannot use this template."
+        }
         onConfirm={async () => {
           if (onDelete) onDelete()
-          else await deleteTemplate(item.id)
+          else await deleteTemplate(item)
           toast.add({ type: "success", title: "Template deleted" })
         }}
       />

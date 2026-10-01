@@ -65,6 +65,9 @@ const workflow = {
 const overrides: Record<string, Record<string, unknown>> = {
   "batch-remove-suppressions": { ids: ["test-id"] },
   "send-email": { text: "Hello" },
+  "send-messenger-message": { to: "psid", text: "Hello" },
+  "send-instagram-message": { to: "igsid", text: "Hello" },
+  "send-whatsapp-message": { to: "16505551234", text: "Hello" },
   "send-batch-emails": {
     emails: [
       {
@@ -76,6 +79,8 @@ const overrides: Record<string, Record<string, unknown>> = {
     ],
   },
   "create-broadcast": { text: "Hello" },
+  // html is optional in the schema, since WhatsApp templates have none.
+  "create-template": { html: "<p>Hello</p>" },
   "create-contact-import": { content: "email\nperson@example.com" },
   "create-automation": { workflow },
   "update-automation": { workflow },
@@ -90,10 +95,20 @@ const overrides: Record<string, Record<string, unknown>> = {
   "send-event": { contactId: "test-id" },
   "manage-events": { name: "test.event" },
 }
+// Lane 5A owns these OpenAPI operations. Until integration, validate the
+// new tools against the binding meta-wave5-contract.md rather than claiming
+// these routes are already served on this branch.
+const wave5Operations = [
+  { method: "POST", pattern: /^\/(messenger|instagram)\/messages$/ },
+  { method: "GET", pattern: /^\/(messenger|instagram)\/messages(?:\/[^/]+)?$/ },
+  { method: "GET", pattern: /^\/messenger\/pages$/ },
+  { method: "GET", pattern: /^\/instagram\/accounts$/ },
+]
+const expectedOperations = [...operations, ...wave5Operations]
 // Real SDK requests are intercepted at fetch, never replaced by resource mocks.
 // An API error is deliberate: it exercises dispatch and error propagation for
 // every tool without inventing successful response bodies for 100+ operations.
-describe("all registered tools use served OpenAPI operations", () => {
+describe("all registered tools use OpenAPI or the wave 5 binding contract", () => {
   let connection: Awaited<ReturnType<typeof connectClient>>
   let definitions: Map<string, Schema>
   let activeTool = ""
@@ -140,7 +155,7 @@ describe("all registered tools use served OpenAPI operations", () => {
   it("covers the entire registry", () => {
     expect([...definitions.keys()].sort()).toEqual([...toolNames])
   })
-  it.each(toolNames)("%s reaches a served route", async (name) => {
+  it.each(toolNames)("%s reaches its contracted route", async (name) => {
     requests.length = 0
     activeTool = name
     const args = {
@@ -151,7 +166,7 @@ describe("all registered tools use served OpenAPI operations", () => {
     expect(requests.length, JSON.stringify(result)).toBeGreaterThan(0)
     for (const req of requests) {
       expect(
-        operations.some(
+        expectedOperations.some(
           (op) => op.method === req.method && op.pattern.test(req.path)
         ),
         JSON.stringify(req)
@@ -206,7 +221,7 @@ describe("all registered tools use served OpenAPI operations", () => {
       expect(requests.length, JSON.stringify(result)).toBeGreaterThan(0)
       for (const req of requests)
         expect(
-          operations.some(
+          expectedOperations.some(
             (op) => op.method === req.method && op.pattern.test(req.path)
           ),
           JSON.stringify(req)

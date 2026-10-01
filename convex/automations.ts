@@ -13,6 +13,8 @@ import { matchesSearch, teamPage, teamRow } from "./lists"
 import { defineEvent, findEvent, payloadShapeError } from "./automationEvents"
 import { startRun, stopRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
+import { resolveWhatsAppAccount } from "./channels/messages"
+import { resolveWhatsAppTemplate } from "./whatsapp/templates"
 import { publishedTemplate } from "./templates"
 import {
   automationStatus,
@@ -175,8 +177,13 @@ export async function updateAutomation(
   }
   if (patch.trigger !== undefined) {
     patch.trigger = patch.trigger.trim()
-    if (patch.trigger && eventNameError(patch.trigger))
-      throw new ConvexError(eventNameError(patch.trigger)!)
+    if (
+      patch.trigger &&
+      eventNameError(patch.trigger, [], { allowSystem: true })
+    )
+      throw new ConvexError(
+        eventNameError(patch.trigger, [], { allowSystem: true })!
+      )
   }
   await ensureNames(
     ctx,
@@ -219,6 +226,23 @@ export async function setAutomationStatus(
     const templates = []
     const segments = []
     for (const step of flattenSteps(steps)) {
+      if (step.type === "send_whatsapp" && step.accountId) {
+        const account = await resolveWhatsAppAccount(
+          ctx,
+          organizationId,
+          step.accountId
+        )
+        if (step.mode === "template" && step.templateId) {
+          const template = await resolveWhatsAppTemplate(ctx, organizationId, {
+            id: step.templateId,
+            wabaId: account.wabaId,
+          })
+          if (
+            template.variables.some((key) => step.variables[key] === undefined)
+          )
+            throw new ConvexError("Map every template variable before enabling")
+        }
+      }
       if (step.type === "send_email") {
         const template = await publishedTemplate(
           ctx,

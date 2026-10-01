@@ -1,5 +1,24 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import { variableSources } from "./variables"
+
+export const broadcastChannel = v.union(
+  v.literal("email"),
+  v.literal("whatsapp")
+)
+export const whatsappBroadcast = v.object({
+  accountId: v.id("channelAccounts"),
+  templateId: v.id("templates"),
+  variables: variableSources,
+})
+export const whatsappStatsValue = v.object({
+  recipients: v.number(),
+  sent: v.number(),
+  delivered: v.number(),
+  read: v.number(),
+  failed: v.number(),
+  skipped: v.number(),
+})
 
 export const BROADCAST_STATUSES = [
   "draft",
@@ -57,6 +76,9 @@ export const broadcastTables = {
   broadcasts: defineTable({
     organizationId: v.string(),
     name: v.string(),
+    channel: v.optional(broadcastChannel),
+    whatsapp: v.optional(whatsappBroadcast),
+    retainedWhatsAppStats: v.optional(whatsappStatsValue),
     subject: v.string(),
     preview: v.string(),
     from: v.optional(v.string()),
@@ -101,6 +123,8 @@ export const broadcastTables = {
     contactId: v.id("contacts"),
     email: v.string(),
     emailId: v.optional(v.id("emails")),
+    messageId: v.optional(v.id("channelMessages")),
+    skipReason: v.optional(v.string()),
     sent: v.optional(v.boolean()),
     settled: v.boolean(),
     failed: v.boolean(),
@@ -109,10 +133,8 @@ export const broadcastTables = {
     .index("by_organizationId_and_email", ["organizationId", "email"])
     .index("by_broadcastId_and_sent", ["broadcastId", "sent"])
     .index("by_broadcastId_and_email", ["broadcastId", "email"])
-    .index("by_broadcastId_and_contactId", {
-      fields: ["broadcastId", "contactId"],
-      staged: true,
-    })
+    .index("by_broadcastId_and_contactId", ["broadcastId", "contactId"])
+    .index("by_messageId", ["messageId"])
     .index("by_emailId", ["emailId"]),
   broadcastEvents: defineTable({
     organizationId: v.string(),

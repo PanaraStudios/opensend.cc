@@ -2,7 +2,7 @@ import { v } from "convex/values"
 import { env, internalMutation } from "../_generated/server"
 import { encryptSecret } from "../secrets"
 import { localHttpOrigin } from "../../lib/net/public-host"
-import { insertRow } from "../counts"
+import { insertRow, patchRow } from "../counts"
 
 /** Internal/admin-key fixture for the disposable e2e backend. No public API,
     and disabled unless the installation points Graph at a local test server. */
@@ -48,6 +48,7 @@ export const seedAccount = internalMutation({
       handle: "+15550783881",
       status: "active",
       throughputMps: 80,
+      registeredAt: Date.now(),
     })
   },
 })
@@ -89,5 +90,19 @@ export const seedOutbound = internalMutation({
       attempts: 1,
       search: "E2E reply",
     })
+  },
+})
+/** Closes a thread's customer service window, as 24 quiet hours would. */
+export const expireWindow = internalMutation({
+  args: { conversationId: v.id("conversations") },
+  returns: v.null(),
+  handler: async (ctx, { conversationId }) => {
+    if (!env.META_GRAPH_ORIGIN || !localHttpOrigin(env.META_GRAPH_ORIGIN))
+      throw new Error("A local fake Graph server is required")
+    // Past the dashboard clock's 30-second tick, so it shows at once.
+    await patchRow(ctx, "conversations", conversationId, {
+      windowExpiresAt: Date.now() - 5 * 60_000,
+    })
+    return null
   },
 })

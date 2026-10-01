@@ -261,3 +261,68 @@ describe('parseEventToApiOptions', () => {
     });
   });
 });
+
+it('converts WhatsApp template and text steps while preserving variable sources', () => {
+  const variables = {
+    '1': { contact: 'firstName' as const, fallback: 'there' },
+    '2': { property: 'company' },
+    '3': { value: 'Hello' },
+  };
+  expect(
+    parseAutomationToApiOptions({
+      name: 'WhatsApp',
+      steps: [
+        {
+          key: 'start',
+          type: 'trigger',
+          config: { eventName: 'opensend:whatsapp.message.received' },
+        },
+        {
+          key: 'template',
+          type: 'send_whatsapp',
+          config: {
+            accountId: 'account',
+            mode: 'template',
+            templateId: 'template',
+            variables,
+          },
+        },
+        {
+          key: 'text',
+          type: 'send_whatsapp',
+          config: { accountId: 'account', mode: 'text', text: 'Hello' },
+        },
+      ],
+      connections: [
+        { from: 'start', to: 'template' },
+        { from: 'template', to: 'text' },
+      ],
+    }).steps,
+  ).toEqual([
+    {
+      key: 'start',
+      type: 'trigger',
+      config: { event_name: 'opensend:whatsapp.message.received' },
+    },
+    {
+      key: 'template',
+      type: 'send_whatsapp',
+      config: {
+        account_id: 'account',
+        mode: 'template',
+        template_id: 'template',
+        variables,
+      },
+    },
+    {
+      key: 'text',
+      type: 'send_whatsapp',
+      config: {
+        account_id: 'account',
+        mode: 'text',
+        text: 'Hello',
+        variables: {},
+      },
+    },
+  ]);
+});

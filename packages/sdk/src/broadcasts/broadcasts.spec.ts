@@ -26,6 +26,28 @@ describe('Broadcasts', () => {
   afterAll(() => fetchMocker.disableMocks());
 
   describe('create', () => {
+    it('creates a WhatsApp broadcast without requiring email fields', async () => {
+      mockSuccessResponse({ id: 'campaign' });
+      const variables = {
+        '1': { contact: 'firstName' as const, fallback: 'there' },
+      };
+      const result = await resend.broadcasts.create({
+        name: 'WhatsApp',
+        channel: 'whatsapp',
+        whatsapp: { accountId: 'number', templateId: 'approved', variables },
+        segmentId: 'segment',
+        send: false,
+      });
+      expect(result.data).toEqual({ id: 'campaign' });
+      expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+        name: 'WhatsApp',
+        channel: 'whatsapp',
+        whatsapp: { account_id: 'number', template_id: 'approved', variables },
+        segment_id: 'segment',
+        send: false,
+      });
+    });
+
     it('missing `from`', async () => {
       const response: ErrorResponse = {
         name: 'missing_required_field',
@@ -954,9 +976,8 @@ describe('Broadcasts', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.broadcasts.remove(id),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.broadcasts.remove(id)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "deleted": true,
@@ -988,9 +1009,8 @@ describe('Broadcasts', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.broadcasts.cancel(id),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.broadcasts.cancel(id)).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "b01e0de9-7c27-4a53-bf38-2e3f98389a65",
@@ -1090,9 +1110,8 @@ describe('Broadcasts', () => {
 
       const resend = new Resend('os_test00000000000000000000000000001');
 
-      await expect(
-        resend.broadcasts.update(id, { name: 'New Name' }),
-      ).resolves.toMatchInlineSnapshot(`
+      await expect(resend.broadcasts.update(id, { name: 'New Name' })).resolves
+        .toMatchInlineSnapshot(`
         {
           "data": {
             "id": "b01e0de9-7c27-4a53-bf38-2e3f98389a65",

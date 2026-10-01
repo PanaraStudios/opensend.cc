@@ -1,3 +1,4 @@
+import { localTemplate } from "../../lib/meta/local-templates"
 import { stream } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v } from "convex/values"
@@ -16,12 +17,21 @@ import {
   findDraft,
   findPublished,
   insertTemplate,
+  insertWhatsAppTemplate,
   publishTemplate,
   removeTemplate,
   resolvedVariables,
   updateTemplate,
   type Input,
 } from "../templates"
+import { channelValue } from "../tables/channels"
+import {
+  PARAMETER_FORMATS,
+  TEMPLATE_CATEGORIES,
+  componentsParameterFormat,
+  isTemplateName,
+} from "../../lib/meta/templates"
+import { storedComponents, whatsappSettings } from "../whatsapp/rows"
 import { callerValue, requireCaller, invalid, requireTeamRow } from "./caller"
 import { cursorPage, listArgs } from "./paging"
 import {
@@ -31,6 +41,7 @@ import {
   enumField,
   listParams,
   objectBody,
+  objectField,
   stringField,
   stringListField,
 } from "./route"
@@ -41,8 +52,113 @@ function own(ctx: QueryCtx, organizationId: string, value: string) {
     fallback: () => aliasOwner(ctx, organizationId, value),
   })
 }
-function inputFields(body: string, required = false): Input {
+type Channel = "email" | "whatsapp" | "messenger" | "instagram"
+const CHANNELS = ["email", "whatsapp", "messenger", "instagram"] as const
+
+/** The optional `channel` of a request: email when absent. */
+function channelField(input: Record<string, unknown>) {
+  return enumField(input, "channel", CHANNELS)
+}
+
+/** A WhatsApp template's fields: its Meta name, the `whatsapp` settings
+    and Meta's components. `parameter_format` must match the components'
+    variables, which decide it. */
+function whatsappFields(input: Record<string, unknown>, required: boolean) {
+  const name = stringField(input, "name", required)
+  if (name !== undefined && !isTemplateName(name))
+    throw invalid(
+      "WhatsApp template names use only lowercase letters, numbers and underscores."
+    )
+  for (const key of [
+    "html",
+    "text",
+    "subject",
+    "from",
+    "reply_to",
+    "variables",
+  ])
+    if (input[key] !== undefined)
+      throw invalid(`WhatsApp templates have no \`${key}\` field.`)
+  const whatsapp = objectField(input, "whatsapp") ?? {}
+  const category = whatsapp.category
+  if (
+    category !== undefined &&
+    (typeof category !== "string" ||
+      !TEMPLATE_CATEGORIES.some((known) => known === category.toUpperCase()))
+  )
+    throw invalid(
+      "The `whatsapp.category` field must be MARKETING, UTILITY or AUTHENTICATION."
+    )
+  const format = enumField(whatsapp, "parameter_format", PARAMETER_FORMATS)
+  const raw = whatsapp.components
+  if (raw !== undefined && !Array.isArray(raw))
+    throw invalid("The `whatsapp.components` field must be an array.")
+  const components = raw === undefined ? undefined : storedComponents(raw)
+  if (components && components.length !== raw!.length)
+    throw invalid("Every component needs a `type`.")
+  if (format && components && componentsParameterFormat(components) !== format)
+    throw invalid(
+      "The `whatsapp.parameter_format` does not match the components' variables."
+    )
+  return {
+    name,
+    alias: stringField(input, "alias"),
+    ...(components ? { content: components } : {}),
+    whatsapp: {
+      ...(whatsapp.waba_id !== undefined
+        ? { wabaId: stringField(whatsapp, "waba_id")! }
+        : {}),
+      ...(whatsapp.language !== undefined
+        ? { language: stringField(whatsapp, "language")! }
+        : {}),
+      ...(typeof category === "string"
+        ? {
+            category:
+              category.toUpperCase() as (typeof TEMPLATE_CATEGORIES)[number],
+          }
+        : {}),
+    },
+  } satisfies Input
+}
+
+function inputFields(
+  body: string,
+  required = false,
+  channel?: Channel
+): Input & { channel: Channel } {
   const input = objectBody(JSON.parse(body))
+  const asked = channelField(input)
+  if (channel && asked && asked !== channel)
+    throw invalid("A template's `channel` cannot change.")
+  const resolved = channel ?? asked ?? "email"
+  if (resolved === "messenger" || resolved === "instagram") {
+    if (
+      ["html", "subject", "from", "reply_to", "whatsapp"].some(
+        (key) => input[key] !== undefined
+      )
+    )
+      throw invalid("Messaging templates have no email or WhatsApp fields.")
+    const text = stringField(input, "text", required)
+    const quick_replies = input.quick_replies
+    return {
+      channel: resolved,
+      name: stringField(input, "name", required),
+      alias: stringField(input, "alias"),
+      ...(input.text !== undefined || quick_replies !== undefined
+        ? {
+            content: {
+              ...(input.text !== undefined ? { text } : {}),
+              ...(quick_replies !== undefined ? { quick_replies } : {}),
+            },
+          }
+        : {}),
+      ...(input.text !== undefined ? { text } : {}),
+    }
+  }
+  if (resolved === "whatsapp")
+    return { ...whatsappFields(input, required), channel: resolved }
+  if (input.whatsapp !== undefined)
+    throw invalid("Only WhatsApp templates have a `whatsapp` field.")
   const replyToAddresses = stringListField(input, "reply_to", {
     rejectNull: true,
     message: "Invalid `reply_to` field.",
@@ -72,6 +188,7 @@ function inputFields(body: string, required = false): Input {
     })
   }
   return {
+    channel: resolved,
     name: stringField(input, "name", required),
     html: stringField(input, "html", required),
     ...(input.html !== undefined ? { content: null } : {}),
@@ -86,12 +203,12 @@ function inputFields(body: string, required = false): Input {
   }
 }
 export const list = internalQuery({
-  args: { caller: callerValue, ...listArgs },
+  args: { caller: callerValue, ...listArgs, channel: v.optional(channelValue) },
   returns: v.object({
     has_more: v.boolean(),
     data: v.array(schema.doc("templates")),
   }),
-  handler: async (ctx, { caller, ...page }) => {
+  handler: async (ctx, { caller, channel, ...page }) => {
     await requireCaller(ctx, caller)
     return cursorPage(
       page,
@@ -109,6 +226,9 @@ export const list = internalQuery({
             return q.eq("organizationId", caller.organizationId)
           })
           .order(order)
+          .filterWith(
+            async (row) => !channel || (row.channel ?? "email") === channel
+          )
     )
   },
 })
@@ -139,10 +259,27 @@ export const create = internalMutation({
       async () => {
         await requireCaller(ctx, caller)
         const input = inputFields(body, true)
+        if (input.channel === "whatsapp") {
+          // A CRM names its template; a taken name is refused, not renumbered.
+          const id = await insertWhatsAppTemplate(ctx, caller.organizationId, {
+            name: input.name!,
+            content: input.content,
+            whatsapp: await whatsappSettings(
+              ctx,
+              caller.organizationId,
+              input.whatsapp ?? {}
+            ),
+          })
+          if (input.alias !== undefined)
+            await updateTemplate(ctx, (await ctx.db.get("templates", id))!, {
+              alias: input.alias,
+            })
+          return id
+        }
         const id = await insertTemplate(ctx, caller.organizationId, {
           ...input,
           name: input.name!,
-          html: input.html!,
+          html: input.html ?? "",
           subject: input.subject ?? "",
           preview: "",
         })
@@ -154,6 +291,16 @@ export const create = internalMutation({
       },
       (id) => ({ status: 201, body: { object: "template", id } })
     )
+  },
+})
+/** A template's id and channel: WhatsApp publishes and deletes go to Meta. */
+export const target = internalQuery({
+  args: { caller: callerValue, id: v.string() },
+  returns: v.object({ id: v.id("templates"), channel: channelValue }),
+  handler: async (ctx, { caller, id }) => {
+    await requireCaller(ctx, caller)
+    const row = await own(ctx, caller.organizationId, id)
+    return { id: row._id, channel: row.channel ?? "email" }
   },
 })
 export const change = internalMutation({
@@ -176,7 +323,12 @@ export const change = internalMutation({
       async () => {
         await requireCaller(ctx, caller)
         const row = await own(ctx, caller.organizationId, id)
-        if (kind === "update") await updateTemplate(ctx, row, inputFields(body))
+        if (kind === "update")
+          await updateTemplate(
+            ctx,
+            row,
+            inputFields(body, false, row.channel ?? "email")
+          )
         if (kind === "remove") await removeTemplate(ctx, row)
         if (kind === "publish") await publishTemplate(ctx, row)
         if (kind === "duplicate") return duplicateTemplate(ctx, row)
@@ -186,6 +338,27 @@ export const change = internalMutation({
     )
   },
 })
+/** A WhatsApp template's Meta side; email templates have none, and their
+    responses keep Resend's shape exactly. */
+function whatsappSummary(row: Doc<"templates">) {
+  const whatsapp = row.whatsapp
+  if (row.channel !== "whatsapp" || !whatsapp) return {}
+  return {
+    channel: "whatsapp" as const,
+    whatsapp: {
+      waba_id: whatsapp.wabaId,
+      language: whatsapp.language,
+      category: whatsapp.category,
+      parameter_format: whatsapp.parameterFormat,
+      meta_template_id: whatsapp.metaTemplateId ?? null,
+      status: whatsapp.metaStatus ?? null,
+      rejected_reason: whatsapp.rejectedReason ?? null,
+      quality: whatsapp.quality ?? null,
+      submitted_at: whatsapp.submittedAt ? apiTime(whatsapp.submittedAt) : null,
+      synced_at: whatsapp.syncedAt ? apiTime(whatsapp.syncedAt) : null,
+    },
+  }
+}
 function summary(row: Doc<"templates">) {
   return {
     id: row._id,
@@ -198,6 +371,10 @@ function summary(row: Doc<"templates">) {
       row.status === "published" && row.publishedAt
         ? apiTime(row.publishedAt)
         : null,
+    ...(row.channel === "messenger" || row.channel === "instagram"
+      ? { channel: row.channel }
+      : {}),
+    ...whatsappSummary(row),
   }
 }
 export function registerTemplateRoutes(http: HttpRouter) {
@@ -206,9 +383,15 @@ export function registerTemplateRoutes(http: HttpRouter) {
     path: "/templates",
     permission: "full_access",
     handler: async (ctx, { caller, query }) => {
+      const channel = query.get("channel")
+      if (channel !== null && !CHANNELS.some((known) => known === channel))
+        throw invalid(
+          "The `channel` parameter must be email, whatsapp, messenger or instagram."
+        )
       const result = await ctx.runQuery(internal.api.templates.list, {
         caller,
         ...listParams(query),
+        ...(channel ? { channel: channel as Channel } : {}),
       })
       return {
         body: listBody(result, summary),
@@ -224,6 +407,38 @@ export function registerTemplateRoutes(http: HttpRouter) {
         internal.api.templates.get,
         { caller, id: params.id }
       )
+      if (row.channel === "whatsapp") {
+        const summarized = summary(row)
+        // Resend's template shape, with empty email fields.
+        return {
+          body: {
+            object: "template",
+            ...summarized,
+            current_version_id: draft
+              ? `${draft._id}:${row.version ?? 0}`
+              : null,
+            from: null,
+            subject: "",
+            reply_to: null,
+            html: "",
+            text: "",
+            variables: row.variables.map((key) => ({
+              id: `${row._id}:${key}`,
+              created_at: apiTime(row._creationTime),
+              updated_at: apiTime(row.updatedAt),
+              key,
+              type: "string",
+              fallback_value: null,
+            })),
+            has_unpublished_versions:
+              !published || row.updatedAt > (row.publishedAt ?? 0),
+            whatsapp: {
+              ...summarized.whatsapp,
+              components: storedComponents(draft?.content),
+            },
+          },
+        }
+      }
       return {
         body: {
           object: "template",
@@ -235,6 +450,9 @@ export function registerTemplateRoutes(http: HttpRouter) {
             row.replyToAddresses ?? (row.replyTo ? [row.replyTo] : null),
           html: draft?.html ?? "",
           text: draft?.text ?? toPlainText(draft?.html ?? ""),
+          ...(row.channel === "messenger" || row.channel === "instagram"
+            ? { quick_replies: localTemplate(draft?.content).quick_replies }
+            : {}),
           variables: resolvedVariables(row, draft ?? { html: "" }).map(
             (variable) => {
               const metadata = row.variableMetadata?.find(
@@ -282,17 +500,42 @@ export function registerTemplateRoutes(http: HttpRouter) {
         kind === "update" ? "PATCH" : kind === "remove" ? "DELETE" : "POST",
       path: `/templates/{id}${kind === "publish" || kind === "duplicate" ? `/${kind}` : ""}`,
       permission: "full_access",
-      handler: async (ctx, { caller, params, body }) => ({
-        body: {
-          object: "template",
-          id: await ctx.runMutation(internal.api.templates.change, {
+      handler: async (ctx, { caller, params, body }) => {
+        /* A WhatsApp template is submitted to, or deleted at, Meta first:
+           a Graph call cannot share the mutation's transaction. */
+        if (kind === "publish" || kind === "remove") {
+          const found = await ctx.runQuery(internal.api.templates.target, {
             caller,
             id: params.id,
-            kind,
-            body: JSON.stringify(body ?? {}),
-          }),
-          ...(kind === "remove" ? { deleted: true } : {}),
-        },
-      }),
+          })
+          if (found.channel === "whatsapp") {
+            await ctx.runAction(
+              kind === "publish"
+                ? internal.whatsapp.templateActions.submitForCaller
+                : internal.whatsapp.templateActions.removeForCaller,
+              { caller, templateId: found.id }
+            )
+            return {
+              body: {
+                object: "template",
+                id: found.id,
+                ...(kind === "remove" ? { deleted: true } : {}),
+              },
+            }
+          }
+        }
+        return {
+          body: {
+            object: "template",
+            id: await ctx.runMutation(internal.api.templates.change, {
+              caller,
+              id: params.id,
+              kind,
+              body: JSON.stringify(body ?? {}),
+            }),
+            ...(kind === "remove" ? { deleted: true } : {}),
+          },
+        }
+      },
     })
 }

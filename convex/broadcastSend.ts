@@ -15,6 +15,7 @@ import { finishBroadcast } from "./broadcastMetrics"
 import { unsubscribeLinks, unsubscribeContext } from "./unsubscribe"
 import { renderEmail } from "./email/render"
 import { listProperties } from "./audience"
+import { campaignTemplate, sendWhatsAppRecipient } from "./broadcastWhatsApp"
 import { retirement } from "./teamLifecycle"
 
 const workflow = new WorkflowManager(components.workflow)
@@ -83,10 +84,20 @@ export const batch = internalMutation({
       true,
       topic
     )
-    const properties = await listProperties(ctx, row.organizationId)
+    const target =
+      row.channel === "whatsapp"
+        ? await campaignTemplate(ctx, row.organizationId, row.whatsapp)
+        : null
+    const properties = target
+      ? []
+      : await listProperties(ctx, row.organizationId)
     let linksContext: Awaited<ReturnType<typeof unsubscribeContext>> | undefined
     const senders = new Map<string, ResolvedSender>()
     for (const contact of page.page) {
+      if (target) {
+        await sendWhatsAppRecipient(ctx, row, contact, topic, target)
+        continue
+      }
       const email = contact.email
       if (!email) continue
       const previous = await ctx.db

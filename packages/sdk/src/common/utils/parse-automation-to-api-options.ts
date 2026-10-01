@@ -44,6 +44,19 @@ export function parseStepConfig(
       };
     case 'delay':
       return { key: step.key, type: step.type, config: step.config };
+    case 'send_whatsapp':
+      return {
+        key: step.key,
+        type: step.type,
+        config: {
+          account_id: step.config.accountId,
+          mode: step.config.mode,
+          variables: step.config.variables ?? {},
+          ...(step.config.mode === 'template'
+            ? { template_id: step.config.templateId }
+            : { text: step.config.text }),
+        },
+      };
     case 'send_email':
       return {
         key: step.key,

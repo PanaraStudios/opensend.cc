@@ -63,6 +63,16 @@ export class Broadcasts {
     const data = await this.resend.post<SendBroadcastResponseSuccess>(
       '/broadcasts',
       {
+        ...(payload.channel === 'whatsapp'
+          ? {
+              channel: 'whatsapp',
+              whatsapp: {
+                account_id: payload.whatsapp.accountId,
+                template_id: payload.whatsapp.templateId,
+                variables: payload.whatsapp.variables,
+              },
+            }
+          : {}),
         name: payload.name,
         segment_id: payload.segmentId,
         audience_id: payload.audienceId,

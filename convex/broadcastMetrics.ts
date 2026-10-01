@@ -1,9 +1,15 @@
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
-import { broadcastStatsValue } from "./tables/broadcasts"
+import { broadcastStatsValue, whatsappStatsValue } from "./tables/broadcasts"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
-import { query, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { internal } from "./_generated/api"
+import {
+  internalMutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server"
 import { requireTeam } from "./access"
 import { counters, insertRow, patchRow } from "./counts"
 import { emptyBroadcastStats } from "../lib/dashboard/broadcast"
@@ -260,4 +266,118 @@ export async function recordBroadcastReport(
     })
   }
   await patchRow(ctx, "emailEvents", event._id, { broadcastReported: true })
+}
+
+/** WhatsApp settles on delivery/read/failure. A sent message with no further
+ * webhook settles after 24 hours; late read receipts still update its stats. */
+export async function broadcastMessageMetric(
+  ctx: MutationCtx,
+  message: Doc<"channelMessages">
+) {
+  if (!message.broadcastId) return
+  const recipient = await ctx.db
+    .query("broadcastRecipients")
+    .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+    .unique()
+  if (!recipient || recipient.organizationId !== message.organizationId) return
+  const terminal = ["delivered", "read", "failed"].includes(message.status)
+  if (!recipient.sent && message.sentAt !== undefined)
+    await patchRow(ctx, "broadcastRecipients", recipient._id, { sent: true })
+  if (!recipient.settled && terminal) {
+    await patchRow(ctx, "broadcastRecipients", recipient._id, {
+      settled: true,
+      failed: message.status === "failed",
+    })
+    await finishBroadcast(ctx, recipient.broadcastId)
+  } else if (
+    !recipient.settled &&
+    message.status === "sent" &&
+    message.sentAt !== undefined
+  ) {
+    await ctx.scheduler.runAt(
+      message.sentAt + 24 * 3600_000,
+      internal.broadcastMetrics.settleMessage,
+      { id: message._id }
+    )
+  }
+}
+export const settleMessage = internalMutation({
+  args: { id: v.id("channelMessages") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const message = await ctx.db.get("channelMessages", id)
+    if (
+      !message?.broadcastId ||
+      message.status !== "sent" ||
+      (message.sentAt ?? Number.MAX_SAFE_INTEGER) + 24 * 3600_000 > Date.now()
+    )
+      return null
+    const recipient = await ctx.db
+      .query("broadcastRecipients")
+      .withIndex("by_messageId", (q) => q.eq("messageId", id))
+      .unique()
+    if (recipient && !recipient.settled) {
+      await patchRow(ctx, "broadcastRecipients", recipient._id, {
+        settled: true,
+      })
+      await finishBroadcast(ctx, recipient.broadcastId)
+    }
+    return null
+  },
+})
+export const whatsappStats = query({
+  args: { organizationId: v.string(), id: v.id("broadcasts") },
+  returns: whatsappStatsValue,
+  handler: async (ctx, { organizationId, id }) => {
+    await requireTeam(ctx, organizationId)
+    const row = await ctx.db.get("broadcasts", id)
+    if (
+      !row ||
+      row.organizationId !== organizationId ||
+      row.channel !== "whatsapp"
+    )
+      return emptyWhatsAppStats()
+    return row.retainedWhatsAppStats ?? readWhatsAppStats(ctx, id)
+  },
+})
+export function emptyWhatsAppStats() {
+  return {
+    recipients: 0,
+    sent: 0,
+    delivered: 0,
+    read: 0,
+    failed: 0,
+    skipped: 0,
+  }
+}
+export async function readWhatsAppStats(ctx: QueryCtx, id: Id<"broadcasts">) {
+  const [messages, skipCounts] = await Promise.all([
+    counters.broadcastMessages.prefixTotals(ctx, id, [
+      ["queued"],
+      ["sent"],
+      ["delivered"],
+      ["read"],
+      ["failed"],
+    ]),
+    counters.broadcastRecipients.prefixTotals(
+      ctx,
+      id,
+      [
+        "no_phone",
+        "unsubscribed",
+        "topic_opt_out",
+        "marketing_opt_out",
+        "missing_variables",
+      ].map((reason) => [true, false, reason])
+    ),
+  ])
+  const [queued, sent, delivered, read, failed] = messages
+  return {
+    recipients: queued + sent + delivered + read + failed,
+    sent: sent + delivered + read,
+    delivered: delivered + read,
+    read,
+    failed,
+    skipped: skipCounts.reduce((sum, count) => sum + count, 0),
+  }
 }

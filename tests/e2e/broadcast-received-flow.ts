@@ -41,6 +41,7 @@ export async function createDraft(page: Page, name: string) {
     .getByRole("button", { name: "Create broadcast", exact: true })
     .first()
     .click()
+  await page.getByRole("menuitem", { name: "Email", exact: true }).click()
   await expect(page).toHaveURL(/\/broadcasts\/[^/]+\/edit$/)
   const id = new URL(page.url()).pathname.split("/")[2] as Id<"broadcasts">
   await page.getByTestId("editor-name").fill(name)
