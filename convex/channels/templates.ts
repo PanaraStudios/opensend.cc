@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values"
 import type { MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
-import { aliasOwner, findPublished } from "../templates"
+import { teamTemplate, findPublished } from "../templates"
 import { object, string } from "../../lib/meta/webhooks"
 import {
   fillLocalTemplate,
@@ -18,16 +18,8 @@ export async function resolveLocalTemplate(
   const reference = typeof ref === "string" ? { id: ref } : object(ref)
   const key = string(reference.id) || string(reference.alias)
   if (!key) throw new ConvexError("Specify a template id or alias")
-  const id = ctx.db.normalizeId("templates", key)
-  const template = id
-    ? await ctx.db.get("templates", id)
-    : await aliasOwner(ctx, organizationId, key)
-  if (
-    !template ||
-    template.organizationId !== organizationId ||
-    template.channel !== channel
-  )
-    throw new ConvexError("Template not found")
+  const template = await teamTemplate(ctx, organizationId, key, channel)
+  if (!template) throw new ConvexError("Template not found")
   const published = await findPublished(ctx, template._id)
   if (!published || template.status !== "published")
     throw new ConvexError("Publish this template before sending it")

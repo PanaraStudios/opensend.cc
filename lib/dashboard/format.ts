@@ -1,3 +1,4 @@
+import type { SkipReason } from "./types"
 import { format } from "date-fns"
 
 import { REGIONS } from "./types"
@@ -129,7 +130,35 @@ export function automationStatusLabel(status: AutomationStatus): string {
 }
 
 export function tenantStatusLabel(status?: string): string {
-  return sentenceCase((status || "UNKNOWN").toLowerCase().replaceAll("_", " "))
+  return snakeSentence(status || "UNKNOWN")
+}
+
+/** Meta and SES status words share the same readable spelling. */
+function snakeSentence(value: string): string {
+  return sentenceCase(value.toLowerCase().replaceAll("_", " "))
+}
+const SKIP_REASON_LABELS: Record<SkipReason, string> = {
+  no_phone: "No phone number",
+  no_email: "No email address",
+  unsubscribed: "Unsubscribed",
+  topic_opt_out: "Topic opt-out",
+  marketing_opt_out: "Marketing opt-out",
+  missing_variables: "Missing variables",
+  contact_deleted: "Contact deleted",
+  window_closed: "Messaging window closed",
+}
+export const SKIP_REASON_TONE: Record<SkipReason, BadgeTone> = {
+  no_phone: "secondary",
+  no_email: "secondary",
+  unsubscribed: "secondary",
+  topic_opt_out: "secondary",
+  marketing_opt_out: "secondary",
+  missing_variables: "warning",
+  contact_deleted: "secondary",
+  window_closed: "warning",
+}
+export function skipReasonLabel(reason: SkipReason): string {
+  return SKIP_REASON_LABELS[reason]
 }
 
 export function suppressionReasonLabel(reason: SuppressionReason): string {
@@ -348,7 +377,7 @@ export const META_TEMPLATE_STATUS_TONE: Record<MetaTemplateStatus, BadgeTone> =
 
 /** `IN_APPEAL` as "In appeal". */
 export function metaTemplateStatusLabel(status: MetaTemplateStatus): string {
-  return sentenceCase(status.toLowerCase().replaceAll("_", " "))
+  return snakeSentence(status)
 }
 
 export const AUTOMATION_STATUS_TONE: Record<AutomationStatus, BadgeTone> = {

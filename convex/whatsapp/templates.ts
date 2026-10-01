@@ -15,12 +15,14 @@ import { findMetaApp } from "../meta/app"
 import { APP_MISSING } from "../meta/connect"
 import { callerValue, requireCaller, type Caller } from "../api/caller"
 import {
+  teamTemplate,
   findDraft,
   findPublished,
   insertWhatsAppTemplate,
   removeTemplate,
 } from "../templates"
 import {
+  resolvedTemplateValue,
   metaTemplateStatusValue,
   parameterFormatValue,
   templateCategoryValue,
@@ -248,24 +250,6 @@ export const removeLocal = internalMutation({
   },
 })
 
-/** Records a status read back from Meta after an edit. */
-export const recordStatus = internalMutation({
-  args: {
-    templateId: v.id("templates"),
-    metaStatus: metaTemplateStatusValue,
-    rejectedReason: v.optional(v.string()),
-  },
-  returns: v.null(),
-  handler: async (ctx, { templateId, metaStatus, rejectedReason }) => {
-    const template = await ctx.db.get("templates", templateId)
-    if (!template?.whatsapp) return null
-    await patchRow(ctx, "templates", templateId, {
-      whatsapp: { ...template.whatsapp, metaStatus, rejectedReason },
-    })
-    return null
-  },
-})
-
 /* ------------------------------------------------------------------ sync */
 
 /** The WABAs a dashboard user syncs. */
@@ -336,7 +320,6 @@ export const upsertSynced = internalMutation({
         quality: meta.quality,
         category: meta.category,
         parameterFormat: meta.parameterFormat,
-        syncedAt,
       }
       const row =
         (await byMetaId(ctx, organizationId, meta.id)) ??
@@ -347,7 +330,7 @@ export const upsertSynced = internalMutation({
         const id = await insertWhatsAppTemplate(ctx, organizationId, {
           name: meta.name,
           content: components,
-          whatsapp: { wabaId, language: meta.language, ...fields },
+          whatsapp: { wabaId, language: meta.language, ...fields, syncedAt },
           status: "published",
         })
         const inserted = (await ctx.db.get("templates", id))!
@@ -362,12 +345,24 @@ export const upsertSynced = internalMutation({
           JSON.stringify(live.components ?? null)
       const same =
         JSON.stringify(live?.components ?? null) === JSON.stringify(components)
+      const metadataChanged = Object.entries(fields).some(
+        ([key, value]) =>
+          row.whatsapp?.[key as keyof NonNullable<typeof row.whatsapp>] !==
+          value
+      )
+      if (
+        same &&
+        !metadataChanged &&
+        row.status === "published" &&
+        row.publishedAt !== undefined
+      )
+        continue
       const now = Math.max(Date.now(), row.updatedAt + 1)
       const publishedAt = same ? (row.publishedAt ?? now) : now
       await patchRow(ctx, "templates", row._id, {
         status: "published",
         publishedAt,
-        whatsapp: { ...row.whatsapp!, ...fields },
+        whatsapp: { ...row.whatsapp!, ...fields, syncedAt },
         ...(pending || same
           ? {}
           : {
@@ -407,9 +402,11 @@ export const finishSync = internalMutation({
     wabaId: v.string(),
     syncedAt: v.number(),
     cursor: v.union(v.string(), v.null()),
+    seenMetaIds: v.array(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const seen = new Set(args.seenMetaIds)
     const page = await ctx.db
       .query("templates")
       .withIndex("by_organizationId_and_channel", (q) =>
@@ -422,7 +419,7 @@ export const finishSync = internalMutation({
         whatsapp?.wabaId === args.wabaId &&
         whatsapp.metaTemplateId &&
         whatsapp.metaStatus !== "DELETED" &&
-        (whatsapp.syncedAt ?? 0) < args.syncedAt &&
+        !seen.has(whatsapp.metaTemplateId) &&
         (whatsapp.submittedAt ?? 0) < args.syncedAt
       )
         await patchRow(ctx, "templates", row._id, {
@@ -532,17 +529,7 @@ export async function templateWebhook(
 
 /* ---------------------------------------------------------------- sends */
 
-export const resolvedTemplateValue = v.object({
-  templateId: v.id("templates"),
-  name: v.string(),
-  language: v.string(),
-  wabaId: v.string(),
-  category: templateCategoryValue,
-  parameterFormat: parameterFormatValue,
-  /** Keys a send's `variables` fills (lib/meta/templates.ts). */
-  variables: v.array(v.string()),
-  components: v.any(),
-})
+export { resolvedTemplateValue } from "../tables/templates"
 export type ResolvedTemplate = Infer<typeof resolvedTemplateValue>
 
 export type TemplateRef = {
@@ -604,14 +591,9 @@ async function findResolved(
 ): Promise<ResolvedTemplate> {
   let template: Doc<"templates"> | null = null
   const id = ref.id ? ctx.db.normalizeId("templates", ref.id) : null
-  if (id) template = await ctx.db.get("templates", id)
+  if (id) template = await teamTemplate(ctx, organizationId, id, "whatsapp")
   else if (ref.alias)
-    template = await ctx.db
-      .query("templates")
-      .withIndex("by_organizationId_and_alias", (q) =>
-        q.eq("organizationId", organizationId).eq("alias", ref.alias!)
-      )
-      .first()
+    template = await teamTemplate(ctx, organizationId, ref.alias, "whatsapp")
   else if (ref.name) {
     if (!ref.language)
       throw new ConvexError("Give the template's language with its name")

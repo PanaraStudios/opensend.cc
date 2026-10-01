@@ -28,7 +28,7 @@ import {
   resolveWhatsAppAccount,
 } from "./channels/messages"
 import { resolveVariables } from "../lib/meta/variables"
-import { resolveWhatsAppTemplate } from "./whatsapp/templates"
+import { recipientSkipReason, resolveWhatsAppSend } from "./broadcastWhatsApp"
 import { createEmail } from "./emails"
 import { publishedTemplate, renderTemplate } from "./templates"
 import { unsubscribeLinks } from "./unsubscribe"
@@ -340,35 +340,50 @@ export const effect = internalMutation({
         break
       }
       case "send_whatsapp": {
-        if (
-          !contact ||
-          contact.organizationId !== run.organizationId ||
-          contact.unsubscribed
-        )
-          return {
-            skipped: true,
-            output: { reason: contact ? "unsubscribed" : "contact_deleted" },
-          }
-        if (!contact.phone)
+        const basicReason = await recipientSkipReason(ctx, run, contact, null)
+        if (basicReason)
+          return { skipped: true, output: { reason: basicReason } }
+        const target =
+          node.mode === "template"
+            ? (await resolveWhatsAppSend(ctx, run.organizationId, {
+                accountId: node.accountId,
+                templateId: node.templateId!,
+                variables: node.variables,
+              }))!
+            : null
+        const account =
+          target?.account ??
+          (await resolveWhatsAppAccount(
+            ctx,
+            run.organizationId,
+            node.accountId
+          ))
+        const reason = target
+          ? await recipientSkipReason(
+              ctx,
+              run,
+              contact,
+              null,
+              target.template,
+              node.variables
+            )
+          : null
+        if (reason) return { skipped: true, output: { reason } }
+        if (!contact?.phone)
           return { skipped: true, output: { reason: "no_phone" } }
-        const account = await resolveWhatsAppAccount(
-          ctx,
-          run.organizationId,
-          node.accountId
-        )
-        const identity = await ctx.db
-          .query("channelContacts")
-          .withIndex(
-            "by_organizationId_and_channel_and_scopeId_and_externalId",
-            (q) =>
-              q
-                .eq("organizationId", run.organizationId)
-                .eq("channel", "whatsapp")
-                .eq("scopeId", "whatsapp")
-                .eq("externalId", contact.phone!.slice(1))
-          )
-          .unique()
         if (node.mode === "text") {
+          const identity = await ctx.db
+            .query("channelContacts")
+            .withIndex(
+              "by_organizationId_and_channel_and_scopeId_and_externalId",
+              (q) =>
+                q
+                  .eq("organizationId", run.organizationId)
+                  .eq("channel", "whatsapp")
+                  .eq("scopeId", "whatsapp")
+                  .eq("externalId", contact.phone!.slice(1))
+            )
+            .unique()
           const conversation = identity
             ? await ctx.db
                 .query("conversations")
@@ -381,14 +396,6 @@ export const effect = internalMutation({
             : null
           if ((conversation?.windowExpiresAt ?? 0) <= Date.now())
             return { skipped: true, output: { reason: "window_closed" } }
-        } else {
-          const template = await resolveWhatsAppTemplate(
-            ctx,
-            run.organizationId,
-            { id: node.templateId, wabaId: account.wabaId }
-          )
-          if (template.category === "MARKETING" && identity?.marketingOptOut)
-            return { skipped: true, output: { reason: "marketing_opt_out" } }
         }
         const messageId = await createChannelMessage(
           ctx,
@@ -419,12 +426,12 @@ export const effect = internalMutation({
         if (!contact || contact.unsubscribed)
           return {
             skipped: true,
-            output: { reason: contact ? "unsubscribed" : "contact deleted" },
+            output: { reason: contact ? "unsubscribed" : "contact_deleted" },
           }
         if (!contact.email)
           return {
             skipped: true,
-            output: { reason: "contact has no email address" },
+            output: { reason: "no_email" },
           }
         const template = await publishedTemplate(
           ctx,

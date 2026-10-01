@@ -1,3 +1,5 @@
+import { messagingChannelValue } from "../../convex/tables/channels"
+import { channelLabel } from "./format"
 import { RESERVED_PROPERTY_KEYS } from "./contacts"
 import { pluralize } from "./format"
 import { uniqueName } from "./slug"
@@ -312,12 +314,13 @@ export function durationError(text: string): string | null {
 /* ------------------------------------------------------------ validation */
 
 export const RESERVED_EVENT_PREFIX = "opensend:"
-export const SYSTEM_EVENTS = [
-  {
-    value: "opensend:whatsapp.message.received",
-    label: "WhatsApp message received",
-  },
-] as const
+export const SYSTEM_EVENTS = messagingChannelValue.members.map(({ value }) => ({
+  value: `opensend:${value}.message.received`,
+  label: `${channelLabel(value)} message received`,
+}))
+export function triggerEventError(name: string): string | null {
+  return eventNameError(name, [], { allowSystem: true })
+}
 
 export function eventNameError(
   name: string,
@@ -435,9 +438,7 @@ export function stepTasks(
         : ["Set a delay"]
     case "wait_for_event":
       return [
-        eventNameError(step.eventName, [], { allowSystem: true })
-          ? "Set event"
-          : null,
+        triggerEventError(step.eventName) ? "Set event" : null,
         durationError(step.timeout),
       ].flatMap((task) => task ?? [])
     case "send_whatsapp":
@@ -489,9 +490,7 @@ export function automationTasks(
       type: "trigger" as const,
       title: "Custom event",
       tasks: [
-        ...(eventNameError(automation.trigger, [], { allowSystem: true })
-          ? ["Set event"]
-          : []),
+        ...(triggerEventError(automation.trigger) ? ["Set event"] : []),
         ...(steps.length === 0 ? ["Add a step"] : []),
       ],
     },

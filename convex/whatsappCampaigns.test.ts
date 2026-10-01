@@ -419,7 +419,7 @@ test("scheduled sends cancel safely, duplicate configuration and enforce team is
 function whatsappStep(
   f: Fixture,
   mode: "template" | "text" = "template"
-): AutomationStep {
+): Extract<AutomationStep, { type: "send_whatsapp" }> {
   return {
     key: "send_whatsapp",
     type: "send_whatsapp",
@@ -564,7 +564,7 @@ test("automation text sends inside the window, skips outside it and without a ph
     })
   ).toMatchObject({
     skipped: true,
-    output: { reason: "contact has no email address" },
+    output: { reason: "no_email" },
   })
   const other = await f.actor("another")
   const foreign = await f.t.run(async (ctx) => {
@@ -848,4 +848,145 @@ test("campaign pickers expose approved templates only on the selected live numbe
       })
     ).accounts
   ).toEqual([])
+})
+
+test("one settlement job follows the last send and pages recipients without receipts", async () => {
+  const f = await setup()
+  const audience = Array.from({ length: 105 }, (_, n) => ({
+    phone: `+1555010${String(n).padStart(4, "0")}`,
+  }))
+  await f.contacts(audience.slice(0, 100))
+  await f.contacts(audience.slice(100))
+  const id = await f.create()
+  await f.fanout(id)
+  const recipients = await f.recipients(id)
+  for (let n = 0; n < recipients.length; n++) {
+    vi.setSystemTime(Date.now() + 1000)
+    await deliver(f, recipients[n].messageId!)
+    if (n === 0) expect((await f.read(id))?.settleJob).toBeUndefined()
+  }
+  const row = (await f.read(id))!
+  const jobs = await f.t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  const settle = jobs.filter((job) =>
+    job.name.includes("broadcastMetrics:settleBroadcast")
+  )
+  expect(settle).toHaveLength(1)
+  expect(settle[0].scheduledTime).toBe(row.lastMessageSentAt! + 24 * 3600_000)
+  expect(
+    jobs.some((job) => job.name.includes("broadcastMetrics:settleMessage"))
+  ).toBe(false)
+  vi.setSystemTime(row.lastMessageSentAt! + 24 * 3600_000)
+  await f.t.mutation(internal.broadcastMetrics.settleBroadcast, {
+    id,
+    cursor: null,
+  })
+  expect(
+    (await f.recipients(id)).filter((recipient) => recipient.settled)
+  ).toHaveLength(100)
+  const continuation = (
+    await f.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect()
+    )
+  ).find(
+    (job) =>
+      job.name.includes("broadcastMetrics:settleBroadcast") &&
+      (job.args[0] as { cursor?: string }).cursor
+  )
+  expect(continuation).toBeDefined()
+  await f.t.mutation(
+    internal.broadcastMetrics.settleBroadcast,
+    continuation!.args[0] as { id: Id<"broadcasts">; cursor: string }
+  )
+  expect((await f.recipients(id)).every((recipient) => recipient.settled)).toBe(
+    true
+  )
+  expect((await f.read(id))?.status).toBe("sent")
+})
+
+test("channel metrics preserve old shapes and recipient outcomes follow message receipts", async () => {
+  const f = await setup()
+  await f.contacts([{ phone: "+15550000001" }, { email: "only@example.test" }])
+  const id = await f.create()
+  await f.fanout(id)
+  const recipient = (await f.recipients(id)).find((row) => row.messageId)!
+  await deliver(f, recipient.messageId!)
+  const page = await f.owner.client.query(api.broadcastWhatsApp.recipients, {
+    organizationId: f.owner.team,
+    id,
+    paginationOpts: { numItems: 20, cursor: null },
+  })
+  expect(page.page.find((row) => row.messageId)?.messageStatus).toBe("sent")
+  expect(page.page.find((row) => row.skipReason)?.skipReason).toBe("no_phone")
+  const tagged = await f.owner.client.query(api.broadcastMetrics.channelStats, {
+    organizationId: f.owner.team,
+    id,
+  })
+  expect(tagged).toEqual({ channel: "whatsapp", stats: await f.stats(id) })
+})
+
+test("campaign picker shares sending restrictions and finds approved templates past draft rows", async () => {
+  const f = await setup()
+  for (let n = 0; n < 25; n++)
+    await f.owner.client.mutation(api.templates.create, {
+      organizationId: f.owner.team,
+      channel: "whatsapp",
+      name: `draft_${n}`,
+    })
+  const options = await f.owner.client.query(api.broadcastWhatsApp.options, {
+    organizationId: f.owner.team,
+    accountId: f.account,
+  })
+  expect(options.templates.map((row) => row.id)).toContain(f.template._id)
+  const approved = await f.owner.client.query(api.templates.options, {
+    organizationId: f.owner.team,
+    channel: "whatsapp",
+    wabaId: WABA_ID,
+    approvedOnly: true,
+  })
+  expect(approved.map((row) => row._id)).toEqual([f.template._id])
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: undefined })
+  )
+  expect(
+    (
+      await f.owner.client.query(api.broadcastWhatsApp.options, {
+        organizationId: f.owner.team,
+        accountId: f.account,
+      })
+    ).accounts
+  ).toEqual([])
+})
+
+test("review, broadcast sending and automation sending share missing-variable eligibility", async () => {
+  const f = await setup()
+  const [contactId] = await f.contacts([{ phone: "+15550000001" }])
+  const variables = { ...mappings, "1": { contact: "firstName" as const } }
+  const id = await f.create({
+    whatsapp: { accountId: f.account, templateId: f.template._id, variables },
+  })
+  expect(
+    await f.owner.client.action(api.broadcastWhatsApp.review, {
+      organizationId: f.owner.team,
+      id,
+    })
+  ).toEqual({ recipients: 0, skipped: 1, noPhone: 0 })
+  await f.fanout(id)
+  expect((await f.recipients(id))[0]).toMatchObject({
+    skipReason: "missing_variables",
+    settled: true,
+  })
+  const node = { ...whatsappStep(f), variables }
+  const automationId = await automation(f, [node])
+  const row = (await f.t.run((ctx) => ctx.db.get("automations", automationId)))!
+  const contact = (await f.t.run((ctx) => ctx.db.get("contacts", contactId)))!
+  const runId = await f.t.run((ctx) => startRun(ctx, row, contact, {}))
+  const run = (await f.t.run((ctx) => ctx.db.get("automationRuns", runId)))!
+  expect(
+    await f.t.mutation(internal.automationRuntime.effect, {
+      run,
+      node: JSON.stringify(node),
+    })
+  ).toEqual({ skipped: true, output: { reason: "missing_variables" } })
 })

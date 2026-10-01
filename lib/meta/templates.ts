@@ -1,3 +1,4 @@
+export { rowChannel } from "../../packages/sdk/src/automations/channels"
 /* WhatsApp message templates, as Meta documents them (checked 2026-10-01):
    https://developers.facebook.com/documentation/business-messaging/whatsapp/reference/whatsapp-business-account/message-template-api
    https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview
@@ -916,14 +917,6 @@ export function variableLabel(variable: TemplateVariable) {
 
 export const templateCategoryLabel = (category: string) =>
   category.charAt(0) + category.slice(1).toLowerCase()
-
-export const templateStatusText = (status: string) => {
-  const words = status.toLowerCase().replaceAll("_", " ")
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
-
-export const templateLanguageLabel = (code: string) =>
-  TEMPLATE_LANGUAGES.find(([known]) => known === code)?.[1] ?? code
 
 /** The template languages Meta supports, as [code, name]. */
 export const TEMPLATE_LANGUAGES: readonly (readonly [string, string])[] = [

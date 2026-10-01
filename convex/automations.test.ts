@@ -747,7 +747,7 @@ test("phone-only runs skip send_email with a reason and continue other steps", a
     (await steps(f, runId)).find((step) => step.key === "send")
   ).toMatchObject({
     status: "skipped",
-    output: { reason: "contact has no email address" },
+    output: { reason: "no_email" },
   })
   expect(
     await f.member.client.query(api.contacts.get, { id: contactId })

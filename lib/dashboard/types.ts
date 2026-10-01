@@ -8,7 +8,13 @@ import type {
   topicSubscriptionValue,
   topicVisibilityValue,
 } from "../../convex/tables/audience"
-import type { broadcastStatusValue } from "../../convex/tables/broadcasts"
+import type {
+  broadcastStatusValue,
+  broadcastChannel,
+  broadcastStatsValue,
+  whatsappStatsValue,
+  skipReasonValue,
+} from "../../convex/tables/broadcasts"
 import type {
   channelAccountStatusValue,
   channelMessageStatusValue,
@@ -262,16 +268,7 @@ export type Suppression = {
   createdAt: number
 }
 
-export type BroadcastStats = {
-  recipients: number
-  delivered: number
-  opened: number
-  clicked: number
-  bounced: number
-  suppressed: number
-  unsubscribed: number
-  complained: number
-}
+export type BroadcastStats = Infer<typeof broadcastStatsValue>
 
 /** What the email editor works on. A broadcast and a template are both one
     of these, which is how they share the editor. */
@@ -290,16 +287,11 @@ export type EmailDraft = {
   replyTo?: string
 }
 
-export type WhatsAppBroadcastStats = {
-  recipients: number
-  sent: number
-  delivered: number
-  read: number
-  failed: number
-  skipped: number
-}
+export type WhatsAppBroadcastStats = Infer<typeof whatsappStatsValue>
+export type BroadcastChannel = Infer<typeof broadcastChannel>
+export type SkipReason = Infer<typeof skipReasonValue>
 export type Broadcast = EmailDraft & {
-  channel?: "email" | "whatsapp"
+  channel?: BroadcastChannel
   whatsapp?: {
     accountId: string
     templateId: string
@@ -328,7 +320,7 @@ export type EmailTemplate = EmailDraft & {
       live yet. */
   publishedAt: number | null
   /** Set on WhatsApp templates; absent means email. */
-  channel?: "whatsapp"
+  channel?: Infer<typeof channelValue>
   /** A WhatsApp template's Meta settings and review state. */
   whatsapp?: WhatsAppTemplateInfo
   /** A WhatsApp draft's components, in Meta's creation format. */

@@ -309,7 +309,10 @@ describe("WhatsApp templates", () => {
       ctx.db.query("whatsappBusinessAccounts").first()
     )
     expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
-    // A second sync updates the same rows.
+    // A repeated listing updates only the WABA sync clock, leaving rows unchanged.
+    const beforeRepeat = await f.t.run((ctx) =>
+      ctx.db.query("templates").collect()
+    )
     later()
     await f.owner.action(api.whatsapp.templateActions.sync, {
       organizationId: f.team,
@@ -317,6 +320,9 @@ describe("WhatsApp templates", () => {
     expect(
       await f.t.run((ctx) => ctx.db.query("templates").collect())
     ).toHaveLength(3)
+    expect(await f.t.run((ctx) => ctx.db.query("templates").collect())).toEqual(
+      beforeRepeat
+    )
   })
 
   test("the hourly cron fans out one sync per WABA", async () => {

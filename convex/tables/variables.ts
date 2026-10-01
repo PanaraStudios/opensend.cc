@@ -1,3 +1,4 @@
+import { CONTACT_VARIABLE_FIELDS } from "../../lib/meta/variables"
 import { v } from "convex/values"
 
 const fallback = { fallback: v.optional(v.string()) }
@@ -5,10 +6,7 @@ export const variableSource = v.union(
   v.string(),
   v.object({
     contact: v.union(
-      v.literal("firstName"),
-      v.literal("lastName"),
-      v.literal("email"),
-      v.literal("phone")
+      ...CONTACT_VARIABLE_FIELDS.map((field) => v.literal(field.value))
     ),
     ...fallback,
   }),

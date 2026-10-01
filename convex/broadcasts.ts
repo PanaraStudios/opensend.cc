@@ -1,3 +1,5 @@
+import { broadcastChannels, validateBroadcastSend } from "./broadcastChannels"
+import { rowChannel } from "../lib/meta/templates"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -16,7 +18,14 @@ import { internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
-import { counters, countValue, insertRow, patchRow, deleteRow } from "./counts"
+import {
+  counters,
+  countValue,
+  insertRow,
+  patchRow,
+  deleteRow,
+  retireBroadcastCounters,
+} from "./counts"
 import { stream } from "convex-helpers/server/stream"
 import { filteredPage, matchesSearch, selectedOption } from "./lists"
 import {
@@ -26,14 +35,9 @@ import {
   broadcastChannel,
   whatsappBroadcast,
 } from "./tables/broadcasts"
-import { findTopicChoice, teamRow } from "./audience"
-import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
-import { suppressedAmong } from "./suppressions"
-import { defaultFromAddress } from "../lib/dashboard/format"
+import { teamRow } from "./audience"
 import { parseMailbox } from "../lib/dashboard/email-send"
-import { MAX_SCHEDULE, validateSender } from "./emails"
-import { campaignTemplate } from "./broadcastWhatsApp"
-import { variableSourcesError } from "../lib/meta/variables"
+import { MAX_SCHEDULE } from "./emails"
 import { TEMPLATE_BODY_LIMIT } from "./templates"
 
 export const fields = {
@@ -69,7 +73,7 @@ export async function audience(
     : null
 }
 async function check(
-  ctx: QueryCtx,
+  ctx: MutationCtx,
   organizationId: string,
   input: BroadcastInput
 ) {
@@ -95,27 +99,11 @@ async function check(
       input.replyToAddresses.some((a) => !parseMailbox(a)))
   )
     throw new ConvexError("Invalid reply-to addresses")
-  if (input.whatsapp) {
-    const error = variableSourcesError(input.whatsapp.variables)
-    if (error) throw new ConvexError(error)
-    const account = await ctx.db.get(
-      "channelAccounts",
-      input.whatsapp.accountId
-    )
-    const template = await ctx.db.get("templates", input.whatsapp.templateId)
-    if (
-      !account ||
-      !template ||
-      account.organizationId !== organizationId ||
-      template.organizationId !== organizationId ||
-      account.channel !== "whatsapp" ||
-      template.channel !== "whatsapp" ||
-      account.wabaId !== template.whatsapp?.wabaId
-    )
-      throw new ConvexError(
-        "Choose a WhatsApp template from the sending number’s WABA"
-      )
-  }
+  await broadcastChannels[rowChannel(input)].validate(
+    ctx,
+    organizationId,
+    input
+  )
   await audience(ctx, {
     organizationId,
     segmentId: input.segmentId ?? null,
@@ -128,21 +116,9 @@ export async function insertBroadcast(
   input: BroadcastInput
 ) {
   await check(ctx, organizationId, input)
-  const { html, text, content, ...row } = input
-  if ((row.channel ?? "email") === "email" && row.whatsapp)
-    throw new ConvexError("WhatsApp configuration requires channel=whatsapp")
-  if (row.channel !== "whatsapp" && !row.from) {
-    const domain = await ctx.db
-      .query("domains")
-      .withIndex("by_organizationId_and_deleted_and_status_and_name", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("deleted", false)
-          .eq("status", "verified")
-      )
-      .first()
-    if (domain) row.from = defaultFromAddress(domain.name)
-  }
+  const { html, text, content, ...row } = await broadcastChannels[
+    rowChannel(input)
+  ].initialize(ctx, organizationId, input)
   const id = await insertRow(ctx, "broadcasts", {
     ...row,
     organizationId,
@@ -178,11 +154,9 @@ export async function updateBroadcast(
     Object.keys(changed).some((key) => key !== "name")
   )
     throw new ConvexError("Only draft broadcasts can be updated")
-  if (changed.channel && changed.channel !== (row.channel ?? "email"))
+  if (changed.channel && changed.channel !== rowChannel(row))
     throw new ConvexError("A broadcast’s channel cannot be changed")
-  if (changed.whatsapp && row.channel !== "whatsapp")
-    throw new ConvexError("WhatsApp configuration requires channel=whatsapp")
-  await check(ctx, row.organizationId, changed)
+  await check(ctx, row.organizationId, { ...changed, channel: rowChannel(row) })
   const { html, text, content, ...patch } = changed
   if (changed.replyTo !== undefined && changed.replyToAddresses === undefined)
     patch.replyToAddresses = changed.replyTo.trim()
@@ -230,7 +204,7 @@ export async function removeBroadcast(
   if (row.scheduledJob) await ctx.scheduler.cancel(row.scheduledJob)
   const body = await draft(ctx, row._id)
   if (body) await ctx.db.delete("broadcastDrafts", body._id)
-  await counters.broadcastMessages.aggregate.clear(ctx, { namespace: row._id })
+  await retireBroadcastCounters(ctx, row._id)
   await deleteRow(ctx, "broadcasts", row._id)
 }
 export async function sendBroadcast(
@@ -241,17 +215,7 @@ export async function sendBroadcast(
   if (!["draft", "canceled", "scheduled"].includes(row.status))
     throw new ConvexError("Broadcast has already been sent")
   await audience(ctx, row)
-  if (row.channel === "whatsapp") {
-    await campaignTemplate(ctx, row.organizationId, row.whatsapp)
-  } else {
-    if (!row.subject.trim())
-      throw new ConvexError("Add a subject line to continue")
-    const body = await draft(ctx, row._id)
-    if (!body?.html && !body?.text)
-      throw new ConvexError("Add content to continue")
-    if (!row.from) throw new ConvexError("Invalid from address")
-    await validateSender(ctx, row.organizationId, row.from)
-  }
+  await validateBroadcastSend(ctx, row)
   if (
     scheduledAt !== undefined &&
     (!Number.isFinite(scheduledAt) || scheduledAt > Date.now() + MAX_SCHEDULE)
@@ -403,7 +367,7 @@ export function broadcastPage(
     args.paginationOpts,
     (row) =>
       (!args.audience || (row.segmentId ?? "everyone") === args.audience) &&
-      (!args.channel || (row.channel ?? "email") === args.channel) &&
+      (!args.channel || rowChannel(row) === args.channel) &&
       matches(row.name, row.subject),
     { rows: 512, bytes: 4 * 1024 * 1024 },
     args.search
@@ -500,28 +464,13 @@ export async function recipientPage(
     )
       candidates.push(contact)
   }
-  if (row.channel === "whatsapp") return { ...page, page: candidates }
-  const suppressed = sending
-    ? new Set<string>()
-    : await suppressedAmong(
-        ctx,
-        row.organizationId,
-        candidates.flatMap((c) => (c.email ? [c.email] : []))
-      )
-  const contacts = []
-  for (const contact of candidates) {
-    if (!contact.email || contact.unsubscribed || suppressed.has(contact.email))
-      continue
-    if (
-      topic &&
-      effectiveTopicSubscription(
-        (await findTopicChoice(ctx, contact._id, topic._id))?.subscription,
-        topic
-      ) !== "subscribed"
-    )
-      continue
-    contacts.push(contact)
-  }
+  const contacts = await broadcastChannels[rowChannel(row)].eligible(
+    ctx,
+    row,
+    candidates,
+    topic,
+    sending
+  )
   return { ...page, page: contacts }
 }
 export const reviewPage = internalQuery({

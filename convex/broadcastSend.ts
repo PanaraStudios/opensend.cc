@@ -8,14 +8,11 @@ import { v } from "convex/values"
 import { components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { internalMutation, type MutationCtx } from "./_generated/server"
-import { patchRow, insertRow } from "./counts"
-import { audience, draft, recipientPage } from "./broadcasts"
-import { createEmail, type ResolvedSender } from "./emails"
-import { finishBroadcast } from "./broadcastMetrics"
-import { unsubscribeLinks, unsubscribeContext } from "./unsubscribe"
-import { renderEmail } from "./email/render"
-import { listProperties } from "./audience"
-import { campaignTemplate, sendWhatsAppRecipient } from "./broadcastWhatsApp"
+import { patchRow } from "./counts"
+import { audience, recipientPage } from "./broadcasts"
+import { finishBroadcast, scheduleBroadcastSettle } from "./broadcastMetrics"
+import { broadcastChannels } from "./broadcastChannels"
+import { rowChannel } from "../lib/meta/templates"
 import { retirement } from "./teamLifecycle"
 
 const workflow = new WorkflowManager(components.workflow)
@@ -73,8 +70,6 @@ export const batch = internalMutation({
     )
       return true
     const topic = await audience(ctx, row)
-    const body = await draft(ctx, id)
-    if (!body) throw new Error("Broadcast not found")
     const page = await recipientPage(
       ctx,
       row,
@@ -84,98 +79,18 @@ export const batch = internalMutation({
       true,
       topic
     )
-    const target =
-      row.channel === "whatsapp"
-        ? await campaignTemplate(ctx, row.organizationId, row.whatsapp)
-        : null
-    const properties = target
-      ? []
-      : await listProperties(ctx, row.organizationId)
-    let linksContext: Awaited<ReturnType<typeof unsubscribeContext>> | undefined
-    const senders = new Map<string, ResolvedSender>()
-    for (const contact of page.page) {
-      if (target) {
-        await sendWhatsAppRecipient(ctx, row, contact, topic, target)
-        continue
-      }
-      const email = contact.email
-      if (!email) continue
-      const previous = await ctx.db
-        .query("broadcastRecipients")
-        .withIndex("by_broadcastId_and_email", (q) =>
-          q.eq("broadcastId", id).eq("email", email)
-        )
-        .unique()
-      if (previous) continue
-      linksContext ??= await unsubscribeContext(ctx)
-      const links = await unsubscribeLinks(
-        ctx,
-        {
-          organizationId: row.organizationId,
-          contactId: contact._id,
-          topicId: row.topicId ?? undefined,
-          broadcastId: id,
-        },
-        { ...linksContext, contact, topic }
-      )
-      const values: Record<string, string | undefined> = {
-        FIRST_NAME: contact.firstName || undefined,
-        LAST_NAME: contact.lastName || undefined,
-        EMAIL: email,
-        "contact.first_name": contact.firstName || undefined,
-        "contact.last_name": contact.lastName || undefined,
-        "contact.email": email,
-        ...links.variables,
-        RESEND_UNSUBSCRIBE_URL: links.pageUrl,
-      }
-      for (const property of properties) {
-        const value = contact.properties[property.key] ?? property.fallbackValue
-        values[property.key] = value
-        values[`contact.${property.key}`] = value
-        values[`contact.properties.${property.key}`] = value
-      }
-      const rendered = renderEmail(
-        { subject: row.subject, html: body.html, text: body.text },
-        values
-      )
-      const emailId = await createEmail(
-        ctx,
-        {
-          ...rendered,
-          from: row.from,
-          to: [email],
-          cc: [],
-          bcc: [],
-          replyTo: row.replyToAddresses ?? (row.replyTo ? [row.replyTo] : []),
-          headers: Object.entries(links.headers).map(([name, value]) => ({
-            name,
-            value,
-          })),
-          tags: [],
-          attachments: [],
-        },
-        {
-          organizationId: row.organizationId,
-          source: "dashboard",
-          broadcastId: id,
-          senders,
-        }
-      )
-      await insertRow(ctx, "broadcastRecipients", {
-        organizationId: row.organizationId,
-        broadcastId: id,
-        contactId: contact._id,
-        email,
-        emailId,
-        settled: false,
-        failed: false,
-      })
-    }
+    const channel = broadcastChannels[rowChannel(row)]
+    const prepared = await channel.prepare(ctx, row)
+    for (const contact of page.page)
+      await channel.sendRecipient(ctx, row, contact, topic, prepared)
     await patchRow(ctx, "broadcasts", id, {
       cursor: page.continueCursor,
       audienceDone: page.isDone,
     })
-    if (page.isDone) await finishBroadcast(ctx, id)
+    if (page.isDone) {
+      await finishBroadcast(ctx, id)
+      await scheduleBroadcastSettle(ctx, id)
+    }
     return page.isDone
   },
 })

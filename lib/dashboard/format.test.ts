@@ -2,6 +2,10 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  skipReasonLabel,
+  SKIP_REASON_TONE,
+  metaTemplateStatusLabel,
+  tenantStatusLabel,
   httpStatusLabel,
   httpStatusTone,
   messagingLimitLabel,
@@ -60,5 +64,20 @@ describe("messagingLimitLabel", () => {
     assert.equal(messagingLimitLabel("TIER_10K"), "10K per 24 hours")
     assert.equal(messagingLimitLabel("TIER_UNLIMITED"), "Unlimited")
     assert.equal(messagingLimitLabel(undefined), "Unknown")
+  })
+})
+
+describe("campaign outcomes", () => {
+  it("labels technical skip words and keeps opt-outs neutral", () => {
+    assert.equal(skipReasonLabel("no_phone"), "No phone number")
+    assert.equal(skipReasonLabel("contact_deleted"), "Contact deleted")
+    assert.equal(skipReasonLabel("missing_variables"), "Missing variables")
+    assert.equal(SKIP_REASON_TONE.marketing_opt_out, "secondary")
+    assert.equal(SKIP_REASON_TONE.missing_variables, "warning")
+  })
+  it("uses the same sentence spelling for Meta and tenant statuses", () => {
+    assert.equal(metaTemplateStatusLabel("IN_APPEAL"), "In appeal")
+    assert.equal(tenantStatusLabel("IN_APPEAL"), "In appeal")
+    assert.equal(tenantStatusLabel(), "Unknown")
   })
 })

@@ -1,3 +1,4 @@
+import { SYSTEM_EVENTS, triggerEventError } from "./automation"
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
@@ -308,4 +309,19 @@ it("supports a WhatsApp step and known system events for triggers and reply wait
     ),
     []
   )
+})
+
+it("all messaging reply events are valid triggers but custom system names are refused", () => {
+  assert.deepEqual(
+    SYSTEM_EVENTS.map((event) => event.value),
+    [
+      "opensend:whatsapp.message.received",
+      "opensend:messenger.message.received",
+      "opensend:instagram.message.received",
+    ]
+  )
+  for (const event of SYSTEM_EVENTS)
+    assert.equal(triggerEventError(event.value), null)
+  assert.match(triggerEventError("opensend:unknown")!, /reserved/)
+  assert.equal(triggerEventError("customer.created"), null)
 })
