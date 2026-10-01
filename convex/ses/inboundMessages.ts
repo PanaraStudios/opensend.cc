@@ -1,3 +1,5 @@
+import { fileReference } from "../tables/storage"
+import { deleteFile } from "../storage/files"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
@@ -159,25 +161,29 @@ export const get = internalQuery({
 export const stored = internalMutation({
   args: {
     id: v.id("inboundMessages"),
-    storageId: v.id("_storage"),
+    ...fileReference,
     size: v.number(),
   },
   returns: v.null(),
-  handler: async (ctx, { id, storageId, size }) => {
+  handler: async (ctx, { id, storageId, fileId, size }) => {
     const row = await ctx.db.get("inboundMessages", id)
     if (
       !row ||
       (await retirement(ctx, row.organizationId)) ||
-      (row.parsedAt !== undefined && !row.storageId)
+      (row.parsedAt !== undefined && !row.storageId && !row.fileId)
     ) {
-      await ctx.storage.delete(storageId)
+      await deleteFile(ctx, { storageId, fileId })
       return null
     }
-    if (row.storageId && row.storageId !== storageId)
-      await ctx.storage.delete(storageId)
+    if (
+      (row.storageId || row.fileId) &&
+      (row.storageId !== storageId || row.fileId !== fileId)
+    )
+      await deleteFile(ctx, { storageId, fileId })
     else
       await ctx.db.patch("inboundMessages", id, {
         storageId,
+        fileId,
         size,
         storedAt: Date.now(),
         transferError: undefined,

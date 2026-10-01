@@ -1,3 +1,4 @@
+import type { FileReference } from "../storage/files"
 import { requireEmailConfigured } from "../access"
 import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
@@ -270,6 +271,7 @@ export const change = internalMutation({
 type Attachment = {
   bytes?: Uint8Array
   path?: string
+  id?: string
   filename: string
   contentType: string
   contentId?: string
@@ -303,9 +305,10 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
   let size = 0
   return items.map((item): Attachment => {
     const fields = objectBody(item)
+    const id = stringField(fields, "id")
     const content = stringField(fields, "content")
     const path = stringField(fields, "path")
-    if (content === undefined && path === undefined)
+    if (content === undefined && path === undefined && id === undefined)
       throw apiError(
         422,
         "invalid_attachment",
@@ -328,6 +331,7 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
         throw apiError(422, "invalid_attachment", "Invalid attachment path.")
       }
     }
+    if (!filename && id) filename = "attachment"
     if (!filename)
       throw apiError(
         422,
@@ -353,7 +357,11 @@ function attachments(body: Record<string, unknown>, batch: boolean) {
         "Attachment `content_id` is not valid."
       )
     return {
-      ...(content === undefined ? { path } : { bytes: decodeBase64(content) }),
+      ...(id
+        ? { id }
+        : content === undefined
+          ? { path }
+          : { bytes: decodeBase64(content) }),
       filename,
       contentType,
       ...(contentId ? { contentId } : {}),
@@ -425,14 +433,34 @@ async function sendParsed(
   source?: "smtp",
   batch = false
 ) {
-  const stored: Id<"_storage">[] = []
+  const stored: FileReference[] = []
   try {
     const emails: NewEmail[] = []
     for (const { input, attachments } of parsed) {
       const files = []
       let totalBytes = 0
-      for (const { bytes, path, ...attachment } of attachments) {
-        if (path) {
+      for (const { bytes, path, id, ...attachment } of attachments) {
+        if (id) {
+          const file = await ctx.runQuery(internal.storage.files.authorized, {
+            organizationId: caller.organizationId,
+            caller,
+            id: id as Id<"storedFiles">,
+          })
+          if (file.state !== "ready" || file.feature !== "email")
+            throw invalid("Attachment upload is not ready")
+          totalBytes += file.size
+          if (Math.ceil(totalBytes / 3) * 4 > MAX_ATTACHMENTS)
+            throw invalid(
+              "Attachments can be at most 40 MB after base64 encoding"
+            )
+          files.push({
+            fileId: file._id,
+            filename: file.filename ?? attachment.filename,
+            contentType: file.contentType,
+            contentId: attachment.contentId,
+            size: file.size,
+          })
+        } else if (path) {
           const file = await ctx.runAction(
             internal.emailAttachments.fetchFile,
             {
@@ -442,7 +470,7 @@ async function sendParsed(
               maxBytes: Math.floor((MAX_ATTACHMENTS * 3) / 4) - totalBytes,
             }
           )
-          stored.push(file.storageId)
+          stored.push({ fileId: file.fileId, storageId: file.storageId })
           totalBytes += file.size
           files.push(file)
         } else {
@@ -456,8 +484,15 @@ async function sendParsed(
           const storageId = await ctx.storage.store(
             new Blob([bytes! as BlobPart], { type: attachment.contentType })
           )
-          stored.push(storageId)
-          files.push({ ...attachment, size: bytes!.length, storageId })
+          const file = await ctx.runAction(internal.storage.objects.adopt, {
+            organizationId: caller.organizationId,
+            feature: "email",
+            storageId,
+            contentType: attachment.contentType,
+            filename: attachment.filename,
+          })
+          stored.push({ fileId: file.fileId, storageId: file.storageId })
+          files.push({ ...attachment, size: bytes!.length, ...file })
         }
       }
       emails.push({ ...input, attachments: files })
@@ -469,7 +504,8 @@ async function sendParsed(
       batch,
     })
   } catch (e) {
-    for (const id of stored) await ctx.storage.delete(id)
+    for (const file of stored)
+      await ctx.runMutation(internal.storage.files.discard, file)
     throw e
   }
 }

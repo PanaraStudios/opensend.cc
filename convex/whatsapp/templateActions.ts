@@ -1,4 +1,5 @@
 "use node"
+import { readFile } from "../storage/objects"
 import { v, ConvexError } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -131,6 +132,57 @@ async function submitTemplate(
   })
   const { whatsapp, access } = target
   const components = target.components as TemplateComponent[]
+  for (const component of components) {
+    const example = record(component.example)
+    const handles = example.header_handle
+    if (
+      Array.isArray(handles) &&
+      typeof handles[0] === "string" &&
+      handles[0].startsWith("opensend-file:")
+    ) {
+      const file = await ctx.runQuery(internal.whatsapp.templates.sampleFile, {
+        templateId,
+        id: handles[0].slice("opensend-file:".length),
+        caller,
+      })
+      const blob = await readFile(ctx, { fileId: file._id })
+      if (
+        !blob ||
+        blob.size > SAMPLE_BYTES ||
+        !SAMPLE_TYPES.includes(blob.type)
+      )
+        throw new ConvexError("Use a JPEG, PNG, MP4 or PDF sample up to 16 MB")
+      // The sample is already in our bucket; Meta's template API still requires a resumable-upload handle.
+      const token = await decryptSecret(access.encryptedToken)
+      const session = await graph<{ id: string }>({
+        token,
+        method: "POST",
+        path: `${access.appId}/uploads`,
+        query: {
+          file_name: file.filename ?? "sample",
+          file_length: blob.size,
+          file_type: blob.type,
+        },
+        version: access.graphVersion,
+      })
+      if (!session.id?.startsWith("upload:"))
+        throw new ConvexError("Meta did not start the sample upload")
+      const uploaded = await graph<{ h: string }>({
+        token,
+        method: "POST",
+        path: session.id,
+        version: access.graphVersion,
+        body: {
+          bytes: new Uint8Array(await blob.arrayBuffer()),
+          contentType: blob.type,
+        },
+        headers: { authorization: `OAuth ${token}`, file_offset: "0" },
+      })
+      if (!uploaded.h)
+        throw new ConvexError("Meta did not return the sample handle")
+      component.example = { ...example, header_handle: [uploaded.h] }
+    }
+  }
   const problems = templateProblems({
     name: target.name,
     language: whatsapp.language,

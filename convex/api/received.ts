@@ -154,7 +154,18 @@ async function inlineHtml(
     if (!result.includes(cid)) continue
     // Leave room for metadata and JSON below Convex's 20 MiB HTTP limit.
     if (file.size > 6 * 1024 * 1024) return { html, html_format: "cid" }
-    const blob = await ctx.storage.get(file.storageId)
+    const url = file.fileId
+      ? await ctx.runAction(internal.storage.objects.url, {
+          fileId: file.fileId,
+        })
+      : null
+    const blob = file.fileId
+      ? url
+        ? await (await fetch(url)).blob()
+        : null
+      : file.storageId
+        ? await ctx.storage.get(file.storageId)
+        : null
     if (!blob) continue
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ""

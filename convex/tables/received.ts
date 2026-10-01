@@ -1,3 +1,4 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 
@@ -18,7 +19,7 @@ export const receivedContent = v.object({
   headers: v.record(v.string(), v.string()),
 })
 export const receivedAttachment = v.object({
-  storageId: v.id("_storage"),
+  ...fileReference,
   filename: v.union(v.string(), v.null()),
   contentType: v.string(),
   contentId: v.union(v.string(), v.null()),
@@ -35,7 +36,8 @@ export const receivedTables = {
     authentication: v.record(v.string(), v.string()),
     receivedAt: v.number(),
     expiresAt: v.number(),
-    rawId: v.id("_storage"),
+    rawId: v.optional(v.id("_storage")),
+    rawFileId: v.optional(v.id("storedFiles")),
     parseError: v.optional(v.string()),
   })
     .index("by_organizationId", ["organizationId"])

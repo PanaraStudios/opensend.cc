@@ -573,6 +573,7 @@ export const setStatus = mutation({
     own rules apply, like WhatsApp's 24-hour window. */
 export const reply = mutation({
   args: {
+    fileId: v.optional(v.id("storedFiles")),
     id: v.id("conversations"),
     text: v.optional(v.string()),
     template: v.optional(
@@ -584,10 +585,10 @@ export const reply = mutation({
     from: v.optional(v.string()),
   },
   returns: v.string(),
-  handler: async (ctx, { id, text, template, from }) => {
+  handler: async (ctx, { id, text, template, from, fileId }) => {
     const conversation = await writableThread(ctx, id)
     const organizationId = conversation.organizationId
-    if (!text?.trim() && !template)
+    if (!text?.trim() && !template && !fileId)
       throw new ConvexError("Write a message or choose a template")
     try {
       if (conversation.channel === "email") {
@@ -605,7 +606,26 @@ export const reply = mutation({
             subject: replySubject(last?.subject),
             text,
             headers: replyHeaders(last?.messageId),
-            attachments: [],
+            attachments: fileId
+              ? [
+                  await (async () => {
+                    const file = await ctx.db.get("storedFiles", fileId)
+                    if (
+                      !file ||
+                      file.organizationId !== organizationId ||
+                      file.feature !== "email" ||
+                      file.state !== "ready"
+                    )
+                      throw new ConvexError("Attachment is not ready")
+                    return {
+                      fileId,
+                      filename: file.filename ?? "attachment",
+                      contentType: file.contentType,
+                      size: file.size,
+                    }
+                  })(),
+                ]
+              : [],
             tags: [],
           },
           { organizationId, source: "dashboard" }
@@ -630,12 +650,41 @@ export const reply = mutation({
           channel: conversation.channel,
           from: conversation.accountId,
           to: identity.externalId,
-          body: template
-            ? {
-                type: "template",
-                template: { id: template.id, variables: template.variables },
-              }
-            : channelStrategies[conversation.channel].replyBody(text!),
+          body: fileId
+            ? await (async () => {
+                const file = await ctx.db.get("storedFiles", fileId)
+                if (!file || conversation.channel !== "whatsapp")
+                  throw new ConvexError(
+                    "File replies are supported for WhatsApp and email"
+                  )
+                const kind =
+                  file.contentType === "image/webp"
+                    ? "sticker"
+                    : file.contentType.startsWith("image/")
+                      ? "image"
+                      : file.contentType.startsWith("video/")
+                        ? "video"
+                        : file.contentType.startsWith("audio/")
+                          ? "audio"
+                          : "document"
+                return {
+                  type: kind,
+                  [kind]: {
+                    id: fileId,
+                    ...(kind === "document" ? { filename: file.filename } : {}),
+                    ...(["image", "video", "document"].includes(kind) &&
+                    text?.trim()
+                      ? { caption: text.trim() }
+                      : {}),
+                  },
+                }
+              })()
+            : template
+              ? {
+                  type: "template",
+                  template: { id: template.id, variables: template.variables },
+                }
+              : channelStrategies[conversation.channel].replyBody(text!),
         },
         { organizationId, source: "dashboard" }
       )

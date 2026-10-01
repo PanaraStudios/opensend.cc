@@ -587,7 +587,7 @@ test("media binary upload, stable replay, signed download, isolation and failure
   expect(
     new Uint8Array(
       await f.t.run(async (ctx) =>
-        (await ctx.storage.get(files[0].storageId))!.arrayBuffer()
+        (await ctx.storage.get(files[0].storageId!))!.arrayBuffer()
       )
     )
   ).toEqual(bytes)
@@ -647,7 +647,9 @@ test("media binary upload, stable replay, signed download, isolation and failure
     ctx.db.patch("channelMediaUploads", files[0]._id, { expiresAt: Date.now() })
   )
   await f.t.mutation(internal.channels.mediaUploads.prune, {})
-  expect(await f.t.run((ctx) => ctx.storage.get(files[0].storageId))).toBeNull()
+  expect(
+    await f.t.run((ctx) => ctx.storage.get(files[0].storageId!))
+  ).toBeNull()
 })
 
 test("retirement and generation fences prevent later claims or records", async () => {

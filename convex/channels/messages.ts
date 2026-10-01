@@ -1,3 +1,4 @@
+import { messageFiles } from "../storage/media"
 import { isPageChannel } from "../../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
@@ -261,6 +262,12 @@ export async function createChannelMessage(
     )
   const now = Date.now()
   const data = strategy.mediaData(payload, type)
+  const storedMedia = await messageFiles(
+    ctx,
+    payload,
+    opts.organizationId,
+    account._id
+  )
   const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
     account,
@@ -357,6 +364,7 @@ export async function createChannelMessage(
     messageId: message._id,
     payload: JSON.stringify(payload),
     ...(rendered ? { rendered } : {}),
+    ...(storedMedia.length ? { media: storedMedia } : {}),
     ...(upload && upload.accountId === account._id
       ? {
           media: [
@@ -479,6 +487,7 @@ export const claim = internalMutation({
       token: v.string(),
       version: v.string(),
       phoneNumberId: v.string(),
+      organizationId: v.string(),
       payload: v.string(),
       messagingType: v.optional(v.string()),
     })
@@ -583,6 +592,7 @@ export const claim = internalMutation({
       token,
       version: app.graphVersion,
       phoneNumberId: channelStrategies[message.channel].endpoint(account),
+      organizationId: message.organizationId,
       payload: body.payload,
       ...(typeof payload.messaging_type === "string"
         ? { messagingType: payload.messaging_type }

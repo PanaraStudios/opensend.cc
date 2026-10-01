@@ -439,7 +439,7 @@ test("media fetch stores bytes and signed downloads reject tampering, expiry, cr
   })
   expect(stub.spy.mock.calls[1][1]).toMatchObject({
     headers: { authorization: "Bearer connection-test-token" },
-    maxBytes: 25 * 1024 * 1024,
+    maxBytes: 100 * 1024 * 1024,
   })
   const link = await f.t.run((ctx) =>
     mediaDownloadLink(ctx, messageId, "media-1")
@@ -516,7 +516,7 @@ test("transient media failures retry; oversized media is final; deletion races r
   stub.spy.mockResolvedValue(
     Response.json({
       url: "https://media.example.test/file",
-      file_size: 26 * 1024 * 1024,
+      file_size: 101 * 1024 * 1024,
     })
   )
   await f.t.action(internal.channels.media.fetch, {
@@ -524,7 +524,7 @@ test("transient media failures retry; oversized media is final; deletion races r
     mediaId: "media-2",
     attempt: 5,
   })
-  expect((await rows(f)).contents[0].media![0].error).toContain("25 MB")
+  expect((await rows(f)).contents[0].media![0].error).toContain("100 MB")
   const storageId = await f.t.run((ctx) =>
     ctx.storage.store(new Blob(["orphan"]))
   )

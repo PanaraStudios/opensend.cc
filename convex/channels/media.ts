@@ -6,8 +6,11 @@ import { graph, metaFetch } from "../meta/graph"
 import { decryptSecret } from "../secrets"
 import { MetaError } from "../../lib/meta/errors"
 import { object, string } from "../../lib/meta/webhooks"
+import { Readable } from "node:stream"
+import { storeFile } from "../storage/objects"
+import { objectStorageConfig } from "../storage/config"
 
-const MAX_BYTES = 25 * 1024 * 1024
+const MAX_BYTES = 100 * 1024 * 1024
 /** Refresh Meta's short-lived media URL on every attempt. The file stays in
     Convex storage; both HTTP calls go through the public-host guard.
     https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media */
@@ -45,14 +48,15 @@ export const fetch = internalAction({
         throw new MetaError({
           status: 413,
           isTransient: false,
-          message: `${label} media is missing or exceeds 25 MB`,
+          message: `${label} media is missing or exceeds 100 MB`,
         })
       const response = await metaFetch(string(metadata.url), {
         ...(context.media.url
           ? {}
           : { headers: { authorization: `Bearer ${token}` } }),
         maxBytes: MAX_BYTES,
-        timeoutMs: 30_000,
+        timeoutMs: 240_000,
+        stream: !!objectStorageConfig(),
       })
       if (!response.ok)
         throw new MetaError({
@@ -60,36 +64,42 @@ export const fetch = internalAction({
           isTransient: false,
           message: `${label} media returned HTTP ${response.status}`,
         })
-      const bytes = await response.arrayBuffer()
-      if (bytes.byteLength > MAX_BYTES)
-        throw new MetaError({
-          status: 413,
-          isTransient: false,
-          message: `${label} media exceeds 25 MB`,
-        })
       const contentType =
         string(metadata.mime_type) ||
         (context.media.url ? response.headers.get("content-type") : null) ||
         context.media.contentType
-      const storageId = await ctx.storage.store(
-        new Blob([bytes], { type: contentType })
-      )
+      if (!response.body) throw new Error("Media body is missing")
+      const file = await storeFile(ctx, {
+        organizationId: context.organizationId,
+        feature: "media",
+        contentType,
+        filename: context.media.filename,
+        body: Readable.fromWeb(
+          response.body as import("node:stream/web").ReadableStream<Uint8Array>
+        ),
+        maxBytes: MAX_BYTES,
+      })
+      const size = file.fileId
+        ? (await ctx.runQuery(internal.storage.files.get, { id: file.fileId }))!
+            .size
+        : (await ctx.storage.get(file.storageId!))!.size
       try {
         await ctx.runMutation(internal.channels.mediaState.complete, {
           messageId,
           mediaId,
           file: {
             mediaId,
-            storageId,
+            ...file,
             contentType,
-            size: bytes.byteLength,
+            mimeType: context.media.mimeType ?? context.media.contentType,
+            size,
             ...(context.media.filename
               ? { filename: context.media.filename }
               : {}),
           },
         })
       } catch (error) {
-        await ctx.storage.delete(storageId)
+        await ctx.runMutation(internal.storage.files.discard, file)
         throw error
       }
     } catch (error) {

@@ -1,3 +1,4 @@
+import { retainFile } from "./storage/files"
 import { includeSelected } from "../lib/dashboard/options"
 import { broadcastRecipientProblem } from "./broadcastMetrics"
 import type { MetricContext } from "./metricRows"
@@ -305,6 +306,19 @@ export async function createEmail(
     if (problem) throw invalid(problem)
   }
   for (const attachment of input.attachments) {
+    if (attachment.fileId) {
+      const file = await retainFile(
+        ctx,
+        attachment.fileId,
+        meta.organizationId,
+        "email"
+      )
+      if (
+        file.size !== attachment.size ||
+        file.contentType !== attachment.contentType
+      )
+        throw invalid("Attachment metadata does not match the uploaded file")
+    }
     const problem = attachmentNameError(attachment.filename)
     if (problem) throw apiError(422, "invalid_attachment", problem)
   }

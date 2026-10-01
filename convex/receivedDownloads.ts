@@ -1,3 +1,5 @@
+import { fileReference } from "./tables/storage"
+import { fileUrl } from "./storage/urls"
 import { signedFileLink, verifyFileToken } from "./fileDownloads"
 import type { HttpRouter } from "convex/server"
 import { v } from "convex/values"
@@ -16,6 +18,22 @@ export async function downloadLink(
   attachmentId?: string,
   outbound = false
 ) {
+  const ref = await ctx.runQuery(internal.receivedDownloads.file, {
+    emailId,
+    attachmentId,
+    outbound,
+  })
+  const stored = ref?.fileId
+    ? await ctx.runQuery(internal.storage.files.get, { id: ref.fileId })
+    : null
+  if (stored?.provider === "object" && ref) {
+    const url = await fileUrl(ctx, ref, { filename: ref.filename })
+    if (url)
+      return {
+        download_url: url,
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+      }
+  }
   return signedFileLink(
     ctx,
     outbound ? SENT_PREFIX : PREFIX,
@@ -32,7 +50,7 @@ export const file = internalQuery({
   returns: v.union(
     v.null(),
     v.object({
-      storageId: v.id("_storage"),
+      ...fileReference,
       filename: v.string(),
       contentType: v.string(),
     })
@@ -57,6 +75,7 @@ export const file = internalQuery({
       return file
         ? {
             storageId: file.storageId,
+            fileId: file.fileId,
             filename: file.filename,
             contentType: file.contentType,
           }
@@ -73,6 +92,7 @@ export const file = internalQuery({
     if (!args.attachmentId)
       return {
         storageId: email.rawId,
+        fileId: email.rawFileId,
         filename: "message.eml",
         contentType: "message/rfc822",
       }
@@ -86,6 +106,7 @@ export const file = internalQuery({
     return attachment?.emailId === email._id
       ? {
           storageId: attachment.storageId,
+          fileId: attachment.fileId,
           filename: attachment.filename ?? "attachment",
           contentType: attachment.contentType,
         }
@@ -118,7 +139,20 @@ export const download = httpAction(async (ctx, request) => {
     outbound,
   })
   if (!file) return new Response(null, { status: 404 })
-  const blob = await ctx.storage.get(file.storageId)
+  const stored = file.fileId
+    ? await ctx.runQuery(internal.storage.files.get, { id: file.fileId })
+    : null
+  if (stored?.provider === "object") {
+    const url = await fileUrl(ctx, file, { filename: file.filename })
+    if (url)
+      return new Response(null, {
+        status: 302,
+        headers: { Location: url, "Cache-Control": "no-store" },
+      })
+  }
+  const storageId =
+    stored?.provider === "convex" ? stored.storageId : file.storageId
+  const blob = storageId ? await ctx.storage.get(storageId) : null
   if (!blob) return new Response(null, { status: 404 })
   // Proxy the file: redirecting would disclose a permanent Convex storage URL.
   return new Response(blob, {

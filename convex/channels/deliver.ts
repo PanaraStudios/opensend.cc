@@ -1,4 +1,5 @@
 "use node"
+import { mediaLinks } from "../storage/objects"
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -31,7 +32,13 @@ export const deliver = internalAction({
           path: `${claim.phoneNumberId}/messages`,
           body: {
             json: {
-              ...object(JSON.parse(claim.payload)),
+              ...object(
+                await mediaLinks(
+                  ctx,
+                  JSON.parse(claim.payload),
+                  claim.organizationId
+                )
+              ),
               ...(claim.messagingType
                 ? { messaging_type: claim.messagingType }
                 : {}),

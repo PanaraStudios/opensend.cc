@@ -1,3 +1,4 @@
+import { deleteFile } from "./storage/files"
 import { v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -170,7 +171,7 @@ export const complete = internalMutation({
   handler: async (ctx, args) => {
     const inbound = await ctx.db.get("inboundMessages", args.id)
     if (
-      !inbound?.storageId ||
+      (!inbound?.storageId && !inbound?.fileId) ||
       inbound.parsedAt !== undefined ||
       (await retirement(ctx, inbound.organizationId))
     )
@@ -204,6 +205,7 @@ export const complete = internalMutation({
       receivedAt: inbound._creationTime,
       expiresAt: inbound._creationTime + RECEIVED_RETENTION,
       rawId: inbound.storageId,
+      rawFileId: inbound.fileId,
       parseError: args.parseError,
     })
     await ctx.db.insert("receivedContents", { emailId: id, ...args.content })
@@ -263,7 +265,7 @@ export async function deleteReceived(
     .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
     .take(MAX_RECEIVED_ATTACHMENTS)
   for (const file of attachments) {
-    await ctx.storage.delete(file.storageId)
+    await deleteFile(ctx, file)
     await ctx.db.delete("receivedAttachments", file._id)
   }
   const content = await ctx.db
@@ -271,11 +273,14 @@ export async function deleteReceived(
     .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
     .unique()
   if (content) await ctx.db.delete("receivedContents", content._id)
-  await ctx.storage.delete(email.rawId)
+  await deleteFile(ctx, { storageId: email.rawId, fileId: email.rawFileId })
   // Keep the SNS deduplication tombstone so a retry cannot resurrect expired mail.
   const inbound = await ctx.db.get("inboundMessages", email.inboundId)
   if (inbound)
-    await ctx.db.patch("inboundMessages", inbound._id, { storageId: undefined })
+    await ctx.db.patch("inboundMessages", inbound._id, {
+      storageId: undefined,
+      fileId: undefined,
+    })
   await deleteRow(ctx, "receivedEmails", email._id)
 }
 export const prune = internalMutation({

@@ -1,3 +1,4 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 import { phaseValue, regionValue } from "../ses/contracts"
@@ -45,7 +46,7 @@ export const receivingTables = {
     objectKey: v.string(),
     /** The SES notification JSON, verbatim. */
     notification: v.string(),
-    storageId: v.optional(v.id("_storage")),
+    ...fileReference,
     size: v.optional(v.number()),
     storedAt: v.optional(v.number()),
     parsedAt: v.optional(v.number()),
