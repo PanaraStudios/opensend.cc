@@ -1,3 +1,5 @@
+import { routing } from "../ivr/validators"
+import { own as ownIvr } from "../ivr/definitions"
 import { emitEvent } from "../events"
 import { v } from "convex/values"
 import { internalQuery, internalMutation, query } from "../_generated/server"
@@ -23,6 +25,7 @@ export const cached = query({
     return {
       handling_mode: row?.mode ?? defaultMode(),
       calling: JSON.parse(row?.settings ?? "{}"),
+      routing: row?.routing ?? { kind: "agents" },
       restrictions: row?.restrictions ? JSON.parse(row.restrictions) : null,
     }
   },
@@ -33,11 +36,14 @@ export const store = internalMutation({
     settings: v.string(),
     mode: v.optional(handlingMode),
     at: v.optional(v.number()),
+    routing: v.optional(routing),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const account = await ctx.db.get("channelAccounts", args.accountId)
     if (!account || (await retirement(ctx, account.organizationId))) return null
+    if (args.routing?.kind === "ivr")
+      await ownIvr(ctx, account.organizationId, args.routing.ivrId)
     const previous = await numberSettings(ctx, args.accountId)
     if (previous && args.at !== undefined && args.at < previous.updatedAt)
       return null
@@ -47,6 +53,7 @@ export const store = internalMutation({
       mode: args.mode ?? previous?.mode ?? defaultMode(),
       settings: args.settings,
       updatedAt: args.at ?? Date.now(),
+      ...(args.routing ? { routing: args.routing } : {}),
     }
     if (previous) await ctx.db.patch("callingSettings", previous._id, fields)
     else await ctx.db.insert("callingSettings", fields)
@@ -166,5 +173,15 @@ export const announcement = internalQuery({
         "Upload an Ogg Opus voicemail announcement under 60 seconds."
       )
     return file
+  },
+})
+
+export const routingTarget = internalQuery({
+  args: { ...actorArgs, ivrId: v.id("ivrs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true)
+    await ownIvr(ctx, args.organizationId, args.ivrId)
+    return null
   },
 })

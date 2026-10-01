@@ -1,6 +1,12 @@
 /** Shared REST, OAuth and dashboard permission catalog. Write includes read. */
 export const API_RESOURCES = [
   {
+    id: "ivrs",
+    label: "IVRs",
+    group: "Messaging",
+    description: "Manage call menus, prompts and routing.",
+  },
+  {
     id: "media",
     label: "Media",
     group: "Messaging",

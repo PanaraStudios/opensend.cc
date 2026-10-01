@@ -1,3 +1,4 @@
+import type { routing } from "../ivr/validators"
 import type { HttpRouter } from "convex/server"
 import { internal } from "../_generated/api"
 import {
@@ -96,6 +97,7 @@ export function registerCallingRoutes(http: HttpRouter) {
             from: params.id,
             ...(method === "POST"
               ? {
+                  routing: callingRouting(input.routing),
                   calling: objectField(input, "calling"),
                   mode: enumField(input, "handling_mode", [
                     "gateway",
@@ -160,4 +162,24 @@ export function registerCallingRoutes(http: HttpRouter) {
       return { body: { id } }
     },
   })
+}
+
+function callingRouting(value: unknown): typeof routing.type | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw invalid("Invalid routing")
+  const r = value as Record<string, unknown>
+  if ((r.kind === "agents" || r.kind === "api") && Object.keys(r).length === 1)
+    return { kind: r.kind }
+  if (
+    r.kind === "ivr" &&
+    typeof r.ivrId === "string" &&
+    /^[a-zA-Z0-9]{1,256}$/.test(r.ivrId) &&
+    Object.keys(r).length === 2
+  )
+    return {
+      kind: "ivr",
+      ivrId: r.ivrId as import("../_generated/dataModel").Id<"ivrs">,
+    }
+  throw invalid("Use routing agents, api or ivr with ivrId")
 }

@@ -3,6 +3,8 @@ export type RouteTarget =
 export interface RouteRequest {
   callId: string
   target: RouteTarget
+  ivrId?: string
+  botId?: string
   extension?: string
   record?: boolean
   organizationId?: string

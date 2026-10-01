@@ -105,6 +105,7 @@ export const WEBHOOK_EVENTS = [
   "email.failed",
   "email.scheduled",
   "email.suppressed",
+  "whatsapp.call.ivr_completed",
   "whatsapp.call.ringing",
   "whatsapp.call.connected",
   "whatsapp.call.completed",
