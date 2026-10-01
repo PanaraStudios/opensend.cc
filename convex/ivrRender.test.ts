@@ -212,3 +212,54 @@ test("PATCH null clears a saved provider voice and business hours", async () => 
     })
   ).rejects.toBeDefined()
 })
+
+test("saving a corrected provider key retries failed content while retaining its hash", async () => {
+  const f = await setup(),
+    wav = await pcmWav(new Uint8Array([1, 0])).arrayBuffer()
+  const http = vi
+    .spyOn(net, "publicFetch")
+    .mockResolvedValue(new Response("invalid key", { status: 401 }))
+  await f.t.action(internal.ivr.rendering.render, { id: f.id })
+  const before = await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  const key = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "provider",
+    body: JSON.stringify({
+      provider: "sarvam",
+      label: "Corrected",
+      key: "corrected-provider-key",
+    }),
+  })
+  await f.owner.client.action(api.ivr.definitions.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "update",
+    id: f.id,
+    body: JSON.stringify({
+      promptVoice: { ...f.input.promptVoice, credentialId: key.id },
+    }),
+  })
+  const pending = await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  expect(pending.prompt_status).toBe("pending_render")
+  expect(pending.prompt_renders[0].hash).toBe(before.prompt_renders[0].hash)
+  http.mockImplementation(async (_url, options) => {
+    expect(options!.headers!["api-subscription-key"]).toBe(
+      "corrected-provider-key"
+    )
+    return Response.json({ audios: [Buffer.from(wav).toString("base64")] })
+  })
+  await f.t.action(internal.ivr.rendering.render, { id: f.id })
+  expect(
+    (
+      await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+        organizationId: f.owner.team,
+        id: f.id,
+      })
+    ).prompt_status
+  ).toBe("ready")
+})

@@ -156,19 +156,25 @@ async function cachePrompts(
     if (p.kind === "tts") {
       const hash = await renderHash(d, p),
         spec = renderSpec(d, p)
-      if (
-        !(await ctx.db
-          .query("ivrPromptRenders")
-          .withIndex("by_organizationId_and_hash", (q) =>
-            q.eq("organizationId", organizationId).eq("hash", hash)
-          )
-          .unique())
-      )
+      const cached = await ctx.db
+        .query("ivrPromptRenders")
+        .withIndex("by_organizationId_and_hash", (q) =>
+          q.eq("organizationId", organizationId).eq("hash", hash)
+        )
+        .unique()
+      if (!cached)
         await ctx.db.insert("ivrPromptRenders", {
           organizationId,
           hash,
           ...spec,
           status: "pending_render",
+        })
+      else if (cached.status === "failed")
+        await ctx.db.patch("ivrPromptRenders", cached._id, {
+          status: "pending_render",
+          error: undefined,
+          lease: undefined,
+          leaseUntil: undefined,
         })
     }
 }

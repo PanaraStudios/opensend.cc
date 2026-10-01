@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
+import { minuteUsage } from "./voice/usage"
 import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 beforeEach(() => {
@@ -211,6 +212,9 @@ test("bot tests bypass production budgets and concurrency accounting, expose dia
     { ...input, ...args }
   )
   expect(second.botActive).toBe(true)
+  expect(
+    await f.t.run((ctx) => minuteUsage.sum(ctx, { namespace: f.owner.team }))
+  ).toBe(0)
   const envelope = (data: Record<string, unknown>) => ({
     nonce: crypto.randomUUID(),
     expiresAt: Date.now() + 60000,
@@ -253,6 +257,7 @@ test("bot tests bypass production budgets and concurrency accounting, expose dia
       },
     })
   )
+  vi.setSystemTime(Date.now() + 60000)
   await f.t.mutation(
     internal.voice.gateway.event,
     envelope({
@@ -262,6 +267,9 @@ test("bot tests bypass production budgets and concurrency accounting, expose dia
       usage: { inputTokens: 12, audioSeconds: 1 },
     })
   )
+  expect(
+    await f.t.run((ctx) => minuteUsage.sum(ctx, { namespace: f.owner.team }))
+  ).toBe(0)
   const transcript = await f.owner.client.query(
     api.voice.resources.dashboardTranscript,
     { organizationId: f.owner.team, id: call._id, limit: 100 }
