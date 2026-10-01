@@ -180,6 +180,7 @@ import {
   canGoNext,
   hasPages,
   lastLoadedPage,
+  pagedListState,
   pageLabel,
   type Pager,
 } from "@/lib/dashboard/pagination"
@@ -645,19 +646,22 @@ export function EventTrail({
 
 /* ----------------------------------------------------------------- tables */
 
+/** Disable the frame when a table lives inside an existing panel or card. */
 export function ResourceTable({
   children,
   headers,
   className,
+  framed = true,
 }: {
   headers: React.ReactNode
   children: React.ReactNode
   className?: string
+  framed?: boolean
 }) {
   const ref = useTableShortcuts()
   return (
-    <div ref={ref} className={cn("frame", className)}>
-      <div className="panel overflow-hidden p-0">
+    <div ref={ref} className={cn(framed && "frame", className)}>
+      <div className={cn(framed && "panel", "overflow-hidden p-0")}>
         <Table>
           <TableHeader>
             <TableRow>{headers}</TableRow>
@@ -792,9 +796,12 @@ export function usePagedList<
   lead: readonly Row[] = NO_ROWS,
   tail: readonly Row[] = NO_ROWS
 ) {
-  const query = usePaginatedQuery(list, args, {
-    initialNumItems: PAGE_SIZES[0],
-  })
+  const query = pagedListState(
+    usePaginatedQuery(list, args, {
+      initialNumItems: PAGE_SIZES[0],
+    }),
+    args === "skip"
+  )
   const counted = useQuery(
     count as FunctionReference<"query">,
     args === "skip" ? "skip" : args
@@ -808,9 +815,11 @@ export function usePagedList<
     [lead, tail, query.results, query.status, map]
   )
   const total =
-    counted?.total == null
-      ? null
-      : { total: counted.total + lead.length + tail.length }
+    args === "skip"
+      ? { total: lead.length + tail.length }
+      : counted?.total == null
+        ? null
+        : { total: counted.total + lead.length + tail.length }
   return { ...query, rows, ...useLoadedPagination(rows, query, total) }
 }
 const identity = <T,>(item: T) => item

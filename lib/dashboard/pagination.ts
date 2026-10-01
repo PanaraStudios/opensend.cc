@@ -57,3 +57,25 @@ export function pageLabel(pager: Pager, noun: string, plural = `${noun}s`) {
   const pages = Math.max(1, Math.ceil(size / pager.pageSize))
   return `Page ${formatNumber(pager.page + 1)} – ${formatNumber(pages)}${more} of ${formatNumber(size)}${more} ${plural}`
 }
+
+/** Convex reports LoadingFirstPage for skipped queries. A skipped list is
+    exhausted and empty, including when switching away from loaded results. */
+export function pagedListState<
+  Query extends {
+    results: unknown[]
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted"
+    loadMore: (numItems: number) => void
+  },
+>(query: Query, skipped: boolean) {
+  return skipped
+    ? {
+        ...query,
+        results: EMPTY_RESULTS as Query["results"],
+        isLoading: false,
+        status: "Exhausted" as const,
+        loadMore: noLoadMore,
+      }
+    : query
+}
+const EMPTY_RESULTS: never[] = []
+const noLoadMore: (numItems: number) => void = () => {}
