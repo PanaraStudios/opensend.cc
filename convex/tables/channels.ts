@@ -1,20 +1,24 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 import { tagValue } from "./emails"
+import {
+  CHANNEL_IDS,
+  PAGE_CHANNELS,
+  type MessagingChannel,
+} from "../../lib/channels"
 
-const literals = <T extends string>(values: readonly T[]) =>
+export const literals = <T extends string>(values: readonly T[]) =>
   v.union(...values.map((value) => v.literal(value)))
 
 /** Every channel a conversation can be on. */
-export const CHANNELS = ["email", "whatsapp", "messenger", "instagram"] as const
+export const CHANNELS = CHANNEL_IDS
 export const channelValue = literals(CHANNELS)
 /** The Meta messaging channels. */
-export const MESSAGING_CHANNELS = [
-  "whatsapp",
-  "messenger",
-  "instagram",
-] as const
+export const MESSAGING_CHANNELS = CHANNEL_IDS.filter(
+  (channel): channel is MessagingChannel => channel !== "email"
+)
 export const messagingChannelValue = literals(MESSAGING_CHANNELS)
+export const pageChannelValue = literals(PAGE_CHANNELS)
 
 /** A sending endpoint's state: a phone number waits for registration. */
 export const CHANNEL_ACCOUNT_STATUSES = [
@@ -98,7 +102,7 @@ export const channelTables = {
     throughputMps: v.number(),
     /** Meta's messaging limit tier, like `TIER_1K`. */
     messagingLimit: v.optional(v.string()),
-    /** A Page access token; WhatsApp numbers use their connection's token. */
+    /** Legacy Page token. New accounts use the token on their connection. */
     encryptedToken: v.optional(v.string()),
     registeredAt: v.optional(v.number()),
     checkedAt: v.optional(v.number()),
@@ -136,6 +140,7 @@ export const channelTables = {
     /** WhatsApp error 131050: the person stopped marketing messages. */
     marketingOptOut: v.boolean(),
     lastInboundAt: v.optional(v.number()),
+    profileLookedUpAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_channel_and_scopeId_and_externalId", [
@@ -185,11 +190,7 @@ export const channelTables = {
       "accountId",
       "channelContactId",
     ])
-    .index("by_channelContactId", ["channelContactId"])
-    .searchIndex("search_search", {
-      searchField: "search",
-      filterFields: ["organizationId", "channel", "status"],
-    }),
+    .index("by_channelContactId", ["channelContactId"]),
   channelMessages: defineTable({
     organizationId: v.string(),
     channel: messagingChannelValue,
@@ -234,11 +235,10 @@ export const channelTables = {
     error: v.optional(v.string()),
     errorCode: v.optional(v.number()),
     errorTitle: v.optional(v.string()),
-    /** Sender, recipient and preview as words, for the list's search. */
-    search: v.string(),
+    /** Legacy search text, retained for existing documents. */
+    search: v.optional(v.string()),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_status", ["organizationId", "status"])
     .index("by_organizationId_and_channel", ["organizationId", "channel"])
     .index("by_team_channel_status_direction", [
       "organizationId",
@@ -265,12 +265,7 @@ export const channelTables = {
       "direction",
     ])
     .index("by_conversationId", ["conversationId"])
-    .index("by_channel_and_externalId", ["channel", "externalId"])
-    .index("by_expiresAt", ["expiresAt"])
-    .searchIndex("search_search", {
-      searchField: "search",
-      filterFields: ["organizationId", "channel", "status"],
-    }),
+    .index("by_channel_and_externalId", ["channel", "externalId"]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),

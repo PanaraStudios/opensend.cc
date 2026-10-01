@@ -28,7 +28,14 @@ export const deliver = internalAction({
           version: claim.version,
           method: "POST",
           path: `${claim.phoneNumberId}/messages`,
-          body: { json: JSON.parse(claim.payload) },
+          body: {
+            json: {
+              ...object(JSON.parse(claim.payload)),
+              ...(claim.messagingType
+                ? { messaging_type: claim.messagingType }
+                : {}),
+            },
+          },
         })
       )
       const externalId =

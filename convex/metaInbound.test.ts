@@ -653,9 +653,7 @@ test("bounded body reader preserves raw bytes across UTF-8 chunk boundaries", as
     )
   expect(await limitedBody(response(), 10)).toBe("A😀B")
   expect(await limitedBody(response(), 10, { raw: true })).toEqual(bytes)
-  expect(
-    await limitedBody(response(), 2, { raw: true, truncate: true })
-  ).toEqual(bytes.slice(0, 2))
+  expect(await limitedBody(response(), 2, { truncate: true })).toBe("A�")
   await expect(
     limitedBody(response(), 2, { raw: true })
   ).rejects.toBeInstanceOf(BodyTooLarge)

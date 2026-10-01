@@ -25,8 +25,9 @@ import {
 } from "./audience"
 import {
   createChannelMessage,
-  resolveWhatsAppAccount,
+  resolveChannelAccount,
 } from "./channels/messages"
+import { findWhatsAppIdentity } from "./channels/identity"
 import { resolveVariables } from "../lib/meta/variables"
 import { recipientSkipReason, resolveWhatsAppSend } from "./broadcastWhatsApp"
 import { createEmail } from "./emails"
@@ -353,10 +354,11 @@ export const effect = internalMutation({
             : null
         const account =
           target?.account ??
-          (await resolveWhatsAppAccount(
+          (await resolveChannelAccount(
             ctx,
             run.organizationId,
-            node.accountId
+            node.accountId,
+            "whatsapp"
           ))
         const reason = target
           ? await recipientSkipReason(
@@ -372,18 +374,11 @@ export const effect = internalMutation({
         if (!contact?.phone)
           return { skipped: true, output: { reason: "no_phone" } }
         if (node.mode === "text") {
-          const identity = await ctx.db
-            .query("channelContacts")
-            .withIndex(
-              "by_organizationId_and_channel_and_scopeId_and_externalId",
-              (q) =>
-                q
-                  .eq("organizationId", run.organizationId)
-                  .eq("channel", "whatsapp")
-                  .eq("scopeId", "whatsapp")
-                  .eq("externalId", contact.phone!.slice(1))
-            )
-            .unique()
+          const identity = await findWhatsAppIdentity(
+            ctx,
+            run.organizationId,
+            contact.phone
+          )
           const conversation = identity
             ? await ctx.db
                 .query("conversations")
@@ -400,6 +395,7 @@ export const effect = internalMutation({
         const messageId = await createChannelMessage(
           ctx,
           {
+            channel: "whatsapp",
             from: account._id,
             to: contact.phone,
             body:

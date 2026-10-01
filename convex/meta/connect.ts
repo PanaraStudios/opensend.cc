@@ -1,3 +1,4 @@
+import type { PageChannel } from "../../lib/channels"
 import { v, ConvexError } from "convex/values"
 import {
   paginationOptsValidator,
@@ -21,7 +22,11 @@ import {
   metaConnectionMethodValue,
   metaConnectionStatusValue,
 } from "../tables/meta"
-import { channelQualityValue, messagingChannelValue } from "../tables/channels"
+import {
+  channelQualityValue,
+  messagingChannelValue,
+  pageChannelValue,
+} from "../tables/channels"
 import { findMetaApp } from "./app"
 import { NUMBER_LIMIT, registration } from "../../lib/meta/whatsapp-account"
 
@@ -66,10 +71,15 @@ function publicConnection(connection: Doc<"metaConnections">) {
   return rest
 }
 
-async function publicAccount(ctx: QueryCtx, account: Doc<"channelAccounts">) {
+async function publicAccount(
+  ctx: QueryCtx,
+  account: Doc<"channelAccounts">,
+  existing?: Doc<"metaConnections">
+) {
   const { encryptedToken: _token, ...rest } = account
   void _token
-  const connection = await ctx.db.get("metaConnections", account.connectionId)
+  const connection =
+    existing ?? (await ctx.db.get("metaConnections", account.connectionId))
   return { ...rest, businessName: connection?.businessName ?? "" }
 }
 
@@ -77,24 +87,6 @@ async function publicAccount(ctx: QueryCtx, account: Doc<"channelAccounts">) {
     phone number id can have several rows over time. */
 export const live = (account: Doc<"channelAccounts">) =>
   account.disconnectedAt === undefined
-
-export const listConnections = query({
-  args: { organizationId: v.string() },
-  returns: v.array(connectionValue),
-  handler: async (ctx, { organizationId }) => {
-    await requireTeam(ctx, organizationId, "read")
-    const rows = await ctx.db
-      .query("metaConnections")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId)
-      )
-      .order("desc")
-      .take(100)
-    return rows
-      .filter((row) => row.status !== "disconnected")
-      .map(publicConnection)
-  },
-})
 
 const accountFilters = {
   organizationId: v.string(),
@@ -165,14 +157,9 @@ export const getAccount = query({
     if (!account) return null
     const connection = await ctx.db.get("metaConnections", account.connectionId)
     if (!connection) return null
-    const waba = account.wabaId
-      ? await ctx.db
-          .query("whatsappBusinessAccounts")
-          .withIndex("by_wabaId", (q) => q.eq("wabaId", account.wabaId!))
-          .unique()
-      : null
+    const waba = account.wabaId ? await wabaByWabaId(ctx, account.wabaId) : null
     return {
-      account: await publicAccount(ctx, account),
+      account: await publicAccount(ctx, account, connection),
       connection: publicConnection(connection),
       wabaName:
         waba?.organizationId === account.organizationId ? waba.name : undefined,
@@ -206,10 +193,7 @@ async function assertWabaFree(
   ctx: QueryCtx,
   { organizationId, wabaId }: { organizationId: string; wabaId: string }
 ) {
-  const waba = await ctx.db
-    .query("whatsappBusinessAccounts")
-    .withIndex("by_wabaId", (q) => q.eq("wabaId", wabaId))
-    .unique()
+  const waba = await wabaByWabaId(ctx, wabaId)
   if (waba && waba.organizationId !== organizationId)
     throw new ConvexError(WABA_TAKEN)
   return waba
@@ -220,10 +204,7 @@ export const wabaConnected = internalQuery({
   args: { wabaId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, { wabaId }) =>
-    (await ctx.db
-      .query("whatsappBusinessAccounts")
-      .withIndex("by_wabaId", (q) => q.eq("wabaId", wabaId))
-      .unique()) !== null,
+    (await wabaByWabaId(ctx, wabaId)) !== null,
 })
 
 /** Refuses a WABA another team connected, before any Graph call touches it. */
@@ -348,7 +329,7 @@ async function saveConnection(
 }
 
 export const pageAccountValue = v.object({
-  channel: v.union(v.literal("messenger"), v.literal("instagram")),
+  channel: pageChannelValue,
   externalId: v.string(),
   pageId: v.string(),
   displayName: v.string(),
@@ -360,7 +341,7 @@ export const connectedPagesValue = v.object({
   accounts: v.array(
     v.object({
       id: v.id("channelAccounts"),
-      channel: v.union(v.literal("messenger"), v.literal("instagram")),
+      channel: pageChannelValue,
       handle: v.string(),
     })
   ),
@@ -369,7 +350,7 @@ export const PAGE_TAKEN =
   "This Facebook Page or Instagram account is already connected to another team"
 async function pageRows(
   ctx: QueryCtx,
-  channel: "messenger" | "instagram",
+  channel: PageChannel,
   externalId: string
 ) {
   return ctx.db
@@ -382,7 +363,7 @@ async function pageRows(
 async function assertPagesFree(
   ctx: QueryCtx,
   organizationId: string,
-  accounts: { channel: "messenger" | "instagram"; externalId: string }[]
+  accounts: { channel: PageChannel; externalId: string }[]
 ) {
   for (const account of accounts) {
     if (
@@ -425,10 +406,7 @@ export const storePages = internalMutation({
         connectionId = await saveConnection(ctx, {
           organizationId: args.organizationId,
           businessId: `page:${account.pageId}`,
-          businessName:
-            args.accounts.find(
-              (a) => a.channel === "messenger" && a.pageId === account.pageId
-            )?.displayName ?? account.displayName,
+          businessName: account.displayName,
           method: args.method,
           encryptedToken: account.encryptedToken,
           tokenLast4: account.tokenLast4,
@@ -464,10 +442,16 @@ export const storePages = internalMutation({
       const existing = (
         await pageRows(ctx, account.channel, account.externalId)
       ).find((row) => row.organizationId === args.organizationId)
-      const { tokenLast4: _last4, ...accountFields } = account
+      const {
+        tokenLast4: _last4,
+        encryptedToken: _token,
+        ...accountFields
+      } = account
       void _last4
+      void _token
       const fields = {
         ...accountFields,
+        encryptedToken: undefined,
         connectionId,
         status: "active" as const,
         // Meta Send API: 300 calls/s; audio/video have a separate 10/s bucket.
@@ -617,18 +601,18 @@ export const accountTarget = internalQuery({
     const account = await ctx.db.get("channelAccounts", accountId)
     if (!account || !live(account)) throw new ConvexError(NOT_FOUND)
     await requireTeam(ctx, account.organizationId, "write")
-    const app = await findMetaApp(ctx)
-    if (!app) throw new ConvexError(APP_MISSING)
     const connection = await ctx.db.get("metaConnections", account.connectionId)
+    const access = await connectionAccess(ctx, connection)
     if (connection?.status !== "active")
       throw new ConvexError("Reconnect this business to Meta first")
+    if (!access) throw new ConvexError(APP_MISSING)
     return {
       externalId: account.externalId,
       channel: account.channel,
       pageId: account.pageId,
       connectionId: connection._id,
-      encryptedToken: account.encryptedToken ?? connection.encryptedToken,
-      graphVersion: app.graphVersion,
+      encryptedToken: account.encryptedToken ?? access.encryptedToken,
+      graphVersion: access.graphVersion,
     }
   },
 })
@@ -643,10 +627,7 @@ export const syncNumbers = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { connectionId, wabaId, numbers }) => {
-    const waba = await ctx.db
-      .query("whatsappBusinessAccounts")
-      .withIndex("by_wabaId", (q) => q.eq("wabaId", wabaId))
-      .unique()
+    const waba = await wabaByWabaId(ctx, wabaId)
     if (waba?.connectionId !== connectionId) return null
     await saveNumbers(ctx, {
       organizationId: waba.organizationId,
@@ -751,9 +732,7 @@ export const disconnect = mutation({
         internal.meta.connectActions.unsubscribe,
         { connectionId, wabaIds: wabas.map((waba) => waba.wabaId) }
       )
-    const pages = accounts.filter(
-      (a) => a.channel === "messenger" && a.encryptedToken
-    )
+    const pages = accounts.filter((a) => a.channel === "messenger")
     if (pages.length)
       await ctx.scheduler.runAfter(
         0,
@@ -761,7 +740,7 @@ export const disconnect = mutation({
         {
           pages: pages.map((a) => ({
             pageId: a.pageId ?? a.externalId,
-            encryptedToken: a.encryptedToken!,
+            encryptedToken: a.encryptedToken ?? connection.encryptedToken,
           })),
         }
       )
@@ -796,3 +775,27 @@ export const dispatchHealthChecks = internalMutation({
     return null
   },
 })
+
+/** Global WABA ownership lookup, shared by connect and template operations. */
+export const wabaByWabaId = (ctx: QueryCtx, wabaId: string) =>
+  ctx.db
+    .query("whatsappBusinessAccounts")
+    .withIndex("by_wabaId", (q) => q.eq("wabaId", wabaId))
+    .unique()
+
+/** Credentials stay encrypted until a Graph action actually needs them. */
+export async function connectionAccess(
+  ctx: QueryCtx,
+  connection: Doc<"metaConnections"> | null
+) {
+  if (connection?.status !== "active") return null
+  const app = await findMetaApp(ctx)
+  return app
+    ? {
+        connectionId: connection._id,
+        encryptedToken: connection.encryptedToken,
+        graphVersion: app.graphVersion,
+        appId: app.appId,
+      }
+    : null
+}

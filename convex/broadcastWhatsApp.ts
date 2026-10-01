@@ -24,8 +24,9 @@ import {
 } from "../lib/meta/variables"
 import {
   createChannelMessage,
-  resolveWhatsAppAccount,
+  resolveChannelAccount,
 } from "./channels/messages"
+import { findWhatsAppIdentity } from "./channels/identity"
 import { matchesSearch } from "./lists"
 import {
   resolveWhatsAppTemplate,
@@ -76,10 +77,11 @@ export async function resolveWhatsAppSend(
       )
     return null
   }
-  const account = await resolveWhatsAppAccount(
+  const account = await resolveChannelAccount(
     ctx,
     organizationId,
-    config.accountId
+    config.accountId,
+    "whatsapp"
   )
   const template = await resolveWhatsAppTemplate(ctx, organizationId, {
     id: config.templateId,
@@ -93,7 +95,7 @@ export async function resolveWhatsAppSend(
 /** Use the send pipeline's account rule for both sends and picker options. */
 async function sendableAccount(ctx: QueryCtx, row: Doc<"channelAccounts">) {
   try {
-    await resolveWhatsAppAccount(ctx, row.organizationId, row._id)
+    await resolveChannelAccount(ctx, row.organizationId, row._id, "whatsapp")
     return true
   } catch {
     return false
@@ -121,18 +123,11 @@ export async function recipientSkipReason(
   )
     return "topic_opt_out"
   if (template?.category === "MARKETING") {
-    const identity = await ctx.db
-      .query("channelContacts")
-      .withIndex(
-        "by_organizationId_and_channel_and_scopeId_and_externalId",
-        (q) =>
-          q
-            .eq("organizationId", row.organizationId)
-            .eq("channel", "whatsapp")
-            .eq("scopeId", "whatsapp")
-            .eq("externalId", contact.phone!.slice(1))
-      )
-      .unique()
+    const identity = await findWhatsAppIdentity(
+      ctx,
+      row.organizationId,
+      contact.phone
+    )
     if (identity?.marketingOptOut) return "marketing_opt_out"
   }
   if (template) {
@@ -174,6 +169,7 @@ export async function sendWhatsAppRecipient(
     : await createChannelMessage(
         ctx,
         {
+          channel: "whatsapp",
           from: target.account._id,
           to: contact.phone!,
           body: {

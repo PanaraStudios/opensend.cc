@@ -2,11 +2,17 @@
 import { v, ConvexError } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
+import { syncPageAccount, checkPageConnection } from "./pageConnectActions"
 import type { Id } from "../_generated/dataModel"
 import { decryptSecret, encryptSecret } from "../secrets"
 import {
-  TOKEN_REFUSED,
-  appAccessToken,
+  debugToken,
+  numericId,
+  manualToken,
+  exchangeCode,
+  unsubscribeAsset,
+  markTokenInvalid,
+  type App,
   friendly,
   graph,
   graphFailure,
@@ -17,7 +23,6 @@ import {
   PHONE_NUMBER_FIELDS,
   readPhoneNumber,
   readPhoneNumbers,
-  readTokenInfo,
   tokenBusinessId,
   tokenProblem,
   type PhoneNumber,
@@ -30,11 +35,6 @@ import {
    the app subscribes to its webhooks and its numbers are stored. Every
    public action checks the caller may write to the team first. */
 
-export type App = {
-  appId: string
-  graphVersion: string
-  encryptedAppSecret: string
-}
 type Connected = {
   connectionId: Id<"metaConnections">
   accounts: { id: Id<"channelAccounts">; handle: string; registered: boolean }[]
@@ -50,26 +50,6 @@ const connectedValue = v.object({
     })
   ),
 })
-
-export function numericId(value: string, label: string) {
-  const id = value.trim()
-  if (!/^\d{1,32}$/.test(id))
-    throw new ConvexError(`Enter the numeric ${label}`)
-  return id
-}
-
-/** `GET /debug_token` with the app token. */
-export async function debugToken(app: App, token: string): Promise<TokenInfo> {
-  return readTokenInfo(
-    await graph({
-      token: await appAccessToken(app),
-      method: "GET",
-      path: "debug_token",
-      query: { input_token: token },
-      version: app.graphVersion,
-    })
-  )
-}
 
 async function inspectToken(app: App, token: string, wabaId: string) {
   const info = await debugToken(app, token)
@@ -216,20 +196,12 @@ export const exchangeEmbeddedSignup = action({
     if (!code || code.length > 2048)
       throw new ConvexError("Meta returned no signup code. Try again.")
     return friendly(ctx, async () => {
-      const exchanged = await graph<{ access_token?: unknown }>({
-        token: await appAccessToken(app),
-        method: "GET",
-        path: "oauth/access_token",
-        query: {
-          client_id: app.appId,
-          client_secret: await decryptSecret(app.encryptedAppSecret),
-          code,
-        },
-        version: app.graphVersion,
-      })
-      if (typeof exchanged.access_token !== "string" || !exchanged.access_token)
-        throw new ConvexError("Meta returned no business token")
-      const token = exchanged.access_token
+      const token = await exchangeCode(
+        app,
+        code,
+        "Meta returned no signup code. Try again.",
+        "Meta returned no business token"
+      )
       return attachWaba(ctx, {
         organizationId: args.organizationId,
         app,
@@ -257,9 +229,10 @@ export const connectManual = action({
       organizationId: args.organizationId,
     })
     const wabaId = numericId(args.wabaId, "WhatsApp Business Account ID")
-    const token = args.token.trim()
-    if (!/^[A-Za-z0-9_|-]{20,1024}$/.test(token))
-      throw new ConvexError("Paste the system user access token from Meta")
+    const token = manualToken(
+      args.token,
+      "Paste the system user access token from Meta"
+    )
     return friendly(ctx, async () =>
       attachWaba(ctx, {
         organizationId: args.organizationId,
@@ -317,7 +290,7 @@ export const syncAccount = action({
       accountId,
     })
     if (target.channel !== "whatsapp") {
-      await ctx.runAction(internal.meta.pageConnectActions.sync, { accountId })
+      await syncPageAccount(ctx, accountId, target)
       return null
     }
     const number = await friendly(
@@ -362,13 +335,11 @@ export const checkConnection = internalAction({
         scopes,
       })
     try {
-      const token = await decryptSecret(target.encryptedToken)
       if (target.pages.length) {
-        await ctx.runAction(internal.meta.pageConnectActions.checkConnection, {
-          connectionId,
-        })
+        await checkPageConnection(ctx, connectionId, target)
         return null
       }
+      const token = await decryptSecret(target.encryptedToken)
       const info = await debugToken(target, token)
       const problem = [undefined, ...target.wabaIds]
         .map((wabaId) => tokenProblem(info, { appId: target.appId, wabaId }))
@@ -386,7 +357,7 @@ export const checkConnection = internalAction({
       await mark("active", undefined, info.scopes)
     } catch (e) {
       if (e instanceof MetaError && e.action === "token_invalid")
-        await mark("error", TOKEN_REFUSED)
+        await markTokenInvalid(ctx, connectionId)
       else await mark("active", graphFailure(e))
     }
     return null
@@ -407,21 +378,16 @@ export const unsubscribe = internalAction({
       connectionId,
     })
     if (!target) return null
-    const token = await decryptSecret(target.encryptedToken)
-    for (const wabaId of wabaIds) {
-      if (await ctx.runQuery(internal.meta.connect.wabaConnected, { wabaId }))
-        continue
-      try {
-        await graph({
-          token,
-          method: "DELETE",
-          path: `${wabaId}/subscribed_apps`,
-          version: target.graphVersion,
-        })
-      } catch (e) {
-        console.warn(`Could not unsubscribe WABA ${wabaId}: ${graphFailure(e)}`)
-      }
-    }
+    let token: Promise<string> | undefined
+    for (const wabaId of wabaIds)
+      await unsubscribeAsset({
+        id: wabaId,
+        label: "WABA",
+        version: target.graphVersion,
+        token: () => (token ??= decryptSecret(target.encryptedToken)),
+        connected: () =>
+          ctx.runQuery(internal.meta.connect.wabaConnected, { wabaId }),
+      })
     return null
   },
 })

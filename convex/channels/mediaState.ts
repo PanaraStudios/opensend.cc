@@ -1,3 +1,4 @@
+import { findMetaApp } from "../meta/app"
 import { v } from "convex/values"
 import { internalQuery, internalMutation } from "../_generated/server"
 import { retirement } from "../teamLifecycle"
@@ -20,10 +21,7 @@ export const context = internalQuery({
     const connection = account
       ? await ctx.db.get("metaConnections", account.connectionId)
       : null
-    const app = await ctx.db
-      .query("metaApps")
-      .withIndex("by_key", (q) => q.eq("key", "metaApp"))
-      .unique()
+    const app = await findMetaApp(ctx)
     const content = await ctx.db
       .query("channelMessageContents")
       .withIndex("by_messageId", (q) => q.eq("messageId", messageId))

@@ -1,19 +1,19 @@
+import { isPageChannel } from "../../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
 import { RateLimiter, SECOND } from "@convex-dev/rate-limiter"
 import {
   internalMutation,
-  mutation,
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server"
 import { internal, components } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
-import { requireTeam } from "../access"
 import { insertRow, patchRow } from "../counts"
 import { retirement } from "../teamLifecycle"
 import { findMetaApp } from "../meta/app"
 import { live } from "../meta/connect"
+import { teamRow } from "../lists"
 import { decryptSecret } from "../secrets"
 import { invalid, notFound } from "../api/caller"
 import { broadcastMessageMetric } from "../broadcastMetrics"
@@ -21,10 +21,7 @@ import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import { upsertChannelThread } from "./identity"
 import { channelMessagePayload } from "./payload"
-import {
-  channelStrategies,
-  WHATSAPP_WINDOW_CLOSED,
-} from "../../lib/meta/payloads"
+import { channelStrategies } from "../../lib/meta/payloads"
 import { resolveLocalTemplate } from "./templates"
 import { messagingChannelValue } from "../tables/channels"
 import { resolveWhatsAppTemplate } from "../whatsapp/templates"
@@ -34,9 +31,8 @@ import { RETRY_DELAYS } from "../emails"
 
 const pool = new Workpool(components.channelPool, { maxParallelism: 10 })
 const limiter = new RateLimiter(components.rateLimiter)
-export const WINDOW_CLOSED = WHATSAPP_WINDOW_CLOSED
 export const channelInputValue = v.object({
-  channel: v.optional(messagingChannelValue),
+  channel: messagingChannelValue,
   from: v.optional(v.string()),
   to: v.string(),
   /** Validated by the channel adapter before any writes. */
@@ -47,18 +43,37 @@ export const channelInputValue = v.object({
 export type ChannelInput = Infer<typeof channelInputValue>
 
 /** Resolve only within the team, accepting either an account id or phone id. */
-export async function resolveChannelAccount(
+export async function channelAccountAccess(
   ctx: QueryCtx,
   organizationId: string,
-  from?: string,
-  channel: Doc<"channelAccounts">["channel"] = "whatsapp"
+  from: string | undefined,
+  channel: Doc<"channelAccounts">["channel"]
 ) {
-  let account: Doc<"channelAccounts"> | null = null
-  if (from !== undefined) {
-    const id = ctx.db.normalizeId("channelAccounts", from)
-    if (id) account = await ctx.db.get("channelAccounts", id)
-    else
-      account =
+  const account = await findChannelAccount(ctx, organizationId, from, channel)
+  const strategy = channelStrategies[channel]
+  if (!account) throw notFound(strategy.notFoundLabel)
+  const connection = await ctx.db.get("metaConnections", account.connectionId)
+  if (
+    account.status !== "active" ||
+    (strategy.requiresRegistration && account.registeredAt === undefined) ||
+    connection?.organizationId !== organizationId ||
+    connection.status !== "active"
+  )
+    throw invalid(strategy.inactiveLabel)
+  return { account, connection }
+}
+
+/** Shared team-scoped lookup for sending and read-only REST account access. */
+export async function findChannelAccount(
+  ctx: QueryCtx,
+  organizationId: string,
+  from: string | undefined,
+  channel: Doc<"channelAccounts">["channel"]
+) {
+  if (from !== undefined)
+    return teamRow(ctx, "channelAccounts", organizationId, from, {
+      keep: (account) => account.channel === channel && live(account),
+      fallback: async () =>
         (
           await ctx.db
             .query("channelAccounts")
@@ -66,46 +81,29 @@ export async function resolveChannelAccount(
               q.eq("channel", channel).eq("externalId", from)
             )
             .take(20)
-        ).find((a) => a.organizationId === organizationId && live(a)) ?? null
-  } else {
-    const accounts = await ctx.db
-      .query("channelAccounts")
-      .withIndex("by_organizationId_and_channel_and_disconnectedAt", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("channel", channel)
-          .eq("disconnectedAt", undefined)
-      )
-      .take(2)
-    if (accounts.length !== 1) throw invalid("from is required")
-    account = accounts[0]
-  }
-  if (
-    !account ||
-    account.organizationId !== organizationId ||
-    account.channel !== channel ||
-    !live(account)
-  )
-    throw notFound(
-      channel === "whatsapp" ? "WhatsApp phone number" : "Channel account"
+        ).find((a) => a.organizationId === organizationId && live(a)) ?? null,
+    })
+  const accounts = await ctx.db
+    .query("channelAccounts")
+    .withIndex("by_organizationId_and_channel_and_disconnectedAt", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("channel", channel)
+        .eq("disconnectedAt", undefined)
     )
-  const connection = await ctx.db.get("metaConnections", account.connectionId)
-  if (
-    account.status !== "active" ||
-    (channel === "whatsapp" && account.registeredAt === undefined) ||
-    connection?.organizationId !== organizationId ||
-    connection.status !== "active"
-  )
-    throw invalid(
-      channel === "whatsapp"
-        ? "The WhatsApp phone number must be active and registered with an active Meta connection."
-        : "The channel account must have an active Meta connection."
-    )
-  return account
+    .take(2)
+  if (accounts.length !== 1) throw invalid("from is required")
+  return accounts[0]
 }
-
-/** Compatibility for the WhatsApp media and existing send callers. */
-export const resolveWhatsAppAccount = resolveChannelAccount
+export async function resolveChannelAccount(
+  ctx: QueryCtx,
+  organizationId: string,
+  from: string | undefined,
+  channel: Doc<"channelAccounts">["channel"]
+) {
+  return (await channelAccountAccess(ctx, organizationId, from, channel))
+    .account
+}
 
 /** A template send with `components` goes to Meta as given. Otherwise the
  * team's stored template (by id, alias, or name and language, on the sending
@@ -177,7 +175,8 @@ export async function createChannelMessage(
 ) {
   if (await retirement(ctx, opts.organizationId))
     throw invalid("This team is being retired.")
-  const channel = input.channel ?? "whatsapp"
+  const channel = input.channel
+  const strategy = channelStrategies[channel]
   const account = await resolveChannelAccount(
     ctx,
     opts.organizationId,
@@ -189,7 +188,7 @@ export async function createChannelMessage(
   let prepared: ReturnType<typeof channelStrategies.whatsapp.build>
   try {
     if (body.template !== undefined) {
-      if (channel === "whatsapp")
+      if (!isPageChannel(channel))
         body = {
           ...body,
           template: await storedTemplate(
@@ -261,20 +260,15 @@ export async function createChannelMessage(
         "reply_to must identify a message in this recipient's conversation."
       )
     replyToId = reply._id
-    if (channel === "whatsapp")
-      payload.context = { message_id: reply.externalId }
-    else payload.reply_to = { mid: reply.externalId }
+    Object.assign(payload, strategy.replyContext(reply.externalId))
   }
-  const data =
-    channel === "whatsapp"
-      ? object(payload[type])
-      : object(object(object(payload.message).attachment).payload)
+  const data = strategy.mediaData(payload, type)
   const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
     account,
     {
       externalId: recipient,
-      ...(channel === "whatsapp" ? { phone: `+${recipient}` } : {}),
+      ...strategy.identity(recipient),
       at: now,
       preview,
       direction: "outbound",
@@ -319,7 +313,6 @@ export async function createChannelMessage(
       generation: 0,
       attempts: 0,
       expiresAt: now + 7 * 86400_000,
-      search: [account.handle, recipient, preview].join(" "),
     },
     true
   )
@@ -357,18 +350,6 @@ export async function createChannelMessage(
   return message._id
 }
 
-/** Future inbox callers get the same authorization and send validation. */
-export const send = mutation({
-  args: { organizationId: v.string(), input: channelInputValue },
-  returns: v.id("channelMessages"),
-  handler: async (ctx, { organizationId, input }) => {
-    await requireTeam(ctx, organizationId, "write")
-    return createChannelMessage(ctx, input, {
-      organizationId,
-      source: "dashboard",
-    })
-  },
-})
 async function enqueue(
   ctx: MutationCtx,
   id: Id<"channelMessages">,
@@ -470,6 +451,7 @@ export const claim = internalMutation({
       version: v.string(),
       phoneNumberId: v.string(),
       payload: v.string(),
+      messagingType: v.optional(v.string()),
     })
   ),
   handler: async (ctx, { id, generation }) => {
@@ -482,9 +464,9 @@ export const claim = internalMutation({
       (await retirement(ctx, message.organizationId))
     )
       return null
-    let account: Doc<"channelAccounts">
+    let access: Awaited<ReturnType<typeof channelAccountAccess>>
     try {
-      account = await resolveChannelAccount(
+      access = await channelAccountAccess(
         ctx,
         message.organizationId,
         message.accountId,
@@ -494,6 +476,8 @@ export const claim = internalMutation({
       await fail(ctx, message, "The channel account is no longer active.")
       return null
     }
+    const { account, connection } = access
+    const strategy = channelStrategies[message.channel]
     const app = await findMetaApp(ctx)
     const body = await content(ctx, id)
     if (!app || !body) {
@@ -526,32 +510,24 @@ export const claim = internalMutation({
     }
     let readyAt = message.rateReadyAt
     if (readyAt === undefined) {
-      const rate = Math.max(
-        1,
-        account.pageId
-          ? Math.min(300, account.throughputMps)
-          : account.throughputMps
-      )
+      const { key, rate, mediaRate } = strategy.rate(account)
       const limit = await limiter.limit(ctx, "channelSend", {
-        key: account.pageId ? `page:${account.pageId}` : account._id,
+        key,
         count: 1,
         reserve: true,
         config: { kind: "token bucket", rate, period: SECOND, capacity: rate },
       })
       let delay = limit.retryAfter ?? 0
-      if (
-        account.pageId &&
-        (message.type === "audio" || message.type === "video")
-      ) {
+      if (mediaRate && (message.type === "audio" || message.type === "video")) {
         const mediaLimit = await limiter.limit(ctx, "channelMediaSend", {
-          key: `page:${account.pageId}`,
+          key,
           count: 1,
           reserve: true,
           config: {
             kind: "token bucket",
-            rate: 10,
+            rate: mediaRate,
             period: SECOND,
-            capacity: 10,
+            capacity: mediaRate,
           },
         })
         delay = Math.max(delay, mediaLimit.retryAfter ?? 0)
@@ -566,10 +542,6 @@ export const claim = internalMutation({
       await enqueue(ctx, id, generation + 1, readyAt - Date.now())
       return null
     }
-    const connection = (await ctx.db.get(
-      "metaConnections",
-      account.connectionId
-    ))!
     const token = await decryptSecret(
       account.encryptedToken ?? connection.encryptedToken
     )
@@ -582,7 +554,10 @@ export const claim = internalMutation({
       token,
       version: app.graphVersion,
       phoneNumberId: channelStrategies[message.channel].endpoint(account),
-      payload: JSON.stringify(payload),
+      payload: body.payload,
+      ...(typeof payload.messaging_type === "string"
+        ? { messagingType: payload.messaging_type }
+        : {}),
     }
   },
 })

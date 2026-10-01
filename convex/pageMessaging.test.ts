@@ -138,7 +138,11 @@ test("Facebook Login exchanges, debugs, lists Pages, subscribes with the Page to
   expect(list.page.every((a) => !("encryptedToken" in a))).toBe(true)
   for (const row of result.accounts) {
     const stored = await f.t.run((ctx) => ctx.db.get("channelAccounts", row.id))
-    expect(await decryptSecret(stored!.encryptedToken!)).toBe(PAGE_TOKEN)
+    expect(stored!.encryptedToken).toBeUndefined()
+    const connection = await f.t.run((ctx) =>
+      ctx.db.get("metaConnections", stored!.connectionId)
+    )
+    expect(await decryptSecret(connection!.encryptedToken)).toBe(PAGE_TOKEN)
     const detail = await f.owner.client.query(api.meta.connect.getAccount, {
       id: row.id,
     })
@@ -217,7 +221,14 @@ test("disconnect frees Page/IG ownership, preserves history, and does not unsubs
   )
   expect(next.accounts[0].id).not.toBe(f.accounts[0].id)
   await f.t.action(internal.meta.pageConnectActions.unsubscribe, {
-    pages: [{ pageId: PAGE_ID, encryptedToken: account!.encryptedToken! }],
+    pages: [
+      {
+        pageId: PAGE_ID,
+        encryptedToken: (await f.t.run((ctx) =>
+          ctx.db.get("metaConnections", account!.connectionId)
+        ))!.encryptedToken,
+      },
+    ],
   })
   expect(graph.to(`/${PAGE_ID}/subscribed_apps`, "DELETE")).toHaveLength(1)
 })
@@ -863,4 +874,59 @@ test("reconnecting a Page retires an unlinked Instagram endpoint and inbound rou
     organizationId: f.outsider.team,
     preview: "New owner",
   })
+})
+
+test("profile enrichment is scheduled only once even when Meta cannot return a name", async () => {
+  graph.use({ path: `/${PSID}`, respond: () => ({}) })
+  const f = await setup(false)
+  for (let i = 0; i < 2; i++) {
+    await project(
+      f,
+      pageEnvelope("messenger", {
+        message: { mid: `mid.profile.${i}`, text: "Hello" },
+      })
+    )
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100))
+  }
+  expect(graph.to(`/${PSID}`)).toHaveLength(1)
+  const identity = await f.t.run((ctx) =>
+    ctx.db.query("channelContacts").first()
+  )
+  expect(identity?.profileLookedUpAt).toEqual(expect.any(Number))
+  expect(identity?.profileName).toBeUndefined()
+})
+
+test("a queued HUMAN_AGENT reply uses the tag after its 24-hour window closes, retaining the stored payload", async () => {
+  const f = await setup()
+  const id = await f.send("messenger", { tag: "HUMAN_AGENT" })
+  const stored = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", id))
+      .unique()
+  )
+  const raw = JSON.stringify(JSON.parse(stored!.payload), null, 2)
+  await f.t.run((ctx) =>
+    ctx.db.patch("channelMessageContents", stored!._id, { payload: raw })
+  )
+  vi.setSystemTime(Date.now() + 2 * 86400_000)
+  const claim = await f.t.mutation(internal.channels.messages.claim, {
+    id,
+    generation: 0,
+  })
+  expect(claim!.payload).toBe(raw)
+  expect(claim!.messagingType).toBe("MESSAGE_TAG")
+})
+
+test("statuses resolved once in a batch remain monotonic when read precedes delivered", async () => {
+  const f = await setup()
+  const id = await f.send()
+  await f.t.action(internal.channels.deliver.deliver, { id, generation: 0 })
+  const event = pageEnvelope("messenger", { read: { mid: "mid.sent" } })
+  const delivered = pageEnvelope("messenger", {
+    delivery: { mids: ["mid.sent"] },
+  })
+  event.entry[0].messaging.push(...delivered.entry[0].messaging)
+  await project(f, event)
+  expect((await f.message(id))?.status).toBe("read")
 })

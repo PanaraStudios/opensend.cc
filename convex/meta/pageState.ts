@@ -1,3 +1,6 @@
+import { isPageChannel } from "../../lib/channels"
+import { pageChannelValue } from "../tables/channels"
+import { conversationSearch } from "../channels/identity"
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { patchRow } from "../counts"
@@ -76,7 +79,7 @@ export const profileTarget = internalQuery({
     v.null(),
     v.object({
       externalId: v.string(),
-      channel: v.union(v.literal("messenger"), v.literal("instagram")),
+      channel: pageChannelValue,
       encryptedToken: v.string(),
       version: v.string(),
     })
@@ -91,11 +94,10 @@ export const profileTarget = internalQuery({
       !app ||
       !live(account) ||
       identity.profileName ||
-      identity.channel === "whatsapp" ||
+      !isPageChannel(identity.channel) ||
       identity.channel !== account.channel ||
       identity.scopeId !== account.externalId ||
       identity.organizationId !== account.organizationId ||
-      !account.encryptedToken ||
       (await retirement(ctx, account.organizationId))
     )
       return null
@@ -104,7 +106,7 @@ export const profileTarget = internalQuery({
     return {
       externalId: identity.externalId,
       channel: identity.channel,
-      encryptedToken: account.encryptedToken,
+      encryptedToken: account.encryptedToken ?? connection.encryptedToken,
       version: app.graphVersion,
     }
   },
@@ -134,12 +136,7 @@ export const profileComplete = internalMutation({
       const parts = profileNameParts(profileName)
       const updated = await patchRow(ctx, "contacts", contact._id, {
         ...parts,
-        search: [
-          contact.email,
-          contact.phone,
-          parts.firstName,
-          parts.lastName,
-        ].join(" "),
+        search: profileContactSearch({ ...contact, ...parts }),
         updatedAt: Date.now(),
       })
       await emitContact(ctx, "contact.updated", updated)
@@ -152,8 +149,26 @@ export const profileComplete = internalMutation({
       .take(100)
     for (const thread of threads)
       await patchRow(ctx, "conversations", thread._id, {
-        search: [identity.externalId, profileName].join(" "),
+        search: conversationSearch(
+          identity.phone ?? identity.externalId,
+          profileName
+        ),
       })
     return null
   },
 })
+
+/** Replace with audience.searchText when lane SC exports the contact helper. */
+function profileContactSearch(contact: {
+  email?: string
+  phone?: string
+  firstName: string
+  lastName: string
+}) {
+  return [
+    contact.email,
+    contact.phone,
+    contact.firstName,
+    contact.lastName,
+  ].join(" ")
+}

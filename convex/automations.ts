@@ -13,7 +13,7 @@ import { matchesSearch, teamPage, teamRow } from "./lists"
 import { defineEvent, findEvent, payloadShapeError } from "./automationEvents"
 import { startRun, stopRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
-import { resolveWhatsAppAccount } from "./channels/messages"
+import { resolveChannelAccount } from "./channels/messages"
 import { resolveWhatsAppSend } from "./broadcastWhatsApp"
 import { publishedTemplate } from "./templates"
 import {
@@ -229,7 +229,13 @@ export async function setAutomationStatus(
             templateId: step.templateId,
             variables: step.variables,
           })
-        else await resolveWhatsAppAccount(ctx, organizationId, step.accountId)
+        else
+          await resolveChannelAccount(
+            ctx,
+            organizationId,
+            step.accountId,
+            "whatsapp"
+          )
       }
       if (step.type === "send_email") {
         const template = await publishedTemplate(

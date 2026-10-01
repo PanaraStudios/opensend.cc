@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
+import { upsertChannelThread } from "./channels/identity"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { patchRow } from "./counts"
 import type { Id } from "./_generated/dataModel"
 import {
   APP_SECRET,
-  PHONE_ID,
   WABA_ID,
   envelope,
   fakeGraph,
@@ -592,20 +592,30 @@ describe("the /templates REST API with channels", () => {
     const id = await f.create()
     await f.owner.action(api.whatsapp.templateActions.publish, { id })
     await f.approve()
+    const conversationId = await f.t.run(async (ctx) => {
+      const account = (await ctx.db.get("channelAccounts", f.account))!
+      return (
+        await upsertChannelThread(ctx, account, {
+          externalId: "16505559999",
+          phone: "+16505559999",
+          at: Date.now(),
+          preview: "",
+          direction: "outbound",
+        })
+      ).conversationId
+    })
     const send = (variables: Record<string, string>) =>
-      f.owner.mutation(api.channels.messages.send, {
-        organizationId: f.team,
-        input: {
-          from: PHONE_ID,
-          to: "16505559999",
-          body: { template: { id, variables } },
-        },
+      f.owner.mutation(api.conversations.reply, {
+        id: conversationId,
+        template: { id, variables },
       })
     const messageId = await send({ "1": "Jessica", "2": "SKBUP2" })
     const content = await f.t.run((ctx) =>
       ctx.db
         .query("channelMessageContents")
-        .withIndex("by_messageId", (q) => q.eq("messageId", messageId))
+        .withIndex("by_messageId", (q) =>
+          q.eq("messageId", messageId as Id<"channelMessages">)
+        )
         .unique()
     )
     expect(JSON.parse(content!.payload).template).toEqual({
@@ -622,10 +632,7 @@ describe("the /templates REST API with channels", () => {
       ],
     })
     await expect(send({ "1": "Jessica" })).rejects.toMatchObject({
-      data: {
-        statusCode: 422,
-        message: expect.stringContaining("Missing template variables: 2"),
-      },
+      data: expect.stringContaining("Missing template variables: 2"),
     })
   })
 })

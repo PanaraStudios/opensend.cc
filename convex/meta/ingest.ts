@@ -1,3 +1,4 @@
+import { findMetaApp } from "./app"
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -6,13 +7,7 @@ import { internal } from "../_generated/api"
 export const appSecret = internalQuery({
   args: {},
   returns: v.union(v.null(), v.string()),
-  handler: async (ctx) =>
-    (
-      await ctx.db
-        .query("metaApps")
-        .withIndex("by_key", (q) => q.eq("key", "metaApp"))
-        .unique()
-    )?.encryptedAppSecret ?? null,
+  handler: async (ctx) => (await findMetaApp(ctx))?.encryptedAppSecret ?? null,
 })
 
 export const store = internalMutation({

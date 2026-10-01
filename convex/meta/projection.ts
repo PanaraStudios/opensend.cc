@@ -8,30 +8,36 @@ import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { customEventType } from "../automationEvents"
 import { retirement } from "../teamLifecycle"
-import { normalizePhone } from "../../lib/dashboard/phone"
-import { CHANNEL_MESSAGE_TYPES } from "../tables/channels"
+import { CHANNEL_QUALITIES } from "../tables/channels"
+import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
 import { channelMessagePayload } from "../channels/payload"
-import { live } from "./connect"
+import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
 import { TEMPLATE_WEBHOOK_FIELDS } from "../../lib/meta/templates"
+import { array, object, string, oneOf } from "../../lib/meta/parse"
 import {
-  array,
-  object,
-  string,
-  timestamp,
-  MEDIA_TYPES,
   STATUS_RANK,
-  outboundStatus,
   pageWebhookItems,
+  whatsappWebhookItems,
+  MANAGEMENT_WEBHOOK_FIELDS,
+  ACCOUNT_REMOVED_EVENTS,
+  ACCOUNT_RESTRICTED_EVENTS,
+  type InboundItem,
+  type StatusItem,
+  type WebhookItem,
 } from "../../lib/meta/webhooks"
+
+export const MAX_ATTEMPTS = 6
+export const retryLater = (attempt: number) =>
+  attempt < MAX_ATTEMPTS ? 10000 * 2 ** attempt : null
 
 /** Messages with a wamid. Meta's ids are unique, but a lookup must not
     throw on a duplicate row, so callers pick the row they mean. */
 const messagesByExternalId = (
   ctx: MutationCtx,
   id: string,
-  channel: Doc<"channelAccounts">["channel"] = "whatsapp"
+  channel: Doc<"channelAccounts">["channel"]
 ) =>
   ctx.db
     .query("channelMessages")
@@ -44,11 +50,11 @@ const messagesByExternalId = (
 const statusMessage = async (
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
-  data: Record<string, unknown>
+  item: StatusItem
 ) => {
-  const recipient = string(data.recipient_id)
+  const recipient = item.sender
   return (
-    (await messagesByExternalId(ctx, string(data.id), account.channel)).find(
+    (await messagesByExternalId(ctx, item.externalId, account.channel)).find(
       (message) =>
         message.direction === "outbound" &&
         message.accountId === account._id &&
@@ -60,7 +66,7 @@ const statusMessage = async (
 const accountByExternalId = async (
   ctx: MutationCtx,
   id: string,
-  channel: Doc<"channelAccounts">["channel"] = "whatsapp"
+  channel: Doc<"channelAccounts">["channel"]
 ) =>
   (
     await ctx.db
@@ -74,40 +80,30 @@ const accountByExternalId = async (
 async function receive(
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
-  value: Record<string, unknown>,
-  raw: unknown,
+  item: InboundItem,
   event: Doc<"metaWebhookEvents">
 ) {
-  const data = object(raw)
-  const externalId = string(data.id)
-  const sender = string(data.from).replace(/^\+/, "")
-  const phone = normalizePhone(sender.startsWith("+") ? sender : `+${sender}`)
+  const {
+    externalId,
+    sender,
+    phone,
+    profileName,
+    type,
+    preview,
+    files,
+    at,
+    data,
+  } = item
   if (
-    !externalId ||
-    !sender ||
-    (account.channel === "whatsapp" && !phone) ||
     (await messagesByExternalId(ctx, externalId, account.channel)).some(
       (message) => message.accountId === account._id
     )
   )
     return
-  const at = timestamp(data.timestamp, event.receivedAt)
-  const profile = array(value.contacts)
-    .map(object)
-    .find((contact) => string(contact.wa_id) === sender)
-  const profileName = string(object(profile?.profile).name)
-  const type =
-    CHANNEL_MESSAGE_TYPES.find((type) => type === data.type) ?? "unsupported"
-  const media = object(data[type])
-  const preview = (
-    type === "text"
-      ? string(object(data.text).body)
-      : string(media.caption) || `[${type}]`
-  ).slice(0, 1000)
   const { contactId, channelContactId, conversationId } =
     await upsertChannelThread(ctx, account, {
       externalId: sender,
-      ...(account.channel === "whatsapp" && phone ? { phone } : {}),
+      ...(phone ? { phone } : {}),
       profileName,
       at,
       preview,
@@ -131,43 +127,10 @@ async function receive(
       externalId,
       generation: 1,
       attempts: 0,
-      search: [sender, account.handle, preview].join(" "),
     },
     true
   )
   const messageId = message._id
-  const mediaId = string(media.id)
-  const files =
-    account.channel === "whatsapp"
-      ? MEDIA_TYPES.some((t) => t === type) && mediaId
-        ? [
-            {
-              mediaId,
-              contentType:
-                string(media.mime_type) || "application/octet-stream",
-              ...(string(media.filename)
-                ? { filename: string(media.filename) }
-                : {}),
-            },
-          ]
-        : []
-      : array(data.attachments)
-          .map(object)
-          .flatMap((attachment, index) => {
-            const url = string(object(attachment.payload).url)
-            return url &&
-              ["image", "video", "audio", "file", "sticker"].includes(
-                string(attachment.type)
-              )
-              ? [
-                  {
-                    mediaId: `${externalId}:${index}`,
-                    url,
-                    contentType: "application/octet-stream",
-                  },
-                ]
-              : []
-          })
   await ctx.db.insert("channelMessageContents", {
     messageId,
     payload: JSON.stringify(data),
@@ -184,11 +147,20 @@ async function receive(
       messageId,
       mediaId: file.mediaId,
     })
-  if (account.channel !== "whatsapp")
+  const identity = await ctx.db.get("channelContacts", channelContactId)
+  if (
+    !phone &&
+    !identity?.profileName &&
+    identity?.profileLookedUpAt === undefined
+  ) {
+    await ctx.db.patch("channelContacts", channelContactId, {
+      profileLookedUpAt: Date.now(),
+    })
     await ctx.scheduler.runAfter(0, internal.meta.pageConnectActions.profile, {
       identityId: channelContactId,
       accountId: account._id,
     })
+  }
   const payload = channelMessagePayload(message, data)
   await emitEvent(
     ctx,
@@ -208,27 +180,18 @@ async function receive(
 async function status(
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
-  raw: unknown,
+  item: StatusItem,
+  message: Doc<"channelMessages">,
   event: Doc<"metaWebhookEvents">
 ) {
-  const data = object(raw)
-  const next = outboundStatus(data.status)
-  if (!next) return
-  const message = await statusMessage(ctx, account, data)
-  if (!message) return
+  const { data, status: next, at } = item
   if (
     account.channel !== "whatsapp" &&
     STATUS_RANK[next] <= STATUS_RANK[message.status]
   )
-    return
+    return message
   if (next === "sent") {
-    await acceptChannelMessage(
-      ctx,
-      message,
-      string(data.id),
-      timestamp(data.timestamp, event.receivedAt)
-    )
-    return
+    return acceptChannelMessage(ctx, message, item.externalId, at)
   }
   const errors = array(data.errors).map(object)
   const error = errors[0]
@@ -256,7 +219,7 @@ async function status(
   await ctx.db.insert("channelMessageEvents", {
     messageId: message._id,
     type: next,
-    at: timestamp(data.timestamp, event.receivedAt),
+    at,
     webhookEventId: event._id,
     details: JSON.stringify(data),
   })
@@ -284,10 +247,11 @@ async function status(
     await ctx.db.patch("channelContacts", message.channelContactId, {
       marketingOptOut: true,
     })
+  return current
 }
 
-/** Preflight unmatched statuses before any write, so a mixed batch is atomic
-    and retries cannot repeat timeline entries, unread increments or events. */
+/** Resolve the entire batch before writes: an unmatched status retries the
+ * batch atomically. Resolved documents and account access are reused below. */
 export const project = internalMutation({
   args: { id: v.id("metaWebhookEvents"), attempt: v.optional(v.number()) },
   returns: v.null(),
@@ -295,74 +259,46 @@ export const project = internalMutation({
     const event = await ctx.db.get("metaWebhookEvents", id)
     if (!event || event.projectedAt !== undefined) return null
     const root = object(JSON.parse(event.body))
-    const pageItems = []
-    for (const item of pageWebhookItems(root, event.receivedAt)) {
-      const account = await accountByExternalId(
-        ctx,
-        item.accountId,
-        item.channel
-      )
-      if (!account || (await retirement(ctx, account.organizationId))) continue
-      const connection = await ctx.db.get(
-        "metaConnections",
-        account.connectionId
-      )
-      if (connection?.status !== "active") continue
-      if (item.kind === "status") {
-        for (const mid of item.ids) {
-          if (
-            !(await statusMessage(ctx, account, {
-              id: mid,
-              recipient_id: item.sender,
-            })) &&
-            attempt < 6
-          ) {
-            await ctx.scheduler.runAfter(
-              10000 * 2 ** attempt,
-              internal.meta.projection.project,
-              { id, attempt: attempt + 1 }
+    const retired = new Map<string, boolean>()
+    const isRetired = async (org: string) => {
+      if (!retired.has(org)) retired.set(org, !!(await retirement(ctx, org)))
+      return retired.get(org)!
+    }
+    const accounts = new Map<string, Doc<"channelAccounts"> | null>()
+    const connections = new Map<string, Doc<"metaConnections"> | null>()
+    const accountFor = async (item: WebhookItem) => {
+      const key = `${item.channel}:${item.accountId}`
+      if (!accounts.has(key)) {
+        let account = await accountByExternalId(
+          ctx,
+          item.accountId,
+          item.channel
+        )
+        if (account && !(await isRetired(account.organizationId))) {
+          if (!connections.has(account.connectionId))
+            connections.set(
+              account.connectionId,
+              await ctx.db.get("metaConnections", account.connectionId)
             )
-            return null
-          }
-        }
-      }
-      pageItems.push({ item, account })
-    }
-    for (const { item, account } of pageItems) {
-      if (item.kind === "message")
-        await receive(ctx, account, {}, item.data, event)
-      else {
-        for (const mid of item.ids)
-          await status(
-            ctx,
-            account,
-            {
-              id: mid,
-              recipient_id: item.sender,
-              status: item.status,
-              timestamp: item.at / 1000,
-            },
-            event
+          // WhatsApp keeps accepting inbound during a token error, as before.
+          if (
+            item.channel !== "whatsapp" &&
+            connections.get(account.connectionId)?.status !== "active"
           )
-        if (item.watermark)
-          await ctx.scheduler.runAfter(0, internal.meta.projection.watermark, {
-            eventId: id,
-            accountId: account._id,
-            sender: item.sender,
-            next: item.status,
-            at: item.at,
-            watermark: item.watermark,
-            cursor: null,
-          })
+            account = null
+        } else account = null
+        accounts.set(key, account)
       }
+      return accounts.get(key)!
     }
+    const items: WebhookItem[] = pageWebhookItems(root, event.receivedAt)
     const changes: {
       field: string
       value: Record<string, unknown>
       wabaId: string
-      account: Doc<"channelAccounts"> | null
       organizationId: string
     }[] = []
+    const wabas = new Map<string, Doc<"whatsappBusinessAccounts"> | null>()
     if (root.object === "whatsapp_business_account")
       for (const rawEntry of array(root.entry)) {
         const entry = object(rawEntry)
@@ -371,74 +307,82 @@ export const project = internalMutation({
             value = object(change.value)
           const wabaId =
             string(object(value.waba_info).waba_id) || string(entry.id)
-          const waba = await ctx.db
-            .query("whatsappBusinessAccounts")
-            .withIndex("by_wabaId", (q) => q.eq("wabaId", wabaId))
-            .unique()
-          if (!waba || (await retirement(ctx, waba.organizationId))) {
-            console.info(
-              "Ignoring Meta webhook for unknown or retired WABA",
-              wabaId
-            )
-            continue
-          }
+          if (!wabas.has(wabaId))
+            wabas.set(wabaId, await wabaByWabaId(ctx, wabaId))
+          const waba = wabas.get(wabaId)
+          if (!waba || (await isRetired(waba.organizationId))) continue
           const field = string(change.field)
-          const account =
-            field === "messages"
-              ? await accountByExternalId(
-                  ctx,
-                  string(object(value.metadata).phone_number_id)
-                )
-              : null
-          if (
-            field === "messages" &&
-            (!account ||
-              account.wabaId !== wabaId ||
-              account.organizationId !== waba.organizationId)
-          ) {
-            console.info(
-              "Ignoring Meta webhook for unknown phone number",
-              string(object(value.metadata).phone_number_id)
-            )
-            continue
-          }
-          if (account)
-            for (const rawStatus of array(value.statuses)) {
-              const data = object(rawStatus)
-              if (!outboundStatus(data.status) || !string(data.id)) continue
-              if (!(await statusMessage(ctx, account, data))) {
-                if (attempt < 6) {
-                  await ctx.scheduler.runAfter(
-                    10000 * 2 ** attempt,
-                    internal.meta.projection.project,
-                    { id, attempt: attempt + 1 }
-                  )
-                  return null
-                }
-                console.info(
-                  "Dropping unmatched WhatsApp status after retries",
-                  string(data.id)
-                )
-              }
-            }
-          changes.push({
-            field,
-            value,
-            wabaId,
-            account,
-            organizationId: waba.organizationId,
-          })
+          if (field === "messages")
+            items.push(...whatsappWebhookItems(value, wabaId, event.receivedAt))
+          else
+            changes.push({
+              field,
+              value,
+              wabaId,
+              organizationId: waba.organizationId,
+            })
         }
       }
+    const resolved: {
+      item: WebhookItem
+      account: Doc<"channelAccounts">
+      message: Doc<"channelMessages"> | null
+    }[] = []
+    for (const item of items) {
+      const account = await accountFor(item)
+      if (!account) continue
+      if (item.wabaId) {
+        const waba = wabas.get(item.wabaId)
+        if (
+          account.wabaId !== item.wabaId ||
+          account.organizationId !== waba?.organizationId
+        )
+          continue
+      }
+      const message =
+        item.kind === "status" ? await statusMessage(ctx, account, item) : null
+      if (item.kind === "status" && !message) {
+        const delay = retryLater(attempt)
+        if (delay !== null) {
+          await ctx.scheduler.runAfter(
+            delay,
+            internal.meta.projection.project,
+            { id, attempt: attempt + 1 }
+          )
+          return null
+        }
+        console.info(
+          "Dropping unmatched Meta status after retries",
+          item.externalId
+        )
+      }
+      resolved.push({ item, account, message })
+    }
+    const observed = new Map<string, Doc<"channelMessages">>()
+    for (const { item, account, message } of resolved) {
+      if (item.kind === "message") await receive(ctx, account, item, event)
+      else if (item.kind === "status" && message) {
+        const current = await status(
+          ctx,
+          account,
+          item,
+          observed.get(message._id) ?? message,
+          event
+        )
+        observed.set(message._id, current)
+      } else if (item.kind === "watermark")
+        await ctx.scheduler.runAfter(0, internal.meta.projection.watermark, {
+          eventId: id,
+          accountId: account._id,
+          sender: item.sender,
+          next: item.status,
+          at: item.at,
+          watermark: item.watermark,
+          cursor: null,
+        })
+    }
     for (const change of changes) {
-      if (change.account) {
-        for (const message of array(change.value.messages))
-          await receive(ctx, change.account, change.value, message, event)
-        for (const update of array(change.value.statuses))
-          await status(ctx, change.account, update, event)
-      } else if (
-        TEMPLATE_WEBHOOK_FIELDS.some((field) => field === change.field)
-      ) {
+      if (oneOf(change.field, TEMPLATE_WEBHOOK_FIELDS))
         await templateWebhook(
           ctx,
           change.organizationId,
@@ -446,18 +390,9 @@ export const project = internalMutation({
           change.field,
           change.value
         )
-      } else if (
-        [
-          "phone_number_quality_update",
-          "phone_number_name_update",
-          "account_update",
-        ].includes(change.field)
-      )
+      else if (oneOf(change.field, MANAGEMENT_WEBHOOK_FIELDS))
         await ctx.scheduler.runAfter(0, internal.meta.projection.management, {
-          wabaId: change.wabaId,
-          organizationId: change.organizationId,
-          field: change.field,
-          value: change.value,
+          ...change,
           cursor: null,
         })
     }
@@ -504,14 +439,9 @@ export const management = internalMutation({
           string(value.current_limit)
         if (limit) patch.messagingLimit = limit
         const quality = string(value.quality_rating).toLowerCase()
-        if (
-          quality === "green" ||
-          quality === "yellow" ||
-          quality === "red" ||
-          quality === "unknown"
-        )
-          patch.quality = quality
-        if (event === "THROUGHPUT_UPGRADE") patch.throughputMps = 1000
+        patch.quality = oneOf(quality, CHANNEL_QUALITIES) ?? account.quality
+        if (event === "THROUGHPUT_UPGRADE")
+          patch.throughputMps = HIGH_THROUGHPUT_MPS
         if (event === "ONBOARDING") patch.status = "pending"
         if (event === "FLAGGED") patch.quality = "red"
       }
@@ -523,17 +453,9 @@ export const management = internalMutation({
         patch.displayName = string(value.requested_verified_name)
       if (args.field === "account_update") {
         const ban = string(object(value.ban_info).waba_ban_state)
-        if (
-          [
-            "ACCOUNT_DELETED",
-            "PARTNER_REMOVED",
-            "PARTNER_APP_UNINSTALLED",
-            "ACCOUNT_OFFBOARDED",
-          ].includes(event)
-        )
-          patch.status = "disconnected"
+        if (oneOf(event, ACCOUNT_REMOVED_EVENTS)) patch.status = "disconnected"
         else if (
-          ["ACCOUNT_RESTRICTION", "ACCOUNT_VIOLATION"].includes(event) ||
+          oneOf(event, ACCOUNT_RESTRICTED_EVENTS) ||
           (event === "DISABLED_UPDATE" && ban === "DISABLE")
         )
           patch.status = "restricted"
@@ -620,9 +542,13 @@ export const watermark = internalMutation({
     if (!thread) return null
     const page = await ctx.db
       .query("channelMessages")
-      .withIndex("by_conversationId", (q) => q.eq("conversationId", thread._id))
+      .withIndex("by_conversationId", (q) =>
+        q.eq("conversationId", thread._id).lte("_creationTime", args.watermark)
+      )
+      .order("desc")
       .paginate({ cursor: args.cursor, numItems: 100 })
     let pending = false
+    let stopped = false
     for (const message of page.page) {
       if (
         message.direction !== "outbound" ||
@@ -630,6 +556,13 @@ export const watermark = internalMutation({
         (message.sentAt ?? 0) > args.watermark
       )
         continue
+      if (
+        message.status !== "failed" &&
+        STATUS_RANK[message.status] >= STATUS_RANK[args.next]
+      ) {
+        stopped = true
+        break
+      }
       if (!message.externalId && message.status === "queued") {
         pending = true
         continue
@@ -639,21 +572,29 @@ export const watermark = internalMutation({
           ctx,
           account,
           {
-            id: message.externalId,
-            recipient_id: args.sender,
+            kind: "status",
+            externalId: message.externalId,
+            sender: args.sender,
             status: args.next,
-            timestamp: args.at / 1000,
+            at: args.at,
+            data: {
+              id: message.externalId,
+              recipient_id: args.sender,
+              status: args.next,
+              timestamp: args.at / 1000,
+            },
           },
+          message,
           event
         )
     }
-    if (pending && (args.attempt ?? 0) < 6)
-      await ctx.scheduler.runAfter(
-        10000 * 2 ** (args.attempt ?? 0),
-        internal.meta.projection.watermark,
-        { ...args, attempt: (args.attempt ?? 0) + 1 }
-      )
-    else if (!page.isDone)
+    const delay = retryLater(args.attempt ?? 0)
+    if (pending && delay !== null)
+      await ctx.scheduler.runAfter(delay, internal.meta.projection.watermark, {
+        ...args,
+        attempt: (args.attempt ?? 0) + 1,
+      })
+    else if (!stopped && !page.isDone)
       await ctx.scheduler.runAfter(0, internal.meta.projection.watermark, {
         ...args,
         cursor: page.continueCursor,

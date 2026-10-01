@@ -1,4 +1,6 @@
-import { ConvexError, v, type Infer } from "convex/values"
+import { CHANNELS, CHANNEL_IDS, type LogChannel } from "../lib/channels"
+import { channelRows } from "./channels/rows"
+import { ConvexError, v } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -8,8 +10,13 @@ import {
   stream,
   type QueryStream,
 } from "convex-helpers/server/stream"
-import { action, query, type QueryCtx } from "./_generated/server"
-import { api, internal } from "./_generated/api"
+import {
+  action,
+  query,
+  internalQuery,
+  type QueryCtx,
+} from "./_generated/server"
+import { internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
@@ -21,6 +28,7 @@ import {
   CHANNEL_MESSAGE_STATUSES,
   MESSAGING_CHANNELS,
   channelMessageStatusValue,
+  literals,
 } from "./tables/channels"
 import { mediaDownloadLink } from "./channels/downloads"
 
@@ -30,9 +38,10 @@ import { mediaDownloadLink } from "./channels/downloads"
    through all of them. */
 
 /** The channels the logs filter by; every channel when left out. */
-export const LOG_CHANNELS = ["email", "whatsapp"] as const
-const logChannelValue = v.union(...LOG_CHANNELS.map((c) => v.literal(c)))
-type LogChannel = (typeof LOG_CHANNELS)[number]
+export const LOG_CHANNELS = CHANNEL_IDS.filter(
+  (channel): channel is LogChannel => CHANNELS[channel].supports.logs
+)
+const logChannelValue = literals(LOG_CHANNELS)
 type MessagingChannel = (typeof MESSAGING_CHANNELS)[number]
 
 const logFilters = {
@@ -66,36 +75,6 @@ const messagingChannels = (channel: LogChannel | undefined) =>
       (channel === undefined || channel === c)
   )
 
-/** One channel's messages in one direction, newest first. */
-function channelRows(
-  ctx: QueryCtx,
-  org: string,
-  channel: MessagingChannel,
-  direction: "inbound" | "outbound",
-  { status, from = 0, to = Number.MAX_SAFE_INTEGER }: FilterArgs
-) {
-  const rows = stream(ctx.db, schema).query("channelMessages")
-  return (
-    status
-      ? rows.withIndex("by_team_channel_status_direction", (q) =>
-          q
-            .eq("organizationId", org)
-            .eq("channel", channel)
-            .eq("status", status)
-            .eq("direction", direction)
-            .gte("_creationTime", from)
-            .lte("_creationTime", to)
-        )
-      : rows.withIndex("by_team_channel_direction", (q) =>
-          q
-            .eq("organizationId", org)
-            .eq("channel", channel)
-            .eq("direction", direction)
-            .gte("_creationTime", from)
-            .lte("_creationTime", to)
-        )
-  ).order("desc")
-}
 type FilterArgs = {
   status?: Doc<"channelMessages">["status"]
   from?: number
@@ -145,7 +124,8 @@ export const sending = query({
     if (status === undefined || isOutboundStatus(status))
       for (const c of messagingChannels(channel))
         streams.push(
-          channelRows(ctx, org, c, "outbound", {
+          channelRows(ctx, org, c, {
+            direction: "outbound",
             ...args,
             status: status as FilterArgs["status"],
           })
@@ -247,7 +227,7 @@ export const receiving = query({
           .order("desc")
       )
     for (const c of messagingChannels(channel))
-      streams.push(channelRows(ctx, org, c, "inbound", args))
+      streams.push(channelRows(ctx, org, c, { ...args, direction: "inbound" }))
     const search = args.search?.trim().slice(0, 200)
     const matches = matchesSearch(search)
     const result = await filteredPage(
@@ -402,9 +382,6 @@ export function mediaFiles(
   }))
 }
 
-export type MediaFile = ReturnType<typeof mediaFiles>[number]
-export type LogChannelFilter = Infer<typeof logChannelValue>
-
 /** A signed, hour-long download link for one of a message's files. */
 export const mediaLink = action({
   args: { messageId: v.string(), mediaId: v.string() },
@@ -412,7 +389,7 @@ export const mediaLink = action({
   handler: async (ctx, { messageId, mediaId }): Promise<string> => {
     // Checks the caller's team.
     const found: { message: Doc<"channelMessages"> } | null =
-      await ctx.runQuery(api.messages.get, { id: messageId })
+      await ctx.runQuery(internal.messages.mediaMessage, { id: messageId })
     const file = found
       ? await ctx.runQuery(internal.channels.mediaState.file, {
           messageId,
@@ -422,5 +399,18 @@ export const mediaLink = action({
     if (!found || !file) throw new ConvexError("The file is not available")
     return (await mediaDownloadLink(ctx, found.message._id, mediaId))
       .download_url
+  },
+})
+
+/** Download authorization reads only the team row, without hydrating a detail. */
+export const mediaMessage = internalQuery({
+  args: { id: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({ message: schema.doc("channelMessages") })
+  ),
+  handler: async (ctx, { id }) => {
+    const message = await readTeamRow(ctx, "channelMessages", id)
+    return message ? { message } : null
   },
 })

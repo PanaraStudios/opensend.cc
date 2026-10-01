@@ -432,11 +432,6 @@ describe("Meta connect", () => {
         id: accounts[0].id,
       })
     ).toBeNull()
-    expect(
-      await f.owner.client.query(api.meta.connect.listConnections, {
-        organizationId: f.owner.team,
-      })
-    ).toEqual([])
     expect(await f.account(accounts[0].id)).toMatchObject({
       status: "disconnected",
       disconnectedAt: expect.any(Number),

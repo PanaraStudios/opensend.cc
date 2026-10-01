@@ -1,12 +1,8 @@
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
-import { internalMutation, internalQuery } from "../_generated/server"
+import { internalQuery } from "../_generated/server"
 import { internal } from "../_generated/api"
-import {
-  createChannelMessage,
-  channelInputValue,
-  resolveWhatsAppAccount,
-} from "../channels/messages"
+import { channelAccountAccess } from "../channels/messages"
 import {
   callerValue,
   requireCaller,
@@ -15,7 +11,6 @@ import {
   type Caller,
 } from "./caller"
 import { objectBody, stringField } from "./route"
-import { idempotent } from "./idempotency"
 import { channelMessageRoutes, channelSendInput } from "./channelMessages"
 import { findMetaApp } from "../meta/app"
 import {
@@ -31,25 +26,6 @@ export function assertChannelSendingKey(caller: Caller) {
       "Domain-restricted API keys can only send email."
     )
 }
-export const send = internalMutation({
-  args: { caller: callerValue, input: channelInputValue },
-  returns: v.id("channelMessages"),
-  handler: async (ctx, { caller, input }) => {
-    await requireCaller(ctx, caller, "sending")
-    assertChannelSendingKey(caller)
-    return idempotent(
-      ctx,
-      caller,
-      () =>
-        createChannelMessage(ctx, input, {
-          organizationId: caller.organizationId,
-          source: "api",
-          apiKeyId: caller.apiKeyId,
-        }),
-      (id) => ({ body: { id } })
-    )
-  },
-})
 export const uploadTarget = internalQuery({
   args: { caller: callerValue, from: v.optional(v.string()) },
   returns: v.object({
@@ -61,15 +37,12 @@ export const uploadTarget = internalQuery({
   handler: async (ctx, { caller, from }) => {
     await requireCaller(ctx, caller, "sending")
     assertChannelSendingKey(caller)
-    const account = await resolveWhatsAppAccount(
+    const { account, connection } = await channelAccountAccess(
       ctx,
       caller.organizationId,
-      from
+      from,
+      "whatsapp"
     )
-    const connection = (await ctx.db.get(
-      "metaConnections",
-      account.connectionId
-    ))!
     const app = await findMetaApp(ctx)
     if (!app) throw invalid("Meta app is not configured.")
     return {
@@ -83,7 +56,7 @@ export const uploadTarget = internalQuery({
 export function registerWhatsAppRoutes(http: HttpRouter) {
   channelMessageRoutes("whatsapp")(http, {
     send: async (ctx, { caller, body }) => {
-      const id = await ctx.runMutation(internal.api.whatsapp.send, {
+      const id = await ctx.runMutation(internal.api.channelMessages.send, {
         caller,
         input: channelSendInput(body, "whatsapp"),
       })
@@ -94,7 +67,10 @@ export function registerWhatsAppRoutes(http: HttpRouter) {
       handler: async (ctx, { caller, body }) => {
         const input = objectBody(body)
         const from = stringField(input, "from")
-        await ctx.runQuery(internal.api.whatsapp.uploadTarget, { caller, from })
+        const target = await ctx.runQuery(internal.api.whatsapp.uploadTarget, {
+          caller,
+          from,
+        })
         const file = input.file
         if (!(file instanceof Blob))
           throw invalid("A multipart file is required.")
@@ -115,7 +91,7 @@ export function registerWhatsAppRoutes(http: HttpRouter) {
             internal.channels.mediaUpload.upload,
             {
               caller,
-              from,
+              target,
               storageId,
               filename:
                 typeof (file as File).name === "string"

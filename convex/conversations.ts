@@ -1,3 +1,6 @@
+import { object } from "../lib/meta/parse"
+import { channelMessagePayload } from "./channels/payload"
+import { channelStrategies } from "../lib/meta/payloads"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -47,12 +50,14 @@ const listFilters = v.object({
 /** Who a thread is with: their contact's name, else the name the channel
     gave, else the address; and that phone number or email address. */
 async function party(ctx: QueryCtx, conversation: Doc<"conversations">) {
-  const contact = conversation.contactId
-    ? await ctx.db.get("contacts", conversation.contactId)
-    : null
-  const identity = conversation.channelContactId
-    ? await ctx.db.get("channelContacts", conversation.channelContactId)
-    : null
+  const [contact, identity] = await Promise.all([
+    conversation.contactId
+      ? ctx.db.get("contacts", conversation.contactId)
+      : null,
+    conversation.channelContactId
+      ? ctx.db.get("channelContacts", conversation.channelContactId)
+      : null,
+  ])
   const handle =
     conversation.emailAddress ?? identity?.phone ?? identity?.externalId ?? ""
   const own = contact?.organizationId === conversation.organizationId
@@ -106,11 +111,12 @@ export const list = query({
       { rows: 512, bytes: 2 * 1024 * 1024 },
       search
     )
-    const page = []
-    for (const conversation of result.page) {
-      const { name, handle } = await party(ctx, conversation)
-      page.push({ conversation, name, handle })
-    }
+    const page = await Promise.all(
+      result.page.map(async (conversation) => {
+        const { name, handle } = await party(ctx, conversation)
+        return { conversation, name, handle }
+      })
+    )
     return { ...result, page }
   },
 })
@@ -270,13 +276,13 @@ export const messages = query({
         ...paginationOpts,
         numItems: Math.min(paginationOpts.numItems, EMAIL_PAGE),
       })
-      const page = []
-      for (const row of result.page)
-        page.push(
+      const page = await Promise.all(
+        result.page.map((row) =>
           "emailId" in row
-            ? await sentEmail(ctx, row.emailId)
-            : await receivedEmail(ctx, row)
+            ? sentEmail(ctx, row.emailId)
+            : receivedEmail(ctx, row)
         )
+      )
       return {
         ...result,
         page: page.filter((row) => row !== null),
@@ -287,29 +293,30 @@ export const messages = query({
       .withIndex("by_conversationId", (q) => q.eq("conversationId", id))
       .order("desc")
       .paginate(paginationOpts)
-    const page = []
-    for (const message of result.page) {
-      const content = await ctx.db
-        .query("channelMessageContents")
-        .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
-        .unique()
-      page.push({
-        id: message._id,
-        kind: "channel" as const,
-        direction: message.direction,
-        at: message._creationTime,
-        status: message.status,
-        text: bodyText(message, content),
-        ...(message.error
-          ? {
-              error: message.errorTitle
-                ? `${message.errorTitle}: ${message.error}`
-                : message.error,
-            }
-          : {}),
-        media: mediaFiles(message, content),
+    const page = await Promise.all(
+      result.page.map(async (message) => {
+        const content = await ctx.db
+          .query("channelMessageContents")
+          .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+          .unique()
+        return {
+          id: message._id,
+          kind: "channel" as const,
+          direction: message.direction,
+          at: message._creationTime,
+          status: message.status,
+          text: bodyText(message, content),
+          ...(message.error
+            ? {
+                error: message.errorTitle
+                  ? `${message.errorTitle}: ${message.error}`
+                  : message.error,
+              }
+            : {}),
+          media: mediaFiles(message, content),
+        }
       })
-    }
+    )
     return { ...result, page }
   },
 })
@@ -320,12 +327,10 @@ function bodyText(
   content: Doc<"channelMessageContents"> | null
 ) {
   if (message.type !== "text" || !content) return message.preview
-  const payload: unknown = JSON.parse(content.payload)
-  const text =
-    typeof payload === "object" && payload !== null && "text" in payload
-      ? (payload.text as { body?: unknown }).body
-      : undefined
-  return typeof text === "string" ? text : message.preview
+  return (
+    channelMessagePayload(message, object(JSON.parse(content.payload))).text ??
+    message.preview
+  )
 }
 
 async function receivedEmail(ctx: QueryCtx, row: Doc<"receivedEmails">) {
@@ -481,6 +486,7 @@ export const reply = mutation({
       return await createChannelMessage(
         ctx,
         {
+          channel: conversation.channel,
           from: conversation.accountId,
           to: identity.externalId,
           body: template
@@ -488,7 +494,7 @@ export const reply = mutation({
                 type: "template",
                 template: { id: template.id, variables: template.variables },
               }
-            : { type: "text", text: { body: text } },
+            : channelStrategies[conversation.channel].replyBody(text!),
         },
         { organizationId, source: "dashboard" }
       )
