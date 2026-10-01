@@ -289,14 +289,14 @@ export function channelMessageRoutes(channel: Channel) {
       apiRoute(http, {
         method: "POST",
         path: `${prefix}/messages`,
-        permission: "sending",
+        scope: { resource: channel, access: "write" },
         handler: adapters.send,
       })
     if (adapters.media)
       apiRoute(http, {
         method: "POST",
         path: `${prefix}/media`,
-        permission: "sending",
+        scope: { resource: channel, access: "write" },
         bodyFormat: "multipart-binary",
         maxBody: adapters.media.maxBody,
         handler: adapters.media.handler,
@@ -304,7 +304,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/messages`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => {
         const filters = Object.fromEntries(
           ["status", "direction"].map((key) => [
@@ -326,7 +326,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/messages/{id}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, params }) => ({
         body: await detail(ctx, caller, channel, params.id),
       }),
@@ -334,7 +334,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/${accountResource}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => ({
         body: listBody(
           await ctx.runQuery(internal.api.channelMessages.accounts, {
@@ -349,7 +349,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/${accountResource}/{id}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, params }) => {
         const result = await ctx.runQuery(
           internal.api.channelMessages.accounts,
@@ -362,7 +362,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/conversations`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => ({
         body: listBody(
           await ctx.runQuery(internal.api.channelMessages.conversations, {
@@ -377,7 +377,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/conversations/{id}/messages`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query, params }) => ({
         body: listBody(
           await ctx.runQuery(internal.api.channelMessages.list, {

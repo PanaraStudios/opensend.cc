@@ -7,7 +7,7 @@ export function registerSmtpRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/smtp/auth",
-    permission: "sending",
+    scope: { resource: "emails", access: "write" },
     source: "smtp",
     maxBody: 0,
     handler: async () => ({ body: { authenticated: true } }),
@@ -15,7 +15,7 @@ export function registerSmtpRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/smtp/emails",
-    permission: "sending",
+    scope: { resource: "emails", access: "write" },
     source: "smtp",
     maxBody: MAX_SEND_BODY,
     handler: async (ctx, { caller, body }) =>

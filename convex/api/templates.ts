@@ -214,7 +214,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/templates",
-    permission: "full_access",
+    scope: { resource: "templates", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const channel = query.get("channel")
       if (
@@ -237,7 +237,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/templates/{id}",
-    permission: "full_access",
+    scope: { resource: "templates", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const { row, draft, published } = await ctx.runQuery(
         internal.api.templates.get,
@@ -318,7 +318,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/templates",
-    permission: "full_access",
+    scope: { resource: "templates", access: "write" },
     handler: async (ctx, { caller, body }) => ({
       status: 201,
       body: {
@@ -335,7 +335,7 @@ export function registerTemplateRoutes(http: HttpRouter) {
       method:
         kind === "update" ? "PATCH" : kind === "remove" ? "DELETE" : "POST",
       path: `/templates/{id}${kind === "publish" || kind === "duplicate" ? `/${kind}` : ""}`,
-      permission: "full_access",
+      scope: { resource: "templates", access: "write" },
       handler: async (ctx, { caller, params, body }) => {
         /* A WhatsApp template is submitted to, or deleted at, Meta first:
            a Graph call cannot share the mutation's transaction. */

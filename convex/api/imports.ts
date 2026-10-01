@@ -307,7 +307,7 @@ export function registerImportRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/contacts/imports",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "write" },
     bodyFormat: "multipart",
     handler: async (ctx, { caller, body }) => ({
       status: 201,
@@ -323,7 +323,7 @@ export function registerImportRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/contacts/imports",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.imports.list, {
         caller,
@@ -338,7 +338,7 @@ export function registerImportRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/contacts/imports/{id}",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, params }) => ({
       body: view(
         await ctx.runQuery(internal.api.imports.get, { caller, id: params.id })

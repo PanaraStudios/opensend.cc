@@ -126,7 +126,7 @@ describe("domain claims REST", () => {
       [`/domains/${claim.domain_id}/claim/verify`, "POST", undefined],
     ] as const) {
       const denied = await f.call(path, method, body, f.sending.token)
-      expect(denied.status).toBe(401)
+      expect(denied.status).toBe(403)
       expect(await denied.json()).toMatchObject({ name: "restricted_api_key" })
     }
     for (const [path, method] of [

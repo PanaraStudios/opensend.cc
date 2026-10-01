@@ -189,7 +189,11 @@ export function exportStatusLabel(status: ExportStatus): string {
 }
 
 export function permissionLabel(permission: ApiKeyPermission): string {
-  return permission === "full_access" ? "Full access" : "Sending access"
+  return permission === "full_access"
+    ? "Full access"
+    : permission === "custom"
+      ? "Custom"
+      : "Sending access"
 }
 
 export function roleLabel(role: MemberRole): string {

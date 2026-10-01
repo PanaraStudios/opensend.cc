@@ -13,6 +13,7 @@ import {
 } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
+import { API_SCOPES, scopeName } from "../lib/api-scopes"
 import type { ApiRouteOptions } from "./api/route"
 import { api, components, internal } from "./_generated/api"
 import { WEBHOOK_EVENTS } from "../lib/dashboard/types"
@@ -40,15 +41,15 @@ import {
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
-  () => [] as Pick<ApiRouteOptions, "method" | "path" | "permission">[]
+  () => [] as Pick<ApiRouteOptions, "method" | "path" | "scope">[]
 )
 vi.mock("./api/route", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/route")>()
   return {
     ...actual,
     apiRoute: (...args: Parameters<typeof actual.apiRoute>) => {
-      const { method, path, permission } = args[1]
-      registrations.push({ method, path, permission })
+      const { method, path, scope } = args[1]
+      registrations.push({ method, path, scope })
       return actual.apiRoute(...args)
     },
   }
@@ -58,7 +59,7 @@ import http from "./http"
 
 type Operation = {
   operationId: string
-  "x-opensend-permission": string
+  "x-opensend-scope": string
   requestBody?: { content: Record<string, { schema: AnySchema }> }
   responses: Record<
     string,
@@ -398,7 +399,7 @@ describe("OpenAPI contract", () => {
     )
   })
 
-  test("is OpenAPI 3.1 and exactly covers every registered REST method/path and permission", () => {
+  test("is OpenAPI 3.1 and exactly covers every registered REST method/path and scope", () => {
     expect(contract.openapi).toBe("3.1.0")
     expect(registrations.length).toBeGreaterThan(0)
     const actual = registrations
@@ -446,14 +447,31 @@ describe("OpenAPI contract", () => {
       .map(([path, method]) => `${method} ${path}`)
       .filter((route) => !dispatchRoutes.has(route))
     expect(directRoutes.sort()).toEqual(protocols.sort())
-    for (const { path, method, permission } of registrations)
+    for (const { path, method, scope } of registrations) {
+      expect(scope).toBeDefined()
       expect(
-        contract.paths[path][method.toLowerCase()]["x-opensend-permission"]
-      ).toBe(permission)
+        contract.paths[path][method.toLowerCase()]["x-opensend-scope"]
+      ).toBe(scopeName(scope))
+      if (scope !== "full_access")
+        expect(scope.access).toBe(method === "GET" ? "read" : "write")
+    }
     const ids = Object.values(contract.paths).flatMap((ops) =>
       Object.values(ops).map((op) => op.operationId)
     )
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test("every registered route declares a catalog scope and API key scopes match the catalog", () => {
+    for (const { scope } of registrations) {
+      expect(scope).toBeDefined()
+      expect(
+        scope === "full_access" ||
+          API_SCOPES.includes(scopeName(scope) as (typeof API_SCOPES)[number])
+      ).toBe(true)
+    }
+    expect(contract.components.schemas.ApiScope).toMatchObject({
+      enum: API_SCOPES,
+    })
   })
 
   test("all request/response schemas compile as JSON Schema 2020-12", () => {

@@ -19,7 +19,7 @@ import {
 } from "../../lib/meta/media"
 
 export function assertChannelSendingKey(caller: Caller) {
-  if (caller.domainId)
+  if (caller.domainId && caller.permission !== "custom")
     throw apiError(
       403,
       "restricted_api_key",

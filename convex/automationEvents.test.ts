@@ -564,7 +564,7 @@ describe("the /events definitions API", () => {
       sending
     )
     expect(refused).toMatchObject({
-      status: 401,
+      status: 403,
       body: { name: "restricted_api_key" },
     })
   })

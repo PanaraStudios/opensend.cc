@@ -181,7 +181,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/suppressions",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "write" },
     handler: async (ctx, { caller, body }) => ({
       status: 201,
       body: (
@@ -198,7 +198,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "POST",
       path: `/suppressions/batch/${remove ? "remove" : "add"}`,
-      permission: "full_access",
+      scope: { resource: "contacts", access: "write" },
       handler: async (ctx, { caller, body }) => ({
         status: remove ? 200 : 201,
         body: {
@@ -214,7 +214,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/suppressions",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const origin = enumField(
         { origin: query.get("origin") ?? undefined },
@@ -237,7 +237,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/suppressions/{suppression}",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, params }) => ({
       body: {
         object: "suppression",
@@ -253,7 +253,7 @@ export function registerSuppressionRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/suppressions/{suppression}",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: (
         await ctx.runMutation(internal.api.suppressions.write, {

@@ -52,9 +52,9 @@ paths:
         - Emails
       summary: Send Email
       description: >-
-        Send an email from a verified sender (requires sending or full access). Suppressed recipients are
+        Send an email from a verified sender (requires emails:write or Full access). Suppressed recipients are
         excluded, and unsubscribe headers are not added automatically.
-      x-opensend-permission: sending
+      x-opensend-scope: emails:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -101,9 +101,9 @@ paths:
         - Emails
       summary: List Emails
       description: >-
-        List email metadata without message bodies (requires full access). Emails are kept for 30 days after
+        List email metadata without message bodies (requires emails:read or Full access). Emails are kept for 30 days after
         sending or failure; pending emails remain available.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -147,10 +147,10 @@ paths:
         - Emails
       summary: Send Batch Emails
       description: >-
-        Send up to 100 emails in one request, without attachments (requires sending or full access). Requests
+        Send up to 100 emails in one request, without attachments (requires emails:write or Full access). Requests
         are limited to 1 MiB; strict validation rejects the whole batch, while permissive validation returns
         successful IDs and errors by input index.
-      x-opensend-permission: sending
+      x-opensend-scope: emails:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - name: x-batch-validation
@@ -213,9 +213,9 @@ paths:
         - Emails
       summary: Retrieve Email
       description: >-
-        Retrieve an email, including its content, tags, and scheduled send time (requires full access).
+        Retrieve an email, including its content, tags, and scheduled send time (requires emails:read or Full access).
         Unavailable content and message IDs are null, and missing recipient lists are empty arrays.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -261,9 +261,9 @@ paths:
         - Emails
       summary: Update Email
       description: >-
-        Reschedule an email that has not been released for delivery (requires full access). Returns the email
+        Reschedule an email that has not been released for delivery (requires emails:write or Full access). Returns the email
         ID, or a 422 error if delivery has already started.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:write
       parameters:
         - name: id
           in: path
@@ -316,9 +316,9 @@ paths:
         - Emails
       summary: Cancel Email
       description: >-
-        Cancel a scheduled email before it is released for delivery (requires full access). Returns the email
+        Cancel a scheduled email before it is released for delivery (requires emails:write or Full access). Returns the email
         ID, or a 422 error if delivery has already started.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:write
       parameters:
         - name: id
           in: path
@@ -368,7 +368,7 @@ paths:
       description: >-
         Create a public link for a sent or received email. Defaults to 48 hours; longer or invalid durations
         return 422.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:write
       parameters:
         - name: email_id
           in: path
@@ -422,9 +422,9 @@ paths:
         - Domains
       summary: Create Domain
       description: >-
-        Add a domain for sending or receiving email (requires full access). Setup runs asynchronously;
+        Add a domain for sending or receiving email (requires domains:write or Full access). Setup runs asynchronously;
         receiving requires a supported region.
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -471,9 +471,9 @@ paths:
         - Domains
       summary: List Domains
       description: >-
-        List your domains and their verification status (requires full access). Statuses are pending,
+        List your domains and their verification status (requires domains:read or Full access). Statuses are pending,
         verified, partially_verified, or failed.
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -517,9 +517,9 @@ paths:
         - Domains
       summary: Retrieve Domain
       description: >-
-        Retrieve a domain and the DNS records needed to verify it (requires full access). Records include
+        Retrieve a domain and the DNS records needed to verify it (requires domains:read or Full access). Records include
         DMARC; TrackingCAA and CAA records are not returned.
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:read
       parameters:
         - name: id
           in: path
@@ -565,9 +565,8 @@ paths:
         - Domains
       summary: Update Domain
       description: >-
-        Update tracking, TLS, or receiving settings for a domain that has completed setup (requires full
-        access). Omitted or null settings stay unchanged; receiving requires a supported region.
-      x-opensend-permission: full_access
+        Update tracking, TLS, or receiving settings for a domain that has completed setup (requires domains:write or Full access). Omitted or null settings stay unchanged; receiving requires a supported region.
+      x-opensend-scope: domains:write
       parameters:
         - name: id
           in: path
@@ -619,9 +618,9 @@ paths:
         - Domains
       summary: Delete Domain
       description: >-
-        Delete a domain from your team (requires full access). Removal and related cleanup may finish after
+        Delete a domain from your team (requires domains:write or Full access). Removal and related cleanup may finish after
         the response.
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:write
       parameters:
         - name: id
           in: path
@@ -668,9 +667,8 @@ paths:
         - Contacts
       summary: Create Contact
       description: >-
-        Create a contact or update an existing contact with the same email address, ignoring case (requires
-        full access). Supplied fields and segment memberships are merged into the contact.
-      x-opensend-permission: full_access
+        Create a contact or update an existing contact with the same email address, ignoring case (requires contacts:write or Full access). Supplied fields and segment memberships are merged into the contact.
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -716,8 +714,8 @@ paths:
       tags:
         - Contacts
       summary: List Contacts
-      description: List contacts for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List contacts for your team (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -765,8 +763,8 @@ paths:
       tags:
         - Contacts
       summary: Retrieve Contact
-      description: Retrieve a contact by ID or URL-encoded email address (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve a contact by ID or URL-encoded email address (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - name: id
           in: path
@@ -812,9 +810,9 @@ paths:
         - Contacts
       summary: Update Contact
       description: >-
-        Update a contact by ID or URL-encoded email address (requires full access). The email address cannot
+        Update a contact by ID or URL-encoded email address (requires contacts:write or Full access). The email address cannot
         be changed; any supplied email field is ignored.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -866,9 +864,9 @@ paths:
         - Contacts
       summary: Delete Contact
       description: >-
-        Delete a contact by ID or URL-encoded email address (requires full access). Related cleanup may finish
+        Delete a contact by ID or URL-encoded email address (requires contacts:write or Full access). Related cleanup may finish
         after the response.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -914,8 +912,8 @@ paths:
       tags:
         - Segments
       summary: Create Segment
-      description: Create a segment to organize contacts (requires full access). A team can have any number of segments.
-      x-opensend-permission: full_access
+      description: Create a segment to organize contacts (requires segments:write or Full access). A team can have any number of segments.
+      x-opensend-scope: segments:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -961,8 +959,8 @@ paths:
       tags:
         - Segments
       summary: List Segments
-      description: List segments for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List segments for your team (requires segments:read or Full access).
+      x-opensend-scope: segments:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -1005,8 +1003,8 @@ paths:
       tags:
         - Segments
       summary: Retrieve Segment
-      description: Retrieve a segment (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve a segment (requires segments:read or Full access).
+      x-opensend-scope: segments:read
       parameters:
         - name: id
           in: path
@@ -1051,8 +1049,8 @@ paths:
       tags:
         - Segments
       summary: Update Segment
-      description: Update a segment (requires full access).
-      x-opensend-permission: full_access
+      description: Update a segment (requires segments:write or Full access).
+      x-opensend-scope: segments:write
       parameters:
         - name: id
           in: path
@@ -1104,9 +1102,9 @@ paths:
         - Segments
       summary: Delete Segment
       description: >-
-        Delete a segment while keeping its contacts (requires full access). Membership cleanup may finish
+        Delete a segment while keeping its contacts (requires segments:write or Full access). Membership cleanup may finish
         after the response.
-      x-opensend-permission: full_access
+      x-opensend-scope: segments:write
       parameters:
         - name: id
           in: path
@@ -1153,9 +1151,9 @@ paths:
         - Topics
       summary: Create Topic
       description: >-
-        Create a topic to manage subscription preferences (requires full access). Your team can have up to 100
+        Create a topic to manage subscription preferences (requires topics:write or Full access). Your team can have up to 100
         topics.
-      x-opensend-permission: full_access
+      x-opensend-scope: topics:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1201,8 +1199,8 @@ paths:
       tags:
         - Topics
       summary: List Topics
-      description: List topics for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List topics for your team (requires topics:read or Full access).
+      x-opensend-scope: topics:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -1245,8 +1243,8 @@ paths:
       tags:
         - Topics
       summary: Retrieve Topic
-      description: Retrieve a topic (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve a topic (requires topics:read or Full access).
+      x-opensend-scope: topics:read
       parameters:
         - name: id
           in: path
@@ -1292,9 +1290,9 @@ paths:
         - Topics
       summary: Update Topic
       description: >-
-        Update a topic name, description, or visibility (requires full access). Supplying default_subscription
+        Update a topic name, description, or visibility (requires topics:write or Full access). Supplying default_subscription
         returns 422 because the default cannot be changed.
-      x-opensend-permission: full_access
+      x-opensend-scope: topics:write
       parameters:
         - name: id
           in: path
@@ -1345,8 +1343,8 @@ paths:
       tags:
         - Topics
       summary: Delete Topic
-      description: Delete a topic (requires full access). Subscription cleanup may finish after the response.
-      x-opensend-permission: full_access
+      description: Delete a topic (requires topics:write or Full access). Subscription cleanup may finish after the response.
+      x-opensend-scope: topics:write
       parameters:
         - name: id
           in: path
@@ -1393,9 +1391,9 @@ paths:
         - Contact Properties
       summary: Create Contact Property
       description: >-
-        Create a string or number property for contacts (requires full access). Your team can have up to 100
+        Create a string or number property for contacts (requires contacts:write or Full access). Your team can have up to 100
         properties, and property keys keep their original spelling.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1441,8 +1439,8 @@ paths:
       tags:
         - Contact Properties
       summary: List Contact Properties
-      description: List contact properties for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List contact properties for your team (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -1485,8 +1483,8 @@ paths:
       tags:
         - Contact Properties
       summary: Retrieve Contact Property
-      description: Retrieve a contact property (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve a contact property (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - name: id
           in: path
@@ -1532,9 +1530,9 @@ paths:
         - Contact Properties
       summary: Update Contact Property
       description: >-
-        Update the fallback value of a contact property (requires full access). Its key and type cannot be
+        Update the fallback value of a contact property (requires contacts:write or Full access). Its key and type cannot be
         changed.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -1586,9 +1584,9 @@ paths:
         - Contact Properties
       summary: Delete Contact Property
       description: >-
-        Delete a contact property and remove its values from contacts (requires full access). The property
+        Delete a contact property and remove its values from contacts (requires contacts:write or Full access). The property
         disappears immediately, but its key remains reserved until cleanup finishes.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -1635,10 +1633,10 @@ paths:
         - Templates
       summary: Create Template
       description: >-
-        Create a draft template (requires full access). An email template's variables are inferred from inline
+        Create a draft template (requires templates:write or Full access). An email template's variables are inferred from inline
         merge tags unless explicit definitions are supplied. With `channel: whatsapp`, the draft is a WhatsApp
         template made of Meta's components, submitted to Meta for review when published.
-      x-opensend-permission: full_access
+      x-opensend-scope: templates:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1684,8 +1682,8 @@ paths:
       tags:
         - Templates
       summary: List Templates
-      description: List templates for your team (requires full access), optionally of one channel.
-      x-opensend-permission: full_access
+      description: List templates for your team (requires templates:read or Full access), optionally of one channel.
+      x-opensend-scope: templates:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -1739,9 +1737,9 @@ paths:
         - Templates
       summary: Retrieve Template
       description: >-
-        Retrieve the current template draft and its variables (requires full access). Each template has one
+        Retrieve the current template draft and its variables (requires templates:read or Full access). Each template has one
         draft and one published version; earlier versions are unavailable.
-      x-opensend-permission: full_access
+      x-opensend-scope: templates:read
       parameters:
         - name: id
           in: path
@@ -1787,9 +1785,9 @@ paths:
         - Templates
       summary: Update Template
       description: >-
-        Update a template draft without changing the published version (requires full access). The current
+        Update a template draft without changing the published version (requires templates:write or Full access). The current
         version ID changes when the draft is edited and stays the same when published.
-      x-opensend-permission: full_access
+      x-opensend-scope: templates:write
       parameters:
         - name: id
           in: path
@@ -1841,9 +1839,9 @@ paths:
         - Templates
       summary: Delete Template
       description: >-
-        Delete a template, including its draft and published version (requires full access). A WhatsApp
+        Delete a template, including its draft and published version (requires templates:write or Full access). A WhatsApp
         template submitted to Meta is deleted at Meta first.
-      x-opensend-permission: full_access
+      x-opensend-scope: templates:write
       parameters:
         - name: id
           in: path
@@ -1890,10 +1888,10 @@ paths:
         - Broadcasts
       summary: Create Broadcast
       description: >-
-        Create a broadcast with HTML or plain text content (requires full access). Recipients are checked for
+        Create a broadcast with HTML or plain text content (requires broadcasts:write or Full access). Recipients are checked for
         suppressions and subscription preferences before sending, and personalized unsubscribe links are
         included.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1939,8 +1937,8 @@ paths:
       tags:
         - Broadcasts
       summary: List Broadcasts
-      description: List broadcasts for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List broadcasts for your team (requires broadcasts:read or Full access).
+      x-opensend-scope: broadcasts:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -1983,8 +1981,8 @@ paths:
       tags:
         - Broadcasts
       summary: Retrieve Broadcast
-      description: Retrieve a broadcast (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve a broadcast (requires broadcasts:read or Full access).
+      x-opensend-scope: broadcasts:read
       parameters:
         - name: id
           in: path
@@ -2030,9 +2028,9 @@ paths:
         - Broadcasts
       summary: Update Broadcast
       description: >-
-        Edit a draft or canceled broadcast, or rename a broadcast in any other state (requires full access).
+        Edit a draft or canceled broadcast, or rename a broadcast in any other state (requires broadcasts:write or Full access).
         Use the send endpoint to schedule delivery; send and scheduled_at fields are ignored here.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:write
       parameters:
         - name: id
           in: path
@@ -2084,9 +2082,9 @@ paths:
         - Broadcasts
       summary: Delete Broadcast
       description: >-
-        Delete a draft, canceled, or scheduled broadcast (requires full access). Deleting a scheduled
+        Delete a draft, canceled, or scheduled broadcast (requires broadcasts:write or Full access). Deleting a scheduled
         broadcast cancels its send, and related cleanup may finish after the response.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:write
       parameters:
         - name: id
           in: path
@@ -2132,8 +2130,8 @@ paths:
       tags:
         - Events
       summary: Create Event
-      description: Create an event definition (requires full access).
-      x-opensend-permission: full_access
+      description: Create an event definition (requires events:write or Full access).
+      x-opensend-scope: events:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2179,8 +2177,8 @@ paths:
       tags:
         - Events
       summary: List Events
-      description: List events for your team (requires full access).
-      x-opensend-permission: full_access
+      description: List events for your team (requires events:read or Full access).
+      x-opensend-scope: events:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -2223,8 +2221,8 @@ paths:
       tags:
         - Events
       summary: Retrieve Event
-      description: Retrieve an event definition by ID or name (requires full access).
-      x-opensend-permission: full_access
+      description: Retrieve an event definition by ID or name (requires events:read or Full access).
+      x-opensend-scope: events:read
       parameters:
         - name: id
           in: path
@@ -2270,9 +2268,9 @@ paths:
         - Events
       summary: Update Event
       description: >-
-        Update an event’s payload schema by ID or name (requires full access). A null or omitted schema clears
+        Update an event’s payload schema by ID or name (requires events:write or Full access). A null or omitted schema clears
         the definition’s validation rules.
-      x-opensend-permission: full_access
+      x-opensend-scope: events:write
       parameters:
         - name: id
           in: path
@@ -2324,9 +2322,9 @@ paths:
         - Events
       summary: Delete Event
       description: >-
-        Delete an event definition by ID or name (requires full access). Related cleanup may finish after the
+        Delete an event definition by ID or name (requires events:write or Full access). Related cleanup may finish after the
         response.
-      x-opensend-permission: full_access
+      x-opensend-scope: events:write
       parameters:
         - name: id
           in: path
@@ -2373,9 +2371,9 @@ paths:
         - Domains
       summary: Verify Domain
       description: >-
-        Start DNS verification or retry a failed domain setup (requires full access). Verification runs
+        Start DNS verification or retry a failed domain setup (requires domains:write or Full access). Verification runs
         asynchronously and is limited to one request per domain every 10 seconds; earlier retries return 422.
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:write
       parameters:
         - name: id
           in: path
@@ -2423,7 +2421,7 @@ paths:
         - API Keys
       summary: Create API Key
       description: Create an API key (requires full access).
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -2470,7 +2468,7 @@ paths:
         - API Keys
       summary: List API Keys
       description: List API keys for your team (requires full access).
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -2514,7 +2512,7 @@ paths:
         - API Keys
       summary: Delete API Key
       description: Delete an API key (requires full access).
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - name: id
           in: path
@@ -2560,7 +2558,7 @@ paths:
         - API Keys
       summary: Update API Key
       description: Update an API key (requires full access).
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - name: id
           in: path
@@ -2612,10 +2610,10 @@ paths:
         - Templates
       summary: Publish Template
       description: >-
-        Publish the current template draft for sending (requires full access). Nonempty HTML is required, and
+        Publish the current template draft for sending (requires templates:write or Full access). Nonempty HTML is required, and
         publishing replaces the previous published version. A WhatsApp template is submitted to Meta instead
         (or its edit, once Meta approved or rejected it); it can be sent once `whatsapp.status` is APPROVED.
-      x-opensend-permission: full_access
+      x-opensend-scope: templates:write
       parameters:
         - name: id
           in: path
@@ -2663,9 +2661,8 @@ paths:
         - Templates
       summary: Duplicate Template
       description: >-
-        Copy the current template draft with a unique alias and a copy suffix in its name (requires full
-        access). This endpoint accepts no body options.
-      x-opensend-permission: full_access
+        Copy the current template draft with a unique alias and a copy suffix in its name (requires templates:write or Full access). This endpoint accepts no body options.
+      x-opensend-scope: templates:write
       parameters:
         - name: id
           in: path
@@ -2713,9 +2710,9 @@ paths:
         - Broadcasts
       summary: Send Broadcast
       description: >-
-        Send a broadcast now or schedule it for later (requires full access). Recipients are selected when
+        Send a broadcast now or schedule it for later (requires broadcasts:write or Full access). Recipients are selected when
         sending begins, with suppression and subscription checks repeated before delivery.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:write
       parameters:
         - name: id
           in: path
@@ -2769,9 +2766,9 @@ paths:
         - Broadcasts
       summary: Cancel Broadcast
       description: >-
-        Cancel a scheduled broadcast before recipient selection begins (requires full access). Once sending
+        Cancel a scheduled broadcast before recipient selection begins (requires broadcasts:write or Full access). Once sending
         begins, the broadcast cannot be canceled and submitted emails cannot be recalled.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:write
       parameters:
         - name: id
           in: path
@@ -2820,8 +2817,8 @@ paths:
       summary: Duplicate Broadcast
       description: >-
         Copy a broadcast into a new draft with the same recipients, sender, subject, reply-to, preview text,
-        and content (requires full access). The copy name adds " (copy)" and is limited to 70 characters.
-      x-opensend-permission: full_access
+        and content (requires broadcasts:write or Full access). The copy name adds " (copy)" and is limited to 70 characters.
+      x-opensend-scope: broadcasts:write
       parameters:
         - name: id
           in: path
@@ -2869,9 +2866,9 @@ paths:
         - Segments
       summary: List Segment Contacts
       description: >-
-        List contacts in a segment, newest membership first (requires full access). Use a contact ID as the
+        List contacts in a segment, newest membership first (requires segments:read or Full access). Use a contact ID as the
         pagination cursor.
-      x-opensend-permission: full_access
+      x-opensend-scope: segments:read
       parameters:
         - name: id
           in: path
@@ -2922,8 +2919,8 @@ paths:
       summary: List Contact Segments
       description: >-
         List segments for a contact, most recently joined first; each item's `created_at` is when the contact
-        joined the segment (requires full access).
-      x-opensend-permission: full_access
+        joined the segment (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - name: id
           in: path
@@ -2973,9 +2970,8 @@ paths:
         - Contacts
       summary: List Contact Topics
       description: >-
-        List a contact’s subscription choices, including topic defaults, newest topic first (requires full
-        access).
-      x-opensend-permission: full_access
+        List a contact’s subscription choices, including topic defaults, newest topic first (requires contacts:read or Full access).
+      x-opensend-scope: contacts:read
       parameters:
         - name: id
           in: path
@@ -3024,9 +3020,9 @@ paths:
         - Contacts
       summary: Update Contact Topics
       description: >-
-        Update up to 100 topic subscription choices for a contact (requires full access). Explicit choices
+        Update up to 100 topic subscription choices for a contact (requires contacts:write or Full access). Explicit choices
         override each topic’s default.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -3079,9 +3075,9 @@ paths:
         - Contacts
       summary: Add Contact to Segment
       description: >-
-        Add a contact to a segment and return the segment ID (requires full access). Adding an existing
+        Add a contact to a segment and return the segment ID (requires contacts:write or Full access). Adding an existing
         membership leaves it unchanged.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -3134,9 +3130,9 @@ paths:
         - Contacts
       summary: Remove Contact from Segment
       description: >-
-        Remove a contact from a segment (requires full access). The response includes the contact ID and the
+        Remove a contact from a segment (requires contacts:write or Full access). The response includes the contact ID and the
         segment ID as audienceId.
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
@@ -3190,8 +3186,8 @@ paths:
       summary: List Received Emails
       description: >-
         List received email metadata, newest first, without bodies, headers, or authentication details
-        (requires full access). Received emails are kept for 30 days.
-      x-opensend-permission: full_access
+        (requires emails:read or Full access). Received emails are kept for 30 days.
+      x-opensend-scope: emails:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -3236,9 +3232,9 @@ paths:
       summary: Retrieve Received Email
       description: >-
         Retrieve a received email with authentication results and a raw MIME download link that expires after
-        one hour (requires full access). If parsing fails, metadata and raw MIME remain available, but decoded
+        one hour (requires emails:read or Full access). If parsing fails, metadata and raw MIME remain available, but decoded
         content and attachments are empty.
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -3295,9 +3291,8 @@ paths:
         - Receiving Emails
       summary: List Received Email Attachments
       description: >-
-        List attachments for a received email with download links that expire after one hour (requires full
-        access).
-      x-opensend-permission: full_access
+        List attachments for a received email with download links that expire after one hour (requires emails:read or Full access).
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -3347,9 +3342,8 @@ paths:
         - Receiving Emails
       summary: Retrieve Received Email Attachment
       description: >-
-        Retrieve a received email attachment with a download link that expires after one hour (requires full
-        access). List parameters are ignored.
-      x-opensend-permission: full_access
+        Retrieve a received email attachment with a download link that expires after one hour (requires emails:read or Full access). List parameters are ignored.
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -3402,9 +3396,8 @@ paths:
         - Events
       summary: Send Event
       description: >-
-        Send an event to trigger automations, even if the event has no saved definition (requires full
-        access). Sent events are kept for 30 days and are not forwarded to webhooks.
-      x-opensend-permission: full_access
+        Send an event to trigger automations, even if the event has no saved definition (requires events:write or Full access). Sent events are kept for 30 days and are not forwarded to webhooks.
+      x-opensend-scope: events:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3452,9 +3445,9 @@ paths:
         - Logs
       summary: List Logs
       description: >-
-        List your team’s API, SMTP, and dashboard logs (requires full access). Logs are kept for 30 days;
+        List your team’s API, SMTP, and dashboard logs (requires logs:read or Full access). Logs are kept for 30 days;
         unsupported query filters are ignored.
-      x-opensend-permission: full_access
+      x-opensend-scope: logs:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -3498,9 +3491,9 @@ paths:
         - Logs
       summary: Retrieve Log
       description: >-
-        Retrieve a log with its request and response details (requires full access). Secrets are redacted and
+        Retrieve a log with its request and response details (requires logs:read or Full access). Secrets are redacted and
         bodies are truncated at 64 KiB.
-      x-opensend-permission: full_access
+      x-opensend-scope: logs:read
       parameters:
         - name: id
           in: path
@@ -3547,9 +3540,9 @@ paths:
         - SMTP
       summary: Authenticate SMTP
       description: >-
-        Authenticate the SMTP gateway using a sending or full-access os_ API key. SMTP must be enabled, OAuth
+        Authenticate the SMTP gateway using a Sending access, Full access or Custom emails:write os_ API key. SMTP must be enabled, OAuth
         is unsupported, and the HTTP body must be empty.
-      x-opensend-permission: sending
+      x-opensend-scope: emails:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -3591,9 +3584,9 @@ paths:
         - SMTP
       summary: Send SMTP Email
       description: >-
-        Queue an email through the SMTP gateway using a sending or full-access os_ API key. SMTP must be
+        Queue an email through the SMTP gateway using a Sending access, Full access or Custom emails:write os_ API key. SMTP must be
         enabled, including for repeated requests; OAuth is unsupported.
-      x-opensend-permission: sending
+      x-opensend-scope: emails:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -3643,7 +3636,7 @@ paths:
       description: >-
         List your team’s OAuth grants (requires full access). Resource is null because grants cover the
         installation; revocation details may be unavailable.
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -3689,7 +3682,7 @@ paths:
       description: >-
         Revoke an OAuth grant and immediately invalidate its tokens (requires full access). Missing or already
         revoked grants return 404.
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       parameters:
         - name: id
           in: path
@@ -3772,11 +3765,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Create a webhook to receive event notifications (requires full access). Your team can have up to 100
+        Create a webhook to receive event notifications (requires webhooks:write or Full access). Your team can have up to 100
         webhooks; save the signing secret returned in the response.
     get:
       operationId: webhooks/list
@@ -3837,8 +3830,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: List webhooks for your team (requires full access).
+      x-opensend-scope: webhooks:read
+      description: List webhooks for your team (requires webhooks:read or Full access).
   /webhooks/{webhook_id}:
     get:
       operationId: webhooks/get
@@ -3884,9 +3877,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:read
       description: >-
-        Retrieve a webhook’s endpoint, events, status, and signing secret (requires full access). The list
+        Retrieve a webhook’s endpoint, events, status, and signing secret (requires webhooks:read or Full access). The list
         omits the secret.
     patch:
       operationId: webhooks/update
@@ -3938,8 +3931,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Update a webhook (requires full access).
+      x-opensend-scope: webhooks:write
+      description: Update a webhook (requires webhooks:write or Full access).
     delete:
       operationId: webhooks/remove
       tags:
@@ -3984,9 +3977,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:write
       description: >-
-        Delete a webhook and stop further deliveries (requires full access). Delivery history is removed after
+        Delete a webhook and stop further deliveries (requires webhooks:write or Full access). Delivery history is removed after
         deletion.
   /webhooks/{webhook_id}/signing-secret/rotate:
     post:
@@ -3995,7 +3988,7 @@ paths:
         - Webhooks
       summary: Rotate Webhook Signing Secret
       description: >-
-        Generate and retrieve a new webhook signing secret (requires full access). Deliveries are signed with
+        Generate and retrieve a new webhook signing secret (requires webhooks:write or Full access). Deliveries are signed with
         both the new and immediately preceding secrets for 24 hours.
       parameters:
         - name: webhook_id
@@ -4037,7 +4030,7 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:write
   /webhooks/{webhook_id}/events:
     get:
       operationId: webhooks/list-events
@@ -4098,10 +4091,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:read
       description: >-
-        List original webhook events, newest first; replaying an event does not add another entry (requires
-        full access). Only limit and after pagination are supported; before returns an error.
+        List original webhook events, newest first; replaying an event does not add another entry (requires webhooks:read or Full access). Only limit and after pagination are supported; before returns an error.
   /webhooks/{webhook_id}/events/{event_id}:
     get:
       operationId: webhooks/get-event
@@ -4153,8 +4145,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Retrieve an event’s payload, delivery status, and next attempt time (requires full access).
+      x-opensend-scope: webhooks:read
+      description: Retrieve an event’s payload, delivery status, and next attempt time (requires webhooks:read or Full access).
   /webhooks/{webhook_id}/events/{event_id}/replay:
     post:
       operationId: webhooks/replay-event
@@ -4163,7 +4155,7 @@ paths:
       summary: Replay Webhook Event
       description: >-
         Queue one manual delivery of an event to an enabled webhook, preserving its ID and any automatic
-        retries (requires full access). Disabled webhooks return 422, and the manual attempt does not create
+        retries (requires webhooks:write or Full access). Disabled webhooks return 422, and the manual attempt does not create
         further retries.
       parameters:
         - name: webhook_id
@@ -4211,7 +4203,7 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:write
   /webhooks/{webhook_id}/events/{event_id}/attempts:
     get:
       operationId: webhooks/list-event-attempts
@@ -4278,10 +4270,10 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: webhooks:read
       description: >-
         List recorded automatic and manual delivery attempts from the last 90 days, with response bodies
-        limited to 4 KiB (requires full access). Only limit and after pagination are supported; before returns
+        limited to 4 KiB (requires webhooks:read or Full access). Only limit and after pagination are supported; before returns
         an error.
   /suppressions:
     post:
@@ -4327,11 +4319,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Suppress an email address to prevent sending to it (requires full access). The address is normalized
+        Suppress an email address to prevent sending to it (requires contacts:write or Full access). The address is normalized
         and the suppression origin is manual.
     get:
       operationId: suppressions/list
@@ -4402,9 +4394,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:read
       description: >-
-        List suppressed email addresses, optionally filtered by origin (requires full access). The source
+        List suppressed email addresses, optionally filtered by origin (requires contacts:read or Full access). The source
         email ID may be null.
   /suppressions/batch/add:
     post:
@@ -4450,12 +4442,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Suppress 1–100 email addresses in one request and return results in input order (requires full
-        access). The request is atomic; duplicate normalized addresses return the existing suppression ID.
+        Suppress 1–100 email addresses in one request and return results in input order (requires contacts:write or Full access). The request is atomic; duplicate normalized addresses return the existing suppression ID.
   /suppressions/batch/remove:
     post:
       operationId: suppressions/batch-remove
@@ -4500,11 +4491,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Remove 1–100 suppressions by email address or ID (requires full access). The request is atomic; a
+        Remove 1–100 suppressions by email address or ID (requires contacts:write or Full access). The request is atomic; a
         missing or inaccessible entry rejects the whole batch.
   /suppressions/{suppression}:
     get:
@@ -4551,9 +4542,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:read
       description: >-
-        Retrieve a suppression by ID or URL-encoded normalized email address (requires full access). The
+        Retrieve a suppression by ID or URL-encoded normalized email address (requires contacts:read or Full access). The
         source email ID may be null.
     delete:
       operationId: suppressions/remove
@@ -4599,8 +4590,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Remove a suppression by ID or URL-encoded normalized email address (requires full access).
+      x-opensend-scope: contacts:write
+      description: Remove a suppression by ID or URL-encoded normalized email address (requires contacts:write or Full access).
   /emails/metrics:
     get:
       operationId: emails/metrics
@@ -4746,10 +4737,10 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: emails:read
       description: >-
         Retrieve email metrics for your team or domains, with 15-minute precision and a maximum range of one
-        year (requires full access). A request can cover up to 31 domain-period spans.
+        year (requires emails:read or Full access). A request can cover up to 31 domain-period spans.
   /contacts/imports:
     post:
       operationId: contacts/create-import
@@ -4794,11 +4785,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: contacts:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Import contacts from a CSV file (requires full access). Existing contacts are updated by default, and
+        Import contacts from a CSV file (requires contacts:write or Full access). Existing contacts are updated by default, and
         contact webhooks are not emitted for imported rows.
     get:
       operationId: contacts/list-imports
@@ -4852,8 +4843,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: List contact imports, optionally filtered by status (requires full access).
+      x-opensend-scope: contacts:read
+      description: List contact imports, optionally filtered by status (requires contacts:read or Full access).
   /contacts/imports/{id}:
     get:
       operationId: contacts/get-import
@@ -4899,8 +4890,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Retrieve a contact import’s status and row counts (requires full access).
+      x-opensend-scope: contacts:read
+      description: Retrieve a contact import’s status and row counts (requires contacts:read or Full access).
   /automations:
     post:
       operationId: automations/create
@@ -4944,11 +4935,11 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: automations:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       description: >-
-        Create an automation with one trigger and up to 100 execution steps (requires full access).
+        Create an automation with one trigger and up to 100 execution steps (requires automations:write or Full access).
         Definitions are limited to 64 KiB and 12 levels of nesting; unsupported steps, options, cycles, and
         joins return 422.
     get:
@@ -5001,8 +4992,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: List automations for your team (requires full access).
+      x-opensend-scope: automations:read
+      description: List automations for your team (requires automations:read or Full access).
   /automations/{automation_id}:
     get:
       operationId: automations/get
@@ -5048,8 +5039,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Retrieve an automation (requires full access).
+      x-opensend-scope: automations:read
+      description: Retrieve an automation (requires automations:read or Full access).
     patch:
       operationId: automations/update
       tags:
@@ -5099,9 +5090,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: automations:write
       description: >-
-        Update an automation’s name, status, or workflow (requires full access). Disable it in a separate
+        Update an automation’s name, status, or workflow (requires automations:write or Full access). Disable it in a separate
         request before editing steps and connections; enabled workflow edits return 422.
     delete:
       operationId: automations/remove
@@ -5147,9 +5138,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: automations:write
       description: >-
-        Delete an automation and stop its execution (requires full access). Run history is removed after
+        Delete an automation and stop its execution (requires automations:write or Full access). Run history is removed after
         deletion.
   /automations/{automation_id}/duplicate:
     post:
@@ -5197,10 +5188,10 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: automations:write
       description: >-
         Copy an automation’s workflow and settings into a disabled automation with a copy suffix in its name
-        (requires full access).
+        (requires automations:write or Full access).
   /automations/{automation_id}/stop:
     post:
       operationId: automations/stop
@@ -5247,9 +5238,9 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
+      x-opensend-scope: automations:write
       description: >-
-        Disable an automation to prevent new runs (requires full access). Existing runs continue to
+        Disable an automation to prevent new runs (requires automations:write or Full access). Existing runs continue to
         completion.
   /automations/{automation_id}/runs:
     get:
@@ -5307,8 +5298,8 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: List runs for an automation, optionally filtered by status (requires full access).
+      x-opensend-scope: automations:read
+      description: List runs for an automation, optionally filtered by status (requires automations:read or Full access).
   /automations/{automation_id}/runs/{run_id}:
     get:
       operationId: automations/get-run
@@ -5360,16 +5351,16 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
-      x-opensend-permission: full_access
-      description: Retrieve an automation run and its step history in workflow order (requires full access).
+      x-opensend-scope: automations:read
+      description: Retrieve an automation run and its step history in workflow order (requires automations:read or Full access).
   /audiences:
     post:
       operationId: audiences/create
       tags:
         - Segments
       summary: Create Audience
-      description: Create an audience (requires full access). This deprecated endpoint is an alias for segments.
-      x-opensend-permission: full_access
+      description: Create an audience (requires segments:write or Full access). This deprecated endpoint is an alias for segments.
+      x-opensend-scope: segments:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -5417,9 +5408,9 @@ paths:
         - Segments
       summary: List Audiences
       description: >-
-        List audiences for your team (requires full access). This deprecated endpoint is an alias for
+        List audiences for your team (requires segments:read or Full access). This deprecated endpoint is an alias for
         segments.
-      x-opensend-permission: full_access
+      x-opensend-scope: segments:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -5463,8 +5454,8 @@ paths:
       tags:
         - Segments
       summary: Retrieve Audience
-      description: Retrieve an audience (requires full access). This deprecated endpoint is an alias for segments.
-      x-opensend-permission: full_access
+      description: Retrieve an audience (requires segments:read or Full access). This deprecated endpoint is an alias for segments.
+      x-opensend-scope: segments:read
       parameters:
         - name: id
           in: path
@@ -5509,8 +5500,8 @@ paths:
       tags:
         - Segments
       summary: Delete Audience
-      description: Delete an audience (requires full access). This deprecated endpoint is an alias for segments.
-      x-opensend-permission: full_access
+      description: Delete an audience (requires segments:write or Full access). This deprecated endpoint is an alias for segments.
+      x-opensend-scope: segments:write
       parameters:
         - name: id
           in: path
@@ -5557,9 +5548,8 @@ paths:
         - Emails
       summary: List Email Attachments
       description: >-
-        List attachments for a sent email with download links that expire after one hour (requires full
-        access). Deleting the team or expiring the email revokes these links.
-      x-opensend-permission: full_access
+        List attachments for a sent email with download links that expire after one hour (requires emails:read or Full access). Deleting the team or expiring the email revokes these links.
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -5608,9 +5598,8 @@ paths:
         - Emails
       summary: Retrieve Email Attachment
       description: >-
-        Retrieve a sent email attachment with a download link that expires after one hour (requires full
-        access). Deleting the team or expiring the email revokes the link.
-      x-opensend-permission: full_access
+        Retrieve a sent email attachment with a download link that expires after one hour (requires emails:read or Full access). Deleting the team or expiring the email revokes the link.
+      x-opensend-scope: emails:read
       parameters:
         - name: id
           in: path
@@ -5661,9 +5650,9 @@ paths:
         - Broadcasts
       summary: List Broadcast Recipients
       description: >-
-        List a broadcast’s recipients and delivery results (requires full access). Completed reports are kept
+        List a broadcast’s recipients and delivery results (requires broadcasts:read or Full access). Completed reports are kept
         for 30 days.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:read
       parameters:
         - name: id
           in: path
@@ -5739,9 +5728,9 @@ paths:
         - Broadcasts
       summary: List Broadcast Clicked Links
       description: >-
-        List broadcast links ranked by total clicks, highest first (requires full access). Unique clicks count
+        List broadcast links ranked by total clicks, highest first (requires broadcasts:read or Full access). Unique clicks count
         distinct recipient messages, and completed reports are kept for 30 days.
-      x-opensend-permission: full_access
+      x-opensend-scope: broadcasts:read
       parameters:
         - name: id
           in: path
@@ -5786,7 +5775,7 @@ paths:
   /domains/claim:
     post:
       operationId: domains/create-claim
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:write
       tags:
         - Domains
       summary: Claim a domain
@@ -5835,7 +5824,7 @@ paths:
   /domains/{id}/claim:
     get:
       operationId: domains/get-claim
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:read
       tags:
         - Domains
       summary: Retrieve a domain claim
@@ -5875,7 +5864,7 @@ paths:
   /domains/{id}/claim/verify:
     post:
       operationId: domains/verify-claim
-      x-opensend-permission: full_access
+      x-opensend-scope: domains:write
       tags:
         - Domains
       summary: Verify a domain claim
@@ -5926,7 +5915,7 @@ paths:
       description: >-
         Team usage in UTC calendar periods with self-hosted limits. The SES sending quota is shared across the
         installation. See docs/rest-api.md for intentional plan differences and upgrade backfills.
-      x-opensend-permission: full_access
+      x-opensend-scope: full_access
       responses:
         '200':
           description: Current team usage and limits.
@@ -5950,7 +5939,7 @@ paths:
       tags:
         - WhatsApp
       summary: Send WhatsApp Message
-      x-opensend-permission: sending
+      x-opensend-scope: whatsapp:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       responses:
@@ -6003,7 +5992,7 @@ paths:
       tags:
         - WhatsApp
       summary: List WhatsApp Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters:
         - &a3
           $ref: "#/components/parameters/PaginationLimit"
@@ -6068,7 +6057,7 @@ paths:
       tags:
         - WhatsApp
       summary: Get WhatsApp Message
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters:
         - &a6
           in: path
@@ -6107,7 +6096,7 @@ paths:
       tags:
         - WhatsApp
       summary: Upload WhatsApp Media
-      x-opensend-permission: sending
+      x-opensend-scope: whatsapp:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       responses:
@@ -6184,7 +6173,7 @@ paths:
       tags:
         - WhatsApp
       summary: List WhatsApp Phone Numbers
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters: &a7
         - *a3
         - *a4
@@ -6221,7 +6210,7 @@ paths:
       tags:
         - WhatsApp
       summary: Get WhatsApp Phone Number
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters:
         - *a6
       responses:
@@ -6256,7 +6245,7 @@ paths:
       tags:
         - WhatsApp
       summary: List WhatsApp Conversations
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters: *a7
       responses:
         "200":
@@ -6290,7 +6279,7 @@ paths:
       tags:
         - WhatsApp
       summary: List Conversation Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: whatsapp:read
       parameters:
         - *a6
         - *a3
@@ -6328,7 +6317,7 @@ paths:
       tags:
         - Messenger
       summary: Send Messenger Message
-      x-opensend-permission: sending
+      x-opensend-scope: messenger:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -6378,7 +6367,7 @@ paths:
       tags:
         - Messenger
       summary: List Messenger Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6446,7 +6435,7 @@ paths:
       tags:
         - Messenger
       summary: Get Messenger Message
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - in: path
           name: id
@@ -6491,7 +6480,7 @@ paths:
       tags:
         - Messenger
       summary: List Messenger Pages
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6534,7 +6523,7 @@ paths:
       tags:
         - Messenger
       summary: Get Messenger Page
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - in: path
           name: id
@@ -6579,7 +6568,7 @@ paths:
       tags:
         - Messenger
       summary: List Messenger Conversations
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6622,7 +6611,7 @@ paths:
       tags:
         - Messenger
       summary: List Conversation Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: messenger:read
       parameters:
         - in: path
           name: id
@@ -6670,7 +6659,7 @@ paths:
       tags:
         - Instagram
       summary: Send Instagram Message
-      x-opensend-permission: sending
+      x-opensend-scope: instagram:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -6720,7 +6709,7 @@ paths:
       tags:
         - Instagram
       summary: List Instagram Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6788,7 +6777,7 @@ paths:
       tags:
         - Instagram
       summary: Get Instagram Message
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - in: path
           name: id
@@ -6833,7 +6822,7 @@ paths:
       tags:
         - Instagram
       summary: List Instagram Accounts
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6876,7 +6865,7 @@ paths:
       tags:
         - Instagram
       summary: Get Instagram Account
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - in: path
           name: id
@@ -6921,7 +6910,7 @@ paths:
       tags:
         - Instagram
       summary: List Instagram Conversations
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
@@ -6964,7 +6953,7 @@ paths:
       tags:
         - Instagram
       summary: List Conversation Messages
-      x-opensend-permission: full_access
+      x-opensend-scope: instagram:read
       parameters:
         - in: path
           name: id
@@ -7026,13 +7015,13 @@ components:
       scheme: bearer
       bearerFormat: os_ API key or OAuth access token
       description: >-
-        Full-access keys / full_access OAuth required except sends also accept sending_access / emails:send.
+        Full access grants every operation. Custom keys and OAuth tokens require the operation’s x-opensend-scope; write includes read. Sending access / emails:send is limited to email send and SMTP endpoints.
         All credentials scoped to one team. SMTP rejects OAuth.
     oauthBearer:
       type: http
       scheme: bearer
       bearerFormat: OAuth access token
-      description: OAuth bearer tokens with full_access, accepted alongside full-access API keys by REST routes.
+      description: OAuth bearer tokens carrying full_access, emails:send or catalog resource scopes.
   parameters:
     PaginationLimit:
       name: limit
@@ -9823,15 +9812,28 @@ components:
               enum:
                 - full_access
                 - sending_access
+                - custom
             - type: 'null'
           description: >-
-            Key permission, defaulting to full_access for all resources; sending_access only permits sending
-            email.
+            Full access grants all resources; sending_access permits email delivery; custom grants the specified resource scopes.
         domain_id:
           anyOf:
             - type: string
             - type: 'null'
-          description: Sending domain restriction for a sending_access key; ignored for full_access keys.
+          description: Sending domain restriction for sending_access or custom with emails:write; ignored otherwise.
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiScope'
+          description: Required for custom permission. Write implies read.
+      allOf:
+        - if:
+            properties:
+              permission:
+                const: custom
+            required: [permission]
+          then:
+            required: [scopes]
       required:
         - name
       description: Create an API key for your team; any team member may create a key.
@@ -9848,12 +9850,50 @@ components:
         - id
         - token
       additionalProperties: false
+    ApiScope:
+      type: string
+      enum:
+        - emails:read
+        - emails:write
+        - whatsapp:read
+        - whatsapp:write
+        - messenger:read
+        - messenger:write
+        - instagram:read
+        - instagram:write
+        - contacts:read
+        - contacts:write
+        - segments:read
+        - segments:write
+        - topics:read
+        - topics:write
+        - templates:read
+        - templates:write
+        - broadcasts:read
+        - broadcasts:write
+        - automations:read
+        - automations:write
+        - events:read
+        - events:write
+        - domains:read
+        - domains:write
+        - webhooks:read
+        - webhooks:write
+        - logs:read
+        - logs:write
     ApiKey:
       type: object
       properties:
         id:
           type: string
           description: The opaque resource ID returned by Opensend; IDs are not UUIDs.
+        permission:
+          type: string
+          enum: [full_access, sending_access, custom]
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiScope'
         name:
           type: string
           description: The name of the API key.
@@ -9871,6 +9911,8 @@ components:
         - name
         - created_at
         - last_used_at
+        - permission
+        - scopes
       additionalProperties: false
     ListApiKeysResponse:
       type: object

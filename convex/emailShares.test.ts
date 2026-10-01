@@ -265,7 +265,7 @@ test("REST supports both email types, defaults, full-access permissions, and for
     ).not.toBeNull()
   }
   const sending = await f.key("sending_access")
-  expect((await f.post(f.sent, {}, sending.token)).status).toBe(401)
+  expect((await f.post(f.sent, {}, sending.token)).status).toBe(403)
   const outsider = await f.key("full_access", f.outsider)
   for (const id of [f.sent, f.received, "not-an-id"])
     expect((await f.post(id, {}, outsider.token)).status).toBe(404)

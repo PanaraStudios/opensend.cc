@@ -129,7 +129,7 @@ describe("audience and template REST resources", () => {
         [`${resource.path}/${id}`, "DELETE", undefined],
       ] as const) {
         expect((await f.call(path, method, body, null)).status).toBe(401)
-        expect((await f.call(path, method, body, f.sending)).status).toBe(401)
+        expect((await f.call(path, method, body, f.sending)).status).toBe(403)
         if (path.endsWith(id))
           expect((await f.call(path, method, body, f.foreign)).status).toBe(404)
       }
@@ -317,7 +317,7 @@ describe("audience and template REST resources", () => {
     ] as const
     for (const [path, method, body] of routes) {
       expect((await f.call(path, method, body, null)).status).toBe(401)
-      expect((await f.call(path, method, body, f.sending)).status).toBe(401)
+      expect((await f.call(path, method, body, f.sending)).status).toBe(403)
       expect((await f.call(path, method, body, f.foreign)).status).toBe(404)
       if (method === "GET")
         expect((await f.call(`${path}?limit=101`)).status).toBe(422)
@@ -440,7 +440,7 @@ describe("audience and template REST resources", () => {
       const path = `/templates/${id}/${operation}`
       expect((await f.call(path, "POST", undefined, null)).status).toBe(401)
       expect((await f.call(path, "POST", undefined, f.sending)).status).toBe(
-        401
+        403
       )
       expect((await f.call(path, "POST", undefined, f.foreign)).status).toBe(
         404

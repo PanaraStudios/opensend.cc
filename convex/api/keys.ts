@@ -27,6 +27,7 @@ import {
   listParams,
   objectBody,
   stringField,
+  stringListField,
 } from "./route"
 
 export const list = internalQuery({
@@ -108,7 +109,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/api-keys",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       const { token, ...minted } = await mintToken()
@@ -124,8 +125,13 @@ export function registerApiKeyRoutes(http: HttpRouter) {
               enumField(input, "permission", [
                 "full_access",
                 "sending_access",
+                "custom",
               ]) ?? "full_access",
             domainId: stringField(input, "domain_id"),
+            scopes: stringListField(input, "scopes", {
+              arrayOnly: true,
+              rejectNull: true,
+            }),
           },
         }
       )
@@ -135,7 +141,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/api-keys",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.keys.list, {
         caller,
@@ -145,6 +151,8 @@ export function registerApiKeyRoutes(http: HttpRouter) {
         body: listBody(page, (key) => ({
           id: key._id,
           name: key.name,
+          permission: key.permission,
+          scopes: key.scopes ?? [],
           created_at: apiTime(key._creationTime),
           last_used_at:
             key.lastUsedAt === null ? null : apiTime(key.lastUsedAt),
@@ -155,7 +163,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/api-keys/{id}",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, params, body }) => ({
       body: {
         object: "api_key",
@@ -170,7 +178,7 @@ export function registerApiKeyRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/api-keys/{id}",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, params }) => {
       const id = await ctx.runMutation(internal.api.keys.remove, {
         caller,

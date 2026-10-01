@@ -374,7 +374,7 @@ test("REST requires full access, scopes usage to the key's team, and matches the
     ).emails.daily.used
   ).toBe(0)
   const refused = await call(sending.token)
-  expect(refused.status).toBe(401)
+  expect(refused.status).toBe(403)
   expect(await refused.json()).toMatchObject({ name: "restricted_api_key" })
   expect((await f.t.fetch("/usage")).status).toBe(401)
   await f.t.run((ctx) => deleteRow(ctx, "apiKeys", full.id as Id<"apiKeys">))

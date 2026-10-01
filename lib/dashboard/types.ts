@@ -70,7 +70,7 @@ export type TlsMode = "opportunistic" | "enforced"
 export type TopicDefault = Infer<typeof topicDefaultValue>
 export type TopicVisibility = Infer<typeof topicVisibilityValue>
 export type TopicSubscription = Infer<typeof topicSubscriptionValue>
-export type ApiKeyPermission = "full_access" | "sending_access"
+export type ApiKeyPermission = "full_access" | "sending_access" | "custom"
 export type MemberRole = "admin" | "member"
 
 export type EmailStatus = Infer<typeof emailStatusValue>
@@ -214,6 +214,7 @@ export type ApiKey = {
   tokenPrefix: string
   tokenLast4: string
   permission: ApiKeyPermission
+  scopes?: string[]
   domainId: string | null
   createdAt: number
   lastUsedAt: number | null

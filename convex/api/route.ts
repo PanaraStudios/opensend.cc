@@ -1,3 +1,4 @@
+import { parseScopes, type RequiredScope } from "../../lib/api-scopes"
 import { ConvexError } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { httpAction, type ActionCtx } from "../_generated/server"
@@ -29,8 +30,8 @@ export type ApiRouteOptions = {
   method: Method
   /** A path like "/domains/{id}/verify". */
   path: string
-  /** "sending" also admits sending-access keys and `emails:send` tokens. */
-  permission: "full_access" | "sending"
+  /** Every REST operation declares its required resource access. */
+  scope: RequiredScope
   /** Largest accepted request body, in bytes. Default 1 MB. */
   maxBody?: number
   bodyFormat?: "multipart" | "multipart-binary"
@@ -45,12 +46,12 @@ export type ApiRouteOptions = {
  * Adds one Resend-compatible REST endpoint on the Convex site URL:
  *
  *   apiRoute(http, {
- *     method: "GET", path: "/domains/{id}", permission: "full_access",
+ *     method: "GET", path: "/domains/{id}", scope: { resource: "domains", access: "read" },
  *     handler: async (ctx, { caller, params }) => ({ body: {...} }),
  *   })
  *
  * The wrapper authenticates `Authorization: Bearer` (an `os_` API key or an
- * OAuth access token), enforces `permission`, rate-limits the team (Resend's
+ * OAuth access token), enforces `scope`, rate-limits the team (Resend's
  * 10 requests a second, with its `ratelimit-*` and `retry-after` headers),
  * replays `Idempotency-Key` POSTs for 24 hours, parses the JSON body and
  * logs every request it can attribute to a team, failures included.
@@ -88,6 +89,14 @@ export function apiRoute(http: HttpRouter, options: ApiRouteOptions) {
 
 type Pattern = { segments: string[]; options: ApiRouteOptions }
 const routes = new WeakMap<HttpRouter, Map<string, Pattern[]>>()
+// Sending access keeps Resend's send-only endpoints; custom emails:write also
+// admits cancel, update and share. SMTP uses the same legacy email send grant.
+const EMAIL_SEND_PATHS = new Set([
+  "/emails",
+  "/emails/batch",
+  "/smtp/auth",
+  "/smtp/emails",
+])
 const MAX_BODY = 1_048_576
 /** Convex's runtime types have no iterable `Headers`. */
 function headerEntries(headers: Headers) {
@@ -179,18 +188,24 @@ async function credential(ctx: ActionCtx, request: Request) {
     const auth = await authorizeOAuth(ctx, token)
     const permission = auth.scopes.includes("full_access")
       ? ("full_access" as const)
-      : auth.scopes.includes("emails:send")
+      : auth.scopes.includes("emails:send") &&
+          auth.scopes.every((scope) => scope === "emails:send")
         ? ("sending_access" as const)
-        : null
-    if (permission)
-      return {
-        credential: {
-          kind: "oauth" as const,
-          grantId: auth.grant,
-          organizationId: auth.team,
-          permission,
-        },
-      }
+        : ("custom" as const)
+    const scopes = parseScopes(
+      auth.scopes
+        .filter((s) => s !== "full_access" && s !== "offline_access")
+        .map((s) => (s === "emails:send" ? "emails:write" : s))
+    )
+    return {
+      credential: {
+        kind: "oauth" as const,
+        grantId: auth.grant,
+        organizationId: auth.team,
+        permission,
+        scopes,
+      },
+    }
   } catch {
     /* An invalid, expired or revoked token reads as an invalid key. */
   }
@@ -307,7 +322,9 @@ function dispatch(patterns: Pattern[]) {
       }
     const begun = await ctx.runMutation(internal.api.state.begin, {
       credential: auth.credential,
-      permission: options.permission,
+      scope: options.scope,
+      emailSending:
+        options.method === "POST" && EMAIL_SEND_PATHS.has(options.path),
       smtp: options.source === "smtp",
       idempotency:
         idempotencyKey && !problem

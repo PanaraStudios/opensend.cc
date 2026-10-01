@@ -50,7 +50,7 @@ export function registerOAuthGrantRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/oauth/grants",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, query }) => ({
       body: {
         object: "list",
@@ -64,7 +64,7 @@ export function registerOAuthGrantRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/oauth/grants/{id}",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runMutation(internal.api.oauth.revoke, {
         caller,

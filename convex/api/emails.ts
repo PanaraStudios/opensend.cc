@@ -522,7 +522,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/emails",
-    permission: "sending",
+    scope: { resource: "emails", access: "write" },
     maxBody: MAX_SEND_BODY,
     handler: async (ctx, { caller, body }) => {
       return sendEmailBody(ctx, caller, body)
@@ -532,7 +532,7 @@ export function registerEmailRoutes(http: HttpRouter) {
     method: "POST",
     path: "/emails/batch",
     idempotencyHeaders: { "x-batch-validation": "strict" },
-    permission: "sending",
+    scope: { resource: "emails", access: "write" },
     handler: async (ctx, { caller, body, headers }) => {
       const mode = headers.get("x-batch-validation") ?? "strict"
       if (mode !== "strict" && mode !== "permissive")
@@ -551,7 +551,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.emails.list, {
         caller,
@@ -565,7 +565,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/{id}",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const found = await ctx.runQuery(internal.api.emails.get, {
         caller,
@@ -579,7 +579,7 @@ export function registerEmailRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path: `/emails/{id}/attachments${single ? "/{attachmentId}" : ""}`,
-      permission: "full_access",
+      scope: { resource: "emails", access: "read" },
       handler: async (ctx, { caller, params, query }) => {
         const found = await ctx.runQuery(internal.api.emails.get, {
           caller,
@@ -644,7 +644,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/emails/{id}",
-    permission: "full_access",
+    scope: { resource: "emails", access: "write" },
     handler: async (ctx, { caller, params, body }) => {
       const scheduled = stringField(objectBody(body), "scheduled_at", true)!
       const at = parseScheduledAt(scheduled, Date.now())
@@ -658,7 +658,7 @@ export function registerEmailRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/emails/{id}/cancel",
-    permission: "full_access",
+    scope: { resource: "emails", access: "write" },
     handler: (ctx, { caller, params }) =>
       changeEmail(ctx, caller, params.id, { kind: "cancel" }),
   })

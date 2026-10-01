@@ -781,7 +781,7 @@ test("REST full-access permission and POST idempotency protect broadcast writes"
         headers: { Authorization: `Bearer ${token}` },
       })
     ).status
-  ).toBe(401)
+  ).toBe(403)
   const full = await makeKey("full_access")
   const post = (name: string) =>
     f.t.fetch("/broadcasts", {

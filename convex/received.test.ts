@@ -393,7 +393,7 @@ test("REST errors reject restricted keys, wrong teams, bad ids and pagination", 
     input: { name: "Send", permission: "sending_access", domainId: null },
   })
   expect((await request(f, "/emails/receiving", sending.token)).status).toBe(
-    401
+    403
   )
 })
 test("download URLs expire, reject tampering, and never expose permanent storage URLs", async () => {

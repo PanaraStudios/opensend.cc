@@ -143,7 +143,7 @@ test("API-key PATCH uses shared member update logic, validates names, and isolat
       { name: "No" },
       f.sending.token
     ),
-    401,
+    403,
     "restricted_api_key"
   )
 })
@@ -199,7 +199,7 @@ test("deprecated audiences share segment rows, preserve legacy nouns and replay 
   ] as const)
     await error(
       await f.call(path, method, payload, f.sending.token),
-      401,
+      403,
       "restricted_api_key"
     )
   for (const method of ["GET", "DELETE"])
@@ -405,7 +405,7 @@ test("outbound attachments have stable cursors, signed downloads, expiration and
     )
     await error(
       await f.call(route, "GET", undefined, f.sending.token),
-      401,
+      403,
       "restricted_api_key"
     )
   }
@@ -581,7 +581,7 @@ test("broadcast recipients and clicked links preserve repeated counts, unique cl
     )
     await error(
       await f.call(route, "GET", undefined, f.sending.token),
-      401,
+      403,
       "restricted_api_key"
     )
   }
@@ -660,7 +660,7 @@ test("OAuth grants use bearer keys, return revocation metadata and paginate with
   )
   await error(
     await f.call("/oauth/grants", "GET", undefined, f.sending.token),
-    401,
+    403,
     "restricted_api_key"
   )
   await error(
@@ -670,7 +670,7 @@ test("OAuth grants use bearer keys, return revocation metadata and paginate with
       undefined,
       f.sending.token
     ),
-    401,
+    403,
     "restricted_api_key"
   )
   expect(await f.json(`/oauth/grants/${first}`, "DELETE")).toEqual({

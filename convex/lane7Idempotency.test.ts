@@ -25,7 +25,7 @@ async function setup() {
   const reserve = (key = "retry", requestHash = "same") =>
     f.t.mutation(internal.api.state.begin, {
       credential,
-      permission: "full_access",
+      scope: "full_access",
       idempotency: { key, requestHash },
     })
   const call = (path: string, body: unknown, retry = path) =>

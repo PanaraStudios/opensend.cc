@@ -263,7 +263,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/domains/claim",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       return ctx.runMutation(internal.api.domains.claimCreate, {
@@ -279,7 +279,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/domains/{id}/claim",
-    permission: "full_access",
+    scope: { resource: "domains", access: "read" },
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runQuery(internal.api.domains.claimGet, {
         caller,
@@ -290,7 +290,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/domains/{id}/claim/verify",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runMutation(internal.api.domains.claimVerify, {
         caller,
@@ -305,7 +305,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/domains",
-    permission: "full_access",
+    scope: { resource: "domains", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.domains.list, {
         caller,
@@ -319,7 +319,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/domains",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       const domain = await ctx.runMutation(internal.api.domains.create, {
@@ -338,7 +338,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/domains/{id}",
-    permission: "full_access",
+    scope: { resource: "domains", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const domain = await ctx.runQuery(internal.api.domains.get, {
         caller,
@@ -351,7 +351,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/domains/{id}",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, params, body }) => {
       const input = objectBody(body)
       const tls = enumField(input, "tls", ["opportunistic", "enforced"])
@@ -374,7 +374,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/domains/{id}/verify",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, params }) =>
       changed(
         await ctx.runMutation(internal.api.domains.change, {
@@ -387,7 +387,7 @@ export function registerDomainRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/domains/{id}",
-    permission: "full_access",
+    scope: { resource: "domains", access: "write" },
     handler: async (ctx, { caller, params }) => {
       const { body } = changed(
         await ctx.runMutation(internal.api.domains.change, {

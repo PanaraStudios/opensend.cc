@@ -175,7 +175,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/receiving",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.received.list, {
         caller,
@@ -191,7 +191,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/receiving/{id}",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const format = query.get("html_format") ?? "data_uri"
       if (format !== "cid" && format !== "data_uri")
@@ -227,7 +227,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path: `/emails/receiving/{id}/attachments${single ? "/{attachmentId}" : ""}`,
-      permission: "full_access",
+      scope: { resource: "emails", access: "read" },
       handler: async (ctx, { caller, params, query }) => {
         const result = await ctx.runQuery(internal.api.received.attachments, {
           caller,

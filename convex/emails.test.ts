@@ -346,7 +346,7 @@ describe("sending", () => {
     expect(response.status).toBe(403)
     expect((await response.json()).message).toMatch(/its own domain/)
     // And it may not read emails back.
-    expect((await request(f, "/emails", { token })).status).toBe(401)
+    expect((await request(f, "/emails", { token })).status).toBe(403)
   })
 
   test("sending is refused until the IAM policy revision is current", async () => {

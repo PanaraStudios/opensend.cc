@@ -3,7 +3,8 @@ import { v } from "convex/values"
 
 export const apiKeyPermissionValue = v.union(
   v.literal("full_access"),
-  v.literal("sending_access")
+  v.literal("sending_access"),
+  v.literal("custom")
 )
 export const logSourceValue = v.union(
   v.literal("api"),
@@ -34,7 +35,8 @@ export const apiTables = {
     tokenPrefix: v.string(),
     tokenLast4: v.string(),
     permission: apiKeyPermissionValue,
-    /** Only for sending access: the one domain it may send from. */
+    scopes: v.optional(v.array(v.string())),
+    /** For sending access or custom emails:write: the one domain it may send from. */
     domainId: v.optional(v.id("domains")),
     createdBy: v.object({ userId: v.optional(v.string()), name: v.string() }),
     /** The name and visible token prefix, for the dashboard's search. */
