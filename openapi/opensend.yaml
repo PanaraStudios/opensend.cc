@@ -13798,6 +13798,13 @@ components:
           properties:
             mode:
               const: text
+    SendPageChannelStepConfig:
+      allOf:
+        - $ref: '#/components/schemas/SendWhatsAppStepConfig'
+      description: >-
+        Page or Instagram account and a published local template or text. Template variables also fill
+        quick replies. Requires the contact's identity on this account and an open 24-hour window;
+        otherwise skipped with no_channel_identity or window_closed. HUMAN_AGENT is never used.
     AutomationStep:
       type: object
       description: A step in an automation workflow. The `config` object varies based on the step `type`.
@@ -13814,6 +13821,14 @@ components:
             properties:
               config:
                 $ref: '#/components/schemas/SendWhatsAppStepConfig'
+        - if:
+            properties:
+              type:
+                enum: [send_messenger, send_instagram]
+          then:
+            properties:
+              config:
+                $ref: '#/components/schemas/SendPageChannelStepConfig'
       properties:
         key:
           type: string
@@ -13824,6 +13839,8 @@ components:
             - trigger
             - send_email
             - send_whatsapp
+            - send_messenger
+            - send_instagram
             - delay
             - wait_for_event
             - condition
@@ -13831,15 +13848,16 @@ components:
             - contact_delete
             - add_to_segment
           description: >-
-            Step type determining the required configuration: trigger, send_email, send_whatsapp, delay, wait_for_event,
+            Step type determining the required configuration: trigger, send_email, send_whatsapp, send_messenger, send_instagram, delay, wait_for_event,
             condition, contact_update, contact_delete, or add_to_segment.
         config:
           type: object
           description: >-
             Step-specific settings such as event_name, template, duration, condition rules, contact fields, or
-            segment_id. send_whatsapp requires account_id and mode (template with template_id or text with text);
+            segment_id. send_whatsapp, send_messenger and send_instagram require account_id and mode (template with template_id or text with text);
             variables map to strings or contact/property/value sources with optional fallback. The
-            opensend:whatsapp.message.received system event is supported for triggers and waits.
+            opensend:whatsapp.message.received, opensend:messenger.message.received and
+            opensend:instagram.message.received system events are supported for triggers and waits.
             Subject overrides, structured template variables, mixed nested conditions, null
             comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30 days to
             activate.
@@ -13990,6 +14008,8 @@ components:
             - trigger
             - send_email
             - send_whatsapp
+            - send_messenger
+            - send_instagram
             - delay
             - wait_for_event
             - condition
@@ -14221,6 +14241,8 @@ components:
             - trigger
             - send_email
             - send_whatsapp
+            - send_messenger
+            - send_instagram
             - delay
             - wait_for_event
             - condition

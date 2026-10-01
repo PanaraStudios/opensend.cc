@@ -45,3 +45,5 @@ export type {
 export * from './channels/interfaces';
 export * from './messenger/interfaces';
 export * from './instagram/interfaces';
+
+export { CHANNEL_SEND_STEPS, isChannelSendStep } from './automations/channels';

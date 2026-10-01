@@ -33,7 +33,7 @@ interface EventApiOptions {
 }
 
 export function parseStepConfig(
-  step: AutomationStep,
+  step: AutomationStep
 ): AutomationStepApiOptions {
   switch (step.type) {
     case 'trigger':
@@ -44,6 +44,8 @@ export function parseStepConfig(
       };
     case 'delay':
       return { key: step.key, type: step.type, config: step.config };
+    case 'send_messenger':
+    case 'send_instagram':
     case 'send_whatsapp':
       return {
         key: step.key,
@@ -103,7 +105,7 @@ export function parseStepConfig(
 }
 
 export function parseConnection(
-  connection: AutomationConnection,
+  connection: AutomationConnection
 ): AutomationConnectionApiOptions {
   return {
     from: connection.from,
@@ -113,7 +115,7 @@ export function parseConnection(
 }
 
 export function parseAutomationToApiOptions(
-  automation: CreateAutomationOptions,
+  automation: CreateAutomationOptions
 ): AutomationApiOptions {
   return {
     name: automation.name,
@@ -124,7 +126,7 @@ export function parseAutomationToApiOptions(
 }
 
 export function parseEventToApiOptions(
-  event: SendEventOptions,
+  event: SendEventOptions
 ): EventApiOptions {
   return {
     event: event.event,
