@@ -8,20 +8,43 @@ export class CallGatewayClient implements GatewayApi {
     private readonly baseUrl: string,
     private readonly secret: string
   ) {}
-  private async post<T>(path: string, data: object): Promise<T> {
+  protected async post<T>(
+    path: string,
+    data: object,
+    signal?: AbortSignal
+  ): Promise<T> {
     const body = JSON.stringify(data)
     const url = new URL(path, this.baseUrl)
     const response = await fetch(url, {
       method: "POST",
       body,
       redirect: "error",
-      signal: AbortSignal.timeout(30000),
+      signal: signal ?? AbortSignal.timeout(30000),
       headers: {
         "content-type": "application/json",
         ...signRequest(this.secret, "POST", url.pathname, body),
       },
     })
-    const result = (await response.json()) as T & {
+    const chunks: Uint8Array[] = []
+    let bytes = 0
+    const reader = response.body?.getReader()
+    if (reader)
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          bytes += value.byteLength
+          if (bytes > 128 * 1024) {
+            await reader.cancel()
+            throw new Error("Signed response exceeds 128 KiB")
+          }
+          chunks.push(value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    const raw = Buffer.concat(chunks).toString("utf8")
+    const result = JSON.parse(raw) as T & {
       error?: { code: string; message: string }
     }
     if (!response.ok)
