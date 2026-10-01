@@ -9,7 +9,7 @@ import {
 } from "./testHelpers/pages.fixture"
 import workpoolTest from "@convex-dev/workpool/test"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import type { Id } from "./_generated/dataModel"
+import type { Id, Doc } from "./_generated/dataModel"
 import { api, internal } from "./_generated/api"
 import {
   APP_SECRET,
@@ -744,3 +744,177 @@ for (const channel of ["messenger", "instagram"] as const) {
     expect(graph.to(`/${PAGE_ID}/messages`)).toHaveLength(0)
   })
 }
+
+test("thread content is the shared normalized projection, including reaction targets and signed media", async () => {
+  const f = await setup()
+  await project(f, incoming())
+  const id = await thread(f, "whatsapp")
+  const target = (
+    await f.member.client.query(api.conversations.messages, {
+      id,
+      paginationOpts: page,
+    })
+  ).page[0]
+  if (!("normalized" in target)) throw new Error("Channel content missing")
+  expect(target.normalized).toMatchObject({
+    type: "text",
+    content: { body: "Does it come in another color?" },
+    raw: { type: "text" },
+    attachments: [],
+    reactions: [],
+  })
+  await f.t.run(async (ctx) => {
+    const original = await ctx.db.get(
+      "channelMessages",
+      target.id as Id<"channelMessages">
+    )
+    const reaction = await insertRow(
+      ctx,
+      "channelMessages",
+      {
+        ...Object.fromEntries(
+          Object.entries(original!).filter(([key]) => !key.startsWith("_"))
+        ),
+        type: "reaction",
+        externalId: "wamid.reaction",
+        reactionTargetExternalId: original!.externalId,
+        preview: "👍",
+      } as Omit<Doc<"channelMessages">, "_id" | "_creationTime">,
+      true
+    )
+    await ctx.db.insert("channelMessageContents", {
+      messageId: reaction._id,
+      payload: JSON.stringify({
+        type: "reaction",
+        reaction: { message_id: original!.externalId, emoji: "👍" },
+      }),
+    })
+    const content = await ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", original!._id))
+      .unique()
+    await ctx.db.patch("channelMessageContents", content!._id, {
+      media: [{ mediaId: "media-fixture", contentType: "image/png" }],
+    })
+  })
+  const result = await f.member.client.query(api.conversations.messages, {
+    id,
+    paginationOpts: page,
+  })
+  const original = result.page.find((message) => message.id === target.id)!
+  if (!("normalized" in original)) throw new Error("Channel content missing")
+  expect(original.normalized.reactions).toEqual([
+    expect.objectContaining({ emoji: "👍" }),
+  ])
+  expect(original.normalized.attachments[0].download_url).toContain(
+    "/channels/media/"
+  )
+  await expect(
+    f.outsider.client.query(api.conversations.messages, {
+      id,
+      paginationOpts: page,
+    })
+  ).rejects.toBeDefined()
+})
+
+test("advanced replies use normal validation, permissions and window enforcement", async () => {
+  const f = await setup()
+  await project(f, incoming())
+  const id = await thread(f, "whatsapp")
+  const body = {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: "Choose" },
+      action: {
+        buttons: [{ type: "reply", reply: { id: "yes", title: "Yes" } }],
+      },
+    },
+  }
+  const sent = await f.member.client.mutation(api.conversations.reply, {
+    id,
+    body,
+  })
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db.get("channelMessages", sent as Id<"channelMessages">)
+    )
+  ).toMatchObject({
+    type: "interactive",
+    source: "dashboard",
+    conversationId: id,
+  })
+  await expect(
+    f.outsider.client.mutation(api.conversations.reply, { id, body })
+  ).rejects.toBeDefined()
+  await expect(
+    f.member.client.mutation(api.conversations.reply, {
+      id,
+      body: { type: "interactive", interactive: {} },
+    })
+  ).rejects.toBeDefined()
+  await expire(f, id)
+  await expect(
+    f.member.client.mutation(api.conversations.reply, { id, body })
+  ).rejects.toMatchObject({ data: WINDOW_CLOSED })
+})
+
+test("starting a conversation is idempotent, team scoped, and never opens a WhatsApp window", async () => {
+  const f = await setup()
+  const contactId = await f.t.run(
+    async (ctx) =>
+      (
+        await insertRow(
+          ctx,
+          "contacts",
+          {
+            organizationId: f.team,
+            phone: "+14155552671",
+            firstName: "Ada",
+            lastName: "",
+            updatedAt: Date.now(),
+            search: "ada +14155552671",
+            properties: {},
+            unsubscribed: false,
+          },
+          true
+        )
+      )._id
+  )
+  const args = {
+    organizationId: f.team,
+    contactId,
+    channel: "whatsapp" as const,
+    accountId: f.account,
+  }
+  const id = await f.member.client.mutation(api.conversations.start, args)
+  expect(await f.member.client.mutation(api.conversations.start, args)).toBe(id)
+  const detail = await f.member.client.query(api.conversations.get, { id })
+  expect(detail!.contact!.id).toBe(contactId)
+  expect(detail!.conversation.windowExpiresAt).toBeUndefined()
+  expect(detail!.conversation.unread).toBe(false)
+  await expect(
+    f.member.client.mutation(api.conversations.reply, {
+      id,
+      text: "Cannot send",
+    })
+  ).rejects.toMatchObject({ data: WINDOW_CLOSED })
+  await expect(
+    f.outsider.client.mutation(api.conversations.start, args)
+  ).rejects.toBeDefined()
+  await project(f, incoming())
+  const old = (await f.list()).page.find(
+    (row) =>
+      row.conversation.channelContactId !==
+      detail!.conversation.channelContactId
+  )!.conversation
+  const existing = await f.member.client.mutation(api.conversations.start, {
+    ...args,
+    contactId: old.contactId!,
+  })
+  expect(existing).toBe(old._id)
+  expect(
+    (await f.member.client.query(api.conversations.get, { id: existing }))!
+      .conversation
+  ).toEqual(old)
+})

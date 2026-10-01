@@ -27,6 +27,19 @@ export function channelMessagePayload(
       : null
   return {
     ...(normalized ?? {}),
+    ...(!normalized
+      ? {
+          content:
+            message.type === "text"
+              ? { body: string(pageMessage.text) || message.preview }
+              : message.type === "button"
+                ? {
+                    text: string(postback.title),
+                    payload: string(postback.payload),
+                  }
+                : object(attachment.payload),
+        }
+      : {}),
     ...(message.channel === "whatsapp" ? { raw: payload } : {}),
     id: message._id,
     channel: message.channel,
@@ -34,7 +47,9 @@ export function channelMessagePayload(
     conversation_id: message.conversationId,
     from: message.from,
     to: message.to,
-    type: normalized?.type ?? message.type,
+    type:
+      normalized?.type ??
+      (attachment.type === "template" ? "template" : message.type),
     status: message.status,
     direction: message.direction,
     external_id: message.externalId ?? null,
@@ -114,12 +129,16 @@ export function channelMessagePayload(
 export async function hydratedChannelMessage(
   ctx: QueryCtx,
   message: Doc<"channelMessages">,
-  now: number
+  now: number,
+  suppliedContent?: Doc<"channelMessageContents"> | null
 ) {
-  const content = await ctx.db
-    .query("channelMessageContents")
-    .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
-    .unique()
+  const content =
+    suppliedContent !== undefined
+      ? suppliedContent
+      : await ctx.db
+          .query("channelMessageContents")
+          .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+          .unique()
   const payload = content ? object(JSON.parse(content.payload)) : {}
   const contact = await ctx.db.get("channelContacts", message.channelContactId)
   const account =
@@ -271,9 +290,9 @@ export async function hydratedChannelMessage(
     ...(content?.paymentState
       ? { payment: JSON.parse(content.paymentState) }
       : {}),
+    attachments,
     ...(message.channel === "whatsapp"
       ? {
-          attachments,
           reactions,
           ...(message.type === "reaction"
             ? { reaction_target_id: reactionTargetId }
