@@ -10,7 +10,7 @@ import {
 } from "convex-helpers/server/stream"
 import { action, query, type QueryCtx } from "./_generated/server"
 import { api, internal } from "./_generated/api"
-import type { Doc } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
 import { countValue, counters } from "./counts"
@@ -224,6 +224,8 @@ export const receiving = query({
       v.object({
         kind: v.literal("channel"),
         message: schema.doc("channelMessages"),
+        /** The number (Page, account) it arrived on. */
+        account: v.string(),
       })
     )
   ),
@@ -258,14 +260,25 @@ export const receiving = query({
       { rows: 100, bytes: 1024 * 1024 },
       search
     )
-    return {
-      ...result,
-      page: result.page.map((row) =>
-        isChannelMessage(row)
-          ? { kind: "channel" as const, message: row }
-          : { kind: "email" as const, email: row }
-      ),
+    const handles = new Map<Id<"channelAccounts">, string>()
+    const page = []
+    for (const row of result.page) {
+      if (!isChannelMessage(row)) {
+        page.push({ kind: "email" as const, email: row })
+        continue
+      }
+      if (!handles.has(row.accountId))
+        handles.set(
+          row.accountId,
+          (await ctx.db.get("channelAccounts", row.accountId))?.handle ?? ""
+        )
+      page.push({
+        kind: "channel" as const,
+        message: row,
+        account: handles.get(row.accountId)!,
+      })
     }
+    return { ...result, page }
   },
 })
 

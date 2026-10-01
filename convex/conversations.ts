@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values"
+import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -233,6 +233,7 @@ const threadMessage = v.object({
   ),
 })
 type EmailThreadRow = Doc<"receivedEmails"> | Doc<"emailRecipients">
+export type ThreadMessage = Infer<typeof threadMessage>
 /** A bubble shows the start of a long email; its page has the rest. */
 const TEXT_LIMIT = 4000
 /** Email bodies are read with their rows, so a page stays small. */
