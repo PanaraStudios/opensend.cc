@@ -1,6 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { CHANNELS, CHANNEL_IDS, PAGE_CHANNELS, isPageChannel } from "./channels"
+import {
+  CHANNELS,
+  CHANNEL_IDS,
+  PAGE_CHANNELS,
+  isPageChannel,
+  CHANNEL_SEND_STEPS,
+  channelForSendStep,
+  isChannelSendStep,
+} from "./channels"
 
 test("every channel has a stable label, resource and account identifier", () => {
   assert.deepEqual(Object.keys(CHANNELS), [...CHANNEL_IDS])
@@ -25,4 +33,21 @@ test("every channel has a stable label, resource and account identifier", () => 
   )
   assert.deepEqual(CHANNEL_IDS.filter(isPageChannel), [...PAGE_CHANNELS])
   assert.equal(isPageChannel("unknown"), false)
+})
+
+test("the registry maps each messaging automation step to its own channel", () => {
+  assert.deepEqual(CHANNEL_SEND_STEPS, [
+    "send_whatsapp",
+    "send_messenger",
+    "send_instagram",
+  ])
+  assert.deepEqual(CHANNEL_SEND_STEPS.map(channelForSendStep), [
+    "whatsapp",
+    "messenger",
+    "instagram",
+  ])
+  for (const step of CHANNEL_SEND_STEPS)
+    assert.equal(isChannelSendStep(step), true)
+  assert.equal(isChannelSendStep("send_email"), false)
+  assert.equal(isChannelSendStep("send_unknown"), false)
 })

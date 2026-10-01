@@ -17,6 +17,7 @@ export type PageChannel = (typeof PAGE_CHANNELS)[number]
 
 type ChannelDefinition = {
   label: string
+  sendStep?: `send_${MessagingChannel}`
   accountNoun: string
   handleLabel: string
   idLabel: string
@@ -40,6 +41,7 @@ export const CHANNELS = {
     accountDefaults: {},
   },
   whatsapp: {
+    sendStep: "send_whatsapp",
     label: "WhatsApp",
     accountNoun: "Number",
     handleLabel: "Number",
@@ -63,6 +65,7 @@ export const CHANNELS = {
     },
   },
   messenger: {
+    sendStep: "send_messenger",
     label: "Messenger",
     accountNoun: "Page",
     handleLabel: "Handle",
@@ -80,6 +83,7 @@ export const CHANNELS = {
     accountDefaults: {},
   },
   instagram: {
+    sendStep: "send_instagram",
     label: "Instagram",
     accountNoun: "Account",
     handleLabel: "Handle",
@@ -105,4 +109,23 @@ export type LogChannel = {
 }[Channel]
 export function isPageChannel(channel: string): channel is PageChannel {
   return PAGE_CHANNELS.some((value) => value === channel)
+}
+
+/** Messaging steps share a config and pipeline; their channel lives in the registry. */
+export const MESSAGING_CHANNELS = CHANNEL_IDS.filter(
+  (channel): channel is MessagingChannel => channel !== "email"
+)
+export const CHANNEL_SEND_STEPS = MESSAGING_CHANNELS.map(
+  (channel) => CHANNELS[channel].sendStep
+)
+export type ChannelSendStepType = (typeof CHANNEL_SEND_STEPS)[number]
+export function isChannelSendStep(type: string): type is ChannelSendStepType {
+  return CHANNEL_SEND_STEPS.some((step) => step === type)
+}
+export function channelForSendStep(
+  type: ChannelSendStepType
+): MessagingChannel {
+  return MESSAGING_CHANNELS.find(
+    (channel) => CHANNELS[channel].sendStep === type
+  )!
 }

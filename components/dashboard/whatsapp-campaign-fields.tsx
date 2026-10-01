@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { CHANNELS, type MessagingChannel } from "@/lib/channels"
 import { api } from "@/convex/_generated/api"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { OptionSelect, SettingsCard } from "@/components/dashboard/primitives"
@@ -129,26 +130,48 @@ function VariableMapping({
   )
 }
 
-/** Shared sending-number/template controls and mappings for broadcasts and steps. */
+/** Shared account/template controls and mappings for broadcasts and channel steps. */
 export function WhatsAppCampaignFields({
   config,
   onChange,
   sample,
   allowText = false,
+  channel = "whatsapp",
 }: {
   config: WhatsAppCampaignConfig
   onChange: (config: WhatsAppCampaignConfig) => void
   sample?: VariableContact | null
   allowText?: boolean
+  channel?: MessagingChannel
 }) {
   const [accountSearch, setAccountSearch] = React.useState("")
   const [templateSearch, setTemplateSearch] = React.useState("")
-  const options = useTeamQuery(api.broadcastWhatsApp.options, {
+  const pickerArgs = {
     accountId: config.accountId,
     templateId: config.templateId,
     accountSearch,
     templateSearch,
-  })
+  }
+  const whatsappOptions = useTeamQuery(
+    api.broadcastWhatsApp.options,
+    pickerArgs,
+    { enabled: channel === "whatsapp" }
+  )
+  const pageOptions = useTeamQuery(
+    api.automations.channelOptions,
+    {
+      ...pickerArgs,
+      channel: channel === "instagram" ? "instagram" : "messenger",
+    },
+    { enabled: channel !== "whatsapp" }
+  )
+  const options = channel === "whatsapp" ? whatsappOptions : pageOptions
+  const accountLabel =
+    channel === "whatsapp"
+      ? "Sending number"
+      : `Sending ${CHANNELS[channel].accountNoun.toLowerCase()}`
+  const templateLabel =
+    channel === "whatsapp" ? "Approved template" : "Published template"
   const selected = options?.selected
   const components = storedComponents(selected?.components)
   const values = resolveVariables(
@@ -164,11 +187,11 @@ export function WhatsAppCampaignFields({
   return (
     <FieldGroup>
       <Field>
-        <FieldLabel>Sending number</FieldLabel>
+        <FieldLabel>{accountLabel}</FieldLabel>
         <OptionSelect
-          aria-label="Sending number"
+          aria-label={accountLabel}
           value={config.accountId}
-          placeholder="Select a WhatsApp number"
+          placeholder={`Select a ${CHANNELS[channel].label} ${CHANNELS[channel].accountNoun.toLowerCase()}`}
           search={{ onChange: setAccountSearch }}
           items={(options?.accounts ?? []).map((account) => ({
             value: account.id,
@@ -199,7 +222,7 @@ export function WhatsAppCampaignFields({
         <Field>
           <FieldLabel>Message</FieldLabel>
           <Textarea
-            aria-label="WhatsApp message"
+            aria-label={`${CHANNELS[channel].label} message`}
             value={config.text ?? ""}
             onChange={(event) =>
               onChange({ ...config, text: event.target.value })
@@ -212,12 +235,16 @@ export function WhatsAppCampaignFields({
       ) : (
         <>
           <Field>
-            <FieldLabel>Approved template</FieldLabel>
+            <FieldLabel>{templateLabel}</FieldLabel>
             <OptionSelect
-              aria-label="Approved template"
+              aria-label={templateLabel}
               value={config.templateId ?? ""}
               disabled={!config.accountId}
-              placeholder="Select an approved template"
+              placeholder={
+                channel === "whatsapp"
+                  ? "Select an approved template"
+                  : "Select a published template"
+              }
               search={{ onChange: setTemplateSearch }}
               items={(options?.templates ?? []).map((template) => ({
                 value: template.id,
@@ -249,7 +276,7 @@ export function WhatsAppCampaignFields({
               }
             />
           ))}
-          {selected ? (
+          {selected && channel === "whatsapp" ? (
             <SettingsCard title="Preview" description="Sample contact values">
               <div data-testid="whatsapp-campaign-preview">
                 <WhatsAppTemplatePreview

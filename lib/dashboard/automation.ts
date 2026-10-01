@@ -1,3 +1,4 @@
+import { CHANNEL_SEND_STEPS, CHANNELS, channelForSendStep } from "../channels"
 import { messagingChannelValue } from "../../convex/tables/channels"
 import { channelLabel } from "./format"
 import { RESERVED_PROPERTY_KEYS } from "./contacts"
@@ -26,6 +27,8 @@ export const STEP_LABELS: Record<AutomationStepType, string> = {
   wait_for_event: "Wait for event",
   send_email: "Send email",
   send_whatsapp: "Send WhatsApp",
+  send_messenger: "Send Messenger message",
+  send_instagram: "Send Instagram message",
   contact_update: "Update contact",
   contact_delete: "Delete contact",
   add_to_segment: "Add to segment",
@@ -36,7 +39,7 @@ export const STEP_GROUPS: readonly {
   label: string
   types: readonly AutomationStepType[]
 }[] = [
-  { label: "Messages", types: ["send_email", "send_whatsapp"] },
+  { label: "Messages", types: ["send_email", ...CHANNEL_SEND_STEPS] },
   { label: "Flow control", types: ["condition", "delay", "wait_for_event"] },
   {
     label: "Audience",
@@ -220,6 +223,8 @@ export function newStep(
         received: [],
         timedOut: [],
       }
+    case "send_messenger":
+    case "send_instagram":
     case "send_whatsapp":
       return {
         key,
@@ -441,11 +446,19 @@ export function stepTasks(
         triggerEventError(step.eventName) ? "Set event" : null,
         durationError(step.timeout),
       ].flatMap((task) => task ?? [])
+    case "send_messenger":
+    case "send_instagram":
     case "send_whatsapp":
       return [
-        !step.accountId ? "Select a sending number" : null,
+        !step.accountId
+          ? step.type === "send_whatsapp"
+            ? "Select a sending number"
+            : `Select a ${CHANNELS[channelForSendStep(step.type)].accountNoun.toLowerCase()}`
+          : null,
         step.mode === "template" && !step.templateId
-          ? "Select an approved WhatsApp template"
+          ? step.type === "send_whatsapp"
+            ? "Select an approved WhatsApp template"
+            : `Select a published ${CHANNELS[channelForSendStep(step.type)].label} template`
           : null,
         step.mode === "text" && !step.text?.trim() ? "Enter a message" : null,
       ].flatMap((task) => task ?? [])
@@ -530,6 +543,8 @@ export function stepSummary(
         : null
     case "wait_for_event":
       return step.eventName || null
+    case "send_messenger":
+    case "send_instagram":
     case "send_whatsapp":
       return step.mode === "text"
         ? step.text || null

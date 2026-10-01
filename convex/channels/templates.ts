@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values"
-import type { MutationCtx } from "../_generated/server"
+import type { QueryCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { teamTemplate, findPublished } from "../templates"
 import { object, string } from "../../lib/meta/webhooks"
@@ -9,8 +9,8 @@ import {
 } from "../../lib/meta/local-templates"
 
 /** Sends use only the published copy, and only in its own team and channel. */
-export async function resolveLocalTemplate(
-  ctx: MutationCtx,
+export async function localTemplateDefinition(
+  ctx: QueryCtx,
   organizationId: string,
   channel: Doc<"channelAccounts">["channel"],
   ref: unknown
@@ -23,6 +23,22 @@ export async function resolveLocalTemplate(
   const published = await findPublished(ctx, template._id)
   if (!published || template.status !== "published")
     throw new ConvexError("Publish this template before sending it")
+  return { template, published }
+}
+
+export async function resolveLocalTemplate(
+  ctx: QueryCtx,
+  organizationId: string,
+  channel: Doc<"channelAccounts">["channel"],
+  ref: unknown
+) {
+  const reference = typeof ref === "string" ? { id: ref } : object(ref)
+  const { template, published } = await localTemplateDefinition(
+    ctx,
+    organizationId,
+    channel,
+    reference
+  )
   const given =
     reference.variables === undefined ? {} : object(reference.variables)
   if (

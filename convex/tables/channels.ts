@@ -4,7 +4,7 @@ import { tagValue } from "./emails"
 import {
   CHANNEL_IDS,
   PAGE_CHANNELS,
-  type MessagingChannel,
+  MESSAGING_CHANNELS as messagingChannels,
 } from "../../lib/channels"
 
 export const literals = <T extends string>(values: readonly T[]) =>
@@ -14,9 +14,7 @@ export const literals = <T extends string>(values: readonly T[]) =>
 export const CHANNELS = CHANNEL_IDS
 export const channelValue = literals(CHANNELS)
 /** The Meta messaging channels. */
-export const MESSAGING_CHANNELS = CHANNEL_IDS.filter(
-  (channel): channel is MessagingChannel => channel !== "email"
-)
+export const MESSAGING_CHANNELS = messagingChannels
 export const messagingChannelValue = literals(MESSAGING_CHANNELS)
 export const pageChannelValue = literals(PAGE_CHANNELS)
 

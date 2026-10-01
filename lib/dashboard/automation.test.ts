@@ -325,3 +325,51 @@ it("all messaging reply events are valid triggers but custom system names are re
   assert.match(triggerEventError("opensend:unknown")!, /reserved/)
   assert.equal(triggerEventError("customer.created"), null)
 })
+
+for (const channel of ["messenger", "instagram"] as const) {
+  it(`builds and validates a ${channel} send step with the shared config`, () => {
+    const step = newStep(`send_${channel}`, [])
+    assert.equal(step.type, `send_${channel}`)
+    assert.equal(
+      stepTitle(step),
+      `Send ${channel === "messenger" ? "Messenger" : "Instagram"} message`
+    )
+    const draft = {
+      ...step,
+      accountId: "page",
+      mode: "template" as const,
+      templateId: "published",
+      variables: {},
+    } as AutomationStep
+    assert.deepEqual(
+      automationTasks(
+        { trigger: `opensend:${channel}.message.received`, steps: [draft] },
+        context
+      ),
+      []
+    )
+    assert.equal(
+      stepSummary(draft, {
+        ...context,
+        templates: [{ id: "published", name: "Reply", status: "published" }],
+      }),
+      "Reply"
+    )
+    const text = {
+      ...draft,
+      mode: "text" as const,
+      text: "Hello",
+    } as AutomationStep
+    assert.equal(stepSummary(text, context), "Hello")
+    assert.deepEqual(
+      automationTasks(
+        {
+          trigger: `opensend:${channel}.message.received`,
+          steps: [{ ...text, text: "" } as AutomationStep],
+        },
+        context
+      ).flatMap((task) => task.tasks),
+      ["Enter a message"]
+    )
+  })
+}

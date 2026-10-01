@@ -1,3 +1,4 @@
+import { CHANNEL_SEND_STEPS, type ChannelSendStepType } from "../channels"
 import type { ContactChannelIdentity } from "./contacts"
 import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
@@ -365,7 +366,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
-  "send_whatsapp",
+  ...CHANNEL_SEND_STEPS,
   "contact_update",
   "contact_delete",
   "add_to_segment",
@@ -401,13 +402,15 @@ export type AutomationStep = { key: string } & (
       variables: Record<string, string>
     }
   | {
-      type: "send_whatsapp"
-      accountId: string
-      mode: "template" | "text"
-      templateId?: string
-      variables: Record<string, VariableSource>
-      text?: string
-    }
+      [T in ChannelSendStepType]: {
+        type: T
+        accountId: string
+        mode: "template" | "text"
+        templateId?: string
+        variables: Record<string, VariableSource>
+        text?: string
+      }
+    }[ChannelSendStepType]
   | { type: "contact_update"; fields: AutomationContactField[] }
   | { type: "contact_delete" }
   | { type: "add_to_segment"; segmentId: string }

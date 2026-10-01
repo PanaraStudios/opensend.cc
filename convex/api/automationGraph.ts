@@ -1,3 +1,8 @@
+import {
+  CHANNEL_SEND_STEPS,
+  CHANNELS,
+  channelForSendStep,
+} from "../../lib/channels"
 import type { AutomationStep, AutomationRule } from "../../lib/dashboard/types"
 import { AUTOMATION_RULE_OPERATORS } from "../../lib/dashboard/types"
 import {
@@ -77,7 +82,7 @@ export function parseAutomationGraph(
         "condition",
         "wait_for_event",
         "send_email",
-        "send_whatsapp",
+        ...CHANNEL_SEND_STEPS,
         "contact_update",
         "contact_delete",
         "add_to_segment",
@@ -157,16 +162,20 @@ export function parseAutomationGraph(
       case "add_to_segment":
         node = { key, type: s.type, segmentId: text(c, "segment_id") }
         break
+      case "send_messenger":
+      case "send_instagram":
       case "send_whatsapp": {
         const mode = text(c, "mode")
         if (mode !== "template" && mode !== "text")
-          throw invalid("WhatsApp mode must be template or text.")
+          throw invalid(
+            `${CHANNELS[channelForSendStep(s.type)].label} mode must be template or text.`
+          )
         const variables = c.variables ?? {}
         const error = variableSourcesError(variables)
         if (error) throw invalid(error)
         node = {
           key,
-          type: "send_whatsapp",
+          type: s.type,
           accountId: text(c, "account_id"),
           mode,
           ...(mode === "template"
@@ -291,6 +300,8 @@ export function automationGraph(row: {
         case "delay":
           config = { duration: node.duration }
           break
+        case "send_messenger":
+        case "send_instagram":
         case "send_whatsapp":
           config = {
             account_id: node.accountId,

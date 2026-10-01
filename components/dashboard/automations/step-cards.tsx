@@ -1,5 +1,7 @@
 "use client"
 
+import { channelForSendStep } from "@/lib/channels"
+
 import * as React from "react"
 import type { Id } from "@/convex/_generated/dataModel"
 import Link from "next/link"
@@ -302,10 +304,13 @@ function StepBody({
       )
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
+    case "send_messenger":
+    case "send_instagram":
     case "send_whatsapp":
       return (
         <WhatsAppCampaignFields
           config={step}
+          channel={channelForSendStep(step.type)}
           allowText
           onChange={(config) =>
             onChange({

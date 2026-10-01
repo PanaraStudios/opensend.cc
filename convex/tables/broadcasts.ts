@@ -8,6 +8,7 @@ export const broadcastChannel = v.union(
 )
 export const skipReasonValue = v.union(
   v.literal("no_phone"),
+  v.literal("no_channel_identity"),
   v.literal("no_email"),
   v.literal("unsubscribed"),
   v.literal("topic_opt_out"),

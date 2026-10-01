@@ -225,3 +225,22 @@ export const findWhatsAppIdentity = (
           .eq("externalId", toWaId(phone))
     )
     .unique()
+
+/** PSIDs/IGSIDs belong to one Page/account, even for a linked CRM contact. */
+export async function findPageIdentity(
+  ctx: QueryCtx,
+  account: Doc<"channelAccounts">,
+  contactId: Id<"contacts">
+) {
+  for await (const identity of ctx.db
+    .query("channelContacts")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contactId))) {
+    if (
+      identity.organizationId === account.organizationId &&
+      identity.channel === account.channel &&
+      identity.scopeId === account.externalId
+    )
+      return identity
+  }
+  return null
+}

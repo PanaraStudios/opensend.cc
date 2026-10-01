@@ -69,6 +69,8 @@ describe("messagingLimitLabel", () => {
 
 describe("campaign outcomes", () => {
   it("labels technical skip words and keeps opt-outs neutral", () => {
+    assert.equal(skipReasonLabel("no_channel_identity"), "No channel identity")
+    assert.equal(SKIP_REASON_TONE.no_channel_identity, "secondary")
     assert.equal(skipReasonLabel("no_phone"), "No phone number")
     assert.equal(skipReasonLabel("contact_deleted"), "Contact deleted")
     assert.equal(skipReasonLabel("missing_variables"), "Missing variables")
