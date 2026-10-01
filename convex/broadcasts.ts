@@ -26,7 +26,7 @@ import {
   deleteRow,
   retireBroadcastCounters,
 } from "./counts"
-import { stream, mergedStream } from "convex-helpers/server/stream"
+import { stream } from "convex-helpers/server/stream"
 import { channelMessageStatusValue } from "./tables/channels"
 import { filteredPage, matchesSearch, selectedOption } from "./lists"
 import {
@@ -530,37 +530,27 @@ export const history = query({
   returns: paginationResultValidator(broadcastHistoryItem),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const contact = args.contactId
-      ? await teamRow(ctx, "contacts", args.organizationId, args.contactId)
-      : null
-    const email = (contact ? contact.email : args.email)?.trim().toLowerCase()
-    const rows = stream(ctx.db, schema).query("broadcastRecipients")
-    const sources = []
+    // Every recipient row names its contact; an email alone looks up by address.
     if (args.contactId)
-      sources.push(
-        rows
-          .withIndex("by_organizationId_and_contactId", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("contactId", args.contactId)
-          )
-          .order("desc")
+      await teamRow(ctx, "contacts", args.organizationId, args.contactId)
+    const email = args.email?.trim().toLowerCase()
+    if (!args.contactId && !email)
+      return { page: [], isDone: true, continueCursor: "" }
+    const result = await ctx.db
+      .query("broadcastRecipients")
+      .withIndex(
+        args.contactId
+          ? "by_organizationId_and_contactId"
+          : "by_organizationId_and_email",
+        (q) =>
+          args.contactId
+            ? q
+                .eq("organizationId", args.organizationId)
+                .eq("contactId", args.contactId)
+            : q.eq("organizationId", args.organizationId).eq("email", email!)
       )
-    if (email)
-      sources.push(
-        rows
-          .withIndex("by_organizationId_and_email", (q) =>
-            q.eq("organizationId", args.organizationId).eq("email", email)
-          )
-          .order("desc")
-          .filterWith(
-            async (row) => !args.contactId || row.contactId !== args.contactId
-          )
-      )
-    if (!sources.length) return { page: [], isDone: true, continueCursor: "" }
-    const result = await mergedStream(sources, ["_creationTime"]).paginate(
-      args.paginationOpts
-    )
+      .order("desc")
+      .paginate(args.paginationOpts)
     const page = await Promise.all(
       result.page.map(async (recipient) => {
         const [row, message] = await Promise.all([

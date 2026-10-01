@@ -345,9 +345,7 @@ export const recipients = query({
       .paginate(paginationOpts)
     const page = []
     for (const recipient of result.page) {
-      const contact = recipient.contactId
-        ? await ctx.db.get("contacts", recipient.contactId)
-        : null
+      const contact = await ctx.db.get("contacts", recipient.contactId)
       const message = recipient.messageId
         ? await ctx.db.get("channelMessages", recipient.messageId)
         : null

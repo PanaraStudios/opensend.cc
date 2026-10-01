@@ -222,7 +222,7 @@ test("email threads created before linking a contact are included once and link 
   ).rejects.toMatchObject({ data: "You do not have permission" })
 })
 
-test("contact broadcast history includes WhatsApp, legacy email and linked email recipients without duplicates across cursors", async () => {
+test("contact broadcast history pages WhatsApp and email recipients by contact, scoped to the team", async () => {
   const f = await fixture()
   const contactId = await f.t.run((ctx) =>
     insertContact(ctx, f.owner.team, {
@@ -232,8 +232,7 @@ test("contact broadcast history includes WhatsApp, legacy email and linked email
   )
   async function recipient(
     channel: "email" | "whatsapp",
-    organizationId: string,
-    linked: boolean
+    organizationId: string
   ) {
     return f.t.run(async (ctx) => {
       const broadcast = await insertRow(ctx, "broadcasts", {
@@ -252,7 +251,7 @@ test("contact broadcast history includes WhatsApp, legacy email and linked email
       await insertRow(ctx, "broadcastRecipients", {
         organizationId,
         broadcastId: broadcast,
-        ...(linked ? { contactId } : {}),
+        contactId,
         email: channel === "email" ? "ada@example.com" : "",
         skipReason: channel === "whatsapp" ? "missing_variables" : undefined,
         failed: false,
@@ -263,12 +262,11 @@ test("contact broadcast history includes WhatsApp, legacy email and linked email
     })
   }
   const expected = [
-    await recipient("whatsapp", f.owner.team, true),
-    await recipient("email", f.owner.team, false),
-    await recipient("email", f.owner.team, true),
+    await recipient("whatsapp", f.owner.team),
+    await recipient("email", f.owner.team),
   ]
-  await recipient("whatsapp", f.outsider.team, true)
-  await recipient("email", f.outsider.team, false)
+  await recipient("whatsapp", f.outsider.team)
+  await recipient("email", f.outsider.team)
   const args = { organizationId: f.owner.team, contactId }
   const ids: Id<"broadcasts">[] = []
   let cursor: string | null = null
@@ -286,7 +284,7 @@ test("contact broadcast history includes WhatsApp, legacy email and linked email
     if (result.isDone) break
     cursor = result.continueCursor
   }
-  expect(ids).toHaveLength(3)
+  expect(ids).toHaveLength(2)
   expect(new Set(ids)).toEqual(new Set(expected))
   expect(whatsapp).toMatchObject({ contactId, skipReason: "missing_variables" })
   expect(await f.owner.client.query(api.broadcasts.historyCount, args)).toEqual(
@@ -300,7 +298,7 @@ test("contact broadcast history includes WhatsApp, legacy email and linked email
         paginationOpts: page,
       })
     ).page
-  ).toHaveLength(2)
+  ).toHaveLength(1)
   await f.owner.client.mutation(api.contacts.update, {
     id: contactId,
     email: "",

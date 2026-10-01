@@ -133,7 +133,7 @@ export const broadcastTables = {
   broadcastRecipients: defineTable({
     organizationId: v.string(),
     broadcastId: v.id("broadcasts"),
-    contactId: v.optional(v.id("contacts")),
+    contactId: v.id("contacts"),
     email: v.string(),
     emailId: v.optional(v.id("emails")),
     messageId: v.optional(v.id("channelMessages")),
