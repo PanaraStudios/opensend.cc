@@ -1,17 +1,17 @@
 import type { MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
-import { upsertContact } from "../audience"
+import { upsertContact, insertContact } from "../audience"
 import { insertRow, patchRow } from "../counts"
 import { profileNameParts } from "../../lib/meta/webhooks"
 
 /** One team identity per wa_id, and one thread per identity and number.
  * Outbound sends never open the customer service window or increment unread. */
-export async function upsertWhatsAppThread(
+export async function upsertChannelThread(
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
   input: {
     externalId: string
-    phone: string
+    phone?: string
     profileName?: string
     at: number
     preview: string
@@ -26,8 +26,11 @@ export async function upsertWhatsAppThread(
       (q) =>
         q
           .eq("organizationId", account.organizationId)
-          .eq("channel", "whatsapp")
-          .eq("scopeId", "whatsapp")
+          .eq("channel", account.channel)
+          .eq(
+            "scopeId",
+            account.channel === "whatsapp" ? "whatsapp" : account.externalId
+          )
           .eq("externalId", externalId)
     )
     .unique()
@@ -37,14 +40,20 @@ export async function upsertWhatsAppThread(
   const contactId =
     linked?.organizationId === account.organizationId
       ? linked._id
-      : (
-          await upsertContact(
+      : account.channel !== "whatsapp"
+        ? await insertContact(
             ctx,
             account.organizationId,
-            { phone, ...profileNameParts(profileName) },
-            { properties: [], segmentIds: [], skipExisting: true }
+            profileNameParts(profileName)
           )
-        ).id
+        : (
+            await upsertContact(
+              ctx,
+              account.organizationId,
+              { phone, ...profileNameParts(profileName) },
+              { properties: [], segmentIds: [], skipExisting: true }
+            )
+          ).id
   const changes = {
     contactId,
     phone,
@@ -60,8 +69,8 @@ export async function upsertWhatsAppThread(
   } else
     channelContactId = await ctx.db.insert("channelContacts", {
       organizationId: account.organizationId,
-      channel: "whatsapp",
-      scopeId: "whatsapp",
+      channel: account.channel,
+      scopeId: account.channel === "whatsapp" ? "whatsapp" : account.externalId,
       externalId,
       marketingOptOut: false,
       ...changes,
@@ -91,7 +100,9 @@ export async function upsertWhatsAppThread(
           lastDirection: direction,
         }
       : {}),
-    search: [phone, profileName || identity?.profileName].join(" "),
+    search: [phone ?? externalId, profileName || identity?.profileName].join(
+      " "
+    ),
   }
   const conversationId = conversation
     ? (
@@ -108,7 +119,7 @@ export async function upsertWhatsAppThread(
           "conversations",
           {
             organizationId: account.organizationId,
-            channel: "whatsapp",
+            channel: account.channel,
             accountId: account._id,
             channelContactId,
             status: "open",
@@ -123,3 +134,6 @@ export async function upsertWhatsAppThread(
       )._id
   return { contactId, channelContactId, conversationId }
 }
+
+/** Preserve the WhatsApp entry point for existing callers. */
+export const upsertWhatsAppThread = upsertChannelThread

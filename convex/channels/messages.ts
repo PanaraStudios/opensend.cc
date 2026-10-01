@@ -18,9 +18,14 @@ import { decryptSecret } from "../secrets"
 import { invalid, notFound } from "../api/caller"
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
-import { upsertWhatsAppThread } from "./identity"
+import { upsertChannelThread } from "./identity"
 import { channelMessagePayload } from "./payload"
-import { whatsappPayload, type WhatsAppBody } from "../../lib/meta/payloads"
+import {
+  channelStrategies,
+  WHATSAPP_WINDOW_CLOSED,
+} from "../../lib/meta/payloads"
+import { resolveLocalTemplate } from "./templates"
+import { messagingChannelValue } from "../tables/channels"
 import { resolveWhatsAppTemplate } from "../whatsapp/templates"
 import { STATUS_RANK, object, string } from "../../lib/meta/webhooks"
 import { TAG_PATTERN } from "../../lib/dashboard/email-send"
@@ -28,12 +33,12 @@ import { RETRY_DELAYS } from "../emails"
 
 const pool = new Workpool(components.channelPool, { maxParallelism: 10 })
 const limiter = new RateLimiter(components.rateLimiter)
-export const WINDOW_CLOSED =
-  "The 24-hour customer service window is closed. Send an approved template instead."
+export const WINDOW_CLOSED = WHATSAPP_WINDOW_CLOSED
 export const channelInputValue = v.object({
+  channel: v.optional(messagingChannelValue),
   from: v.optional(v.string()),
   to: v.string(),
-  /** Validated by whatsappPayload before any writes. */
+  /** Validated by the channel adapter before any writes. */
   body: v.record(v.string(), v.any()),
   replyTo: v.optional(v.string()),
   tags: v.optional(v.array(tagValue)),
@@ -41,10 +46,11 @@ export const channelInputValue = v.object({
 export type ChannelInput = Infer<typeof channelInputValue>
 
 /** Resolve only within the team, accepting either an account id or phone id. */
-export async function resolveWhatsAppAccount(
+export async function resolveChannelAccount(
   ctx: QueryCtx,
   organizationId: string,
-  from?: string
+  from?: string,
+  channel: Doc<"channelAccounts">["channel"] = "whatsapp"
 ) {
   let account: Doc<"channelAccounts"> | null = null
   if (from !== undefined) {
@@ -56,7 +62,7 @@ export async function resolveWhatsAppAccount(
           await ctx.db
             .query("channelAccounts")
             .withIndex("by_channel_and_externalId", (q) =>
-              q.eq("channel", "whatsapp").eq("externalId", from)
+              q.eq("channel", channel).eq("externalId", from)
             )
             .take(20)
         ).find((a) => a.organizationId === organizationId && live(a)) ?? null
@@ -66,7 +72,7 @@ export async function resolveWhatsAppAccount(
       .withIndex("by_organizationId_and_channel_and_disconnectedAt", (q) =>
         q
           .eq("organizationId", organizationId)
-          .eq("channel", "whatsapp")
+          .eq("channel", channel)
           .eq("disconnectedAt", undefined)
       )
       .take(2)
@@ -76,22 +82,29 @@ export async function resolveWhatsAppAccount(
   if (
     !account ||
     account.organizationId !== organizationId ||
-    account.channel !== "whatsapp" ||
+    account.channel !== channel ||
     !live(account)
   )
-    throw notFound("WhatsApp phone number")
+    throw notFound(
+      channel === "whatsapp" ? "WhatsApp phone number" : "Channel account"
+    )
   const connection = await ctx.db.get("metaConnections", account.connectionId)
   if (
     account.status !== "active" ||
-    account.registeredAt === undefined ||
+    (channel === "whatsapp" && account.registeredAt === undefined) ||
     connection?.organizationId !== organizationId ||
     connection.status !== "active"
   )
     throw invalid(
-      "The WhatsApp phone number must be active and registered with an active Meta connection."
+      channel === "whatsapp"
+        ? "The WhatsApp phone number must be active and registered with an active Meta connection."
+        : "The channel account must have an active Meta connection."
     )
   return account
 }
+
+/** Compatibility for the WhatsApp media and existing send callers. */
+export const resolveWhatsAppAccount = resolveChannelAccount
 
 /** A template send with `components` goes to Meta as given. Otherwise the
  * team's stored template (by id, alias, or name and language, on the sending
@@ -163,33 +176,55 @@ export async function createChannelMessage(
 ) {
   if (await retirement(ctx, opts.organizationId))
     throw invalid("This team is being retired.")
-  const account = await resolveWhatsAppAccount(
+  const channel = input.channel ?? "whatsapp"
+  const account = await resolveChannelAccount(
     ctx,
     opts.organizationId,
-    input.from
+    input.from,
+    channel
   )
-  let payload: ReturnType<typeof whatsappPayload>
+  let body = input.body
+  let templateId: Id<"templates"> | undefined
+  let prepared: ReturnType<typeof channelStrategies.whatsapp.build>
   try {
-    payload = whatsappPayload({
-      ...input.body,
-      ...(input.body.template !== undefined
-        ? {
-            template: await storedTemplate(
-              ctx,
-              opts.organizationId,
-              account.wabaId,
-              input.body.template
-            ),
-          }
-        : {}),
-      to: input.to,
-      reply_to: input.replyTo,
-    } as WhatsAppBody)
+    if (body.template !== undefined) {
+      if (channel === "whatsapp")
+        body = {
+          ...body,
+          template: await storedTemplate(
+            ctx,
+            opts.organizationId,
+            account.wabaId,
+            body.template
+          ),
+        }
+      else {
+        if (body.text !== undefined || body.attachment !== undefined)
+          throw new Error("Provide exactly one message body.")
+        const template = await resolveLocalTemplate(
+          ctx,
+          opts.organizationId,
+          channel,
+          body.template
+        )
+        templateId = template.id
+        body = {
+          ...template.body,
+          ...(body.quick_replies !== undefined
+            ? { quick_replies: body.quick_replies }
+            : {}),
+          ...(body.tag !== undefined ? { tag: body.tag } : {}),
+        }
+      }
+    }
+    prepared = channelStrategies[channel].build({ ...body, to: input.to })
   } catch (error) {
     throw invalid(
-      error instanceof Error ? error.message : "Invalid WhatsApp message."
+      error instanceof Error ? error.message : "Invalid channel message."
     )
   }
+  const { payload, to: recipient, preview } = prepared
+  const type = templateId ? "template" : prepared.type
   if (JSON.stringify(payload).length > 200_000)
     throw invalid("The message body is too large.")
   const tags = input.tags ?? []
@@ -210,7 +245,7 @@ export async function createChannelMessage(
           await ctx.db
             .query("channelMessages")
             .withIndex("by_channel_and_externalId", (q) =>
-              q.eq("channel", "whatsapp").eq("externalId", input.replyTo)
+              q.eq("channel", channel).eq("externalId", input.replyTo)
             )
             .take(10)
         ).find((row) => row.accountId === account._id) ?? null)
@@ -218,48 +253,58 @@ export async function createChannelMessage(
       !reply ||
       reply.organizationId !== opts.organizationId ||
       reply.accountId !== account._id ||
-      (reply.direction === "inbound" ? reply.from : reply.to) !== payload.to ||
+      (reply.direction === "inbound" ? reply.from : reply.to) !== recipient ||
       !reply.externalId
     )
       throw invalid(
         "reply_to must identify a message in this recipient's conversation."
       )
     replyToId = reply._id
-    payload.context = { message_id: reply.externalId }
+    if (channel === "whatsapp")
+      payload.context = { message_id: reply.externalId }
+    else payload.reply_to = { mid: reply.externalId }
   }
-  const data = object(payload[payload.type])
-  const preview = (
-    payload.type === "text"
-      ? string(data.body)
-      : string(data.caption) || `[${payload.type}]`
-  ).slice(0, 1000)
-  const { channelContactId, conversationId } = await upsertWhatsAppThread(
+  const data =
+    channel === "whatsapp"
+      ? object(payload[type])
+      : object(object(object(payload.message).attachment).payload)
+  const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
     account,
     {
-      externalId: payload.to,
-      phone: `+${payload.to}`,
+      externalId: recipient,
+      ...(channel === "whatsapp" ? { phone: `+${recipient}` } : {}),
       at: now,
       preview,
       direction: "outbound",
     }
   )
   const conversation = (await ctx.db.get("conversations", conversationId))!
-  if (payload.type !== "template" && (conversation.windowExpiresAt ?? 0) <= now)
-    throw invalid(WINDOW_CLOSED)
+  try {
+    channelStrategies[channel].assertWindow(
+      payload,
+      conversation.windowExpiresAt,
+      now
+    )
+  } catch (error) {
+    throw invalid(
+      error instanceof Error ? error.message : "Messaging window closed"
+    )
+  }
   const message = await insertRow(
     ctx,
     "channelMessages",
     {
       organizationId: opts.organizationId,
-      channel: "whatsapp",
+      channel,
       accountId: account._id,
       conversationId,
       channelContactId,
       direction: "outbound",
       from: account.externalId,
-      to: payload.to,
-      type: payload.type,
+      to: recipient,
+      type,
+      ...(templateId ? { templateId } : {}),
       status: "queued",
       preview,
       source: opts.source,
@@ -273,7 +318,7 @@ export async function createChannelMessage(
       generation: 0,
       attempts: 0,
       expiresAt: now + 7 * 86400_000,
-      search: [account.handle, payload.to, preview].join(" "),
+      search: [account.handle, recipient, preview].join(" "),
     },
     true
   )
@@ -372,7 +417,7 @@ export async function acceptChannelMessage(
   await emitEvent(
     ctx,
     message.organizationId,
-    "whatsapp.message.sent",
+    `${message.channel}.message.sent`,
     channelMessagePayload(
       { ...current, status: "sent" },
       body ? object(JSON.parse(body.payload)) : {}
@@ -409,7 +454,7 @@ async function fail(
   await emitEvent(
     ctx,
     message.organizationId,
-    "whatsapp.message.failed",
+    `${message.channel}.message.failed`,
     channelMessagePayload(current, body ? object(JSON.parse(body.payload)) : {})
   )
 }
@@ -436,17 +481,14 @@ export const claim = internalMutation({
       return null
     let account: Doc<"channelAccounts">
     try {
-      account = await resolveWhatsAppAccount(
+      account = await resolveChannelAccount(
         ctx,
         message.organizationId,
-        message.accountId
+        message.accountId,
+        message.channel
       )
     } catch {
-      await fail(
-        ctx,
-        message,
-        "The WhatsApp account is no longer active and registered."
-      )
+      await fail(ctx, message, "The channel account is no longer active.")
       return null
     }
     const app = await findMetaApp(ctx)
@@ -463,23 +505,55 @@ export const claim = internalMutation({
       "conversations",
       message.conversationId
     )
-    if (
-      message.type !== "template" &&
-      (conversation?.windowExpiresAt ?? 0) <= Date.now()
-    ) {
-      await fail(ctx, message, WINDOW_CLOSED, 131047)
+    const payload = object(JSON.parse(body.payload))
+    try {
+      channelStrategies[message.channel].assertWindow(
+        payload,
+        conversation?.windowExpiresAt,
+        Date.now()
+      )
+    } catch (error) {
+      await fail(
+        ctx,
+        message,
+        error instanceof Error ? error.message : "Messaging window closed",
+        channelStrategies[message.channel].windowErrorCode
+      )
       return null
     }
     let readyAt = message.rateReadyAt
     if (readyAt === undefined) {
-      const rate = Math.max(1, account.throughputMps)
+      const rate = Math.max(
+        1,
+        account.pageId
+          ? Math.min(300, account.throughputMps)
+          : account.throughputMps
+      )
       const limit = await limiter.limit(ctx, "channelSend", {
-        key: account._id,
+        key: account.pageId ? `page:${account.pageId}` : account._id,
         count: 1,
         reserve: true,
         config: { kind: "token bucket", rate, period: SECOND, capacity: rate },
       })
-      readyAt = Date.now() + Math.ceil(limit.retryAfter ?? 0)
+      let delay = limit.retryAfter ?? 0
+      if (
+        account.pageId &&
+        (message.type === "audio" || message.type === "video")
+      ) {
+        const mediaLimit = await limiter.limit(ctx, "channelMediaSend", {
+          key: `page:${account.pageId}`,
+          count: 1,
+          reserve: true,
+          config: {
+            kind: "token bucket",
+            rate: 10,
+            period: SECOND,
+            capacity: 10,
+          },
+        })
+        delay = Math.max(delay, mediaLimit.retryAfter ?? 0)
+      }
+      readyAt = Date.now() + Math.ceil(delay)
     }
     if (readyAt > Date.now()) {
       await patchRow(ctx, "channelMessages", id, {
@@ -493,7 +567,9 @@ export const claim = internalMutation({
       "metaConnections",
       account.connectionId
     ))!
-    const token = await decryptSecret(connection.encryptedToken)
+    const token = await decryptSecret(
+      account.encryptedToken ?? connection.encryptedToken
+    )
     await patchRow(ctx, "channelMessages", id, {
       claimed: true,
       rateReadyAt: undefined,
@@ -502,8 +578,8 @@ export const claim = internalMutation({
     return {
       token,
       version: app.graphVersion,
-      phoneNumberId: account.externalId,
-      payload: body.payload,
+      phoneNumberId: channelStrategies[message.channel].endpoint(account),
+      payload: JSON.stringify(payload),
     }
   },
 })

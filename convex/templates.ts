@@ -26,6 +26,13 @@ import {
   templateVariableValue,
   whatsappTemplateValue,
 } from "./tables/templates"
+import { object } from "../lib/meta/webhooks"
+import {
+  localTemplate,
+  localTemplateVariables,
+  localTemplateSource,
+} from "../lib/meta/local-templates"
+import { pageMessageContent } from "../lib/meta/payloads"
 import { channelValue } from "./tables/channels"
 import {
   assertChangeAllowed,
@@ -222,8 +229,24 @@ export async function insertTemplate(
       ),
       uniqueName: true,
     })
-  if (draft.channel !== undefined && draft.channel !== "email")
-    throw new ConvexError("Templates can be email or WhatsApp")
+  const page = draft.channel === "messenger" || draft.channel === "instagram"
+  if (page) {
+    try {
+      const content = localTemplate(draft.content ?? { text: draft.text ?? "" })
+      draft = {
+        ...draft,
+        html: "",
+        subject: "",
+        preview: "",
+        text: content.text,
+        content,
+      }
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof Error ? error.message : "Invalid template"
+      )
+    }
+  }
   const name = draft.name.trim() || UNTITLED_TEMPLATE
   const alias = uniqueTemplateAlias(
     name,
@@ -232,6 +255,7 @@ export async function insertTemplate(
   await checkFree(ctx, organizationId, alias)
   const id = await insertRow(ctx, "templates", {
     organizationId,
+    ...(page ? { channel: draft.channel } : {}),
     name,
     alias,
     status: "draft",
@@ -239,7 +263,9 @@ export async function insertTemplate(
     preview: draft.preview,
     from: optionalText(draft.from),
     replyTo: optionalText(draft.replyTo),
-    variables: draftVariables(draft),
+    variables: page
+      ? localTemplateVariables(localTemplate(draft.content))
+      : draftVariables(draft),
     variableDefinitions: draft.variableDefinitions,
     replyToAddresses: draft.replyToAddresses,
     updatedAt: Date.now(),
@@ -591,7 +617,7 @@ export async function publishedTemplate(
   if (
     !template ||
     template.organizationId !== organizationId ||
-    isWhatsApp(template)
+    (template.channel !== undefined && template.channel !== "email")
   )
     return null
   const live = await findPublished(ctx, template._id)
@@ -802,6 +828,31 @@ export async function updateTemplate(
   const draft = await findDraft(ctx, id)
   if (!draft) throw new ConvexError("Template not found")
   checkInput(input)
+  const page =
+    template.channel === "messenger" || template.channel === "instagram"
+  if (page) {
+    if (
+      ["html", "subject", "from", "replyTo", "replyToAddresses"].some(
+        (key) => input[key as keyof Input] !== undefined
+      )
+    )
+      throw new ConvexError("Messaging templates have no email fields")
+    if (input.content !== undefined || input.text !== undefined) {
+      try {
+        const content = localTemplate({
+          ...localTemplate(draft.content),
+          ...(input.content !== undefined
+            ? object(input.content)
+            : { text: input.text }),
+        })
+        input = { ...input, content, text: content.text }
+      } catch (error) {
+        throw new ConvexError(
+          error instanceof Error ? error.message : "Invalid template"
+        )
+      }
+    }
+  }
   const current: Draft = {
     name: template.name,
     subject: template.subject,
@@ -811,6 +862,7 @@ export async function updateTemplate(
     html: draft.html,
     content: draft.content,
     text: draft.text,
+    channel: template.channel,
     variableDefinitions: template.variableDefinitions,
     replyToAddresses: template.replyToAddresses,
   }
@@ -852,7 +904,9 @@ export async function updateTemplate(
     preview: next.preview,
     from: next.from,
     replyTo: next.replyTo,
-    variables: draftVariables(next),
+    variables: page
+      ? localTemplateVariables(localTemplate(next.content))
+      : draftVariables(next),
     variableDefinitions: next.variableDefinitions,
     replyToAddresses: next.replyToAddresses,
     updatedAt: now,
@@ -897,8 +951,22 @@ export async function publishTemplate(
   if (isWhatsApp(template)) throw new ConvexError(SUBMIT_TO_META)
   const id = template._id
   const draft = await findDraft(ctx, id)
-  if (!draft?.html.trim())
+  const page =
+    template.channel === "messenger" || template.channel === "instagram"
+  if (!draft || !(page ? draft.text?.trim() : draft.html.trim()))
     throw new ConvexError("Add content to this template before publishing")
+  if (page) {
+    try {
+      pageMessageContent(
+        localTemplate(draft.content),
+        template.channel === "instagram" ? "instagram" : "messenger"
+      )
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof Error ? error.message : "Invalid template"
+      )
+    }
+  }
   const now = Math.max(Date.now(), template.updatedAt + 1)
   const version = {
     templateId: id,
@@ -907,6 +975,7 @@ export async function publishTemplate(
     preview: template.preview,
     html: draft.html,
     text: draft.text,
+    ...(page ? { components: localTemplate(draft.content) } : {}),
     from: template.from,
     replyTo: template.replyTo,
     variables: resolvedVariables(template, draft),
@@ -945,6 +1014,7 @@ export async function duplicateTemplate(
   return insertTemplate(ctx, template.organizationId, {
     // " copy" must not push a name at the limit past it.
     name: `${template.name} copy`.slice(0, TEXT_LIMITS.name[1]),
+    channel: template.channel,
     subject: template.subject,
     preview: template.preview,
     from: template.from,
@@ -1009,12 +1079,12 @@ export function resolvedVariables(
     Doc<"templates">,
     "subject" | "preview" | "variableDefinitions"
   >,
-  draft: { html: string; text?: string }
+  draft: { html: string; text?: string; content?: unknown }
 ) {
   const inferred = templateVariableDefaults({
     subject: template.subject,
     preview: template.preview,
-    html: `${draft.html} ${draft.text ?? ""}`,
+    html: `${draft.html} ${draft.text ?? ""} ${draft.content && typeof draft.content === "object" && "quick_replies" in draft.content ? localTemplateSource(localTemplate(draft.content)) : ""}`,
   })
   const definitions = new Map(
     inferred.map((variable) => [

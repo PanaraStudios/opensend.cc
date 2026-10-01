@@ -31,7 +31,9 @@ export const deliver = internalAction({
           body: { json: JSON.parse(claim.payload) },
         })
       )
-      const externalId = string(object(array(result.messages)[0]).id)
+      const externalId =
+        string(result.message_id) ||
+        string(object(array(result.messages)[0]).id)
       // A malformed success or transport exception is ambiguous; do not resend.
       if (!externalId)
         throw new Error("Meta accepted the call without a message id")

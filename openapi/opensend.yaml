@@ -1698,6 +1698,8 @@ paths:
             enum:
               - email
               - whatsapp
+              - messenger
+              - instagram
       responses:
         '200':
           description: The requested resource list.
@@ -6320,6 +6322,690 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+  /messenger/messages:
+    post:
+      operationId: messenger/messages/send
+      tags:
+        - Messenger
+      summary: Send Messenger Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppId'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: >-
+        Queue a Page-backed message with a stable id and idempotency. Inside 24 hours sends use
+        RESPONSE; outside the window a permitted tag is required. HUMAN_AGENT is limited to seven
+        days. Local templates do not open the window. Domain-restricted keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessengerMessage'
+    get:
+      operationId: messenger/messages/list
+      tags:
+        - Messenger
+      summary: List Messenger Messages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: page_id
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/messages/{id}:
+    get:
+      operationId: messenger/messages/get
+      tags:
+        - Messenger
+      summary: Get Messenger Message
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageDetail'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/pages:
+    get:
+      operationId: messenger/pages/list
+      tags:
+        - Messenger
+      summary: List Messenger Pages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccountList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/pages/{id}:
+    get:
+      operationId: messenger/pages/get
+      tags:
+        - Messenger
+      summary: Get Messenger Page
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccount'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/conversations:
+    get:
+      operationId: messenger/conversations/list
+      tags:
+        - Messenger
+      summary: List Messenger Conversations
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelConversationList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /messenger/conversations/{id}/messages:
+    get:
+      operationId: messenger/conversations/messages
+      tags:
+        - Messenger
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/messages:
+    post:
+      operationId: instagram/messages/send
+      tags:
+        - Instagram
+      summary: Send Instagram Message
+      x-opensend-permission: sending
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppId'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: >-
+        Queue a Page-backed message with a stable id and idempotency. Inside 24 hours sends use
+        RESPONSE; outside the window a permitted tag is required. HUMAN_AGENT is limited to seven
+        days. Local templates do not open the window. Domain-restricted keys receive 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendInstagramMessage'
+    get:
+      operationId: instagram/messages/list
+      tags:
+        - Instagram
+      summary: List Instagram Messages
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum:
+              - queued
+              - sent
+              - delivered
+              - read
+              - failed
+              - received
+        - in: query
+          name: direction
+          required: false
+          schema:
+            type: string
+            enum:
+              - inbound
+              - outbound
+        - in: query
+          name: account_id
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/messages/{id}:
+    get:
+      operationId: instagram/messages/get
+      tags:
+        - Instagram
+      summary: Get Instagram Message
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageDetail'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/accounts:
+    get:
+      operationId: instagram/accounts/list
+      tags:
+        - Instagram
+      summary: List Instagram Accounts
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccountList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/accounts/{id}:
+    get:
+      operationId: instagram/accounts/get
+      tags:
+        - Instagram
+      summary: Get Instagram Account
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelAccount'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/conversations:
+    get:
+      operationId: instagram/conversations/list
+      tags:
+        - Instagram
+      summary: List Instagram Conversations
+      x-opensend-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelConversationList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /instagram/conversations/{id}/messages:
+    get:
+      operationId: instagram/conversations/messages
+      tags:
+        - Instagram
+      summary: List Conversation Messages
+      x-opensend-permission: full_access
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Successful request.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/ratelimit_limit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/ratelimit_remaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/ratelimit_reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageChannelMessageList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
 components:
   headers:
     ratelimit_limit:
@@ -6512,6 +7198,538 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    PageChannelMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        account_id:
+          type: string
+        conversation_id:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        type:
+          type: string
+          enum:
+            - text
+            - template
+            - image
+            - video
+            - audio
+            - document
+            - sticker
+            - location
+            - interactive
+            - reaction
+            - contacts
+            - button
+            - unsupported
+        status:
+          type: string
+          enum:
+            - queued
+            - sent
+            - delivered
+            - read
+            - failed
+            - received
+        direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        external_id:
+          type:
+            - string
+            - 'null'
+        created_at:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+        text:
+          type: string
+        template:
+          type: object
+        location:
+          type:
+            - object
+            - 'null'
+        interactive:
+          type:
+            - object
+            - 'null'
+        reaction:
+          type:
+            - object
+            - 'null'
+        media:
+          type:
+            - object
+            - array
+            - 'null'
+        error:
+          type: object
+          properties:
+            code:
+              type:
+                - number
+                - 'null'
+            title:
+              type:
+                - string
+                - 'null'
+            message:
+              type: string
+          required:
+            - code
+            - title
+            - message
+        quick_replies:
+          type: array
+          items:
+            type: object
+        button:
+          type: object
+        quick_reply:
+          type: object
+      required:
+        - id
+        - channel
+        - account_id
+        - conversation_id
+        - from
+        - to
+        - type
+        - status
+        - direction
+        - external_id
+        - created_at
+        - tags
+    PageChannelMessageDetail:
+      allOf:
+        - $ref: '#/components/schemas/PageChannelMessage'
+        - type: object
+          properties:
+            last_event:
+              type: string
+              enum:
+                - queued
+                - sent
+                - delivered
+                - read
+                - failed
+                - received
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/WhatsAppEvent'
+            media:
+              type: array
+              items:
+                $ref: '#/components/schemas/WhatsAppStoredMedia'
+          required:
+            - last_event
+            - events
+            - media
+    PageChannelMessageList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelMessage'
+      required:
+        - object
+        - has_more
+        - data
+    PageChannelConversation:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        account_id:
+          type:
+            - string
+            - 'null'
+        channel_contact_id:
+          type:
+            - string
+            - 'null'
+        contact_id:
+          type:
+            - string
+            - 'null'
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        last_message_at:
+          type: string
+          format: date-time
+        last_preview:
+          type: string
+        last_direction:
+          type: string
+          enum:
+            - inbound
+            - outbound
+        window_expires_at:
+          type:
+            - string
+            - 'null'
+        unread:
+          type: boolean
+      required:
+        - id
+        - channel
+        - account_id
+        - channel_contact_id
+        - contact_id
+        - status
+        - last_message_at
+        - last_preview
+        - last_direction
+        - window_expires_at
+        - unread
+    PageChannelConversationList:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelConversation'
+      required:
+        - object
+        - has_more
+        - data
+    PageChannelAccount:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          enum:
+            - messenger
+            - instagram
+        external_id:
+          type: string
+        page_id:
+          type: string
+        instagram_account_id:
+          type: string
+        name:
+          type: string
+        handle:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - active
+            - restricted
+            - error
+            - disconnected
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - channel
+        - external_id
+        - page_id
+        - name
+        - handle
+        - status
+        - created_at
+      additionalProperties: false
+    PageChannelAccountList:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageChannelAccount'
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    PageQuickReplies:
+      type: array
+      maxItems: 13
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+            minLength: 1
+            maxLength: 20
+          payload:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        required:
+          - title
+          - payload
+        additionalProperties: false
+    PageMessageTemplate:
+      oneOf:
+        - type: string
+          minLength: 1
+        - type: object
+          properties:
+            id:
+              type: string
+            alias:
+              type: string
+            variables:
+              type: object
+              additionalProperties:
+                type:
+                  - string
+                  - number
+          anyOf:
+            - required:
+                - id
+            - required:
+                - alias
+    SendMessengerMessage:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+          pattern: ^\d{1,32}$
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachment:
+          type: object
+          properties:
+            type:
+              enum:
+                - image
+                - video
+                - audio
+                - file
+            url:
+              type: string
+              format: uri
+            id:
+              type: string
+          required:
+            - type
+          oneOf:
+            - required:
+                - url
+              not:
+                required:
+                  - id
+            - required:
+                - id
+              not:
+                required:
+                  - url
+          additionalProperties: false
+        template:
+          $ref: '#/components/schemas/PageMessageTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
+        tag:
+          type: string
+          enum:
+            - HUMAN_AGENT
+            - CONFIRMED_EVENT_UPDATE
+            - POST_PURCHASE_UPDATE
+            - ACCOUNT_UPDATE
+          description: >-
+            HUMAN_AGENT is for human replies within seven days. Meta rejects the legacy Messenger tags
+            with error 100 since April 27, 2026.
+        reply_to:
+          type: string
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          not:
+            anyOf:
+              - required:
+                  - attachment
+              - required:
+                  - template
+        - required:
+            - attachment
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+        - required:
+            - template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - attachment
+    SendInstagramMessage:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+          pattern: ^\d{1,32}$
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        attachment:
+          type: object
+          properties:
+            type:
+              enum:
+                - image
+                - video
+                - audio
+                - file
+            url:
+              type: string
+              format: uri
+            id:
+              type: string
+          required:
+            - type
+          oneOf:
+            - required:
+                - url
+              not:
+                required:
+                  - id
+            - required:
+                - id
+              not:
+                required:
+                  - url
+          additionalProperties: false
+        template:
+          $ref: '#/components/schemas/PageMessageTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
+        tag:
+          type: string
+          enum:
+            - HUMAN_AGENT
+          description: >-
+            HUMAN_AGENT is for human replies within seven days. Meta rejects the legacy Messenger tags
+            with error 100 since April 27, 2026.
+        reply_to:
+          type: string
+        tags:
+          type: array
+          maxItems: 48
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+            required:
+              - name
+              - value
+      required:
+        - to
+      oneOf:
+        - required:
+            - text
+          not:
+            anyOf:
+              - required:
+                  - attachment
+              - required:
+                  - template
+        - required:
+            - attachment
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - template
+        - required:
+            - template
+          not:
+            anyOf:
+              - required:
+                  - text
+              - required:
+                  - attachment
+      if:
+        required:
+          - attachment
+      then:
+        not:
+          required:
+            - quick_replies
     WhatsAppMetaError:
       type: object
       required: [statusCode, name, message]
@@ -9711,8 +10929,8 @@ components:
             - type: string
             - type: 'null'
           description: >-
-            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit empty
-            string stays empty.
+            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit
+            empty string stays empty.
         variables:
           type: array
           items:
@@ -9724,9 +10942,13 @@ components:
           enum:
             - email
             - whatsapp
+            - messenger
+            - instagram
           description: The template's channel, email when omitted. It cannot change.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppTemplateInput'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - name
       if:
@@ -9741,9 +10963,23 @@ components:
             pattern: ^[a-z0-9_]+$
             description: Meta's template name, of lowercase letters, numbers and underscores.
       else:
-        required:
-          - html
-      description: Create a template draft; inline merge tags infer variables unless explicit definitions are supplied.
+        if:
+          properties:
+            channel:
+              enum:
+                - messenger
+                - instagram
+          required:
+            - channel
+        then:
+          required:
+            - text
+        else:
+          required:
+            - html
+      description: >-
+        Create a template draft; inline merge tags infer variables unless explicit definitions are
+        supplied.
     UpdateTemplateOptions:
       type: object
       properties:
@@ -9788,8 +11024,8 @@ components:
             - type: string
             - type: 'null'
           description: >-
-            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit empty
-            string stays empty.
+            Plain text content, up to 256 KiB, derived from HTML when omitted on creation; an explicit
+            empty string stays empty.
         variables:
           type: array
           items:
@@ -9801,9 +11037,13 @@ components:
           enum:
             - email
             - whatsapp
+            - messenger
+            - instagram
           description: The template's channel, email when omitted. It cannot change.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppTemplateInput'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       description: Edit the current template draft without changing the published version.
     WhatsAppTemplateInput:
       type: object
@@ -9968,9 +11208,13 @@ components:
           type: string
           enum:
             - whatsapp
+            - messenger
+            - instagram
           description: Present on WhatsApp templates; absent means email.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - id
         - name
@@ -10051,9 +11295,13 @@ components:
           type: string
           enum:
             - whatsapp
+            - messenger
+            - instagram
           description: Present on WhatsApp templates; absent means email.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppTemplate'
+        quick_replies:
+          $ref: '#/components/schemas/PageQuickReplies'
       required:
         - object
         - id
@@ -11564,6 +12812,15 @@ components:
         - whatsapp.message.read
         - whatsapp.message.failed
         - whatsapp.message.received
+        - messenger.message.sent
+        - messenger.message.delivered
+        - messenger.message.read
+        - messenger.message.failed
+        - messenger.message.received
+        - instagram.message.sent
+        - instagram.message.read
+        - instagram.message.failed
+        - instagram.message.received
         - whatsapp.template.status_updated
         - whatsapp.phone_number.updated
         - contact.created

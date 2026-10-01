@@ -307,6 +307,194 @@ async function saveNumbers(
   return saved
 }
 
+/** Shared connection upsert for WABAs and Pages. */
+async function saveConnection(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string
+    businessId: string
+    businessName: string
+    method: Doc<"metaConnections">["method"]
+    encryptedToken: string
+    tokenLast4: string
+    scopes: string[]
+  }
+) {
+  const connection = (
+    await ctx.db
+      .query("metaConnections")
+      .withIndex("by_businessId", (q) => q.eq("businessId", args.businessId))
+      .take(50)
+  ).find((row) => row.organizationId === args.organizationId)
+  const fields = {
+    businessName: args.businessName,
+    method: args.method,
+    encryptedToken: args.encryptedToken,
+    tokenLast4: args.tokenLast4,
+    scopes: args.scopes,
+    status: "active" as const,
+    checkedAt: Date.now(),
+    error: undefined,
+  }
+  if (connection) {
+    await ctx.db.patch("metaConnections", connection._id, fields)
+    return connection._id
+  }
+  return ctx.db.insert("metaConnections", {
+    organizationId: args.organizationId,
+    businessId: args.businessId,
+    ...fields,
+  })
+}
+
+export const pageAccountValue = v.object({
+  channel: v.union(v.literal("messenger"), v.literal("instagram")),
+  externalId: v.string(),
+  pageId: v.string(),
+  displayName: v.string(),
+  handle: v.string(),
+  encryptedToken: v.string(),
+  tokenLast4: v.string(),
+})
+export const connectedPagesValue = v.object({
+  accounts: v.array(
+    v.object({
+      id: v.id("channelAccounts"),
+      channel: v.union(v.literal("messenger"), v.literal("instagram")),
+      handle: v.string(),
+    })
+  ),
+})
+export const PAGE_TAKEN =
+  "This Facebook Page or Instagram account is already connected to another team"
+async function pageRows(
+  ctx: QueryCtx,
+  channel: "messenger" | "instagram",
+  externalId: string
+) {
+  return ctx.db
+    .query("channelAccounts")
+    .withIndex("by_channel_and_externalId", (q) =>
+      q.eq("channel", channel).eq("externalId", externalId)
+    )
+    .take(20)
+}
+async function assertPagesFree(
+  ctx: QueryCtx,
+  organizationId: string,
+  accounts: { channel: "messenger" | "instagram"; externalId: string }[]
+) {
+  for (const account of accounts) {
+    if (
+      (await pageRows(ctx, account.channel, account.externalId)).some(
+        (row) => row.organizationId !== organizationId && live(row)
+      )
+    )
+      throw new ConvexError(PAGE_TAKEN)
+  }
+}
+export const checkPages = internalQuery({
+  args: {
+    organizationId: v.string(),
+    accounts: v.array(pageAccountValue.pick("channel", "externalId")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "write")
+    await assertPagesFree(ctx, args.organizationId, args.accounts)
+    return null
+  },
+})
+export const storePages = internalMutation({
+  args: {
+    organizationId: v.string(),
+    method: metaConnectionMethodValue,
+    scopes: v.array(v.string()),
+    accounts: v.array(pageAccountValue),
+  },
+  returns: connectedPagesValue,
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "write")
+    await assertPagesFree(ctx, args.organizationId, args.accounts)
+    const now = Date.now(),
+      saved = []
+    const connections = new Map<string, Id<"metaConnections">>()
+    for (const account of args.accounts) {
+      let connectionId = connections.get(account.pageId)
+      if (!connectionId) {
+        connectionId = await saveConnection(ctx, {
+          organizationId: args.organizationId,
+          businessId: `page:${account.pageId}`,
+          businessName:
+            args.accounts.find(
+              (a) => a.channel === "messenger" && a.pageId === account.pageId
+            )?.displayName ?? account.displayName,
+          method: args.method,
+          encryptedToken: account.encryptedToken,
+          tokenLast4: account.tokenLast4,
+          scopes: args.scopes,
+        })
+        connections.set(account.pageId, connectionId)
+        // Reconnecting a Page may replace or unlink its Instagram account.
+        // Retire the old endpoint while preserving its messages and identity scope.
+        const previous = await ctx.db
+          .query("channelAccounts")
+          .withIndex("by_connectionId", (q) =>
+            q.eq("connectionId", connectionId!)
+          )
+          .take(500)
+        for (const row of previous) {
+          if (
+            row.channel === "instagram" &&
+            row.pageId === account.pageId &&
+            live(row) &&
+            !args.accounts.some(
+              (next) =>
+                next.channel === "instagram" &&
+                next.externalId === row.externalId &&
+                next.pageId === row.pageId
+            )
+          )
+            await patchRow(ctx, "channelAccounts", row._id, {
+              status: "disconnected",
+              disconnectedAt: now,
+            })
+        }
+      }
+      const existing = (
+        await pageRows(ctx, account.channel, account.externalId)
+      ).find((row) => row.organizationId === args.organizationId)
+      const { tokenLast4: _last4, ...accountFields } = account
+      void _last4
+      const fields = {
+        ...accountFields,
+        connectionId,
+        status: "active" as const,
+        // Meta Send API: 300 calls/s; audio/video have a separate 10/s bucket.
+        throughputMps: 300,
+        checkedAt: now,
+        registeredAt: existing?.registeredAt ?? now,
+        disconnectedAt: undefined,
+        error: undefined,
+      }
+      const id = existing
+        ? (await patchRow(ctx, "channelAccounts", existing._id, fields))._id
+        : await insertRow(ctx, "channelAccounts", {
+            organizationId: args.organizationId,
+            ...fields,
+          })
+      saved.push({ id, channel: account.channel, handle: account.handle })
+    }
+    return { accounts: saved }
+  },
+})
+export const pageConnected = internalQuery({
+  args: { pageId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { pageId }) =>
+    (await pageRows(ctx, "messenger", pageId)).some(live),
+})
+
 /** Stores a connected business, its WABA and numbers in one transaction.
     The connection is keyed by team and business; the WABA is refused when
     another team holds it. */
@@ -338,32 +526,7 @@ export const store = internalMutation({
     await requireTeam(ctx, organizationId, "write")
     const waba = await assertWabaFree(ctx, { organizationId, wabaId })
     const now = Date.now()
-    const connection = (
-      await ctx.db
-        .query("metaConnections")
-        .withIndex("by_businessId", (q) => q.eq("businessId", args.businessId))
-        .take(50)
-    ).find((row) => row.organizationId === organizationId)
-    const fields = {
-      businessName: args.businessName,
-      method: args.method,
-      encryptedToken: args.encryptedToken,
-      tokenLast4: args.tokenLast4,
-      scopes: args.scopes,
-      status: "active" as const,
-      checkedAt: now,
-      error: undefined,
-    }
-    let connectionId: Id<"metaConnections">
-    if (connection) {
-      connectionId = connection._id
-      await ctx.db.patch("metaConnections", connectionId, fields)
-    } else
-      connectionId = await ctx.db.insert("metaConnections", {
-        organizationId,
-        businessId: args.businessId,
-        ...fields,
-      })
+    const connectionId = await saveConnection(ctx, args)
     const wabaFields = { connectionId, name: args.wabaName, subscribedAt: now }
     if (waba)
       await ctx.db.patch("whatsappBusinessAccounts", waba._id, wabaFields)
@@ -394,6 +557,13 @@ export const connectionTarget = internalQuery({
       status: metaConnectionStatusValue,
       encryptedToken: v.string(),
       wabaIds: v.array(v.string()),
+      pages: v.array(
+        v.object({
+          id: v.id("channelAccounts"),
+          pageId: v.string(),
+          encryptedToken: v.string(),
+        })
+      ),
       appId: v.string(),
       graphVersion: v.string(),
       encryptedAppSecret: v.string(),
@@ -411,6 +581,20 @@ export const connectionTarget = internalQuery({
       status: connection.status,
       encryptedToken: connection.encryptedToken,
       wabaIds: wabas.map((waba) => waba.wabaId),
+      pages: (
+        await ctx.db
+          .query("channelAccounts")
+          .withIndex("by_connectionId", (q) =>
+            q.eq("connectionId", connectionId)
+          )
+          .take(500)
+      )
+        .filter((a) => a.channel === "messenger" && live(a))
+        .map((a) => ({
+          id: a._id,
+          pageId: a.pageId ?? a.externalId,
+          encryptedToken: a.encryptedToken ?? connection.encryptedToken,
+        })),
       appId: app.appId,
       graphVersion: app.graphVersion,
       encryptedAppSecret: app.encryptedAppSecret,
@@ -423,6 +607,8 @@ export const accountTarget = internalQuery({
   args: { accountId: v.id("channelAccounts") },
   returns: v.object({
     externalId: v.string(),
+    channel: messagingChannelValue,
+    pageId: v.optional(v.string()),
     connectionId: v.id("metaConnections"),
     encryptedToken: v.string(),
     graphVersion: v.string(),
@@ -438,8 +624,10 @@ export const accountTarget = internalQuery({
       throw new ConvexError("Reconnect this business to Meta first")
     return {
       externalId: account.externalId,
+      channel: account.channel,
+      pageId: account.pageId,
       connectionId: connection._id,
-      encryptedToken: connection.encryptedToken,
+      encryptedToken: account.encryptedToken ?? connection.encryptedToken,
       graphVersion: app.graphVersion,
     }
   },
@@ -562,6 +750,20 @@ export const disconnect = mutation({
         0,
         internal.meta.connectActions.unsubscribe,
         { connectionId, wabaIds: wabas.map((waba) => waba.wabaId) }
+      )
+    const pages = accounts.filter(
+      (a) => a.channel === "messenger" && a.encryptedToken
+    )
+    if (pages.length)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.meta.pageConnectActions.unsubscribe,
+        {
+          pages: pages.map((a) => ({
+            pageId: a.pageId ?? a.externalId,
+            encryptedToken: a.encryptedToken!,
+          })),
+        }
       )
     return null
   },

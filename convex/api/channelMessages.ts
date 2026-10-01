@@ -23,9 +23,13 @@ import {
   listParams,
   listBody,
   enumField,
+  objectBody,
+  stringField,
+  arrayField,
   type ApiRouteOptions,
 } from "./route"
 import { listArgs, cursorPage } from "./paging"
+import { WHATSAPP_SEND_TYPES } from "../../lib/meta/payloads"
 import { object } from "../../lib/meta/webhooks"
 import { CHANNEL_MESSAGE_STATUSES, DIRECTIONS } from "../tables/channels"
 
@@ -308,18 +312,33 @@ export const conversations = internalQuery({
     )
   },
 })
-const accountPayload = (a: Omit<Doc<"channelAccounts">, "encryptedToken">) => ({
-  id: a._id,
-  phone_number_id: a.externalId,
-  display_phone_number: a.handle,
-  verified_name: a.displayName,
-  status: a.status,
-  quality: a.quality ?? "unknown",
-  throughput: a.throughputMps,
-  messaging_limit: a.messagingLimit ?? null,
-  waba_id: a.wabaId ?? null,
-  created_at: new Date(a._creationTime).toISOString(),
-})
+const accountPayload = (a: Omit<Doc<"channelAccounts">, "encryptedToken">) =>
+  a.channel !== "whatsapp"
+    ? {
+        id: a._id,
+        channel: a.channel,
+        external_id: a.externalId,
+        page_id: a.pageId ?? a.externalId,
+        ...(a.channel === "instagram"
+          ? { instagram_account_id: a.externalId }
+          : {}),
+        name: a.displayName,
+        handle: a.handle,
+        status: a.status,
+        created_at: new Date(a._creationTime).toISOString(),
+      }
+    : {
+        id: a._id,
+        phone_number_id: a.externalId,
+        display_phone_number: a.handle,
+        verified_name: a.displayName,
+        status: a.status,
+        quality: a.quality ?? "unknown",
+        throughput: a.throughputMps,
+        messaging_limit: a.messagingLimit ?? null,
+        waba_id: a.wabaId ?? null,
+        created_at: new Date(a._creationTime).toISOString(),
+      }
 const conversationPayload = (c: Doc<"conversations">) => ({
   id: c._id,
   channel: c.channel,
@@ -347,6 +366,12 @@ export function channelMessageRoutes(channel: Channel) {
     } = {}
   ) => {
     const prefix = `/${channel}`
+    const accountResource =
+      channel === "whatsapp"
+        ? "phone-numbers"
+        : channel === "messenger"
+          ? "pages"
+          : "accounts"
     if (adapters.send)
       apiRoute(http, {
         method: "POST",
@@ -380,7 +405,14 @@ export function channelMessageRoutes(channel: Channel) {
           ...listParams(query),
           status: enumField(filters, "status", CHANNEL_MESSAGE_STATUSES),
           direction: enumField(filters, "direction", DIRECTIONS),
-          phoneNumberId: query.get("phone_number_id") ?? undefined,
+          phoneNumberId:
+            query.get(
+              channel === "whatsapp"
+                ? "phone_number_id"
+                : channel === "messenger"
+                  ? "page_id"
+                  : "account_id"
+            ) ?? undefined,
         })
         return { body: listBody(result, (m) => channelMessagePayload(m)) }
       },
@@ -395,7 +427,7 @@ export function channelMessageRoutes(channel: Channel) {
     })
     apiRoute(http, {
       method: "GET",
-      path: `${prefix}/phone-numbers`,
+      path: `${prefix}/${accountResource}`,
       permission: "full_access",
       handler: async (ctx, { caller, query }) => ({
         body: listBody(
@@ -410,7 +442,7 @@ export function channelMessageRoutes(channel: Channel) {
     })
     apiRoute(http, {
       method: "GET",
-      path: `${prefix}/phone-numbers/{id}`,
+      path: `${prefix}/${accountResource}/{id}`,
       permission: "full_access",
       handler: async (ctx, { caller, params }) => {
         const result = await ctx.runQuery(
@@ -496,4 +528,51 @@ async function detail(
       })
     ),
   }
+}
+
+/** Shared REST envelope parsing; adapters retain only their wire fields. */
+export function channelSendInput(body: unknown, channel: Channel) {
+  const input = objectBody(body)
+  const tags = arrayField(input, "tags").map((raw) => {
+    const tag = objectBody(raw)
+    return {
+      name: stringField(tag, "name", true)!,
+      value: stringField(tag, "value", true)!,
+    }
+  })
+  const fields =
+    channel === "whatsapp"
+      ? WHATSAPP_SEND_TYPES
+      : ["text", "attachment", "template", "quick_replies", "tag"]
+  const messageBody = Object.fromEntries(
+    fields
+      .filter((key) => input[key] !== undefined)
+      .map((key) => [key, input[key]])
+  )
+  if (channel === "whatsapp") {
+    const type = enumField(input, "type", WHATSAPP_SEND_TYPES)
+    if (type) messageBody.type = type
+  }
+  return {
+    channel,
+    from: stringField(input, "from"),
+    to: stringField(input, "to", true)!,
+    body: messageBody,
+    replyTo: stringField(input, "reply_to"),
+    tags,
+  }
+}
+
+/** Page channels share the established sending mutation, idempotency and routes. */
+export function registerPageMessageRoutes(http: HttpRouter) {
+  for (const channel of ["messenger", "instagram"] as const)
+    channelMessageRoutes(channel)(http, {
+      send: async (ctx, { caller, body }) => {
+        const id = await ctx.runMutation(internal.api.whatsapp.send, {
+          caller,
+          input: channelSendInput(body, channel),
+        })
+        return { body: { id } }
+      },
+    })
 }

@@ -25,16 +25,19 @@ export const fetch = internalAction({
       mediaId,
     })
     if (!context) return null
+    const label = context.media.url ? "Channel" : "WhatsApp"
     try {
       const token = await decryptSecret(context.encryptedToken)
-      const metadata = object(
-        await graph({
-          token,
-          method: "GET",
-          path: mediaId,
-          version: context.version,
-        })
-      )
+      const metadata = context.media.url
+        ? { url: context.media.url }
+        : object(
+            await graph({
+              token,
+              method: "GET",
+              path: mediaId,
+              version: context.version,
+            })
+          )
       if (
         !string(metadata.url) ||
         (typeof metadata.file_size === "number" &&
@@ -43,10 +46,12 @@ export const fetch = internalAction({
         throw new MetaError({
           status: 413,
           isTransient: false,
-          message: "WhatsApp media is missing or exceeds 25 MB",
+          message: `${label} media is missing or exceeds 25 MB`,
         })
       const response = await publicFetch(string(metadata.url), {
-        headers: { authorization: `Bearer ${token}` },
+        ...(context.media.url
+          ? {}
+          : { headers: { authorization: `Bearer ${token}` } }),
         maxBytes: MAX_BYTES,
         timeoutMs: 30_000,
         localOrigin: graphLocalOrigin(),
@@ -55,17 +60,19 @@ export const fetch = internalAction({
         throw new MetaError({
           status: response.status,
           isTransient: false,
-          message: `WhatsApp media returned HTTP ${response.status}`,
+          message: `${label} media returned HTTP ${response.status}`,
         })
       const bytes = await response.arrayBuffer()
       if (bytes.byteLength > MAX_BYTES)
         throw new MetaError({
           status: 413,
           isTransient: false,
-          message: "WhatsApp media exceeds 25 MB",
+          message: `${label} media exceeds 25 MB`,
         })
       const contentType =
-        string(metadata.mime_type) || context.media.contentType
+        string(metadata.mime_type) ||
+        (context.media.url ? response.headers.get("content-type") : null) ||
+        context.media.contentType
       const storageId = await ctx.storage.store(
         new Blob([bytes], { type: contentType })
       )
@@ -106,7 +113,7 @@ export const fetch = internalAction({
           error:
             error instanceof Error
               ? error.message
-              : "WhatsApp media fetch failed",
+              : `${label} media fetch failed`,
         })
     }
     return null
