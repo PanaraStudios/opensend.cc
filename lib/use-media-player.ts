@@ -18,6 +18,7 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
   const [error, setError] = React.useState<string>()
   const [position, setPosition] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
+  const probing = React.useRef(false)
 
   React.useEffect(() => {
     const media = ref.current
@@ -69,14 +70,27 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
     }
   }
   function updateDuration() {
-    const value = ref.current?.duration ?? 0
-    setDuration(Number.isFinite(value) ? value : 0)
+    const media = ref.current
+    const value = media?.duration ?? 0
+    if (!Number.isFinite(value)) return setDuration(0)
+    setDuration(value)
+    if (media && probing.current) {
+      probing.current = false
+      media.currentTime = 0
+    }
   }
   const events = {
     onLoadStart() {
       setLoading(true)
     },
     onLoadedMetadata() {
+      const media = ref.current
+      // Ogg/Opus voice notes (WhatsApp) carry no duration header, so Chrome reports
+      // Infinity until the end is read. Seeking past the end makes it resolve.
+      if (media?.duration === Infinity) {
+        probing.current = true
+        media.currentTime = Number.MAX_SAFE_INTEGER
+      }
       updateDuration()
       setLoading(false)
     },
@@ -104,7 +118,7 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
     },
     onError: fail,
     onTimeUpdate() {
-      setPosition(ref.current?.currentTime ?? 0)
+      if (!probing.current) setPosition(ref.current?.currentTime ?? 0)
     },
     onDurationChange: updateDuration,
   }
