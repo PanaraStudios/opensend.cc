@@ -70,8 +70,4 @@ export function chatDay(at: number, now: number) {
     year: "numeric",
   })
 }
-export function audioTime(value: number) {
-  return Number.isFinite(value)
-    ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`
-    : "0:00"
-}
+export { formatMediaTime as audioTime } from "../media-player"
