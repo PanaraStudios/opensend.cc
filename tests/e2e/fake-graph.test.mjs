@@ -250,3 +250,57 @@ test("fake Graph accepts receipts and sender actions without allocating message 
     await graph.close()
   }
 })
+
+test("fake Graph supports calling settings, lifecycle and BSUID permission request messages", async () => {
+  const graph = await startFakeGraph(0)
+  const request = (path, body) =>
+    fetch(`${graph.origin}/v25.0/123/${path}`, {
+      method: body ? "POST" : "GET",
+      headers: { "content-type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+  try {
+    assert.deepEqual(
+      await (
+        await request("settings", { calling: { status: "ENABLED" } })
+      ).json(),
+      { success: true }
+    )
+    assert.equal(
+      (await (await request("settings")).json()).calling.status,
+      "ENABLED"
+    )
+    assert.equal(
+      (await (await request("call_permissions")).json()).permission.status,
+      "permanent"
+    )
+    assert.match(
+      (
+        await (
+          await request("calls", { action: "connect", recipient: "US.42" })
+        ).json()
+      ).calls[0].id,
+      /^wacid\.e2e\./
+    )
+    assert.deepEqual(
+      await (
+        await request("calls", { action: "terminate", call_id: "wacid.call" })
+      ).json(),
+      { success: true }
+    )
+    const reply = await (
+      await request("messages", {
+        messaging_product: "whatsapp",
+        recipient: "US.42",
+        type: "interactive",
+        interactive: {
+          type: "call_permission_request",
+          action: { name: "call_permission_request" },
+        },
+      })
+    ).json()
+    assert.match(reply.messages[0].id, /^wamid\./)
+  } finally {
+    await graph.close()
+  }
+})

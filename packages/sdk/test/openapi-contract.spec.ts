@@ -36,7 +36,7 @@ const sources = (dir: string): string[] =>
   })
 
 const firstLiteral = (text: string) =>
-  text.match(/(['`])(\/[^'`]*)\1/)?.[2] ?? null
+  text.match(/(['"`])(\/[^'"`]*)\1/)?.[2] ?? null
 
 function sdkRequests() {
   const found = new Set<string>()
@@ -71,7 +71,7 @@ function sdkRequests() {
         assignments.push({ at: match.index, name: match[1], literal })
     }
     const calls = text.matchAll(
-      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['`])[\s\S]*?\3|\w+)/g
+      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['"`])[\s\S]*?\3|\w+)/g
     )
     for (const call of calls) {
       const [, method, argument] = call

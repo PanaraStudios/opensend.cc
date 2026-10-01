@@ -9,7 +9,12 @@ describe("WhatsApp tools through the real SDK", () => {
     const f = await connectClient()
     try {
       const definitions = (await f.client.listTools()).tools.filter((t) =>
-        t.name.includes("whatsapp")
+        [
+          "send-whatsapp-message",
+          "list-whatsapp-messages",
+          "get-whatsapp-message",
+          "list-whatsapp-phone-numbers",
+        ].includes(t.name)
       )
       expect(definitions).toHaveLength(4)
       expect(

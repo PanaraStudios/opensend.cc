@@ -30,6 +30,8 @@ export const graphError = (message, code, extra = {}) => ({
    the server's lifetime; /__reset clears only calls and overrides. */
 let messageSequence = 0
 let mediaSequence = 0
+let callSequence = 0
+const callingSettings = new Map()
 const numbers = new Map()
 const phoneNumberOf = (wabaId) => {
   const id = `${wabaId}0`
@@ -89,6 +91,53 @@ const appIdOf = (authorization = "") =>
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
   {
+    method: "GET",
+    path: /^\/\d+\/settings$/,
+    respond: ([path]) => ({
+      body: { calling: callingSettings.get(path) ?? { status: "DISABLED" } },
+    }),
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/settings$/,
+    respond: ([path], call) => {
+      callingSettings.set(path, {
+        ...(callingSettings.get(path) ?? {}),
+        ...call.body.calling,
+      })
+      return { body: { success: true } }
+    },
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/calls$/,
+    respond: (_, call) => ({
+      body:
+        call.body.action === "connect"
+          ? { calls: [{ id: `wacid.e2e.${++callSequence}` }] }
+          : { success: true },
+    }),
+  },
+  {
+    method: "GET",
+    path: /^\/\d+\/call_permissions$/,
+    respond: () => ({
+      body: {
+        messaging_product: "whatsapp",
+        permission: { status: "permanent" },
+        actions: [
+          {
+            action_name: "start_call",
+            can_perform_action: true,
+            limits: [
+              { time_period: "P1D", max_allowed: 100, current_usage: 0 },
+            ],
+          },
+        ],
+      },
+    }),
+  },
+  {
     method: "POST",
     path: /^\/\d+\/messages$/,
     respond: (_, call) =>
@@ -96,7 +145,7 @@ export const ROUTES = [
         ? { body: { success: true } }
         : call.body?.sender_action
           ? { body: { recipient_id: call.body.recipient.id } }
-          : call.body?.recipient
+          : call.body?.recipient && typeof call.body.recipient === "object"
             ? {
                 body: {
                   recipient_id: call.body.recipient.id,

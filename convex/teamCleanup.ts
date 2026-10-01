@@ -72,6 +72,11 @@ export const TEAM_TABLES = [
   "metaConnections",
   "teamAssets",
   "storedFiles",
+  "calls",
+  "callEvents",
+  "callPermissions",
+  "callingSettings",
+  "gatewayEvents",
 ] as const
 
 export const CHILD_TABLES = [
@@ -173,6 +178,17 @@ export const purge = internalMutation({
       if (email) await deleteReceived(ctx, email)
       await next()
       return null
+    }
+    if (name === "calls") {
+      const call = await ctx.db.get("calls", row._id as Id<"calls">)
+      if (call?.recording) await deleteFile(ctx, call.recording)
+      if (call?.transcription) await deleteFile(ctx, call.transcription)
+      if (call?.mode === "gateway")
+        await ctx.scheduler.runAfter(
+          0,
+          internal.calling.callActions.disposeGateway,
+          { id: call._id }
+        )
     }
     if (name === "storedFiles")
       await deleteFile(ctx, { fileId: row._id as Id<"storedFiles"> }, true)
