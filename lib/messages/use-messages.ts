@@ -12,8 +12,12 @@ import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import type { ThreadMessage } from "@/convex/conversations"
-import { useTeamList } from "@/components/dashboard/primitives"
-import { useTeamQuery } from "@/components/auth/workspace"
+import {
+  useTeamList,
+  useLoadedPagination,
+} from "@/components/dashboard/primitives"
+import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
+import { pagedListState, PAGE_SIZES } from "@/lib/dashboard/pagination"
 import { asEmail } from "@/lib/emails/use-emails"
 import { asReceived } from "@/lib/received/use-received"
 import type {
@@ -155,6 +159,24 @@ export function useConversationList(filters: {
   search?: string
 }) {
   return useTeamList(api.conversations.list, api.conversations.count, filters)
+}
+
+export function useContactConversations(contactId: string) {
+  const { activeTeamId } = useWorkspace()
+  const query = pagedListState(
+    usePaginatedQuery(
+      api.conversations.contactHistory,
+      activeTeamId
+        ? {
+            organizationId: activeTeamId,
+            contactId: contactId as Id<"contacts">,
+          }
+        : "skip",
+      { initialNumItems: PAGE_SIZES[0] }
+    ),
+    !activeTeamId
+  )
+  return { ...query, ...useLoadedPagination(query.results, query) }
 }
 
 export function useConversation(id: string | null) {

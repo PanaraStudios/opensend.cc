@@ -321,7 +321,29 @@ export function messengerInstagramTests(
       await expect(contactRow).toBeVisible()
       const identityLink = contactRow.getByRole("link", { name: /Ada E2E/ })
       await expect(identityLink).toHaveAttribute("href", /^\/contacts\//)
-      await expect(identityLink).toContainText(PSID)
+      await expect(contactRow).not.toContainText(PSID)
+      const instagramContact = owner
+        .getByRole("row")
+        .filter({ hasText: "Grace E2E" })
+      await expect(instagramContact).toBeVisible()
+      await expect(instagramContact).toContainText("@grace_e2e")
+      await expect(instagramContact).not.toContainText(IGSID)
+      expect(
+        await (await owner.request.get(`${fake()}/__calls`)).json()
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: `/${IGSID}`,
+            query: expect.objectContaining({
+              fields: "name,username,profile_pic",
+            }),
+          }),
+          expect.objectContaining({
+            path: `/${PSID}`,
+            query: expect.objectContaining({ fields: "first_name,last_name" }),
+          }),
+        ])
+      )
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-contact-identity.png`,
         fullPage: true,
@@ -330,6 +352,27 @@ export function messengerInstagramTests(
       await expect(
         owner.getByRole("heading", { name: "Ada E2E", exact: true })
       ).toBeVisible()
+      const messengerIdentity = owner.getByRole("region", {
+        name: "Contact channels",
+      })
+      await expect(
+        messengerIdentity.getByRole("row").filter({ hasText: "Messenger" })
+      ).toContainText(PSID)
+      await owner.goto("/contacts")
+      await owner
+        .getByRole("row")
+        .filter({ hasText: "Grace E2E" })
+        .getByRole("link", { name: /Grace E2E/ })
+        .click()
+      const instagramIdentity = owner.getByRole("region", {
+        name: "Contact channels",
+      })
+      await expect(instagramIdentity).toContainText("@grace_e2e")
+      await expect(instagramIdentity).toContainText("Opensend")
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-contact-channels.png`,
+        fullPage: true,
+      })
       await owner.goto("/channels")
       // The Instagram row names the same Page as its business.
       const messenger = owner

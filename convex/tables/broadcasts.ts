@@ -133,7 +133,7 @@ export const broadcastTables = {
   broadcastRecipients: defineTable({
     organizationId: v.string(),
     broadcastId: v.id("broadcasts"),
-    contactId: v.id("contacts"),
+    contactId: v.optional(v.id("contacts")),
     email: v.string(),
     emailId: v.optional(v.id("emails")),
     messageId: v.optional(v.id("channelMessages")),
@@ -144,6 +144,7 @@ export const broadcastTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_email", ["organizationId", "email"])
+    .index("by_organizationId_and_contactId", ["organizationId", "contactId"])
     .index("by_broadcastId_and_sent", ["broadcastId", "sent"])
     .index("by_broadcastId_and_email", ["broadcastId", "email"])
     .index("by_broadcastId_and_contactId", ["broadcastId", "contactId"])

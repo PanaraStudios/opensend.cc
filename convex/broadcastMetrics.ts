@@ -191,7 +191,9 @@ export async function broadcastRecipientProblem(
     ? await ctx.db.get("topics", broadcast.topicId)
     : null
   if (broadcast.topicId && !topic) return "audience"
-  const contact = await ctx.db.get("contacts", recipient.contactId)
+  const contact = recipient.contactId
+    ? await ctx.db.get("contacts", recipient.contactId)
+    : null
   if (
     !contact ||
     contact.organizationId !== email.organizationId ||

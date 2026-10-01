@@ -2,6 +2,7 @@
 import * as React from "react"
 import { useConvex, useMutation, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import type { FunctionReturnType } from "convex/server"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import {
   useWorkspace,
@@ -170,12 +171,12 @@ export function useBroadcastSaver(item: Broadcast) {
     [item.id, sent, update]
   )
 }
-export function useContactBroadcasts(email: string | undefined) {
+export function useContactBroadcasts(contactId: string) {
   return useTeamList(
     api.broadcasts.history,
     api.broadcasts.historyCount,
-    email ? { email } : "skip",
-    asBroadcast
+    { contactId: contactId as Id<"contacts"> },
+    asBroadcastHistory
   )
 }
 
@@ -190,4 +191,14 @@ export function useWhatsAppBroadcastRecipients(id: string) {
     { initialNumItems: 20 }
   )
   return useLoadedPagination(results, page)
+}
+
+function asBroadcastHistory(
+  row: FunctionReturnType<typeof api.broadcasts.history>["page"][number]
+) {
+  return {
+    ...asBroadcast(row),
+    recipient: row.recipient,
+    messageStatus: row.messageStatus,
+  }
 }

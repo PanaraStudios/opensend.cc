@@ -1,5 +1,5 @@
 import { contactIdentity } from "../lib/dashboard/contacts"
-import { primaryContactIdentity } from "./audience"
+import { primaryContactIdentity, teamRow } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
 import { object } from "../lib/meta/parse"
 import { channelMessagePayload } from "./channels/payload"
@@ -62,7 +62,12 @@ async function party(ctx: QueryCtx, conversation: Doc<"conversations">) {
       : null,
   ])
   const handle =
-    conversation.emailAddress ?? identity?.phone ?? identity?.externalId ?? ""
+    contactIdentity(
+      contact?.organizationId === conversation.organizationId
+        ? contact
+        : { email: conversation.emailAddress },
+      identity
+    ).secondary ?? ""
   const own = contact?.organizationId === conversation.organizationId
   const channelIdentity = own
     ? await primaryContactIdentity(ctx, contact)
@@ -127,6 +132,116 @@ export const list = query({
     return { ...result, page }
   },
 })
+
+/** Contact history uses the projected contact id, so every identity can be
+    paged without loading an unbounded list of channel identities first.
+    The address stream also covers email threads created before the contact. */
+export const contactHistory = query({
+  args: {
+    organizationId: v.string(),
+    contactId: v.id("contacts"),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      conversation: schema.doc("conversations"),
+      accountHandle: v.string(),
+      latest: v.object({
+        id: v.string(),
+        kind: v.union(
+          v.literal("email"),
+          v.literal("received"),
+          v.literal("channel")
+        ),
+      }),
+    })
+  ),
+  handler: async (ctx, { organizationId, contactId, paginationOpts }) => {
+    await requireTeam(ctx, organizationId)
+    const contact = await teamRow(ctx, "contacts", organizationId, contactId)
+    const rows = stream(ctx.db, schema).query("conversations")
+    const sources: QueryStream<Doc<"conversations">>[] = [
+      rows
+        .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+        .order("desc"),
+    ]
+    if (contact.email)
+      sources.push(
+        rows
+          .withIndex("by_organizationId_and_emailAddress", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("emailAddress", contact.email!)
+          )
+          .order("desc")
+          .filterWith(async (row) => row.contactId !== contactId)
+      )
+    // Merged streams read their source indexes in parallel. Native cursors
+    // preserve bounded pages, including old email threads and deduplication.
+    const result = await mergedStream(sources, ["_creationTime"]).paginate(
+      paginationOpts
+    )
+    const page = await Promise.all(
+      result.page.map(async (conversation) => {
+        if (conversation.organizationId !== organizationId) return null
+        const [account, latest] = await Promise.all([
+          conversation.accountId
+            ? ctx.db.get("channelAccounts", conversation.accountId)
+            : null,
+          latestMessage(ctx, conversation),
+        ])
+        if (!latest) return null
+        return {
+          conversation,
+          accountHandle:
+            account?.organizationId === organizationId
+              ? account.handle
+              : (conversation.emailAddress ?? ""),
+          latest,
+        }
+      })
+    )
+    return { ...result, page: page.filter((row) => row !== null) }
+  },
+})
+
+/** Read just the latest message header; history never loads message bodies. */
+async function latestMessage(
+  ctx: QueryCtx,
+  conversation: Doc<"conversations">
+) {
+  if (conversation.channel !== "email") {
+    const message = await ctx.db
+      .query("channelMessages")
+      .withIndex("by_conversationId", (q) =>
+        q.eq("conversationId", conversation._id)
+      )
+      .order("desc")
+      .first()
+    return message?.organizationId === conversation.organizationId
+      ? { id: message._id, kind: "channel" as const }
+      : null
+  }
+  if (!conversation.emailAddress) return null
+  const [received, recipient] = await Promise.all([
+    lastReceived(ctx, conversation),
+    ctx.db
+      .query("emailRecipients")
+      .withIndex("by_organizationId_and_address", (q) =>
+        q
+          .eq("organizationId", conversation.organizationId)
+          .eq("address", conversation.emailAddress!)
+      )
+      .order("desc")
+      .first(),
+  ])
+  const sent = recipient ? await ctx.db.get("emails", recipient.emailId) : null
+  const ownSent =
+    sent?.organizationId === conversation.organizationId ? sent : null
+  if (received && (!ownSent || received.receivedAt >= ownSent._creationTime))
+    return { id: received._id, kind: "received" as const }
+  return ownSent ? { id: ownSent._id, kind: "email" as const } : null
+}
 
 export const count = query({
   args: listFilters.fields,

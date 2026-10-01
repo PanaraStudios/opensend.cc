@@ -5,7 +5,13 @@ import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 import * as React from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { MailIcon, PlusIcon, SendIcon, UserIcon, XIcon } from "lucide-react"
+import {
+  MailIcon,
+  PlusIcon,
+  MessagesSquareIcon,
+  UserIcon,
+  XIcon,
+} from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -35,6 +41,9 @@ import {
   EmptyState,
   ListPagination,
   NotFoundState,
+  MonoValue,
+  IconCell,
+  RecipientOutcomeBadge,
   ResourceTable,
   SearchableSelect,
   Surface,
@@ -52,6 +61,7 @@ import {
   asContact,
   useAudienceCommands,
   useContactSegments,
+  useContactIdentities,
   useHasSegments,
   useProperties,
   useSegmentOptions,
@@ -60,6 +70,12 @@ import {
 import { OPTION_LIMIT } from "@/lib/dashboard/options"
 import { actionError } from "@/lib/action-error"
 import { useRecipientEmails } from "@/lib/emails/use-emails"
+import { useContactConversations } from "@/lib/messages/use-messages"
+import { messageHref } from "@/lib/messages/links"
+import { channelHandle } from "@/lib/meta/account-display"
+import { CHANNELS, rowChannel } from "@/lib/channels"
+import { channelIcon } from "@/components/dashboard/channels/shared"
+import { ConversationRow } from "@/components/dashboard/emails/shared"
 import type { Contact } from "@/lib/dashboard/types"
 
 /** Reports a failed save; the stored value then shows again. */
@@ -237,7 +253,8 @@ function ContactPage({
     contact.email ? { address: contact.email } : "skip"
   )
   const received = replies.rows
-  const broadcastList = useContactBroadcasts(contact.email)
+  const messages = useContactConversations(contact.id)
+  const broadcastList = useContactBroadcasts(contact.id)
   const broadcasts = broadcastList.pageRows
 
   return (
@@ -348,7 +365,7 @@ function ContactPage({
 
             <SegmentMembership contactId={contact.id} />
 
-            <Surface className="lg:col-span-2">
+            <section className="flex flex-col gap-3 lg:col-span-2">
               <h2 className="text-sm font-medium">Topics</h2>
               <p className="text-sm text-muted-foreground">
                 Topics appear on the preference page. Public topics can be
@@ -404,25 +421,56 @@ function ContactPage({
                   })}
                 </ResourceTable>
               )}
-            </Surface>
+            </section>
           </div>
+          <ContactChannels contactId={contact.id} />
         </TabsContent>
         <TabsContent value="history">
-          {sends.status === "LoadingFirstPage" ||
+          {messages.status === "LoadingFirstPage" ||
+          sends.status === "LoadingFirstPage" ||
           replies.status === "LoadingFirstPage" ||
           broadcastList.status === "LoadingFirstPage" ? (
             <Skeleton className="h-40 w-full" />
-          ) : emails.length === 0 &&
+          ) : messages.results.length === 0 &&
+            emails.length === 0 &&
             received.length === 0 &&
             broadcasts.length === 0 ? (
             <EmptyState
-              icon={MailIcon}
-              title="No marketing history"
-              description="Sends, broadcasts, and inbound replies for this address will show here."
+              icon={MessagesSquareIcon}
+              title="No history yet"
+              description="Messages, broadcasts, and replies across every channel will show here."
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {emails.length > 0 ? (
+              {messages.results.length > 0 ? (
+                <HistorySection title="Messages">
+                  {messages.pageRows.map(
+                    ({ conversation, accountHandle, latest }) => (
+                      <ConversationRow
+                        key={conversation._id}
+                        conversation={conversation}
+                        title={
+                          conversation.channel === "email"
+                            ? accountHandle
+                            : channelHandle(
+                                conversation.channel,
+                                accountHandle
+                              ) || CHANNELS[conversation.channel].label
+                        }
+                        render={
+                          <Link href={messageHref(latest.kind, latest.id)} />
+                        }
+                      />
+                    )
+                  )}
+                  <ListPagination
+                    {...messages.pagination}
+                    embedded
+                    noun="conversation"
+                  />
+                </HistorySection>
+              ) : null}
+              {contact.email && emails.length > 0 ? (
                 <HistorySection title="Emails">
                   {emailRows.map((email) => (
                     <Item
@@ -444,27 +492,43 @@ function ContactPage({
                   ))}
                 </HistorySection>
               ) : null}
-              <ListPagination {...emailPagination} embedded noun="email" />
+              {contact.email ? (
+                <ListPagination {...emailPagination} embedded noun="email" />
+              ) : null}
               {broadcasts.length > 0 ? (
                 <HistorySection title="Broadcasts">
-                  {broadcasts.map((broadcast) => (
-                    <Item
-                      key={broadcast.id}
-                      size="sm"
-                      render={<Link href={`/broadcasts/${broadcast.id}`} />}
-                    >
-                      <ItemMedia variant="icon">
-                        <SendIcon />
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle>{broadcast.name}</ItemTitle>
-                        <ItemDescription>
-                          {broadcast.subject} ·{" "}
-                          {formatDate(broadcast.sentAt ?? broadcast.createdAt)}
-                        </ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  ))}
+                  {broadcasts.map((broadcast) => {
+                    const Icon = channelIcon(rowChannel(broadcast))
+                    return (
+                      <Item
+                        key={broadcast.id}
+                        size="sm"
+                        render={<Link href={`/broadcasts/${broadcast.id}`} />}
+                      >
+                        <ItemMedia variant="icon">
+                          <Icon />
+                        </ItemMedia>
+                        <ItemContent>
+                          <ItemTitle>{broadcast.name}</ItemTitle>
+                          <ItemDescription>
+                            {broadcast.subject} ·{" "}
+                            {formatDate(
+                              broadcast.sentAt ?? broadcast.createdAt
+                            )}
+                          </ItemDescription>
+                        </ItemContent>
+                        <RecipientOutcomeBadge
+                          skipReason={broadcast.recipient.skipReason}
+                          messageStatus={broadcast.messageStatus}
+                          failed={broadcast.recipient.failed}
+                          sent={
+                            broadcast.recipient.sent ??
+                            !!broadcast.recipient.emailId
+                          }
+                        />
+                      </Item>
+                    )
+                  })}
                   <ListPagination
                     {...broadcastList.pagination}
                     embedded
@@ -472,7 +536,7 @@ function ContactPage({
                   />
                 </HistorySection>
               ) : null}
-              {received.length > 0 ? (
+              {contact.email && received.length > 0 ? (
                 <HistorySection title="Received">
                   {replies.pageRows.map((email) => (
                     <Item
@@ -493,7 +557,9 @@ function ContactPage({
                   ))}
                 </HistorySection>
               ) : null}
-              <ListPagination {...replies.pagination} embedded noun="email" />
+              {contact.email ? (
+                <ListPagination {...replies.pagination} embedded noun="email" />
+              ) : null}
             </div>
           )}
         </TabsContent>
@@ -510,5 +576,72 @@ function ContactPage({
         }}
       />
     </>
+  )
+}
+
+function ContactChannels({ contactId }: { contactId: string }) {
+  const identities = useContactIdentities(contactId)
+  return (
+    <section className="flex flex-col gap-3" aria-label="Contact channels">
+      <h2 className="text-sm font-medium">Channels</h2>
+      <p className="text-sm text-muted-foreground">
+        Linked messaging identities and the accounts they belong to.
+      </p>
+      {identities.status === "LoadingFirstPage" ? (
+        <Skeleton className="h-24 w-full" />
+      ) : identities.results.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No linked channel identities yet.
+        </p>
+      ) : (
+        <ResourceTable
+          headers={
+            <>
+              <Th>Channel</Th>
+              <Th>Username / handle</Th>
+              <Th>Page / account</Th>
+              <Th>Last inbound</Th>
+              <Th>ID</Th>
+            </>
+          }
+        >
+          {identities.pageRows.map(({ identity, accounts }) => (
+            <TableRow key={identity._id}>
+              <TableCell>
+                <IconCell icon={channelIcon(identity.channel)}>
+                  {CHANNELS[identity.channel].label}
+                </IconCell>
+              </TableCell>
+              <TableCell>
+                {identity.username
+                  ? channelHandle(identity.channel, identity.username)
+                  : identity.phone || "—"}
+              </TableCell>
+              <TableCell>
+                {accounts.length
+                  ? accounts.map((account) => account.name).join(", ")
+                  : "—"}
+              </TableCell>
+              <TableCell>
+                {identity.lastInboundAt
+                  ? formatDateTime(identity.lastInboundAt)
+                  : "—"}
+              </TableCell>
+              <TableCell>
+                <MonoValue copyValue={identity.externalId}>
+                  {identity.externalId}
+                </MonoValue>
+              </TableCell>
+            </TableRow>
+          ))}
+        </ResourceTable>
+      )}
+      <ListPagination
+        {...identities.pagination}
+        embedded
+        noun="identity"
+        plural="identities"
+      />
+    </section>
   )
 }

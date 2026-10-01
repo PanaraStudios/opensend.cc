@@ -31,15 +31,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@/components/ui/item"
+import { ItemGroup } from "@/components/ui/item"
 import {
   Message,
   MessageContent,
@@ -84,6 +76,7 @@ import {
 } from "@/components/dashboard/channels/shared"
 import {
   EmailsChrome,
+  ConversationRow,
   MessageFiles,
   logChannel,
 } from "@/components/dashboard/emails/shared"
@@ -234,46 +227,21 @@ function ConversationList({ selected }: { selected: string | null }) {
           </EmptyState>
         ) : (
           <ItemGroup className="gap-1">
-            {pageRows.map(({ conversation, name }) => {
-              const Icon = channelIcon(conversation.channel)
-              return (
-                <Item
-                  key={conversation._id}
-                  size="sm"
-                  variant={conversation._id === selected ? "muted" : "default"}
-                  aria-current={conversation._id === selected || undefined}
-                  render={
-                    <Link
-                      href={threadHref(conversation._id)}
-                      replace
-                      scroll={false}
-                    />
-                  }
-                  data-testid="conversation"
-                >
-                  <ItemMedia variant="icon">
-                    <Icon />
-                  </ItemMedia>
-                  <ItemContent className="min-w-0">
-                    <ItemTitle>{name}</ItemTitle>
-                    <ItemDescription className="line-clamp-1">
-                      {conversation.lastDirection === "outbound" ? "You: " : ""}
-                      {conversation.lastPreview}
-                    </ItemDescription>
-                  </ItemContent>
-                  <ItemActions className="flex-col items-end gap-1 self-start">
-                    <span className="text-xs text-muted-foreground">
-                      <RelativeTime at={conversation.lastMessageAt} />
-                    </span>
-                    {conversation.unread ? (
-                      <Badge variant="primary" aria-label="Unread">
-                        {conversation.unreadCount || 1}
-                      </Badge>
-                    ) : null}
-                  </ItemActions>
-                </Item>
-              )
-            })}
+            {pageRows.map(({ conversation, name }) => (
+              <ConversationRow
+                key={conversation._id}
+                conversation={conversation}
+                title={name}
+                selected={conversation._id === selected}
+                render={
+                  <Link
+                    href={threadHref(conversation._id)}
+                    replace
+                    scroll={false}
+                  />
+                }
+              />
+            ))}
           </ItemGroup>
         )}
         <ListPagination {...pagination} embedded noun="conversation" />

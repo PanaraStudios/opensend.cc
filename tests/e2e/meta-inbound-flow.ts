@@ -1,3 +1,4 @@
+import { messageHref } from "../../lib/messages/links"
 import { connectWhatsApp, WABA, PHONE_ID, META_TOKEN } from "./meta-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
 import { createHmac } from "node:crypto"
@@ -114,14 +115,25 @@ export function metaInboundTests(
         fullPage: true,
       })
       // The contact cell links with the identity label: the WhatsApp profile name.
-      await contact
-        .getByRole("link", { name: "Sheena Nelson", exact: true })
-        .click()
+      await contact.getByRole("link", { name: /Sheena Nelson/ }).click()
       await expect(owner.getByLabel("Phone", { exact: true })).toHaveValue(
         "+16505551234"
       )
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/meta-inbound-contact.png`,
+        fullPage: true,
+      })
+      await owner.getByRole("tab", { name: "History", exact: true }).click()
+      const thread = owner
+        .getByTestId("conversation")
+        .filter({ hasText: "Inbound WhatsApp lane 2B" })
+      await expect(thread).toBeVisible()
+      await expect(thread).toHaveAttribute(
+        "href",
+        messageHref("channel", inbound()[0]._id)
+      )
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/meta-inbound-contact-history.png`,
         fullPage: true,
       })
       const headers = await createApiKey(owner, "Meta inbound reply E2E")

@@ -327,11 +327,9 @@ export const recipients = query({
       phone: v.optional(v.string()),
       contact: v.union(
         v.null(),
-        schema
-          .doc("contacts")
-          .extend({
-            channelIdentity: v.union(v.null(), contactChannelIdentityValue),
-          })
+        schema.doc("contacts").extend({
+          channelIdentity: v.union(v.null(), contactChannelIdentityValue),
+        })
       ),
       messageStatus: v.optional(channelMessageStatusValue),
     })
@@ -347,7 +345,9 @@ export const recipients = query({
       .paginate(paginationOpts)
     const page = []
     for (const recipient of result.page) {
-      const contact = await ctx.db.get("contacts", recipient.contactId)
+      const contact = recipient.contactId
+        ? await ctx.db.get("contacts", recipient.contactId)
+        : null
       const message = recipient.messageId
         ? await ctx.db.get("channelMessages", recipient.messageId)
         : null
