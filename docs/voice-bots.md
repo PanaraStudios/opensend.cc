@@ -23,7 +23,7 @@ caps and the stable call record continue to belong to FreeSWITCH and Convex.
 | Bot config          | DONE: shared pure validation, `gemini_live`/`cascade`, per-stage credentials, models, voice, languages, tools, handoff and safety settings. Active calls keep a config snapshot.                                                             |
 | Routing             | DONE: agents/API/bot/IVR number routing; gateway inbound bots auto-accept only after Graph signaling succeeds. Atomic team concurrency and monthly budget admission falls back to available agents, then voicemail.                          |
 | Conversation engine | DONE: Pipecat factory, Silero VAD, context aggregators and compression, provider function handlers, interruption epochs and played-ms feedback. FakeEchoAdapter remains available only behind the existing test flag.                        |
-| Tools               | DONE: current-caller contact lookup, call notes, WhatsApp sends through `createChannelMessage`, authorized agent transfer, goodbye/end. IVR transfer enters the configured team-owned IVR runtime.                                                         |
+| Tools               | DONE: current-caller contact lookup, call notes, WhatsApp sends through `createChannelMessage`, authorized agent transfer, goodbye/end. IVR transfer enters the configured team-owned IVR runtime.                                           |
 | Safety              | DONE: disclosure as the provider's first turn, FreeSWITCH duration cap before media opens, speech-aware silence timeout, bounded concurrency, aggregate minute accounting and opt-in recording through the existing call-media storage path. |
 | Outputs/API         | DONE: bot id/outcome/summary/duration/usage, paginated child transcripts/tool records, completion/transfer webhooks, REST/OpenAPI, SDK and MCP.                                                                                              |
 | Testing             | Python/adapter/Convex/REST/SDK/MCP tests and the locked Docker harness; results are recorded in `docs/calling-gateway.md`. The dashboard API flow is wired for the lead's integration e2e run.                                               |
@@ -149,11 +149,12 @@ not arrays on a call. Delivery remains the foundation's bounded best-effort chan
 there is no durable gateway transcript spool. A gateway restart ends its active calls.
 Pipecat/provider logs are suppressed so provider request details cannot leak keys.
 
-No dashboard screens were changed. 8d-4 still owns bot and credential forms,
-Playground microphone sessions, transcript/tool/latency displays and call outcome
-rendering. The REST API and shared validator are ready for those screens. Outbound
-bot calls would need an explicit bot route on creation, permission/signaling handling,
-and the same admission reservation before initiating provider media.
+The [Playground](voice-playground.md) now provides bot/provider-key forms, routing,
+browser microphone sessions and transcript/tool/latency/usage diagnostics. Its test
+calls follow the same anchored FreeSWITCH/Pipecat route, are flagged test, and are
+excluded from production budgets and customer webhooks. Provider usage still costs
+credits. IVR prompt voices share these team credentials and prevent deleting a key
+that a saved IVR references.
 
 Run Python tests with `pnpm test:voice-agent` (uses the `uv.lock` through uv), and the
 isolated media harness with `pnpm test:calling-harness`. `pnpm test:voice-live` is an

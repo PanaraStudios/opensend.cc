@@ -45,15 +45,15 @@ storage provider or public file bucket is involved. Playback uses the image’s 
 and [FAQ](https://libsndfile.github.io/libsndfile/FAQ.html). The API validates
 the container MIME type and metadata; damaged or mislabeled audio can still fail playback.
 
-The pinned FreeSWITCH 1.11.3 image builds no key-free TTS module. `espeak` is used
-only in the image build to create the old demo WAVs; it is absent from the runtime.
-TTS prompts are saved as `pending_render` in `ivrPromptRenders`, uniquely indexed
-by team and SHA-256(text, language, voice, renderer). `lib/ivr-prompts.ts` supplies
-`PromptRenderer` and the pending renderer. 8d-3b can render Sarvam Bulbul v3 audio
-once 8d-2's keys exist, mark entries ready with a stored-file id, and update prompt
-readiness on API reads. Currently any TTS in a definition reports pending_render.
-Pending/unavailable menu prompts take the configured failure action, then hang up
-if that fallback also cannot play. An unavailable final playback hangs up.
+The [Playground and TTS layer](voice-playground.md) renders typed prompts through
+team ElevenLabs/Sarvam keys. Set `promptVoice: {provider, voice, language, credentialId}`;
+reads expose `prompt_renders` and `prompt_status`, including safe per-prompt failures.
+`POST /ivrs/{id}/render` (ivrs:write), SDK `ivrs.render` and MCP `render-ivr` retry
+failed/expired renders and reuse ready audio. WAV output is PCM16 mono at 16 kHz,
+served through the existing signed HTTP-cache path. Rendering is bounded and leased,
+with team-scoped content hashes. PATCH null clears promptVoice or businessHours.
+Legacy text without a provider remains pending. Missing prompts still take the
+configured failure action and ultimately hang up if no fallback can play.
 
 POST `/whatsapp/phone-numbers/{id}/calling` with
 `{"routing":{"kind":"ivr","ivrId":"IVR_ID"}}` enables gateway handling.
@@ -94,7 +94,7 @@ Webhook actions POST `{call, ivrId, menuId, digits}` to a public HTTPS endpoint 
 `publicFetch` (DNS-pinned, no redirects, 3-second timeout, 8 KB response limit).
 Standard Webhooks/Svix headers sign the exact body. `secretId` selects an existing
 same-team webhook secret; otherwise use `webhook_signing_secret` returned on the IVR.
-The response is exactly `{action: ACTION}` using the fixed action schema. Nested
+Playground decision requests include `call.test: true`. The response is exactly `{action: ACTION}` using the fixed action schema. Nested
 webhook actions, arbitrary commands and dangling submenus are refused. Failure
 falls back to the menu's `failureAction`; a webhook fallback cannot call another
 webhook. Decisions are durably claimed before external IO and completed afterward;
@@ -112,7 +112,7 @@ completion; the normal call lifecycle event follows when the call ends.
 with the existing authenticated team context, import `lib/ivr.ts` for form validation,
 and read `ivr_path`/`ivr_outcome` from the existing call endpoints. Supply editor menu
 arrays as whole replacements, display pending_render and use the existing upload
-components. No dashboard screens are added by this task.
+components. Playground now supplies the editors and browser testers described in voice-playground.md.
 
 Schema changes are new `ivrs`, `ivrPromptRenders`, `ivrSessions`, optional fields on
 calls/settings, and a routing-reference index. Team cleanup includes all new tables.
@@ -167,3 +167,5 @@ from this lane.
   no deployment, `convex dev`, production container operations or push was performed.
 
 IVR bot actions validate an existing bot owned by the IVR team. Admission reserves a bot session and enforces its concurrency/minute budget; unavailable capacity falls back to an agent or voicemail. Bots can return to their configured IVR through `transfer_to_ivr`, using a single-use persisted handoff authorization.
+
+8d-4 adds provider rendering and the IVR editor/tester; the verification report above describes the earlier 8d-3 engine snapshot.
