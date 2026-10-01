@@ -144,15 +144,15 @@ export function EmailsView() {
           >
             {pageRows.map((email) => (
               <TableRow key={email.id}>
-                <TableCell>
-                  <div className="flex flex-col gap-0.5">
+                <TableCell className="w-full max-w-0">
+                  <div className="flex min-w-0 flex-col gap-0.5">
                     <Link
                       href={`/emails/${email.id}`}
-                      className="font-medium hover:underline"
+                      className="truncate font-medium hover:underline"
                     >
                       {email.to}
                     </Link>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {email.subject}
                     </span>
                   </div>
@@ -249,15 +249,15 @@ export function ReceivingView() {
           >
             {pageRows.map((email) => (
               <TableRow key={email.id}>
-                <TableCell>
-                  <div className="flex flex-col gap-0.5">
+                <TableCell className="w-full max-w-0">
+                  <div className="flex min-w-0 flex-col gap-0.5">
                     <Link
                       href={`/emails/receiving/${email.id}`}
-                      className="font-medium hover:underline"
+                      className="truncate font-medium hover:underline"
                     >
                       {email.from}
                     </Link>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {email.subject}
                     </span>
                   </div>
