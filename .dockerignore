@@ -6,6 +6,11 @@ node_modules
 .codex
 coverage
 packages
+# The shared WhatsApp catalog is the one source of truth for the app, Convex and the SDK.
+!packages/sdk/src/whatsapp/catalog.ts
+!packages/sdk/src/whatsapp/schema.ts
+!packages/sdk/src/whatsapp/validation.ts
+!packages/sdk/src/whatsapp/normalize.ts
 *.tsbuildinfo
 .pnpm-store
 .playwright-mcp
