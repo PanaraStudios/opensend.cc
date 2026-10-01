@@ -1,4 +1,5 @@
-import type { MutationCtx } from "../_generated/server"
+import { toWaId } from "../../lib/dashboard/phone"
+import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
 import { upsertContact, insertContact } from "../audience"
 import { insertRow, patchRow } from "../counts"
@@ -61,7 +62,12 @@ export async function upsertChannelThread(
   }
   let channelContactId
   if (identity) {
-    await ctx.db.patch("channelContacts", identity._id, changes)
+    if (
+      Object.entries(changes).some(
+        ([key, value]) => identity[key as keyof typeof changes] !== value
+      )
+    )
+      await ctx.db.patch("channelContacts", identity._id, changes)
     channelContactId = identity._id
   } else
     channelContactId = await ctx.db.insert("channelContacts", {
@@ -91,8 +97,9 @@ export async function upsertChannelThread(
             Math.max(at, conversation?.lastInboundAt ?? 0) + 24 * 3600_000,
         }
       : {}),
-    search: [phone ?? externalId, profileName || identity?.profileName].join(
-      " "
+    search: conversationSearch(
+      phone ?? externalId,
+      profileName || identity?.profileName
     ),
   })
   return { contactId, channelContactId, conversationId }
@@ -196,3 +203,25 @@ export async function upsertEmailThread(
             .join(" "),
   })
 }
+
+export const conversationSearch = (handle: string, name?: string) =>
+  [handle, name].join(" ")
+
+/** WhatsApp identities are team scoped and shared across sending numbers. */
+export const findWhatsAppIdentity = (
+  ctx: QueryCtx,
+  organizationId: string,
+  phone: string
+) =>
+  ctx.db
+    .query("channelContacts")
+    .withIndex(
+      "by_organizationId_and_channel_and_scopeId_and_externalId",
+      (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("channel", "whatsapp")
+          .eq("scopeId", "whatsapp")
+          .eq("externalId", toWaId(phone))
+    )
+    .unique()

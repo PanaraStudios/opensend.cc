@@ -41,7 +41,7 @@ export function asTemplate(
       ...asTemplate({ ...row, channel: undefined }, { html: "" }),
       channel: "whatsapp",
       ...(row.whatsapp ? { whatsapp: row.whatsapp } : {}),
-      components: body?.components ?? body?.content ?? [],
+      components: body?.components ?? [],
     }
   return {
     id: row._id,

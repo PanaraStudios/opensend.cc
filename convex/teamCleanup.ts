@@ -6,6 +6,7 @@ import { internalMutation, type MutationCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import type { DataModel, Id, TableNames } from "./_generated/dataModel"
 import {
+  retireBroadcastCounters,
   COUNTED_TABLES,
   counters,
   deleteRow,
@@ -189,9 +190,7 @@ export const purge = internalMutation({
       )
       if (file) await ctx.storage.delete(file.storageId)
     } else if (name === "broadcasts") {
-      await counters.broadcastMessages.aggregate.clear(ctx, {
-        namespace: row._id as Id<"broadcasts">,
-      })
+      await retireBroadcastCounters(ctx, row._id as Id<"broadcasts">)
     } else if (name === "channelMessages") {
       const id = row._id as Id<"channelMessages">
       pending = await children(

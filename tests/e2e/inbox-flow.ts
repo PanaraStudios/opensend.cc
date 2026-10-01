@@ -1,3 +1,4 @@
+import { connectWhatsApp, WABA, PHONE_ID } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import type { Doc } from "../../convex/_generated/dataModel"
@@ -9,10 +10,8 @@ import {
   testBackendValue,
 } from "./ses-fixtures"
 
-/** The seeded WhatsApp number (convex/meta/fixtures.ts), the app secret
+/** The connected WhatsApp number (meta-fixtures.ts), the app secret
     metaAppTests saved, and a customer no earlier flow wrote from. */
-const PHONE_ID = "106540352242922"
-const WABA = "102290129340398"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const CUSTOMER = "16505557777"
 const NAME = "Inbox Flow Customer"
@@ -33,7 +32,7 @@ const shots = async (page: Page, name: string) => {
   await page.emulateMedia({ colorScheme: "light" })
 }
 
-/** A signed Meta webhook for the seeded WABA. */
+/** A signed Meta webhook for the connected WABA. */
 async function webhook(page: Page, value: Record<string, unknown>) {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
@@ -47,7 +46,7 @@ async function webhook(page: Page, value: Record<string, unknown>) {
               messaging_product: "whatsapp",
               metadata: {
                 phone_number_id: PHONE_ID,
-                display_phone_number: "15550783881",
+                display_phone_number: "+1 555-0001",
               },
               ...value,
             },
@@ -105,7 +104,7 @@ export function inboxTests(
 ) {
   test("the Messages inbox threads WhatsApp and email, replies in and out of the window, and the logs filter by channel", async () => {
     const { owner, organizationId, sendingDomainId } = state()
-    testBackendValue("meta/fixtures:seedAccount", { organizationId })
+    await connectWhatsApp(owner, organizationId)
     await owner.request.post(`${fakeGraph()}/__reset`)
 
     // Messages replaces Emails, with the Inbox first among its tabs.

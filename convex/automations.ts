@@ -13,8 +13,8 @@ import { matchesSearch, teamPage, teamRow } from "./lists"
 import { defineEvent, findEvent, payloadShapeError } from "./automationEvents"
 import { startRun, stopRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
-import { resolveWhatsAppAccount } from "./channels/messages"
-import { resolveWhatsAppTemplate } from "./whatsapp/templates"
+import { resolveChannelAccount } from "./channels/messages"
+import { resolveWhatsAppSend } from "./broadcastWhatsApp"
 import { publishedTemplate } from "./templates"
 import {
   automationStatus,
@@ -26,6 +26,7 @@ import schema from "./schema"
 import {
   automationTasks,
   eventNameError,
+  triggerEventError,
   flattenSteps,
   payloadErrors,
   UNTITLED_AUTOMATION,
@@ -177,13 +178,8 @@ export async function updateAutomation(
   }
   if (patch.trigger !== undefined) {
     patch.trigger = patch.trigger.trim()
-    if (
-      patch.trigger &&
-      eventNameError(patch.trigger, [], { allowSystem: true })
-    )
-      throw new ConvexError(
-        eventNameError(patch.trigger, [], { allowSystem: true })!
-      )
+    const error = patch.trigger && triggerEventError(patch.trigger)
+    if (error) throw new ConvexError(error)
   }
   await ensureNames(
     ctx,
@@ -227,21 +223,19 @@ export async function setAutomationStatus(
     const segments = []
     for (const step of flattenSteps(steps)) {
       if (step.type === "send_whatsapp" && step.accountId) {
-        const account = await resolveWhatsAppAccount(
-          ctx,
-          organizationId,
-          step.accountId
-        )
-        if (step.mode === "template" && step.templateId) {
-          const template = await resolveWhatsAppTemplate(ctx, organizationId, {
-            id: step.templateId,
-            wabaId: account.wabaId,
+        if (step.mode === "template" && step.templateId)
+          await resolveWhatsAppSend(ctx, organizationId, {
+            accountId: step.accountId,
+            templateId: step.templateId,
+            variables: step.variables,
           })
-          if (
-            template.variables.some((key) => step.variables[key] === undefined)
+        else
+          await resolveChannelAccount(
+            ctx,
+            organizationId,
+            step.accountId,
+            "whatsapp"
           )
-            throw new ConvexError("Map every template variable before enabling")
-        }
       }
       if (step.type === "send_email") {
         const template = await publishedTemplate(

@@ -1,11 +1,10 @@
+import { WABA, PHONE_ID as PHONE } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import type { Doc } from "../../convex/_generated/dataModel"
 import { backendRows, client } from "./ses-fixtures"
 
-const PHONE = "106540352242922"
-const WABA = "102290129340398"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const TEMPLATE = "e2e_order_update"
 const screenshot = (page: Page, name: string) =>
@@ -13,10 +12,10 @@ const screenshot = (page: Page, name: string) =>
     path: `${process.env.OPENSEND_TEST_RESULTS}/whatsapp-campaigns-${name}.png`,
     fullPage: true,
   })
-async function webhook(page: Page, value: unknown, field = "messages") {
+async function webhook(page: Page, value: unknown) {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
-    entry: [{ id: WABA, changes: [{ field, value }] }],
+    entry: [{ id: WABA, changes: [{ field: "messages", value }] }],
   })
   const response = await page.request.post(
     `${process.env.OPENSEND_CALLBACK_ORIGIN}/meta/webhook`,
@@ -30,7 +29,8 @@ async function webhook(page: Page, value: unknown, field = "messages") {
   )
   expect(response.status()).toBe(200)
 }
-async function choose(page: Page, name: string, option: string) {
+/** Picks an option from one of the dashboard's own selects. */
+export async function choose(page: Page, name: string, option: string) {
   await page.getByRole("combobox", { name, exact: true }).click()
   await page.getByRole("option", { name: option, exact: true }).click()
 }
@@ -61,25 +61,9 @@ export function whatsappCampaignsTests(
   test("WhatsApp broadcast previews and sends a phone audience, tracks receipts, and an inbound reply starts an automation", async () => {
     const { owner, organizationId } = state()
     const c = await client(owner)
-    const template = backendRows<Doc<"templates">>("templates").find(
-      (row) => row.organizationId === organizationId && row.name === TEMPLATE
-    )!
     const account = backendRows<Doc<"channelAccounts">>("channelAccounts").find(
       (row) => row.organizationId === organizationId && row.externalId === PHONE
     )!
-    // The preceding sync reads the fake server's PENDING submission. Apply
-    // Meta's approval again so this lane always starts from an approved asset.
-    await webhook(
-      owner,
-      {
-        event: "APPROVED",
-        message_template_id: Number(template.whatsapp!.metaTemplateId!),
-        message_template_name: TEMPLATE,
-        message_template_language: "en_US",
-        reason: "NONE",
-      },
-      "message_template_status_update"
-    )
     const segmentId = await c.mutation(api.segments.create, {
       organizationId,
       name: "WhatsApp campaigns E2E",
@@ -107,9 +91,7 @@ export function whatsappCampaignsTests(
       `${account.displayName} (${account.handle})`
     )
     await choose(owner, "Approved template", TEMPLATE)
-    await owner
-      .getByLabel("Source for {{1}}", { exact: true })
-      .selectOption("contact")
+    await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")
     await owner.getByLabel("Fallback for {{1}}", { exact: true }).fill("there")
     await choose(owner, "Audience", "WhatsApp campaigns E2E")
@@ -181,6 +163,17 @@ export function whatsappCampaignsTests(
       ],
     })
     await expect(owner.getByTestId("whatsapp-stat-read")).toContainText("1")
+    const report = owner.getByTestId("whatsapp-broadcast-stats")
+    await expect(
+      report.getByText("No phone number", { exact: true })
+    ).toBeVisible()
+    await expect(
+      report.locator('[data-slot="badge"]').filter({ hasText: /^Read$/ })
+    ).toBeVisible()
+    await expect(
+      report.locator('[data-slot="badge"]').filter({ hasText: /^Delivered$/ })
+    ).toBeVisible()
+    await expect(report.getByText("settled", { exact: true })).toHaveCount(0)
     await screenshot(owner, "broadcast-stats")
 
     await owner.goto("/automations")
@@ -205,9 +198,7 @@ export function whatsappCampaignsTests(
       `${account.displayName} (${account.handle})`
     )
     await choose(owner, "Approved template", TEMPLATE)
-    await owner
-      .getByLabel("Source for {{1}}", { exact: true })
-      .selectOption("contact")
+    await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")
     await owner.getByLabel("Fallback for {{1}}", { exact: true }).fill("there")
     await expect

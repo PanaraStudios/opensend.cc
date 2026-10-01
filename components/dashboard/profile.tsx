@@ -43,11 +43,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp"
+import { CodeInput } from "@/components/ui/input-otp"
 import {
   Item,
   ItemActions,
@@ -607,23 +603,14 @@ function MfaSetupForm({
                 <FieldLabel htmlFor="mfa-code">
                   Verify the code from the app
                 </FieldLabel>
-                <InputOTP
+                <CodeInput
                   id="mfa-code"
-                  maxLength={6}
-                  inputMode="numeric"
-                  pattern="^\d*$"
                   value={code}
                   onChange={(next) => {
                     setCode(next)
                     setError(null)
                   }}
-                >
-                  <InputOTPGroup>
-                    {Array.from({ length: 6 }, (_, index) => (
-                      <InputOTPSlot key={index} index={index} />
-                    ))}
-                  </InputOTPGroup>
-                </InputOTP>
+                />
               </Field>
             </>
           ) : (

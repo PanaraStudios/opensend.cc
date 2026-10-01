@@ -4,9 +4,10 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { decryptSecret } from "../secrets"
 import { publicFetch } from "../../lib/net/public-fetch"
-import { localHttpOrigin } from "../../lib/net/public-host"
+import { localHttpOrigin } from "../../lib/meta/graph-url"
 import { ConvexError } from "convex/values"
 import { MetaError, parseGraphResponse } from "../../lib/meta/errors"
+import { readTokenInfo, type TokenInfo } from "../../lib/meta/whatsapp-account"
 import { graphUrl, type GraphQuery } from "../../lib/meta/graph-url"
 
 /** The fake Graph server development and e2e point META_GRAPH_ORIGIN at.
@@ -98,13 +99,97 @@ export async function friendly<T>(
     if (e instanceof MetaError && e.action === "token_invalid") {
       if (!connectionId)
         throw new ConvexError("Meta refused the token. Check it and try again.")
-      await ctx.runMutation(internal.meta.connect.markConnection, {
-        connectionId,
-        status: "error",
-        error: TOKEN_REFUSED,
-      })
+      await markTokenInvalid(ctx, connectionId)
       throw new ConvexError(TOKEN_REFUSED)
     }
     throw new ConvexError(graphFailure(e))
   }
 }
+
+export type App = {
+  appId: string
+  graphVersion: string
+  encryptedAppSecret: string
+}
+export function numericId(value: string, label: string) {
+  const id = value.trim()
+  if (!/^\d{1,32}$/.test(id))
+    throw new ConvexError(`Enter the numeric ${label}`)
+  return id
+}
+export function manualToken(value: string, message: string) {
+  const token = value.trim()
+  if (!/^[A-Za-z0-9_|-]{20,1024}$/.test(token)) throw new ConvexError(message)
+  return token
+}
+export async function debugToken(app: App, token: string): Promise<TokenInfo> {
+  return readTokenInfo(
+    await graph({
+      token: await appAccessToken(app),
+      method: "GET",
+      path: "debug_token",
+      query: { input_token: token },
+      version: app.graphVersion,
+    })
+  )
+}
+export async function exchangeCode(
+  app: App,
+  raw: string,
+  missingCode: string,
+  missingToken: string
+) {
+  const code = raw.trim()
+  if (!code || raw.length > 2048) throw new ConvexError(missingCode)
+  const result = await graph<{ access_token?: unknown }>({
+    token: await appAccessToken(app),
+    method: "GET",
+    path: "oauth/access_token",
+    query: {
+      client_id: app.appId,
+      client_secret: await decryptSecret(app.encryptedAppSecret),
+      code,
+    },
+    version: app.graphVersion,
+  })
+  if (typeof result.access_token !== "string" || !result.access_token)
+    throw new ConvexError(missingToken)
+  return result.access_token
+}
+export const markTokenInvalid = (
+  ctx: ActionCtx,
+  connectionId: Id<"metaConnections">
+) =>
+  ctx.runMutation(internal.meta.connect.markConnection, {
+    connectionId,
+    status: "error",
+    error: TOKEN_REFUSED,
+  })
+
+/** Both WABAs and Pages unsubscribe only while the asset is still detached. */
+export async function unsubscribeAsset(input: {
+  id: string
+  label: string
+  token: () => Promise<string>
+  version: string
+  connected: () => Promise<boolean>
+}) {
+  if (await input.connected()) return
+  try {
+    await graph({
+      token: await input.token(),
+      method: "DELETE",
+      path: `${input.id}/subscribed_apps`,
+      version: input.version,
+    })
+  } catch (error) {
+    console.warn(
+      `Could not unsubscribe ${input.label} ${input.id}: ${graphFailure(error)}`
+    )
+  }
+}
+/** Meta CDN downloads use the same pinned fetch and local-origin rules. */
+export const metaFetch = (
+  url: string | URL,
+  options: Parameters<typeof publicFetch>[1]
+) => publicFetch(url, { ...options, localOrigin: graphLocalOrigin() })

@@ -5,7 +5,6 @@ import { useParams } from "next/navigation"
 import {
   BadgeCheckIcon,
   CircleAlertIcon,
-  CopyIcon,
   KeyRoundIcon,
   PlugIcon,
   RefreshCwIcon,
@@ -21,7 +20,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
-import { toast } from "@/components/ui/toast"
 import {
   ChannelAccountStatusBadge,
   ChannelQualityBadge,
@@ -36,18 +34,18 @@ import {
   NotFoundState,
   RelativeTime,
   Surface,
-  copyToClipboard,
   useDeleteRecord,
   type EventTrailStep,
 } from "@/components/dashboard/primitives"
 import {
+  CopyChannelHandleItem,
   CHANNEL_ICONS,
   ChannelsIcon,
   DisconnectBusinessDialog,
   RegisterNumberDialog,
 } from "@/components/dashboard/channels/shared"
 import { channelHandle } from "@/lib/meta/account-display"
-import { actionError } from "@/lib/action-error"
+import { CHANNELS } from "@/lib/channels"
 import { formatDateTime, messagingLimitLabel } from "@/lib/dashboard/format"
 import {
   useChannelAccount,
@@ -63,11 +61,10 @@ const METHOD_LABELS = {
 export function ChannelDetail() {
   const { id } = useParams<{ id: string }>()
   const result = useChannelAccount(id)
-  const { canWrite, syncAccount } = useChannelCommands()
+  const { canWrite, syncAccount, syncing } = useChannelCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/channels")
   const [registering, setRegistering] = React.useState(false)
   const [disconnecting, setDisconnecting] = React.useState(false)
-  const [syncing, setSyncing] = React.useState(false)
 
   if (result === undefined) return <Skeleton className="h-64 w-full" />
   if (!result) {
@@ -79,21 +76,6 @@ export function ChannelDetail() {
   const { account, connection } = result
   const whatsapp = account.channel === "whatsapp"
   const registered = account.registeredAt !== undefined
-
-  async function sync() {
-    setSyncing(true)
-    try {
-      await syncAccount(account._id)
-      toast.add({
-        type: "success",
-        title: whatsapp ? "Number synced" : "Account synced",
-      })
-    } catch (e) {
-      toast.add({ type: "error", title: actionError(e) })
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const steps: EventTrailStep[] = [
     {
@@ -148,25 +130,15 @@ export function ChannelDetail() {
             )}
             <Button
               variant="outline"
-              disabled={!canWrite || syncing}
-              onClick={() => void sync()}
+              disabled={!canWrite || !!syncing}
+              onClick={() => void syncAccount(account)}
             >
               <RefreshCwIcon data-icon="inline-start" />
               {syncing ? "Syncing…" : "Sync"}
             </Button>
             <MoreMenu>
               <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={() =>
-                    void copyToClipboard(
-                      account.handle,
-                      whatsapp ? "Number" : "Handle"
-                    )
-                  }
-                >
-                  <CopyIcon />
-                  {whatsapp ? "Copy number" : "Copy handle"}
-                </DropdownMenuItem>
+                <CopyChannelHandleItem account={account} />
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
@@ -242,15 +214,7 @@ export function ChannelDetail() {
       <Surface>
         <h2 className="text-base font-medium">Connection</h2>
         <dl className="grid gap-5 sm:grid-cols-2">
-          <DetailField
-            label={
-              whatsapp
-                ? "Phone number ID"
-                : account.channel === "messenger"
-                  ? "Page ID"
-                  : "Instagram account ID"
-            }
-          >
+          <DetailField label={CHANNELS[account.channel].idLabel}>
             <MonoValue copyValue={account.externalId}>
               {account.externalId}
             </MonoValue>

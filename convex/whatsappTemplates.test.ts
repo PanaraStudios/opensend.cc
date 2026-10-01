@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
+import { upsertChannelThread } from "./channels/identity"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { patchRow } from "./counts"
 import type { Id } from "./_generated/dataModel"
 import {
   APP_SECRET,
-  PHONE_ID,
   WABA_ID,
   envelope,
   fakeGraph,
@@ -309,7 +309,10 @@ describe("WhatsApp templates", () => {
       ctx.db.query("whatsappBusinessAccounts").first()
     )
     expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
-    // A second sync updates the same rows.
+    // A repeated listing advances the WABA clock without writing templates.
+    const beforeRepeat = await f.t.run((ctx) =>
+      ctx.db.query("templates").collect()
+    )
     later()
     await f.owner.action(api.whatsapp.templateActions.sync, {
       organizationId: f.team,
@@ -317,6 +320,39 @@ describe("WhatsApp templates", () => {
     expect(
       await f.t.run((ctx) => ctx.db.query("templates").collect())
     ).toHaveLength(3)
+    expect(await f.t.run((ctx) => ctx.db.query("templates").collect())).toEqual(
+      beforeRepeat
+    )
+  })
+
+  test("an empty listing records the sync start and marks dropped templates deleted", async () => {
+    const f = await setup()
+    await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    f.graph.use({
+      method: "GET",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () => ({ data: [] }),
+    })
+    later()
+    const syncedAt = Date.now()
+    expect(
+      await f.owner.action(api.whatsapp.templateActions.sync, {
+        organizationId: f.team,
+      })
+    ).toEqual({ synced: 0 })
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+    ).toMatchObject({
+      templatesSyncStartedAt: syncedAt,
+      templatesSyncedAt: syncedAt,
+    })
+    const rows = await f.t.run((ctx) => ctx.db.query("templates").collect())
+    expect(rows).toHaveLength(2)
+    expect(rows.every((row) => row.whatsapp?.metaStatus === "DELETED")).toBe(
+      true
+    )
   })
 
   test("the hourly cron fans out one sync per WABA", async () => {
@@ -586,20 +622,30 @@ describe("the /templates REST API with channels", () => {
     const id = await f.create()
     await f.owner.action(api.whatsapp.templateActions.publish, { id })
     await f.approve()
+    const conversationId = await f.t.run(async (ctx) => {
+      const account = (await ctx.db.get("channelAccounts", f.account))!
+      return (
+        await upsertChannelThread(ctx, account, {
+          externalId: "16505559999",
+          phone: "+16505559999",
+          at: Date.now(),
+          preview: "",
+          direction: "outbound",
+        })
+      ).conversationId
+    })
     const send = (variables: Record<string, string>) =>
-      f.owner.mutation(api.channels.messages.send, {
-        organizationId: f.team,
-        input: {
-          from: PHONE_ID,
-          to: "16505559999",
-          body: { template: { id, variables } },
-        },
+      f.owner.mutation(api.conversations.reply, {
+        id: conversationId,
+        template: { id, variables },
       })
     const messageId = await send({ "1": "Jessica", "2": "SKBUP2" })
     const content = await f.t.run((ctx) =>
       ctx.db
         .query("channelMessageContents")
-        .withIndex("by_messageId", (q) => q.eq("messageId", messageId))
+        .withIndex("by_messageId", (q) =>
+          q.eq("messageId", messageId as Id<"channelMessages">)
+        )
         .unique()
     )
     expect(JSON.parse(content!.payload).template).toEqual({
@@ -616,10 +662,7 @@ describe("the /templates REST API with channels", () => {
       ],
     })
     await expect(send({ "1": "Jessica" })).rejects.toMatchObject({
-      data: {
-        statusCode: 422,
-        message: expect.stringContaining("Missing template variables: 2"),
-      },
+      data: expect.stringContaining("Missing template variables: 2"),
     })
   })
 })

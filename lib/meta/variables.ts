@@ -1,11 +1,17 @@
-/** A campaign variable is literal text or a contact field/property. */
-export type VariableSource =
-  | string
-  | ((
-      | { contact: "firstName" | "lastName" | "email" | "phone" }
-      | { property: string }
-      | { value: string }
-    ) & { fallback?: string })
+import type { Infer } from "convex/values"
+import type { variableSource } from "../../convex/tables/variables"
+
+/** Bare strings remain compatible with stored campaigns and SDK inputs. */
+export type VariableSource = Infer<typeof variableSource>
+export const CONTACT_VARIABLE_FIELDS = [
+  { value: "firstName", label: "First name" },
+  { value: "lastName", label: "Last name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+] as const
+export function normalizeVariableSource(source: VariableSource) {
+  return typeof source === "string" ? { value: source } : source
+}
 export type VariableContact = {
   firstName?: string
   lastName?: string
@@ -39,7 +45,7 @@ export function variableSourcesError(value: unknown): string | null {
       return `Invalid source for ${key}`
     if (
       kind === "contact" &&
-      !["firstName", "lastName", "email", "phone"].includes(s.contact as string)
+      !CONTACT_VARIABLE_FIELDS.some((field) => field.value === s.contact)
     )
       return `Invalid contact field for ${key}`
     if (kind === "property" && !/^[A-Za-z0-9_]+$/.test(s.property as string))
@@ -60,15 +66,15 @@ export function resolveVariables(
 ): Record<string, string> {
   return Object.fromEntries(
     Object.entries(variables).map(([key, source]) => {
-      if (typeof source === "string") return [key, source]
+      const normalized = normalizeVariableSource(source)
       const value =
-        "contact" in source
-          ? contact[source.contact]
-          : "property" in source
-            ? contact.properties[source.property] ||
-              propertyFallbacks[source.property]
-            : source.value
-      return [key, value || source.fallback || ""]
+        "contact" in normalized
+          ? contact[normalized.contact]
+          : "property" in normalized
+            ? contact.properties[normalized.property] ||
+              propertyFallbacks[normalized.property]
+            : normalized.value
+      return [key, value || normalized.fallback || ""]
     })
   )
 }

@@ -1,8 +1,7 @@
-import { object, string, array } from "./webhooks"
+import { object, string, array } from "./parse"
 import type { TokenInfo } from "./whatsapp-account"
 
-export const PAGE_CHANNELS = ["messenger", "instagram"] as const
-export type PageChannel = (typeof PAGE_CHANNELS)[number]
+export { PAGE_CHANNELS, type PageChannel } from "../channels"
 export const PAGE_FIELDS =
   "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}"
 export const PAGE_WEBHOOK_FIELDS = [

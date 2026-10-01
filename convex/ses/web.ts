@@ -11,7 +11,7 @@ export class BodyTooLarge extends Error {
 export function limitedBody(
   response: Request | Response,
   limit: number,
-  options: { raw: true; truncate?: boolean }
+  options: { raw: true; truncate?: false }
 ): Promise<Uint8Array<ArrayBuffer>>
 export function limitedBody(
   response: Request | Response,
@@ -25,45 +25,26 @@ export async function limitedBody(
 ) {
   const reader = response.body?.getReader()
   if (!reader) return raw ? new Uint8Array(0) : ""
-  const decoder = new TextDecoder()
   let size = 0
-  let body = ""
   const chunks: Uint8Array[] = []
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      size += value.byteLength
-      if (size > limit) {
-        if (!truncate) throw new BodyTooLarge()
-        if (raw) {
-          chunks.push(value.subarray(0, limit - size + value.byteLength))
-          const bytes = new Uint8Array(limit)
-          let offset = 0
-          for (const chunk of chunks) {
-            bytes.set(chunk, offset)
-            offset += chunk.byteLength
-          }
-          return bytes
-        }
-        return (
-          body +
-          decoder.decode(value.subarray(0, limit - size + value.byteLength))
-        )
-      }
-      if (raw) chunks.push(value)
-      else body += decoder.decode(value, { stream: true })
+      const remaining = limit - size
+      if (value.byteLength > remaining && !truncate) throw new BodyTooLarge()
+      const chunk = value.subarray(0, remaining)
+      chunks.push(chunk)
+      size += chunk.byteLength
+      if (value.byteLength > remaining) break
     }
-    if (raw) {
-      const bytes = new Uint8Array(size)
-      let offset = 0
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset)
-        offset += chunk.byteLength
-      }
-      return bytes
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
     }
-    return body + decoder.decode()
+    return raw ? bytes : new TextDecoder().decode(bytes)
   } finally {
     await reader.cancel()
   }

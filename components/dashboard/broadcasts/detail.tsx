@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -33,6 +34,7 @@ import { toast } from "@/components/ui/toast"
 import { RenameBroadcastDialog } from "@/components/dashboard/broadcasts/shared"
 import {
   BroadcastStatusBadge,
+  RecipientOutcomeBadge,
   ConfirmDialog,
   DetailHeader,
   EmptyState,
@@ -53,7 +55,7 @@ import {
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
 import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import { percent } from "@/lib/dashboard/format"
+import { percent, sentenceCase } from "@/lib/dashboard/format"
 import { useQuery, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -62,10 +64,10 @@ import { actionError } from "@/lib/action-error"
 import {
   useBroadcast,
   useBroadcastCommands,
+  useWhatsAppBroadcastRecipients,
 } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainByName } from "@/lib/domains/use-domains"
 import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
-import { useWorkspace } from "@/components/auth/workspace"
 import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
@@ -110,12 +112,14 @@ const OPT_OUT_ROWS: [string, keyof BroadcastStats][] = [
   ["Complained", "complained"],
 ]
 
-function StatsTable({
+function StatsTable<K extends string>({
   stats,
   rows,
+  testIdPrefix,
 }: {
-  stats: BroadcastStats
-  rows: [string, keyof BroadcastStats][]
+  stats: Record<K, number> & { recipients: number }
+  rows: [string, K][]
+  testIdPrefix?: string
 }) {
   return (
     <ResourceTable
@@ -128,7 +132,10 @@ function StatsTable({
       }
     >
       {rows.map(([label, key]) => (
-        <TableRow key={key}>
+        <TableRow
+          key={key}
+          data-testid={testIdPrefix ? `${testIdPrefix}-${key}` : undefined}
+        >
           <TableCell className="font-medium">{label}</TableCell>
           <TableCell className="text-muted-foreground">
             {stats[key].toLocaleString()}
@@ -428,16 +435,15 @@ export function BroadcastDetail() {
 }
 
 function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
-  const { activeTeamId } = useWorkspace()
-  const { results, ...page } = usePaginatedQuery(
-    api.broadcastWhatsApp.recipients,
-    activeTeamId
-      ? { organizationId: activeTeamId, id: item.id as Id<"broadcasts"> }
-      : "skip",
-    { initialNumItems: 20 }
-  )
-  const { pageRows, pagination } = useLoadedPagination(results, page)
-  const stats = item.whatsappStats
+  const { pageRows, pagination } = useWhatsAppBroadcastRecipients(item.id)
+  const stats = item.whatsappStats ?? {
+    recipients: 0,
+    sent: 0,
+    delivered: 0,
+    read: 0,
+    failed: 0,
+    skipped: 0,
+  }
   return (
     <div className="flex flex-col gap-6" data-testid="whatsapp-broadcast-stats">
       {item.status === "queued" ? (
@@ -447,25 +453,13 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
           </AlertDescription>
         </Alert>
       ) : null}
-      <ResourceTable
-        headers={
-          <>
-            <Th>Event</Th>
-            <Th>Count</Th>
-          </>
-        }
-      >
-        {(["sent", "delivered", "read", "failed", "skipped"] as const).map(
-          (key) => (
-            <TableRow key={key} data-testid={`whatsapp-stat-${key}`}>
-              <TableCell>
-                {key.charAt(0).toUpperCase() + key.slice(1)}
-              </TableCell>
-              <TableCell>{stats?.[key].toLocaleString() ?? "0"}</TableCell>
-            </TableRow>
-          )
+      <StatsTable
+        stats={stats}
+        rows={(["sent", "delivered", "read", "failed", "skipped"] as const).map(
+          (key) => [sentenceCase(key), key]
         )}
-      </ResourceTable>
+        testIdPrefix="whatsapp-stat"
+      />
       <ResourceTable
         headers={
           <>
@@ -477,15 +471,22 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
         {pageRows.map((recipient) => (
           <TableRow key={recipient._id}>
             <TableCell>
-              {recipient.phone || recipient.email || recipient.contactId}
+              {
+                contactIdentity(
+                  recipient.contact ?? {
+                    email: recipient.email,
+                    phone: recipient.phone,
+                  }
+                ).label
+              }
             </TableCell>
             <TableCell>
-              {recipient.skipReason ??
-                (recipient.failed
-                  ? "failed"
-                  : recipient.settled
-                    ? "settled"
-                    : "sending")}
+              <RecipientOutcomeBadge
+                skipReason={recipient.skipReason}
+                messageStatus={recipient.messageStatus}
+                failed={recipient.failed}
+                sent={recipient.sent}
+              />
             </TableCell>
           </TableRow>
         ))}

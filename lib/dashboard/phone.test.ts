@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert"
 import { test } from "node:test"
-import { normalizePhone } from "./phone"
+import { normalizePhone, toWaId, fromWaId } from "./phone"
 
 test("normalizes international phone formatting without guessing a country", () => {
   for (const value of [
@@ -28,4 +28,11 @@ test("rejects missing country prefix, invalid digits, length and extensions", ()
     "++12345678",
   ])
     assert.equal(normalizePhone(value), null, value)
+})
+
+test("wa_id conversion keeps one international prefix", () => {
+  assert.equal(toWaId("+14155552671"), "14155552671")
+  assert.equal(toWaId("14155552671"), "14155552671")
+  assert.equal(fromWaId("14155552671"), "+14155552671")
+  assert.equal(fromWaId("+14155552671"), "+14155552671")
 })

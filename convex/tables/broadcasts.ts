@@ -6,6 +6,16 @@ export const broadcastChannel = v.union(
   v.literal("email"),
   v.literal("whatsapp")
 )
+export const skipReasonValue = v.union(
+  v.literal("no_phone"),
+  v.literal("no_email"),
+  v.literal("unsubscribed"),
+  v.literal("topic_opt_out"),
+  v.literal("marketing_opt_out"),
+  v.literal("missing_variables"),
+  v.literal("contact_deleted"),
+  v.literal("window_closed")
+)
 export const whatsappBroadcast = v.object({
   accountId: v.id("channelAccounts"),
   templateId: v.id("templates"),
@@ -91,6 +101,8 @@ export const broadcastTables = {
     scheduledAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
     settledAt: v.optional(v.number()),
+    lastMessageSentAt: v.optional(v.number()),
+    settleJob: v.optional(v.id("_scheduled_functions")),
     scheduledJob: v.optional(v.id("_scheduled_functions")),
     workflowId: v.optional(v.string()),
     generation: v.number(),
@@ -124,7 +136,7 @@ export const broadcastTables = {
     email: v.string(),
     emailId: v.optional(v.id("emails")),
     messageId: v.optional(v.id("channelMessages")),
-    skipReason: v.optional(v.string()),
+    skipReason: v.optional(skipReasonValue),
     sent: v.optional(v.boolean()),
     settled: v.boolean(),
     failed: v.boolean(),

@@ -1,5 +1,7 @@
 "use client"
 import * as React from "react"
+import { fromWaId } from "../dashboard/phone"
+import { messageHref } from "./links"
 import {
   useAction,
   useMutation,
@@ -12,7 +14,6 @@ import type { Doc, Id } from "@/convex/_generated/dataModel"
 import type { ThreadMessage } from "@/convex/conversations"
 import { useTeamList } from "@/components/dashboard/primitives"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { sendableStatus } from "@/lib/meta/templates"
 import { asEmail } from "@/lib/emails/use-emails"
 import { asReceived } from "@/lib/received/use-received"
 import type {
@@ -39,16 +40,18 @@ export type LogRow = {
   createdAt: number
 }
 
-/** A phone number as WhatsApp's wa_id gives it, without the plus. */
-const phone = (value: string) => (value.startsWith("+") ? value : `+${value}`)
-
 function channelRow(message: Doc<"channelMessages">, to = ""): LogRow {
   const outbound = message.direction === "outbound"
   return {
     id: message._id,
     channel: message.channel,
-    href: `/emails/messages/${message._id}`,
-    party: phone(outbound ? message.to : message.from),
+    href: messageHref("channel", message._id),
+    party:
+      message.channel === "whatsapp"
+        ? fromWaId(outbound ? message.to : message.from)
+        : outbound
+          ? message.to
+          : message.from,
     summary: message.preview,
     to,
     status: { kind: "channel", value: message.status },
@@ -63,7 +66,7 @@ function asSentRow(item: SentItem): LogRow {
   return {
     id: email.id,
     channel: "email",
-    href: `/emails/${email.id}`,
+    href: messageHref("email", email.id),
     party: email.to,
     summary: email.subject,
     to: email.to,
@@ -81,7 +84,7 @@ function asReceivedRow(item: ReceivedItem): LogRow {
   return {
     id: email.id,
     channel: "email",
-    href: `/emails/receiving/${email.id}`,
+    href: messageHref("received", email.id),
     party: email.from,
     summary: email.subject,
     to: email.to,
@@ -172,11 +175,9 @@ export function useThread(id: Id<"conversations"> | undefined) {
     () => [...query.results].reverse(),
     [query.results]
   )
-  return {
-    messages,
-    status: query.status,
-    loadOlder: () => query.loadMore(THREAD_PAGE),
-  }
+  const { loadMore } = query
+  const loadOlder = React.useCallback(() => loadMore(THREAD_PAGE), [loadMore])
+  return { messages, status: query.status, loadOlder }
 }
 
 /** The team's WhatsApp templates Meta approved for one WABA, newest
@@ -185,19 +186,17 @@ export function useApprovedTemplates(
   wabaId: string | null | undefined,
   search: string
 ) {
-  const rows = useTeamQuery(
-    api.templates.options,
-    { channel: "whatsapp", search },
-    { enabled: !!wabaId }
-  )
-  return React.useMemo(
-    () =>
-      (rows ?? []).filter(
-        (row) =>
-          row.whatsapp?.wabaId === wabaId &&
-          sendableStatus(row.whatsapp?.metaStatus)
-      ),
-    [rows, wabaId]
+  return (
+    useTeamQuery(
+      api.templates.options,
+      {
+        channel: "whatsapp",
+        wabaId: wabaId ?? undefined,
+        approvedOnly: true,
+        search,
+      },
+      { enabled: !!wabaId }
+    ) ?? []
   )
 }
 

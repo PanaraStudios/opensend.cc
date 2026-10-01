@@ -25,7 +25,7 @@ export type WhatsAppSettings = Pick<
   "wabaId" | "language" | "category"
 >
 
-export const WHATSAPP_ACCOUNT_MISSING =
+const WHATSAPP_ACCOUNT_MISSING =
   "Connect a WhatsApp Business Account on the Channels page first"
 export const TEMPLATE_NAME_TAKEN =
   "A WhatsApp template with this name and language already exists"
@@ -90,16 +90,27 @@ export async function freeTemplateName(
   target: { wabaId: string; language: string }
 ) {
   const base = templateNameFrom(name).slice(0, TEMPLATE_LIMITS.name - 4)
+  const rows = await ctx.db
+    .query("templates")
+    .withIndex("by_organizationId_and_name_and_whatsapp_language", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .gte("name", base)
+        .lt("name", `${base}￿`)
+    )
+    .take(1000)
+  const taken = new Set(
+    rows
+      .filter(
+        (row) =>
+          row.whatsapp?.wabaId === target.wabaId &&
+          row.whatsapp.language === target.language
+      )
+      .map((row) => row.name)
+  )
   for (let n = 1; n < 1000; n++) {
     const candidate = n === 1 ? base : `${base}_${n}`
-    const rows = await namesakes(
-      ctx,
-      organizationId,
-      candidate,
-      target.language
-    )
-    if (!rows.some((row) => row.whatsapp?.wabaId === target.wabaId))
-      return candidate
+    if (!taken.has(candidate)) return candidate
   }
   throw new ConvexError(TEMPLATE_NAME_TAKEN)
 }

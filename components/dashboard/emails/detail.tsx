@@ -1,4 +1,5 @@
 "use client"
+import { fromWaId } from "@/lib/dashboard/phone"
 
 import * as React from "react"
 import Link from "next/link"
@@ -487,7 +488,12 @@ export function ChannelMessageDetail() {
   const { message, account, events } = found
   const inbound = message.direction === "inbound"
   const number = account?.handle ?? message.from
-  const person = `+${(inbound ? message.from : message.to).replace(/^\+/, "")}`
+  const person =
+    message.channel === "whatsapp"
+      ? fromWaId(inbound ? message.from : message.to)
+      : inbound
+        ? message.from
+        : message.to
   const payload: unknown = JSON.parse(found.payload)
   const template =
     message.type === "template" &&

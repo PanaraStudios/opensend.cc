@@ -1,4 +1,12 @@
 /// <reference types="vite/client" />
+import {
+  pagesFixture,
+  pageGraphRoutes,
+  pageEnvelope,
+  PAGE_ID,
+  PSID,
+  IGSID,
+} from "./testHelpers/pages.fixture"
 import workpoolTest from "@convex-dev/workpool/test"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import type { Id } from "./_generated/dataModel"
@@ -13,7 +21,7 @@ import {
   signedWebhook,
 } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
-import { WINDOW_CLOSED } from "./channels/messages"
+import { WHATSAPP_WINDOW_CLOSED as WINDOW_CLOSED } from "../lib/meta/payloads"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -502,3 +510,73 @@ test("Sending and Receiving merge email and WhatsApp by time, and filter by chan
     })
   ).rejects.toBeDefined()
 })
+
+for (const channel of ["messenger", "instagram"] as const) {
+  test(`an inbox reply to ${channel} uses its own account, recipient, payload and window`, async () => {
+    const graph = fakeGraph(pageGraphRoutes())
+    const f = await pagesFixture()
+    const payload = pageEnvelope(channel, {
+      message: { mid: `mid.inbox.${channel}`, text: "Question" },
+    })
+    expect(
+      (
+        await f.t.fetch(
+          "/meta/webhook",
+          await signedWebhook(APP_SECRET, payload)
+        )
+      ).status
+    ).toBe(200)
+    const event = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").order("desc").first()
+    )
+    await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const threads = await f.member.client.query(api.conversations.list, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: page,
+    })
+    const id = threads.page[0].conversation._id
+    await expect(
+      f.outsider.client.mutation(api.conversations.reply, {
+        id,
+        text: "Forbidden",
+      })
+    ).rejects.toBeDefined()
+    const sent = (await f.member.client.mutation(api.conversations.reply, {
+      id,
+      text: "On its way!",
+    })) as Id<"channelMessages">
+    const message = await f.t.run((ctx) => ctx.db.get("channelMessages", sent))
+    expect(message).toMatchObject({
+      channel,
+      conversationId: id,
+      source: "dashboard",
+      to: channel === "messenger" ? PSID : IGSID,
+      status: "queued",
+    })
+    const claim = await f.t.mutation(internal.channels.messages.claim, {
+      id: sent,
+      generation: 0,
+    })
+    expect(claim!.phoneNumberId).toBe(PAGE_ID)
+    expect(JSON.parse(claim!.payload)).toMatchObject({
+      recipient: { id: message!.to },
+      message: { text: "On its way!" },
+    })
+    const bubbles = await f.member.client.query(api.conversations.messages, {
+      id,
+      paginationOpts: page,
+    })
+    expect(bubbles.page.map((bubble) => bubble.text)).toEqual([
+      "On its way!",
+      "Question",
+    ])
+    await f.t.run((ctx) =>
+      patchRow(ctx, "conversations", id, { windowExpiresAt: Date.now() - 1 })
+    )
+    await expect(
+      f.member.client.mutation(api.conversations.reply, { id, text: "Late" })
+    ).rejects.toMatchObject({ data: expect.stringContaining("24-hour") })
+    expect(graph.to(`/${PAGE_ID}/messages`)).toHaveLength(0)
+  })
+}

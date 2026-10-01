@@ -1,9 +1,7 @@
 import { v } from "convex/values"
 import { internalMutation } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { callerValue, requireCaller } from "../api/caller"
-import { assertChannelSendingKey } from "../api/whatsapp"
-import { resolveWhatsAppAccount } from "./messages"
+import { callerValue } from "../api/caller"
 import { idempotent } from "../api/idempotency"
 
 export const complete = internalMutation({
@@ -18,9 +16,6 @@ export const complete = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { caller, ...file }) => {
-    await requireCaller(ctx, caller, "sending")
-    assertChannelSendingKey(caller)
-    await resolveWhatsAppAccount(ctx, caller.organizationId, file.accountId)
     await idempotent(
       ctx,
       caller,
@@ -45,13 +40,9 @@ export const tokenInvalid = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { caller, accountId, error }) => {
-    await requireCaller(ctx, caller, "sending")
-    assertChannelSendingKey(caller)
-    const account = await resolveWhatsAppAccount(
-      ctx,
-      caller.organizationId,
-      accountId
-    )
+    const account = await ctx.db.get("channelAccounts", accountId)
+    if (!account || account.organizationId !== caller.organizationId)
+      return null
     await ctx.db.patch("metaConnections", account.connectionId, {
       status: "error",
       error,

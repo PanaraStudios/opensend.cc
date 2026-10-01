@@ -1,3 +1,4 @@
+import { object, array, string } from "../../lib/meta/parse"
 import type { Doc } from "../_generated/dataModel"
 
 /** The same message contract is used by senders and webhook projections. */
@@ -5,15 +6,11 @@ export function channelMessagePayload(
   message: Doc<"channelMessages">,
   payload: Record<string, unknown> = {}
 ) {
-  const pageMessage =
-    typeof payload.message === "object" && payload.message !== null
-      ? (payload.message as Record<string, unknown>)
-      : {}
-  const attachment =
-    typeof pageMessage.attachment === "object" &&
-    pageMessage.attachment !== null
-      ? (pageMessage.attachment as Record<string, unknown>)
-      : {}
+  const pageMessage = object(payload.message)
+  const attachment = object(
+    pageMessage.attachment ?? array(pageMessage.attachments)[0]
+  )
+  const postback = object(payload.postback)
   return {
     id: message._id,
     channel: message.channel,
@@ -44,8 +41,17 @@ export function channelMessagePayload(
     ...(pageMessage.quick_replies
       ? { quick_replies: pageMessage.quick_replies }
       : {}),
-    ...(payload.button ? { button: payload.button } : {}),
-    ...(payload.quick_reply ? { quick_reply: payload.quick_reply } : {}),
+    ...(payload.button || payload.postback
+      ? {
+          button: payload.button ?? {
+            text: string(postback.title),
+            payload: string(postback.payload),
+          },
+        }
+      : {}),
+    ...(payload.quick_reply || pageMessage.quick_reply
+      ? { quick_reply: payload.quick_reply ?? pageMessage.quick_reply }
+      : {}),
     ...(["location", "interactive", "reaction"].includes(message.type)
       ? { [message.type]: payload[message.type] ?? null }
       : {}),

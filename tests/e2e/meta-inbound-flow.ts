@@ -1,24 +1,25 @@
+import { connectWhatsApp, WABA, PHONE_ID, META_TOKEN } from "./meta-fixtures"
+import { createApiKey } from "./broadcast-received-flow"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
-import type { Doc, Id } from "../../convex/_generated/dataModel"
+import type { Doc } from "../../convex/_generated/dataModel"
 import { api } from "../../convex/_generated/api"
-import { client, backendRows, testBackendValue } from "./ses-fixtures"
+import { client, backendRows } from "./ses-fixtures"
 
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
-const PHONE_ID = "106540352242922"
 const SENDER = "16505551234"
 const envelope = (value: unknown) => ({
   object: "whatsapp_business_account",
   entry: [
     {
-      id: "102290129340398",
+      id: WABA,
       changes: [
         {
           field: "messages",
           value: {
             metadata: {
               phone_number_id: PHONE_ID,
-              display_phone_number: "15550783881",
+              display_phone_number: "+1 555-0001",
             },
             ...(value as object),
           },
@@ -62,10 +63,7 @@ export function metaInboundTests(
   test("projects signed replies, dedupes, creates an Audience contact, delivers customer events, applies statuses and stores media", async () => {
     const { owner, organizationId } = state()
     const backend = await client(owner)
-    const accountId = testBackendValue<Id<"channelAccounts">>(
-      "meta/fixtures:seedAccount",
-      { organizationId }
-    )
+    const accountId = await connectWhatsApp(owner, organizationId)
     const webhookId = await backend.action(api.webhooks.create, {
       organizationId,
       endpoint: "https://meta-inbound.invalid/received",
@@ -115,8 +113,9 @@ export function metaInboundTests(
         path: `${process.env.OPENSEND_TEST_RESULTS}/meta-inbound-audience.png`,
         fullPage: true,
       })
+      // The contact cell links with the identity label: the WhatsApp profile name.
       await contact
-        .getByRole("link", { name: "+16505551234", exact: true })
+        .getByRole("link", { name: "Sheena Nelson", exact: true })
         .click()
       await expect(owner.getByLabel("Phone", { exact: true })).toHaveValue(
         "+16505551234"
@@ -125,17 +124,31 @@ export function metaInboundTests(
         path: `${process.env.OPENSEND_TEST_RESULTS}/meta-inbound-contact.png`,
         fullPage: true,
       })
-      const outboundId = testBackendValue<string>(
-        "meta/fixtures:seedOutbound",
-        { accountId, externalId: "wamid.e2e-outbound" }
+      const headers = await createApiKey(owner, "Meta inbound reply E2E")
+      const sent = await owner.request.post(
+        `${process.env.OPENSEND_CALLBACK_ORIGIN}/whatsapp/messages`,
+        {
+          headers,
+          data: { from: accountId, to: SENDER, text: "E2E reply" },
+        }
       )
+      expect(sent.status()).toBe(200)
+      const { id: outboundId } = await sent.json()
+      const outbound = () =>
+        backendRows<Doc<"channelMessages">>("channelMessages").find(
+          (row) => row._id === outboundId
+        )
+      await expect
+        .poll(() => outbound()?.externalId, { timeout: 45000 })
+        .toBeTruthy()
+      const externalId = outbound()!.externalId!
       for (const status of ["delivered", "read"]) {
         await post(
           owner,
           envelope({
             statuses: [
               {
-                id: "wamid.e2e-outbound",
+                id: externalId,
                 status,
                 timestamp: String(Math.floor(Date.now() / 1000)),
                 recipient_id: SENDER,
@@ -179,12 +192,12 @@ export function metaInboundTests(
             method: "GET",
             path: "/meta-inbound-media",
             version: "v25.0",
-            authorization: "Bearer meta-inbound-e2e-token",
+            authorization: `Bearer ${META_TOKEN}`,
           }),
           expect.objectContaining({
             method: "GET",
             path: "/media-download/meta-inbound-media",
-            authorization: "Bearer meta-inbound-e2e-token",
+            authorization: `Bearer ${META_TOKEN}`,
           }),
         ])
       )

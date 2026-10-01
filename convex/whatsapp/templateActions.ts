@@ -259,6 +259,7 @@ async function syncWaba(ctx: ActionCtx, wabaId: string) {
   const syncedAt = Date.now()
   let after: string | undefined
   let count = 0
+  const seenMetaIds: string[] = []
   for (let page = 0; page < MAX_PAGES; page++) {
     const result = await friendly(
       ctx,
@@ -273,13 +274,13 @@ async function syncWaba(ctx: ActionCtx, wabaId: string) {
       access.connectionId
     )
     const templates = readMetaTemplates(result.data)
-    if (templates.length)
-      await ctx.runMutation(internal.whatsapp.templates.upsertSynced, {
-        organizationId,
-        wabaId,
-        syncedAt,
-        templates,
-      })
+    await ctx.runMutation(internal.whatsapp.templates.upsertSynced, {
+      organizationId,
+      wabaId,
+      syncedAt,
+      templates,
+    })
+    seenMetaIds.push(...templates.map((template) => template.id))
     count += templates.length
     const paging = record(result.paging)
     const cursor = record(paging.cursors).after
@@ -290,6 +291,7 @@ async function syncWaba(ctx: ActionCtx, wabaId: string) {
         wabaId,
         syncedAt,
         cursor: null,
+        seenMetaIds,
       })
       return count
     }

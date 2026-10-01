@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { CopyIcon, KeyRoundIcon, RefreshCwIcon, UnplugIcon } from "lucide-react"
+import { KeyRoundIcon, RefreshCwIcon, UnplugIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { toast } from "@/components/ui/toast"
 import {
   ChannelAccountStatusBadge,
   ChannelQualityBadge,
@@ -26,10 +25,10 @@ import {
   ResourceTable,
   Th,
   ToolbarFilters,
-  copyToClipboard,
-  usePagedList,
+  useTeamList,
 } from "@/components/dashboard/primitives"
 import {
+  CopyChannelHandleItem,
   CHANNEL_ICONS,
   CHANNEL_ITEMS,
   ChannelsIcon,
@@ -43,7 +42,6 @@ import {
 } from "@/components/dashboard/channels/connect-meta"
 import { api } from "@/convex/_generated/api"
 import { channelHandle } from "@/lib/meta/account-display"
-import { actionError } from "@/lib/action-error"
 import type { MessagingChannel } from "@/lib/dashboard/types"
 import {
   useChannelCommands,
@@ -53,7 +51,7 @@ import {
 } from "@/lib/channels/use-channels"
 
 export function ChannelsView() {
-  const { organizationId, canWrite, syncAccount } = useChannelCommands()
+  const { canWrite, syncAccount, syncing } = useChannelCommands()
   const config = useMetaPublicConfig()
   const [channel, setChannel] = React.useState("all")
   const [manualOpen, setManualOpen] = React.useState<
@@ -65,19 +63,11 @@ export function ChannelsView() {
   } | null>(null)
   const [disconnecting, setDisconnecting] =
     React.useState<ChannelAccount | null>(null)
-  const [syncing, setSyncing] = React.useState<string | null>(null)
 
-  const accounts = usePagedList(
+  const accounts = useTeamList(
     api.meta.connect.listAccounts,
     api.meta.connect.countAccounts,
-    organizationId
-      ? {
-          organizationId,
-          ...(channel !== "all"
-            ? { channel: channel as MessagingChannel }
-            : {}),
-        }
-      : "skip"
+    channel !== "all" ? { channel: channel as MessagingChannel } : {}
   )
   const { rows, pageRows, pagination } = accounts
   const unfiltered = channel === "all"
@@ -86,24 +76,6 @@ export function ChannelsView() {
   function connected(result: ConnectedBusiness) {
     const pending = result.accounts.find((account) => !account.registered)
     if (pending) setRegistering({ id: pending.id, handle: pending.handle })
-  }
-
-  async function sync(id: string) {
-    setSyncing(id)
-    try {
-      await syncAccount(id)
-      toast.add({
-        type: "success",
-        title:
-          rows.find((row) => row._id === id)?.channel === "whatsapp"
-            ? "Number synced"
-            : "Account synced",
-      })
-    } catch (e) {
-      toast.add({ type: "error", title: actionError(e) })
-    } finally {
-      setSyncing(null)
-    }
   }
 
   const connectButtons = (
@@ -219,22 +191,10 @@ export function ChannelsView() {
                 <TableCell>
                   <MoreMenu>
                     <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          void copyToClipboard(
-                            account.handle,
-                            account.channel === "whatsapp" ? "Number" : "Handle"
-                          )
-                        }
-                      >
-                        <CopyIcon />
-                        {account.channel === "whatsapp"
-                          ? "Copy number"
-                          : "Copy handle"}
-                      </DropdownMenuItem>
+                      <CopyChannelHandleItem account={account} />
                       <DropdownMenuItem
                         disabled={!canWrite || syncing === account._id}
-                        onClick={() => void sync(account._id)}
+                        onClick={() => void syncAccount(account)}
                       >
                         <RefreshCwIcon />
                         Sync

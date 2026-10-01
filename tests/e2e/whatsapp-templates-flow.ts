@@ -1,11 +1,12 @@
+import { connectWhatsApp, WABA } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import type { Doc } from "../../convex/_generated/dataModel"
-import { backendRows, testBackendValue } from "./ses-fixtures"
+import { backendRows } from "./ses-fixtures"
+import { choose } from "./whatsapp-campaigns-flow"
 
-/** The seeded WhatsApp account's WABA (convex/meta/fixtures.ts), and the
+/** The connected WhatsApp account's WABA (meta-fixtures.ts), and the
     app secret metaAppTests saved. */
-const WABA = "102290129340398"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const NAME = "e2e_order_update"
 const BODY = "Hi {{1}}, your order is ready."
@@ -24,7 +25,7 @@ async function callsTo(page: Page, method: string, path: string) {
   ).json()
   return calls.filter((call) => call.method === method && call.path === path)
 }
-/** A signed Meta webhook for the seeded WABA. */
+/** A signed Meta webhook for the connected WABA. */
 async function templateWebhook(page: Page, value: Record<string, unknown>) {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
@@ -59,14 +60,14 @@ async function filterChannel(page: Page, label: "All channels" | "WhatsApp") {
   await page.getByRole("option", { name: label, exact: true }).click()
 }
 
-/** Runs after metaInboundTests, whose seeded WhatsApp account stays
+/** Runs after metaInboundTests, whose connected WhatsApp account stays
     connected to the owner's team. */
 export function whatsappTemplatesTests(
   state: () => { owner: Page; organizationId: string }
 ) {
   test("a WhatsApp template is written, submitted, approved by webhook and synced", async () => {
     const { owner, organizationId } = state()
-    testBackendValue("meta/fixtures:seedAccount", { organizationId })
+    await connectWhatsApp(owner, organizationId)
     await owner.request.post(`${fakeGraph()}/__reset`)
 
     // The Templates list filters by channel.
@@ -86,10 +87,10 @@ export function whatsappTemplatesTests(
     await owner.getByTestId("editor-name").fill(NAME)
     await owner.getByTestId("editor-name").press("Tab")
     await expect(owner.getByTestId("editor-name")).toHaveValue(NAME)
-    await owner.getByLabel("Category", { exact: true }).selectOption("UTILITY")
-    await expect(owner.getByLabel("Language", { exact: true })).toHaveValue(
-      "en_US"
-    )
+    await choose(owner, "Category", "Utility")
+    await expect(
+      owner.getByRole("combobox", { name: "Language", exact: true })
+    ).toHaveText(/English \(US\)/)
     await owner.getByLabel("Body", { exact: true }).fill(BODY)
     await owner
       .getByLabel("Example for {{1}} in the body", { exact: true })
@@ -135,11 +136,15 @@ export function whatsappTemplatesTests(
       ""
     )
 
-    // Meta approves it by webhook; the list shows Approved.
+    // Meta approves it: its listing says so, and a webhook tells us. The
+    // list shows Approved, and later syncs keep it approved.
     const row = backendRows<Doc<"templates">>("templates").find(
       (template) => template.name === NAME
     )!
     const metaTemplateId = row.whatsapp!.metaTemplateId!
+    await owner.request.post(`${fakeGraph()}/__templates/${metaTemplateId}`, {
+      data: { status: "APPROVED" },
+    })
     await templateWebhook(owner, {
       event: "APPROVED",
       message_template_id: Number(metaTemplateId),

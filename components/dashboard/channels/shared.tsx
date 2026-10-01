@@ -3,8 +3,27 @@
 import * as React from "react"
 import Link from "next/link"
 import { useQuery } from "convex/react"
-import { MailIcon, RadioTowerIcon, TriangleAlertIcon } from "lucide-react"
+import {
+  CopyIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  MailIcon,
+  RadioTowerIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 
+import { CHANNELS } from "@/lib/channels"
+import { IconCell, copyToClipboard } from "@/components/dashboard/primitives"
+import { rowChannel } from "@/lib/channels"
+import { channelLabel } from "@/lib/dashboard/format"
+import type { BroadcastChannel } from "@/lib/dashboard/types"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { api } from "@/convex/_generated/api"
 import {
   InstagramIcon,
@@ -28,11 +47,7 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field"
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp"
+import { CodeInput } from "@/components/ui/input-otp"
 import { toast } from "@/components/ui/toast"
 import {
   TypeToConfirmDialog,
@@ -56,6 +71,22 @@ export const CHANNEL_ICONS: Record<
 }
 
 /** A channel's mark: Lucide's mail for email, the brand's for the rest. */
+export function CopyChannelHandleItem({
+  account,
+}: {
+  account: { channel: MessagingChannel; handle: string }
+}) {
+  const label = CHANNELS[account.channel].handleLabel
+  return (
+    <DropdownMenuItem
+      onClick={() => void copyToClipboard(account.handle, label)}
+    >
+      <CopyIcon />
+      Copy {label.toLowerCase()}
+    </DropdownMenuItem>
+  )
+}
+
 export const channelIcon = (channel: Channel) =>
   channel === "email" ? MailIcon : CHANNEL_ICONS[channel]
 
@@ -65,6 +96,45 @@ export const MESSAGE_CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "email", label: "Email" },
   { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
 ]
+
+export function ChannelCell({ channel }: { channel?: Channel }) {
+  const value = rowChannel({ channel })
+  return <IconCell icon={channelIcon(value)}>{channelLabel(value)}</IconCell>
+}
+/** The existing Email/WhatsApp creation menu used by messaging resources. */
+export function ChannelCreateMenu({
+  noun,
+  onCreate,
+}: {
+  noun: "broadcast" | "template"
+  onCreate: (channel: BroadcastChannel) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button data-testid={`create-${noun}`} />}>
+        <PlusIcon data-icon="inline-start" />
+        Create {noun}
+        <ChevronDownIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          {MESSAGE_CHANNEL_ITEMS.filter((item) => item.value !== "all").map(
+            (item) => {
+              const value = item.value as BroadcastChannel
+              const Icon = channelIcon(value)
+              return (
+                <DropdownMenuItem key={value} onClick={() => onCreate(value)}>
+                  <Icon />
+                  {channelLabel(value)}
+                </DropdownMenuItem>
+              )
+            }
+          )}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export const CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },
@@ -182,24 +252,15 @@ export function RegisterNumberDialog({
             <FieldLabel htmlFor="channel-pin">
               Two-step verification PIN
             </FieldLabel>
-            <InputOTP
+            <CodeInput
               id="channel-pin"
-              maxLength={6}
-              inputMode="numeric"
-              pattern="^\d*$"
               value={pin}
               autoFocus
               onChange={(next) => {
                 setPin(next)
                 setError(null)
               }}
-            >
-              <InputOTPGroup>
-                {Array.from({ length: 6 }, (_, index) => (
-                  <InputOTPSlot key={index} index={index} />
-                ))}
-              </InputOTPGroup>
-            </InputOTP>
+            />
             {error ? (
               <FieldError>{error}</FieldError>
             ) : (

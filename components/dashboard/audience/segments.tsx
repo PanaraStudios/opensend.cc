@@ -1,4 +1,5 @@
 "use client"
+import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -369,7 +370,7 @@ function SegmentPage({
                           })
                         )
                       }}
-                      aria-label={`Include ${contact.email || contact.phone || "contact"}`}
+                      aria-label={`Include ${contactIdentity(contact).label}`}
                     />
                   </TableCell>
                   <TableCell>
@@ -377,7 +378,7 @@ function SegmentPage({
                       href={`/contacts/${contact.id}`}
                       className="hover:underline"
                     >
-                      {contact.email || contact.phone || "—"}
+                      {contactIdentity(contact).label}
                     </Link>
                   </TableCell>
                   <TableCell className="text-muted-foreground">

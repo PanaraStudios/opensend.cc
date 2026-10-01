@@ -1,3 +1,5 @@
+import { templateChannels, assertTemplateFields } from "./templateChannels"
+import { rowChannel } from "../lib/channels"
 import { includeSelected, OPTION_LIMIT } from "../lib/dashboard/options"
 import { selectedOption, hasTeamRows, teamRow, searchOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -26,13 +28,11 @@ import {
   templateVariableValue,
   whatsappTemplateValue,
 } from "./tables/templates"
-import { object } from "../lib/meta/webhooks"
 import {
   localTemplate,
   localTemplateVariables,
   localTemplateSource,
 } from "../lib/meta/local-templates"
-import { pageMessageContent } from "../lib/meta/payloads"
 import { channelValue } from "./tables/channels"
 import {
   assertChangeAllowed,
@@ -232,15 +232,9 @@ export async function insertTemplate(
   const page = draft.channel === "messenger" || draft.channel === "instagram"
   if (page) {
     try {
-      const content = localTemplate(draft.content ?? { text: draft.text ?? "" })
-      draft = {
-        ...draft,
-        html: "",
-        subject: "",
-        preview: "",
-        text: content.text,
-        content,
-      }
+      const normalized =
+        templateChannels[rowChannel(draft)].normalizeContent(draft)
+      draft = { ...draft, ...normalized, html: "", subject: "", preview: "" }
     } catch (error) {
       throw new ConvexError(
         error instanceof Error ? error.message : "Invalid template"
@@ -361,7 +355,7 @@ export const storedChannel = (
   channel: Infer<typeof channelValue> | undefined
 ) => (channel === "email" ? undefined : channel)
 export const templateChannel = (row: Pick<Doc<"templates">, "channel">) =>
-  row.channel ?? "email"
+  rowChannel(row)
 
 // Scan 512 metadata rows; reserve one maximum-size (1 MiB) draft per match.
 export const TEMPLATE_SEARCH_BUDGET = {
@@ -452,6 +446,43 @@ export const hasAny = query({
     hasTeamRows(ctx, "templates", organizationId),
 })
 
+/** Approved WhatsApp metadata, filtered before the picker limit is applied. */
+export async function approvedTemplateOptions(
+  ctx: QueryCtx,
+  organizationId: string,
+  input: {
+    wabaId?: string
+    approvedOnly?: boolean
+    search?: string
+    selectedId?: string
+  }
+) {
+  const matches = matchesSearch(input.search)
+  const eligible = (row: Doc<"templates">) =>
+    rowChannel(row) === "whatsapp" &&
+    (!input.wabaId || row.whatsapp?.wabaId === input.wabaId) &&
+    (!input.approvedOnly ||
+      (row.status === "published" && row.whatsapp?.metaStatus === "APPROVED"))
+  const result = await stream(ctx.db, schema)
+    .query("templates")
+    .withIndex("by_organizationId_and_channel", (q) =>
+      q.eq("organizationId", organizationId).eq("channel", "whatsapp")
+    )
+    .order("desc")
+    .filterWith(async (row) => eligible(row) && matches(row.name, row.alias))
+    .paginate({
+      cursor: null,
+      numItems: OPTION_LIMIT,
+      maximumRowsRead: 512,
+      maximumBytesRead: 4 * 1024 * 1024,
+    })
+  return includeSelected(
+    result.page,
+    await selectedOption(ctx, "templates", organizationId, input.selectedId),
+    (row) => row._id
+  ).filter(eligible)
+}
+
 /** The team's newest templates, without their bodies: for pickers on other
     screens, which re-render on every autosave. */
 export const options = query({
@@ -461,20 +492,32 @@ export const options = query({
     selectedId: v.optional(v.id("templates")),
     /** Email when left out: the email pickers predate channels. */
     channel: v.optional(channelValue),
+    wabaId: v.optional(v.string()),
+    approvedOnly: v.optional(v.boolean()),
   },
   returns: v.array(schema.doc("templates")),
-  handler: async (ctx, { organizationId, search, selectedId, channel }) => {
+  handler: async (
+    ctx,
+    { organizationId, search, selectedId, channel, wabaId, approvedOnly }
+  ) => {
     await requireTeam(ctx, organizationId, "read")
+    if (wabaId || approvedOnly)
+      return approvedTemplateOptions(ctx, organizationId, {
+        wabaId,
+        approvedOnly,
+        search,
+        selectedId,
+      })
     const rows = search?.trim()
       ? (await searchOptions(ctx, "templates", organizationId, search)).filter(
-          (row) => templateChannel(row) === (channel ?? "email")
+          (row) => templateChannel(row) === rowChannel({ channel })
         )
       : await ctx.db
           .query("templates")
           .withIndex("by_organizationId_and_channel", (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("channel", storedChannel(channel ?? "email"))
+              .eq("channel", storedChannel(rowChannel({ channel })))
           )
           .order("desc")
           .take(OPTION_LIMIT)
@@ -495,6 +538,7 @@ export const get = query({
       template: schema.doc("templates"),
       html: v.string(),
       content: v.optional(v.any()),
+      components: v.optional(v.any()),
     })
   ),
   handler: async (ctx, { organizationId, id }) => {
@@ -502,7 +546,12 @@ export const get = query({
     const template = await teamRow(ctx, "templates", organizationId, id)
     if (!template) return null
     const draft = await findDraft(ctx, template._id)
-    return { template, html: draft?.html ?? "", content: draft?.content }
+    return {
+      template,
+      html: draft?.html ?? "",
+      content: draft?.content,
+      ...(isWhatsApp(template) ? { components: draft?.content ?? [] } : {}),
+    }
   },
 })
 
@@ -604,22 +653,29 @@ export type PublishedTemplate = Infer<typeof publishedTemplateValue>
 
 /** The live version of a team's template, by id or alias; null when there is
     no such template or it is not published. Sends read only this. */
+/** Shared id-or-alias lookup, scoped to the team and the requested channel. */
+export async function teamTemplate(
+  ctx: QueryCtx,
+  organizationId: string,
+  idOrAlias: string,
+  channel: Infer<typeof channelValue>
+): Promise<Doc<"templates"> | null> {
+  const id = ctx.db.normalizeId("templates", idOrAlias)
+  const row = id
+    ? await ctx.db.get("templates", id)
+    : await aliasOwner(ctx, organizationId, idOrAlias)
+  return row?.organizationId === organizationId && rowChannel(row) === channel
+    ? row
+    : null
+}
+
 export async function publishedTemplate(
   ctx: QueryCtx,
   organizationId: string,
   idOrAlias: string
 ): Promise<PublishedTemplate | null> {
-  const id = ctx.db.normalizeId("templates", idOrAlias)
-  const template: Doc<"templates"> | null = id
-    ? await ctx.db.get("templates", id)
-    : await aliasOwner(ctx, organizationId, idOrAlias)
-  // An email send never takes a WhatsApp template.
-  if (
-    !template ||
-    template.organizationId !== organizationId ||
-    (template.channel !== undefined && template.channel !== "email")
-  )
-    return null
+  const template = await teamTemplate(ctx, organizationId, idOrAlias, "email")
+  if (!template) return null
   const live = await findPublished(ctx, template._id)
   if (!live) return null
   const {
@@ -730,17 +786,6 @@ async function aliasAfterEdit(
   return alias
 }
 
-const EMAIL_FIELDS = [
-  "subject",
-  "preview",
-  "html",
-  "text",
-  "from",
-  "replyTo",
-  "variableDefinitions",
-  "replyToAddresses",
-] as const
-
 /** An edit of a WhatsApp draft: its name, Meta settings and components.
     What Meta fixes once a template is submitted stays fixed. */
 async function updateWhatsAppTemplate(
@@ -751,8 +796,7 @@ async function updateWhatsAppTemplate(
   const current = template.whatsapp
   const draft = await findDraft(ctx, template._id)
   if (!current || !draft) throw new ConvexError("Template not found")
-  if (EMAIL_FIELDS.some((key) => input[key] !== undefined))
-    throw new ConvexError("WhatsApp templates have no email fields")
+  assertTemplateFields("whatsapp", input)
   const name =
     input.name !== undefined ? templateNameFrom(input.name) : template.name
   const renamed = name !== template.name
@@ -822,8 +866,7 @@ export async function updateTemplate(
   input: Input
 ) {
   if (isWhatsApp(template)) return updateWhatsAppTemplate(ctx, template, input)
-  if (input.whatsapp !== undefined)
-    throw new ConvexError("Only WhatsApp templates have WhatsApp settings")
+  assertTemplateFields(rowChannel(template), input)
   const id = template._id
   const draft = await findDraft(ctx, id)
   if (!draft) throw new ConvexError("Template not found")
@@ -831,26 +874,15 @@ export async function updateTemplate(
   const page =
     template.channel === "messenger" || template.channel === "instagram"
   if (page) {
-    if (
-      ["html", "subject", "from", "replyTo", "replyToAddresses"].some(
-        (key) => input[key as keyof Input] !== undefined
+    try {
+      input = templateChannels[rowChannel(template)].normalizeContent(
+        input,
+        draft.content
       )
-    )
-      throw new ConvexError("Messaging templates have no email fields")
-    if (input.content !== undefined || input.text !== undefined) {
-      try {
-        const content = localTemplate({
-          ...localTemplate(draft.content),
-          ...(input.content !== undefined
-            ? object(input.content)
-            : { text: input.text }),
-        })
-        input = { ...input, content, text: content.text }
-      } catch (error) {
-        throw new ConvexError(
-          error instanceof Error ? error.message : "Invalid template"
-        )
-      }
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof Error ? error.message : "Invalid template"
+      )
     }
   }
   const current: Draft = {
@@ -941,32 +973,24 @@ export async function updateTemplate(
   return null
 }
 
-export const SUBMIT_TO_META =
-  "WhatsApp templates are published by submitting them to Meta"
+export { SUBMIT_TO_META } from "./templateChannels"
 
 export async function publishTemplate(
   ctx: MutationCtx,
   template: Doc<"templates">
 ) {
-  if (isWhatsApp(template)) throw new ConvexError(SUBMIT_TO_META)
   const id = template._id
   const draft = await findDraft(ctx, id)
   const page =
     template.channel === "messenger" || template.channel === "instagram"
-  if (!draft || !(page ? draft.text?.trim() : draft.html.trim()))
-    throw new ConvexError("Add content to this template before publishing")
-  if (page) {
-    try {
-      pageMessageContent(
-        localTemplate(draft.content),
-        template.channel === "instagram" ? "instagram" : "messenger"
-      )
-    } catch (error) {
-      throw new ConvexError(
-        error instanceof Error ? error.message : "Invalid template"
-      )
-    }
+  try {
+    templateChannels[rowChannel(template)].publishCheck(draft)
+  } catch (error) {
+    throw new ConvexError(
+      error instanceof Error ? error.message : "Invalid template"
+    )
   }
+  if (!draft) throw new ConvexError("Template not found")
   const now = Math.max(Date.now(), template.updatedAt + 1)
   const version = {
     templateId: id,

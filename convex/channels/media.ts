@@ -2,9 +2,8 @@
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { graph, graphLocalOrigin } from "../meta/graph"
+import { graph, metaFetch } from "../meta/graph"
 import { decryptSecret } from "../secrets"
-import { publicFetch } from "../../lib/net/public-fetch"
 import { MetaError } from "../../lib/meta/errors"
 import { object, string } from "../../lib/meta/webhooks"
 
@@ -48,13 +47,12 @@ export const fetch = internalAction({
           isTransient: false,
           message: `${label} media is missing or exceeds 25 MB`,
         })
-      const response = await publicFetch(string(metadata.url), {
+      const response = await metaFetch(string(metadata.url), {
         ...(context.media.url
           ? {}
           : { headers: { authorization: `Bearer ${token}` } }),
         maxBytes: MAX_BYTES,
         timeoutMs: 30_000,
-        localOrigin: graphLocalOrigin(),
       })
       if (!response.ok)
         throw new MetaError({

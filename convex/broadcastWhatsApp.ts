@@ -1,4 +1,6 @@
-import { ConvexError, v } from "convex/values"
+import { primaryContactIdentity } from "./audience"
+import { contactChannelIdentityValue } from "./contacts"
+import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -17,33 +19,71 @@ import { requireTeam } from "./access"
 import { audience, recipientPage } from "./broadcasts"
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
-import { resolveVariables, variableSourcesError } from "../lib/meta/variables"
+import {
+  resolveVariables,
+  variableSourcesError,
+  type VariableSource,
+} from "../lib/meta/variables"
 import {
   createChannelMessage,
-  resolveWhatsAppAccount,
+  resolveChannelAccount,
 } from "./channels/messages"
-import { selectedOption } from "./lists"
-import { searchOptions } from "./lists"
-import { includeSelected } from "../lib/dashboard/options"
+import { findWhatsAppIdentity } from "./channels/identity"
+import { matchesSearch } from "./lists"
 import {
-  resolvedTemplateValue,
   resolveWhatsAppTemplate,
+  whatsappSendComponents,
 } from "./whatsapp/templates"
+import { resolvedTemplateValue } from "./tables/templates"
+import { skipReasonValue } from "./tables/broadcasts"
+import { channelMessageStatusValue } from "./tables/channels"
+import { teamTemplate, approvedTemplateOptions } from "./templates"
 import { insertRow } from "./counts"
 
-export async function campaignTemplate(
+export async function resolveWhatsAppSend(
   ctx: QueryCtx,
   organizationId: string,
-  config: Doc<"broadcasts">["whatsapp"]
+  config:
+    | {
+        accountId: string
+        templateId: string
+        variables: Record<string, VariableSource>
+      }
+    | undefined,
+  options: { draft?: boolean } = {}
 ) {
   if (!config)
     throw new ConvexError("Select a sending number and an approved template")
   const error = variableSourcesError(config.variables)
   if (error) throw new ConvexError(error)
-  const account = await resolveWhatsAppAccount(
+  if (options.draft) {
+    const accountId = ctx.db.normalizeId("channelAccounts", config.accountId)
+    const account = accountId
+      ? await ctx.db.get("channelAccounts", accountId)
+      : null
+    const template = await teamTemplate(
+      ctx,
+      organizationId,
+      config.templateId,
+      "whatsapp"
+    )
+    if (
+      !account ||
+      !template ||
+      account.organizationId !== organizationId ||
+      account.channel !== "whatsapp" ||
+      account.wabaId !== template.whatsapp?.wabaId
+    )
+      throw new ConvexError(
+        "Choose a WhatsApp template from the sending number’s WABA"
+      )
+    return null
+  }
+  const account = await resolveChannelAccount(
     ctx,
     organizationId,
-    config.accountId
+    config.accountId,
+    "whatsapp"
   )
   const template = await resolveWhatsAppTemplate(ctx, organizationId, {
     id: config.templateId,
@@ -54,14 +94,26 @@ export async function campaignTemplate(
   return { account, template }
 }
 
-export async function whatsappSkipReason(
+/** Use the send pipeline's account rule for both sends and picker options. */
+async function sendableAccount(ctx: QueryCtx, row: Doc<"channelAccounts">) {
+  try {
+    await resolveChannelAccount(ctx, row.organizationId, row._id, "whatsapp")
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function recipientSkipReason(
   ctx: QueryCtx,
   row: Pick<Doc<"broadcasts">, "organizationId">,
-  contact: Doc<"contacts">,
+  contact: Doc<"contacts"> | null,
   topic: Doc<"topics"> | null,
-  account: Doc<"channelAccounts">,
-  category: string
-) {
+  template?: Infer<typeof resolvedTemplateValue>,
+  variables: Record<string, VariableSource> = {}
+): Promise<Infer<typeof skipReasonValue> | null> {
+  if (!contact || contact.organizationId !== row.organizationId)
+    return "contact_deleted"
   if (!contact.phone) return "no_phone"
   if (contact.unsubscribed) return "unsubscribed"
   if (
@@ -72,24 +124,20 @@ export async function whatsappSkipReason(
     ) !== "subscribed"
   )
     return "topic_opt_out"
-  if (category === "MARKETING") {
-    const identity = await ctx.db
-      .query("channelContacts")
-      .withIndex(
-        "by_organizationId_and_channel_and_scopeId_and_externalId",
-        (q) =>
-          q
-            .eq("organizationId", row.organizationId)
-            .eq("channel", "whatsapp")
-            .eq("scopeId", "whatsapp")
-            .eq("externalId", contact.phone!.slice(1))
-      )
-      .unique()
-    if (
-      identity?.organizationId === row.organizationId &&
-      identity.marketingOptOut
+  if (template?.category === "MARKETING") {
+    const identity = await findWhatsAppIdentity(
+      ctx,
+      row.organizationId,
+      contact.phone
     )
-      return "marketing_opt_out"
+    if (identity?.marketingOptOut) return "marketing_opt_out"
+  }
+  if (template) {
+    try {
+      whatsappSendComponents(template, resolveVariables(variables, contact))
+    } catch {
+      return "missing_variables"
+    }
   }
   return null
 }
@@ -100,7 +148,7 @@ export async function sendWhatsAppRecipient(
   row: Doc<"broadcasts">,
   contact: Doc<"contacts">,
   topic: Doc<"topics"> | null,
-  target: Awaited<ReturnType<typeof campaignTemplate>>
+  target: NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
 ) {
   const previous = await ctx.db
     .query("broadcastRecipients")
@@ -109,27 +157,21 @@ export async function sendWhatsAppRecipient(
     )
     .unique()
   if (previous) return
-  let reason = await whatsappSkipReason(
+  const reason = await recipientSkipReason(
     ctx,
     row,
     contact,
     topic,
-    target.account,
-    target.template.category
+    target.template,
+    row.whatsapp!.variables
   )
   const variables = resolveVariables(row.whatsapp!.variables, contact)
-  if (!reason) {
-    try {
-      target.template.sendComponents(variables)
-    } catch {
-      reason = "missing_variables"
-    }
-  }
   const messageId = reason
     ? undefined
     : await createChannelMessage(
         ctx,
         {
+          channel: "whatsapp",
           from: target.account._id,
           to: contact.phone!,
           body: {
@@ -161,42 +203,76 @@ const estimateValue = v.object({
   skipped: v.number(),
   noPhone: v.number(),
 })
-export const reviewPage = internalQuery({
-  args: { ...scope, cursor: v.union(v.string(), v.null()) },
-  returns: estimateValue.extend({ done: v.boolean(), cursor: v.string() }),
-  handler: async (ctx, { organizationId, id, cursor }) => {
+const reviewContextValue = v.object({
+  row: schema.doc("broadcasts"),
+  topic: v.union(schema.doc("topics"), v.null()),
+  template: resolvedTemplateValue,
+})
+export const reviewContext = internalQuery({
+  args: scope,
+  returns: reviewContextValue,
+  handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId)
     const row = await ctx.db.get("broadcasts", id)
     if (
       !row ||
       row.organizationId !== organizationId ||
+      row._id !== id ||
       row.channel !== "whatsapp"
     )
       throw new ConvexError("Broadcast not found")
-    const target = await campaignTemplate(ctx, organizationId, row.whatsapp)
-    const topic = await audience(ctx, row)
-    const page = await recipientPage(ctx, row, cursor)
+    const target = (await resolveWhatsAppSend(
+      ctx,
+      organizationId,
+      row.whatsapp
+    ))!
+    const { sendComponents: _send, ...template } = target.template
+    void _send
+    return { row, topic: await audience(ctx, row), template }
+  },
+})
+export const reviewPage = internalQuery({
+  args: {
+    ...scope,
+    cursor: v.union(v.string(), v.null()),
+    context: v.optional(reviewContextValue),
+  },
+  returns: estimateValue.extend({ done: v.boolean(), cursor: v.string() }),
+  handler: async (ctx, { organizationId, id, cursor, context }) => {
+    await requireTeam(ctx, organizationId)
+    const row = context?.row ?? (await ctx.db.get("broadcasts", id))
+    if (
+      !row ||
+      row.organizationId !== organizationId ||
+      row._id !== id ||
+      row.channel !== "whatsapp"
+    )
+      throw new ConvexError("Broadcast not found")
+    const template =
+      context?.template ??
+      (await resolveWhatsAppSend(ctx, organizationId, row.whatsapp))!.template
+    const topic = context ? context.topic : await audience(ctx, row)
+    const page = await recipientPage(
+      ctx,
+      row,
+      cursor,
+      undefined,
+      100,
+      false,
+      topic
+    )
     let recipients = 0,
       skipped = 0,
       noPhone = 0
     for (const contact of page.page) {
-      let reason = await whatsappSkipReason(
+      const reason = await recipientSkipReason(
         ctx,
         row,
         contact,
         topic,
-        target.account,
-        target.template.category
+        template,
+        row.whatsapp!.variables
       )
-      if (!reason) {
-        try {
-          target.template.sendComponents(
-            resolveVariables(row.whatsapp!.variables, contact)
-          )
-        } catch {
-          reason = "missing_variables"
-        }
-      }
       if (reason) {
         skipped++
         if (reason === "no_phone") noPhone++
@@ -218,6 +294,10 @@ export const review = action({
     ctx,
     args
   ): Promise<{ recipients: number; skipped: number; noPhone: number }> => {
+    const context: Infer<typeof reviewContextValue> = await ctx.runQuery(
+      internal.broadcastWhatsApp.reviewContext,
+      args
+    )
     const result = { recipients: 0, skipped: 0, noPhone: 0 }
     let cursor: string | null = null
     for (;;) {
@@ -230,6 +310,7 @@ export const review = action({
       } = await ctx.runQuery(internal.broadcastWhatsApp.reviewPage, {
         ...args,
         cursor,
+        context,
       })
       result.recipients += page.recipients
       result.skipped += page.skipped
@@ -242,7 +323,18 @@ export const review = action({
 export const recipients = query({
   args: { ...scope, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
-    schema.doc("broadcastRecipients").extend({ phone: v.optional(v.string()) })
+    schema.doc("broadcastRecipients").extend({
+      phone: v.optional(v.string()),
+      contact: v.union(
+        v.null(),
+        schema
+          .doc("contacts")
+          .extend({
+            channelIdentity: v.union(v.null(), contactChannelIdentityValue),
+          })
+      ),
+      messageStatus: v.optional(channelMessageStatusValue),
+    })
   ),
   handler: async (ctx, { organizationId, id, paginationOpts }) => {
     await requireTeam(ctx, organizationId)
@@ -256,7 +348,21 @@ export const recipients = query({
     const page = []
     for (const recipient of result.page) {
       const contact = await ctx.db.get("contacts", recipient.contactId)
+      const message = recipient.messageId
+        ? await ctx.db.get("channelMessages", recipient.messageId)
+        : null
       page.push({
+        contact:
+          contact?.organizationId === organizationId
+            ? {
+                ...contact,
+                channelIdentity: await primaryContactIdentity(ctx, contact),
+              }
+            : null,
+        messageStatus:
+          message?.organizationId === organizationId
+            ? message.status
+            : undefined,
         ...recipient,
         phone:
           contact?.organizationId === organizationId
@@ -302,49 +408,17 @@ export const options = query({
       .take(200)
     const active = []
     for (const row of rows) {
-      const connection = await ctx.db.get("metaConnections", row.connectionId)
-      if (
-        row.status === "active" &&
-        row.registeredAt !== undefined &&
-        connection?.status === "active" &&
-        connection.organizationId === args.organizationId
-      )
-        active.push(row)
+      if (await sendableAccount(ctx, row)) active.push(row)
     }
     const account = active.find((row) => row._id === args.accountId)
-    const selectedRow = await selectedOption(
-      ctx,
-      "templates",
-      args.organizationId,
-      args.templateId
-    )
-    const templateRows = args.templateSearch?.trim()
-      ? await searchOptions(
-          ctx,
-          "templates",
-          args.organizationId,
-          args.templateSearch
-        )
-      : await ctx.db
-          .query("templates")
-          .withIndex("by_organizationId_and_channel", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("channel", "whatsapp")
-          )
-          .order("desc")
-          .take(100)
-    const templates = includeSelected(
-      templateRows,
-      selectedRow,
-      (row) => row._id
-    ).filter(
-      (row) =>
-        row.channel === "whatsapp" &&
-        row.whatsapp?.wabaId === account?.wabaId &&
-        row.whatsapp?.metaStatus === "APPROVED" &&
-        row.status === "published"
-    )
+    const templates = account?.wabaId
+      ? await approvedTemplateOptions(ctx, args.organizationId, {
+          wabaId: account.wabaId,
+          approvedOnly: true,
+          search: args.templateSearch,
+          selectedId: args.templateId,
+        })
+      : []
     let selected = null
     if (account && templates.some((row) => row._id === args.templateId)) {
       const resolved = await resolveWhatsAppTemplate(ctx, args.organizationId, {
@@ -355,13 +429,13 @@ export const options = query({
       void _send
       selected = value
     }
-    const needle = args.accountSearch?.trim().toLowerCase() ?? ""
+    const accountMatches = matchesSearch(args.accountSearch)
     return {
       accounts: active
         .filter(
           (row) =>
             row._id === args.accountId ||
-            `${row.displayName} ${row.handle}`.toLowerCase().includes(needle)
+            accountMatches(row.displayName, row.handle)
         )
         .map((row) => ({
           id: row._id,

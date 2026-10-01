@@ -1,8 +1,19 @@
+import { CHANNELS, PAGE_CHANNELS } from "../../lib/channels"
+import { teamRow } from "../lists"
+import {
+  findChannelAccount,
+  createChannelMessage,
+  channelInputValue,
+} from "../channels/messages"
+import { assertChannelSendingKey } from "./whatsapp"
+import { idempotent } from "./idempotency"
+import { channelRows } from "../channels/rows"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { stream } from "convex-helpers/server/stream"
 import {
   internalQuery,
+  internalMutation,
   type QueryCtx,
   type ActionCtx,
 } from "../_generated/server"
@@ -16,7 +27,6 @@ import {
 } from "../tables/channels"
 import { channelMessagePayload } from "../channels/payload"
 import { mediaDownloadLink } from "../channels/downloads"
-import { live } from "../meta/connect"
 import { callerValue, requireCaller, notFound, type Caller } from "./caller"
 import {
   apiRoute,
@@ -40,12 +50,9 @@ async function ownMessage(
   channel: Channel,
   id: string
 ) {
-  const key = ctx.db.normalizeId("channelMessages", id)
-  const row = key ? await ctx.db.get("channelMessages", key) : null
-  return row?.organizationId === caller.organizationId &&
-    row.channel === channel
-    ? row
-    : null
+  return teamRow(ctx, "channelMessages", caller.organizationId, id, {
+    keep: (row) => row.channel === channel,
+  })
 }
 async function ownConversation(
   ctx: QueryCtx,
@@ -53,12 +60,9 @@ async function ownConversation(
   channel: Channel,
   id: string
 ) {
-  const key = ctx.db.normalizeId("conversations", id)
-  const row = key ? await ctx.db.get("conversations", key) : null
-  return row?.organizationId === caller.organizationId &&
-    row.channel === channel
-    ? row
-    : null
+  return teamRow(ctx, "conversations", caller.organizationId, id, {
+    keep: (row) => row.channel === channel,
+  })
 }
 export const get = internalQuery({
   args: { caller: callerValue, channel: messagingChannelValue, id: v.string() },
@@ -118,7 +122,7 @@ export const list = internalQuery({
     const account = phoneNumberId
       ? await findAccount(ctx, caller, channel, phoneNumberId)
       : null
-    if (phoneNumberId && !account) throw notFound("Phone number")
+    if (phoneNumberId && !account) throw notFound(CHANNELS[channel].accountNoun)
     const conversation = conversationId
       ? await ownConversation(ctx, caller, channel, conversationId)
       : null
@@ -143,81 +147,13 @@ export const list = internalQuery({
               q.eq("conversationId", conversation._id)
             )
             .order(order)
-        const org = caller.organizationId
-        if (account) {
-          if (status && direction)
-            return base
-              .withIndex("by_team_channel_account_status_direction", (q) =>
-                q
-                  .eq("organizationId", org)
-                  .eq("channel", channel)
-                  .eq("accountId", account._id)
-                  .eq("status", status)
-                  .eq("direction", direction)
-              )
-              .order(order)
-          if (status)
-            return base
-              .withIndex("by_team_channel_account_status_direction", (q) =>
-                q
-                  .eq("organizationId", org)
-                  .eq("channel", channel)
-                  .eq("accountId", account._id)
-                  .eq("status", status)
-              )
-              .order(order)
-          if (direction)
-            return base
-              .withIndex("by_team_channel_account_direction", (q) =>
-                q
-                  .eq("organizationId", org)
-                  .eq("channel", channel)
-                  .eq("accountId", account._id)
-                  .eq("direction", direction)
-              )
-              .order(order)
-          return base
-            .withIndex("by_team_channel_account_direction", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("channel", channel)
-                .eq("accountId", account._id)
-            )
-            .order(order)
-        }
-        if (status && direction)
-          return base
-            .withIndex("by_team_channel_status_direction", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("channel", channel)
-                .eq("status", status)
-                .eq("direction", direction)
-            )
-            .order(order)
-        if (status)
-          return base
-            .withIndex("by_team_channel_status_direction", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("channel", channel)
-                .eq("status", status)
-            )
-            .order(order)
-        if (direction)
-          return base
-            .withIndex("by_team_channel_direction", (q) =>
-              q
-                .eq("organizationId", org)
-                .eq("channel", channel)
-                .eq("direction", direction)
-            )
-            .order(order)
-        return base
-          .withIndex("by_organizationId_and_channel", (q) =>
-            q.eq("organizationId", org).eq("channel", channel)
-          )
-          .order(order)
+        return channelRows(
+          ctx,
+          caller.organizationId,
+          channel,
+          { accountId: account?._id, status, direction },
+          order
+        )
       }
     )
   },
@@ -228,23 +164,7 @@ async function findAccount(
   channel: Channel,
   id: string
 ) {
-  const key = ctx.db.normalizeId("channelAccounts", id)
-  const row = key
-    ? await ctx.db.get("channelAccounts", key)
-    : ((
-        await ctx.db
-          .query("channelAccounts")
-          .withIndex("by_channel_and_externalId", (q) =>
-            q.eq("channel", channel).eq("externalId", id)
-          )
-          .take(20)
-      ).find((a) => a.organizationId === caller.organizationId && live(a)) ??
-      null)
-  return row?.organizationId === caller.organizationId &&
-    row.channel === channel &&
-    live(row)
-    ? row
-    : null
+  return findChannelAccount(ctx, caller.organizationId, id, channel)
 }
 export const accounts = internalQuery({
   args: {
@@ -312,33 +232,30 @@ export const conversations = internalQuery({
     )
   },
 })
-const accountPayload = (a: Omit<Doc<"channelAccounts">, "encryptedToken">) =>
-  a.channel !== "whatsapp"
-    ? {
-        id: a._id,
-        channel: a.channel,
-        external_id: a.externalId,
-        page_id: a.pageId ?? a.externalId,
-        ...(a.channel === "instagram"
-          ? { instagram_account_id: a.externalId }
-          : {}),
-        name: a.displayName,
-        handle: a.handle,
-        status: a.status,
-        created_at: new Date(a._creationTime).toISOString(),
-      }
-    : {
-        id: a._id,
-        phone_number_id: a.externalId,
-        display_phone_number: a.handle,
-        verified_name: a.displayName,
-        status: a.status,
-        quality: a.quality ?? "unknown",
-        throughput: a.throughputMps,
-        messaging_limit: a.messagingLimit ?? null,
-        waba_id: a.wabaId ?? null,
-        created_at: new Date(a._creationTime).toISOString(),
-      }
+const accountPayload = (
+  account: Omit<Doc<"channelAccounts">, "encryptedToken">
+) => {
+  const definition: {
+    accountFields: Record<string, string>
+    accountDefaults: Record<string, unknown>
+  } = CHANNELS[account.channel]
+  // The legacy Page contract tolerates rows created before pageId was stored.
+  const values = {
+    ...account,
+    pageId: account.pageId ?? account.externalId,
+  } as Record<string, unknown>
+  return {
+    id: account._id,
+    ...Object.fromEntries(
+      Object.entries(definition.accountFields).map(([name, field]) => [
+        name,
+        values[field] ?? definition.accountDefaults[name],
+      ])
+    ),
+    status: account.status,
+    created_at: new Date(account._creationTime).toISOString(),
+  }
+}
 const conversationPayload = (c: Doc<"conversations">) => ({
   id: c._id,
   channel: c.channel,
@@ -366,12 +283,8 @@ export function channelMessageRoutes(channel: Channel) {
     } = {}
   ) => {
     const prefix = `/${channel}`
-    const accountResource =
-      channel === "whatsapp"
-        ? "phone-numbers"
-        : channel === "messenger"
-          ? "pages"
-          : "accounts"
+    const definition = CHANNELS[channel]
+    const accountResource = definition.resource
     if (adapters.send)
       apiRoute(http, {
         method: "POST",
@@ -405,14 +318,7 @@ export function channelMessageRoutes(channel: Channel) {
           ...listParams(query),
           status: enumField(filters, "status", CHANNEL_MESSAGE_STATUSES),
           direction: enumField(filters, "direction", DIRECTIONS),
-          phoneNumberId:
-            query.get(
-              channel === "whatsapp"
-                ? "phone_number_id"
-                : channel === "messenger"
-                  ? "page_id"
-                  : "account_id"
-            ) ?? undefined,
+          phoneNumberId: query.get(definition.idParam) ?? undefined,
         })
         return { body: listBody(result, (m) => channelMessagePayload(m)) }
       },
@@ -449,7 +355,7 @@ export function channelMessageRoutes(channel: Channel) {
           internal.api.channelMessages.accounts,
           { caller, channel, limit: 1, id: params.id }
         )
-        if (!result.data[0]) throw notFound("Phone number")
+        if (!result.data[0]) throw notFound(CHANNELS[channel].accountNoun)
         return { body: accountPayload(result.data[0]) }
       },
     })
@@ -565,10 +471,10 @@ export function channelSendInput(body: unknown, channel: Channel) {
 
 /** Page channels share the established sending mutation, idempotency and routes. */
 export function registerPageMessageRoutes(http: HttpRouter) {
-  for (const channel of ["messenger", "instagram"] as const)
+  for (const channel of PAGE_CHANNELS)
     channelMessageRoutes(channel)(http, {
       send: async (ctx, { caller, body }) => {
-        const id = await ctx.runMutation(internal.api.whatsapp.send, {
+        const id = await ctx.runMutation(internal.api.channelMessages.send, {
           caller,
           input: channelSendInput(body, channel),
         })
@@ -576,3 +482,24 @@ export function registerPageMessageRoutes(http: HttpRouter) {
       },
     })
 }
+
+/** Shared sending entry point for every messaging channel. */
+export const send = internalMutation({
+  args: { caller: callerValue, input: channelInputValue },
+  returns: v.id("channelMessages"),
+  handler: async (ctx, { caller, input }) => {
+    await requireCaller(ctx, caller, "sending")
+    assertChannelSendingKey(caller)
+    return idempotent(
+      ctx,
+      caller,
+      () =>
+        createChannelMessage(ctx, input, {
+          organizationId: caller.organizationId,
+          source: "api",
+          apiKeyId: caller.apiKeyId,
+        }),
+      (id) => ({ body: { id } })
+    )
+  },
+})

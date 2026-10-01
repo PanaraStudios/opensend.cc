@@ -4,26 +4,15 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  ChevronDownIcon,
   FileCodeIcon,
   LayoutGridIcon,
-  MailIcon,
-  PlusIcon,
   RefreshCwIcon,
   Rows3Icon,
   TriangleAlertIcon,
 } from "lucide-react"
 
-import { WhatsAppIcon } from "@/components/brand-icons"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
@@ -34,7 +23,6 @@ import { toast } from "@/components/ui/toast"
 import {
   DocsButton,
   EmptyState,
-  IconCell,
   ListPagination,
   ListToolbar,
   MonoValue,
@@ -56,11 +44,12 @@ import { actionError } from "@/lib/action-error"
 import { UNTITLED_TEMPLATE } from "@/lib/dashboard/template"
 import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
 
-type TemplateChannel = "email" | "whatsapp"
-import { CHANNEL_LABELS, channelLabel } from "@/lib/dashboard/format"
+type TemplateChannel = NonNullable<EmailTemplate["channel"]>
+import { pluralize } from "@/lib/dashboard/format"
 import {
   MESSAGE_CHANNEL_ITEMS,
-  channelIcon,
+  ChannelCell,
+  ChannelCreateMenu,
 } from "@/components/dashboard/channels/shared"
 import {
   asTemplate,
@@ -170,7 +159,7 @@ export function TemplatesView() {
       const { synced } = await syncFromMeta()
       toast.add({
         type: "success",
-        title: `Synced ${synced} WhatsApp template${synced === 1 ? "" : "s"}`,
+        title: `Synced ${pluralize(synced, "WhatsApp template")}`,
       })
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })
@@ -180,25 +169,10 @@ export function TemplatesView() {
   }
 
   const createButton = (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button data-testid="create-template" />}>
-        <PlusIcon data-icon="inline-start" />
-        Create template
-        <ChevronDownIcon data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => void createTemplate("email")}>
-            <MailIcon />
-            Email
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void createTemplate("whatsapp")}>
-            <WhatsAppIcon />
-            {CHANNEL_LABELS.whatsapp}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ChannelCreateMenu
+      noun="template"
+      onCreate={(kind) => void createTemplate(kind)}
+    />
   )
 
   return (
@@ -307,9 +281,7 @@ export function TemplatesView() {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <IconCell icon={channelIcon(item.channel ?? "email")}>
-                      {channelLabel(item.channel ?? "email")}
-                    </IconCell>
+                    <ChannelCell channel={item.channel} />
                   </TableCell>
                   <TableCell>
                     <TemplateBadge item={item} />

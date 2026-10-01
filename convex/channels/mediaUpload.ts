@@ -5,35 +5,29 @@ import { internal } from "../_generated/api"
 import { callerValue, invalid, apiError } from "../api/caller"
 import { graph } from "../meta/graph"
 import { decryptSecret } from "../secrets"
-import {
-  whatsappMediaMultipart,
-  validateWhatsAppMedia,
-} from "../../lib/meta/media"
+import { whatsappMediaMultipart } from "../../lib/meta/media"
 import { object, string } from "../../lib/meta/webhooks"
 import { MetaError } from "../../lib/meta/errors"
 
 export const upload = internalAction({
   args: {
     caller: callerValue,
-    from: v.optional(v.string()),
+    target: v.object({
+      accountId: v.id("channelAccounts"),
+      phoneNumberId: v.string(),
+      encryptedToken: v.string(),
+      version: v.string(),
+    }),
     storageId: v.id("_storage"),
     filename: v.string(),
     contentType: v.string(),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const target = await ctx.runQuery(internal.api.whatsapp.uploadTarget, {
-      caller: args.caller,
-      from: args.from,
-    })
+    const target = args.target
     const file = await ctx.storage.get(args.storageId)
     if (!file) throw invalid("Media file not found.")
     const bytes = new Uint8Array(await file.arrayBuffer())
-    try {
-      validateWhatsAppMedia(bytes, args.contentType)
-    } catch (error) {
-      throw invalid(error instanceof Error ? error.message : "Invalid media.")
-    }
     let result: unknown
     try {
       result = await graph({

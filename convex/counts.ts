@@ -575,3 +575,11 @@ export async function countRow<T extends CountedTable>(
 ) {
   for (const counter of COUNTED[table]) await counter.insert(ctx, doc)
 }
+
+/** Broadcast message counts outlive messages until retention or deletion. */
+export async function retireBroadcastCounters(
+  ctx: MutationCtx,
+  id: Id<"broadcasts">
+) {
+  await counters.broadcastMessages.aggregate.clear(ctx, { namespace: id })
+}

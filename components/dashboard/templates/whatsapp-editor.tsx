@@ -27,11 +27,13 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { EditorTopBar } from "@/components/dashboard/editor-chrome"
-import { useAutosaveDraft } from "@/components/dashboard/primitives"
+import {
+  OptionSelect,
+  useAutosaveDraft,
+} from "@/components/dashboard/primitives"
 import { SaveIndicator } from "@/components/dashboard/broadcasts/editor/screen"
 import type { SaveState } from "@/components/dashboard/broadcasts/editor/use-editor"
 import {
@@ -84,6 +86,18 @@ const HEADER_LABELS: Record<HeaderFormat, string> = {
   VIDEO: "Video",
   DOCUMENT: "Document",
 }
+const HEADER_ITEMS = HEADER_FORMATS.map((value) => ({
+  value,
+  label: HEADER_LABELS[value],
+}))
+const CATEGORY_ITEMS = TEMPLATE_CATEGORIES.map((value) => ({
+  value,
+  label: templateCategoryLabel(value),
+}))
+const LANGUAGE_ITEMS = TEMPLATE_LANGUAGES.map(([value, label]) => ({
+  value,
+  label,
+}))
 const CATEGORY_HINTS: Record<TemplateCategory, string> = {
   MARKETING: "Promotions, offers, updates and invitations.",
   UTILITY: "Updates about an order or account the person asked for.",
@@ -134,6 +148,15 @@ export function WhatsAppTemplateEditorScreen({
   const [problems, setProblems] = React.useState<string[]>([])
   const body = React.useRef<HTMLTextAreaElement>(null)
   const readOnly = !initial.supported
+  const [languageSearch, setLanguageSearch] = React.useState("")
+  const languageItems = React.useMemo(() => {
+    const query = languageSearch.trim().toLowerCase()
+    return query
+      ? LANGUAGE_ITEMS.filter((item) =>
+          `${item.label} ${item.value}`.toLowerCase().includes(query)
+        )
+      : LANGUAGE_ITEMS
+  }, [languageSearch])
   const autosave = useAutosaveDraft(stored, async (json) => {
     try {
       await updateWhatsAppTemplate(item.id, { content: JSON.parse(json) })
@@ -270,65 +293,51 @@ export function WhatsAppTemplateEditorScreen({
                     <FieldLabel htmlFor="template-waba">
                       WhatsApp Business Account
                     </FieldLabel>
-                    <NativeSelect
+                    <OptionSelect
                       id="template-waba"
                       className="w-full"
                       disabled={submitted}
                       value={whatsapp?.wabaId}
-                      onChange={(event) =>
-                        commit({ whatsapp: { wabaId: event.target.value } })
-                      }
-                    >
-                      {accounts.map((account) => (
-                        <NativeSelectOption
-                          key={account.wabaId}
-                          value={account.wabaId}
-                        >
-                          {account.name ?? account.wabaId}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                      items={accounts.map((account) => ({
+                        value: account.wabaId,
+                        label: account.name ?? account.wabaId,
+                      }))}
+                      onChange={(wabaId) => commit({ whatsapp: { wabaId } })}
+                    />
                   </Field>
                 ) : null}
                 <Field>
                   <FieldLabel htmlFor="template-language">Language</FieldLabel>
-                  <NativeSelect
+                  <OptionSelect
                     id="template-language"
                     className="w-full"
                     disabled={submitted}
                     value={whatsapp?.language}
-                    onChange={(event) =>
-                      commit({ whatsapp: { language: event.target.value } })
-                    }
-                  >
-                    {TEMPLATE_LANGUAGES.map(([code, label]) => (
-                      <NativeSelectOption key={code} value={code}>
-                        {label}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                    items={languageItems}
+                    selectedItem={LANGUAGE_ITEMS.find(
+                      (item) => item.value === whatsapp?.language
+                    )}
+                    search={{
+                      onChange: setLanguageSearch,
+                      placeholder: "Search languages…",
+                    }}
+                    onChange={(language) => commit({ whatsapp: { language } })}
+                  />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="template-category">Category</FieldLabel>
-                  <NativeSelect
+                  <OptionSelect
                     id="template-category"
                     className="w-full"
                     disabled={whatsapp?.metaStatus === "APPROVED"}
                     value={whatsapp?.category}
-                    onChange={(event) =>
+                    items={CATEGORY_ITEMS}
+                    onChange={(category) =>
                       commit({
-                        whatsapp: {
-                          category: event.target.value as TemplateCategory,
-                        },
+                        whatsapp: { category: category as TemplateCategory },
                       })
                     }
-                  >
-                    {TEMPLATE_CATEGORIES.map((category) => (
-                      <NativeSelectOption key={category} value={category}>
-                        {templateCategoryLabel(category)}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                  />
                   {whatsapp ? (
                     <FieldDescription>
                       {CATEGORY_HINTS[whatsapp.category]}
@@ -343,22 +352,15 @@ export function WhatsAppTemplateEditorScreen({
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="template-header">Header</FieldLabel>
-                  <NativeSelect
+                  <OptionSelect
                     id="template-header"
                     className="w-full"
                     value={form.headerFormat}
-                    onChange={(event) =>
-                      patch({
-                        headerFormat: event.target.value as HeaderFormat,
-                      })
+                    items={HEADER_ITEMS}
+                    onChange={(headerFormat) =>
+                      patch({ headerFormat: headerFormat as HeaderFormat })
                     }
-                  >
-                    {HEADER_FORMATS.map((value) => (
-                      <NativeSelectOption key={value} value={value}>
-                        {HEADER_LABELS[value]}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                  />
                   {form.headerFormat === "TEXT" ? (
                     <Input
                       aria-label="Header text"

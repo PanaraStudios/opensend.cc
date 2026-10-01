@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { useConvex, useMutation } from "convex/react"
+import { useConvex, useMutation, usePaginatedQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import {
@@ -8,7 +8,10 @@ import {
   requireTeamId,
   useTeamQuery,
 } from "@/components/auth/workspace"
-import { useTeamList } from "@/components/dashboard/primitives"
+import {
+  useTeamList,
+  useLoadedPagination,
+} from "@/components/dashboard/primitives"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { emptyBroadcastStats } from "@/lib/dashboard/broadcast"
 export type BroadcastPatch = Partial<
@@ -67,15 +70,10 @@ function wire(patch: BroadcastPatch) {
 }
 export function useBroadcast(id: string) {
   const result = useTeamQuery(api.broadcasts.get, { id })
-  const stats = useTeamQuery(
-    api.broadcastMetrics.stats,
+  const metrics = useTeamQuery(
+    api.broadcastMetrics.channelStats,
     { id: result ? result.row._id : (id as Id<"broadcasts">) },
     { enabled: !!result }
-  )
-  const whatsappStats = useTeamQuery(
-    api.broadcastMetrics.whatsappStats,
-    { id: id as Id<"broadcasts"> },
-    { enabled: result?.row.channel === "whatsapp" }
   )
   return React.useMemo(
     () =>
@@ -85,10 +83,14 @@ export function useBroadcast(id: string) {
           ? null
           : {
               ...asBroadcast(result.row, result.body),
-              stats: stats ?? emptyBroadcastStats(),
-              whatsappStats,
+              stats:
+                metrics?.channel === "email"
+                  ? metrics.stats
+                  : emptyBroadcastStats(),
+              whatsappStats:
+                metrics?.channel === "whatsapp" ? metrics.stats : undefined,
             },
-    [result, stats, whatsappStats]
+    [result, metrics]
   )
 }
 export function useBroadcastCommands() {
@@ -175,4 +177,17 @@ export function useContactBroadcasts(email: string | undefined) {
     email ? { email } : "skip",
     asBroadcast
   )
+}
+
+/** Recipient paging uses the same loaded-page controls as email reports. */
+export function useWhatsAppBroadcastRecipients(id: string) {
+  const { activeTeamId } = useWorkspace()
+  const { results, ...page } = usePaginatedQuery(
+    api.broadcastWhatsApp.recipients,
+    activeTeamId
+      ? { organizationId: activeTeamId, id: id as Id<"broadcasts"> }
+      : "skip",
+    { initialNumItems: 20 }
+  )
+  return useLoadedPagination(results, page)
 }

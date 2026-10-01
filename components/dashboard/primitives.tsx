@@ -148,12 +148,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
+import type { SkipReason } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 import { useClock } from "@/lib/time/use-clock"
 import {
   AUTOMATION_RUN_STATUS_TONE,
   AUTOMATION_STATUS_TONE,
   automationStatusLabel,
+  SKIP_REASON_TONE,
+  skipReasonLabel,
   BROADCAST_STATUS_TONE,
   broadcastStatusLabel,
   DOMAIN_STATUS_TONE,
@@ -1097,6 +1100,31 @@ export function EmailStatusBadge({ status }: { status: EmailStatus }) {
       label={emailStatusLabel(status)}
     />
   )
+}
+
+/** Recipient settlement is internal; show the delivery status or skip cause. */
+export function RecipientOutcomeBadge({
+  skipReason,
+  messageStatus,
+  failed,
+  sent,
+}: {
+  skipReason?: SkipReason
+  messageStatus?: ChannelMessageStatus
+  failed?: boolean
+  sent?: boolean
+}) {
+  if (skipReason)
+    return (
+      <ToneBadge
+        tone={SKIP_REASON_TONE[skipReason]}
+        label={skipReasonLabel(skipReason)}
+      />
+    )
+  if (messageStatus) return <ChannelMessageStatusBadge status={messageStatus} />
+  if (failed) return <ChannelMessageStatusBadge status="failed" />
+  if (sent) return <ChannelMessageStatusBadge status="sent" />
+  return <ToneBadge tone="warning" label="Sending" />
 }
 
 export function BroadcastStatusBadge({ status }: { status: BroadcastStatus }) {

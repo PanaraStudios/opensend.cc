@@ -38,8 +38,20 @@ export const whatsappTemplateValue = v.object({
   rejectedReason: v.optional(v.string()),
   quality: v.optional(templateQualityValue),
   submittedAt: v.optional(v.number()),
-  /** The last sync from Meta that saw it. */
+  /** The last sync that changed this template. The WABA records every sync. */
   syncedAt: v.optional(v.number()),
+})
+
+export const resolvedTemplateValue = v.object({
+  templateId: v.id("templates"),
+  name: v.string(),
+  language: v.string(),
+  wabaId: v.string(),
+  category: templateCategoryValue,
+  parameterFormat: parameterFormatValue,
+  /** Keys a send's `variables` fills (lib/meta/templates.ts). */
+  variables: v.array(v.string()),
+  components: v.any(),
 })
 
 /* A template is three documents, so no read pays for more than it uses: the

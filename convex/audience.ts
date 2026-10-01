@@ -5,7 +5,7 @@ import { internal } from "./_generated/api"
 import { emitEvent } from "./events"
 import { deleteRow, insertRow, patchRow } from "./counts"
 import {
-  contactEmailError,
+  contactInputError,
   contactFieldsError,
   mergeContactFields,
   normalizeEmail,
@@ -107,6 +107,25 @@ const searchText = (
     contact.lastName,
   ].join(" ")
 type ContactName = "firstName" | "lastName"
+
+/** Hydrate one primary identity per contact, with no client request per row. */
+export async function primaryContactIdentity(
+  ctx: Ctx,
+  contact: Doc<"contacts">
+) {
+  const [identity] = await ctx.db
+    .query("channelContacts")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
+    .take(1)
+  return identity?.organizationId === contact.organizationId
+    ? {
+        channel: identity.channel,
+        externalId: identity.externalId,
+        profileName: identity.profileName,
+        phone: identity.phone,
+      }
+    : null
+}
 
 /** Resend's contact webhook data. */
 export function contactEventData(
@@ -288,17 +307,9 @@ function normalizeIdentity(
 ): ContactIdentity {
   const email = input.email?.trim() ? normalizeEmail(input.email) : undefined
   const phone = input.phone?.trim() ? normalizePhone(input.phone) : undefined
-  if (email) {
-    const error = contactEmailError(email)
-    if (error) throw new ConvexError(error)
-  }
-  if (phone === null)
-    throw new ConvexError(
-      "Enter a phone number with + and 8–15 digits, including the country code"
-    )
-  if (!email && !phone && !linkedChannel)
-    throw new ConvexError("An email or phone number is required")
-  return { email, phone }
+  const error = contactInputError(input, { linkedChannel })
+  if (error) throw new ConvexError(error.email ?? error.phone!)
+  return { email, phone: phone ?? undefined }
 }
 const identityChanged = (contact: ContactIdentity, input: ContactIdentity) =>
   contact.email !== input.email || contact.phone !== input.phone
@@ -426,11 +437,11 @@ function fieldsChanged(contact: Doc<"contacts">, fields: ContactFields) {
     [...keys].some((key) => contact.properties[key] !== fields.properties[key])
   )
 }
-async function patchContact(
+export async function patchContact(
   ctx: MutationCtx,
   contact: Doc<"contacts">,
-  fields: ContactFields & ContactIdentity,
-  now: number
+  fields: Partial<ContactFields> & ContactIdentity,
+  now = Date.now()
 ) {
   const next = {
     ...fields,

@@ -1,6 +1,11 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { resolveVariables, variableSourcesError } from "./variables"
+import {
+  normalizeVariableSource,
+  CONTACT_VARIABLE_FIELDS,
+  resolveVariables,
+  variableSourcesError,
+} from "./variables"
 
 test("campaign mappings resolve contact fields, properties, static text and fallbacks", () => {
   assert.deepEqual(
@@ -49,5 +54,15 @@ test("mapping validation rejects unknown fields, multiple sources and malformed 
   assert.equal(
     variableSourcesError({ a: "text", b: { contact: "phone", fallback: "" } }),
     null
+  )
+})
+
+test("legacy strings normalize without losing the static source", () => {
+  assert.deepEqual(normalizeVariableSource("hello"), { value: "hello" })
+  const source = { contact: "phone" as const, fallback: "unknown" }
+  assert.equal(normalizeVariableSource(source), source)
+  assert.deepEqual(
+    CONTACT_VARIABLE_FIELDS.map((field) => field.value),
+    ["firstName", "lastName", "email", "phone"]
   )
 })

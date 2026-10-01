@@ -1,4 +1,7 @@
 "use client"
+import * as React from "react"
+import { toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import { useAction, useMutation, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
@@ -27,6 +30,7 @@ export type ConnectedPageAccounts = FunctionReturnType<
 >
 
 export function useChannelCommands() {
+  const [syncing, setSyncing] = React.useState<string | null>(null)
   const workspace = useWorkspace()
   const { canWrite } = useTeamRole()
   const manual = useAction(api.meta.connectActions.connectManual)
@@ -58,8 +62,23 @@ export function useChannelCommands() {
       facebookLogin({ code, organizationId: organizationId() }),
     registerNumber: (accountId: string, pin: string) =>
       register({ accountId: accountId as Id<"channelAccounts">, pin }),
-    syncAccount: (accountId: string) =>
-      sync({ accountId: accountId as Id<"channelAccounts"> }),
+    syncing,
+    syncAccount: async (account: Pick<ChannelAccount, "_id" | "channel">) => {
+      if (syncing) return
+      setSyncing(account._id)
+      try {
+        await sync({ accountId: account._id })
+        toast.add({
+          type: "success",
+          title:
+            account.channel === "whatsapp" ? "Number synced" : "Account synced",
+        })
+      } catch (error) {
+        toast.add({ type: "error", title: actionError(error) })
+      } finally {
+        setSyncing(null)
+      }
+    },
     disconnectBusiness: (connectionId: string) =>
       disconnect({ connectionId: connectionId as Id<"metaConnections"> }),
   }

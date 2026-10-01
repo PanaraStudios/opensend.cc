@@ -11,15 +11,22 @@ import {
   FieldDescription,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { formFromComponents, storedComponents } from "@/lib/meta/templates"
 import {
+  CONTACT_VARIABLE_FIELDS,
+  normalizeVariableSource,
   resolveVariables,
   type VariableContact,
   type VariableSource,
 } from "@/lib/meta/variables"
+
+const VARIABLE_SOURCES = [
+  { value: "contact", label: "Contact field" },
+  { value: "property", label: "Property" },
+  { value: "value", label: "Static value" },
+] as const
 
 export type WhatsAppCampaignConfig = {
   accountId: string
@@ -28,12 +35,6 @@ export type WhatsAppCampaignConfig = {
   variables: Record<string, VariableSource>
   text?: string
 }
-const CONTACT_FIELDS = [
-  { value: "firstName", label: "First name" },
-  { value: "lastName", label: "Last name" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Phone" },
-] as const
 
 function VariableMapping({
   name,
@@ -44,7 +45,7 @@ function VariableMapping({
   value: VariableSource
   onChange: (source: VariableSource) => void
 }) {
-  const source = typeof value === "string" ? { value } : value
+  const source = normalizeVariableSource(value)
   const kind =
     "contact" in source
       ? "contact"
@@ -59,29 +60,26 @@ function VariableMapping({
     <FieldGroup>
       <Field>
         <FieldLabel>Variable {`{{${name}}}`}</FieldLabel>
-        <NativeSelect
+        <OptionSelect
           aria-label={`Source for {{${name}}}`}
           value={kind}
-          onChange={(event) =>
+          items={VARIABLE_SOURCES}
+          onChange={(next) =>
             onChange({
-              ...(event.target.value === "contact"
+              ...(next === "contact"
                 ? { contact: "firstName" as const }
-                : event.target.value === "property"
+                : next === "property"
                   ? { property: "" }
                   : { value: "" }),
               fallback: source.fallback ?? "",
             })
           }
-        >
-          <NativeSelectOption value="contact">Contact field</NativeSelectOption>
-          <NativeSelectOption value="property">Property</NativeSelectOption>
-          <NativeSelectOption value="value">Static value</NativeSelectOption>
-        </NativeSelect>
+        />
         {"contact" in source ? (
           <OptionSelect
             aria-label={`Contact field for {{${name}}}`}
             value={source.contact}
-            items={CONTACT_FIELDS}
+            items={CONTACT_VARIABLE_FIELDS}
             onChange={(contact) =>
               onChange({
                 contact: contact as typeof source.contact,

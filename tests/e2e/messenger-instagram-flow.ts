@@ -1,3 +1,4 @@
+import type { PageChannel } from "../../lib/channels"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page, type APIResponse } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
@@ -12,7 +13,7 @@ const origin = () => process.env.OPENSEND_CALLBACK_ORIGIN!
 const fake = () => process.env.OPENSEND_FAKE_GRAPH_URL!
 async function webhook(
   page: Page,
-  channel: "messenger" | "instagram",
+  channel: PageChannel,
   data: Record<string, unknown>
 ) {
   const id = channel === "messenger" ? PAGE_ID : IG_ID
@@ -200,12 +201,21 @@ export function messengerInstagramTests(
         )
         .toBeGreaterThan(0)
       await owner.goto("/contacts")
+      const contactRow = owner
+        .getByRole("row")
+        .filter({ hasText: "Ada" })
+        .filter({ hasText: "E2E" })
+      await expect(contactRow).toBeVisible()
+      const identityLink = contactRow.getByRole("link", { name: /Ada E2E/ })
+      await expect(identityLink).toHaveAttribute("href", /^\/contacts\//)
+      await expect(identityLink).toContainText(PSID)
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-contact-identity.png`,
+        fullPage: true,
+      })
+      await identityLink.click()
       await expect(
-        // First and last name are separate columns.
-        owner
-          .getByRole("row")
-          .filter({ hasText: "Ada" })
-          .filter({ hasText: "E2E" })
+        owner.getByRole("heading", { name: "Ada E2E", exact: true })
       ).toBeVisible()
       await owner.goto("/channels")
       // The Instagram row names the same Page as its business.

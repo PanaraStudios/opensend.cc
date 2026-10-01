@@ -16,6 +16,7 @@ import schema from "./schema"
 import { BOOLEANS, countValue, counters } from "./counts"
 import { filteredPage, matchesSearch } from "./lists"
 import {
+  primaryContactIdentity,
   BATCH,
   CLEANUP_BATCH,
   contactMemberships,
@@ -41,6 +42,13 @@ import {
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 
+export const contactChannelIdentityValue = schema
+  .doc("channelContacts")
+  .pick("channel", "externalId", "profileName", "phone")
+const contactWithIdentityValue = schema
+  .doc("contacts")
+  .extend({ channelIdentity: v.union(v.null(), contactChannelIdentityValue) })
+
 const inBatch = <T>(items: T[]) => {
   if (items.length > BATCH)
     throw new ConvexError(`Send at most ${BATCH} contacts at a time`)
@@ -57,7 +65,7 @@ const contactFilters = v.object({
   to: v.optional(v.number()),
 })
 
-// Scan 1024 contacts; list rows hydrate nothing, so kept rows reserve nothing.
+// Scan bounded contact pages; the list hydrates one identity per kept row.
 export const CONTACT_SEARCH_BUDGET = {
   rows: 1024,
   bytes: 8 * 1024 * 1024,
@@ -139,10 +147,17 @@ export async function contactPage(
 }
 export const list = query({
   args: { ...contactFilters.fields, paginationOpts: paginationOptsValidator },
-  returns: paginationResultValidator(schema.doc("contacts")),
+  returns: paginationResultValidator(contactWithIdentityValue),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    return contactPage(ctx, args)
+    const result = await contactPage(ctx, args)
+    const page = await Promise.all(
+      result.page.map(async (contact) => ({
+        ...contact,
+        channelIdentity: await primaryContactIdentity(ctx, contact),
+      }))
+    )
+    return { ...result, page }
   },
 })
 
@@ -197,7 +212,7 @@ export const get = query({
   args: { id: v.string() },
   returns: v.union(
     v.null(),
-    schema.doc("contacts").extend({
+    contactWithIdentityValue.extend({
       topics: v.array(
         v.object({
           topicId: v.id("topics"),
@@ -217,6 +232,7 @@ export const get = query({
       .take(200)
     return {
       ...contact,
+      channelIdentity: await primaryContactIdentity(ctx, contact),
       topics: choices.map(({ topicId, subscription }) => ({
         topicId,
         subscription,
@@ -471,6 +487,9 @@ export const options = query({
     schema
       .doc("contacts")
       .pick("_id", "email", "phone", "firstName", "lastName")
+      .extend({
+        channelIdentity: v.union(v.null(), contactChannelIdentityValue),
+      })
   ),
   handler: async (ctx, { organizationId, search, selectedId }) => {
     await requireTeam(ctx, organizationId, "read")
@@ -494,14 +513,17 @@ export const options = query({
       organizationId,
       selectedId
     )
-    return includeSelected(rows, selected, (row) => row._id).map(
-      ({ _id, email, phone, firstName, lastName }) => ({
-        _id,
-        email,
-        phone,
-        firstName,
-        lastName,
-      })
+    return Promise.all(
+      includeSelected(rows, selected, (row) => row._id).map(
+        async (contact) => ({
+          _id: contact._id,
+          email: contact.email,
+          phone: contact.phone,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          channelIdentity: await primaryContactIdentity(ctx, contact),
+        })
+      )
     )
   },
 })

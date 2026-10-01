@@ -15,7 +15,7 @@ import {
   incoming,
 } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
-import { WINDOW_CLOSED } from "./channels/messages"
+import { WHATSAPP_WINDOW_CLOSED as WINDOW_CLOSED } from "../lib/meta/payloads"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -164,7 +164,7 @@ test("workpool sends once with wamid and event; later delivered/read webhooks an
     "read",
   ])
 })
-test("idempotency replays same id, changed body conflicts and member uses the shared composer", async () => {
+test("idempotency replays the same id and rejects a changed body", async () => {
   const f = await setup()
   const body = { to: SENDER, text: "Hi" }
   const first = await (
@@ -186,17 +186,6 @@ test("idempotency replays same id, changed body conflicts and member uses the sh
       )
     ).status
   ).toBe(409)
-  const composer = await f.member.client.mutation(api.channels.messages.send, {
-    organizationId: f.owner.team,
-    input: { to: SENDER, body: { text: "Composer" } },
-  })
-  expect(await message(f, composer)).toMatchObject({ source: "dashboard" })
-  await expect(
-    f.outsider.client.mutation(api.channels.messages.send, {
-      organizationId: f.owner.team,
-      input: { to: SENDER, body: { text: "Forbidden" } },
-    })
-  ).rejects.toBeDefined()
 })
 test("window rejects every free-form type while templates are allowed; an inbound message opens it", async () => {
   const f = await setup(false)

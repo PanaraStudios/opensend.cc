@@ -78,33 +78,36 @@ test("Page and Instagram messaging parsers preserve scoped IDs, millisecond time
     ]),
     at
   )
-  assert.equal(items.length, 6)
+  assert.equal(items.length, 7)
   assert.deepEqual(items[0], {
     channel: "messenger",
     accountId: "456",
     sender: "123",
     at,
     kind: "message",
-    data: {
-      id: "mid.text",
-      type: "text",
-      text: { body: "Hello" },
-      quick_reply: { payload: "YES" },
-      from: "123",
-      timestamp: at / 1000,
-    },
+    externalId: "mid.text",
+    type: "text",
+    preview: "Hello",
+    profileName: "",
+    files: [],
+    data: event({
+      message: {
+        mid: "mid.text",
+        text: "Hello",
+        quick_reply: { payload: "YES" },
+      },
+    }),
   })
-  assert.equal(items[1].kind === "message" && items[1].data.type, "document")
-  assert.equal(items[2].kind === "message" && items[2].data.type, "button")
-  assert.equal(items[3].kind === "message" && items[3].data.type, "reaction")
-  assert.deepEqual(items[5], {
+  assert.equal(items[1].kind === "message" && items[1].type, "document")
+  assert.equal(items[2].kind === "message" && items[2].type, "button")
+  assert.equal(items[3].kind === "message" && items[3].type, "reaction")
+  assert.deepEqual(items[6], {
     channel: "messenger",
     accountId: "456",
     sender: "123",
     at,
-    kind: "status",
+    kind: "watermark",
     status: "read",
-    ids: [],
     watermark: at,
   })
   assert.equal(
@@ -115,4 +118,44 @@ test("Page and Instagram messaging parsers preserve scoped IDs, millisecond time
     "instagram"
   )
   assert.deepEqual(pageWebhookItems({ object: "unknown", entry: [] }, at), [])
+})
+
+test("WhatsApp normalizes incoming messages and statuses without changing stored wire data", async () => {
+  const { whatsappWebhookItems } = await import("./webhooks")
+  const data = {
+    id: "wamid.in",
+    from: "14155552671",
+    timestamp: "1749416383",
+    type: "image",
+    image: { id: "media1", mime_type: "image/png", caption: "Photo" },
+  }
+  const [message, status] = whatsappWebhookItems(
+    {
+      metadata: { phone_number_id: "123" },
+      contacts: [{ wa_id: data.from, profile: { name: "Ada" } }],
+      messages: [data, { ...data, id: "", from: "bad" }],
+      statuses: [
+        {
+          id: "wamid.out",
+          recipient_id: data.from,
+          status: "read",
+          timestamp: data.timestamp,
+        },
+      ],
+    },
+    "456",
+    1
+  )
+  assert.equal(message.kind, "message")
+  if (message.kind !== "message") return
+  assert.equal(message.sender, data.from)
+  assert.equal(message.phone, "+14155552671")
+  assert.equal(message.preview, "Photo")
+  assert.equal(message.profileName, "Ada")
+  assert.equal(message.at, 1749416383000)
+  assert.deepEqual(message.files, [
+    { mediaId: "media1", contentType: "image/png" },
+  ])
+  assert.equal(message.data, data)
+  assert.equal(status.kind, "status")
 })

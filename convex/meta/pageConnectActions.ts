@@ -6,11 +6,15 @@ import { encryptSecret, decryptSecret } from "../secrets"
 import {
   graph,
   friendly,
-  appAccessToken,
+  debugToken,
+  numericId,
+  manualToken,
+  exchangeCode,
+  unsubscribeAsset,
+  markTokenInvalid,
+  type App,
   graphFailure,
-  TOKEN_REFUSED,
 } from "./graph"
-import { debugToken, numericId, type App } from "./connectActions"
 import { connectedPagesValue, pageAccountValue } from "./connect"
 import {
   PAGE_FIELDS,
@@ -20,6 +24,8 @@ import {
   pageTokenProblem,
   type Page,
 } from "../../lib/meta/page-account"
+import type { Id } from "../_generated/dataModel"
+import type { FunctionReturnType } from "convex/server"
 import type { TokenInfo } from "../../lib/meta/whatsapp-account"
 import { MetaError } from "../../lib/meta/errors"
 
@@ -121,20 +127,12 @@ export const connectFacebookLogin = action({
     if (!code.trim() || code.length > 2048)
       throw new ConvexError("Meta returned no login code. Try again.")
     return friendly(ctx, async () => {
-      const exchanged = await graph<{ access_token?: unknown }>({
-        token: await appAccessToken(app),
-        version: app.graphVersion,
-        method: "GET",
-        path: "oauth/access_token",
-        query: {
-          client_id: app.appId,
-          client_secret: await decryptSecret(app.encryptedAppSecret),
-          code: code.trim(),
-        },
-      })
-      if (typeof exchanged.access_token !== "string" || !exchanged.access_token)
-        throw new ConvexError("Meta returned no access token")
-      const token = exchanged.access_token
+      const token = await exchangeCode(
+        app,
+        code,
+        "Meta returned no login code. Try again.",
+        "Meta returned no access token"
+      )
       const info = await debugToken(app, token)
       const problem = pageTokenProblem(info, app.appId)
       if (problem) throw new ConvexError(problem)
@@ -188,9 +186,8 @@ export const connectPageManual = action({
       organizationId: args.organizationId,
     })
     const pageId = numericId(args.pageId, "Facebook Page ID"),
-      token = args.token.trim()
-    if (!/^[A-Za-z0-9_|-]{20,1024}$/.test(token))
-      throw new ConvexError(
+      token = manualToken(
+        args.token,
         "Paste the Page or system user access token from Meta"
       )
     return friendly(ctx, async () => {
@@ -209,81 +206,98 @@ export const connectPageManual = action({
     })
   },
 })
+type AccountTarget = FunctionReturnType<
+  typeof internal.meta.connect.accountTarget
+>
+type ConnectionTarget = NonNullable<
+  FunctionReturnType<typeof internal.meta.connect.connectionTarget>
+>
+export async function syncPageAccount(
+  ctx: ActionCtx,
+  accountId: Id<"channelAccounts">,
+  target: AccountTarget
+) {
+  await friendly(
+    ctx,
+    async () => {
+      const page = await getPage(
+        target,
+        await decryptSecret(target.encryptedToken),
+        target.pageId ?? target.externalId
+      )
+      await ctx.runMutation(internal.meta.pageState.refresh, {
+        accountId,
+        pageId: page.id,
+        name: page.name,
+        instagram: page.instagram,
+      })
+    },
+    target.connectionId
+  )
+  return null
+}
 export const sync = internalAction({
   args: { accountId: v.id("channelAccounts") },
   returns: v.null(),
-  handler: async (ctx, { accountId }): Promise<null> => {
-    const target = await ctx.runQuery(internal.meta.connect.accountTarget, {
-      accountId,
-    })
-    await friendly(
+  handler: async (ctx, { accountId }): Promise<null> =>
+    syncPageAccount(
       ctx,
-      async () => {
-        const token = await decryptSecret(target.encryptedToken),
-          page = await getPage(
-            target,
-            token,
-            target.pageId ?? target.externalId
-          )
-        await ctx.runMutation(internal.meta.pageState.refresh, {
-          accountId,
-          pageId: page.id,
-          name: page.name,
-          instagram: page.instagram,
-        })
-      },
-      target.connectionId
-    )
-    return null
-  },
+      accountId,
+      await ctx.runQuery(internal.meta.connect.accountTarget, { accountId })
+    ),
 })
-export const checkConnection = internalAction({
-  args: { connectionId: v.id("metaConnections") },
-  returns: v.null(),
-  handler: async (ctx, { connectionId }) => {
-    const target = await ctx.runQuery(internal.meta.connect.connectionTarget, {
-      connectionId,
-    })
-    if (target?.status !== "active") return null
-    try {
-      for (const page of target.pages) {
-        const token = await decryptSecret(page.encryptedToken),
-          info = await debugToken(target, token)
-        const problem = pageTokenProblem(info, target.appId, page.pageId)
-        if (problem) {
-          await ctx.runMutation(internal.meta.connect.markConnection, {
-            connectionId,
-            status: "error",
-            error: problem,
-          })
-          return null
-        }
-        const refreshed = await getPage(target, token, page.pageId)
-        await ctx.runMutation(internal.meta.pageState.refresh, {
-          accountId: page.id,
-          pageId: refreshed.id,
-          name: refreshed.name,
-          instagram: refreshed.instagram,
+export async function checkPageConnection(
+  ctx: ActionCtx,
+  connectionId: Id<"metaConnections">,
+  target: ConnectionTarget
+) {
+  try {
+    for (const page of target.pages) {
+      const token = await decryptSecret(page.encryptedToken),
+        info = await debugToken(target, token)
+      const problem = pageTokenProblem(info, target.appId, page.pageId)
+      if (problem) {
+        await ctx.runMutation(internal.meta.connect.markConnection, {
+          connectionId,
+          status: "error",
+          error: problem,
         })
+        return null
       }
+      const refreshed = await getPage(target, token, page.pageId)
+      await ctx.runMutation(internal.meta.pageState.refresh, {
+        accountId: page.id,
+        pageId: refreshed.id,
+        name: refreshed.name,
+        instagram: refreshed.instagram,
+      })
+    }
+    await ctx.runMutation(internal.meta.connect.markConnection, {
+      connectionId,
+      status: "active",
+    })
+  } catch (error) {
+    if (error instanceof MetaError && error.action === "token_invalid")
+      await markTokenInvalid(ctx, connectionId)
+    else
       await ctx.runMutation(internal.meta.connect.markConnection, {
         connectionId,
         status: "active",
+        error: graphFailure(error),
       })
-    } catch (error) {
-      await ctx.runMutation(internal.meta.connect.markConnection, {
-        connectionId,
-        status:
-          error instanceof MetaError && error.action === "token_invalid"
-            ? "error"
-            : "active",
-        error:
-          error instanceof MetaError && error.action === "token_invalid"
-            ? TOKEN_REFUSED
-            : graphFailure(error),
-      })
-    }
-    return null
+  }
+  return null
+}
+export const checkConnection = internalAction({
+  args: { connectionId: v.id("metaConnections") },
+  returns: v.null(),
+  handler: async (ctx, { connectionId }): Promise<null> => {
+    const target = await ctx.runQuery(internal.meta.connect.connectionTarget, {
+      connectionId,
+    })
+    return target?.status === "active"
+      ? checkPageConnection(ctx, connectionId, target)
+      : null
   },
 })
 export const unsubscribe = internalAction({
@@ -296,26 +310,17 @@ export const unsubscribe = internalAction({
   handler: async (ctx, { pages }) => {
     const version = await ctx.runQuery(internal.meta.pageState.version, {})
     if (!version) return null
-    for (const page of pages) {
-      if (
-        await ctx.runQuery(internal.meta.connect.pageConnected, {
-          pageId: page.pageId,
-        })
-      )
-        continue
-      try {
-        await graph({
-          token: await decryptSecret(page.encryptedToken),
-          version,
-          method: "DELETE",
-          path: `${page.pageId}/subscribed_apps`,
-        })
-      } catch (error) {
-        console.warn(
-          `Could not unsubscribe Page ${page.pageId}: ${graphFailure(error)}`
-        )
-      }
-    }
+    for (const page of pages)
+      await unsubscribeAsset({
+        id: page.pageId,
+        label: "Page",
+        version,
+        token: () => decryptSecret(page.encryptedToken),
+        connected: () =>
+          ctx.runQuery(internal.meta.connect.pageConnected, {
+            pageId: page.pageId,
+          }),
+      })
     return null
   },
 })

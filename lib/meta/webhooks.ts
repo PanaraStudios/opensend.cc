@@ -9,21 +9,22 @@
  * entry.id and display_phone_number, not metadata. Limits prefer the new
  * max_daily_conversations_per_business; current_limit is deprecated.
  */
-export const object = (value: unknown): Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-export const string = (value: unknown) =>
-  typeof value === "string" ? value : ""
-export const array = (value: unknown): unknown[] =>
-  Array.isArray(value) ? value : []
-export const timestamp = (value: unknown, fallback: number) => {
-  const seconds = Number(value)
+import { array, object, string, oneOf } from "./parse"
+import type { MessagingChannel, PageChannel } from "../channels"
+import { fromWaId, normalizePhone, toWaId } from "../dashboard/phone"
+import { CHANNEL_MESSAGE_TYPES } from "../../convex/tables/channels"
+export { array, object, string } from "./parse"
+export const timestamp = (
+  value: unknown,
+  fallback: number,
+  unit: "seconds" | "milliseconds" = "seconds"
+) => {
+  const at = Number(value) * (unit === "seconds" ? 1000 : 1)
   return (typeof value === "string" || typeof value === "number") &&
-    Number.isFinite(seconds) &&
-    seconds > 0 &&
-    seconds * 1000 <= 8.64e15
-    ? seconds * 1000
+    Number.isFinite(at) &&
+    at > 0 &&
+    at <= 8.64e15
+    ? at
     : fallback
 }
 export const MEDIA_TYPES = [
@@ -58,38 +59,140 @@ export function profileNameParts(name: string) {
   return { firstName, lastName: rest.join(" ") }
 }
 
-export type PageWebhookItem = {
-  channel: "messenger" | "instagram"
-  accountId: string
+export type InboundItem = {
+  kind: "message"
   sender: string
+  externalId: string
+  type: (typeof CHANNEL_MESSAGE_TYPES)[number]
+  preview: string
+  profileName: string
+  files: {
+    mediaId: string
+    contentType: string
+    filename?: string
+    url?: string
+  }[]
+  phone?: string
   at: number
+  data: Record<string, unknown>
+}
+export type StatusItem = {
+  kind: "status"
+  sender: string
+  externalId: string
+  status: NonNullable<ReturnType<typeof outboundStatus>>
+  at: number
+  data: Record<string, unknown>
+}
+export type WebhookItem = {
+  channel: MessagingChannel
+  accountId: string
+  wabaId?: string
 } & (
-  | { kind: "message"; data: Record<string, unknown> }
+  | InboundItem
+  | StatusItem
   | {
-      kind: "status"
+      kind: "watermark"
+      sender: string
       status: "delivered" | "read"
-      ids: string[]
-      watermark?: number
+      watermark: number
+      at: number
     }
 )
-const milliseconds = (value: unknown, fallback: number) =>
-  typeof value === "number" &&
-  Number.isFinite(value) &&
-  value > 0 &&
-  value <= 8.64e15
-    ? value
-    : fallback
+export type PageWebhookItem = WebhookItem & { channel: PageChannel }
+export const MANAGEMENT_WEBHOOK_FIELDS = [
+  "phone_number_quality_update",
+  "phone_number_name_update",
+  "account_update",
+] as const
+export const ACCOUNT_REMOVED_EVENTS = [
+  "ACCOUNT_DELETED",
+  "PARTNER_REMOVED",
+  "PARTNER_APP_UNINSTALLED",
+  "ACCOUNT_OFFBOARDED",
+] as const
+export const ACCOUNT_RESTRICTED_EVENTS = [
+  "ACCOUNT_RESTRICTION",
+  "ACCOUNT_VIOLATION",
+] as const
 
-/** Page/Instagram webhook timestamps and read watermarks are milliseconds.
- * https://developers.facebook.com/documentation/business-messaging/messenger-platform/webhooks
- */
+/** WhatsApp is parsed into the same inbound and status items as Page channels. */
+export function whatsappWebhookItems(
+  value: Record<string, unknown>,
+  wabaId: string,
+  fallback: number
+): WebhookItem[] {
+  const accountId = string(object(value.metadata).phone_number_id)
+  const base = { channel: "whatsapp" as const, accountId, wabaId }
+  const items: WebhookItem[] = []
+  for (const raw of array(value.messages)) {
+    const data = object(raw),
+      externalId = string(data.id),
+      sender = toWaId(string(data.from))
+    const phone = normalizePhone(fromWaId(sender))
+    if (!externalId || !sender || !phone) continue
+    const type = oneOf(data.type, CHANNEL_MESSAGE_TYPES) ?? "unsupported",
+      media = object(data[type])
+    const profile = array(value.contacts)
+      .map(object)
+      .find((contact) => string(contact.wa_id) === sender)
+    const mediaId = string(media.id)
+    items.push({
+      ...base,
+      kind: "message",
+      externalId,
+      sender,
+      phone,
+      type,
+      profileName: string(object(profile?.profile).name),
+      preview: (type === "text"
+        ? string(object(data.text).body)
+        : string(media.caption) || `[${type}]`
+      ).slice(0, 1000),
+      at: timestamp(data.timestamp, fallback),
+      data,
+      files:
+        MEDIA_TYPES.some((t) => t === type) && mediaId
+          ? [
+              {
+                mediaId,
+                contentType:
+                  string(media.mime_type) || "application/octet-stream",
+                ...(string(media.filename)
+                  ? { filename: string(media.filename) }
+                  : {}),
+              },
+            ]
+          : [],
+    })
+  }
+  for (const raw of array(value.statuses)) {
+    const data = object(raw),
+      status = outboundStatus(data.status),
+      externalId = string(data.id)
+    if (status && externalId)
+      items.push({
+        ...base,
+        kind: "status",
+        externalId,
+        sender: string(data.recipient_id),
+        status,
+        at: timestamp(data.timestamp, fallback),
+        data,
+      })
+  }
+  return items
+}
+
+/** Page timestamps and read watermarks are already in milliseconds. Native
+ * Page message data is retained; it is never converted to WhatsApp wire data. */
 export function pageWebhookItems(
   raw: unknown,
   fallback: number
 ): PageWebhookItem[] {
   const root = object(raw)
   if (root.object !== "page" && root.object !== "instagram") return []
-  const channel: "messenger" | "instagram" =
+  const channel: PageChannel =
     root.object === "page" ? "messenger" : "instagram"
   const items: PageWebhookItem[] = []
   for (const rawEntry of array(root.entry)) {
@@ -99,78 +202,74 @@ export function pageWebhookItems(
     for (const rawEvent of array(entry.messaging)) {
       const event = object(rawEvent),
         sender = string(object(event.sender).id)
-      const recipient = string(object(event.recipient).id)
-      if (!sender || recipient !== accountId) continue
-      const at = milliseconds(event.timestamp, fallback),
+      if (!sender || string(object(event.recipient).id) !== accountId) continue
+      const at = timestamp(event.timestamp, fallback, "milliseconds"),
         base = { channel, accountId, sender, at }
-      const message = object(event.message)
-      if (message.is_echo === true || sender === accountId) continue
-      const postback = object(event.postback),
+      const message = object(event.message),
+        postback = object(event.postback),
         reaction = object(event.reaction)
+      if (message.is_echo === true || sender === accountId) continue
       if (event.message || event.postback || event.reaction) {
-        const mid = string(message.mid) || string(postback.mid)
-        let data: Record<string, unknown>
+        const attachments = array(message.attachments).map(object)
+        const attachment = attachments[0],
+          kind = string(attachment?.type)
+        let externalId = string(message.mid) || string(postback.mid)
+        let type: InboundItem["type"]
         if (event.reaction) {
           if (!string(reaction.mid)) continue
-          data = {
-            id: `reaction:${string(reaction.mid)}:${sender}:${at}:${string(reaction.action)}`,
-            type: "reaction",
-            reaction,
-          }
+          externalId = `reaction:${string(reaction.mid)}:${sender}:${at}:${string(reaction.action)}`
+          type = "reaction"
         } else if (event.postback) {
-          // Some postbacks lack mid; the timestamp and payload identify a replay.
-          data = {
-            id: mid || `postback:${sender}:${at}:${string(postback.payload)}`,
-            type: "button",
-            button: {
-              text: string(postback.title),
-              payload: string(postback.payload),
-            },
-          }
+          externalId ||= `postback:${sender}:${at}:${string(postback.payload)}`
+          type = "button"
         } else {
-          if (!mid) continue
-          const attachments = array(message.attachments).map(object)
-          const attachment = attachments[0],
-            type = string(attachment?.type)
-          const kind =
-            type === "file"
-              ? "document"
-              : MEDIA_TYPES.find((known) => known === type)
-          data = {
-            id: mid,
-            type:
-              typeof message.text === "string"
-                ? "text"
-                : (kind ?? "unsupported"),
-            ...(typeof message.text === "string"
-              ? { text: { body: message.text } }
-              : {}),
-            ...(kind ? { [kind]: object(attachment.payload) } : {}),
-            ...(attachments.length ? { attachments } : {}),
-            ...(message.quick_reply
-              ? { quick_reply: message.quick_reply }
-              : {}),
-            ...(message.reply_to ? { reply_to: message.reply_to } : {}),
-          }
+          if (!externalId) continue
+          type =
+            typeof message.text === "string"
+              ? "text"
+              : kind === "file"
+                ? "document"
+                : (oneOf(kind, MEDIA_TYPES) ?? "unsupported")
         }
         items.push({
           ...base,
           kind: "message",
-          data: { ...data, from: sender, timestamp: at / 1000 },
+          externalId,
+          type,
+          profileName: "",
+          preview: (type === "text"
+            ? string(message.text)
+            : string(object(attachment?.payload).caption) || `[${type}]`
+          ).slice(0, 1000),
+          data: event,
+          files: attachments.flatMap((attachment, index) => {
+            const url = string(object(attachment.payload).url)
+            return url &&
+              ["image", "video", "audio", "file", "sticker"].includes(
+                string(attachment.type)
+              )
+              ? [
+                  {
+                    mediaId: `${externalId}:${index}`,
+                    url,
+                    contentType: "application/octet-stream",
+                  },
+                ]
+              : []
+          }),
         })
       } else if ((channel === "messenger" && event.delivery) || event.read) {
         const data = object(event.delivery ?? event.read)
         const ids = array(data.mids).map(string).filter(Boolean)
         if (string(data.mid)) ids.push(string(data.mid))
-        const watermark = milliseconds(data.watermark, 0)
-        if (!ids.length && !watermark) continue
-        items.push({
-          ...base,
-          kind: "status",
-          status: event.delivery ? "delivered" : "read",
-          ids,
-          ...(watermark ? { watermark } : {}),
-        })
+        const status = event.delivery
+          ? ("delivered" as const)
+          : ("read" as const)
+        for (const externalId of ids)
+          items.push({ ...base, kind: "status", externalId, status, data })
+        const watermark = timestamp(data.watermark, 0, "milliseconds")
+        if (watermark)
+          items.push({ ...base, kind: "watermark", status, watermark })
       }
     }
   }
