@@ -64,6 +64,7 @@ export const metaTables = {
     connectionId: v.id("metaConnections"),
     name: v.optional(v.string()),
     subscribedAt: v.optional(v.number()),
+    templatesSyncStartedAt: v.optional(v.number()),
     templatesSyncedAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])

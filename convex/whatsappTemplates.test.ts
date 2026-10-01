@@ -309,7 +309,7 @@ describe("WhatsApp templates", () => {
       ctx.db.query("whatsappBusinessAccounts").first()
     )
     expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
-    // A repeated listing advances observation clocks without changing content.
+    // A repeated listing advances the WABA clock without writing templates.
     const beforeRepeat = await f.t.run((ctx) =>
       ctx.db.query("templates").collect()
     )
@@ -320,18 +320,38 @@ describe("WhatsApp templates", () => {
     expect(
       await f.t.run((ctx) => ctx.db.query("templates").collect())
     ).toHaveLength(3)
+    expect(await f.t.run((ctx) => ctx.db.query("templates").collect())).toEqual(
+      beforeRepeat
+    )
+  })
+
+  test("an empty listing records the sync start and marks dropped templates deleted", async () => {
+    const f = await setup()
+    await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    f.graph.use({
+      method: "GET",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () => ({ data: [] }),
+    })
+    later()
+    const syncedAt = Date.now()
     expect(
-      (await f.t.run((ctx) => ctx.db.query("templates").collect())).map(
-        (row) => ({
-          ...row,
-          whatsapp: { ...row.whatsapp, syncedAt: undefined },
-        })
-      )
-    ).toEqual(
-      beforeRepeat.map((row) => ({
-        ...row,
-        whatsapp: { ...row.whatsapp, syncedAt: undefined },
-      }))
+      await f.owner.action(api.whatsapp.templateActions.sync, {
+        organizationId: f.team,
+      })
+    ).toEqual({ synced: 0 })
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+    ).toMatchObject({
+      templatesSyncStartedAt: syncedAt,
+      templatesSyncedAt: syncedAt,
+    })
+    const rows = await f.t.run((ctx) => ctx.db.query("templates").collect())
+    expect(rows).toHaveLength(2)
+    expect(rows.every((row) => row.whatsapp?.metaStatus === "DELETED")).toBe(
+      true
     )
   })
 

@@ -214,12 +214,26 @@ test("SC review 3: overlapping template syncs preserve newer observations, conte
   })
   expect(
     await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
-  ).toMatchObject({ templatesSyncedAt: 200 })
-  // Unchanged templates must still record the newer observation.
+  ).toMatchObject({ templatesSyncStartedAt: 200, templatesSyncedAt: 200 })
+  // A newer sync protects unchanged rows without writing to each template.
+  const beforeRepeat = await f.t.run((ctx) => ctx.db.query("templates").first())
+  vi.advanceTimersByTime(1000)
   await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
     ...base,
     syncedAt: 300,
     templates: [template],
+  })
+  expect(await f.t.run((ctx) => ctx.db.query("templates").first())).toEqual(
+    beforeRepeat
+  )
+  // Even an old page containing a previously unknown template is ignored.
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    ...base,
+    syncedAt: 250,
+    templates: [
+      { ...template, status: "PENDING" },
+      { ...template, id: "meta.stale", name: "stale" },
+    ],
   })
   await f.t.mutation(internal.whatsapp.templates.finishSync, {
     ...base,
@@ -227,9 +241,24 @@ test("SC review 3: overlapping template syncs preserve newer observations, conte
     cursor: null,
     seenMetaIds: [],
   })
+  expect(await f.t.run((ctx) => ctx.db.query("templates").first())).toEqual(
+    beforeRepeat
+  )
   expect(
-    await f.t.run((ctx) => ctx.db.query("templates").first())
-  ).toMatchObject({ whatsapp: { metaStatus: "APPROVED", syncedAt: 300 } })
+    await f.t.run((ctx) => ctx.db.query("templates").collect())
+  ).toHaveLength(1)
+  expect(
+    await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+  ).toMatchObject({ templatesSyncStartedAt: 300, templatesSyncedAt: 200 })
+  await f.t.mutation(internal.whatsapp.templates.finishSync, {
+    ...base,
+    syncedAt: 300,
+    cursor: null,
+    seenMetaIds: [template.id],
+  })
+  expect(
+    await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+  ).toMatchObject({ templatesSyncStartedAt: 300, templatesSyncedAt: 300 })
 })
 
 async function pages() {

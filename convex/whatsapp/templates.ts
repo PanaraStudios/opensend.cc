@@ -311,7 +311,16 @@ export const upsertSynced = internalMutation({
       .unique()
     // The WABA left the team while the sync ran.
     if (waba?.organizationId !== organizationId) return null
-    if ((waba.templatesSyncedAt ?? 0) > syncedAt) return null
+    if (
+      (waba.templatesSyncedAt ?? 0) > syncedAt ||
+      (waba.templatesSyncStartedAt ?? 0) > syncedAt
+    )
+      return null
+    // The first page records the sync once, including an empty listing.
+    if ((waba.templatesSyncStartedAt ?? 0) < syncedAt)
+      await ctx.db.patch("whatsappBusinessAccounts", waba._id, {
+        templatesSyncStartedAt: syncedAt,
+      })
     for (const meta of templates) {
       const components = storedComponents(meta.components)
       const fields = {
@@ -357,13 +366,8 @@ export const upsertSynced = internalMutation({
         !metadataChanged &&
         row.status === "published" &&
         row.publishedAt !== undefined
-      ) {
-        if ((row.whatsapp?.syncedAt ?? 0) < syncedAt)
-          await patchRow(ctx, "templates", row._id, {
-            whatsapp: { ...row.whatsapp!, syncedAt },
-          })
+      )
         continue
-      }
       const now = Math.max(Date.now(), row.updatedAt + 1)
       const publishedAt = same ? (row.publishedAt ?? now) : now
       await patchRow(ctx, "templates", row._id, {
@@ -419,7 +423,8 @@ export const finishSync = internalMutation({
       .unique()
     if (
       waba?.organizationId !== args.organizationId ||
-      (waba.templatesSyncedAt ?? 0) > args.syncedAt
+      (waba.templatesSyncedAt ?? 0) > args.syncedAt ||
+      (waba.templatesSyncStartedAt ?? 0) > args.syncedAt
     )
       return null
     const seen = new Set(args.seenMetaIds)
