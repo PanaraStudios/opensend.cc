@@ -1,6 +1,7 @@
 import dns from "node:dns/promises"
 import https from "node:https"
 import http from "node:http"
+import { Readable, Transform } from "node:stream"
 import {
   isPublicAddress,
   isPublicHostname,
@@ -15,6 +16,8 @@ export type PublicFetchOptions = {
   timeoutMs?: number
   maxBytes?: number
   truncate?: boolean
+  /** Return a bounded stream after headers; preserve DNS pinning and timeout. */
+  stream?: boolean
   /** Installation-authorized local development only, never derived from DNS. */
   localOrigin?: string
 }
@@ -116,6 +119,30 @@ function request(
           if (value !== undefined)
             for (const item of Array.isArray(value) ? value : [value])
               headers.append(key, item)
+        if (options.stream) {
+          let size = 0
+          const bounded = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+              size += chunk.byteLength
+              callback(
+                size > (options.maxBytes ?? 1024 * 1024)
+                  ? new Error("Response body too large")
+                  : null,
+                chunk
+              )
+            },
+          })
+          incoming.on("error", (error) => bounded.destroy(error))
+          bounded.on("close", () => incoming.destroy())
+          incoming.pipe(bounded)
+          resolveResponse(
+            new Response(
+              Readable.toWeb(bounded) as ReadableStream<Uint8Array>,
+              { status: incoming.statusCode ?? 502, headers }
+            )
+          )
+          return
+        }
         const chunks: Buffer[] = []
         let size = 0
         const limit = options.maxBytes ?? 1024 * 1024
