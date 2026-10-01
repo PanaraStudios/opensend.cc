@@ -17,6 +17,7 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
   const call = useTeamQuery(api.calling.playgroundState.detail, {
     id: id as Id<"calls">,
   })
+  const state = useTeamQuery(api.calling.softphoneState.state)
   if (!call) return <Skeleton className="h-60 w-full" />
   return (
     <>
@@ -35,6 +36,14 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
             value: call.duration === null ? "—" : `${call.duration}s`,
           },
           { label: "Outcome", value: ivrActionLabel(call.ivr_outcome) },
+          {
+            label: "Transfer target",
+            value:
+              call.ivr_outcome?.kind === "agents" && call.assigned_agent
+                ? (state?.agents.find((a) => a.userId === call.assigned_agent)
+                    ?.name ?? call.assigned_agent)
+                : "—",
+          },
         ]}
       />
       {call.error ? (

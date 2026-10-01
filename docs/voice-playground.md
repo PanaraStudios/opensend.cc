@@ -71,3 +71,10 @@ releases `/private/tmp/opensend-calling-harness.lock`; named test volumes are re
 Voice-bot screens, provider credentials and IVR provider TTS rendering await the
 integration commit `Merge 8d-2: AI voice bot engine`, as required by the sequencing
 instruction. The voice-bot branch has only been read with `git show`.
+
+Phase 1 checks: `pnpm typecheck`, `pnpm lint`, `pnpm test` (525),
+`pnpm test:auth --maxWorkers=1` (1,116), `pnpm test:sdk` (521 passed,
+four existing skips), `pnpm test:mcp` (487 passed, one existing live skip),
+`pnpm build`, gateway typecheck/build and 53 gateway tests passed.
+The complete locked Docker harness passed, including the new browser playground
+path. Playwright flows compile; their execution remains reserved for integration.

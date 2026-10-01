@@ -99,12 +99,17 @@ export function CallsView() {
                   {call.user_id ?? call.from ?? call.to ?? "—"}
                 </TableCell>
                 <TableCell>
-                  <span className="block">
+                  <span
+                    className="block max-w-sm truncate"
+                    title={ivrPathSummary(call.ivr_path)}
+                  >
                     {ivrPathSummary(call.ivr_path) || "—"}
                   </span>
                   {call.ivr_outcome ? (
                     <span className="text-sm text-muted-foreground">
-                      {ivrActionLabel(call.ivr_outcome)}
+                      {call.ivr_outcome.kind === "agents" && call.assigned_agent
+                        ? `Transfer to ${state?.agents.find((a) => a.userId === call.assigned_agent)?.name ?? call.assigned_agent}`
+                        : ivrActionLabel(call.ivr_outcome)}
                     </span>
                   ) : null}
                 </TableCell>

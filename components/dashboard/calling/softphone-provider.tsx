@@ -478,7 +478,7 @@ function TeamSoftphone({
       void phone.current?.hangup().catch(() => undefined)
       reset()
     }
-  }, [state, currentId, now])
+  }, [state, currentId, now, browserId])
   const transferItems = [
     ...(state?.agents ?? [])
       .filter(
