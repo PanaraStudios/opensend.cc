@@ -1,11 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend, SendWhatsAppMessageOptions } from "@opensendcc/sdk"
 import { z } from "zod"
-const pagination = {
-  limit: z.number().int().min(1).max(100).optional(),
-  after: z.string().optional(),
-  before: z.string().optional(),
-}
+import {
+  channelPagination as pagination,
+  channelPageCheck as pageCheck,
+  channelOutput,
+} from "./channelMessaging.js"
 const media = z.object({
   id: z.string().optional(),
   link: z.string().url().optional(),
@@ -26,19 +26,8 @@ const bodyKeys = [
   "interactive",
   "reaction",
 ] as const
-function pageCheck(input: { after?: string; before?: string }) {
-  if (input.after && input.before)
-    throw new Error("Cannot use both after and before.")
-}
-function output(result: { data: unknown; error: unknown }) {
-  if (result.error)
-    throw new Error(`WhatsApp request failed: ${JSON.stringify(result.error)}`)
-  return {
-    content: [
-      { type: "text" as const, text: JSON.stringify(result.data, null, 2) },
-    ],
-  }
-}
+const output = (result: { data: unknown; error: unknown }) =>
+  channelOutput("WhatsApp", result)
 export function addWhatsAppTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "send-whatsapp-message",

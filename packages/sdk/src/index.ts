@@ -31,4 +31,25 @@ export * from './templates/interfaces';
 export * from './topics/interfaces';
 export * from './usage/interfaces';
 export * from './webhooks/interfaces';
-export * from './whatsapp/interfaces';
+export type {
+  WhatsAppMessageType,
+  WhatsAppMessageStatus,
+  WhatsAppMediaReference,
+  WhatsAppTemplateParameter,
+  WhatsAppTemplateComponent as WhatsAppMessageTemplateComponent,
+  WhatsAppTemplate as WhatsAppMessageTemplate,
+  WhatsAppInteractive,
+  SendWhatsAppMessageOptions,
+  WhatsAppRequestOptions,
+  ListWhatsAppMessagesOptions,
+  WhatsAppMessage,
+  WhatsAppMessageDetail,
+  WhatsAppPhoneNumber,
+  WhatsAppConversation,
+  UploadWhatsAppMediaOptions,
+  WhatsAppPage,
+} from './whatsapp/interfaces';
+
+export * from './channels/interfaces';
+export * from './messenger/interfaces';
+export * from './instagram/interfaces';

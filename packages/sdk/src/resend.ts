@@ -25,6 +25,8 @@ import { Templates } from './templates/templates';
 import { Topics } from './topics/topics';
 import { Usage } from './usage/usage';
 import { Webhooks } from './webhooks/webhooks';
+import { Messenger } from './messenger/messenger';
+import { Instagram } from './instagram/instagram';
 import { WhatsApp } from './whatsapp/whatsapp';
 
 const defaultUserAgent = `opensend-node:${version}`;
@@ -73,11 +75,13 @@ export class Opensend {
   readonly topics = new Topics(this);
   readonly usage = new Usage(this);
   readonly webhooks = new Webhooks(this);
+  readonly messenger = new Messenger(this);
+  readonly instagram = new Instagram(this);
   readonly whatsapp = new WhatsApp(this);
 
   constructor(
     readonly key?: string,
-    options?: OpensendOptions,
+    options?: OpensendOptions
   ) {
     if (!key) {
       if (typeof process !== 'undefined' && process.env) {
@@ -86,7 +90,7 @@ export class Opensend {
 
       if (!this.key) {
         throw new Error(
-          'Missing API key. Pass it to the constructor `new Opensend("os_123")`',
+          'Missing API key. Pass it to the constructor `new Opensend("os_123")`'
         );
       }
     }
@@ -95,7 +99,7 @@ export class Opensend {
 
     if (!baseUrl) {
       throw new Error(
-        'Missing base URL. Pass `baseUrl` or set OPENSEND_BASE_URL to your Opensend API origin, e.g. https://api.example.com',
+        'Missing base URL. Pass `baseUrl` or set OPENSEND_BASE_URL to your Opensend API origin, e.g. https://api.example.com'
       );
     }
 
@@ -211,7 +215,7 @@ export class Opensend {
   async post<T>(
     path: string,
     entity?: unknown,
-    options: PostOptions & IdempotentRequest = {},
+    options: PostOptions & IdempotentRequest = {}
   ) {
     const headers = new Headers(this.headers);
     const isFormData =
