@@ -30,7 +30,14 @@ import {
   hydratedChannelMessage,
 } from "../channels/payload"
 import { mediaDownloadLink } from "../channels/downloads"
-import { callerValue, requireCaller, notFound, type Caller } from "./caller"
+import {
+  callerValue,
+  requireCaller,
+  notFound,
+  invalid,
+  apiError,
+  type Caller,
+} from "./caller"
 import {
   apiRoute,
   listParams,
@@ -326,6 +333,39 @@ export function channelMessageRoutes(channel: Channel) {
         maxBody: adapters.media.maxBody,
         handler: adapters.media.handler,
       })
+    for (const read of [true, false]) {
+      apiRoute(http, {
+        method: "POST",
+        path: read
+          ? `${prefix}/messages/{id}/read`
+          : `${prefix}/conversations/{id}/typing`,
+        scope: { resource: channel, access: "write" },
+        handler: async (ctx, { caller, params, body }) => {
+          const input = objectBody(body)
+          const field = read ? "typing" : "on"
+          const value = input[field]
+          if ((!read || value !== undefined) && typeof value !== "boolean")
+            throw invalid(`The \`${field}\` field must be a boolean.`)
+          const job = await ctx.runMutation(
+            internal.channels.controls.prepare,
+            {
+              caller,
+              channel,
+              id: params.id,
+              read,
+              ...(typeof value === "boolean" ? { typing: value } : {}),
+            }
+          )
+          if (!job) return { status: 202, body: { id: params.id } }
+          const result = await ctx.runAction(
+            internal.channels.controlActions.send,
+            job
+          )
+          if (result.error) throw apiError(502, "meta_api_error", result.error)
+          return { body: { id: params.id } }
+        },
+      })
+    }
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/messages`,
