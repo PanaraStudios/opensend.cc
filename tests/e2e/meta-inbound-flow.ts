@@ -185,10 +185,10 @@ export function metaInboundTests(
             const mediaMessage = backendRows<Doc<"channelMessages">>(
               "channelMessages"
             ).find((m) => m.externalId === "wamid.e2e-image")
-            return backendRows<Doc<"channelMessageContents">>(
+            const file = backendRows<Doc<"channelMessageContents">>(
               "channelMessageContents"
             ).find((c) => c.messageId === mediaMessage?._id)?.media?.[0]
-              .storageId
+            return file?.storageId ?? file?.fileId
           },
           { timeout: 45000 }
         )

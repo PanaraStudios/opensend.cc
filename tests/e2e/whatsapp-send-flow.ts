@@ -151,21 +151,21 @@ export function whatsappSendTests(
         },
       })
       expect(media.status()).toBe(200)
-      expect(await media.json()).toMatchObject({
-        id: expect.stringMatching(/^meta-upload-/),
-      })
+      const storage = await backend.query(api.storage.files.settings)
+      expect(await media.json()).toMatchObject({ id: expect.any(String) })
       const mediaCalls = await (
         await owner.request.get(`${fake()}/__calls`)
       ).json()
-      expect(mediaCalls).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            method: "POST",
-            path: `/${PHONE_ID}/media`,
-            body: expect.stringContaining('name="messaging_product"'),
-          }),
-        ])
-      )
+      if (storage.provider === "convex")
+        expect(mediaCalls).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              method: "POST",
+              path: `/${PHONE_ID}/media`,
+              body: expect.stringContaining('name="messaging_product"'),
+            }),
+          ])
+        )
       // The existing receiver pattern: .invalid never leaves the backend,
       // and the durable delivery record carries the signed payload.
       const deliveries = () =>

@@ -1,3 +1,4 @@
+import { objectStorageTests } from "./object-storage-flow"
 import { chooseEmailSetup } from "./setup-channels-flow"
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
 import {
@@ -1249,6 +1250,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   whatsappCampaignsTests(() => ({ owner, organizationId }))
   messengerInstagramTests(() => ({ owner, organizationId }))
   inboxTests(() => ({ owner, organizationId, sendingDomainId }))
+  objectStorageTests(() => ({ owner, organizationId }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")
