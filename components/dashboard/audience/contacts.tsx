@@ -867,14 +867,8 @@ export function ContactsView() {
                       href={`/contacts/${contact.id}`}
                       className="font-medium hover:underline"
                     >
-                      <div className="flex min-w-0 flex-col">
-                        <span className="truncate">{identity.label}</span>
-                        {identity.secondary !== identity.label ? (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {identity.secondary}
-                          </span>
-                        ) : null}
-                      </div>
+                      {/* Email, phone and username have their own columns. */}
+                      {identity.label}
                     </Link>
                     {contact.unsubscribed ? (
                       <Badge variant="secondary" className="ml-2">
