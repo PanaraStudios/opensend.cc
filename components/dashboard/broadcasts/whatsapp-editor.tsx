@@ -1,4 +1,8 @@
 "use client"
+import {
+  broadcastSegmentItems,
+  broadcastTopicItems,
+} from "@/lib/dashboard/broadcast"
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
@@ -37,6 +41,7 @@ import { useSegmentOptions, useTopicOptions } from "@/lib/audience/use-audience"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import type { Broadcast } from "@/lib/dashboard/types"
 import { actionError } from "@/lib/action-error"
+import { pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 
 export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
@@ -171,13 +176,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
                 aria-label="Audience"
                 value={segmentId ?? "everyone"}
                 search={{ onChange: setSegmentSearch }}
-                items={[
-                  { value: "everyone", label: "All contacts" },
-                  ...segments.map((segment) => ({
-                    value: segment.id,
-                    label: segment.name,
-                  })),
-                ]}
+                items={broadcastSegmentItems(segments)}
                 onChange={(value) =>
                   setSegmentId(value === "everyone" ? null : value)
                 }
@@ -189,13 +188,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
                 aria-label="Topic"
                 value={topicId ?? "none"}
                 search={{ onChange: setTopicSearch }}
-                items={[
-                  { value: "none", label: "No topic" },
-                  ...topics.map((topic) => ({
-                    value: topic.id,
-                    label: topic.name,
-                  })),
-                ]}
+                items={broadcastTopicItems(topics)}
                 onChange={(value) =>
                   setTopicId(value === "none" ? null : value)
                 }
@@ -228,7 +221,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
           {estimate ? (
             <div data-testid="whatsapp-broadcast-estimate">
               <p>
-                {estimate.recipients.toLocaleString()} recipients,{" "}
+                {pluralize(estimate.recipients, "recipient")},{" "}
                 {estimate.skipped.toLocaleString()} skipped
               </p>
               <p>

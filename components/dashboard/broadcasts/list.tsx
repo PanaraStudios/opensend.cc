@@ -1,4 +1,9 @@
 "use client"
+import {
+  MESSAGE_CHANNEL_ITEMS,
+  ChannelCell,
+  ChannelCreateMenu,
+} from "@/components/dashboard/channels/shared"
 
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 
@@ -11,18 +16,10 @@ import {
   LayoutTemplateIcon,
   MegaphoneIcon,
   PencilIcon,
-  PlusIcon,
-  MailIcon,
-  ChevronDownIcon,
   Trash2Icon,
 } from "lucide-react"
 
-import { WhatsAppIcon } from "@/components/brand-icons"
-import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
@@ -59,7 +56,11 @@ import {
   asBroadcast,
   useBroadcastCommands,
 } from "@/lib/broadcasts/use-broadcasts"
-import type { Broadcast, BroadcastStatus } from "@/lib/dashboard/types"
+import type {
+  Broadcast,
+  BroadcastStatus,
+  BroadcastChannel,
+} from "@/lib/dashboard/types"
 import { useSegmentOptions } from "@/lib/audience/use-audience"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
@@ -90,7 +91,7 @@ export function BroadcastsView() {
 
   const filters = {
     search: query,
-    channel: channel === "all" ? undefined : (channel as "email" | "whatsapp"),
+    channel: channel === "all" ? undefined : (channel as BroadcastChannel),
     status: status === "all" ? undefined : (status as BroadcastStatus),
     audience: audience === "all" ? undefined : audience,
   }
@@ -102,7 +103,7 @@ export function BroadcastsView() {
   )
   const { rows, pageRows, pagination } = list
 
-  async function createBroadcast(channel: "email" | "whatsapp") {
+  async function createBroadcast(channel: BroadcastChannel) {
     try {
       const created = await addBroadcast({
         name: "Untitled",
@@ -132,26 +133,12 @@ export function BroadcastsView() {
   })
 
   const createMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button data-testid="create-broadcast" />}>
-        <PlusIcon data-icon="inline-start" />
-        Create broadcast
-        <ChevronDownIcon data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => void createBroadcast("email")}>
-            <MailIcon />
-            Email
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void createBroadcast("whatsapp")}>
-            <WhatsAppIcon />
-            WhatsApp
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ChannelCreateMenu
+      noun="broadcast"
+      onCreate={(channel) => void createBroadcast(channel)}
+    />
   )
+
   return (
     <>
       <PageHeader title="Broadcasts">
@@ -167,11 +154,7 @@ export function BroadcastsView() {
           {
             value: channel,
             onChange: setChannel,
-            items: [
-              { value: "all", label: "All channels" },
-              { value: "email", label: "Email" },
-              { value: "whatsapp", label: "WhatsApp" },
-            ],
+            items: MESSAGE_CHANNEL_ITEMS,
             "aria-label": "Filter by channel",
           },
           {
@@ -234,14 +217,7 @@ export function BroadcastsView() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="flex items-center gap-2">
-                    {item.channel === "whatsapp" ? (
-                      <WhatsAppIcon className="size-4 shrink-0" />
-                    ) : (
-                      <MailIcon className="size-4 shrink-0" />
-                    )}
-                    {item.channel === "whatsapp" ? "WhatsApp" : "Email"}
-                  </span>
+                  <ChannelCell channel={item.channel} />
                 </TableCell>
                 <TableCell>
                   <BroadcastStatusBadge status={item.status} />

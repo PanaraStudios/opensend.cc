@@ -180,6 +180,17 @@ export function whatsappCampaignsTests(
       ],
     })
     await expect(owner.getByTestId("whatsapp-stat-read")).toContainText("1")
+    const report = owner.getByTestId("whatsapp-broadcast-stats")
+    await expect(
+      report.getByText("No phone number", { exact: true })
+    ).toBeVisible()
+    await expect(
+      report.locator('[data-slot="badge"]').filter({ hasText: /^Read$/ })
+    ).toBeVisible()
+    await expect(
+      report.locator('[data-slot="badge"]').filter({ hasText: /^Delivered$/ })
+    ).toBeVisible()
+    await expect(report.getByText("settled", { exact: true })).toHaveCount(0)
     await screenshot(owner, "broadcast-stats")
 
     await owner.goto("/automations")

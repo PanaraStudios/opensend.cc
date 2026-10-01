@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
 import { formFromComponents, storedComponents } from "@/lib/meta/templates"
 import {
+  CONTACT_VARIABLE_FIELDS,
+  normalizeVariableSource,
   resolveVariables,
   type VariableContact,
   type VariableSource,
@@ -33,12 +35,6 @@ export type WhatsAppCampaignConfig = {
   variables: Record<string, VariableSource>
   text?: string
 }
-const CONTACT_FIELDS = [
-  { value: "firstName", label: "First name" },
-  { value: "lastName", label: "Last name" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Phone" },
-] as const
 
 function VariableMapping({
   name,
@@ -49,7 +45,7 @@ function VariableMapping({
   value: VariableSource
   onChange: (source: VariableSource) => void
 }) {
-  const source = typeof value === "string" ? { value } : value
+  const source = normalizeVariableSource(value)
   const kind =
     "contact" in source
       ? "contact"
@@ -83,7 +79,7 @@ function VariableMapping({
           <OptionSelect
             aria-label={`Contact field for {{${name}}}`}
             value={source.contact}
-            items={CONTACT_FIELDS}
+            items={CONTACT_VARIABLE_FIELDS}
             onChange={(contact) =>
               onChange({
                 contact: contact as typeof source.contact,

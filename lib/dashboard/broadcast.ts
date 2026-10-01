@@ -109,3 +109,20 @@ export function broadcastAsTemplateInput(item: Broadcast): TemplateInput {
     replyTo: item.replyTo,
   }
 }
+
+export function broadcastSegmentItems(
+  rows: readonly { id: string; name: string }[]
+) {
+  return [
+    { value: "everyone", label: "All contacts" },
+    ...rows.map((row) => ({ value: row.id, label: row.name })),
+  ]
+}
+export function broadcastTopicItems(
+  rows: readonly { id: string; name: string }[]
+) {
+  return [
+    { value: "none", label: "No topic" },
+    ...rows.map((row) => ({ value: row.id, label: row.name })),
+  ]
+}

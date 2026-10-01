@@ -1,4 +1,8 @@
 "use client"
+import {
+  broadcastSegmentItems,
+  broadcastTopicItems,
+} from "@/lib/dashboard/broadcast"
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
@@ -279,13 +283,7 @@ export function BroadcastSendFields({
               segmentId: next === "everyone" ? null : next,
             })
           }
-          items={[
-            { value: "everyone", label: "All contacts" },
-            ...segments.map((segment) => ({
-              value: segment.id,
-              label: segment.name,
-            })),
-          ]}
+          items={broadcastSegmentItems(segments)}
         />
       </div>
       <div className={ROW}>
@@ -306,13 +304,7 @@ export function BroadcastSendFields({
               topicId: next === "none" ? null : next,
             })
           }
-          items={[
-            { value: "none", label: "No topic" },
-            ...topics.map((topic) => ({
-              value: topic.id,
-              label: topic.name,
-            })),
-          ]}
+          items={broadcastTopicItems(topics)}
         />
       </div>
       <div className={ROW}>

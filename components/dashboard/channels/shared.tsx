@@ -3,8 +3,25 @@
 import * as React from "react"
 import Link from "next/link"
 import { useQuery } from "convex/react"
-import { MailIcon, RadioTowerIcon, TriangleAlertIcon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  PlusIcon,
+  MailIcon,
+  RadioTowerIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 
+import { IconCell } from "@/components/dashboard/primitives"
+import { rowChannel } from "@/lib/meta/templates"
+import { channelLabel } from "@/lib/dashboard/format"
+import type { BroadcastChannel } from "@/lib/dashboard/types"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { api } from "@/convex/_generated/api"
 import {
   InstagramIcon,
@@ -65,6 +82,45 @@ export const MESSAGE_CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "email", label: "Email" },
   { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
 ]
+
+export function ChannelCell({ channel }: { channel?: Channel }) {
+  const value = rowChannel({ channel })
+  return <IconCell icon={channelIcon(value)}>{channelLabel(value)}</IconCell>
+}
+/** The existing Email/WhatsApp creation menu used by messaging resources. */
+export function ChannelCreateMenu({
+  noun,
+  onCreate,
+}: {
+  noun: "broadcast" | "template"
+  onCreate: (channel: BroadcastChannel) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button data-testid={`create-${noun}`} />}>
+        <PlusIcon data-icon="inline-start" />
+        Create {noun}
+        <ChevronDownIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          {MESSAGE_CHANNEL_ITEMS.filter((item) => item.value !== "all").map(
+            (item) => {
+              const value = item.value as BroadcastChannel
+              const Icon = channelIcon(value)
+              return (
+                <DropdownMenuItem key={value} onClick={() => onCreate(value)}>
+                  <Icon />
+                  {channelLabel(value)}
+                </DropdownMenuItem>
+              )
+            }
+          )}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export const CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },
