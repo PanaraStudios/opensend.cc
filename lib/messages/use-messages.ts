@@ -194,7 +194,7 @@ export function useThread(id: Id<"conversations"> | undefined) {
     { initialNumItems: THREAD_PAGE }
   )
   const messages = React.useMemo(
-    () => [...query.results].reverse(),
+    () => [...query.results].reverse() as ThreadMessage[],
     [query.results]
   )
   const { loadMore } = query
