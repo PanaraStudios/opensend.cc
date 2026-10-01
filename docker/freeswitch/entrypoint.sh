@@ -23,16 +23,19 @@ if [ ! -s /opt/freeswitch/certs/dtls-srtp.pem ]; then
 fi
 envsubst '${FREESWITCH_ESL_SECRET} ${FREESWITCH_PUBLIC_IP}' < /templates/freeswitch.xml.template > /opt/freeswitch/conf/freeswitch.xml
 # Bounded per-call gateway slots; browser-agent credentials use a separate secret.
+# FreeSWITCH's preprocessor needs <include> and </include> on their own lines.
 i=1000
 while [ "$i" -le 1099 ]; do
-  printf '<include><user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="calling"/></variables></user></include>\n' \
+  printf '<include>\n<user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="calling"/></variables></user>\n</include>\n' \
     "$i" "$FREESWITCH_SIP_SECRET" > "/opt/freeswitch/conf/directory/$i.xml"
   i=$((i + 1))
 done
 i=2000
 while [ "$i" -le 2099 ]; do
-  printf '<include><user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="agents"/></variables></user></include>\n' \
+  printf '<include>\n<user id="%s"><params><param name="password" value="%s"/></params><variables><variable name="user_context" value="agents"/></variables></user>\n</include>\n' \
     "$i" "$FREESWITCH_AGENT_SECRET" > "/opt/freeswitch/conf/directory/$i.xml"
   i=$((i + 1))
 done
-exec /opt/freeswitch/bin/freeswitch -nf -nonat
+# Our rendered config lives in /opt/freeswitch/conf, not the stock etc/freeswitch samples.
+mkdir -p /opt/freeswitch/log /opt/freeswitch/db
+exec /opt/freeswitch/bin/freeswitch -nf -nonat -conf /opt/freeswitch/conf -log /opt/freeswitch/log -db /opt/freeswitch/db

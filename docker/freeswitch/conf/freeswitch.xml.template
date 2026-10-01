@@ -78,7 +78,7 @@
     <domain name="freeswitch">
       <params><param name="dial-string" value="{presence_id=${dialed_user}@${dialed_domain}}${sofia_contact(${dialed_user}@${dialed_domain})}"/></params>
       <groups><group name="calling"><users>
-        <X-PRE-PROCESS cmd="include" data="directory/*.xml"/>
+        <X-PRE-PROCESS cmd="include" data="/opt/freeswitch/conf/directory/*.xml"/>
       </users></group></groups>
     </domain>
   </section>
