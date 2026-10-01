@@ -272,6 +272,7 @@ export const channelTables = {
     rateReadyAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
+    readReceiptSentAt: v.optional(v.number()),
     error: v.optional(v.string()),
     errorCode: v.optional(v.number()),
     errorTitle: v.optional(v.string()),
@@ -305,6 +306,7 @@ export const channelTables = {
       "direction",
     ])
     .index("by_conversationId", ["conversationId"])
+    .index("by_conversationId_and_direction", ["conversationId", "direction"])
     .index("by_channel_and_externalId", ["channel", "externalId"])
     .index("by_accountId_and_reactionTargetExternalId", [
       "accountId",
@@ -338,10 +340,22 @@ export const channelTables = {
   /** The message's timeline; status webhooks append to it. */
   channelMessageEvents: defineTable({
     messageId: v.id("channelMessages"),
-    type: v.union(channelMessageStatusValue, v.literal("payment_updated")),
+    type: v.union(
+      channelMessageStatusValue,
+      v.literal("payment_updated"),
+      v.literal("read_receipt_sent"),
+      v.literal("read_receipt_failed"),
+      v.literal("typing_failed")
+    ),
     at: v.number(),
     webhookEventId: v.optional(v.id("metaWebhookEvents")),
     /** Extra details as JSON, like Meta's error object. */
     details: v.optional(v.string()),
   }).index("by_messageId_and_at", ["messageId", "at"]),
 }
+
+export const controlJob = v.object({
+  messageId: v.id("channelMessages"),
+  read: v.boolean(),
+  typing: v.optional(v.boolean()),
+})

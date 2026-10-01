@@ -110,9 +110,10 @@ export function templatePayload(value: unknown) {
   }
 }
 /** Validate before enqueueing and build only Cloud API fields. */
-export function whatsappPayload(
-  input: WhatsAppBody
-): Record<string, unknown> & {
+export function whatsappPayload(input: WhatsAppBody): Record<
+  string,
+  unknown
+> & {
   messaging_product: "whatsapp"
   recipient_type: "individual"
   to?: string
@@ -290,6 +291,15 @@ type PreparedMessage = {
   preview: string
 }
 type ChannelStrategy = {
+  readReceipt: (
+    externalId: string,
+    recipient: string
+  ) => Record<string, unknown>
+  typing: (
+    recipient: string,
+    on: boolean,
+    externalId: string
+  ) => Record<string, unknown> | null
   build: (body: Record<string, unknown> & { to?: string }) => PreparedMessage
   assertWindow: (
     payload: Record<string, unknown>,
@@ -321,6 +331,18 @@ function pageStrategy(
   const definition = CHANNELS[channel]
   const accountLabel = `${definition.label} ${definition.accountNoun.toLowerCase()}`
   return {
+    // Meta requires recipient + sender_action only, in separate requests.
+    // Official docs verified 2026-10-01:
+    // https://developers.facebook.com/documentation/business-messaging/messenger-platform/send-messages/sender-actions.md
+    // https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/sender-actions.md
+    readReceipt: (_, recipient) => ({
+      recipient: { id: recipient },
+      sender_action: "mark_seen",
+    }),
+    typing: (recipient, on) => ({
+      recipient: { id: recipient },
+      sender_action: on ? "typing_on" : "typing_off",
+    }),
     build: (body) => {
       const payload = build(body as PageBody),
         message = payload.message
@@ -365,6 +387,20 @@ function pageStrategy(
 /** Keep channel-specific wire shape, window rules and endpoints behind one adapter. */
 export const channelStrategies: Record<MessagingChannel, ChannelStrategy> = {
   whatsapp: {
+    readReceipt: (message_id) => ({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id,
+    }),
+    typing: (_, on, message_id) =>
+      on
+        ? {
+            messaging_product: "whatsapp",
+            status: "read",
+            message_id,
+            typing_indicator: { type: "text" },
+          }
+        : null,
     build: (body) => {
       const payload = whatsappPayload(body as WhatsAppBody),
         data = payload[payload.type] as Record<string, unknown>
