@@ -32,7 +32,7 @@ import type { ThreadMessage } from "@/lib/messages/use-messages"
 export function ConversationImage(props: ImageProps) {
   const { props: imageProps } = getImageProps({ ...props, unoptimized: true })
   // eslint-disable-next-line @next/next/no-img-element -- Signed media is fetched directly, with Next's dimensions and lazy-loading attributes.
-  return <img {...imageProps} />
+  return <img {...imageProps} alt={props.alt} />
 }
 
 type File = NonNullable<ThreadMessage["normalized"]>["attachments"][number]
