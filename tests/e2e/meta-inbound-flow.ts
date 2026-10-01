@@ -113,8 +113,9 @@ export function metaInboundTests(
         path: `${process.env.OPENSEND_TEST_RESULTS}/meta-inbound-audience.png`,
         fullPage: true,
       })
+      // The contact cell links with the identity label: the WhatsApp profile name.
       await contact
-        .getByRole("link", { name: "+16505551234", exact: true })
+        .getByRole("link", { name: "Sheena Nelson", exact: true })
         .click()
       await expect(owner.getByLabel("Phone", { exact: true })).toHaveValue(
         "+16505551234"
