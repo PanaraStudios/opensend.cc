@@ -50,3 +50,9 @@ next-env.d.ts
 /playwright-report/
 
 /docker/smtp/certs/
+
+# Python voice service local dependencies and test caches
+services/voice-agent/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

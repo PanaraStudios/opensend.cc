@@ -119,6 +119,12 @@ export async function payload(
     ivr_id: row.ivrId ?? null,
     ivr_path: row.ivrPath ?? [],
     ivr_outcome: row.ivrOutcome ?? null,
+    bot_id: row.botId ?? null,
+    bot_outcome: row.botOutcome ?? null,
+    bot_summary: row.botSummary ?? null,
+    bot_duration: row.botDuration ?? null,
+    bot_usage: row.botUsage ?? null,
+    bot_fallback_reason: row.botFallbackReason ?? null,
   }
 }
 export async function callEvent(

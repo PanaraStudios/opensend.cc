@@ -1,4 +1,5 @@
 import { registerIvrRoutes } from "../ivr/routes"
+import { registerVoiceRoutes } from "./voice"
 import { registerCallingRoutes } from "./calling"
 import { registerMediaRoutes } from "./media"
 import { registerPageMessageRoutes } from "./channelMessages"
@@ -25,6 +26,7 @@ import { registerLogRoutes } from "./logs"
 export function registerApiRoutes(http: HttpRouter) {
   registerIvrRoutes(http)
   registerCallingRoutes(http)
+  registerVoiceRoutes(http)
   registerMediaRoutes(http)
   registerWhatsAppRoutes(http)
   registerPageMessageRoutes(http)

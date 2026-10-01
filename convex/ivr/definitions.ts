@@ -1,3 +1,4 @@
+import { ownedBot } from "../voice/resources"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
 import {
@@ -111,7 +112,7 @@ export async function checkAction(
     if (!row || row.organizationId !== organizationId)
       throw notFound("Webhook secret")
   }
-  // Bot IDs remain strings until 8d-2 lands; the bot runtime must authorize them.
+  if (action.kind === "bot") await ownedBot(ctx, organizationId, action.botId)
 }
 export async function checked(
   ctx: QueryCtx,

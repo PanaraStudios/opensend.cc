@@ -1,4 +1,5 @@
 import { ivrTables } from "./tables/ivr"
+import { voiceTables } from "./tables/voice"
 import { callingTables } from "./tables/calling"
 import { storageTables } from "./tables/storage"
 import { receivedTables } from "./tables/received"
@@ -30,6 +31,7 @@ import { webhookTables } from "./tables/webhooks"
 export default defineSchema({
   ...ivrTables,
   ...callingTables,
+  ...voiceTables,
   ...storageTables,
   ...broadcastTables,
   ...automationTables,

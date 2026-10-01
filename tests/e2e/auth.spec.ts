@@ -1,4 +1,5 @@
 import { ivrTests } from "./ivr-flow"
+import { voiceBotTests } from "./voice-bot-flow"
 import { softphoneTests } from "./softphone-flow"
 import { callingTests } from "./calling-flow"
 import { fileStorageTests } from "./file-storage-flow"
@@ -1253,6 +1254,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   whatsappSendTests(() => ({ owner, organizationId }))
   callingTests(() => ({ owner, organizationId }))
   ivrTests(() => ({ owner, organizationId }))
+  voiceBotTests(() => ({ owner, organizationId }))
   softphoneTests(() => ({ owner, organizationId }))
   apiKeyScopesTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))

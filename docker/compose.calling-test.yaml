@@ -14,6 +14,11 @@ services:
       - freeswitch-certs:/certs
   drachtio:
     image: opensend-calling-test-drachtio:0.9.11
+  voice-agent:
+    image: opensend-calling-test-voice-agent:0.1.0
+    environment:
+      VOICE_AGENT_FAKE_ENABLED: "true"
+      CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
   call-gateway:
     image: opensend-calling-test-gateway:0.1.0
     environment:
@@ -37,4 +42,6 @@ services:
       - calling-recordings:/recordings:ro
     depends_on:
       call-gateway:
+        condition: service_healthy
+      voice-agent:
         condition: service_healthy

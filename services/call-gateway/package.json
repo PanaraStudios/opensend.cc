@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "20.19.43",
+    "@types/ws": "8.18.1",
     "esbuild": "0.25.12",
     "opusscript": "0.1.1",
     "playwright": "1.63.0",
@@ -30,6 +31,7 @@
     "werift": "0.24.4"
   },
   "dependencies": {
-    "drachtio-srf": "5.0.29"
+    "drachtio-srf": "5.0.29",
+    "ws": "8.18.3"
   }
 }

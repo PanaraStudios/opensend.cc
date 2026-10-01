@@ -1,3 +1,4 @@
+import { validateBot, toolDeclarations } from "../src/voice/catalog.js"
 /** Docker-only harness; fake Meta/backend plus an optional real SIP.js browser. */
 import { opusTone, decodeOpus, tonePower } from "./opus-audio.js"
 import type { VoiceEvent, VoiceToolRequest } from "../src/voice-backend.js"
@@ -20,6 +21,10 @@ import { CallGatewayClient } from "../src/client.js"
 import type { GatewayCallback } from "../src/contracts.js"
 import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
 
+const returnFlow = process.argv.includes("bot-ivr")
+const combinedFlow = process.argv.includes("ivr-bot-agent")
+const pipecatEngine =
+  process.argv.includes("bot-engine") || combinedFlow || returnFlow
 const secret = process.env.CALL_GATEWAY_SECRET ?? ""
 const verifier = new HmacVerifier(secret)
 const gateway = new CallGatewayClient(
@@ -35,13 +40,15 @@ const voiceEvents: (VoiceEvent & {
   timestamp: number
 })[] = []
 const toolRequests: VoiceToolRequest[] = []
+let harnessAgentExtension: string | undefined
 const ivrPaths: {
   callId: string
   menuId: string
   digits: string
-  action: { kind: string; menuId?: string }
+  action: { kind: string; menuId?: string; botId?: string }
   at: number
 }[] = []
+const ivrStarts: string[] = []
 let ivrAudioFetches = 0
 function fixturePrompt() {
   const expires = Date.now() + 600_000
@@ -112,15 +119,20 @@ const receiver = createServer(async (request, response) => {
       const input = JSON.parse(body)
       assert.equal(input.ivrId, "harness-ivr")
       if (request.url.endsWith("start")) {
+        ivrStarts.push(input.callId)
         response.writeHead(200).end(JSON.stringify(fixtureMenu("main", 0)))
       } else {
         const path = ivrPaths.filter((p) => p.callId === input.callId)
         assert.equal(input.step, path.length)
         assert.equal(input.menuId, path.length ? "support" : "main")
         assert.equal(input.digits, path.length ? "2" : "1")
-        const action = path.length
-          ? { kind: "voicemail" }
-          : { kind: "submenu", menuId: "support" }
+        const action = returnFlow
+          ? { kind: "agents" }
+          : combinedFlow
+            ? { kind: "bot", botId: "harness-bot" }
+            : path.length
+              ? { kind: "voicemail" }
+              : { kind: "submenu", menuId: "support" }
         ivrPaths.push({
           callId: input.callId,
           menuId: input.menuId,
@@ -128,15 +140,31 @@ const receiver = createServer(async (request, response) => {
           action,
           at: Date.now(),
         })
-        response
-          .writeHead(200)
-          .end(
-            JSON.stringify(
-              path.length
-                ? { step: 2, organizationId: "harness-team", action }
-                : fixtureMenu("support", 1)
-            )
-          )
+        const decision =
+          action.kind === "submenu"
+            ? fixtureMenu("support", 1)
+            : {
+                step: path.length + 1,
+                organizationId: "harness-team",
+                action,
+                ...(action.kind === "agents"
+                  ? { extension: harnessAgentExtension! }
+                  : {}),
+                ...(action.kind === "bot"
+                  ? {
+                      route: {
+                        callId: input.callId,
+                        target: "bot",
+                        botId: "harness-bot",
+                        organizationId: "harness-team",
+                        codec: "L16",
+                        maxDurationSeconds: 30,
+                        record: true,
+                      },
+                    }
+                  : {}),
+              }
+        response.writeHead(200).end(JSON.stringify(decision))
       }
       return
     }
@@ -161,20 +189,75 @@ const receiver = createServer(async (request, response) => {
       response.writeHead(200).end('{"ok":true}')
       return
     }
+    if (request.url === "/calling/gateway/voice/session") {
+      verifier.verify(request.method!, request.url, body, request.headers)
+      const session = JSON.parse(body)
+      assert.equal(session.organizationId, "harness-team")
+      assert.ok(session.callId.startsWith("harness-inbound-"))
+      response
+        .writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        })
+        .end(
+          JSON.stringify({
+            ...validateBot({
+              name: "Harness Pipecat",
+              provider: "gemini",
+              engine: "gemini_live",
+              credentialId: "harness-credential",
+              tools: returnFlow
+                ? ["lookup_contact", "transfer_to_ivr"]
+                : combinedFlow
+                  ? ["lookup_contact", "transfer_to_agent"]
+                  : ["lookup_contact"],
+              handoff: {
+                agents: true,
+                ...(returnFlow ? { ivrId: "harness-ivr" } : {}),
+              },
+              maxDurationSeconds: returnFlow ? 30 : 6,
+            }),
+            botId: "harness-bot",
+            keys: { live: "fake-key" },
+            toolCatalog: toolDeclarations(
+              returnFlow
+                ? ["lookup_contact", "transfer_to_ivr"]
+                : combinedFlow
+                  ? ["lookup_contact", "transfer_to_agent"]
+                  : ["lookup_contact"]
+            ),
+          })
+        )
+      return
+    }
     if (request.url === "/calling/gateway/voice/tools") {
       verifier.verify(request.method!, request.url, body, request.headers)
       const tool = JSON.parse(body) as VoiceToolRequest
       assert.equal(tool.version, 1)
       assert.equal(tool.organizationId, "harness-team")
       assert.ok(tool.callId.startsWith("harness-inbound-"))
-      assert.equal(tool.toolCall.name, "lookup_contact")
-      assert.deepEqual(tool.toolCall.arguments, { query: "fixture" })
+      assert.ok(
+        tool.toolCall.name === "lookup_contact" ||
+          (combinedFlow && tool.toolCall.name === "transfer_to_agent") ||
+          (returnFlow && tool.toolCall.name === "transfer_to_ivr")
+      )
+      if (tool.toolCall.name === "lookup_contact")
+        assert.deepEqual(tool.toolCall.arguments, {})
       toolRequests.push(tool)
-      response
-        .writeHead(200)
-        .end(
-          JSON.stringify({ ok: true, result: { contactId: "fixture-contact" } })
-        )
+      response.writeHead(200).end(
+        JSON.stringify({
+          ok: true,
+          result:
+            tool.toolCall.name === "transfer_to_ivr"
+              ? { action: "transfer_to_ivr", ivrId: "harness-ivr" }
+              : tool.toolCall.name === "transfer_to_agent"
+                ? {
+                    action: "transfer_to_agent",
+                    extension: harnessAgentExtension!,
+                  }
+                : { contactId: "fixture-contact" },
+        })
+      )
       return
     }
     assert.equal(request.url, "/calling/gateway/events")
@@ -256,6 +339,7 @@ async function browserAgent() {
     extension: string
     password: string
   }
+  harnessAgentExtension = credential.extension
   const asset = await readFile("/app/agent.js")
   const web = createServer((request, response) => {
     if (request.url === "/agent.js")
@@ -286,7 +370,7 @@ async function browserAgent() {
       timeout: 15000,
     })
     console.log(
-      "PASS agent registration: backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS"
+      `PASS agent registration: extension ${credential.extension}, backend-issued ephemeral credential, XML-CURL directory, SIP.js over WSS`
     )
     const currentPage = page
     return {
@@ -339,7 +423,7 @@ async function browserAgent() {
 async function run(
   direction: "inbound" | "outbound",
   agent?: Awaited<ReturnType<typeof browserAgent>>,
-  voice?: "L16" | "PCMU" | "ivr" | "ivr-engine"
+  voice?: "L16" | "PCMU" | "ivr" | "ivr-engine" | "ivr-bot-agent" | "bot-ivr"
 ) {
   const callId = `harness-${direction}-${randomUUID()}`
   const peer = new RTCPeerConnection({
@@ -381,6 +465,7 @@ async function run(
     })
   )
   let sending: NodeJS.Timeout | undefined
+  let lastSentHeader: RtpHeader | undefined
   try {
     if (direction === "inbound") {
       await peer.setLocalDescription(await peer.createOffer())
@@ -430,17 +515,22 @@ async function run(
       "Audio escaped before Graph accept confirmation via /route"
     )
     const route =
-      voice && voice !== "ivr" && voice !== "ivr-engine"
+      voice &&
+      voice !== "ivr" &&
+      voice !== "ivr-engine" &&
+      voice !== "ivr-bot-agent"
         ? {
             callId,
             target: "bot" as const,
-            adapter: "fake-echo" as const,
+            ...(pipecatEngine
+              ? { botId: "harness-bot" }
+              : { adapter: "fake-echo" as const }),
             organizationId: "harness-team",
-            codec: voice,
-            maxDurationSeconds: 6,
+            codec: voice === "PCMU" ? ("PCMU" as const) : ("L16" as const),
+            maxDurationSeconds: returnFlow ? 30 : 6,
             record: true,
           }
-        : agent
+        : agent && !combinedFlow && !returnFlow
           ? {
               callId,
               target: "agent" as const,
@@ -451,7 +541,9 @@ async function run(
               callId,
               target: "ivr" as const,
               record: true,
-              ...(voice === "ivr-engine" ? { ivrId: "harness-ivr" } : {}),
+              ...(["ivr-engine", "ivr-bot-agent"].includes(voice ?? "")
+                ? { ivrId: "harness-ivr" }
+                : {}),
             }
     const routeAt = Date.now()
     await gateway.route(route)
@@ -472,9 +564,9 @@ async function run(
       voice && voice !== "ivr" && voice !== "ivr-engine"
         ? await opusTone(440)
         : []
-    sending = setInterval(() => {
-      track.writeRtp(
-        new RtpPacket(
+    const startSending = () =>
+      setInterval(() => {
+        const packet = new RtpPacket(
           new RtpHeader({
             payloadType: opusPayload,
             ssrc: senderSsrc,
@@ -485,10 +577,13 @@ async function run(
             ? tonePackets[sent % tonePackets.length]
             : Buffer.from([0xf8, 0xff, 0xfe])
         )
-      )
-      timestamp += 960
-      sent++
-    }, 20)
+        track.writeRtp(packet)
+        // Werift rewrites this header before sending; retain it for RFC2833 clocks.
+        lastSentHeader = packet.header
+        timestamp += 960
+        sent++
+      }, 20)
+    sending = startSending()
     await waitUntil(
       () =>
         received >= 30 &&
@@ -499,7 +594,7 @@ async function run(
       `${direction}: bidirectional Opus or callback missing`
     )
     assert.equal(ssrcs.size, 1, "Business audio changed SSRC")
-    if (agent) {
+    if (agent && !combinedFlow && !returnFlow) {
       let stats: BrowserAgentState | undefined
       await waitUntil(async () => {
         stats = await agent.stats()
@@ -520,7 +615,21 @@ async function run(
         `PASS agent bridge: SIP.js answered, browser received ${stats!.inboundPackets} / sent ${stats!.outboundPackets} RTP packets; Meta received ${received} / sent ${sent}`
       )
     }
-    if (voice === "ivr" || voice === "ivr-engine") {
+    if (
+      voice === "ivr" ||
+      voice === "ivr-engine" ||
+      voice === "ivr-bot-agent" ||
+      voice === "bot-ivr"
+    ) {
+      if (returnFlow)
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (e) =>
+                e.callId === callId && e.type === "state" && e.state === "ivr"
+            ),
+          "Bot did not enter IVR on the anchored channel"
+        )
       clearInterval(sending)
       const info = await infoFor(callId)
       const negotiated = peer.remoteDescription!.sdp.match(
@@ -528,7 +637,13 @@ async function run(
       )
       assert.ok(negotiated, "IVR did not negotiate DTMF")
       const pt = Number(negotiated[1])
+      // Capture Werift's offset once: direct DTMF sends do not update its speech header.
+      const sequenceOffset =
+        (lastSentHeader?.sequenceNumber ?? sequence - 1) - (sequence - 1)
       const sendDigit = async (digit: number, offset: number) => {
+        const eventTimestamp =
+          Math.floor((lastSentHeader?.timestamp ?? timestamp) / 6) +
+          offset * 160
         for (let i = 0; i < 10; i++) {
           const payload = Buffer.from([digit, i >= 7 ? 0x8a : 0x0a, 0, 0])
           payload.writeUInt16BE(Math.min(i + 1, 7) * 160, 2)
@@ -537,15 +652,143 @@ async function run(
             new RtpHeader({
               payloadType: pt,
               ssrc: sender.ssrc,
-              sequenceNumber: (sequence + offset + i) & 65535,
-              timestamp: 8000 + offset * 160,
+              sequenceNumber: (sequence++ + sequenceOffset) & 65535,
+              timestamp: eventTimestamp,
               marker: i === 0,
             })
           )
           await delay(20)
         }
       }
+      if (returnFlow) {
+        await waitUntil(
+          () => ivrStarts.includes(callId) && ivrAudioFetches > 0,
+          "Returned IVR did not fetch its prompt"
+        )
+        await delay(1000)
+      }
       await sendDigit(1, 0)
+      if (returnFlow) {
+        sending = startSending()
+        await waitUntil(
+          () =>
+            ivrPaths.some(
+              (p) => p.callId === callId && p.action.kind === "agents"
+            ),
+          "Returned IVR did not receive digit 1"
+        )
+        await waitUntil(async () => {
+          const stats = await agent!.stats()
+          if (stats.error) throw new Error(stats.error)
+          return (
+            stats.answered &&
+            stats.inboundPackets >= 20 &&
+            stats.outboundPackets >= 20
+          )
+        }, "Bot → IVR → agent did not carry browser audio")
+        assert.ok(
+          voiceEvents.some(
+            (e) =>
+              e.callId === callId &&
+              e.type === "bot_completed" &&
+              e.outcome === "transferred_ivr"
+          )
+        )
+        assert.deepEqual(
+          ivrPaths
+            .filter((p) => p.callId === callId)
+            .map((p) => [p.menuId, p.digits, p.action.kind]),
+          [["main", "1", "agents"]]
+        )
+        assert.ok(
+          !callbacks.some((e) => e.callId === callId && e.event === "hangup")
+        )
+        console.log(
+          "PASS bot return: Pipecat transfer_to_ivr → same-channel IVR RFC2833 digit 1 → SIP.js agent audio"
+        )
+      }
+      if (voice === "ivr-bot-agent") {
+        await waitUntil(
+          () =>
+            ivrPaths.some(
+              (p) => p.callId === callId && p.action.kind === "bot"
+            ),
+          "IVR bot decision missing"
+        )
+        sending = startSending()
+        await waitUntil(
+          () =>
+            toolRequests.some(
+              (t) =>
+                t.callId === callId && t.toolCall.name === "transfer_to_agent"
+            ),
+          "Bot transfer tool missing"
+        )
+        try {
+          await waitUntil(async () => {
+            const stats = await agent!.stats()
+            if (stats.error) throw new Error(stats.error)
+            if (
+              callbacks.some((e) => e.callId === callId && e.event === "hangup")
+            )
+              throw new Error("Call ended during bot transfer")
+            return (
+              stats.answered &&
+              stats.inboundPackets >= 20 &&
+              stats.outboundPackets >= 20
+            )
+          }, "IVR → bot → agent did not bridge browser audio")
+        } catch (error) {
+          console.error(
+            "Combined flow diagnostics",
+            JSON.stringify({
+              agent: await agent!.stats(),
+              callbacks: callbacks
+                .filter((e) => e.callId === callId)
+                .map((e) => ({
+                  event: e.event,
+                  ...("reason" in e ? { reason: e.reason } : {}),
+                })),
+              state: voiceEvents.filter(
+                (e) => e.callId === callId && e.type === "state"
+              ),
+              tools: toolRequests
+                .filter((t) => t.callId === callId)
+                .map((t) => t.toolCall.name),
+            })
+          )
+          throw error
+        }
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (e) =>
+                e.callId === callId &&
+                e.type === "bot_completed" &&
+                e.outcome === "transferred_agent"
+            ),
+          "Bot transfer outcome missing"
+        )
+        assert.deepEqual(
+          ivrPaths
+            .filter((p) => p.callId === callId)
+            .map((p) => [p.menuId, p.digits, p.action.kind]),
+          [["main", "1", "bot"]]
+        )
+        assert.equal(
+          voiceEvents.filter(
+            (e) => e.callId === callId && e.type === "bot_completed"
+          ).length,
+          1
+        )
+        assert.ok(
+          !callbacks.some((e) => e.callId === callId && e.event === "hangup"),
+          "Transfer hung up the anchored call"
+        )
+        console.log(
+          "PASS combined: call → IVR RFC2833 digit 1 → Pipecat bot → transfer_to_agent → SIP.js bidirectional audio; one call, path and transfer outcome"
+        )
+      }
       if (voice === "ivr-engine") {
         await waitUntil(
           () =>
@@ -616,7 +859,7 @@ async function run(
       )!
       assert.equal(barge.type, "barge_in")
       if (barge.type === "barge_in") {
-        assert.ok(barge.flushedMs > 1000)
+        assert.ok(barge.flushedMs >= (pipecatEngine ? 0 : 1001))
         assert.ok(barge.playedMs > 0 && barge.playedMs < 2000)
       }
       await waitUntil(
@@ -776,10 +1019,30 @@ try {
       await gateway.hangup(callId).catch(() => undefined)
       await agent.close()
     }
+  } else if (returnFlow || combinedFlow) {
+    const agent = await browserAgent()
+    try {
+      await run("inbound", agent, returnFlow ? "bot-ivr" : "ivr-bot-agent")
+    } finally {
+      await agent.close()
+    }
   } else if (process.argv.includes("ivr-engine")) {
     await run("inbound", undefined, "ivr-engine")
   } else if (process.argv.includes("ivr")) {
     await run("inbound", undefined, "ivr")
+  } else if (pipecatEngine) {
+    await run("inbound", undefined, "L16")
+    await run("inbound", undefined, "PCMU")
+    assert.ok(
+      voiceEvents.some(
+        (event) =>
+          event.type === "bot_completed" &&
+          event.summary.includes("Harness caller")
+      )
+    )
+    console.log(
+      "PASS Pipecat: signed session fetch, Python pipeline, transcript, tool, clear and completion summary"
+    )
   } else if (process.argv.includes("voice")) {
     await run("inbound", undefined, "L16")
     await run("inbound", undefined, "PCMU")

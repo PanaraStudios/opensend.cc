@@ -114,6 +114,8 @@ export const WEBHOOK_EVENTS = [
   "whatsapp.call.permission_updated",
   "whatsapp.call.recording_ready",
   "whatsapp.call.transcription_ready",
+  "whatsapp.call.bot_completed",
+  "whatsapp.call.transferred",
   "whatsapp.message.sent",
   "whatsapp.message.delivered",
   "whatsapp.message.read",

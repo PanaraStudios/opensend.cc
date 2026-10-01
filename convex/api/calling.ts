@@ -1,4 +1,3 @@
-import type { routing } from "../ivr/validators"
 import type { HttpRouter } from "convex/server"
 import { internal } from "../_generated/api"
 import {
@@ -83,7 +82,7 @@ export function registerCallingRoutes(http: HttpRouter) {
         }),
       }),
     })
-  for (const method of ["GET", "POST"] as const)
+  for (const method of ["GET", "POST", "PATCH"] as const)
     apiRoute(http, {
       method,
       path: "/whatsapp/phone-numbers/{id}/calling",
@@ -95,10 +94,12 @@ export function registerCallingRoutes(http: HttpRouter) {
             organizationId: caller.organizationId,
             caller,
             from: params.id,
-            ...(method === "POST"
+            ...(method !== "GET"
               ? {
-                  routing: callingRouting(input.routing),
                   calling: objectField(input, "calling"),
+                  routing: objectField(input, "routing") as
+                    | typeof import("../tables/calling").callingRouting.type
+                    | undefined,
                   mode: enumField(input, "handling_mode", [
                     "gateway",
                     "api",
@@ -162,24 +163,4 @@ export function registerCallingRoutes(http: HttpRouter) {
       return { body: { id } }
     },
   })
-}
-
-function callingRouting(value: unknown): typeof routing.type | undefined {
-  if (value === undefined) return undefined
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw invalid("Invalid routing")
-  const r = value as Record<string, unknown>
-  if ((r.kind === "agents" || r.kind === "api") && Object.keys(r).length === 1)
-    return { kind: r.kind }
-  if (
-    r.kind === "ivr" &&
-    typeof r.ivrId === "string" &&
-    /^[a-zA-Z0-9]{1,256}$/.test(r.ivrId) &&
-    Object.keys(r).length === 2
-  )
-    return {
-      kind: "ivr",
-      ivrId: r.ivrId as import("../_generated/dataModel").Id<"ivrs">,
-    }
-  throw invalid("Use routing agents, api or ivr with ivrId")
 }

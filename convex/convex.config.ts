@@ -76,5 +76,6 @@ app.use(aggregate, { name: "channelMessageCounts" })
 app.use(aggregate, { name: "conversationCounts" })
 app.use(aggregate, { name: "broadcastMessageCounts" })
 app.use(aggregate, { name: "channelAccountCounts" })
+app.use(aggregate, { name: "voiceMinuteUsage" })
 app.use(migrations)
 export default app

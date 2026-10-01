@@ -1,0 +1,253 @@
+from pipecat.processors.frameworks.rtvi.models import MESSAGE_LABEL
+import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+import pytest
+from fastapi.testclient import TestClient
+from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, InterruptionFrame
+from pipecat.frames.frames import OutputTransportMessageFrame
+from voice_agent.auth import SessionTokens
+from voice_agent.serializer import VoiceSerializer
+from voice_agent.tools import ToolRouter
+from voice_agent.factory import create_services, ResumableGeminiLive, VoiceSarvamLLM
+
+SECRET = "a" * 64
+
+
+def token(claims):
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return payload + "." + signature
+
+
+def claims():
+    return {
+        "version": 1,
+        "callId": "call-1",
+        "organizationId": "team-1",
+        "botId": "bot-1",
+        "expiresAt": time.time() * 1000 + 45000,
+        "nonce": "unique-nonce",
+    }
+
+
+def config():
+    return {
+        "engine": "cascade",
+        "keys": {"stt": "fake", "llm": "fake", "tts": "fake"},
+        "language": "hi-IN",
+        "systemPrompt": "Helpful assistant",
+        "stt": {"provider": "sarvam", "model": "saaras:v4", "language": "hi-IN"},
+        "llm": {"provider": "sarvam", "model": "sarvam-105b-conversations"},
+        "tts": {"provider": "elevenlabs", "model": "eleven_flash_v2_5", "voice": "test-voice"},
+    }
+
+
+async def test_serializer_pcm_round_trip_and_interrupt_epoch():
+    emit = AsyncMock()
+    serializer = VoiceSerializer(emit)
+    pcm = bytes(640)
+    frame = await serializer.deserialize(pcm)
+    assert isinstance(frame, InputAudioRawFrame)
+    assert frame.sample_rate == 16000 and frame.num_channels == 1 and frame.audio == pcm
+    assert await serializer.serialize(OutputAudioRawFrame(pcm, 16000, 1)) == pcm
+    assert (
+        await serializer.serialize(
+            OutputTransportMessageFrame({"label": MESSAGE_LABEL, "type": "bot-ready"})
+        )
+        is None
+    )
+    old = serializer.turn_id
+    assert json.loads(await serializer.serialize(InterruptionFrame())) == {
+        "type": "clear",
+        "turnId": old,
+    }
+    await serializer.serialize(OutputAudioRawFrame(pcm, 16000, 1))
+    assert emit.await_args.args[0]["turnId"] != old
+    with pytest.raises(ValueError):
+        await serializer.deserialize(b"x")
+    with pytest.raises(ValueError):
+        await serializer.serialize(OutputAudioRawFrame(pcm, 8000, 1))
+    with pytest.raises(ValueError):
+        await serializer.deserialize('{"type":"played_ms","playedMs":-1}')
+
+
+def test_auth_expiry_call_binding_signature_and_replay():
+    auth = SessionTokens(SECRET)
+    data = claims()
+    signed = token(data)
+    assert auth.verify(signed, "call-1")["organizationId"] == "team-1"
+    for value, call_id in [(signed, "call-1"), (signed, "other-call"), (signed + "bad", "call-1")]:
+        with pytest.raises(ValueError, match="Unauthorized"):
+            auth.verify(value, call_id)
+    data["expiresAt"] = time.time() * 1000 - 1
+    with pytest.raises(ValueError):
+        SessionTokens(SECRET).verify(token(data), "call-1")
+
+
+@pytest.mark.parametrize("stt_provider", ["sarvam", "elevenlabs"])
+@pytest.mark.parametrize("llm_provider", ["sarvam", "gemini"])
+@pytest.mark.parametrize("tts_provider", ["sarvam", "elevenlabs"])
+def test_factory_selects_every_supported_cascade(stt_provider, llm_provider, tts_provider):
+    value = config()
+    value["stt"].update(
+        provider=stt_provider,
+        model="saaras:v4" if stt_provider == "sarvam" else "scribe_v2_realtime",
+    )
+    value["llm"].update(
+        provider=llm_provider,
+        model="sarvam-105b-conversations" if llm_provider == "sarvam" else "gemini-3.8-flash",
+    )
+    value["tts"].update(
+        provider=tts_provider,
+        model="bulbul:v3" if tts_provider == "sarvam" else "eleven_flash_v2_5",
+        voice="shubh" if tts_provider == "sarvam" else "test-voice",
+    )
+    services = create_services(value)
+    assert not services.realtime
+    assert stt_provider.lower() in type(services.stt).__name__.lower()
+    assert ("sarvam" if llm_provider == "sarvam" else "google") in type(
+        services.llm
+    ).__name__.lower()
+    assert tts_provider.lower() in type(services.tts).__name__.lower()
+    assert services.tts._sample_rate == 16000 or services.tts._init_sample_rate == 16000
+
+
+def test_factory_live_compression_and_sarvam_reasoning_disabled():
+    value = config()
+    value.update(engine="gemini_live", model="gemini-3.8-live", voice="Kore", keys={"live": "fake"})
+    services = create_services(value)
+    assert services.realtime
+    assert services.llm._settings.context_window_compression["enabled"] is True
+    assert services.llm._settings.language is None
+    sarvam = create_services(config()).llm
+    with patch.object(
+        VoiceSarvamLLM.__mro__[1],
+        "build_chat_completion_params",
+        return_value={"model": "sarvam-105b-conversations"},
+    ):
+        assert sarvam.build_chat_completion_params({})["reasoning_effort"] is None
+
+
+async def test_goaway_uses_pipecat_resumption_path():
+    service = object.__new__(ResumableGeminiLive)
+    service._disconnecting = False
+    service._reconnect = AsyncMock()
+
+    async def execute(coroutine, name):
+        await coroutine
+
+    service.create_task = lambda coroutine, name: asyncio.create_task(execute(coroutine, name))
+    message = SimpleNamespace(go_away={"time_left": "10s"})
+    with patch.object(ResumableGeminiLive.__mro__[1], "_handle_server_message", new=AsyncMock()):
+        await service._handle_server_message(message)
+        await asyncio.sleep(0)
+    service._reconnect.assert_awaited_once()
+
+
+async def test_tools_keep_authority_in_backend_and_controls_in_gateway():
+    backend, emit = Mock(), AsyncMock()
+    backend.tool = AsyncMock(return_value={"ok": True, "result": {"name": "Caller"}})
+    catalog = [
+        {"name": name, "parameters": {"properties": {}, "required": []}}
+        for name in ["lookup_contact", "end_call", "transfer_to_ivr"]
+    ]
+    router = ToolRouter(backend, emit, catalog)
+    assert (await router.run("tool-1", "lookup_contact", {}))["ok"]
+    backend.tool.assert_awaited_once_with(
+        {"id": "tool-1", "name": "lookup_contact", "arguments": {}}
+    )
+    assert not (await router.run("tool-2", "lookup_contact", {"organizationId": "evil"}))["ok"]
+    pending = asyncio.create_task(router.run("tool-3", "end_call", {}))
+    await asyncio.sleep(0)
+    emit.assert_awaited_with(
+        {"type": "tool_call", "id": "tool-3", "name": "end_call", "arguments": {}}
+    )
+    router.result("tool-3", {"ok": True, "result": {"action": "end_call"}})
+    assert (await pending)["ok"]
+    router.close()
+
+
+def test_websocket_rejects_bad_auth_before_fetching_credentials(monkeypatch):
+    from voice_agent import app as module
+
+    monkeypatch.setenv("VOICE_AGENT_SECRET", SECRET)
+    module.tokens = None
+    with patch.object(module.VoiceBackend, "config", new=AsyncMock()) as fetch_config:
+        with TestClient(module.app) as client:
+            with client.websocket_connect("/ws") as socket:
+                socket.send_json({"type": "start", "callId": "call-1", "sessionToken": "invalid"})
+                message = socket.receive()
+                assert message["type"] == "websocket.close" and message["code"] == 1008
+        fetch_config.assert_not_awaited()
+
+
+def test_factory_eleven_v4_uses_dialogue_endpoint_for_all_indian_languages():
+    value = config()
+    value["tts"].update(model="eleven_v4_turbo")
+    value["language"] = "or-IN"
+    service = create_services(value).tts
+    assert "Dialogue" in type(service).__name__
+    assert service._settings.model == "eleven_v4_turbo"
+    service._output_format = "pcm_16000"
+    assert "/text-to-dialogue/multi-stream-input" in service._build_websocket_url()
+    assert "model_id=eleven_v4_turbo" in service._build_websocket_url()
+
+
+def test_authenticated_fake_pipeline_starts_and_finishes_over_websocket(monkeypatch):
+    from voice_agent import app as module
+
+    monkeypatch.setenv("VOICE_AGENT_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_CONVEX_HTTP_URL", "http://fixture.test")
+    monkeypatch.setenv("VOICE_AGENT_FAKE_ENABLED", "true")
+    module.tokens = None
+    value = config()
+    value.update(
+        botId="bot-1",
+        maxDurationSeconds=6,
+        toolCatalog=[
+            {
+                "name": "lookup_contact",
+                "description": "Current caller",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            }
+        ],
+    )
+    with patch.object(module.VoiceBackend, "config", new=AsyncMock(return_value=value)):
+        with TestClient(module.app) as client:
+            with client.websocket_connect("/ws") as socket:
+                socket.send_json(
+                    {"type": "start", "callId": "call-1", "sessionToken": token(claims())}
+                )
+                first = socket.receive()
+                assert first["type"] == "websocket.send", first
+                assert json.loads(first["text"])["type"] == "ready"
+                socket.send_json({"type": "end", "reason": "Test completed"})
+                while True:
+                    message = socket.receive()
+                    assert message["type"] != "websocket.close", message
+                    if message.get("text"):
+                        data = json.loads(message["text"])
+                        assert data["type"] in {
+                            "mark",
+                            "clear",
+                            "transcript",
+                            "usage",
+                            "latency",
+                            "end",
+                        }, data
+                        if data["type"] == "end":
+                            assert data["summary"].startswith("Harness caller")
+                            break

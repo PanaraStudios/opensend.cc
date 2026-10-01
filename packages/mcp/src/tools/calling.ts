@@ -1,4 +1,4 @@
-import { callingRouting } from "./ivrs.js"
+import { callingRoutingMembers, type CallingRouting } from "@opensendcc/sdk"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type {
   Opensend,
@@ -12,6 +12,16 @@ import {
   channelPagination,
   channelPageCheck,
 } from "./channelMessaging.js"
+const callingRouting = z.union(
+  Object.entries(callingRoutingMembers).map(([kind, fields]) =>
+    z.strictObject({
+      kind: z.literal(kind),
+      ...Object.fromEntries(
+        Object.keys(fields).map((field) => [field, z.string()])
+      ),
+    })
+  )
+) as z.ZodType<CallingRouting>
 const session = z.object({
   sdp_type: z.enum(["offer", "answer"]),
   sdp: z.string().max(98304),

@@ -1,3 +1,4 @@
+import { minuteUsage } from "./voice/usage"
 import { deleteFile } from "./storage/files"
 import { deleteReceived } from "./received"
 import { v } from "convex/values"
@@ -72,6 +73,9 @@ export const TEAM_TABLES = [
   "metaConnections",
   "teamAssets",
   "storedFiles",
+  "callTranscripts",
+  "voiceBots",
+  "voiceProviders",
   "calls",
   "callEvents",
   "callPermissions",
@@ -104,7 +108,13 @@ async function erase<T extends TableNames>(
 ) {
   if ((COUNTED_TABLES as readonly string[]).includes(table))
     await deleteRow(ctx, table as CountedTable, id as Id<CountedTable>)
-  else await ctx.db.delete(table, id)
+  else {
+    if (table === "calls") {
+      const call = await ctx.db.get("calls", id as Id<"calls">)
+      if (call?.botStartedAt) await minuteUsage.deleteIfExists(ctx, call)
+    }
+    await ctx.db.delete(table, id)
+  }
 }
 
 async function children<T extends TableNames>(

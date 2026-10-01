@@ -4,10 +4,15 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY services/call-gateway/package.json services/call-gateway/package.json
 # Deploy from the shared lock into an isolated package; install no root app dependencies.
-RUN pnpm --config.inject-workspace-packages=true --filter @opensendcc/call-gateway deploy /gateway
+RUN --mount=type=cache,id=opensend-pnpm,target=/root/.local/share/pnpm/store \
+    printf '\nfetchTimeout: 300000\n' >> pnpm-workspace.yaml \
+    && CI=true pnpm --config.inject-workspace-packages=true --filter @opensendcc/call-gateway deploy /gateway
 FROM dependencies AS production-deps
 WORKDIR /gateway
-RUN CI=true pnpm prune --prod
+# Keep the repository's existing build approvals for the standalone prune.
+COPY pnpm-workspace.yaml /gateway/pnpm-workspace.yaml
+RUN --mount=type=cache,id=opensend-pnpm,target=/root/.local/share/pnpm/store \
+    CI=true pnpm prune --prod
 
 FROM dependencies AS build
 COPY services/call-gateway/ /gateway/

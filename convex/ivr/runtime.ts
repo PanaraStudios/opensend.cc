@@ -1,4 +1,4 @@
-import { requireAvailable } from "../calling/agentAccess"
+import { availableAgent, selectBot } from "../voice/routing"
 import { v } from "convex/values"
 import {
   internalMutation,
@@ -189,24 +189,22 @@ async function decision(
       return decision(ctx, call, s, fallback, origin)
     }
   }
-  if (selected.kind === "agents") {
-    const agents = await ctx.db
-      .query("callAgents")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", call.organizationId)
-      )
-      .take(100)
-    let agent: Doc<"callAgents"> | undefined
-    for (const candidate of agents) {
-      if (!/^20\d{2}$/.test(candidate.extension ?? "")) continue
-      try {
-        await requireAvailable(ctx, candidate, call._id)
-        agent = candidate
-        break
-      } catch {
-        /* Try the next authorized, available agent. */
-      }
+  if (selected.kind === "bot") {
+    const route = await selectBot(ctx, call, selected.botId)
+    return {
+      ...base,
+      action:
+        route.target === "bot"
+          ? { kind: "bot", botId: route.botId! }
+          : route.target === "agent"
+            ? { kind: "agents" }
+            : { kind: "voicemail" },
+      ...("extension" in route ? { extension: route.extension } : {}),
+      route,
     }
+  }
+  if (selected.kind === "agents") {
+    const agent = await availableAgent(ctx, call)
     if (!agent)
       return decision(
         ctx,
@@ -215,15 +213,6 @@ async function decision(
         fallback.kind === "agents" ? { kind: "voicemail" } : fallback,
         origin
       )
-    await ctx.db.patch("callAgents", agent._id, {
-      reservedCallId: call._id,
-      reservationUntil: Date.now() + 3600_000,
-    })
-    await ctx.db.patch("calls", call._id, {
-      assignedAgent: agent.userId,
-      agentLeaseId: agent.leaseId,
-      agentExtension: agent.extension,
-    })
     return { ...base, action: selected, extension: agent.extension }
   }
   if (selected.kind === "playAndHangup") {
@@ -255,20 +244,31 @@ export const start = internalMutation({
       .query("ivrSessions")
       .withIndex("by_callId", (q) => q.eq("callId", call._id))
       .unique()
-    if (existing) throw apiError(409, "ivr_started", "IVR is already started")
+
     const row = await own(ctx, call.organizationId, args.ivrId)
     // The settings authorization is resolved from persisted call ownership, never a supplied team.
     const settings = await ctx.db
       .query("callingSettings")
       .withIndex("by_accountId", (q) => q.eq("accountId", call.accountId))
       .unique()
+    const botHandoff =
+      call.ivrHandoffId === row._id &&
+      call.botConfig?.handoff.ivrId === row._id &&
+      call.botOutcome === "transferred_ivr" &&
+      !call.botActive
+    if (existing && (!existing.finalAction || !botHandoff))
+      throw apiError(409, "ivr_started", "IVR is already started")
     if (
-      call.test
+      !botHandoff &&
+      (call.test
         ? call.ivrId !== row._id
         : settings?.routing?.kind !== "ivr" ||
-          settings.routing.ivrId !== row._id
+          settings.routing.ivrId !== row._id)
     )
       throw notFound("Assigned IVR")
+    if (botHandoff)
+      await ctx.db.patch("calls", call._id, { ivrHandoffId: undefined })
+    if (existing) await ctx.db.delete("ivrSessions", existing._id)
     const id = await ctx.db.insert("ivrSessions", {
       organizationId: call.organizationId,
       callId: call._id,

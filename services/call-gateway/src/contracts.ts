@@ -10,6 +10,7 @@ export interface RouteRequest {
   organizationId?: string
   adapter?: "fake-echo"
   codec?: "L16" | "PCMU"
+  silenceTimeoutSeconds?: number
   maxDurationSeconds?: number
 }
 export interface GatewayApi {

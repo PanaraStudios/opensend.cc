@@ -11,12 +11,14 @@ import { parseScopes as parseOAuthScopes, oauthScopes } from "./oauth/policy"
 
 describe("API scopes", () => {
   it("has one catalog of grantable resources, excluding keys and team settings", () => {
-    assert.equal(API_RESOURCES.length, 16)
-    assert.equal(new Set(API_SCOPES).size, 32)
+    assert.equal(API_RESOURCES.length, 17)
+    assert.equal(new Set(API_SCOPES).size, 34)
     assert.deepEqual(
       [...new Set(API_RESOURCES.map((r) => r.group))],
       ["Messaging", "Audience", "Content", "Setup"]
     )
+    assert.ok(API_RESOURCES.some((resource) => resource.id === "ivrs"))
+    assert.ok(API_RESOURCES.some((resource) => resource.id === "voice_bots"))
     for (const scope of API_SCOPES) assert.ok(oauthScopes[scope])
   })
   it("write implies read only on the same resource", () => {

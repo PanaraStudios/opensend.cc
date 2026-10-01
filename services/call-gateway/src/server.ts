@@ -246,6 +246,11 @@ export function createGatewayServer(
               ...(body.ivrId !== undefined
                 ? { ivrId: body.ivrId as string }
                 : {}),
+              ...(body.silenceTimeoutSeconds !== undefined
+                ? {
+                    silenceTimeoutSeconds: body.silenceTimeoutSeconds as number,
+                  }
+                : {}),
               ...(body.botId !== undefined
                 ? { botId: body.botId as string }
                 : {}),

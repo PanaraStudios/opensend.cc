@@ -56,3 +56,6 @@ export * from "./whatsapp/normalize"
 export type * from "./whatsapp/calling/interfaces"
 
 export type * from "./ivrs/interfaces"
+export type * from "./voice/interfaces"
+
+export { callingRoutingMembers, callingRoutingSchema, parseCallingRouting } from "./whatsapp/calling/routing"

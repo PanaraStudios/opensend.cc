@@ -62,5 +62,4 @@ export interface IvrPathEntry {
   action: IvrAction
   at: number
 }
-export type CallingRouting =
-  { kind: "agents" } | { kind: "api" } | { kind: "ivr"; ivrId: string }
+export type { CallingRouting } from "../whatsapp/calling/routing"
