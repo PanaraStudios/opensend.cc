@@ -77,6 +77,7 @@ export const TEAM_TABLES = [
   "callPermissions",
   "callingSettings",
   "gatewayEvents",
+  "callAgents",
 ] as const
 
 export const CHILD_TABLES = [

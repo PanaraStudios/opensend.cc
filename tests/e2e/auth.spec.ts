@@ -1,3 +1,4 @@
+import { softphoneTests } from "./softphone-flow"
 import { callingTests } from "./calling-flow"
 import { objectStorageTests } from "./object-storage-flow"
 import { chooseEmailSetup } from "./setup-channels-flow"
@@ -1247,6 +1248,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   metaInboundTests(() => ({ owner, organizationId }))
   whatsappSendTests(() => ({ owner, organizationId }))
   callingTests(() => ({ owner, organizationId }))
+  softphoneTests(() => ({ owner, organizationId }))
   apiKeyScopesTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
   whatsappCampaignsTests(() => ({ owner, organizationId }))

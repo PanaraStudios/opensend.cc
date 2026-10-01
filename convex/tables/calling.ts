@@ -28,6 +28,22 @@ export const callMedia = v.object({
   error: v.optional(v.string()),
 })
 export const callingTables = {
+  callAgents: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    name: v.string(),
+    authSessionId: v.string(),
+    browserId: v.string(),
+    leaseId: v.string(),
+    status: v.union(v.literal("online"), v.literal("away")),
+    reservedCallId: v.optional(v.id("calls")),
+    reservationUntil: v.optional(v.number()),
+    extension: v.optional(v.string()),
+    expiresAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_userId", ["organizationId", "userId"]),
   calls: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
@@ -61,12 +77,24 @@ export const callingTables = {
     errorCode: v.optional(v.number()),
     errors: v.optional(v.string()),
     assignedAgent: v.optional(v.string()),
+    agentLeaseId: v.optional(v.string()),
+    agentExtension: v.optional(v.string()),
     mediaUpAt: v.optional(v.number()),
     gatewayAt: v.optional(v.number()),
     gatewayRouted: v.optional(v.boolean()),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_organizationId_and_assignedAgent_and_status", [
+      "organizationId",
+      "assignedAgent",
+      "status",
+    ])
+    .index("by_organizationId_and_mode_and_status", [
+      "organizationId",
+      "mode",
+      "status",
+    ])
     .index("by_accountId_and_userId", ["accountId", "userId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_accountId_and_wacid", ["accountId", "wacid"])

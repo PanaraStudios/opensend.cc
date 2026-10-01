@@ -25,3 +25,11 @@ export type GatewayCallback = CallbackPayload & {
   callId: string
   timestamp: number
 }
+
+export interface AgentControl {
+  callId: string
+  organizationId?: string
+  operation: "hold" | "resume" | "transfer"
+  extension?: string
+  queue?: string
+}

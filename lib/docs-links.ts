@@ -14,6 +14,7 @@ export const DOCS_LINKS = {
     "/contacts": "/docs/dashboard/audience/contacts",
     "/domains": "/docs/dashboard/domains/manage",
     "/emails": "/docs/dashboard/emails/sending",
+    "/emails/calls": "/docs/self-hosting/requirements",
     "/emails/inbox": "/docs/dashboard/receiving/introduction",
     "/emails/receiving": "/docs/dashboard/receiving/introduction",
     "/emails/suppressions": "/docs/dashboard/emails/suppressions",

@@ -69,6 +69,7 @@ export const EMAIL_TABS: SectionTabs = [
   { href: "/emails/inbox", title: "Inbox" },
   { href: "/emails", title: "Sending" },
   { href: "/emails/receiving", title: "Receiving" },
+  { href: "/emails/calls", title: "Calls" },
   { href: "/emails/suppressions", title: "Suppressions" },
 ]
 

@@ -80,3 +80,8 @@ The fake-Graph Playwright flow is wired into `tests/e2e/auth.spec.ts` and writes
 `calling-settings.png` / `calling-log.png`. Run it through the lead's integration
 harness. Real media interoperability remains 8b's Janus/FreeSWITCH harness, followed
 by UIC testing on the live number; that US number cannot validate BIC.
+
+Wave 8c now supplies [browser agents](browser-softphone.md): accepted calls claimed
+by an agent route to that agent's session extension. Unclaimed API/integrator calls
+retain the demo IVR route. Browser outbound calls snapshot their agent assignment
+in the creation transaction and use it when the remote answer arrives.

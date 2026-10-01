@@ -1,5 +1,5 @@
 import { signRequest } from "./auth.js"
-import type { GatewayApi, RouteRequest } from "./contracts.js"
+import type { AgentControl, GatewayApi, RouteRequest } from "./contracts.js"
 import { GatewayError } from "./errors.js"
 
 /** Import into the calling-core action layer; no framework or Convex dependency. */
@@ -46,6 +46,17 @@ export class CallGatewayClient implements GatewayApi {
   }
   async route(request: RouteRequest) {
     await this.post("/route", request)
+  }
+  agentSession(sessionId: string) {
+    return this.post<import("./agents.js").AgentCredential>("/agents/session", {
+      sessionId,
+    })
+  }
+  async revokeAgent(sessionId: string) {
+    await this.post("/agents/revoke", { sessionId })
+  }
+  async control(request: AgentControl) {
+    await this.post("/control", request)
   }
   async healthy() {
     const response = await fetch(new URL("/healthz", this.baseUrl), {
