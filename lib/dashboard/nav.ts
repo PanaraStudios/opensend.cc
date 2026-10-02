@@ -98,6 +98,7 @@ export const SETTINGS_NAV: SectionTabs = [
   { href: "/settings/unsubscribe", title: "Unsubscribe" },
   { href: "/settings/smtp", title: "SMTP" },
   { href: "/settings/usage", title: "Usage" },
+  { href: "/settings/ai-providers", title: "AI providers" },
 ]
 
 /** A section is active on its index route and on every route beneath it. */

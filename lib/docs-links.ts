@@ -35,6 +35,7 @@ export const DOCS_LINKS = {
     "/settings/sso": "/docs/dashboard/team/sso",
     "/settings/team": "/docs/dashboard/team/roles",
     "/settings/unsubscribe": "/docs/dashboard/audience/unsubscribe-page",
+    "/settings/ai-providers": "/docs/self-hosting/requirements",
     "/settings/usage": "/docs/self-hosting/ses-tenancy",
     "/templates": "/docs/dashboard/templates/editor",
     "/topics": "/docs/dashboard/audience/topics",
