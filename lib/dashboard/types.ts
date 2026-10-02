@@ -144,6 +144,7 @@ export const WEBHOOK_EVENTS = [
   "whatsapp.template.status_updated",
   "whatsapp.phone_number.updated",
   "contact.created",
+  "contact.note_created",
   "contact.updated",
   "contact.deleted",
   "domain.created",

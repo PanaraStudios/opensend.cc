@@ -232,12 +232,29 @@ test("tool catalog rejects tenant/recipient overrides, durably deduplicates note
   const note = await (
     await tool("note", "create_note", { text: "Caller needs support" })
   ).json()
-  expect(note).toMatchObject({ ok: true, result: { storedOn: "call" } })
+  expect(note).toMatchObject({
+    ok: true,
+    result: { storedOn: "contact", noteId: expect.any(String) },
+  })
   expect(
     await (
       await tool("note", "create_note", { text: "Caller needs support" })
     ).json()
   ).toEqual(note)
+  const storedNotes = await f.t.run((ctx) =>
+    ctx.db.query("contactNotes").collect()
+  )
+  expect(storedNotes).toHaveLength(1)
+  expect(storedNotes[0]).toMatchObject({
+    _id: note.result.noteId,
+    body: "Caller needs support",
+    organizationId: f.owner.team,
+    author: { kind: "bot", id: f.bot, name: "Support" },
+    source: { callId },
+  })
+  expect(
+    await f.t.run((ctx) => ctx.db.get("contacts", storedNotes[0].contactId))
+  ).toMatchObject({ organizationId: f.owner.team })
   expect(
     await (await tool("note", "create_note", { text: "different" })).json()
   ).toMatchObject({ ok: false })
@@ -649,7 +666,10 @@ test.each([true, false])(
       await (
         await tool("note-kamal", "create_note", { text: "Follow up tomorrow" })
       ).json()
-    ).toMatchObject({ ok: true, result: { storedOn: "call" } })
+    ).toMatchObject({
+      ok: true,
+      result: { storedOn: "contact", noteId: expect.any(String) },
+    })
     expect(await f.t.run((ctx) => ctx.db.get("calls", callId))).toMatchObject(
       links
     )
@@ -800,4 +820,95 @@ test("lookup_contact returns caller properties, segments, identities and readabl
   ])
     expect(result.recentMessageSummary).toContain(line)
   expect(result.recentMessageSummary).not.toContain("[interactive]")
+})
+
+test("create_note falls back to the call record when caller identity is unavailable", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run((ctx) => ctx.db.patch("calls", callId, { userId: undefined }))
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const result = await (
+    await f.signed("tools", {
+      callId,
+      organizationId: f.owner.team,
+      toolCall: {
+        id: "fallback-note",
+        name: "create_note",
+        arguments: { text: "Call only" },
+      },
+    })
+  ).json()
+  expect(result).toMatchObject({ ok: true, result: { storedOn: "call" } })
+  expect(
+    await f.t.run((ctx) => ctx.db.query("contactNotes").collect())
+  ).toEqual([])
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("callTranscripts")
+        .filter((q) => q.eq(q.field("kind"), "note"))
+        .first()
+    )
+  ).toMatchObject({ callId, text: "Call only" })
+})
+
+test("REST contact note sources are scoped and preserved across edits", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  const contact = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.owner.team,
+    contacts: [{ phone: "+14155550100" }],
+    segmentIds: [],
+  })
+  const path = `/contacts/${contact.createdIds[0]}/notes`
+  const response = await f.request(path, "POST", {
+    body: "Call context",
+    source: { call_id: callId },
+  })
+  expect(response.status).toBe(201)
+  const note = await response.json()
+  expect(note.source).toEqual({ call_id: callId })
+  const edit = await f.request(`${path}/${note.id}`, "PATCH", {
+    body: "Edited",
+    source: {},
+  })
+  expect(edit.status).toBe(200)
+  expect((await edit.json()).source).toEqual(note.source)
+  const foreignCall = await f.t.run((ctx) =>
+    ctx.db.insert("calls", {
+      organizationId: f.outsider.team,
+      accountId: f.account,
+      direction: "inbound",
+      status: "connected",
+      mode: "gateway",
+      observedAt: Date.now(),
+    })
+  )
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Foreign",
+        source: { call_id: foreignCall },
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Malformed",
+        source: { call_id: "invalid-id" },
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Malformed",
+        source: "not-an-object",
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    await f.t.run((ctx) => ctx.db.query("contactNotes").collect())
+  ).toHaveLength(1)
 })

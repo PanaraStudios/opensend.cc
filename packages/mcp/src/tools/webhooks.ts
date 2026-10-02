@@ -19,6 +19,7 @@ const webhookEventSchema = z.enum([
   "email.failed",
   "email.suppressed",
   "contact.created",
+  "contact.note_created",
   "contact.updated",
   "contact.deleted",
   "contact.topics.updated",

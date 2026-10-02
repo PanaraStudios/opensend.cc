@@ -11,6 +11,7 @@ import {
   addContactImportTools,
   addContactPropertyTools,
   addContactTools,
+  addContactNoteTools,
   addDomainTools,
   addEmailTools,
   addEventTools,
@@ -58,6 +59,7 @@ export function createMcpServer(
   addContactImportTools(server, opensend)
   addContactPropertyTools(server, opensend)
   addContactTools(server, opensend)
+  addContactNoteTools(server, opensend)
   addDomainTools(server, opensend)
   addEmailTools(server, opensend, { senderEmailAddress, replierEmailAddresses })
   addEventTools(server, opensend)

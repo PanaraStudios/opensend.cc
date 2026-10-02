@@ -1,3 +1,4 @@
+import { ContactNotes } from './notes/contact-notes';
 import { buildPaginationUrl } from '../common/utils/build-pagination-query';
 import type { Resend } from '../resend';
 import { ContactImports } from './imports/contact-imports';
@@ -32,11 +33,13 @@ import { ContactSegments } from './segments/contact-segments';
 import { ContactTopics } from './topics/contact-topics';
 
 export class Contacts {
+  readonly notes: ContactNotes;
   readonly imports: ContactImports;
   readonly topics: ContactTopics;
   readonly segments: ContactSegments;
 
   constructor(private readonly resend: Resend) {
+    this.notes = new ContactNotes(this.resend);
     this.imports = new ContactImports(this.resend);
     this.topics = new ContactTopics(this.resend);
     this.segments = new ContactSegments(this.resend);

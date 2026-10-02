@@ -48,6 +48,177 @@ tags:
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
+  /contacts/{id}/notes:
+    get:
+      operationId: contacts/notes/list
+      tags: [Contacts]
+      summary: List contact notes
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      x-opensend-scope: contacts:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationAfter'
+        - $ref: '#/components/parameters/PaginationBefore'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data, has_more]
+                additionalProperties: false
+                properties:
+                  object: {type: string, const: list}
+                  has_more: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContactNote'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+    post:
+      operationId: contacts/notes/create
+      tags: [Contacts]
+      summary: Create contact notes
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      x-opensend-scope: contacts:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContactNote'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactNote'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '409':
+          $ref: '#/components/responses/Error409'
+  /contacts/{id}/notes/{note_id}:
+    patch:
+      operationId: contacts/notes/update
+      tags: [Contacts]
+      summary: Update contact notes
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      x-opensend-scope: contacts:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: note_id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContactNote'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactNote'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+    delete:
+      operationId: contacts/notes/remove
+      tags: [Contacts]
+      summary: Remove contact notes
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      x-opensend-scope: contacts:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: note_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, id, deleted]
+                additionalProperties: false
+                properties:
+                  object: {type: string, const: contact_note}
+                  id: {type: string}
+                  deleted: {type: boolean, const: true}
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
   /emails:
     post:
       operationId: emails/send
@@ -13595,8 +13766,8 @@ components:
             $ref: '#/components/schemas/Error401'
     Error403:
       description: >-
-        Invalid credentials or insufficient permission (invalid_api_key, invalid_permission, or
-        validation_error). Rate-limit headers may be absent.
+        Invalid credentials or insufficient permission (invalid_api_key, invalid_permission,
+        restricted_api_key, or validation_error). Rate-limit headers may be absent.
       headers:
         ratelimit-limit:
           $ref: '#/components/headers/ratelimit_limit'
@@ -13695,6 +13866,50 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    ContactNoteAuthor:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind: {type: string, enum: [user, bot, api]}
+        id: {type: string}
+        name: {type: string}
+    ContactNoteSource:
+      type: object
+      additionalProperties: false
+      properties:
+        call_id: {type: string}
+        conversation_id: {type: string}
+        message_id: {type: string}
+    UpdateContactNote:
+      type: object
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, maxLength: 10000}
+    CreateContactNote:
+      type: object
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, maxLength: 10000}
+        source:
+          $ref: '#/components/schemas/ContactNoteSource'
+    ContactNote:
+      type: object
+      required: [object, id, contact_id, body, author, source, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        object: {type: string, const: contact_note}
+        id: {type: string}
+        contact_id: {type: string}
+        body: {type: string, minLength: 1, maxLength: 10000}
+        author:
+          $ref: '#/components/schemas/ContactNoteAuthor'
+        source:
+          anyOf:
+            - $ref: '#/components/schemas/ContactNoteSource'
+            - type: 'null'
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     MessageControlResponse:
       type: object
       properties:
@@ -21515,6 +21730,7 @@ components:
           enum:
             - invalid_api_key
             - invalid_permission
+            - restricted_api_key
             - validation_error
         message:
           type: string
@@ -21784,6 +22000,7 @@ components:
         - whatsapp.template.status_updated
         - whatsapp.phone_number.updated
         - contact.created
+        - contact.note_created
         - contact.updated
         - contact.deleted
         - domain.created
@@ -28645,6 +28862,39 @@ components:
         - data
       additionalProperties: false
 webhooks:
+  contactNoteCreated:
+    post:
+      operationId: webhooks/contact/note-created
+      summary: Contact note created
+      description: Sent for dashboard, API, and bot notes. The same note payload is available to contact.note_created automation triggers. Standard Webhooks signatures and retries apply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, created_at, data]
+              additionalProperties: false
+              properties:
+                type: {type: string, const: contact.note_created}
+                created_at: {type: string, format: date-time}
+                data:
+                  $ref: '#/components/schemas/ContactNote'
+            example:
+              type: contact.note_created
+              created_at: '2026-10-03T10:00:00.000Z'
+              data:
+                object: contact_note
+                id: note-example
+                contact_id: contact-example
+                body: Follow up tomorrow.
+                author: {kind: bot, id: bot-example, name: Support}
+                source: {call_id: call-example}
+                created_at: '2026-10-03T10:00:00.000Z'
+                updated_at: '2026-10-03T10:00:00.000Z'
+      responses:
+        '200':
+          description: Event accepted
   whatsappCall:
     post:
       operationId: webhooks/whatsapp/call

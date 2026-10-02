@@ -14,7 +14,7 @@ export const VOICE_PROVIDER_LABELS: Record<VoiceProvider, string> = {
 }
 export const VOICE_TOOL_LABELS: Record<VoiceToolName, string> = {
   lookup_contact: "Look up contact",
-  create_note: "Add call note",
+  create_note: "Add contact note",
   send_whatsapp_message: "Send WhatsApp message",
   transfer_to_agent: "Transfer to agent",
   transfer_to_ivr: "Transfer to IVR",
