@@ -70,7 +70,12 @@ export function CallingPanel({
   const [mode, setMode] = React.useState<"api" | "gateway" | null>(null)
   const [announcement, setAnnouncement] = React.useState<Id<"storedFiles">>()
   const calling =
-    edit ?? (writableCallingSettings({ ...cached?.calling }) as CallingSettings)
+    edit ??
+    ({
+      status: "DISABLED",
+      call_icon_visibility: "DEFAULT",
+      ...writableCallingSettings({ ...cached?.calling }),
+    } as CallingSettings)
   const currentMode = mode ?? cached?.handling_mode ?? "api"
   const change = (patch: Partial<CallingSettings>) =>
     setEdit({ ...calling, ...patch })
@@ -93,7 +98,7 @@ export function CallingPanel({
           ? {}
           : {
               mode: currentMode,
-              calling: { ...edit },
+              calling: edit ? { ...edit } : undefined,
               announcementFileId: announcement,
             }),
       })
@@ -188,8 +193,9 @@ export function CallingPanel({
                   placeholder="US, BR (empty allows all)"
                   disabled={disabled}
                   value={
-                    calling.call_icons?.restrict_to_user_countries.join(", ") ??
-                    ""
+                    calling.call_icons?.restrict_to_user_countries?.join(
+                      ", "
+                    ) ?? ""
                   }
                   onChange={(e) =>
                     change({
@@ -210,9 +216,8 @@ export function CallingPanel({
                   checked={calling.callback_permission_status === "ENABLED"}
                   onCheckedChange={(checked) =>
                     change({
-                      callback_permission_status: checked
-                        ? "ENABLED"
-                        : "DISABLED",
+                      callback_permission_status:
+                        checked === true ? "ENABLED" : "DISABLED",
                     })
                   }
                 />
@@ -224,7 +229,7 @@ export function CallingPanel({
                 <Checkbox
                   id="additional-codecs"
                   disabled={disabled}
-                  checked={!!calling.audio?.additional_codecs.length}
+                  checked={!!calling.audio?.additional_codecs?.length}
                   onCheckedChange={(checked) =>
                     change({
                       audio: {
@@ -464,12 +469,14 @@ export function CallingPanel({
                       voicemail: {
                         ...calling.voicemail,
                         status: value as "ENABLED" | "DISABLED",
-                        triggers: calling.voicemail?.triggers ?? [
-                          "REJECT",
-                          "TIMEOUT",
-                        ],
-                        audio: calling.voicemail?.audio ?? {
-                          default: { timeout_seconds: 20 },
+                        triggers: calling.voicemail?.triggers?.length
+                          ? calling.voicemail.triggers
+                          : ["REJECT", "TIMEOUT"],
+                        audio: {
+                          default: {
+                            timeout_seconds: 20,
+                            ...calling.voicemail?.audio?.default,
+                          },
                         },
                       },
                     })
@@ -495,7 +502,7 @@ export function CallingPanel({
                       max={30}
                       disabled={disabled}
                       value={
-                        calling.voicemail.audio?.default.timeout_seconds ?? 20
+                        calling.voicemail.audio?.default?.timeout_seconds ?? 20
                       }
                       onChange={(e) =>
                         change({

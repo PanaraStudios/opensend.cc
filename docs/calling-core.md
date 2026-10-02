@@ -43,7 +43,9 @@ failure state before deciding to start a new call with a new key. Meta owns
 permission/request limits; the permission response exposes its actions and limits.
 
 `call_hours` writes replace the whole schedule; omitting holidays removes them.
-SIP stays disabled and DTLS is forced on settings writes. An `announcement_file_id`
+Settings writes omit unconfigured optional blocks and empty arrays. Existing SIP
+or SDES configuration is reset to SIP-off/DTLS only when cached settings show it
+is configured; a simple enable sends status and call icon visibility. An `announcement_file_id`
 from the existing finalized team-file upload flow uploads an Ogg Opus announcement
 under 60 seconds using `use_case=call_voicemail_announcement`. Read settings may
 include Meta's restrictions; calling changes also refresh through

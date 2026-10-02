@@ -9,7 +9,7 @@ import { decryptSecret } from "../secrets"
 import { readFile } from "../storage/objects"
 import { whatsappMediaMultipart } from "../../lib/meta/media"
 import {
-  validateCallingSettings,
+  buildCallingSettingsPayload,
   CALL_PERMISSION_STATUSES,
 } from "../../lib/meta/calling"
 import { object, string } from "../../lib/meta/parse"
@@ -73,60 +73,65 @@ async function settings(
   const at = Date.now(),
     token = await decryptSecret(target.encryptedToken)
   let update = args.calling
-  if (args.announcementFileId) {
-    const file = await ctx.runQuery(
-      internal.calling.settingsState.announcement,
-      {
-        organizationId: args.organizationId,
-        caller: args.caller,
-        fileId: args.announcementFileId,
-      }
-    )
-    const blob = await readFile(ctx, { fileId: file._id })
-    if (!blob) throw invalid("Announcement file is unavailable.")
-    const bytes = new Uint8Array(await blob.arrayBuffer())
-    validateAnnouncement(bytes)
-    const reply = object(
-      await graph({
-        token,
-        version: target.version,
-        path: `${target.account.externalId}/media`,
-        method: "POST",
-        body: whatsappMediaMultipart(
-          bytes,
-          "audio/ogg; codecs=opus",
-          file.filename ?? "announcement.ogg",
-          `opensend_${crypto.randomUUID().replaceAll("-", "")}`,
-          { use_case: "call_voicemail_announcement" }
-        ),
-      })
-    )
-    if (!string(reply.id))
-      throw apiError(
-        502,
-        "invalid_meta_response",
-        "Meta returned no announcement media id."
+  try {
+    if (args.announcementFileId) {
+      const file = await ctx.runQuery(
+        internal.calling.settingsState.announcement,
+        {
+          organizationId: args.organizationId,
+          caller: args.caller,
+          fileId: args.announcementFileId,
+        }
       )
-    const voicemail = object(update?.voicemail),
-      audio = object(voicemail.audio)
-    update = {
-      ...update,
-      voicemail: {
-        ...voicemail,
-        audio: {
-          ...audio,
-          default: {
-            ...object(audio.default),
-            announcement_media_id: reply.id,
+      const blob = await readFile(ctx, { fileId: file._id })
+      if (!blob) throw invalid("Announcement file is unavailable.")
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      validateAnnouncement(bytes)
+      const reply = object(
+        await graph({
+          token,
+          version: target.version,
+          path: `${target.account.externalId}/media`,
+          method: "POST",
+          body: whatsappMediaMultipart(
+            bytes,
+            "audio/ogg; codecs=opus",
+            file.filename ?? "announcement.ogg",
+            `opensend_${crypto.randomUUID().replaceAll("-", "")}`,
+            { use_case: "call_voicemail_announcement" }
+          ),
+        })
+      )
+      if (!string(reply.id))
+        throw apiError(
+          502,
+          "invalid_meta_response",
+          "Meta returned no announcement media id."
+        )
+      const voicemail = object(update?.voicemail),
+        audio = object(voicemail.audio)
+      update = {
+        ...update,
+        voicemail: {
+          ...voicemail,
+          audio: {
+            ...audio,
+            default: {
+              ...object(audio.default),
+              announcement_media_id: reply.id,
+            },
           },
         },
-      },
+      }
     }
-  }
-  try {
     if (update !== undefined) {
+      let body: ReturnType<typeof buildCallingSettingsPayload>
       try {
-        validateCallingSettings(update)
+        body = buildCallingSettingsPayload(
+          update,
+          object(JSON.parse(target.settings?.settings ?? "{}")),
+          new Date(at).toISOString().slice(0, 10)
+        )
       } catch (e) {
         throw invalid((e as Error).message)
       }
@@ -135,15 +140,7 @@ async function settings(
         version: target.version,
         method: "POST",
         path: `${target.account.externalId}/settings`,
-        body: {
-          json: {
-            calling: {
-              ...update,
-              srtp_key_exchange_protocol: "DTLS",
-              sip: { status: "DISABLED" },
-            },
-          },
-        },
+        body: { json: body },
       })
     }
     const remote = object(
@@ -189,7 +186,7 @@ async function settings(
       calling,
     }
   } catch (error) {
-    callingFailure(error)
+    callingFailure(error, "settings")
   }
 }
 /** Opus Ogg's final granule position is its 48k sample count; reject long announcements before upload. */
