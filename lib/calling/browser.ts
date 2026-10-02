@@ -9,6 +9,10 @@ export interface BrowserCredential {
 export class BrowserPhone {
   private user?: SimpleUser
   private disposed = false
+  private microphoneId = "default"
+  setMicrophone(id: string) {
+    this.microphoneId = id
+  }
   constructor(
     private readonly audio: HTMLAudioElement,
     private readonly events: {
@@ -19,7 +23,8 @@ export class BrowserPhone {
     }
   ) {}
   async register(credential: BrowserCredential) {
-    const { SimpleUser } = await import("sip.js/lib/platform/web")
+    const { SimpleUser, defaultSessionDescriptionHandlerFactory } =
+      await import("sip.js/lib/platform/web")
     if (this.disposed) throw new Error("Softphone closed")
     let registered!: () => void
     const ready = new Promise<void>((resolve) => {
@@ -39,6 +44,16 @@ export class BrowserPhone {
         authorizationPassword: credential.password,
         logBuiltinEnabled: false,
         logConfiguration: false,
+        sessionDescriptionHandlerFactory:
+          defaultSessionDescriptionHandlerFactory(async (constraints) =>
+            navigator.mediaDevices.getUserMedia({
+              ...constraints,
+              audio:
+                this.microphoneId === "default"
+                  ? true
+                  : { deviceId: { exact: this.microphoneId } },
+            })
+          ),
         sessionDescriptionHandlerFactoryOptions: {
           peerConnectionConfiguration: { iceServers: [] },
         },
@@ -99,7 +114,10 @@ export class BrowserPhone {
   }
   async microphone() {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio:
+        this.microphoneId === "default"
+          ? true
+          : { deviceId: { exact: this.microphoneId } },
       video: false,
     })
     stream.getTracks().forEach((track) => track.stop())

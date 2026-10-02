@@ -16,11 +16,31 @@ export function DtmfKeypad({
         <Button
           key={digit}
           variant="outline"
+          className="h-14"
           disabled={disabled}
           aria-label={`Send ${digit}`}
           onClick={() => send(digit)}
         >
-          {digit}
+          <span className="flex flex-col items-center">
+            <span className="text-lg">{digit}</span>
+            <span className="h-3 text-[9px] text-muted-foreground">
+              {
+                (
+                  {
+                    "2": "ABC",
+                    "3": "DEF",
+                    "4": "GHI",
+                    "5": "JKL",
+                    "6": "MNO",
+                    "7": "PQRS",
+                    "8": "TUV",
+                    "9": "WXYZ",
+                    "0": "+",
+                  } as Record<string, string>
+                )[digit]
+              }
+            </span>
+          </span>
         </Button>
       ))}
     </div>

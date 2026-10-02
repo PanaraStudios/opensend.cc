@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   newIvr,
   newIvrMenu,
+  renameIvrMenu,
   ivrFormPayload,
   ivrActionLabel,
   ivrPathSummary,
@@ -73,4 +74,25 @@ test("clearing optional IVR settings emits explicit PATCH nulls", async () => {
   const patch = ivrFormPatch(d)
   assert.equal(patch.businessHours, null)
   assert.equal(patch.promptVoice, null)
+})
+
+test("menu names generate collision-safe IDs and keep all routing references", () => {
+  const definition = newIvr()
+  definition.menus.push(newIvrMenu("support"))
+  definition.menus[0].options["1"] = { kind: "submenu", menuId: "support" }
+  definition.menus[0].failureAction = { kind: "submenu", menuId: "support" }
+  const renamed = renameIvrMenu(definition, "support", "Main")
+  assert.equal(renamed.menus[1].id, "main-2")
+  assert.deepEqual(renamed.menus[0].options["1"], {
+    kind: "submenu",
+    menuId: "main-2",
+  })
+  assert.deepEqual(renamed.menus[0].failureAction, {
+    kind: "submenu",
+    menuId: "main-2",
+  })
+  assert.equal(
+    renameIvrMenu(renamed, "main", "Reception").entryMenuId,
+    "reception"
+  )
 })

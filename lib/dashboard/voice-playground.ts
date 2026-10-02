@@ -71,3 +71,67 @@ export function ivrFormPatch(value: IvrDefinition) {
     businessHours: definition.businessHours ?? null,
   }
 }
+
+export function callOutcomeLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    completed: "Completed",
+    transferred_agent: "Transferred to agent",
+    transferred_ivr: "Transferred to IVR",
+    ended_by_bot: "Ended by bot",
+    caller_hangup: "Caller hung up",
+    failed: "Failed",
+    budget_exhausted: "Minute limit reached",
+    queued: "Queued",
+    ringing: "Ringing",
+    connected: "In progress",
+    rejected: "Rejected",
+    missed: "Missed",
+    busy: "Busy",
+    no_answer: "No answer",
+  }
+  return value ? (labels[value] ?? "Ended") : "In progress"
+}
+
+/** Rename a menu and all incoming references together; IDs are never user inputs. */
+export function renameIvrMenu(
+  definition: IvrDefinition,
+  oldId: string,
+  name: string
+): IvrDefinition {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "menu"
+  const taken = new Set(
+    definition.menus.filter((m) => m.id !== oldId).map((m) => m.id)
+  )
+  let id = base,
+    n = 2
+  while (taken.has(id)) id = `${base}-${n++}`
+  const redirect = (a: IvrAction): IvrAction =>
+    a.kind === "submenu" && a.menuId === oldId ? { ...a, menuId: id } : a
+  return {
+    ...definition,
+    entryMenuId: definition.entryMenuId === oldId ? id : definition.entryMenuId,
+    menus: definition.menus.map((m) => ({
+      ...m,
+      ...(m.id === oldId ? { id, name } : {}),
+      options: Object.fromEntries(
+        Object.entries(m.options).map(([key, a]) => [key, redirect(a)])
+      ),
+      noInputAction: redirect(m.noInputAction),
+      failureAction: redirect(m.failureAction),
+    })),
+    ...(definition.businessHours
+      ? {
+          businessHours: {
+            ...definition.businessHours,
+            closedAction: redirect(definition.businessHours.closedAction),
+          },
+        }
+      : {}),
+  }
+}

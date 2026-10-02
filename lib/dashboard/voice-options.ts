@@ -15,7 +15,7 @@ export const VOICE_PROVIDER_LABELS: Record<VoiceProvider, string> = {
 }
 export const VOICE_TOOL_LABELS: Record<VoiceToolName, string> = {
   lookup_contact: "Look up contact",
-  create_note: "Create note",
+  create_note: "Add call note",
   send_whatsapp_message: "Send WhatsApp message",
   transfer_to_agent: "Transfer to agent",
   transfer_to_ivr: "Transfer to IVR",
@@ -55,6 +55,12 @@ export const GEMINI_VOICES = [
   "Sulafat",
 ] as const
 export function voiceItems(provider: VoiceProvider) {
+  if (provider === "elevenlabs")
+    return [
+      { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel" },
+      { value: "EXAVITQu4vr4xnSDxMaL", label: "Sarah" },
+      { value: "pNInz6obpgDQGcFmaJgB", label: "Adam" },
+    ]
   return (
     provider === "gemini"
       ? GEMINI_VOICES

@@ -6,69 +6,114 @@ import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
+import type { IvrMenu, IvrAction } from "@/lib/ivr"
 import { BotDiagnostics } from "./bot-diagnostics"
 import { DtmfKeypad } from "@/components/dashboard/calling/dtmf-keypad"
 import { useSoftphone } from "@/components/dashboard/calling/softphone-provider"
-import {
-  DetailSection,
-  EmptyState,
-  OptionSelect,
-  MetaStrip,
-  ResourceTable,
-  Th,
-} from "@/components/dashboard/primitives"
-import { TableRow, TableCell } from "@/components/ui/table"
+import { EmptyState, OptionSelect } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip"
 import { actionError } from "@/lib/action-error"
 import { ivrActionLabel } from "@/lib/dashboard/voice-playground"
 export function IvrPath({
   path,
+  menus = [],
 }: {
   path: readonly {
     menuId: string
     digits: string
-    action: import("@/lib/ivr").IvrAction
+    action: IvrAction
     at: number
   }[]
+  menus?: readonly IvrMenu[]
 }) {
   return path.length ? (
-    <ResourceTable
-      headers={
-        <>
-          <Th>Menu</Th>
-          <Th>Input</Th>
-          <Th>Action</Th>
-          <Th>Time</Th>
-        </>
-      }
+    <ol
+      aria-label="IVR path"
+      className="flex flex-col gap-3 border-l border-border-strong pl-4"
     >
       {path.map((p, i) => (
-        <TableRow key={i}>
-          <TableCell>{p.menuId}</TableCell>
-          <TableCell>{p.digits}</TableCell>
-          <TableCell>{ivrActionLabel(p.action)}</TableCell>
-          <TableCell>{new Date(p.at).toLocaleTimeString()}</TableCell>
-        </TableRow>
+        <li key={i} className="text-sm">
+          <span className="font-medium">
+            {menus.find((m) => m.id === p.menuId)?.name ??
+              p.menuId.replace(/[-_]/g, " ")}
+          </span>
+          <span className="block text-muted-foreground">
+            {p.digits ? `Pressed ${p.digits}` : "No input"} →{" "}
+            {p.action.kind === "submenu"
+              ? (menus.find(
+                  (m) => p.action.kind === "submenu" && m.id === p.action.menuId
+                )?.name ?? "Submenu")
+              : p.action.kind === "bot"
+                ? "Voice bot"
+                : ivrActionLabel(p.action)}
+          </span>
+          <time className="text-xs text-muted-foreground">
+            {new Date(p.at).toLocaleTimeString()}
+          </time>
+        </li>
       ))}
-    </ResourceTable>
+    </ol>
   ) : (
-    <p className="text-sm text-muted-foreground">Waiting for menu input…</p>
+    <p className="text-sm text-muted-foreground">
+      Your path through the menus will appear here.
+    </p>
   )
 }
-export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
+export function VoiceTester({
+  kind,
+  id,
+  name = "your bot",
+  menus,
+}: {
+  kind: "ivr" | "bot"
+  id: string
+  name?: string
+  menus?: IvrMenu[]
+}) {
   const { activeTeamId } = useWorkspace()
-  return <TeamVoiceTester key={activeTeamId} kind={kind} id={id} />
+  return (
+    <TeamVoiceTester
+      key={activeTeamId}
+      kind={kind}
+      id={id}
+      name={name}
+      menus={menus}
+    />
+  )
 }
-function TeamVoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
-  const setup = useTeamQuery(api.calling.playgroundState.setup)
-  const contacts = useTeamQuery(api.calling.playgroundState.contacts)
-  const [contactId, setContactId] = useState("none")
-  const phone = useSoftphone()
-  const { activeTeamId } = useWorkspace()
-  const health = useAction(api.calling.playground.health)
-  const [healthy, setHealthy] = useState<boolean | undefined>()
-  const [attempt, setAttempt] = useState(0)
+function TeamVoiceTester({
+  kind,
+  id,
+  name,
+  menus = [],
+}: {
+  kind: "ivr" | "bot"
+  id: string
+  name: string
+  menus?: IvrMenu[]
+}) {
+  const setup = useTeamQuery(api.calling.playgroundState.setup),
+    contacts = useTeamQuery(api.calling.playgroundState.contacts),
+    phone = useSoftphone(),
+    { activeTeamId } = useWorkspace(),
+    health = useAction(api.calling.playground.health)
+  const [healthy, setHealthy] = useState<boolean>(),
+    [attempt, setAttempt] = useState(0),
+    [contactId, setContactId] = useState("none"),
+    [accountId, setAccountId] = useState(""),
+    [callId, setCallId] = useState<Id<"calls"> | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [now, setNow] = useState(0)
+  const [microphone, setMicrophone] = useState("default"),
+    [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   useEffect(() => {
     let alive = true
     if (setup?.configured && activeTeamId)
@@ -83,10 +128,16 @@ function TeamVoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
       alive = false
     }
   }, [setup?.configured, activeTeamId, health, attempt])
-  const [accountId, setAccountId] = useState("")
-  const [callId, setCallId] = useState<Id<"calls"> | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    void navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((d) => setDevices(d.filter((v) => v.kind === "audioinput")))
+      .catch(() => undefined)
+  }, [])
   const call = useTeamQuery(
     api.calling.playgroundState.detail,
     { id: callId! },
@@ -94,189 +145,244 @@ function TeamVoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
   )
   const live =
     !!call && ["queued", "ringing", "connected"].includes(call.status)
+  const unavailable =
+    !!setup && (!setup.configured || healthy === false || !setup.numbers.length)
+  const ready =
+    !!setup?.configured && healthy === true && !!setup.numbers.length
+  const currentMenu =
+    menus.find(
+      (m) =>
+        m.id ===
+        (call?.ivr_path.at(-1)?.action.kind === "submenu"
+          ? (call.ivr_path.at(-1)!.action as { menuId: string }).menuId
+          : call?.ivr_path.at(-1)?.menuId)
+    ) ?? menus[0]
+  async function start() {
+    if (!ready) return
+    setBusy(true)
+    setError("")
+    try {
+      setCallId(
+        await phone.testCall(
+          (accountId || setup!.numbers[0].id) as Id<"channelAccounts">,
+          kind === "ivr"
+            ? { ivrId: id as Id<"ivrs"> }
+            : { botId: id as Id<"voiceBots"> },
+          contactId === "none" ? undefined : (contactId as Id<"contacts">),
+          microphone
+        )
+      )
+    } catch (e) {
+      setError(actionError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
-    <DetailSection title="Test call">
-      {!setup ? (
-        <Skeleton className="h-32 w-full" />
-      ) : !setup.configured || healthy === false || !setup.numbers.length ? (
-        <EmptyState
-          size="sm"
-          icon={PhoneIcon}
-          title="Calling stack is not configured"
-          description="Connect a WhatsApp number, enable the calling profile and configure the gateway, trusted FreeSWITCH WSS and TURN for your browser network."
-        >
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={
-              <Link
-                href="https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"
-                target="_blank"
-              />
-            }
+    <section
+      aria-label={kind === "bot" ? "Conversation stage" : "IVR tester"}
+      className="flex min-h-[65vh] min-w-0 flex-col p-5"
+    >
+      <div className="flex min-h-0 flex-1 flex-col justify-center gap-5">
+        {!setup ? (
+          <Skeleton className="h-32 w-full" />
+        ) : unavailable ? (
+          <EmptyState
+            size="sm"
+            icon={PhoneIcon}
+            title="Calling stack is not configured"
+            description="Connect a WhatsApp number and enable the calling profile with a gateway, trusted WSS and TURN."
           >
-            Calling setup documentation
-          </Button>
-          {setup.configured ? (
             <Button
               variant="outline"
-              onClick={() => {
-                setHealthy(undefined)
-                setAttempt((value) => value + 1)
-              }}
+              nativeButton={false}
+              render={
+                <Link
+                  href="https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"
+                  target="_blank"
+                />
+              }
             >
-              Check connection
+              Calling setup documentation
             </Button>
-          ) : null}
-        </EmptyState>
-      ) : healthy === undefined ? (
-        <div role="status" className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
+            {setup.configured ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHealthy(undefined)
+                  setAttempt((v) => v + 1)
+                }}
+              >
+                Check connection
+              </Button>
+            ) : null}
+          </EmptyState>
+        ) : healthy === undefined ? (
+          <p
+            role="status"
+            className="text-center text-sm text-muted-foreground"
+          >
             Checking calling connection…
           </p>
-          <Skeleton className="h-24 w-full" />
-        </div>
-      ) : (
-        <>
-          <p className="text-sm text-muted-foreground">
-            Your browser plays the caller through the same FreeSWITCH IVR and
-            voice engine. Test calls are excluded from customer webhooks and
-            budgets. Speaking interrupts a bot response.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <OptionSelect
-              aria-label="Test contact"
-              value={contactId}
-              items={[
-                { value: "none", label: "No test contact" },
-                ...(contacts ?? []).map((c) => ({
-                  value: c.id,
-                  label: c.label,
-                })),
-              ]}
-              onChange={setContactId}
-              disabled={live || busy}
-            />
-            <OptionSelect
-              aria-label="Test number"
-              value={accountId}
-              placeholder="Choose a number"
-              items={setup.numbers.map((n) => ({
-                value: n.id,
-                label: n.label,
-              }))}
-              onChange={setAccountId}
-              disabled={live || busy}
-            />
+        ) : !call ? (
+          <EmptyState
+            size="sm"
+            icon={PhoneIcon}
+            title={`Talk to ${name}`}
+            description="Start a test call. Speak naturally to interrupt a response."
+          />
+        ) : (
+          <>
+            {call.bot_id ? <BotDiagnostics call={call} /> : null}
+            {call.ivr_id ? (
+              <IvrPath path={call.ivr_path} menus={menus} />
+            ) : null}
+            <Link
+              className="text-sm underline"
+              href={`/playground/calls/${call.id}`}
+            >
+              View call
+            </Link>
+            {call.error ? (
+              <p role="alert" className="text-destructive">
+                {call.error}
+              </p>
+            ) : null}
+          </>
+        )}
+        {kind === "ivr" ? (
+          <>
+            <p className="text-center text-sm">
+              {currentMenu?.prompt.kind === "tts"
+                ? currentMenu.prompt.text
+                : "Listen to the current prompt."}
+            </p>
+            <div className="mx-auto w-full max-w-xs">
+              <DtmfKeypad
+                label="Test DTMF keypad"
+                disabled={!live || phone.phase !== "active"}
+                send={(digit) => {
+                  void phone.dtmf(digit).catch((e) => setError(actionError(e)))
+                }}
+              />
+            </div>
+          </>
+        ) : null}
+      </div>
+      {error ? (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+        {live ? (
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <time aria-label="Call timer" className="text-sm tabular-nums">
+              {Math.max(
+                0,
+                Math.floor(
+                  (now - (call.connected_at ?? call.observed_at)) / 1000
+                )
+              )}
+              s
+            </time>
             <Button
               variant="outline"
-              disabled={
-                phone.busy || phone.working || phone.connecting || live || busy
-              }
-              onClick={phone.toggleOnline}
+              aria-pressed={phone.muted}
+              onClick={phone.mute}
             >
-              {phone.online ? "Set away" : "Go online"}
+              {phone.muted ? "Unmute" : "Mute"}
             </Button>
             <Button
-              disabled={
-                !phone.online || phone.busy || !accountId || live || busy
+              variant="destructive"
+              onClick={() =>
+                void phone.hangup().catch((e) => setError(actionError(e)))
               }
-              onClick={async () => {
-                setBusy(true)
-                setError("")
-                try {
-                  setCallId(
-                    await phone.testCall(
-                      accountId as Id<"channelAccounts">,
-                      kind === "ivr"
-                        ? { ivrId: id as Id<"ivrs"> }
-                        : { botId: id as Id<"voiceBots"> },
-                      contactId === "none"
-                        ? undefined
-                        : (contactId as Id<"contacts">)
-                    )
-                  )
-                } catch (e) {
-                  setError(actionError(e))
-                } finally {
-                  setBusy(false)
-                }
-              }}
             >
-              {busy
-                ? "Connecting…"
-                : kind === "ivr"
-                  ? "Test IVR"
-                  : "Test voice bot"}
+              End call
             </Button>
           </div>
-          {error ? (
-            <p role="alert" className="text-destructive">
-              {error}
-            </p>
-          ) : null}
-          {call ? (
-            <>
-              <MetaStrip
-                items={[
-                  { label: "Status", value: call.status },
-                  { label: "Outcome", value: ivrActionLabel(call.ivr_outcome) },
-                  {
-                    label: "Call",
-                    value: (
-                      <Link
-                        href={`/playground/calls/${call.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        View test call
-                      </Link>
-                    ),
-                  },
-                ]}
-              />
-              {live ? (
-                <>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      aria-pressed={phone.muted}
-                      onClick={phone.mute}
-                    >
-                      {phone.muted ? "Unmute" : "Mute"}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() =>
-                        void phone
-                          .hangup()
-                          .catch((e) => setError(actionError(e)))
-                      }
-                    >
-                      Hang up
-                    </Button>
-                  </div>
-                  <DtmfKeypad
-                    label="Test DTMF keypad"
-                    disabled={phone.phase !== "active"}
-                    send={(digit) => {
-                      void phone
-                        .dtmf(digit)
-                        .catch((e) => setError(actionError(e)))
-                    }}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel>Microphone</FieldLabel>
+                <OptionSelect
+                  aria-label="Microphone"
+                  value={microphone}
+                  items={[
+                    { value: "default", label: "Default microphone" },
+                    ...devices
+                      .filter((d) => d.deviceId !== "default")
+                      .map((d, i) => ({
+                        value: d.deviceId,
+                        label: d.label || `Microphone ${i + 1}`,
+                      })),
+                  ]}
+                  onChange={setMicrophone}
+                  disabled={busy}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Test contact</FieldLabel>
+                <OptionSelect
+                  aria-label="Test contact"
+                  value={contactId}
+                  items={[
+                    { value: "none", label: "No test contact" },
+                    ...(contacts ?? []).map((c) => ({
+                      value: c.id,
+                      label: c.label,
+                    })),
+                  ]}
+                  onChange={setContactId}
+                  disabled={busy}
+                />
+              </Field>
+              {setup && setup.numbers.length > 1 ? (
+                <Field>
+                  <FieldLabel>Phone number</FieldLabel>
+                  <OptionSelect
+                    aria-label="Test number"
+                    value={accountId || setup.numbers[0].id}
+                    items={setup.numbers.map((n) => ({
+                      value: n.id,
+                      label: n.label,
+                    }))}
+                    onChange={setAccountId}
+                    disabled={busy}
                   />
-                </>
+                </Field>
               ) : null}
-              {call.ivr_id ? <IvrPath path={call.ivr_path} /> : null}
-              {call.bot_id ? <BotDiagnostics call={call} /> : null}
-              {call.error ? (
-                <p role="alert" className="text-destructive">
-                  {call.error}
-                </p>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      )}
-    </DetailSection>
+            </div>
+            <div className="flex justify-center">
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span tabIndex={unavailable ? 0 : undefined} />}
+                >
+                  <Button
+                    disabled={
+                      !ready ||
+                      busy ||
+                      phone.busy ||
+                      phone.working ||
+                      phone.connecting
+                    }
+                    onClick={() => void start()}
+                  >
+                    {busy ? "Connecting…" : "Start test call"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {unavailable
+                    ? "Set up calling before starting a test."
+                    : "Start a browser test call"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   )
 }

@@ -1,31 +1,48 @@
 "use client"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
-import { BotIcon } from "lucide-react"
+import { BotIcon, SettingsIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import {
   SectionChrome,
-  DocsButton,
   DetailHeader,
-  DetailSection,
-  MetaStrip,
   EmptyState,
   ResourceTable,
   Th,
   RelativeTime,
-  OptionSelect,
   TypeToConfirmDialog,
+  MoreMenu,
+  RadioCards,
 } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Field, FieldLabel, FieldError } from "@/components/ui/field"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
+  DropdownMenuItem,
+  DropdownMenuGroup,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "@/components/ui/toast"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
@@ -38,7 +55,6 @@ import {
 import {
   VOICE_STAGE_MODELS,
   GEMINI_LIVE_MODELS,
-  VOICE_BOT_TOOLS,
   type VoiceBotConfig,
   type VoiceProvider,
   type VoiceStage,
@@ -46,8 +62,7 @@ import {
 import { VoiceChoiceField, ProviderVoiceField, VoiceField } from "./ivr-fields"
 import { VoiceRouting } from "./routing"
 import { VoiceTester } from "./tester"
-import { ProviderKeys } from "./provider-keys"
-
+import { ProviderKeySelect, ProviderKeyDialog } from "./provider-keys"
 import {
   voiceModelLabel,
   VOICE_LANGUAGE_ITEMS,
@@ -57,28 +72,30 @@ import {
   ttsLanguageItems,
   sttLanguageItems,
 } from "@/lib/dashboard/voice-options"
+import { useIsMobile } from "@/hooks/use-mobile"
 
+const engineLabel = (engine: string) =>
+  engine === "gemini_live" ? "Gemini Live" : "Sarvam + ElevenLabs"
 export function VoiceBotList() {
   const [after, setAfter] = useState<string>(),
-    [history, setHistory] = useState<(string | undefined)[]>([])
-  const list: { data: VoiceBotResource[]; has_more: boolean } | undefined =
-    useTeamQuery(api.voice.resources.dashboardList, { limit: 25, after }) as
-      { data: VoiceBotResource[]; has_more: boolean } | undefined
+    [history, setHistory] = useState<(string | undefined)[]>([]),
+    [creating, setCreating] = useState(false),
+    [search, setSearch] = useState("")
+  const list = useTeamQuery(api.voice.resources.dashboardList, {
+    limit: 25,
+    after,
+  }) as { data: VoiceBotResource[]; has_more: boolean } | undefined
+  const keys = useTeamQuery(api.voice.resources.dashboardList, {
+    limit: 1,
+    providers: true,
+  })
   const setup = useTeamQuery(api.calling.playgroundState.setup)
   return (
     <SectionChrome
       title="Playground"
       tabs={PLAYGROUND_TABS}
       actions={
-        <>
-          <Button
-            nativeButton={false}
-            render={<Link href="/playground/voice-bot/new" />}
-          >
-            Create voice bot
-          </Button>
-          <DocsButton href="https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/voice-bots.md" />
-        </>
+        <Button onClick={() => setCreating(true)}>Create voice bot</Button>
       }
     >
       {!list ? (
@@ -87,55 +104,81 @@ export function VoiceBotList() {
         <EmptyState
           icon={BotIcon}
           title="No voice bots"
-          description="Configure a provider key, build a bot and test it from your browser."
+          description="Build a voice bot and talk to it from your browser."
         >
-          <Button
-            nativeButton={false}
-            render={<Link href="/playground/voice-bot/new" />}
-          >
-            Create voice bot
-          </Button>
+          <Button onClick={() => setCreating(true)}>Create voice bot</Button>
+          {keys && !keys.data.length ? (
+            <Link className="text-sm underline" href="/settings/ai-providers">
+              Set up AI providers
+            </Link>
+          ) : null}
         </EmptyState>
       ) : (
         <>
+          <Field>
+            <FieldLabel htmlFor="bot-search">Search voice bots</FieldLabel>
+            <Input
+              id="bot-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name"
+            />
+          </Field>
           <ResourceTable
             headers={
               <>
                 <Th>Name</Th>
                 <Th>Engine</Th>
-                <Th>Language</Th>
-                <Th>Assigned numbers</Th>
-                <Th>Updated</Th>
+                <Th className="hidden md:table-cell">Language</Th>
+                <Th className="hidden xl:table-cell">Phone numbers</Th>
+                <Th className="hidden xl:table-cell">Last test</Th>
+                <Th className="hidden md:table-cell">Updated</Th>
               </>
             }
           >
-            {list.data.map((bot) => (
-              <TableRow key={bot.id}>
-                <TableCell>
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/playground/voice-bot/${bot.id}`}
-                  >
-                    {bot.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  {bot.engine === "gemini_live"
-                    ? "Gemini Live"
-                    : "Cascade: STT → LLM → TTS"}
-                </TableCell>
-                <TableCell>{voiceLanguageLabel(bot.language)}</TableCell>
-                <TableCell>
-                  {setup?.numbers
-                    .filter((n) => n.routing === `bot:${bot.id}`)
-                    .map((n) => n.label)
-                    .join(", ") || "—"}
-                </TableCell>
-                <TableCell>
-                  <RelativeTime at={bot.updatedAt} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {list.data
+              .filter((b) =>
+                b.name.toLowerCase().includes(search.toLowerCase())
+              )
+              .map((bot) => (
+                <TableRow key={bot.id}>
+                  <TableCell className="max-w-40 break-words whitespace-normal">
+                    <Link
+                      className="font-medium hover:underline"
+                      href={`/playground/voice-bot/${bot.id}`}
+                    >
+                      {bot.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    {engineLabel(bot.engine)}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {voiceLanguageLabel(bot.language)}
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell">
+                    <span className="flex flex-wrap gap-1">
+                      {setup?.numbers
+                        .filter((n) => n.routing === `bot:${bot.id}`)
+                        .map((n) => (
+                          <Badge key={n.id} variant="secondary">
+                            {n.label}
+                          </Badge>
+                        ))}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell">
+                    {bot.lastTestAt ? (
+                      <RelativeTime at={bot.lastTestAt} />
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <RelativeTime at={bot.updatedAt} />
+                  </TableCell>
+                </TableRow>
+              ))}
           </ResourceTable>
           <div className="flex justify-end gap-2">
             <Button
@@ -161,463 +204,635 @@ export function VoiceBotList() {
           </div>
         </>
       )}
-      <ProviderKeys />
+      <CreateVoiceBotDialog open={creating} onOpenChange={setCreating} />
     </SectionChrome>
   )
 }
+export function CreateVoiceBotDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open ? <CreateBot close={() => onOpenChange(false)} /> : null}
+    </Dialog>
+  )
+}
+function CreateBot({ close }: { close: () => void }) {
+  const [name, setName] = useState(""),
+    [engine, setEngine] = useState<VoiceBotConfig["engine"]>("gemini_live"),
+    [language, setLanguage] = useState("en"),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [adding, setAdding] = useState(false)
+  const keys = useTeamQuery(api.voice.resources.dashboardList, {
+    limit: 100,
+    providers: true,
+  }) as { data: VoiceProviderResource[] } | undefined
+  const { activeTeamId } = useWorkspace(),
+    router = useRouter(),
+    write = useAction(api.voice.resources.dashboardWrite)
+  const provider = engine === "gemini_live" ? "gemini" : "sarvam"
+  return (
+    <DialogContent>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault()
+          const key = keys?.data.find((k) => k.provider === provider)
+          if (!key) {
+            setAdding(true)
+            return
+          }
+          setBusy(true)
+          setError("")
+          try {
+            const draft = newVoiceBot(engine)
+            const eleven = keys?.data.find((k) => k.provider === "elevenlabs")
+            const config = {
+              ...draft,
+              name,
+              language,
+              credentialId: key.id,
+              ...(engine === "cascade"
+                ? {
+                    stt: { ...draft.stt!, credentialId: key.id },
+                    llm: { ...draft.llm!, credentialId: key.id },
+                    tts: eleven
+                      ? {
+                          provider: "elevenlabs" as const,
+                          model: "eleven_multilingual_v2",
+                          voice: "21m00Tcm4TlvDq8ikWAM",
+                          credentialId: eleven.id,
+                        }
+                      : { ...draft.tts!, credentialId: key.id },
+                  }
+                : {}),
+            }
+            const result = await write({
+              organizationId: activeTeamId!,
+              kind: "bot",
+              body: JSON.stringify(voiceBotFormPayload(config)),
+            })
+            close()
+            router.push(`/playground/voice-bot/${result.id}`)
+          } catch (e) {
+            setError(actionError(e))
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Create voice bot</DialogTitle>
+          <DialogDescription>
+            Choose how your bot listens and speaks.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-5">
+          <VoiceField label="Name" value={name} onChange={setName} />
+          <Field>
+            <FieldLabel>Engine</FieldLabel>
+            <RadioCards
+              aria-label="Engine"
+              value={engine}
+              onChange={(value) => {
+                setEngine(value)
+                setLanguage(value === "cascade" ? "en-IN" : "en")
+              }}
+              options={[
+                {
+                  value: "gemini_live",
+                  label: "Gemini Live",
+                  description: "Speech to speech, lowest latency.",
+                },
+                {
+                  value: "cascade",
+                  label: "Cascade",
+                  description:
+                    "Sarvam speech-to-text → AI → ElevenLabs or Sarvam voice. Best for Indian languages.",
+                },
+              ]}
+            />
+          </Field>
+          <VoiceChoiceField
+            label="Language"
+            value={language}
+            items={
+              engine === "gemini_live"
+                ? VOICE_LANGUAGE_ITEMS
+                : ttsLanguageItems("sarvam", "bulbul:v3")
+            }
+            onChange={setLanguage}
+          />
+          {keys && !keys.data.some((k) => k.provider === provider) ? (
+            <p className="text-sm text-muted-foreground">
+              Add a {VOICE_PROVIDER_LABELS[provider]} key to create this bot.
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || !name.trim()}>
+            {busy ? "Creating…" : "Create"}
+          </Button>
+        </DialogFooter>
+      </form>
+      <ProviderKeyDialog
+        open={adding}
+        onOpenChange={setAdding}
+        provider={provider}
+      />
+    </DialogContent>
+  )
+}
 export function VoiceBotEditor({ id }: { id?: string }) {
-  const row: VoiceBotResource | undefined = useTeamQuery(
+  const row = useTeamQuery(
     api.voice.resources.dashboardGet,
     { id: id ?? "" },
     { enabled: !!id }
   ) as VoiceBotResource | undefined
-  if (id && !row) return <Skeleton className="h-60 w-full" />
-  return <BotForm key={id ?? "new"} row={row} />
+  if (!id) return <VoiceBotList />
+  if (!row) return <Skeleton className="h-60 w-full" />
+  return <BotForm key={id} row={row} />
+}
+function RailSection({
+  title,
+  children,
+  open = true,
+}: {
+  title: string
+  children: React.ReactNode
+  open?: boolean
+}) {
+  return (
+    <details open={open} className="border-b border-border">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-medium">
+        {title}
+      </summary>
+      <div className="flex flex-col gap-4 px-5 pb-5">{children}</div>
+    </details>
+  )
 }
 function StageFields({
   name,
   stage,
   onChange,
-  keys,
 }: {
   name: "stt" | "llm" | "tts"
   stage: VoiceStage
   onChange: (stage: VoiceStage) => void
-  keys: VoiceProviderResource[]
 }) {
   const models = VOICE_STAGE_MODELS[name] as Partial<
     Record<VoiceProvider, readonly string[]>
   >
+  const label = {
+    stt: "Speech recognition",
+    llm: "Language model",
+    tts: "Speech voice",
+  }[name]
   return (
-    <DetailSection title={name.toUpperCase()}>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field>
-          <FieldLabel>Provider</FieldLabel>
-          <OptionSelect
-            aria-label={`${name} provider`}
-            value={stage.provider}
-            items={Object.keys(models).map((value) => ({
-              value,
-              label: VOICE_PROVIDER_LABELS[value as VoiceProvider],
-            }))}
-            onChange={(provider) =>
-              onChange({
-                ...stage,
-                provider: provider as VoiceProvider,
-                model: models[provider as VoiceProvider]![0],
-                credentialId: "",
-                ...(name === "stt" ? { language: "auto" } : {}),
-                ...(name === "tts"
-                  ? { voice: provider === "sarvam" ? "shubh" : "" }
-                  : {}),
-              })
-            }
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Model</FieldLabel>
-          <OptionSelect
-            aria-label={`${name} model`}
-            value={stage.model}
-            items={(models[stage.provider] ?? []).map((value) => ({
-              value,
-              label: voiceModelLabel(value),
-            }))}
-            onChange={(model) => onChange({ ...stage, model })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Key</FieldLabel>
-          <OptionSelect
-            aria-label={`${name} key`}
-            placeholder="Choose provider key"
-            value={stage.credentialId}
-            items={keys
-              .filter((k) => k.provider === stage.provider)
-              .map((k) => ({
-                value: k.id,
-                label: `${k.label} · ••••${k.lastFour}`,
-              }))}
-            onChange={(credentialId) => onChange({ ...stage, credentialId })}
-          />
-        </Field>
-      </div>
+    <div className="flex flex-col gap-3">
+      <VoiceChoiceField
+        label={`${label} provider`}
+        value={stage.provider}
+        items={Object.keys(models).map((value) => ({
+          value,
+          label: VOICE_PROVIDER_LABELS[value as VoiceProvider],
+        }))}
+        onChange={(provider) =>
+          onChange({
+            ...stage,
+            provider: provider as VoiceProvider,
+            model: models[provider as VoiceProvider]![0],
+            credentialId: "",
+            ...(name === "stt" ? { language: "auto" } : {}),
+            ...(name === "tts"
+              ? {
+                  voice:
+                    provider === "sarvam" ? "shubh" : "21m00Tcm4TlvDq8ikWAM",
+                }
+              : {}),
+          })
+        }
+      />
+      <VoiceChoiceField
+        label={`${label} model`}
+        value={stage.model}
+        items={(models[stage.provider] ?? []).map((value) => ({
+          value,
+          label: voiceModelLabel(value),
+        }))}
+        onChange={(model) => onChange({ ...stage, model })}
+      />
+      <ProviderKeySelect
+        label={`${label} key`}
+        provider={stage.provider}
+        value={stage.credentialId}
+        onChange={(credentialId) => onChange({ ...stage, credentialId })}
+      />
       {name === "stt" ? (
         <VoiceChoiceField
-          items={sttLanguageItems(stage.provider)}
-          label="STT language"
+          label="Recognition language"
           value={stage.language ?? "auto"}
+          items={sttLanguageItems(stage.provider)}
           onChange={(language) => onChange({ ...stage, language })}
         />
-      ) : name === "tts" ? (
-        <ProviderVoiceField
-          provider={stage.provider}
-          label="TTS voice"
-          value={stage.voice ?? ""}
-          onChange={(voice) => onChange({ ...stage, voice })}
-        />
       ) : null}
-    </DetailSection>
+    </div>
   )
 }
-function BotForm({ row }: { row?: VoiceBotResource }) {
+function BotForm({ row }: { row: VoiceBotResource }) {
   const router = useRouter(),
-    { activeTeamId } = useWorkspace()
+    { activeTeamId } = useWorkspace(),
+    mobile = useIsMobile()
   const [draft, setDraft] = useState<VoiceBotConfig>(() =>
-    row ? voiceBotFormPayload(row) : newVoiceBot()
-  )
+      voiceBotFormPayload(row)
+    ),
+    [saved, setSaved] = useState(() => JSON.stringify(voiceBotFormPayload(row)))
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [deleting, setDeleting] = useState(false)
-  const keys: { data: VoiceProviderResource[] } | undefined = useTeamQuery(
-    api.voice.resources.dashboardList,
-    { limit: 100, providers: true }
-  ) as { data: VoiceProviderResource[] } | undefined
-  const ivrs: { data: { id: string; name: string }[] } | undefined =
-    useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
+    [deleting, setDeleting] = useState(false),
+    [settings, setSettings] = useState(false),
+    [expand, setExpand] = useState(false),
+    [rename, setRename] = useState(false)
+  const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
   const write = useAction(api.voice.resources.dashboardWrite)
-  const patch = (p: Partial<VoiceBotConfig>) => setDraft({ ...draft, ...p })
+  const patch = (p: Partial<VoiceBotConfig>) =>
+    setDraft((d) => ({ ...d, ...p }))
+  useEffect(() => {
+    document.title = `${row.name} · opensend.cc`
+  }, [row.name])
   async function save() {
     setBusy(true)
     setError("")
     try {
-      const result = await write({
+      const body = JSON.stringify(voiceBotFormPayload(draft))
+      await write({
         organizationId: activeTeamId!,
         kind: "bot",
-        id: row?.id,
-        body: JSON.stringify(voiceBotFormPayload(draft)),
+        id: row.id,
+        body,
       })
+      setSaved(body)
       toast.add({ type: "success", title: "Voice bot saved" })
-      if (!row) router.push(`/playground/voice-bot/${result.id}`)
     } catch (e) {
       setError(actionError(e))
     } finally {
       setBusy(false)
     }
   }
-  return (
+  const rail = (
     <>
-      <DetailHeader
-        backHref="/playground/voice-bot"
-        backLabel="Voice bots"
-        title={row?.name ?? "Create voice bot"}
-        icon={BotIcon}
-        actions={
-          <>
-            <Button disabled={busy} onClick={() => void save()}>
-              {busy ? "Saving…" : "Save"}
+      <RailSection title="Instructions">
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel>System prompt</FieldLabel>
+            <Button size="sm" variant="ghost" onClick={() => setExpand(true)}>
+              Expand
             </Button>
-            {row ? (
-              <Button variant="destructive" onClick={() => setDeleting(true)}>
-                Delete
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-      {row ? (
-        <MetaStrip
-          items={[
-            { label: "ID", value: row.id },
-            {
-              label: "Engine",
-              value: row.engine === "gemini_live" ? "Gemini Live" : "Cascade",
-            },
-          ]}
-        />
-      ) : null}
-      {!keys ? (
-        <Skeleton className="h-20 w-full" />
-      ) : !keys.data.length ? (
-        <p className="text-sm text-muted-foreground">
-          Add a provider key on the{" "}
-          <Link
-            href="/playground/voice-bot"
-            className="font-medium hover:underline"
-          >
-            Voice bot tab
-          </Link>{" "}
-          before saving.
-        </p>
-      ) : null}
-      <form
-        className="flex flex-col gap-6"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void save()
-        }}
-      >
-        {error ? <FieldError role="alert">{error}</FieldError> : null}
-        <DetailSection title="Basics">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <VoiceField
-              label="Name"
-              value={draft.name}
-              onChange={(name) => patch({ name })}
-            />
-            <VoiceChoiceField
-              items={
-                draft.engine === "gemini_live"
-                  ? VOICE_LANGUAGE_ITEMS
-                  : ttsLanguageItems(
-                      draft.tts!.provider as "sarvam" | "elevenlabs",
-                      draft.tts!.model
-                    )
-              }
-              label="Language"
-              value={draft.language}
-              onChange={(language) => patch({ language })}
-            />
           </div>
-        </DetailSection>
-        <DetailSection title="Engine">
-          <OptionSelect
-            aria-label="Engine"
-            value={draft.engine}
-            items={[
-              { value: "gemini_live", label: "Gemini Live" },
-              { value: "cascade", label: "Cascade: STT → LLM → TTS" },
-            ]}
-            onChange={(engine) =>
-              setDraft({
-                ...newVoiceBot(engine as VoiceBotConfig["engine"]),
-                name: draft.name,
-                systemPrompt: draft.systemPrompt,
-                greeting: draft.greeting,
-                disclosure: draft.disclosure,
-                tools: draft.tools,
-                handoff: draft.handoff,
-              })
-            }
+          <Textarea
+            aria-label="System prompt"
+            className="[field-sizing:content] min-h-40"
+            value={draft.systemPrompt}
+            onChange={(e) => patch({ systemPrompt: e.target.value })}
           />
-          <Field>
-            <FieldLabel>
-              {draft.engine === "gemini_live"
-                ? "Gemini key"
-                : "Primary Sarvam key"}
-            </FieldLabel>
-            <OptionSelect
-              aria-label="Primary provider key"
+        </Field>
+        <VoiceField
+          label="Greeting"
+          value={draft.greeting}
+          onChange={(greeting) => patch({ greeting })}
+        />
+        <VoiceField
+          label="AI disclosure"
+          value={draft.disclosure}
+          onChange={(disclosure) => patch({ disclosure })}
+        />
+      </RailSection>
+      <RailSection title="Voice & language">
+        <ProviderVoiceField
+          provider={
+            draft.engine === "gemini_live" ? "gemini" : draft.tts!.provider
+          }
+          label="Voice"
+          value={
+            draft.engine === "gemini_live"
+              ? draft.voice
+              : (draft.tts!.voice ?? "")
+          }
+          onChange={(voice) =>
+            patch(
+              draft.engine === "gemini_live"
+                ? { voice }
+                : { tts: { ...draft.tts!, voice } }
+            )
+          }
+        />
+        <VoiceChoiceField
+          label="Language"
+          value={draft.language}
+          items={
+            draft.engine === "gemini_live"
+              ? VOICE_LANGUAGE_ITEMS
+              : ttsLanguageItems(
+                  draft.tts!.provider as "sarvam" | "elevenlabs",
+                  draft.tts!.model
+                )
+          }
+          onChange={(language) => patch({ language })}
+        />
+      </RailSection>
+      <RailSection title="Models">
+        {draft.engine === "gemini_live" ? (
+          <>
+            <VoiceChoiceField
+              label="Gemini Live model"
+              value={draft.model}
+              items={GEMINI_LIVE_MODELS.map((value) => ({
+                value,
+                label: voiceModelLabel(value),
+              }))}
+              onChange={(model) => patch({ model })}
+            />
+            <ProviderKeySelect
+              label="Gemini key"
+              provider="gemini"
               value={draft.credentialId}
-              placeholder="Choose provider key"
-              items={(keys?.data ?? [])
-                .filter((k) => k.provider === draft.provider)
-                .map((k) => ({
-                  value: k.id,
-                  label: `${k.label} · ••••${k.lastFour}`,
-                }))}
-              onChange={(credentialId) =>
+              onChange={(credentialId) => patch({ credentialId })}
+            />
+          </>
+        ) : (
+          (["stt", "llm", "tts"] as const).map((name) => (
+            <StageFields
+              key={name}
+              name={name}
+              stage={draft[name]!}
+              onChange={(stage) =>
                 patch({
-                  credentialId,
-                  ...(draft.engine === "cascade"
+                  [name]: stage,
+                  ...(name === "stt"
                     ? {
-                        stt: {
-                          ...draft.stt!,
-                          credentialId: draft.stt?.credentialId || credentialId,
-                        },
-                        llm: {
-                          ...draft.llm!,
-                          credentialId: draft.llm?.credentialId || credentialId,
-                        },
-                        tts: {
-                          ...draft.tts!,
-                          credentialId: draft.tts?.credentialId || credentialId,
-                        },
+                        provider: stage.provider,
+                        credentialId: stage.credentialId,
                       }
                     : {}),
                 })
               }
             />
-          </Field>
-          {draft.engine === "gemini_live" ? (
-            <>
-              <OptionSelect
-                aria-label="Gemini model"
-                value={draft.model}
-                items={GEMINI_LIVE_MODELS.map((value) => ({
-                  value,
-                  label: voiceModelLabel(value),
-                }))}
-                onChange={(model) => patch({ model })}
+          ))
+        )}
+      </RailSection>
+      <RailSection title="Tools">
+        {Object.entries(VOICE_TOOL_LABELS).map(([name, label]) => (
+          <Field key={name}>
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel>{label}</FieldLabel>
+              <Switch
+                aria-label={`Enable ${label}`}
+                checked={draft.tools.includes(
+                  name as (typeof draft.tools)[number]
+                )}
+                onCheckedChange={(enabled) =>
+                  patch({
+                    tools: enabled
+                      ? [...draft.tools, name as (typeof draft.tools)[number]]
+                      : draft.tools.filter((t) => t !== name),
+                    ...(name === "transfer_to_agent"
+                      ? { handoff: { ...draft.handoff, agents: enabled } }
+                      : {}),
+                  })
+                }
               />
-              <ProviderVoiceField
-                provider="gemini"
-                label="Gemini voice"
-                value={draft.voice}
-                onChange={(voice) => patch({ voice })}
-              />
-            </>
-          ) : (
-            (["stt", "llm", "tts"] as const).map((name) => (
-              <StageFields
-                key={name}
-                name={name}
-                stage={draft[name]!}
-                keys={keys?.data ?? []}
-                onChange={(stage) => patch({ [name]: stage })}
-              />
-            ))
-          )}
-        </DetailSection>
-        <DetailSection title="Behavior">
-          <Field>
-            <FieldLabel>System prompt</FieldLabel>
-            <Textarea
-              aria-label="System prompt"
-              value={draft.systemPrompt}
-              onChange={(e) => patch({ systemPrompt: e.target.value })}
-            />
-          </Field>
-          <VoiceField
-            label="Greeting"
-            value={draft.greeting}
-            onChange={(greeting) => patch({ greeting })}
-          />
-          <VoiceField
-            label="AI disclosure"
-            value={draft.disclosure}
-            onChange={(disclosure) => patch({ disclosure })}
-          />
-          <ResourceTable
-            headers={
-              <>
-                <Th>Enabled</Th>
-                <Th>Tool</Th>
-                <Th>Behavior</Th>
-              </>
-            }
-          >
-            {Object.entries(VOICE_BOT_TOOLS).map(([name, tool]) => (
-              <TableRow key={name}>
-                <TableCell>
-                  <Checkbox
-                    aria-label={`Enable ${VOICE_TOOL_LABELS[name as keyof typeof VOICE_TOOL_LABELS]}`}
-                    checked={draft.tools.includes(
-                      name as (typeof draft.tools)[number]
-                    )}
-                    onCheckedChange={(enabled) =>
-                      patch({
-                        tools: enabled
-                          ? [
-                              ...draft.tools,
-                              name as (typeof draft.tools)[number],
-                            ]
-                          : draft.tools.filter((t) => t !== name),
-                      })
-                    }
-                  />
-                </TableCell>
-                <TableCell>
-                  {VOICE_TOOL_LABELS[name as keyof typeof VOICE_TOOL_LABELS]}
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  {tool.description}
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
-          <Field orientation="horizontal">
-            <Switch
-              aria-label="Allow agent handoff"
-              checked={draft.handoff.agents}
-              onCheckedChange={(agents) =>
-                patch({ handoff: { ...draft.handoff, agents } })
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {
+                {
+                  lookup_contact:
+                    "Find the caller’s contact and recent messages.",
+                  create_note: "Save a note about this call.",
+                  send_whatsapp_message: "Send a message to the caller.",
+                  transfer_to_agent: "Connect to an available team member.",
+                  transfer_to_ivr: "Continue in a phone menu.",
+                  end_call: "Say goodbye and end the call.",
+                }[name]
               }
-            />
-            <FieldLabel>Allow agent handoff</FieldLabel>
+            </p>
           </Field>
-          <OptionSelect
-            aria-label="IVR handoff"
-            value={draft.handoff.ivrId ?? "none"}
-            items={[
-              { value: "none", label: "No IVR handoff" },
-              ...(ivrs?.data ?? []).map((r) => ({
-                value: r.id,
-                label: r.name,
-              })),
-            ]}
+        ))}
+        {draft.tools.includes("transfer_to_ivr") ? (
+          <VoiceChoiceField
+            label="Transfer IVR"
+            value={draft.handoff.ivrId ?? ""}
+            items={(ivrs?.data ?? []).map((v) => ({
+              value: v.id,
+              label: v.name,
+            }))}
             onChange={(ivrId) =>
-              patch({
-                handoff: {
-                  agents: draft.handoff.agents,
-                  ...(ivrId === "none" ? {} : { ivrId }),
-                },
-              })
+              patch({ handoff: { ...draft.handoff, ivrId } })
             }
           />
-        </DetailSection>
-        <DetailSection title="Limits">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <VoiceField
-              type="number"
-              label="Max duration (seconds)"
-              value={draft.maxDurationSeconds}
-              onChange={(value) => patch({ maxDurationSeconds: Number(value) })}
-            />
-            <VoiceField
-              type="number"
-              label="Silence timeout (seconds)"
-              value={draft.silenceTimeoutSeconds}
-              onChange={(value) =>
-                patch({ silenceTimeoutSeconds: Number(value) })
-              }
-            />
-            <VoiceField
-              type="number"
-              label="Monthly minute budget (optional)"
-              value={draft.monthlyMinuteBudget ?? ""}
-              onChange={(value) =>
-                patch({
-                  monthlyMinuteBudget: value === "" ? undefined : Number(value),
-                })
-              }
-            />
-            <VoiceField
-              type="number"
-              label="Max concurrent calls (optional)"
-              value={draft.maxConcurrentCalls ?? ""}
-              onChange={(value) =>
-                patch({
-                  maxConcurrentCalls: value === "" ? undefined : Number(value),
-                })
-              }
-            />
-          </div>
-          <Field orientation="horizontal">
-            <Switch
-              aria-label="Record calls"
-              checked={draft.recording}
-              onCheckedChange={(recording) => patch({ recording })}
-            />
-            <FieldLabel>Record calls</FieldLabel>
-          </Field>
-        </DetailSection>
-      </form>
-      {row ? (
-        <>
-          <VoiceRouting kind="bot" id={row.id} />
-          <VoiceTester kind="bot" id={row.id} />
-        </>
-      ) : null}
-      {row ? (
-        <TypeToConfirmDialog
-          open={deleting}
-          onOpenChange={setDeleting}
-          title="Delete voice bot"
-          phrase={row.name}
-          description="Remove number routing and IVR references before deleting this bot."
-          confirmLabel="Delete voice bot"
-          onConfirm={async () => {
-            await write({
-              organizationId: activeTeamId!,
-              kind: "removeBot",
-              id: row.id,
-              body: "{}",
-            })
-            router.push("/playground/voice-bot")
-          }}
+        ) : null}
+      </RailSection>
+      <RailSection title="Phone numbers">
+        <VoiceRouting kind="bot" id={row.id} />
+      </RailSection>
+      <RailSection title="Advanced" open={false}>
+        <VoiceField
+          label="Max call length (seconds)"
+          type="number"
+          value={draft.maxDurationSeconds}
+          onChange={(v) => patch({ maxDurationSeconds: Number(v) })}
         />
-      ) : null}
+        <VoiceField
+          label="Silence timeout (seconds)"
+          type="number"
+          value={draft.silenceTimeoutSeconds}
+          onChange={(v) => patch({ silenceTimeoutSeconds: Number(v) })}
+        />
+        <VoiceField
+          label="Monthly minutes"
+          type="number"
+          value={draft.monthlyMinuteBudget ?? ""}
+          onChange={(v) =>
+            patch({ monthlyMinuteBudget: v ? Number(v) : undefined })
+          }
+        />
+        <VoiceField
+          label="Concurrent calls"
+          type="number"
+          value={draft.maxConcurrentCalls ?? ""}
+          onChange={(v) =>
+            patch({ maxConcurrentCalls: v ? Number(v) : undefined })
+          }
+        />
+        <Field orientation="horizontal">
+          <FieldLabel>Record calls</FieldLabel>
+          <Switch
+            aria-label="Record calls"
+            checked={draft.recording}
+            onCheckedChange={(recording) => patch({ recording })}
+          />
+        </Field>
+      </RailSection>
     </>
+  )
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      <DetailHeader
+        backHref="/playground/voice-bot"
+        backLabel="Voice bots"
+        title={row.name}
+        icon={BotIcon}
+        badge={<Badge variant="secondary">{engineLabel(row.engine)}</Badge>}
+        actions={
+          <>
+            {JSON.stringify(draft) !== saved ? (
+              <span className="text-xs text-muted-foreground">
+                Changes not saved
+              </span>
+            ) : null}
+            {mobile ? (
+              <Button variant="outline" onClick={() => setSettings(true)}>
+                <SettingsIcon />
+                Settings
+              </Button>
+            ) : null}
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? "Saving…" : "Save"}
+            </Button>
+            <MoreMenu>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setRename(true)}>
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={async () => {
+                    try {
+                      const result = await write({
+                        organizationId: activeTeamId!,
+                        kind: "bot",
+                        body: JSON.stringify(
+                          voiceBotFormPayload({
+                            ...draft,
+                            name: `${draft.name} copy`,
+                          })
+                        ),
+                      })
+                      router.push(`/playground/voice-bot/${result.id}`)
+                    } catch (e) {
+                      setError(actionError(e))
+                    }
+                  }}
+                >
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void navigator.clipboard.writeText(row.id)}
+                >
+                  Copy ID
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDeleting(true)}>
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </MoreMenu>
+          </>
+        }
+      />
+      {error ? (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="grid min-w-0 overflow-hidden rounded-xl border border-border lg:grid-cols-[minmax(0,1fr)_380px]">
+        <VoiceTester kind="bot" id={row.id} name={row.name} />
+        {!mobile ? (
+          <aside
+            aria-label="Bot settings"
+            className="max-h-[78vh] overflow-y-auto border-l border-border"
+          >
+            {rail}
+          </aside>
+        ) : null}
+      </div>
+      <Sheet open={settings} onOpenChange={setSettings}>
+        <SheetContent className="overflow-y-auto data-[side=right]:w-full">
+          <SheetHeader>
+            <SheetTitle>Settings</SheetTitle>
+          </SheetHeader>
+          {mobile ? rail : null}
+        </SheetContent>
+      </Sheet>
+      <Dialog open={expand} onOpenChange={setExpand}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>System prompt</DialogTitle>
+            <DialogDescription>
+              Tell your bot how to help callers.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            aria-label="Expanded system prompt"
+            className="[field-sizing:content] min-h-[50vh]"
+            value={draft.systemPrompt}
+            onChange={(e) => patch({ systemPrompt: e.target.value })}
+          />
+          <DialogFooter>
+            <Button onClick={() => setExpand(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={rename} onOpenChange={setRename}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename voice bot</DialogTitle>
+          </DialogHeader>
+          <VoiceField
+            label="Name"
+            value={draft.name}
+            onChange={(name) => patch({ name })}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                patch({ name: row.name })
+                setRename(false)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => setRename(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <TypeToConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title="Delete voice bot"
+        description="Remove phone routing before deleting this bot."
+        phrase={row.name}
+        confirmLabel="Delete voice bot"
+        onConfirm={async () => {
+          await write({
+            organizationId: activeTeamId!,
+            kind: "removeBot",
+            id: row.id,
+            body: "{}",
+          })
+          router.push("/playground/voice-bot")
+        }}
+      />
+    </div>
   )
 }

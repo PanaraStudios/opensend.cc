@@ -2,22 +2,104 @@
 import { useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
-import {
-  DetailSection,
-  MetaStrip,
-  ResourceTable,
-  Th,
-} from "@/components/dashboard/primitives"
-import { TableRow, TableCell } from "@/components/ui/table"
+import { DetailSection, MetaStrip } from "@/components/dashboard/primitives"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Doc } from "@/convex/_generated/dataModel"
 import { voiceDiagnostic } from "@/lib/dashboard/voice-bot-form"
+import { VOICE_TOOL_LABELS } from "@/lib/dashboard/voice-options"
+import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
 type TranscriptRow = Omit<
   Doc<"callTranscripts">,
   "_id" | "_creationTime" | "organizationId"
 > & { id: string }
+export function Transcript({ lines }: { lines: TranscriptRow[] }) {
+  const ordered = lines.slice().sort((a, b) => a.timestampMs - b.timestampMs)
+  return (
+    <div aria-label="Transcript" className="flex flex-col gap-4">
+      {ordered.map((line, i) => {
+        const diagnostic = voiceDiagnostic(line)
+        if (line.kind === "media") return null
+        if (line.kind === "tool")
+          return (
+            <details key={line.id} className="self-start">
+              <summary className="cursor-pointer rounded-full border border-border bg-muted px-3 py-1 text-xs">
+                {VOICE_TOOL_LABELS[
+                  line.toolName as keyof typeof VOICE_TOOL_LABELS
+                ] ?? "Tool call"}
+              </summary>
+              <div className="mt-2 flex flex-col gap-2 text-xs">
+                <p className="font-medium">Arguments</p>
+                <pre className="break-all whitespace-pre-wrap">
+                  {line.arguments}
+                </pre>
+                <p className="font-medium">Result</p>
+                <pre className="break-all whitespace-pre-wrap">
+                  {line.result}
+                </pre>
+              </div>
+            </details>
+          )
+        const latency =
+          line.role === "agent"
+            ? ordered
+                .slice(i + 1)
+                .find(
+                  (l) =>
+                    l.kind === "media" &&
+                    voiceDiagnostic(l)?.label === "Turn latency" &&
+                    !ordered
+                      .slice(i + 1, ordered.indexOf(l))
+                      .some(
+                        (r) => r.kind === "transcript" && r.role === "agent"
+                      )
+                )
+            : undefined
+        return (
+          <div
+            key={line.id}
+            className={`flex max-w-[90%] flex-col gap-1 ${line.role === "caller" ? "items-end self-end" : "items-start self-start"}`}
+          >
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {line.kind === "note"
+                  ? "Call note"
+                  : line.role === "caller"
+                    ? "Caller"
+                    : "Bot"}
+              </span>
+              <time>
+                {Math.floor(line.timestampMs / 60000)}:
+                {String(Math.floor(line.timestampMs / 1000) % 60).padStart(
+                  2,
+                  "0"
+                )}
+              </time>
+              {line.text?.endsWith(" [interrupted]") ? (
+                <Badge variant="secondary">Interrupted</Badge>
+              ) : null}
+              {line.final === false ? (
+                <Badge variant="secondary">Listening</Badge>
+              ) : null}
+              {latency ? (
+                <Badge variant="secondary">
+                  {voiceDiagnostic(latency)?.detail.split(" · ")[0]}
+                </Badge>
+              ) : null}
+            </div>
+            <div
+              className={`rounded-xl px-4 py-3 text-sm break-words whitespace-pre-wrap ${line.role === "caller" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+            >
+              {diagnostic?.detail ??
+                line.text?.replace(/ \[interrupted\]$/, "")}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 export function BotDiagnostics({
   call,
 }: {
@@ -43,87 +125,58 @@ export function BotDiagnostics({
   }) as { data: TranscriptRow[]; has_more: boolean } | undefined
   const usage = call.bot_usage
   return (
-    <DetailSection title="Voice bot activity">
-      <MetaStrip
-        items={[
-          { label: "Outcome", value: call.bot_outcome ?? "Listening…" },
-          {
-            label: "Tokens (in / out)",
-            value: `${usage?.inputTokens ?? 0} / ${usage?.outputTokens ?? 0}`,
-          },
-          {
-            label: "Audio usage",
-            value: `${(usage?.audioSeconds ?? 0).toFixed(1)}s`,
-          },
-          { label: "TTS characters", value: usage?.ttsCharacters ?? 0 },
-        ]}
-      />
-      <p className="text-sm text-muted-foreground">
-        Usage is reported by the provider. Charges are billed to your provider
-        key; dollar totals are not reported by this engine. Latency measures end
-        of caller speech to first bot audio.
-      </p>
-      {call.bot_summary ? <p className="text-sm">{call.bot_summary}</p> : null}
-      {!lines ? (
-        <Skeleton className="h-32 w-full" />
-      ) : !lines.data.length ? (
-        <p className="text-sm text-muted-foreground">
-          Transcript, tools and timing will appear as the call runs.
-        </p>
-      ) : (
-        <ResourceTable
-          headers={
-            <>
-              <Th>Position</Th>
-              <Th>Activity</Th>
-              <Th>Details</Th>
-            </>
-          }
-        >
+    <div className="flex flex-col gap-5">
+      {call.bot_outcome || call.bot_summary || usage ? (
+        <>
+          <MetaStrip
+            items={[
+              { label: "Outcome", value: callOutcomeLabel(call.bot_outcome) },
+              {
+                label: "Tokens",
+                value: `${usage?.inputTokens ?? 0} in / ${usage?.outputTokens ?? 0} out`,
+              },
+              {
+                label: "Audio",
+                value: `${(usage?.audioSeconds ?? 0).toFixed(1)}s`,
+              },
+              { label: "Voice characters", value: usage?.ttsCharacters ?? 0 },
+            ]}
+          />
+          {call.bot_summary ? (
+            <p className="text-sm">{call.bot_summary}</p>
+          ) : null}
+        </>
+      ) : null}
+      <DetailSection title="Transcript">
+        {!lines ? (
+          <Skeleton className="h-32 w-full" />
+        ) : lines.data.length ? (
+          <Transcript lines={lines.data} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            The conversation will appear here.
+          </p>
+        )}
+      </DetailSection>
+      {lines?.data.some((l) => l.kind === "tool") ? (
+        <DetailSection title="Tool calls">
           {lines.data
-            .slice()
-            .sort((a, b) => a.timestampMs - b.timestampMs)
-            .map((line) => {
-              const diagnostic = voiceDiagnostic(line)
-              return (
-                <TableRow key={line.id}>
-                  <TableCell>{(line.timestampMs / 1000).toFixed(1)}s</TableCell>
-                  <TableCell>
-                    {line.kind === "transcript"
-                      ? line.role === "caller"
-                        ? "Caller"
-                        : "Bot"
-                      : line.kind === "tool"
-                        ? line.toolName
-                        : (diagnostic?.label ?? line.kind)}
-                    {line.text?.endsWith(" [interrupted]") ? (
-                      <Badge variant="secondary">Interrupted</Badge>
-                    ) : null}
-                    {line.final === false ? (
-                      <Badge variant="secondary">Partial</Badge>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="max-w-xl whitespace-normal">
-                    {line.kind === "tool" ? (
-                      <div className="flex flex-col gap-2">
-                        <code className="text-xs break-all">
-                          Arguments: {line.arguments}
-                        </code>
-                        <code className="text-xs break-all">
-                          Result: {line.result}
-                        </code>
-                      </div>
-                    ) : diagnostic ? (
-                      diagnostic.detail
-                    ) : (
-                      line.text
-                    )}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-        </ResourceTable>
-      )}
+            .filter((l) => l.kind === "tool")
+            .map((l) => (
+              <details key={l.id}>
+                <summary className="cursor-pointer text-sm">
+                  {VOICE_TOOL_LABELS[
+                    l.toolName as keyof typeof VOICE_TOOL_LABELS
+                  ] ?? "Tool call"}
+                </summary>
+                <pre className="mt-2 text-xs break-all whitespace-pre-wrap">
+                  Arguments: {l.arguments}
+                  {"\n"}Result: {l.result}
+                </pre>
+              </details>
+            ))}
+        </DetailSection>
+      ) : null}
       {lines && (lines.has_more || history.length) ? (
         <div className="flex justify-end gap-2">
           <Button
@@ -148,6 +201,6 @@ export function BotDiagnostics({
           </Button>
         </div>
       ) : null}
-    </DetailSection>
+    </div>
   )
 }
