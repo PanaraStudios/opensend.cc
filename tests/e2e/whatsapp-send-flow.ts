@@ -37,6 +37,32 @@ async function statusWebhook(page: Page, id: string, status: string) {
     ],
   })
 }
+function whatsappRequests(owner: Page, headers: Record<string, string>) {
+  const rest = async (request: () => Promise<APIResponse>) => {
+    for (let retry = 0; ; retry++) {
+      const response = await request()
+      if (response.status() !== 429 || retry >= 3) return response
+      await owner.waitForTimeout(
+        Math.max(1000, Number(response.headers()["retry-after"] ?? 1) * 1000)
+      )
+    }
+  }
+  const post = (body: unknown, key?: string) =>
+    rest(() =>
+      owner.request.post(`${origin()}/whatsapp/messages`, {
+        data: body,
+        headers: { ...headers, ...(key ? { "Idempotency-Key": key } : {}) },
+      })
+    )
+  const get = async (id: string) => {
+    const response = await rest(() =>
+      owner.request.get(`${origin()}/whatsapp/messages/${id}`, { headers })
+    )
+    expect(response.status()).toBe(200)
+    return response.json()
+  }
+  return { rest, post, get }
+}
 export function whatsappSendTests(
   state: () => { owner: Page; organizationId: string }
 ) {
@@ -50,29 +76,7 @@ export function whatsappSendTests(
       endpoint: "https://whatsapp-send.invalid/events",
       events: ["whatsapp.message.sent"],
     })
-    const rest = async (request: () => Promise<APIResponse>) => {
-      for (let retry = 0; ; retry++) {
-        const response = await request()
-        if (response.status() !== 429 || retry >= 3) return response
-        await owner.waitForTimeout(
-          Math.max(1000, Number(response.headers()["retry-after"] ?? 1) * 1000)
-        )
-      }
-    }
-    const post = (body: unknown, key?: string) =>
-      rest(() =>
-        owner.request.post(`${origin()}/whatsapp/messages`, {
-          data: body,
-          headers: { ...headers, ...(key ? { "Idempotency-Key": key } : {}) },
-        })
-      )
-    const get = async (id: string) => {
-      const response = await rest(() =>
-        owner.request.get(`${origin()}/whatsapp/messages/${id}`, { headers })
-      )
-      expect(response.status()).toBe(200)
-      return response.json()
-    }
+    const { rest, post, get } = whatsappRequests(owner, headers)
     try {
       const body = {
         from: PHONE_ID,
@@ -188,53 +192,6 @@ export function whatsappSendTests(
         type: "whatsapp.message.sent",
         data: { id, channel: "whatsapp", status: "sent" },
       })
-      // API-first catalog coverage; the existing fake Graph send route accepts
-      // all wire bodies. Rendering/composer assertions belong to Task 7a-2.
-      for (const [name, example] of Object.entries(whatsappSendExamples)) {
-        const input = structuredClone(example)
-        if (input.reaction)
-          (input.reaction as { message_id: string }).message_id =
-            detail.external_id
-        const result = await post(
-          { from: PHONE_ID, to: SENDER, ...input },
-          `whatsapp-catalog-${name}`
-        )
-        expect(result.status(), name).toBe(200)
-        const messageId = (await result.json()).id
-        await expect
-          .poll(async () => (await get(messageId)).status, { timeout: 45000 })
-          .toBe("sent")
-        const message = await get(messageId)
-        const expected = whatsappPayload({ to: SENDER, ...input })
-        expect(message).toMatchObject({
-          type: expected.type,
-          content: expected[expected.type],
-          raw: expected,
-        })
-        if (name === "voice_note") {
-          await statusWebhook(owner, message.external_id, "played")
-          await expect
-            .poll(async () => (await get(messageId)).status)
-            .toBe("played")
-        }
-      }
-      const catalogCalls = await (
-        await owner.request.get(`${fake()}/__calls`)
-      ).json()
-      for (const example of Object.values(whatsappSendExamples)) {
-        const input = structuredClone(example)
-        if (input.reaction)
-          (input.reaction as { message_id: string }).message_id =
-            detail.external_id
-        expect(catalogCalls).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              path: `/${PHONE_ID}/messages`,
-              body: whatsappPayload({ to: SENDER, ...input }),
-            }),
-          ])
-        )
-      }
       expect(
         (
           await post({
@@ -332,6 +289,82 @@ export function whatsappSendTests(
     } finally {
       await owner.request.post(`${fake()}/__reset`)
       await backend.mutation(api.webhooks.remove, { id: webhookId })
+    }
+  })
+
+  // Each catalog entry needs its own deadline. All 52 asynchronous sends used
+  // to share the workflow's 90s budget, cutting late 45s polls short even when
+  // delivery succeeded. Named tests also identify the exact failing payload.
+  test.describe("WhatsApp send catalog", () => {
+    let requests: ReturnType<typeof whatsappRequests>
+    let reactionTarget: string
+
+    test.beforeAll(async () => {
+      const { owner } = state()
+      const headers = await createApiKey(owner, "WhatsApp catalog E2E")
+      requests = whatsappRequests(owner, headers)
+      await owner.request.post(`${fake()}/__reset`)
+      const response = await requests.post({
+        from: PHONE_ID,
+        to: SENDER,
+        text: "Catalog reaction target",
+      })
+      expect(response.status()).toBe(200)
+      const { id } = await response.json()
+      await expect
+        .poll(async () => (await requests.get(id)).status, { timeout: 45000 })
+        .toBe("sent")
+      reactionTarget = (await requests.get(id)).external_id
+    })
+
+    test.beforeEach(async () => {
+      await state().owner.request.post(`${fake()}/__reset`)
+    })
+
+    test.afterAll(async () => {
+      await state().owner.request.post(`${fake()}/__reset`)
+    })
+
+    for (const [name, example] of Object.entries(whatsappSendExamples)) {
+      test(name, async () => {
+        const { owner } = state()
+        const input = structuredClone(example)
+        if (input.reaction)
+          (input.reaction as { message_id: string }).message_id = reactionTarget
+        const result = await requests.post(
+          { from: PHONE_ID, to: SENDER, ...input },
+          `whatsapp-catalog-${name}`
+        )
+        expect(result.status()).toBe(200)
+        const { id } = await result.json()
+        await expect
+          .poll(async () => (await requests.get(id)).status, { timeout: 45000 })
+          .toBe("sent")
+        const message = await requests.get(id)
+        const expected = whatsappPayload({ to: SENDER, ...input })
+        expect(message).toMatchObject({
+          type: expected.type,
+          content: expected[expected.type],
+          raw: expected,
+        })
+        const calls = await (
+          await owner.request.get(`${fake()}/__calls`)
+        ).json()
+        expect(calls).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: `/${PHONE_ID}/messages`,
+              body: expected,
+            }),
+          ])
+        )
+        if (name === "voice_note") {
+          await statusWebhook(owner, message.external_id, "played")
+          await expect
+            .poll(async () => (await requests.get(id)).status)
+            .toBe("played")
+        }
+      })
     }
   })
 }

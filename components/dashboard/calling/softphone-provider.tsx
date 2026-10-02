@@ -23,7 +23,7 @@ import {
   callTimer,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import {
@@ -621,14 +621,14 @@ function TeamSoftphone({
                   disabled={online || working}
                 />
               </Field>
-              <Button
-                nativeButton={false}
-                variant="outline"
-                render={<Link href="/playground/calls" />}
+              <Link
+                href="/playground/calls"
+                data-slot="button"
+                className={buttonVariants({ variant: "outline" })}
                 onClick={() => setOpen(false)}
               >
                 View calls
-              </Button>
+              </Link>
             </div>
           ) : null}
           <p role="status">
