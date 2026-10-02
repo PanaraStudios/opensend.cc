@@ -13,6 +13,7 @@ export type VoiceEvent =
       error?: string
       status: "requested" | "succeeded" | "failed"
     }
+  | { type: "playback_done"; turnId: string; playedMs: number }
   | { type: "hangup"; reason: string }
   | { type: "usage"; usage: import("./voice/base.js").VoiceUsage }
   | { type: "latency"; turnId: string; latencyMs: number }

@@ -40,6 +40,9 @@ export abstract class VoiceAdapterBase implements VoiceAgentAdapter {
   onEnd(listener: (reason: string) => void) {
     return this.listen("end", listener)
   }
+  onPlaybackDone(listener: (turnId: string) => void) {
+    return this.listen("playback_done", listener)
+  }
   onToolObserved(
     listener: (
       tool: Extract<

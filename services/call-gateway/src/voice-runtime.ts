@@ -30,6 +30,8 @@ interface ControlledCall {
   nextRoute?: RouteRequest
   botCompleted?: boolean
   ending?: NodeJS.Timeout
+  playbackDone?: boolean
+  playbackHangup?: NodeJS.Timeout
   silence?: NodeJS.Timeout
   lastActivity?: number
   stopped: boolean
@@ -118,9 +120,15 @@ export class VoiceRuntime {
   private event(call: ControlledCall, event: VoiceEvent) {
     // Keep media timing and state transitions observable without logging provider keys.
     if (
-      ["state", "barge_in", "media", "latency", "tool_call", "hangup"].includes(
-        event.type
-      )
+      [
+        "state",
+        "barge_in",
+        "playback_done",
+        "media",
+        "latency",
+        "tool_call",
+        "hangup",
+      ].includes(event.type)
     )
       console.log(
         JSON.stringify({ callId: call.callId, timestamp: Date.now(), ...event })
@@ -237,6 +245,9 @@ export class VoiceRuntime {
         const provider = adapter as VoiceAdapterBase
         provider.onToolObserved((event) => this.event(call, event))
         provider.onActivity(() => {
+          // A previous answer finishing is not completion of the next goodbye.
+          call.playbackDone = false
+          clearTimeout(call.playbackHangup)
           call.lastActivity = Date.now()
         })
         provider.onUsage((usage) => {
@@ -249,7 +260,10 @@ export class VoiceRuntime {
           this.event(call, { type: "latency", ...timing })
         )
       }
+      call.playbackDone = false
       adapter.onAudio(() => {
+        call.playbackDone = false
+        clearTimeout(call.playbackHangup)
         call.lastActivity = Date.now()
       })
       const tools = (call.tools = new VoiceTools(
@@ -315,7 +329,8 @@ export class VoiceRuntime {
                     !call.nextRoute
                   )
                     void call.end("Ended by bot")
-                }, 3000).unref()
+                }, 2500).unref()
+                if (call.playbackDone) this.endAfterPlayback(call)
               }
             }
           })
@@ -339,7 +354,17 @@ export class VoiceRuntime {
       })
       const reserved = this.media.reserve({
         adapter,
-        event: (event) => this.event(call, event),
+        event: (event) => {
+          this.event(call, event)
+          if (event.type === "barge_in") {
+            call.playbackDone = false
+            clearTimeout(call.playbackHangup)
+          }
+          if (event.type === "playback_done") {
+            call.playbackDone = true
+            if (call.ending) this.endAfterPlayback(call)
+          }
+        },
         barge: async () => {
           const application = await socket.api(
             `uuid_getvar ${socket.uuid} current_application`
@@ -374,6 +399,14 @@ export class VoiceRuntime {
       )
       if (!call.nextRoute) this.afterAnchor(call, "Bot bridge completed")
     }
+  }
+  private endAfterPlayback(call: ControlledCall) {
+    clearTimeout(call.playbackHangup)
+    // Allow the final RTP packet to reach the anchored Opus leg before teardown.
+    call.playbackHangup = setTimeout(() => {
+      if (!call.stopped && call.playbackDone && call.outcome === "ended_by_bot")
+        void call.end("Ended by bot")
+    }, 100).unref()
   }
   private afterAnchor(call: ControlledCall, reason: string) {
     // SIP BYE/application completion can precede the anchor's hangup event.
@@ -420,6 +453,7 @@ export class VoiceRuntime {
     call.abort.abort()
     call.stopped = true
     clearTimeout(call.ending)
+    clearTimeout(call.playbackHangup)
     clearInterval(call.silence)
     call.tools?.stop()
     call.commit()

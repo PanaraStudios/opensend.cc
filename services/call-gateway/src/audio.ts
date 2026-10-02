@@ -177,6 +177,13 @@ export class PlaybackQueue {
       this.pendingTimestampMs += 20
     }
   }
+  finishTurn(turnId: string) {
+    if (this.pendingTurn !== turnId || !this.pending.length) return
+    const pcm = Buffer.alloc((this.rate / 50) * 2)
+    this.pending.copy(pcm)
+    this.frames.push({ pcm, turnId, timestampMs: this.pendingTimestampMs })
+    this.pending = Buffer.alloc(0)
+  }
   take(): PlaybackFrame | undefined {
     return this.frames.shift()
   }

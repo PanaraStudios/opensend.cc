@@ -102,6 +102,12 @@ export class PipecatAdapter extends VoiceAdapterBase {
               throw new Error("Invalid turn")
             if (!this.cancelled.has(data.turnId)) this.turnId = data.turnId
             break
+          case "playback_done":
+            if (typeof data.turnId !== "string" || data.turnId.length > 128)
+              throw new Error("Invalid playback completion")
+            if (!this.cancelled.has(data.turnId))
+              this.events.emit("playback_done", data.turnId)
+            break
           case "clear":
             if (this.turnId) {
               this.cancelled.add(this.turnId)
@@ -153,7 +159,9 @@ export class PipecatAdapter extends VoiceAdapterBase {
               ...(data.latencyMs === undefined
                 ? {}
                 : { latencyMs: data.latencyMs }),
-              ...(data.error ? { error: "tool_failed" } : {}),
+              ...(typeof data.error === "string"
+                ? { error: data.error.slice(0, 512) }
+                : {}),
             })
             break
           case "tool_call":

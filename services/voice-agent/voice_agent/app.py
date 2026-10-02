@@ -29,6 +29,7 @@ from .tools import ToolRouter
 from .factory import create_services, summarize, tool_schema
 from .telemetry import Telemetry
 from .fake import FakePipeline
+from .playback import PlaybackObserver
 
 # Provider SDK logs can include request details. Our own events contain only bounded safe fields.
 logger.remove()
@@ -105,7 +106,7 @@ async def session(websocket: WebSocket):
             if declared != list(tools.catalog):
                 raise ValueError("Gemini setup is missing enabled tools")
             logging.getLogger("voice-agent").warning("Harness Gemini setup declarations: %s", declared)
-            pipeline = Pipeline([transport.input(), FakePipeline(emit, tools), transport.output()])
+            pipeline = Pipeline([transport.input(), FakePipeline(emit, tools), transport.output(), PlaybackObserver(emit, serializer)])
             serializer.finalize = lambda: fake_summary()
         else:
             schema = tool_schema(config)
@@ -158,7 +159,7 @@ async def session(websocket: WebSocket):
             processors.extend([aggregators.user(), services.llm])
             if services.tts:
                 processors.append(services.tts)
-            processors.extend([telemetry, transport.output(), aggregators.assistant()])
+            processors.extend([telemetry, transport.output(), PlaybackObserver(emit, serializer), aggregators.assistant()])
             pipeline = Pipeline(processors)
 
         worker = PipelineWorker(

@@ -101,6 +101,7 @@ export class VoiceMediaSession {
   private readonly input: Resampler
   private timer?: NodeJS.Timeout
   private stopped = false
+  private completedTurn?: string
   private sent = 0
   private tickCount = 0
   private readonly origin = performance.now()
@@ -141,6 +142,7 @@ export class VoiceMediaSession {
       adapter.onAudio((audio) => {
         if (this.stopped) return
         try {
+          this.completedTurn = undefined
           this.playback.push(
             audio.pcm,
             audio.sampleRate,
@@ -153,6 +155,7 @@ export class VoiceMediaSession {
       }),
       adapter.onBargeIn(() => {
         if (this.stopped) return
+        this.completedTurn = undefined
         const flushed = this.playback.flush()
         this.event({ type: "barge_in", ...flushed })
         adapter.interrupt(flushed.playedMs)
@@ -160,6 +163,14 @@ export class VoiceMediaSession {
       }),
       adapter.onEnd((reason) => this.end(reason))
     )
+    if (adapter.onPlaybackDone)
+      this.unsubscribe.push(
+        adapter.onPlaybackDone((turnId) => {
+          if (this.stopped) return
+          this.playback.finishTurn(turnId)
+          this.completedTurn = turnId
+        })
+      )
   }
   async start() {
     await this.adapter.start()
@@ -240,6 +251,14 @@ export class VoiceMediaSession {
     if (frame) {
       this.playback.markSent(frame)
       this.firstOutputMs ??= now - this.origin
+    }
+    if (this.completedTurn && this.playback.queuedMs === 0) {
+      this.event({
+        type: "playback_done",
+        turnId: this.completedTurn,
+        playedMs: this.playback.playedMs,
+      })
+      this.completedTurn = undefined
     }
     this.sent++
     this.tickCount++

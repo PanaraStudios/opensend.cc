@@ -537,6 +537,7 @@ test("end_call authorization and signed gateway hangup terminate the Meta call",
       toolName: "end_call",
       status: "succeeded",
     },
+    { type: "playback_done", turnId: "goodbye", playedMs: 600 },
     { type: "hangup", reason: "Ended by bot" },
   ])
     expect(

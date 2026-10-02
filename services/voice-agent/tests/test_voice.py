@@ -307,9 +307,9 @@ def test_voice_gender_is_in_runtime_prompt(gender, word):
     assert word in system_instruction(value)
 
 
-async def test_tool_logs_and_gateway_observations_exclude_private_arguments(caplog):
+async def test_tool_logs_and_gateway_observations_include_backend_errors_without_arguments(caplog):
     backend, emit = Mock(), AsyncMock()
-    backend.tool = AsyncMock(return_value={"ok": False, "error": "Private caller data"})
+    backend.tool = AsyncMock(return_value={"ok": False, "error": "No agent available"})
     router = ToolRouter(backend, emit, [{"name": "create_note", "parameters": {
         "properties": {"text": {"type": "string"}}, "required": ["text"]}}])
     await router.run("note-1", "create_note", {"text": "Secret note contents"})
@@ -317,4 +317,23 @@ async def test_tool_logs_and_gateway_observations_exclude_private_arguments(capl
     assert [e["status"] for e in events] == ["requested", "failed"]
     assert events[-1]["latencyMs"] >= 0
     assert "create_note" in caplog.text
-    assert "Secret note" not in caplog.text and "Private caller" not in caplog.text
+    assert "Secret note" not in caplog.text
+    assert "No agent available" in caplog.text
+    assert events[-1]["error"] == "No agent available"
+
+
+async def test_output_playback_observer_marks_completion_and_next_speech_epoch():
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    from voice_agent.playback import PlaybackObserver
+    emit = AsyncMock()
+    serializer = VoiceSerializer(emit)
+    observer = PlaybackObserver(emit, serializer)
+    observer.push_frame = AsyncMock()
+    await serializer.serialize(OutputAudioRawFrame(bytes(640), 16000, 1))
+    turn = serializer.turn_id
+    await observer.process_frame(BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    assert emit.await_args.args[0] == {"type": "playback_done", "turnId": turn}
+    await serializer.serialize(OutputAudioRawFrame(bytes(640), 16000, 1))
+    assert emit.await_args.args[0]["type"] == "mark"
+    assert emit.await_args.args[0]["turnId"] != turn
