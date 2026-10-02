@@ -109,7 +109,7 @@ export function fileStorageTests(
         await bubble.getByRole("button", { name: "Open photo" }).click()
         const viewer = owner.getByRole("dialog")
         await expect(
-          viewer.getByRole("link", { name: "Download" })
+          viewer.getByRole("button", { name: "Download", exact: true })
         ).toBeVisible()
         await owner.keyboard.press("Escape")
         await expect(viewer).toHaveCount(0)
