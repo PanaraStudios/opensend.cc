@@ -100,7 +100,17 @@ export function fileStorageTests(
       await expect(bubble.getByTestId("message-status")).toHaveText("Sent", {
         timeout: 45_000,
       })
-      await expect(bubble.getByLabel(`Download ${file.name}`)).toBeVisible()
+      if (file.mimeType.startsWith("image/")) {
+        // Photos open in the media viewer, which holds the download.
+        await bubble.getByRole("button", { name: "Open photo" }).click()
+        const viewer = owner.getByRole("dialog")
+        await expect(
+          viewer.getByRole("link", { name: "Download" })
+        ).toBeVisible()
+        await owner.keyboard.press("Escape")
+        await expect(viewer).toHaveCount(0)
+      } else
+        await expect(bubble.getByLabel(`Download ${file.name}`)).toBeVisible()
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/file-storage-${file.name}.png`,
         fullPage: true,

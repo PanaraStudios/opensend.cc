@@ -170,7 +170,7 @@ export function ConversationMedia({
             rel="noopener noreferrer"
           />
         }
-        aria-label="Download document"
+        aria-label={`Download ${file?.filename || "document"}`}
       >
         <DownloadIcon />
       </Button>
