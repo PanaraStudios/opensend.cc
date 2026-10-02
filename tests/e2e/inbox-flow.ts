@@ -138,7 +138,7 @@ export function inboxTests(
       await owner.getByRole("tab", { name: tab, exact: true }).click()
       await expect(owner).toHaveURL(new RegExp(`/playground/${route}$`))
       await expect(
-        owner.getByRole("link", { name: title }).or(owner.getByRole("button", { name: title })).first()
+        owner.getByRole("button", { name: title, exact: true }).first()
       ).toBeVisible()
     }
     await owner.getByRole("tab", { name: "Inbox", exact: true }).click()

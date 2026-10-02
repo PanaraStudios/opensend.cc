@@ -1,3 +1,4 @@
+import { playgroundShots } from "./playground-shots"
 import { expect, test, type Page } from "@playwright/test"
 import { connectWhatsApp } from "./meta-fixtures"
 import { client } from "./ses-fixtures"
@@ -86,47 +87,52 @@ export function voiceBotTests(
       ).status()
     ).toBe(200)
   })
-  test("Playground voice bot CRUD and masked provider keys use the shared editor and unconfigured tester", async () => {
+  test("Playground voice bot uses create dialog, settings rail and Settings provider keys", async () => {
     const { owner, organizationId } = state()
     const accountId = await connectWhatsApp(owner, organizationId)
-    await owner.goto("/playground/voice-bot")
-    await owner.getByLabel("Label", { exact: true }).fill("Playground Gemini")
-    await owner
-      .getByLabel("API key", { exact: true })
-      .fill("playground-e2e-provider-key-9876")
+    const backend = await client(owner)
+    await owner.goto("/settings/ai-providers")
     await owner
       .getByRole("button", { name: "Add provider key", exact: true })
       .click()
+    const dialog = owner.getByRole("dialog", {
+      name: "Add provider key",
+      exact: true,
+    })
+    await dialog.getByLabel("Label", { exact: true }).fill("Playground Gemini")
+    const secret = dialog.getByLabel("API key", { exact: true })
+    await expect(secret).toHaveAttribute("autocomplete", "new-password")
+    await expect(secret).toHaveAttribute("name", "service-secret")
+    for (const attribute of [
+      "data-1p-ignore",
+      "data-lpignore",
+      "data-bwignore",
+    ])
+      await expect(secret).toHaveAttribute(attribute, "true")
+    await secret.fill("playground-e2e-provider-key-9876")
+    await playgroundShots(owner, "playground-provider-create")
+    await dialog.getByRole("button", { name: "Add", exact: true }).click()
     await expect(owner.getByText("••••9876", { exact: true })).toBeVisible()
-    await expect(
-      owner
-        .getByRole("row")
-        .filter({ hasText: "Playground Gemini" })
-        .getByRole("cell", { name: "Gemini", exact: true })
-    ).toBeVisible()
-    await expect(owner.getByLabel("API key", { exact: true })).toHaveValue("")
+    await playgroundShots(owner, "settings-ai-providers")
+    await owner.goto("/playground/voice-bot")
+    await playgroundShots(owner, "playground-bot-list-empty")
     await owner
       .getByRole("button", { name: "Create voice bot", exact: true })
       .first()
       .click()
-    await owner.getByLabel("Name", { exact: true }).fill("Browser support E2E")
+    const create = owner.getByRole("dialog", {
+      name: "Create voice bot",
+      exact: true,
+    })
+    await create.getByLabel("Name", { exact: true }).fill("Browser support E2E")
     await expect(
-      owner.getByRole("combobox", { name: "Language", exact: true })
+      create.getByRole("combobox", { name: "Language", exact: true })
     ).toContainText("English")
     await expect(
-      owner.getByRole("combobox", { name: "Gemini voice", exact: true })
-    ).toContainText("Kore")
-    await owner
-      .getByRole("combobox", { name: "Primary provider key", exact: true })
-      .click()
-    await owner
-      .getByRole("option", {
-        name: "Playground Gemini · ••••9876",
-        exact: true,
-      })
-      .click()
-    await owner.getByLabel("Enable Look up contact", { exact: true }).check()
-    await owner.getByRole("button", { name: "Save", exact: true }).click()
+      create.getByRole("radio", { name: /Gemini Live/ })
+    ).toBeChecked()
+    await playgroundShots(owner, "playground-bot-create")
+    await create.getByRole("button", { name: "Create", exact: true }).click()
     await expect(owner).toHaveURL(/\/playground\/voice-bot\/[^/]+$/)
     const id = new URL(owner.url()).pathname.split("/").at(-1)!
     await expect(
@@ -135,44 +141,19 @@ export function voiceBotTests(
         exact: true,
       })
     ).toBeVisible()
+    await expect(
+      owner.getByRole("button", { name: "Start test call", exact: true })
+    ).toBeDisabled()
+    await expect(
+      owner.getByRole("combobox", { name: "Voice", exact: true })
+    ).toContainText("Kore")
+    await owner
+      .getByRole("switch", { name: "Enable Look up contact", exact: true })
+      .check()
     await owner
       .getByLabel("Greeting", { exact: true })
       .fill("Updated browser greeting")
     await owner.getByRole("button", { name: "Save", exact: true }).click()
-    const backend = await client(owner)
-    const routing = owner.locator("section").filter({
-      has: owner.getByRole("heading", { name: "Routing", exact: true }),
-    })
-    const assign = routing
-      .getByRole("button", { name: "Assign", exact: true })
-      .first()
-    await expect(assign).toBeVisible()
-    if (await assign.isEnabled()) {
-      await assign.click()
-      await expect
-        .poll(
-          async () =>
-            (
-              await backend.query(api.calling.playgroundState.setup, {
-                organizationId,
-              })
-            ).numbers.find((n) => n.id === accountId)?.routing
-        )
-        .toBe(`bot:${id}`)
-      await routing
-        .getByRole("button", { name: "Unassign", exact: true })
-        .click()
-      await expect
-        .poll(
-          async () =>
-            (
-              await backend.query(api.calling.playgroundState.setup, {
-                organizationId,
-              })
-            ).numbers.find((n) => n.id === accountId)?.routing
-        )
-        .toBe("agents")
-    } else await expect(assign).toBeDisabled()
     await expect
       .poll(
         async () =>
@@ -184,11 +165,37 @@ export function voiceBotTests(
           ).greeting
       )
       .toBe("Updated browser greeting")
-    await owner.screenshot({
-      path: `${process.env.OPENSEND_TEST_RESULTS}/playground-voice-bot-editor.png`,
-      fullPage: true,
-    })
-    await owner.getByRole("button", { name: "Delete", exact: true }).click()
+    const number = (
+      await backend.query(api.calling.playgroundState.setup, { organizationId })
+    ).numbers.find((n) => n.id === accountId)!
+    await expect(
+      owner
+        .getByRole("checkbox", { name: `Route ${number.label}`, exact: true })
+        .first()
+    ).toBeDisabled()
+    await owner
+      .getByRole("combobox", { name: "Gemini key", exact: true })
+      .click()
+    await owner
+      .getByRole("option", { name: "Add provider key…", exact: true })
+      .click()
+    await expect(
+      owner.getByRole("dialog", { name: "Add provider key", exact: true })
+    ).toBeVisible()
+    await owner
+      .getByRole("dialog", { name: "Add provider key", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click()
+    await playgroundShots(owner, "playground-bot-not-configured")
+    await owner.goto("/playground/voice-bot")
+    await playgroundShots(owner, "playground-bot-list-filled")
+    await owner
+      .getByRole("link", { name: "Browser support E2E", exact: true })
+      .click()
+    await owner
+      .getByRole("button", { name: "More options", exact: true })
+      .click()
+    await owner.getByRole("menuitem", { name: "Delete", exact: true }).click()
     await owner
       .getByRole("alertdialog")
       .getByRole("textbox")
@@ -197,12 +204,13 @@ export function voiceBotTests(
       .getByRole("button", { name: "Delete voice bot", exact: true })
       .click()
     await expect(owner).toHaveURL(/\/playground\/voice-bot$/)
+    await owner.goto("/settings/ai-providers")
     await owner
-      .getByRole("button", {
-        name: "Delete key Playground Gemini",
-        exact: true,
-      })
+      .getByRole("row")
+      .filter({ hasText: "Playground Gemini" })
+      .getByRole("button", { name: "More options", exact: true })
       .click()
+    await owner.getByRole("menuitem", { name: "Delete", exact: true }).click()
     await owner
       .getByRole("alertdialog")
       .getByRole("textbox")

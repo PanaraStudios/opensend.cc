@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
+import { playgroundShots } from "./playground-shots"
+import { client } from "./ses-fixtures"
+import { api } from "../../convex/_generated/api"
 import { createApiKey } from "./broadcast-received-flow"
 export function ivrTests(state: () => { owner: Page; organizationId: string }) {
   test("IVR API creates, validates, updates and deletes a team menu tree", async () => {
@@ -79,95 +82,117 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
       ).status()
     ).toBe(404)
   })
-  test("Playground IVR editor creates two menus, validates, shows readiness and the unconfigured tester", async () => {
-    const { owner } = state()
-    await owner.goto("/playground/ivr/new")
-    await owner.getByLabel("Name", { exact: true }).fill("Playground reception")
-    await expect(
-      owner.getByRole("combobox", { name: "Language", exact: true })
-    ).toContainText("English")
-    await expect(
-      owner.getByRole("combobox", { name: "Voice", exact: true })
-    ).toBeDisabled()
+  test("Playground IVR creates two menus in a flow, validates and shows the unavailable tester", async () => {
+    const { owner, organizationId } = state()
+    await owner.goto("/playground/ivr")
+    await playgroundShots(owner, "playground-ivr-list-empty")
     await owner
+      .getByRole("button", { name: "Create IVR", exact: true })
+      .first()
+      .click()
+    const create = owner.getByRole("dialog", {
+      name: "Create IVR",
+      exact: true,
+    })
+    await create
+      .getByLabel("Name", { exact: true })
+      .fill("Playground reception")
+    await expect(
+      create.getByRole("combobox", { name: "Language", exact: true })
+    ).toContainText("English")
+    await create
       .getByRole("combobox", { name: "Prompt provider", exact: true })
       .click()
     await owner
       .getByRole("option", { name: "Sarvam Bulbul v3", exact: true })
       .click()
     await expect(
-      owner.getByRole("combobox", { name: "Prompt voice", exact: true })
+      create.getByRole("combobox", { name: "Prompt voice", exact: true })
     ).toContainText("Shubh")
-    await expect(
-      owner.getByRole("combobox", { name: "Prompt language", exact: true })
-    ).toContainText("English (India)")
-    await owner.getByRole("combobox", { name: "Voice", exact: true }).click()
-    await owner.getByRole("option", { name: "Ritu", exact: true }).click()
-    await expect(
-      owner.getByRole("combobox", { name: "Voice", exact: true })
-    ).toContainText("Ritu")
-    await owner.getByRole("combobox", { name: "Voice", exact: true }).click()
-    await owner
-      .getByRole("option", { name: "Use prompt voice", exact: true })
-      .click()
-    await owner
+    await create
       .getByRole("combobox", { name: "Prompt provider", exact: true })
       .click()
     await owner
-      .getByRole("option", { name: "No TTS provider", exact: true })
+      .getByRole("option", { name: "Upload audio instead", exact: true })
       .click()
+    await playgroundShots(owner, "playground-ivr-create")
+    await create.getByRole("button", { name: "Create", exact: true }).click()
+    await expect(owner).toHaveURL(/\/playground\/ivr\/[^/]+$/)
+    await expect(owner.getByLabel("Menu ID", { exact: true })).toHaveCount(0)
     await owner
       .getByLabel("Prompt text", { exact: true })
       .fill("Press one for support")
     await owner.getByRole("button", { name: "Add menu", exact: true }).click()
-    const menus = owner
-      .locator("section")
-      .filter({ has: owner.getByLabel("Menu ID", { exact: true }) })
-    await menus.nth(1).getByLabel("Menu ID", { exact: true }).fill("support")
-    await menus.nth(1).getByLabel("Menu name", { exact: true }).fill("Support")
-    await menus
-      .nth(1)
+    await owner.getByLabel("Menu name", { exact: true }).fill("Support")
+    await owner
       .getByLabel("Prompt text", { exact: true })
       .fill("Leave a message")
-    await menus
-      .nth(0)
+    await owner.getByRole("button", { name: "Main", exact: true }).click()
+    const editor = owner.getByRole("complementary", {
+      name: "Flow editor",
+      exact: true,
+    })
+    await editor
       .getByRole("button", { name: "Add option", exact: true })
       .click()
-    await menus
-      .nth(0)
+    await editor
       .getByRole("combobox", { name: "Action for 1", exact: true })
       .click()
     await owner.getByRole("option", { name: "Submenu", exact: true }).click()
-    await menus
-      .nth(0)
-      .getByRole("combobox", { name: "Submenu", exact: true })
-      .click()
-    await owner
-      .getByRole("option", { name: "Support (support)", exact: true })
-      .click()
+    await editor.getByRole("combobox", { name: "Submenu", exact: true }).click()
+    await owner.getByRole("option", { name: "Support", exact: true }).click()
     await owner.getByRole("button", { name: "Validate", exact: true }).click()
     await expect(owner.getByText("IVR is valid", { exact: true })).toBeVisible()
     await owner.getByRole("button", { name: "Save", exact: true }).click()
-    await expect(owner).toHaveURL(/\/playground\/ivr\/[^/]+$/)
     await expect(
       owner.getByText("Needs a voice", { exact: true }).first()
     ).toBeVisible()
+    await playgroundShots(owner, "playground-ivr-flow-two-menus")
+    await owner.getByRole("button", { name: "Support", exact: true }).click()
+    await playgroundShots(owner, "playground-ivr-menu-selected")
+    await owner
+      .getByRole("button", { name: "Hang up", exact: true })
+      .first()
+      .click()
+    await playgroundShots(owner, "playground-ivr-destination-selected")
+    await owner.getByRole("button", { name: "Test IVR", exact: true }).click()
+    const tester = owner.getByRole("dialog", { name: "Test IVR", exact: true })
+    const backend = await client(owner)
+    // The runner omits the calling profile and all calling environment variables.
+    // Missing setup must show the heading immediately, without starting a health probe.
+    expect(
+      (
+        await backend.query(api.calling.playgroundState.setup, {
+          organizationId,
+        })
+      ).configured
+    ).toBe(false)
+    expect(
+      await backend.action(api.calling.playground.health, { organizationId })
+    ).toBe(false)
     await expect(
-      owner.getByRole("heading", {
+      tester.getByRole("heading", {
         name: "Calling stack is not configured",
         exact: true,
       })
     ).toBeVisible()
     await expect(
-      owner.getByRole("button", { name: "Test IVR", exact: true })
-    ).toHaveCount(0)
+      tester.getByRole("button", { name: "Start test call", exact: true })
+    ).toBeDisabled()
+    await expect(
+      tester.getByRole("button", { name: "Send 1", exact: true })
+    ).toBeDisabled()
     await expect(owner.getByText(/pending_render/)).toHaveCount(0)
-    await owner.screenshot({
-      path: `${process.env.OPENSEND_TEST_RESULTS}/playground-ivr-editor.png`,
-      fullPage: true,
-    })
-    await owner.getByRole("button", { name: "Delete", exact: true }).click()
-    await owner.getByRole("textbox").last().fill("Playground reception")
+    await playgroundShots(owner, "playground-ivr-tester")
+    await tester.getByRole("button", { name: "Close", exact: true }).click()
+    await owner
+      .getByRole("button", { name: "More options", exact: true })
+      .click()
+    await owner.getByRole("menuitem", { name: "Delete", exact: true }).click()
+    await owner
+      .getByRole("alertdialog")
+      .getByRole("textbox")
+      .fill("Playground reception")
     await owner.getByRole("button", { name: "Delete IVR", exact: true }).click()
     await expect(owner).toHaveURL(/\/playground\/ivr$/)
   })

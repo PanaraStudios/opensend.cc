@@ -1,3 +1,4 @@
+import { playgroundShots } from "./playground-shots"
 import { createHmac } from "node:crypto"
 import { expect, test, type APIResponse, type Page } from "@playwright/test"
 import { connectWhatsApp, PHONE_ID, WABA } from "./meta-fixtures"
@@ -43,10 +44,26 @@ export function apiKeyScopesTests(
     await dialog
       .getByRole("button", { name: "Contacts Read", exact: true })
       .click()
-    await owner.screenshot({
-      path: `${process.env.OPENSEND_TEST_RESULTS}/api-key-scopes-dialog.png`,
-      fullPage: true,
+    await expect(
+      dialog.getByText("Calling", { exact: true }).first()
+    ).toBeVisible()
+    const selected = dialog.getByRole("button", {
+      name: "WhatsApp Write",
+      exact: true,
     })
+    await expect(selected).toHaveAttribute("aria-pressed", "true")
+    await expect
+      .poll(() =>
+        selected.evaluate((element) => {
+          const style = getComputedStyle(element)
+          return (
+            style.backgroundColor !== "rgba(0, 0, 0, 0)" &&
+            style.color !== style.backgroundColor
+          )
+        })
+      )
+      .toBe(true)
+    await playgroundShots(owner, "api-key-scopes")
     await dialog.getByRole("button", { name: "Add", exact: true }).click()
     const reveal = owner.getByRole("dialog", {
       name: "View API Key",
