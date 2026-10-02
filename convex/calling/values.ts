@@ -25,6 +25,8 @@ export const callPayloadFields = {
   user_id: nullableString,
   from: nullableString,
   to: nullableString,
+  contact_name: v.string(),
+  contact_phone: nullableString,
   contact_id: v.union(v.id("contacts"), v.null()),
   conversation_id: v.union(v.id("conversations"), v.null()),
   created_at: v.string(),
