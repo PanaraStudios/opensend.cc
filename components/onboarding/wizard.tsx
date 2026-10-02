@@ -42,7 +42,7 @@ import {
   ItemMedia,
   ItemGroup,
 } from "@/components/ui/item"
-import { AddDomainDialog } from "@/components/dashboard/domains/list"
+import { AddDomainDialog } from "@/components/dashboard/domains/add-domain"
 import { TeamSesStatus } from "./team-ses-status"
 import { AwsConnectionForm } from "@/components/ses/connection-form"
 import { SetupDetails } from "@/components/dashboard/primitives"

@@ -11,7 +11,10 @@ import {
   ResourceTable,
   StatusBadge,
   Th,
+  TypeToConfirmDialog,
 } from "@/components/dashboard/primitives"
+import { toast } from "@/components/ui/toast"
+import { useDomainCommands } from "@/lib/domains/use-domains"
 import { REGIONS } from "@/lib/dashboard/types"
 import type { DnsProvider, DnsRecord, Domain } from "@/lib/dashboard/types"
 import {
@@ -235,5 +238,35 @@ export function downloadZoneFile(domain: Domain, records?: DnsRecord[]) {
   downloadTextFile(
     `${domain.name}.zone`,
     `${domainZoneFile(domain, records)}\n`
+  )
+}
+
+/** Deletes a domain once its name is typed: sending from it stops, and
+    AWS removes the identity in the background. */
+export function DeleteDomainDialog({
+  domain,
+  onOpenChange,
+  onDeleted,
+}: {
+  domain: { id: string; name: string } | null
+  onOpenChange: (open: boolean) => void
+  onDeleted?: () => void
+}) {
+  const { deleteDomain } = useDomainCommands()
+  return (
+    <TypeToConfirmDialog
+      open={domain !== null}
+      onOpenChange={onOpenChange}
+      title={`Delete ${domain?.name ?? "domain"}?`}
+      description="Sending from this domain stops. Its DNS records can stay at your DNS provider, and you can add the domain again."
+      phrase={domain?.name ?? ""}
+      confirmLabel="Delete"
+      onConfirm={async () => {
+        if (!domain) return
+        await deleteDomain(domain.id)
+        toast.add({ type: "success", title: "Domain removal queued" })
+        onDeleted?.()
+      }}
+    />
   )
 }

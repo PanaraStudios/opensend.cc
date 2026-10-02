@@ -2,17 +2,8 @@
 
 import * as React from "react"
 import Script from "next/script"
-import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon } from "lucide-react"
+import { ArrowUpRightIcon } from "lucide-react"
 
-import { ButtonGroup } from "@/components/ui/button-group"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu"
-import { MessengerIcon, WhatsAppIcon } from "@/components/brand-icons"
 import { facebookLoginOptions } from "@/lib/meta/facebook-login"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,11 +23,11 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { DisabledTooltip } from "@/components/ui/tooltip"
 import { OptionSelect } from "@/components/dashboard/primitives"
 import { MESSAGING_CHANNELS, type MessagingChannel } from "@/lib/channels"
 import {
-  metaConnectUnavailable,
+  manualConnectUnavailable,
+  metaConnectRoute,
   type MetaConnectConfig,
 } from "@/lib/meta/connect-availability"
 import { toast } from "@/components/ui/toast"
@@ -111,10 +102,13 @@ type Signup = {
   exchanging?: boolean
 }
 
-/** "Connect with Meta": WhatsApp Embedded Signup in Meta's popup. The code
-    it returns lives 30 seconds, so the exchange starts as soon as both the
-    code and the account IDs are in. */
-export function ConnectMetaButton({
+/** Meta's two logins in its popup: WhatsApp Embedded Signup, and Facebook
+    Login for Business for a Page and its linked Instagram account. The
+    signup code lives 30 seconds, so the exchange starts as soon as both the
+    code and the account IDs are in. Render `script` once. `whatsapp` and
+    `pages` say whether each flow opens Meta's login or the access-token
+    dialog, or why it cannot connect yet. */
+export function useMetaConnect({
   config,
   onConnected,
 }: {
@@ -242,27 +236,10 @@ export function ConnectMetaButton({
   }
 
   const availability = { canWrite, sdkReady, pending }
-  const whatsappReason = metaConnectUnavailable(
-    config,
-    "whatsapp",
-    availability
-  )
-  const pageReason = metaConnectUnavailable(
-    config,
-    "facebookLogin",
-    availability
-  )
-  const mainFlow =
-    configId || !config?.configIds.facebookLogin ? "whatsapp" : "facebookLogin"
-  const mainReason = mainFlow === "whatsapp" ? whatsappReason : pageReason
-  const menuReason = !canWrite
-    ? "Create or join a team to connect a channel"
-    : pending
-      ? "Wait for the current connection to finish"
-      : null
-  return (
-    <>
-      {appId && version ? (
+  return {
+    pending,
+    script:
+      appId && version ? (
         <Script
           src={FACEBOOK_SDK_URL}
           strategy="lazyOnload"
@@ -277,65 +254,35 @@ export function ConnectMetaButton({
             setSdkReady(!!window.FB)
           }}
         />
-      ) : null}
-      <ButtonGroup aria-label="Connect a channel">
-        <DisabledTooltip reason={mainReason}>
-          <Button
-            disabled={!!mainReason}
-            onClick={mainFlow === "whatsapp" ? start : startFacebookLogin}
-          >
-            <PlusIcon />
-            {pending ? "Connecting…" : "Connect with Meta"}
-          </Button>
-        </DisabledTooltip>
-        <DropdownMenu>
-          <DisabledTooltip reason={menuReason}>
-            <DropdownMenuTrigger
-              render={
-                <Button aria-label="Connect channel" disabled={!!menuReason} />
-              }
-            >
-              <ChevronDownIcon />
-            </DropdownMenuTrigger>
-          </DisabledTooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DisabledTooltip reason={whatsappReason}>
-                <DropdownMenuItem disabled={!!whatsappReason} onClick={start}>
-                  <WhatsAppIcon />
-                  WhatsApp
-                </DropdownMenuItem>
-              </DisabledTooltip>
-              <DisabledTooltip reason={pageReason}>
-                <DropdownMenuItem
-                  disabled={!!pageReason}
-                  onClick={startFacebookLogin}
-                >
-                  <MessengerIcon />
-                  Facebook Page & Instagram
-                </DropdownMenuItem>
-              </DisabledTooltip>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </ButtonGroup>
-    </>
-  )
+      ) : null,
+    whatsapp: {
+      ...metaConnectRoute(config, "whatsapp", availability),
+      start,
+    },
+    pages: {
+      ...metaConnectRoute(config, "facebookLogin", availability),
+      start: startFacebookLogin,
+    },
+    manualReason: manualConnectUnavailable(config, canWrite),
+  }
 }
 
 /** Connects a WhatsApp Business Account with a system-user access token,
     for teams that cannot use Embedded Signup. */
 export function ManualConnectDialog({
   open,
+  channel: initialChannel = "whatsapp",
   onOpenChange,
   onConnected,
 }: {
   open: boolean
+  /** The channel picked when the dialog opens. */
+  channel?: MessagingChannel
   onOpenChange: (open: boolean) => void
   onConnected: (result: ConnectedBusiness) => void
 }) {
   const { connectManual, connectPageManual } = useChannelCommands()
-  const [channel, setChannel] = React.useState<MessagingChannel>("whatsapp")
+  const [channel, setChannel] = React.useState(initialChannel)
   const page = channel !== "whatsapp"
   const [wabaId, setWabaId] = React.useState("")
   const [token, setToken] = React.useState("")
@@ -344,7 +291,7 @@ export function ManualConnectDialog({
 
   function close(next: boolean) {
     if (!next) {
-      setChannel("whatsapp")
+      setChannel(initialChannel)
       setWabaId("")
       setToken("")
       setError(null)

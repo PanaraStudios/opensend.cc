@@ -3,19 +3,24 @@
 import * as React from "react"
 import Link from "next/link"
 import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
-import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import {
   CopyIcon,
   ChevronDownIcon,
   PlusIcon,
   MailIcon,
   RadioTowerIcon,
-  TriangleAlertIcon,
+  RefreshCwIcon,
+  type LucideIcon,
 } from "lucide-react"
 
-import { CHANNELS } from "@/lib/channels"
-import { IconCell, copyToClipboard } from "@/components/dashboard/primitives"
-import { rowChannel } from "@/lib/channels"
+import { CHANNELS, CHANNEL_IDS, rowChannel } from "@/lib/channels"
+import {
+  DetailHeader,
+  DocsButton,
+  IconCell,
+  MoreMenu,
+  copyToClipboard,
+} from "@/components/dashboard/primitives"
 import { channelLabel } from "@/lib/dashboard/format"
 import type { BroadcastChannel } from "@/lib/dashboard/types"
 import {
@@ -23,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -30,7 +36,6 @@ import {
   MessengerIcon,
   WhatsAppIcon,
 } from "@/components/brand-icons"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -48,7 +53,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { metaConfigurationNotice } from "@/lib/meta/connect-availability"
+import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import {
   TypeToConfirmDialog,
@@ -58,7 +63,6 @@ import { actionError } from "@/lib/action-error"
 import { CHANNEL_LABELS } from "@/lib/dashboard/format"
 import type { Channel, MessagingChannel } from "@/lib/dashboard/types"
 import { useChannelCommands } from "@/lib/channels/use-channels"
-import { INSTANCE_PAGES } from "@/lib/dashboard/nav"
 
 export const ChannelsIcon = RadioTowerIcon
 
@@ -173,42 +177,102 @@ export function ChannelCreateMenu({
   )
 }
 
-export const CHANNEL_ITEMS: readonly SelectOption[] = [
+/** The Channels page's filter: every channel in the registry. */
+export const CHANNEL_FILTER_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },
-  ...(Object.keys(CHANNEL_LABELS) as MessagingChannel[]).map((value) => ({
-    value,
-    label: CHANNEL_LABELS[value],
-  })),
+  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
 ]
 
-const META_APP_PAGE = INSTANCE_PAGES.find((page) => page.title === "Meta app")!
+/** One way to remove a channel: delete a domain, disconnect a business. */
+export type ChannelRemoval = {
+  label: string
+  icon: LucideIcon
+  disabled?: boolean
+  onClick: () => void
+}
 
-/** Why a Meta login cannot open yet: no app, or no channel configuration. The installation admin gets a link to fix it. */
-export function MetaAppAlert({
-  config,
+/** A channel's overflow menu, on its row and on its page: the everyday
+    actions, then the destructive one on its own. */
+export function ChannelMenu({
+  children,
+  remove,
 }: {
-  config: {
-    configured: boolean
-    configIds: { whatsapp?: string; facebookLogin?: string }
-  }
+  children: React.ReactNode
+  remove: ChannelRemoval
 }) {
-  const installation = useInstanceChannels()
-  if (!config.configured) return <InstanceChannelConfiguration channel="meta" />
-  const notice = metaConfigurationNotice(config.configIds)
-  if (!notice) return null
-  const admin = installation?.admin === true
+  const Icon = remove.icon
   return (
-    <Alert variant="warning">
-      <TriangleAlertIcon />
-      <AlertDescription>
-        {notice}{" "}
-        {admin ? (
-          <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>
-        ) : (
-          "Ask your instance admin"
-        )}
-      </AlertDescription>
-    </Alert>
+    <MoreMenu>
+      <DropdownMenuGroup>{children}</DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={remove.disabled}
+          onClick={remove.onClick}
+        >
+          <Icon />
+          {remove.label}
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+    </MoreMenu>
+  )
+}
+
+/** One header for an email domain's page and a channel account's: back to
+    Channels, the channel's mark, then Docs, any extra action, the refresh
+    (Sync or Check DNS records) and the overflow menu. */
+export function ChannelDetailHeader({
+  title,
+  description,
+  icon,
+  actions,
+  refresh,
+  menu,
+  remove,
+}: {
+  title: string
+  description?: string
+  icon: (props: { className?: string }) => React.ReactNode
+  actions?: React.ReactNode
+  refresh: {
+    label: string
+    pendingLabel: string
+    pending: boolean
+    disabled?: boolean
+    onClick: () => void
+  }
+  menu: React.ReactNode
+  remove: ChannelRemoval
+}) {
+  return (
+    <DetailHeader
+      backHref="/channels"
+      backLabel="Channels"
+      title={title}
+      description={description}
+      icon={icon}
+      actions={
+        <>
+          <DocsButton />
+          {actions}
+          <Button
+            variant="outline"
+            disabled={refresh.disabled || refresh.pending}
+            aria-busy={refresh.pending}
+            onClick={refresh.onClick}
+          >
+            {refresh.pending ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RefreshCwIcon data-icon="inline-start" />
+            )}
+            {refresh.pending ? refresh.pendingLabel : refresh.label}
+          </Button>
+          <ChannelMenu remove={remove}>{menu}</ChannelMenu>
+        </>
+      }
+    />
   )
 }
 
