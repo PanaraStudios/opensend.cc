@@ -1,6 +1,10 @@
 /** Session-start CRM block. Absent on a bot means the lookup is on. */
 export const CALLER_CONTEXT_LIMIT = 2000
 export const CALLER_CONTEXT_TIMEOUT_MS = 800
+/** Newest contact notes copied into the session block. */
+export const CALLER_CONTEXT_NOTE_COUNT = 5
+/** One line per note, cut before the block cap so later notes still fit. */
+export const CALLER_CONTEXT_NOTE_CHARS = 200
 export const CALLER_CONTEXT_HEADER =
   "Caller context (from the CRM; do not read it out unless relevant):"
 
@@ -41,11 +45,23 @@ export type CallerProfile = {
   tags: string[]
   channelIdentities: CallerChannelIdentity[]
   recentMessageSummary: string
+  /** Newest first. Empty when the contact has no notes. */
+  notes: readonly string[]
 }
 
 export type CallerLookup =
   | { found: false; phone: string | null }
   | ({ found: true } & CallerProfile)
+
+/** Flatten and cut notes for the prompt. Order is preserved (newest first). */
+export function callerContextNoteLines(notes: readonly string[] | undefined) {
+  if (!notes?.length) return []
+  return notes
+    .map((note) => note.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, CALLER_CONTEXT_NOTE_COUNT)
+    .map((note) => note.slice(0, CALLER_CONTEXT_NOTE_CHARS))
+}
 
 export function formatCallerContext(lookup: CallerLookup) {
   if (!lookup.found) {
@@ -58,6 +74,9 @@ export function formatCallerContext(lookup: CallerLookup) {
   if (lookup.name.trim()) lines.push(`name: ${lookup.name.trim()}`)
   if (lookup.email?.trim()) lines.push(`email: ${lookup.email.trim()}`)
   if (lookup.phone?.trim()) lines.push(`phone: ${lookup.phone.trim()}`)
+  const notes = callerContextNoteLines(lookup.notes)
+  if (notes.length)
+    lines.push(`notes:\n${notes.map((note) => `- ${note}`).join("\n")}`)
   if (Object.keys(lookup.properties).length)
     lines.push(`properties: ${JSON.stringify(lookup.properties)}`)
   if (lookup.tags.length) lines.push(`tags: ${lookup.tags.join(", ")}`)

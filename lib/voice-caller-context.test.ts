@@ -3,6 +3,7 @@ import { test } from "node:test"
 import {
   CALLER_CONTEXT_HEADER,
   CALLER_CONTEXT_LIMIT,
+  CALLER_CONTEXT_NOTE_CHARS,
   CallerContextTimeout,
   assembleCallerContext,
   callerContextEnabled,
@@ -30,6 +31,7 @@ const known: CallerLookup = {
     },
   ],
   recentMessageSummary: "Customer (2h ago): Yes please",
+  notes: [],
 }
 
 test("caller lookup defaults on and can be turned off", () => {
@@ -59,6 +61,48 @@ test("known callers are quoted from the lookup and unknown callers are not inven
     formatCallerContext({ found: false, phone: "   " }),
     `${CALLER_CONTEXT_HEADER} Caller not found in CRM; phone unknown`
   )
+})
+
+test("contact notes are newest first, each truncated, and still inside the cap", () => {
+  const truncated = "n".repeat(CALLER_CONTEXT_NOTE_CHARS)
+  const block = formatCallerContext({
+    ...known,
+    notes: [
+      "  Newest\nline  ",
+      "n".repeat(500),
+      "Third",
+      "Fourth",
+      "Fifth",
+      "Sixth is past the five-note limit",
+      "   ",
+    ],
+  })
+  assert.ok(
+    block.includes(
+      `notes:\n- Newest line\n- ${truncated}\n- Third\n- Fourth\n- Fifth`
+    )
+  )
+  assert.equal(block.includes("Sixth"), false)
+  assert.equal(
+    block.includes("n".repeat(CALLER_CONTEXT_NOTE_CHARS + 1)),
+    false
+  )
+  assert.ok(block.indexOf("Newest line") < block.indexOf(truncated))
+  assert.ok(block.indexOf("name: Ada") < block.indexOf("notes:"))
+  assert.ok(block.length <= CALLER_CONTEXT_LIMIT)
+  const crowded = formatCallerContext({
+    ...known,
+    notes: Array.from({ length: 5 }, () => "m".repeat(10_000)),
+    properties: { note: "p".repeat(10_000) },
+  })
+  assert.equal(crowded.length, CALLER_CONTEXT_LIMIT)
+  assert.ok(crowded.startsWith(CALLER_CONTEXT_HEADER))
+  assert.ok(crowded.includes("name: Ada"))
+  assert.equal(
+    crowded.includes("m".repeat(CALLER_CONTEXT_NOTE_CHARS + 1)),
+    false
+  )
+  assert.equal(formatCallerContext(known).includes("notes:"), false)
 })
 
 test("caller context is capped at 2000 characters", () => {

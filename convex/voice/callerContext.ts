@@ -5,6 +5,8 @@ import {
 import { object } from "../../lib/meta/parse"
 import {
   CallerContextTimeout,
+  CALLER_CONTEXT_NOTE_COUNT,
+  callerContextNoteLines,
   callerContextPastDeadline,
   type CallerLookup,
 } from "../../lib/voice-caller-context"
@@ -18,7 +20,7 @@ function guard(deadline: number) {
   if (callerContextPastDeadline(deadline)) throw new CallerContextTimeout()
 }
 
-/** The same caller record lookup_contact returns. Contact notes are not stored. */
+/** The same caller record lookup_contact returns, including the newest contact notes. */
 export async function lookupContact(
   ctx: QueryCtx,
   call: Doc<"calls">,
@@ -86,6 +88,16 @@ export async function lookupContact(
     .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
     .take(100)
   guard(deadline)
+  const noteRows = await ctx.db
+    .query("contactNotes")
+    .withIndex("by_organizationId_and_contactId", (q) =>
+      q
+        .eq("organizationId", call.organizationId)
+        .eq("contactId", contact._id)
+    )
+    .order("desc")
+    .take(CALLER_CONTEXT_NOTE_COUNT)
+  guard(deadline)
   return {
     found: true,
     name: [contact.firstName, contact.lastName].filter(Boolean).join(" "),
@@ -112,5 +124,10 @@ export async function lookupContact(
         profileName: identity.profileName ?? null,
       })),
     recentMessageSummary: previews.join("\n").slice(0, 3500),
+    notes: callerContextNoteLines(
+      noteRows
+        .filter((note) => note.organizationId === call.organizationId)
+        .map((note) => note.body)
+    ),
   }
 }

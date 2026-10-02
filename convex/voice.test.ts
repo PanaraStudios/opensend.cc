@@ -5,6 +5,7 @@ import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
 import { patchRow } from "./counts"
 import { upsertContact } from "./audience"
 import { upsertChannelThread } from "./channels/identity"
+import { CALLER_CONTEXT_NOTE_CHARS } from "../lib/voice-caller-context"
 import { signRequest } from "../services/call-gateway/src/auth"
 import type { Id } from "./_generated/dataModel"
 const secret = "a".repeat(64)
@@ -935,6 +936,79 @@ test("a bot session includes the same caller record as lookup_contact, capped fo
   })
   expect(tool.result.found).toBeUndefined()
   expect(tool.result.properties.note).toHaveLength(4000)
+})
+
+test("a bot session includes the caller's newest contact notes, each truncated", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  const contactId = await attachCaller(f, callId)
+  const otherId = await f.t.run(async (ctx) => {
+    const contact = await upsertContact(
+      ctx,
+      f.owner.team,
+      { phone: "+15555550199", firstName: "Other" },
+      { properties: [], segmentIds: [], skipExisting: true }
+    )
+    return contact.id
+  })
+  const newest = `newest ${"n".repeat(CALLER_CONTEXT_NOTE_CHARS)}`
+  for (const body of [
+    "oldest note",
+    "second note",
+    "third note",
+    "fourth note",
+    "Fifth\nline",
+    newest,
+  ]) {
+    vi.setSystemTime(Date.now() + 1000)
+    await f.t.run((ctx) =>
+      ctx.db.insert("contactNotes", {
+        organizationId: f.owner.team,
+        contactId,
+        body,
+        author: { kind: "user", id: "user-1" },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+    )
+  }
+  vi.setSystemTime(Date.now() + 1000)
+  await f.t.run((ctx) =>
+    ctx.db.insert("contactNotes", {
+      organizationId: f.owner.team,
+      contactId: otherId,
+      body: "other caller secret",
+      author: { kind: "user", id: "user-2" },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  )
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const body = await botSession(f, callId)
+  const shown = newest.slice(0, CALLER_CONTEXT_NOTE_CHARS)
+  const block = body.callerContextBlock ?? ""
+  expect(block).toContain("name: Ada")
+  expect(block).toContain(
+    `notes:\n- ${shown}\n- Fifth line\n- fourth note\n- third note\n- second note`
+  )
+  expect(block).not.toContain("oldest note")
+  expect(block).not.toContain("other caller secret")
+  expect(block).not.toContain(newest)
+  expect(block.length).toBeLessThanOrEqual(2000)
+  const tool = await (
+    await f.signed("tools", {
+      callId,
+      organizationId: f.owner.team,
+      toolCall: { id: "lookup-notes", name: "lookup_contact", arguments: {} },
+    })
+  ).json()
+  expect(tool.result.notes).toEqual([
+    shown,
+    "Fifth line",
+    "fourth note",
+    "third note",
+    "second note",
+  ])
 })
 
 test("caller lookup can be turned off", async () => {
