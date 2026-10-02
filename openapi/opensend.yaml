@@ -27008,6 +27008,14 @@ components:
           type:
             - string
             - "null"
+        contact_name:
+          type: string
+          description: Resolved caller display name.
+        contact_phone:
+          type:
+            - string
+            - "null"
+          description: Resolved caller E.164 phone, when known.
         conversation_id:
           type:
             - string
@@ -27191,6 +27199,14 @@ components:
           type:
             - string
             - "null"
+        contact_name:
+          type: string
+          description: Resolved caller display name.
+        contact_phone:
+          type:
+            - string
+            - "null"
+          description: Resolved caller E.164 phone, when known.
         conversation_id:
           type:
             - string
