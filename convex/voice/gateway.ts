@@ -1,12 +1,11 @@
 import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
 import { ConvexError } from "convex/values"
-import {
-  messageContentPreview,
-  relativeMessageTime,
-} from "../../lib/dashboard/conversation-content"
-import { channelMessagePayload } from "../channels/payload"
-import { renderedChannelTemplate } from "../channels/templates"
 import { updateVoiceBotVoice } from "../../lib/voice-bot-defaults"
+import {
+  assembleCallerContext,
+  callerContextEnabled,
+} from "../../lib/voice-caller-context"
+import { lookupContact } from "./callerContext"
 import { own as ownedIvr } from "../ivr/definitions"
 import { resolveCallPerson } from "../channels/identity"
 import { knownUserForPhone } from "../calling/rows"
@@ -108,12 +107,27 @@ export const session = internalMutation({
           throw notFound("Voice credential")
         keys[name] = await decryptSecret(key.encryptedKey)
       }
+    const callerContextBlock = callerContextEnabled(
+      call.botConfig?.callerContext
+    )
+      ? await assembleCallerContext(
+          (deadline) => lookupContact(ctx, call, deadline),
+          {
+            onDiagnostic: (reason) => {
+              console.error(
+                `caller context unavailable call=${call._id} reason=${reason}`
+              )
+            },
+          }
+        )
+      : undefined
     return {
       ...updateVoiceBotVoice(call.botConfig!),
       voiceGender: botVoiceGender(call.botConfig!),
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
+      ...(callerContextBlock ? { callerContextBlock } : {}),
     }
   },
 })
@@ -205,88 +219,10 @@ async function execute(
 ) {
   switch (name) {
     case "lookup_contact": {
-      const { contact, conversationId } = await resolveCallPerson(ctx, call)
-      if (!contact || contact.organizationId !== call.organizationId)
-        return { contact: null }
-      const messages = conversationId
-        ? await ctx.db
-            .query("channelMessages")
-            .withIndex("by_conversationId", (q) =>
-              q.eq("conversationId", conversationId!)
-            )
-            .order("desc")
-            .take(5)
-        : []
-      const now = Date.now()
-      const account = await ctx.db.get("channelAccounts", call.accountId)
-      const previews = await Promise.all(
-        messages
-          .filter((message) => message.organizationId === call.organizationId)
-          .map(async (message) => {
-            const content = await ctx.db
-              .query("channelMessageContents")
-              .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
-              .unique()
-            const normalized = channelMessagePayload(
-              message,
-              object(JSON.parse(content?.payload ?? "{}"))
-            )
-            const rendered = await renderedChannelTemplate(
-              ctx,
-              message,
-              content,
-              account
-            )
-            const preview = message.revokedAt
-              ? "Message deleted"
-              : messageContentPreview(
-                  message.type,
-                  normalized.content,
-                  message.preview,
-                  rendered
-                )
-            return `${message.direction === "inbound" ? "Customer" : "Business"} (${relativeMessageTime(message.observedAt ?? message._creationTime, now)}): ${preview.slice(0, 600)}`
-          })
-      )
-      const members = await ctx.db
-        .query("segmentMembers")
-        .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
-        .take(100)
-      const segments = await Promise.all(
-        members
-          .filter((m) => m.organizationId === call.organizationId)
-          .map((m) => ctx.db.get("segments", m.segmentId))
-      )
-      const identities = await ctx.db
-        .query("channelContacts")
-        .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
-        .take(100)
-      return {
-        name: [contact.firstName, contact.lastName].filter(Boolean).join(" "),
-        email: contact.email ?? null,
-        phone: contact.phone ?? null,
-        properties: contact.properties,
-        tags: segments
-          .filter((segment) => segment?.organizationId === call.organizationId)
-          .map((segment) => segment!.name),
-        channelIdentities: identities
-          .filter(
-            (identity) =>
-              identity.organizationId === call.organizationId &&
-              !identity.mergedIntoId
-          )
-          .map((identity) => ({
-            channel: identity.channel,
-            externalId: identity.externalId,
-            scopeId: identity.scopeId,
-            phone: identity.phone ?? null,
-            userId: identity.userId ?? null,
-            parentUserId: identity.parentUserId ?? null,
-            username: identity.username ?? null,
-            profileName: identity.profileName ?? null,
-          })),
-        recentMessageSummary: previews.join("\n").slice(0, 3500),
-      }
+      const lookup = await lookupContact(ctx, call)
+      const { found, ...profile } = lookup
+      if (!found) return { contact: null }
+      return profile
     }
     case "create_note": {
       const person = await resolveCallPerson(ctx, call)

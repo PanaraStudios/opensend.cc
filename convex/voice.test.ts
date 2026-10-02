@@ -112,6 +112,55 @@ async function fixture() {
     )
   return { ...f, request, signed, credential, bot, createCall }
 }
+async function attachCaller(
+  f: Awaited<ReturnType<typeof fixture>>,
+  callId: Id<"calls">,
+  firstName = "Ada"
+) {
+  return f.t.run(async (ctx) => {
+    const contact = await upsertContact(
+      ctx,
+      f.owner.team,
+      { phone: "+15555550123", firstName },
+      { properties: [], segmentIds: [], skipExisting: true }
+    )
+    await ctx.db.patch("calls", callId, {
+      contactId: contact.id,
+      from: "15555550123",
+    })
+    return contact.id
+  })
+}
+async function botSession(
+  f: Awaited<ReturnType<typeof fixture>>,
+  callId: Id<"calls">
+) {
+  const response = await f.signed("session", {
+    callId,
+    organizationId: f.owner.team,
+  })
+  expect(response.status).toBe(200)
+  return (await response.json()) as {
+    callerContextBlock?: string
+    keys: { live?: string }
+    systemPrompt: string
+  }
+}
+async function ivrGateway(
+  f: Awaited<ReturnType<typeof fixture>>,
+  path: string,
+  data: Record<string, unknown>
+) {
+  const body = JSON.stringify(data)
+  return f.t.fetch(path, {
+    method: "POST",
+    body,
+    headers: {
+      "content-type": "application/json",
+      ...signRequest(secret, "POST", path, body),
+    },
+  })
+}
 test("credentials are write-only in REST, queries, logs and errors; authenticated session is the only decrypted channel", async () => {
   const f = await fixture()
   const providers = await (await f.request("/voice-providers")).json()
@@ -804,4 +853,262 @@ test("lookup_contact returns caller properties, segments, identities and readabl
   ])
     expect(result.recentMessageSummary).toContain(line)
   expect(result.recentMessageSummary).not.toContain("[interactive]")
+})
+
+test("caller lookup defaults on for new and old bots, and names an unknown caller", async () => {
+  const f = await fixture()
+  expect(
+    (await (await f.request(`/voice-bots/${f.bot}`)).json()).callerContext
+  ).toBe(true)
+  await f.t.run(async (ctx) => {
+    const bot = (await ctx.db.get("voiceBots", f.bot))!
+    const { _id, _creationTime, callerContext: _callerContext, ...rest } = bot
+    void _creationTime
+    void _callerContext
+    await ctx.db.replace("voiceBots", _id, rest)
+  })
+  expect(
+    (await (await f.request(`/voice-bots/${f.bot}`)).json()).callerContext
+  ).toBe(true)
+  const callId = await f.createCall()
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", callId, { from: "15555550124" })
+  )
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const body = await botSession(f, callId)
+  expect(body.callerContextBlock).toBe(
+    "Caller context (from the CRM; do not read it out unless relevant): Caller not found in CRM; phone +15555550124"
+  )
+  expect(body.callerContextBlock).not.toMatch(/name:/)
+  expect(body.keys.live).toBe("secret-provider-key-1234")
+})
+
+test("a bot session includes the same caller record as lookup_contact, capped for the prompt", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await attachCaller(f, callId)
+  await f.t.run(async (ctx) => {
+    const call = (await ctx.db.get("calls", callId))!
+    await ctx.db.patch("contacts", call.contactId!, {
+      properties: { note: "n".repeat(4000) },
+    })
+  })
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const body = await botSession(f, callId)
+  expect(body.callerContextBlock).toContain(
+    "Caller context (from the CRM; do not read it out unless relevant):"
+  )
+  expect(body.callerContextBlock).toContain("name: Ada")
+  expect(body.callerContextBlock).toContain("phone: +15555550123")
+  expect(body.callerContextBlock!.length).toBeLessThanOrEqual(2000)
+  expect(body.callerContextBlock).not.toContain("n".repeat(4000))
+  const tool = await (
+    await f.signed("tools", {
+      callId,
+      organizationId: f.owner.team,
+      toolCall: { id: "lookup-ada", name: "lookup_contact", arguments: {} },
+    })
+  ).json()
+  expect(tool).toMatchObject({
+    ok: true,
+    result: { name: "Ada", phone: "+15555550123" },
+  })
+  expect(tool.result.found).toBeUndefined()
+  expect(tool.result.properties.note).toHaveLength(4000)
+})
+
+test("caller lookup can be turned off", async () => {
+  const f = await fixture()
+  expect(
+    (
+      await f.request(`/voice-bots/${f.bot}`, "PATCH", { callerContext: false })
+    ).status
+  ).toBe(200)
+  expect(
+    (await (await f.request(`/voice-bots/${f.bot}`)).json()).callerContext
+  ).toBe(false)
+  const callId = await f.createCall()
+  await attachCaller(f, callId)
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+  const body = await botSession(f, callId)
+  expect(body.callerContextBlock).toBeUndefined()
+  expect(body.keys.live).toBe("secret-provider-key-1234")
+  expect(
+    errors.mock.calls.some((call) =>
+      String(call[0]).includes("caller context unavailable")
+    )
+  ).toBe(false)
+})
+
+test("a failed caller lookup still starts the bot without the block", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run(async (ctx) => {
+    const contact = await upsertContact(
+      ctx,
+      f.owner.team,
+      { phone: "+15555550123", firstName: "Ada" },
+      { properties: [], segmentIds: [], skipExisting: true }
+    )
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const thread = await upsertChannelThread(ctx, account, {
+      externalId: "15555550123",
+      phone: "+15555550123",
+      at: Date.now(),
+      direction: "inbound",
+      preview: "Hello",
+    })
+    const messageId = await ctx.db.insert("channelMessages", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      channelContactId: thread.channelContactId,
+      conversationId: thread.conversationId,
+      channel: "whatsapp",
+      direction: "inbound",
+      type: "text",
+      status: "received",
+      from: "15555550123",
+      to: "business",
+      preview: "Hello",
+      generation: 0,
+      attempts: 0,
+      observedAt: Date.now(),
+    })
+    await ctx.db.insert("channelMessageContents", {
+      messageId,
+      payload: "not-json",
+    })
+    await ctx.db.patch("calls", callId, {
+      contactId: contact.id,
+      channelContactId: thread.channelContactId,
+      conversationId: thread.conversationId,
+      from: "15555550123",
+    })
+  })
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+  const body = await botSession(f, callId)
+  expect(body.keys.live).toBe("secret-provider-key-1234")
+  expect(body.callerContextBlock).toBeUndefined()
+  expect(
+    errors.mock.calls.some((call) =>
+      String(call[0]).includes("caller context unavailable") &&
+      String(call[0]).includes("reason=failed")
+    )
+  ).toBe(true)
+  expect(errors.mock.calls.some((call) => String(call[0]).includes("Ada"))).toBe(
+    false
+  )
+  expect(
+    await (
+      await f.signed("tools", {
+        callId,
+        organizationId: f.owner.team,
+        toolCall: { id: "lookup-broken", name: "lookup_contact", arguments: {} },
+      })
+    ).json()
+  ).toMatchObject({ ok: false })
+})
+
+test("the next bot session after an IVR transfer loads the caller again", async () => {
+  const f = await fixture()
+  const upload = await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["RIFF audio"], { type: "audio/wav" })
+    )
+    return ctx.db.insert("storedFiles", {
+      organizationId: f.owner.team,
+      provider: "convex",
+      storageId,
+      size: 10,
+      contentType: "audio/wav",
+      state: "ready",
+      feature: "ivr",
+    })
+  })
+  const created = await f.request(
+    "/ivrs",
+    "POST",
+    {
+      name: "Reception",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "audio", fileId: upload },
+          options: { "1": { kind: "bot", botId: f.bot } },
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+        },
+      ],
+    }
+  )
+  expect(created.status).toBe(201)
+  const ivr = (await created.json()).id as string
+  expect(
+    (
+      await f.request(`/voice-bots/${f.bot}`, "PATCH", {
+        handoff: { agents: true, ivrId: ivr },
+      })
+    ).status
+  ).toBe(200)
+  // The fixture budget equals one max session, so a second bot admission would
+  // otherwise fall through to voicemail.
+  await f.t.run((ctx) =>
+    ctx.db.patch("voiceBots", f.bot, { monthlyMinuteBudget: 100000 })
+  )
+  const callId = await f.createCall()
+  const contactId = await attachCaller(f, callId)
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const first = await botSession(f, callId)
+  expect(first.callerContextBlock).toContain("name: Ada")
+  await f.t.run((ctx) =>
+    ctx.db.patch("contacts", contactId, { firstName: "Nia" })
+  )
+  expect(
+    await (
+      await f.signed("tools", {
+        callId,
+        organizationId: f.owner.team,
+        toolCall: { id: "to-ivr", name: "transfer_to_ivr", arguments: {} },
+      })
+    ).json()
+  ).toMatchObject({ ok: true, result: { action: "transfer_to_ivr", ivrId: ivr } })
+  vi.setSystemTime(Date.now() + 2000)
+  expect(
+    (
+      await f.signed("events", {
+        callId,
+        eventId: crypto.randomUUID(),
+        timestamp: Date.now(),
+        type: "bot_completed",
+        outcome: "transferred_ivr",
+        summary: "Returning to the menu",
+        usage: { inputTokens: 1 },
+      })
+    ).status
+  ).toBe(200)
+  expect(
+    (
+      await ivrGateway(f, "/calling/gateway/ivr/start", { callId, ivrId: ivr })
+    ).status
+  ).toBe(200)
+  const next = await ivrGateway(f, "/calling/gateway/ivr/next", {
+    callId,
+    ivrId: ivr,
+    menuId: "main",
+    digits: "1",
+    step: 0,
+  })
+  expect(next.status).toBe(200)
+  expect(await next.json()).toMatchObject({
+    action: { kind: "bot", botId: f.bot },
+  })
+  const second = await botSession(f, callId)
+  expect(second.callerContextBlock).toContain("name: Nia")
+  expect(second.callerContextBlock).not.toContain("name: Ada")
+  expect(second.keys.live).toBe("secret-provider-key-1234")
 })

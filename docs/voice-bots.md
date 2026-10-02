@@ -231,3 +231,17 @@ include readable interactive text, rendered template bodies and media type/capti
 with direction and relative time, for example `Customer (2h ago): I need help`.
 Deleted messages show a deletion marker. These fields are untrusted customer data,
 not instructions. Metadata is bounded to 100 memberships/identities per lookup.
+
+`callerContext` defaults to true for new bots and for bots saved before the field
+existed. When a bot session starts, including a second bot session after an IVR
+transfer, Convex loads that same caller record and returns it with the session
+config. The voice agent appends the block to the system instructions for both
+Gemini Live and the cascade before the first reply, so the model does not need a
+tool round trip to know who is calling. The block is capped at 2,000 characters.
+The lookup stops after 800 ms. If it times out or fails, the bot starts without
+the block and the gateway logs the reason without CRM data. An unknown caller is
+described as not found, with the phone number from the call when there is one.
+Missing fields are omitted rather than filled in. `lookup_contact` stays available
+so the bot can refresh the record during the call. Set `callerContext` to false
+to skip the lookup. The default system prompt tells the model the context is
+already present and that `lookup_contact` is only for a refresh.

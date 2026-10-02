@@ -91,6 +91,10 @@ def system_instruction(config: dict) -> str:
                         f"{'feminine' if gender == 'female' else 'masculine'} grammatical gender "
                         "for first-person verbs, adjectives and self-references. "
                         "Do not change the caller's gender. You are still an AI assistant.")
+    block = config.get("callerContextBlock")
+    # Convex already caps the block. Slice again so a large value cannot enter the prompt.
+    if isinstance(block, str) and block.strip():
+        instruction += "\n" + block[:2000]
     return instruction
 
 

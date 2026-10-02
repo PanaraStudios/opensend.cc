@@ -299,6 +299,34 @@ def test_cascade_invocation_contains_same_tool_declarations(provider):
     assert "create_note" in serialized and "end_call" in serialized
 
 
+def test_caller_context_is_injected_for_both_engines_and_capped():
+    from voice_agent.factory import system_instruction
+
+    block = "Caller context (from the CRM; do not read it out unless relevant): name: Ada"
+    live = config()
+    live.update(
+        engine="gemini_live",
+        model="gemini-3.8-live",
+        voice="Kore",
+        keys={"live": "fake"},
+        callerContextBlock=block,
+    )
+    cascade = config()
+    cascade["callerContextBlock"] = block
+    for value in (live, cascade):
+        text = create_services(value).llm._settings.system_instruction
+        assert isinstance(text, str)
+        assert text.startswith(value["systemPrompt"])
+        assert block in text
+    bare = config()
+    assert "Caller context" not in system_instruction(bare)
+    bare["callerContextBlock"] = {"name": "Ada"}
+    assert "Ada" not in system_instruction(bare)
+    huge = config()
+    huge["callerContextBlock"] = "¤" * 5000
+    assert system_instruction(huge).count("¤") == 2000
+
+
 @pytest.mark.parametrize("gender, word", [("female", "feminine"), ("male", "masculine")])
 def test_voice_gender_is_in_runtime_prompt(gender, word):
     from voice_agent.factory import system_instruction
