@@ -279,4 +279,19 @@ test("voice changes update built-in gendered copy in both engines, preserving ed
     },
   })
   assert.ok(eleven.greeting.includes("सकता हूँ"))
+  const masked = updateVoiceBotVoice(eleven, [
+    { value: "other", gender: "female" },
+  ])
+  assert.equal(
+    masked.greeting,
+    voiceBotDefaults(eleven.language, "unknown").greeting
+  )
+  const liveFemale = updateVoiceBotVoice(
+    {
+      ...eleven,
+      tts: { ...eleven.tts!, voice: "customVoiceId00000001" },
+    },
+    [{ value: "customVoiceId00000001", gender: "female" }]
+  )
+  assert.ok(liveFemale.greeting.includes("सकती हूँ"))
 })

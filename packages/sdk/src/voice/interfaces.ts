@@ -66,6 +66,30 @@ export interface CreateVoiceProvider {
   label: string
   key: string
 }
+export interface ElevenLabsVoice {
+  value: string
+  label: string
+  gender: "female" | "male" | "unknown"
+  accent?: string
+  language?: string
+  description?: string
+  category:
+    | "premade"
+    | "cloned"
+    | "professional"
+    | "generated"
+    | "famous"
+    | "high_quality"
+    | "unknown"
+}
+export interface ElevenLabsVoiceList {
+  object: "list"
+  has_more: boolean
+  data: ElevenLabsVoice[]
+  cached_at: number
+  credential_id: string
+  error?: string
+}
 export type { CallingRouting } from "../whatsapp/calling/routing"
 export type BotOutcome =
   | "completed"

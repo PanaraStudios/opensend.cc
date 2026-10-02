@@ -1,3 +1,4 @@
+import { formatProviderError } from "./elevenlabs-voices"
 import type { PromptRenderer } from "./ivr-prompts"
 export const IVR_TTS_PROVIDERS = ["elevenlabs", "sarvam"] as const
 export { SARVAM_VOICES as SARVAM_PROMPT_VOICES } from "../services/call-gateway/src/voice/voices"
@@ -61,18 +62,29 @@ async function bounded(
   }
   return result
 }
+const GENERIC_RENDER_ERROR =
+  "Voice provider could not render this prompt. Check the key, voice and language, then retry."
 export class PromptProviderError extends Error {
-  constructor(readonly retryable: boolean) {
-    super(
-      "Voice provider could not render this prompt. Check the key, voice and language, then retry."
-    )
+  constructor(
+    readonly retryable: boolean,
+    message = GENERIC_RENDER_ERROR
+  ) {
+    super(message)
+    this.name = "PromptProviderError"
   }
 }
-async function status(response: Response) {
+async function status(
+  response: Response,
+  provider: "ElevenLabs" | "Sarvam",
+  secret: string
+) {
   if (!response.ok) {
-    await response.body?.cancel().catch(() => undefined)
+    const body = await response.text().catch(() => "")
     throw new PromptProviderError(
-      response.status === 429 || response.status >= 500
+      response.status === 429 || response.status >= 500,
+      formatProviderError(provider, response.status, body.slice(0, 4000), [
+        secret,
+      ])
     )
   }
 }
@@ -109,9 +121,16 @@ export class ElevenLabsPromptRenderer implements PromptRenderer {
       rate = 24000
       r = await render(rate)
     }
-    await status(r)
-    if (r.headers.get("content-type")?.includes("json"))
-      throw new PromptProviderError(false)
+    await status(r, "ElevenLabs", this.key)
+    if (r.headers.get("content-type")?.includes("json")) {
+      const body = await r.text().catch(() => "")
+      throw new PromptProviderError(
+        false,
+        formatProviderError("ElevenLabs", r.status, body.slice(0, 4000), [
+          this.key,
+        ])
+      )
+    }
     return { audio: pcmWav(await bounded(r), rate) }
   }
 }
@@ -139,7 +158,7 @@ export class SarvamPromptRenderer implements PromptRenderer {
       signal: AbortSignal.timeout(20000),
       redirect: "error",
     })
-    await status(r)
+    await status(r, "Sarvam", this.key)
     const value: unknown = JSON.parse(
       new TextDecoder().decode(await bounded(r, 24 * 1024 * 1024))
     )

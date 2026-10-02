@@ -61,6 +61,19 @@ export function registerVoiceRoutes(http: HttpRouter) {
   }
   apiRoute(http, {
     method: "GET",
+    path: "/voice-providers/elevenlabs/voices",
+    scope: { resource: "voice_providers", access: "read" },
+    handler: async (ctx, { caller, query }) => ({
+      body: await ctx.runAction(internal.voice.elevenlabs.refresh, {
+        organizationId: caller.organizationId,
+        caller,
+        credentialId: query.get("credential_id") || undefined,
+        force: query.get("refresh") === "true",
+      }),
+    }),
+  })
+  apiRoute(http, {
+    method: "GET",
     path: "/voice-bots/{id}",
     scope: read,
     handler: async (ctx, { caller, params }) => ({

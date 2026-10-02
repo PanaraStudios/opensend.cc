@@ -92,6 +92,42 @@ test("ElevenLabs lower-tier credentials fall back to 24k PCM rather than failing
     24000
   )
 })
+test("provider rejections keep their own message", async () => {
+  const eleven = new ElevenLabsPromptRenderer("secret", async () =>
+    Response.json(
+      {
+        detail: {
+          status: "voice_not_found",
+          message: "A voice with the voice_id abc was not found.",
+        },
+      },
+      { status: 400 }
+    )
+  )
+  await assert.rejects(
+    eleven.render("Hello", "en", "abc"),
+    (error) =>
+      error instanceof PromptProviderError &&
+      !error.retryable &&
+      error.message ===
+        "ElevenLabs: voice_not_found — A voice with the voice_id abc was not found."
+  )
+  const sarvam = new SarvamPromptRenderer("secret", async () =>
+    Response.json(
+      { error: { code: "invalid_speaker", message: "Unknown speaker secret" } },
+      { status: 400 }
+    )
+  )
+  await assert.rejects(
+    sarvam.render("Hello", "hi-IN", "nope"),
+    (error) =>
+      error instanceof PromptProviderError &&
+      !error.retryable &&
+      error.message ===
+        "Sarvam: invalid_speaker — Unknown speaker [redacted]" &&
+      !error.message.includes("secret")
+  )
+})
 test("retries are bounded with backoff and provider errors never expose keys or response bodies", async () => {
   const sleeps: number[] = []
   let calls = 0
