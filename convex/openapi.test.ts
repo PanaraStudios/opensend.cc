@@ -43,15 +43,16 @@ import {
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
-  () => [] as Pick<ApiRouteOptions, "method" | "path" | "scope">[]
+  () =>
+    [] as Pick<ApiRouteOptions, "method" | "path" | "scope" | "resolveScopes">[]
 )
 vi.mock("./api/route", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/route")>()
   return {
     ...actual,
     apiRoute: (...args: Parameters<typeof actual.apiRoute>) => {
-      const { method, path, scope } = args[1]
-      registrations.push({ method, path, scope })
+      const { method, path, scope, resolveScopes } = args[1]
+      registrations.push({ method, path, scope, resolveScopes })
       return actual.apiRoute(...args)
     },
   }
@@ -283,6 +284,21 @@ describe("OpenAPI contract", () => {
       to: SENDER,
       template: { name: "hello", language: "en", variables: { "1": "Ada" } },
     })
+    const unified = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel: "whatsapp",
+        to: SENDER,
+        text: "Unified contract",
+      })
+    )
+    await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${unified.id}`)
+    )
+    await response("/messages", "GET", await call("/messages?channel=whatsapp"))
     const sent = await response(
       "/whatsapp/messages",
       "POST",
@@ -1331,6 +1347,25 @@ test("Messenger and Instagram send, read routes and local templates validate rea
     const to = channel === "messenger" ? PSID : IGSID,
       resource = channel === "messenger" ? "pages" : "accounts",
       externalId = channel === "messenger" ? PAGE_ID : IG_ID
+    const unified = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel,
+        to,
+        text: "Unified page contract",
+      })
+    )
+    await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${unified.id}`)
+    )
+    await response(
+      "/messages",
+      "GET",
+      await call(`/messages?channel=${channel}`)
+    )
     const request = {
       to,
       text: "Reply",
@@ -1412,6 +1447,21 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       "POST",
       await call(`/templates/${template.id}/publish`, "POST", {})
     )
+    const rendered = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel,
+        to,
+        template: { id: template.id, variables: { name: "Ada" } },
+      })
+    )
+    const renderedMessage = await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${rendered.id}`)
+    )
+    expect(renderedMessage.preview).toBe("Hello Ada")
   }
 })
 
@@ -1907,4 +1957,75 @@ test("contact note CRUD, cursors, idempotency and webhook sample match the publi
     contract.components.schemas.ContactNote,
     samplePayload({ name: "contact.note_created", schema: [] })
   )
+})
+
+test("unified messages validate actual email responses and document dynamic channel authorization", async () => {
+  const f = await setup()
+  const created = await response(
+    "/messages",
+    "POST",
+    await f.call("/messages", "POST", {
+      channel: "email",
+      from: "sender@mail.example.test",
+      to: "person@example.test",
+      subject: "Unified contract",
+      text: "Unified body",
+    })
+  )
+  const message = await response(
+    "/messages/{id}",
+    "GET",
+    await f.call(`/messages/${created.id}`)
+  )
+  expect(message).toMatchObject({
+    object: "message",
+    channel: "email",
+    direction: "outbound",
+    preview: "Unified body",
+    contact_id: null,
+  })
+  await response(
+    "/messages",
+    "GET",
+    await f.call("/messages?channel=email&direction=outbound")
+  )
+  const post = registrations.find(
+    (r) => r.path === "/messages" && r.method === "POST"
+  )!
+  for (const channel of ["email", "whatsapp", "messenger", "instagram"]) {
+    expect(
+      post.resolveScopes!({ body: { channel }, query: new URLSearchParams() })
+    ).toEqual([
+      { resource: channel === "email" ? "emails" : channel, access: "write" },
+    ])
+    validateBody(contract.components.schemas.SendMessage, {
+      channel,
+      to: "recipient",
+      text: "Hello",
+    })
+  }
+  expect(
+    (contract.paths["/messages"].post as unknown as Record<string, unknown>)[
+      "x-opensend-dynamic-scope"
+    ]
+  ).toBe("channel:write")
+})
+
+test("shared webhook schema documents additive message fields and legacy email fields", () => {
+  const hook = (
+    contract as unknown as {
+      webhooks: {
+        message: {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": { schema: AnySchema; example: unknown }
+              }
+            }
+          }
+        }
+      }
+    }
+  ).webhooks.message.post.requestBody.content["application/json"]
+  validateBody(hook.schema, hook.example)
 })
