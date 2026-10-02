@@ -102,11 +102,13 @@ export function validateSdp(sdp: string, rules: SdpRules): void {
   if (!lines.includes("a=ptime:20")) fail("ptime must be 20 ms")
   if (lines.some((l) => /^a=ice-options:.*\btrickle\b/.test(l)))
     fail("Trickle ICE is unsupported")
+  // RFC 8839 ice-chars plus "=": Meta's live offers use base64 padding in
+  // ice-pwd (e.g. "+219v9nKr3xSQIn8s+Fy8g=="), and libnice accepts it.
   for (const field of ["ice-ufrag", "ice-pwd"]) {
     if (
       !lines.some((l) =>
         new RegExp(
-          `^a=${field}:[A-Za-z0-9+/]{${field === "ice-ufrag" ? "4,256" : "22,256"}}$`
+          `^a=${field}:[A-Za-z0-9+/=]{${field === "ice-ufrag" ? "4,256" : "22,256"}}$`
         ).test(l)
       )
     )
