@@ -1,3 +1,8 @@
+import {
+  whatsappNormalizedSchema,
+  whatsappReceiveContentSchemas,
+  type WhatsAppSchema,
+} from "../whatsapp/schema"
 export const SYSTEM_EVENT_NAMES = [
   "email.sent",
   "email.delivered",
@@ -61,7 +66,8 @@ export const SYSTEM_EVENT_NAMES = [
 
 export type SystemEventName = (typeof SYSTEM_EVENT_NAMES)[number]
 export type SystemTriggerName =
-  `opensend:${SystemEventName}` | "contact.note_created"
+  | `opensend:${Exclude<SystemEventName, "contact.note_created">}`
+  | "contact.note_created"
 export type EventField = {
   type: "string" | "number" | "boolean" | "date" | "enum" | "object" | "array"
   description: string
@@ -72,6 +78,9 @@ export type EventField = {
   fields?: Record<string, EventField>
   items?: EventField
   additionalProperties?: EventField
+  /** Provider-defined JSON: leaves may be scalars, objects or arrays. */
+  dynamic?: boolean
+  valueTypes?: EventField["type"][]
 }
 export type CatalogEvent = {
   name: string
@@ -81,7 +90,8 @@ export type CatalogEvent = {
   description: string
   schema: EventField
 }
-const label = (key: string) => key.replaceAll("_", " ")
+const label = (key: string) =>
+  key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ")
 export const field = (
   type: EventField["type"],
   description: string,
@@ -100,7 +110,8 @@ const date = (key: string) =>
 export const object = (
   fields: Record<string, EventField>,
   description = "Payload"
-): EventField => field("object", description, {}, { fields })
+): EventField =>
+  field("object", description, {}, { fields, optional: true, nullable: true })
 const arr = (items: EventField, description: string) =>
   field("array", description, [], { items, optional: true })
 const strings = (...keys: string[]) =>
@@ -117,7 +128,7 @@ const dynamic = (description: string) =>
     {
       optional: true,
       nullable: true,
-      additionalProperties: str("Provider field"),
+      dynamic: true,
     }
   )
 export const CONTACT_SCHEMA = object(
@@ -140,11 +151,148 @@ const media = object({
     "url",
     "download_url",
     "content_type",
-    "error"
+    "error",
+    "content_disposition",
+    "content_id",
+    "fileId",
+    "storageId",
+    "contentType"
   ),
   ...numbers("size"),
+  voice: field("boolean", "Voice note", false, { optional: true }),
+  animated: field("boolean", "Animated media", false, { optional: true }),
   ...dates("expires_at"),
 })
+/** Derive the nested WhatsApp fields from its existing wire contract. Union
+ * alternatives stay typed; the picker also sees their combined field tree. */
+function groupFields(entries: [string, EventField][]) {
+  const grouped = new Map<string, [string, EventField][]>()
+  for (const entry of entries)
+    grouped.set(entry[0], [...(grouped.get(entry[0]) ?? []), entry])
+  return grouped
+}
+function fromWireSchema(
+  schema: WhatsAppSchema,
+  description: string
+): EventField {
+  const variants = (schema.oneOf ?? schema.anyOf ?? []).map((variant) =>
+    fromWireSchema(variant, description)
+  )
+  const ownFields = Object.fromEntries(
+    Object.entries(schema.properties ?? {}).map(([name, child]) => [
+      name,
+      fromWireSchema(child, label(name)),
+    ])
+  )
+  const types = new Set(variants.map((variant) => variant.type))
+  const type = schema.type ?? (types.size === 1 ? variants[0]?.type : undefined)
+  const values = schema.enum?.filter(
+    (value): value is string => typeof value === "string"
+  )
+  const result = field(
+    values?.length
+      ? "enum"
+      : type === "integer"
+        ? "number"
+        : ["string", "number", "boolean", "array", "object", "enum"].includes(
+              type ?? ""
+            )
+          ? (type as EventField["type"])
+          : "object",
+    description,
+    values?.[0] ??
+      (type === "number" || type === "integer"
+        ? 1
+        : type === "boolean"
+          ? false
+          : type === "array"
+            ? []
+            : type === "string"
+              ? "example"
+              : {}),
+    {
+      optional: true,
+      nullable: true,
+      ...(values?.length ? { values } : {}),
+      ...(types.size > 1 ? { valueTypes: [...types] } : {}),
+      ...(schema.items
+        ? { items: fromWireSchema(schema.items, `${description} item`) }
+        : {}),
+    }
+  )
+  const entries = [
+    ...variants.flatMap((variant) => Object.entries(variant.fields ?? {})),
+    ...Object.entries(ownFields),
+  ]
+  const grouped = groupFields(entries)
+  const fields = Object.fromEntries(
+    [...grouped].map(([key, entries]) => {
+      if (entries.length === 1) return [key, entries[0][1]]
+      const alternatives = entries.map((entry) => entry[1])
+      return [key, mergeAlternatives(alternatives, label(key))]
+    })
+  )
+  if (Object.keys(fields).length) result.fields = fields
+  const variantItems = variants.find((variant) => variant.items)?.items
+  if (!result.items && variantItems) result.items = variantItems
+  if (!type || (type === "object" && !Object.keys(fields).length))
+    result.dynamic = true
+  return result
+}
+function mergeAlternatives(
+  variants: EventField[],
+  description: string
+): EventField {
+  const fields = Object.fromEntries(
+    [
+      ...groupFields(
+        variants.flatMap((variant) => Object.entries(variant.fields ?? {}))
+      ),
+    ].map(([key, entries]) => [
+      key,
+      entries.length === 1
+        ? entries[0][1]
+        : mergeAlternatives(
+            entries.map((entry) => entry[1]),
+            label(key)
+          ),
+    ])
+  )
+  const types = new Set(variants.map((variant) => variant.type))
+  const merged: EventField = {
+    ...variants[0],
+    description,
+    ...(types.size > 1 ? { valueTypes: [...types] } : {}),
+    ...(types.size > 1 || variants.some((variant) => variant.dynamic)
+      ? { dynamic: true }
+      : {}),
+    ...(Object.keys(fields).length ? { fields } : {}),
+    ...(variants.find((variant) => variant.items)?.items
+      ? { items: variants.find((variant) => variant.items)!.items }
+      : {}),
+    ...(types.has("enum") && types.has("string") && types.size === 2
+      ? { type: "string", dynamic: false }
+      : {}),
+    ...(variants.every((variant) => variant.type === "enum")
+      ? {
+          values: [
+            ...new Set(variants.flatMap((variant) => variant.values ?? [])),
+          ],
+        }
+      : {}),
+  }
+  if (merged.type === "string") delete merged.values
+  return merged
+}
+const whatsappFields = Object.fromEntries(
+  Object.entries(whatsappReceiveContentSchemas).map(([name, schema]) => [
+    name,
+    fromWireSchema(schema, label(name)),
+  ])
+)
+const normalizedFields =
+  fromWireSchema(whatsappNormalizedSchema, "Normalized WhatsApp message")
+    .fields ?? {}
 const message = object({
   ...strings(
     "id",
@@ -176,23 +324,28 @@ const message = object({
     values: ["inbound", "outbound"],
   }),
   ...dates("created_at", "read_receipt_sent_at", "revoked_at"),
-  content: object(
-    {
-      ...strings(
-        "body",
-        "text",
-        "payload",
-        "id",
-        "caption",
-        "filename",
-        "url",
-        "emoji",
-        "message_id"
-      ),
-      ...numbers("latitude", "longitude"),
-    },
-    "Normalized message content"
-  ),
+  content: {
+    ...object(
+      {
+        ...strings(
+          "body",
+          "text",
+          "payload",
+          "id",
+          "caption",
+          "filename",
+          "url",
+          "emoji",
+          "message_id"
+        ),
+        ...numbers("latitude", "longitude"),
+      },
+      "Normalized message content"
+    ),
+    dynamic: true,
+  },
+  context: dynamic("Reply context"),
+  referral: dynamic("Message referral"),
   identity: object(
     strings(
       "wa_id",
@@ -270,6 +423,8 @@ const call = object({
     "from",
     "to",
     "contact_id",
+    "contact_name",
+    "contact_phone",
     "conversation_id",
     "biz_opaque_callback_data",
     "cta_payload",
@@ -305,20 +460,25 @@ const call = object({
     "IVR path"
   ),
   ivr_outcome: dynamic("IVR outcome"),
-  bot_usage: dynamic("Bot usage"),
+  bot_usage: {
+    ...object(
+      numbers("inputTokens", "outputTokens", "audioSeconds", "ttsCharacters")
+    ),
+    nullable: true,
+  },
 })
 const email = object({
   ...strings(
     "email_id",
+    "broadcast_id",
     "from",
     "subject",
     "template_id",
-    "message_id",
-    "received_for"
+    "message_id"
   ),
   ...dates("created_at", "scheduled_at"),
   ...Object.fromEntries(
-    ["to", "cc", "bcc"].map((key) => [
+    ["to", "cc", "bcc", "received_for"].map((key) => [
       key,
       arr(str("Email address", "ada@example.com"), label(key)),
     ])
@@ -339,14 +499,14 @@ function schemaFor(name: SystemEventName): EventField {
   if (name.startsWith("email.")) return email
   if (name.endsWith("ivr_completed"))
     return object({
-      ...strings("id", "account_id", "ivr_id"),
+      ...strings("id", "account_id", "ivr_id", "contact_id"),
       path: call.fields!.ivr_path,
       final_action: dynamic("Final IVR action"),
     })
   if (name.endsWith("permission_updated"))
     return object({
       ...strings("account_id", "user_id", "response_source", "context_id"),
-      call_permission_reply: object({
+      permission: object({
         ...strings("status"),
         expiration_time: num("expiration_time"),
       }),
@@ -357,7 +517,16 @@ function schemaFor(name: SystemEventName): EventField {
       ...strings("id", "conversation_id", "error"),
       ...dates("read_receipt_sent_at"),
     })
-  if (name.includes(".message.")) return message
+  if (name.includes(".message."))
+    return name.startsWith("whatsapp.")
+      ? object({
+          ...message.fields,
+          ...whatsappFields,
+          ...normalizedFields,
+          text: message.fields!.text,
+          raw: dynamic("Original provider message"),
+        })
+      : message
   if (name === "contact.note_created")
     return object({
       ...strings("object", "id", "contact_id", "body"),
@@ -383,7 +552,8 @@ function schemaFor(name: SystemEventName): EventField {
       records: arr(
         object({
           ...strings("record", "name", "type", "value", "status"),
-          ...numbers("ttl", "priority"),
+          ttl: str("ttl", "300"),
+          ...numbers("priority"),
         }),
         "DNS records"
       ),
@@ -403,13 +573,18 @@ function schemaFor(name: SystemEventName): EventField {
       "field",
       "template_id",
       "event",
-      "message_template_id",
       "message_template_name",
       "message_template_language",
       "reason",
       "display_phone_number",
       "quality_rating",
       "handling_mode"
+    ),
+    ...numbers("message_template_id"),
+    ...Object.fromEntries(
+      ["ban_info", "decision", "phone_number", "restriction_info"].map(
+        (key) => [key, dynamic(label(key))]
+      )
     ),
     calling: dynamic("Calling settings"),
     routing: dynamic("Call routing"),
@@ -433,12 +608,13 @@ export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
           } as Record<string, string>
         )[name.split(".")[0]],
     label: `${({ email: "Email", whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram", contact: "Contact", domain: "Domain", suppression: "Suppression" } as Record<string, string>)[name.split(".")[0]]} ${label(name.split(".").slice(1).join(" "))}`,
-    description: `Emitted when ${label(name.replaceAll(".", " "))}.`,
+    description: `Emitted when ${label(name.replace(/\./g, " "))}.`,
     schema: object({
       ...schemaFor(name).fields,
       ...(name.includes(".message.") ||
       name.includes(".call.") ||
-      name.startsWith("email.")
+      name.startsWith("email.") ||
+      name.startsWith("contact.")
         ? {
             contact: { ...CONTACT_SCHEMA, nullable: true, optional: true },
             ...(name.includes(".message.") || name.startsWith("email.")

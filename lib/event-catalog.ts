@@ -42,10 +42,16 @@ export function eventCatalog(
   return [
     ...SYSTEM_EVENT_CATALOG.map((event) => ({
       ...event,
-      schema: object({
-        ...event.schema.fields,
-        ...(event.schema.fields?.contact ? { contact } : {}),
-      }),
+      schema: {
+        ...event.schema,
+        fields: {
+          ...event.schema.fields,
+          ...(event.schema.fields?.properties
+            ? { properties: contact.fields!.properties }
+            : {}),
+          ...(event.schema.fields?.contact ? { contact } : {}),
+        },
+      },
     })),
     ...custom.map((event) => ({
       name: event.name,
@@ -89,9 +95,11 @@ export function schemaField(
     .split(".")
     .reduce<EventField | undefined>(
       (value, key) =>
-        value?.type === "array" && /^\d+$/.test(key)
+        value?.items && /^\d+$/.test(key)
           ? value.items
-          : (value?.fields?.[key] ?? value?.additionalProperties),
+          : (value?.fields?.[key] ??
+            value?.additionalProperties ??
+            (value?.dynamic ? value : undefined)),
       schema
     )
 }
@@ -100,12 +108,21 @@ export function flattenSchema(
   prefix = ""
 ): { path: string; field: EventField }[] {
   const own = prefix ? [{ path: prefix, field: schema }] : []
-  if (schema.type === "array" && schema.items)
-    return [...own, ...flattenSchema(schema.items, `${prefix}.0`)]
+  const items = schema.items ? flattenSchema(schema.items, `${prefix}.0`) : []
   return [
     ...own,
+    ...items,
     ...Object.entries(schema.fields ?? {}).flatMap(([key, value]) =>
       flattenSchema(value, prefix ? `${prefix}.${key}` : key)
     ),
   ]
+}
+
+export function catalogContactSchema(
+  catalog: readonly CatalogEvent[]
+): EventField {
+  return (
+    catalog.find((event) => event.schema.fields?.contact)?.schema.fields
+      ?.contact ?? CONTACT_SCHEMA
+  )
 }

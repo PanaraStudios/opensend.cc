@@ -56,10 +56,10 @@ function own(ctx: QueryCtx, caller: Caller, idOrName: string) {
 
 export const catalog = internalQuery({
   args: { caller: callerValue },
-  returns: v.string(),
+  returns: v.array(v.any()),
   handler: async (ctx, { caller }) => {
     await requireCaller(ctx, caller, { resource: "events", access: "read" })
-    return JSON.stringify(await teamEventCatalog(ctx, caller.organizationId))
+    return teamEventCatalog(ctx, caller.organizationId)
   },
 })
 export const list = internalQuery({
@@ -230,9 +230,7 @@ export function registerEventRoutes(http: HttpRouter) {
     handler: async (ctx, { caller }) => ({
       body: {
         object: "event_catalog",
-        data: JSON.parse(
-          await ctx.runQuery(internal.api.events.catalog, { caller })
-        ),
+        data: await ctx.runQuery(internal.api.events.catalog, { caller }),
       },
     }),
   })

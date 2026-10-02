@@ -52,8 +52,7 @@ const ENSURE_LIMIT = 100
 /** Custom events ride the outbox under this prefix, which no system event
     type has: a custom event named `email.sent` is never taken for the real
     one, and webhooks, which subscribe only to system types, never get it.
-    Consumers read the name back with `customEventName`, which also recognizes
-    the contact note system trigger that shares the webhook outbox event. */
+    Consumers read the name back with `customEventName`. */
 export const CUSTOM_EVENT_PREFIX = "custom:"
 export const customEventType = (name: string) => CUSTOM_EVENT_PREFIX + name
 export const customEventName = (type: string) =>
@@ -385,9 +384,9 @@ export async function teamEventCatalog(ctx: QueryCtx, organizationId: string) {
 }
 export const catalog = query({
   args: { organizationId: v.string() },
-  returns: v.string(),
+  returns: v.array(v.any()),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId)
-    return JSON.stringify(await teamEventCatalog(ctx, organizationId))
+    return teamEventCatalog(ctx, organizationId)
   },
 })
