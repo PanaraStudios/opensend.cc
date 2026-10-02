@@ -7,6 +7,7 @@ import type { WhatsAppMessage } from "../../whatsapp/interfaces"
 export type WhatsAppCallEventType =
   `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready" | "bot_completed" | "transferred"}`
 export type WebhookEvent =
+  | "call.data_collected"
   | "whatsapp.message.read_receipt_sent"
   | "whatsapp.message.read_receipt_failed"
   | "whatsapp.message.typing_failed"
@@ -294,7 +295,13 @@ export interface WhatsAppCallPermissionEvent {
     context_id: string | null
   }
 }
+export interface CallDataCollectedEvent {
+  type: "call.data_collected"
+  created_at: string
+  data: import("../../events/catalog").CallDataCollected
+}
 export type WebhookEventPayload =
+  | CallDataCollectedEvent
   | MessageControlEvent
   | WhatsAppCallEvent
   | WhatsAppCallPermissionEvent

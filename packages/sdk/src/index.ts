@@ -61,3 +61,6 @@ export type * from "./voice/interfaces"
 export { callingRoutingMembers, callingRoutingSchema, parseCallingRouting } from "./whatsapp/calling/routing"
 
 export type * from "./contacts/notes/interfaces"
+
+export type * from "./voice/toolkit"
+export * from "./events/catalog"
