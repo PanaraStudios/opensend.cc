@@ -160,6 +160,7 @@ export function ConversationMedia({
         src={src}
         compact={voice}
         label={voice ? "Voice note" : file?.filename || "Audio"}
+        className="w-full"
       />
     )
   return (

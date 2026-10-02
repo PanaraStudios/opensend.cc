@@ -132,6 +132,7 @@ export function ThreadBubble({
   if (data?.type === "reaction") return null
   const outbound = message.direction === "outbound"
   const sticker = data?.type === "sticker"
+  const audio = data?.type === "audio"
   const context = object(data?.context)
   if (data?.type === "system" || data?.type === "unsupported") {
     const content = object(data.content)
@@ -183,9 +184,19 @@ export function ThreadBubble({
                   ? "default"
                   : "muted"
           }
-          className="max-w-[min(85%,36rem)]"
+          className={cn(
+            "max-w-[min(85%,36rem)]",
+            audio && "@container/audio w-90"
+          )}
         >
-          <BubbleContent>
+          <BubbleContent
+            className={cn(
+              audio && "w-full",
+              audio &&
+                outbound &&
+                "[&_[role=slider]]:[--foreground:var(--primary-foreground)]"
+            )}
+          >
             {context.forwarded || context.frequently_forwarded ? (
               <p className="mb-1 flex items-center gap-1 text-xs italic opacity-60">
                 <ForwardIcon className="size-3 shrink-0" />
@@ -228,42 +239,65 @@ export function ThreadBubble({
               </a>
             ) : null}
             <ReferralCard message={message} />
-            {data ? (
-              <NormalizedMessageContent message={message} />
-            ) : message.rendered ? (
-              <WhatsAppTemplatePreview rendered={message.rendered} embedded />
-            ) : (
-              <span className="whitespace-pre-wrap">{message.text}</span>
-            )}
-            {!data && message.media.length ? (
-              <MessageFiles messageId={message.id} media={message.media} />
-            ) : null}
-            <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums">
-              <Link
-                href={messageHref(message.kind, message.id)}
-                title={formatDateTime(message.at)}
+            <div
+              className={cn(
+                audio ? "flex flex-wrap items-end gap-x-2" : "contents"
+              )}
+            >
+              <div
+                className={cn(audio ? "min-w-0 flex-[1_1_200px]" : "contents")}
               >
-                {new Date(message.at).toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Link>
-              {outbound ? (
-                <span
-                  data-testid="message-status"
-                  className={cn(
-                    "inline-flex",
-                    ["read", "played"].includes(message.status) && "text-info",
-                    message.error && "text-destructive"
-                  )}
-                  title={sentenceCase(message.status)}
+                {data ? (
+                  <NormalizedMessageContent message={message} />
+                ) : message.rendered ? (
+                  <WhatsAppTemplatePreview
+                    rendered={message.rendered}
+                    embedded
+                  />
+                ) : (
+                  <span className="whitespace-pre-wrap">{message.text}</span>
+                )}
+                {!data && message.media.length ? (
+                  <MessageFiles messageId={message.id} media={message.media} />
+                ) : null}
+              </div>
+              <div
+                className={cn(
+                  "mt-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums",
+                  audio && "ml-auto shrink-0 self-end",
+                  audio &&
+                    (outbound
+                      ? "@min-[19rem]/audio:mb-1.5"
+                      : "@min-[17.5rem]/audio:mb-1.5")
+                )}
+              >
+                <Link
+                  href={messageHref(message.kind, message.id)}
+                  title={formatDateTime(message.at)}
                 >
-                  <StatusIcon className="size-3.5" />
-                  <span className="sr-only">
-                    {sentenceCase(message.status)}
+                  {new Date(message.at).toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Link>
+                {outbound ? (
+                  <span
+                    data-testid="message-status"
+                    className={cn(
+                      "inline-flex",
+                      ["read", "played"].includes(message.status) &&
+                        "text-info",
+                      message.error && "text-destructive"
+                    )}
+                    title={sentenceCase(message.status)}
+                  >
+                    <StatusIcon className="size-3.5" />
+                    <span className="sr-only">
+                      {sentenceCase(message.status)}
+                    </span>
                   </span>
-                </span>
-              ) : null}
+                ) : null}
+              </div>
             </div>
             {message.error ? (
               <p className="mt-1 text-xs text-destructive">{message.error}</p>
