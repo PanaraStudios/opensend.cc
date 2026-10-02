@@ -11,6 +11,8 @@ import type { Doc, Id } from "../_generated/dataModel"
 import { requireTeam } from "../access"
 import { patchRow } from "../counts"
 import { emitEvent } from "../events"
+import { retainFile } from "../storage/files"
+import { validateWhatsAppMediaReference } from "../../lib/meta/media"
 import { findMetaApp } from "../meta/app"
 import { APP_MISSING } from "../meta/connect"
 import { callerValue, requireCaller, type Caller } from "../api/caller"
@@ -43,6 +45,8 @@ import {
   templateSendComponents,
   templateVariables,
   TemplateVariablesMissing,
+  TemplateHeaderMediaMissing,
+  templateMediaHeader,
   type ParameterFormat,
   type SendComponent,
   type TemplateComponent,
@@ -161,6 +165,7 @@ export const recordSubmission = internalMutation({
     metaStatus: metaTemplateStatusValue,
     category: v.optional(templateCategoryValue),
     components: v.any(),
+    sampleFileId: v.optional(v.id("storedFiles")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -170,6 +175,16 @@ export const recordSubmission = internalMutation({
     const edited = template.updatedAt !== args.updatedAt
     const publishedAt = edited ? args.updatedAt : now
     const components = storedComponents(args.components)
+    if (
+      args.sampleFileId &&
+      args.sampleFileId !== template.whatsapp.sampleFileId
+    )
+      await retainFile(
+        ctx,
+        args.sampleFileId,
+        template.organizationId,
+        "template"
+      )
     await patchRow(ctx, "templates", template._id, {
       status: "published",
       publishedAt,
@@ -181,6 +196,7 @@ export const recordSubmission = internalMutation({
         rejectedReason: undefined,
         ...(args.category ? { category: args.category } : {}),
         submittedAt: now,
+        sampleFileId: args.sampleFileId,
       },
     })
     await writePublished(ctx, template, components, publishedAt)
@@ -595,7 +611,10 @@ export function whatsappSendComponents(
       variables
     )
   } catch (error) {
-    if (error instanceof TemplateVariablesMissing)
+    if (
+      error instanceof TemplateVariablesMissing ||
+      error instanceof TemplateHeaderMediaMissing
+    )
       throw new ConvexError(error.message)
     throw error
   }
@@ -642,7 +661,54 @@ async function findResolved(
   const live = await findPublished(ctx, template._id)
   if (!live || !sendableStatus(whatsapp.metaStatus))
     throw new ConvexError("This WhatsApp template is not approved by Meta yet")
-  const components = storedComponents(live.components)
+  let components = storedComponents(live.components)
+  const header = templateMediaHeader(components)
+  if (header) {
+    // Older submissions retained the local sample only in their draft.
+    const draft = whatsapp.sampleFileId
+      ? null
+      : await findDraft(ctx, template._id)
+    const draftHeader = templateMediaHeader(storedComponents(draft?.content))
+    const sampleId =
+      whatsapp.sampleFileId ??
+      header.sampleFileId ??
+      (draftHeader?.format === header.format
+        ? draftHeader.sampleFileId
+        : undefined)
+    const normalized = sampleId
+      ? ctx.db.normalizeId("storedFiles", sampleId)
+      : null
+    const sample = normalized
+      ? await ctx.db.get("storedFiles", normalized)
+      : null
+    let ready = !!(
+      sample?.organizationId === organizationId &&
+      sample.feature === "template" &&
+      sample.state === "ready" &&
+      sample.storageId &&
+      (await ctx.db.system.get("_storage", sample.storageId))
+    )
+    if (ready) {
+      try {
+        validateWhatsAppMediaReference(
+          header.format.toLowerCase(),
+          sample!.contentType
+        )
+      } catch {
+        ready = false
+      }
+    }
+    components = components.map((component) =>
+      String(component.type).toUpperCase() === "HEADER"
+        ? {
+            ...component,
+            example: {
+              header_handle: ready ? [`opensend-file:${sample!._id}`] : [],
+            },
+          }
+        : component
+    )
+  }
   return {
     templateId: template._id,
     name: template.name,

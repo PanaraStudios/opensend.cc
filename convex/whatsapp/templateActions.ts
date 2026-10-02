@@ -15,6 +15,7 @@ import {
   TEMPLATE_CATEGORIES,
   readMetaTemplates,
   templateProblems,
+  templateMediaHeader,
   type TemplateComponent,
 } from "../../lib/meta/templates"
 
@@ -204,6 +205,8 @@ async function submitTemplate(
           metaStatus: oneOf(TEMPLATE_STATUSES, created.status) ?? "PENDING",
           category: oneOf(TEMPLATE_CATEGORIES, created.category),
           components: sent,
+          sampleFileId: templateMediaHeader(components)?.sampleFileId as
+            Id<"storedFiles"> | undefined,
         })
         return
       }
@@ -238,6 +241,8 @@ async function submitTemplate(
         metaTemplateId: whatsapp.metaTemplateId,
         metaStatus: oneOf(TEMPLATE_STATUSES, current.status) ?? "PENDING",
         components: sent,
+        sampleFileId: templateMediaHeader(components)?.sampleFileId as
+          Id<"storedFiles"> | undefined,
       })
     },
     access.connectionId

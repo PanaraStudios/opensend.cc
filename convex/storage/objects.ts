@@ -285,17 +285,18 @@ export const importText = internalAction({
 export async function mediaLinks(
   ctx: ActionCtx,
   value: unknown,
-  organizationId: string
+  organizationId: string,
+  accountId?: Id<"channelAccounts">
 ): Promise<unknown> {
   if (Array.isArray(value))
     return Promise.all(
-      value.map((item) => mediaLinks(ctx, item, organizationId))
+      value.map((item) => mediaLinks(ctx, item, organizationId, accountId))
     )
   if (!value || typeof value !== "object") return value
   const node = value as Record<string, unknown>
   const result: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(node))
-    result[key] = await mediaLinks(ctx, item, organizationId)
+    result[key] = await mediaLinks(ctx, item, organizationId, accountId)
   if (typeof node.id === "string") {
     // Unknown ids are Meta ids. Local ids are resolved without exposing other teams.
     const row = await ctx.runQuery(internal.storage.files.byString, {
@@ -306,6 +307,7 @@ export async function mediaLinks(
         throw invalid("Media is unavailable")
       const target = await ctx.runQuery(internal.storage.files.mediaTarget, {
         id: row._id,
+        accountId,
       })
       if (!target || !row.storageId) throw invalid("Media is unavailable")
       result.id = await uploadMedia(ctx, {

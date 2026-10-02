@@ -41,6 +41,7 @@ import { createEmail, errorMessage } from "./emails"
 import { createChannelMessage } from "./channels/messages"
 import { upsertEmailThread } from "./channels/identity"
 import { resolveWhatsAppTemplate } from "./whatsapp/templates"
+import { storedComponents, templateMediaHeader } from "../lib/meta/templates"
 import { mediaFiles } from "./messages"
 import { channelAccountAccess } from "./channels/messages"
 import { upsertChannelThread } from "./channels/identity"
@@ -563,6 +564,52 @@ export const templateVariables = query({
   },
 })
 
+/** Published template inputs, including whether its retained sample is usable. */
+export const templateInputs = query({
+  args: { id: v.id("conversations"), templateId: v.id("templates") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      variables: v.array(v.string()),
+      header: v.union(
+        v.null(),
+        v.object({
+          format: v.union(
+            v.literal("IMAGE"),
+            v.literal("VIDEO"),
+            v.literal("DOCUMENT")
+          ),
+          sampleFileId: v.optional(v.string()),
+        })
+      ),
+    })
+  ),
+  handler: async (ctx, { id, templateId }) => {
+    const conversation = await readTeamRow(ctx, "conversations", id)
+    const account = conversation?.accountId
+      ? await ctx.db.get("channelAccounts", conversation.accountId)
+      : null
+    if (!conversation || !account) return null
+    try {
+      const template = await resolveWhatsAppTemplate(
+        ctx,
+        conversation.organizationId,
+        {
+          id: templateId,
+          wabaId: account.wabaId,
+        }
+      )
+      return {
+        variables: template.variables,
+        header: templateMediaHeader(storedComponents(template.components)),
+      }
+    } catch (error) {
+      if (error instanceof ConvexError) return null
+      throw error
+    }
+  },
+})
+
 async function writableThread(ctx: MutationCtx, id: Id<"conversations">) {
   const conversation = await ctx.db.get("conversations", id)
   if (!conversation) throw new ConvexError("Conversation not found")
@@ -625,6 +672,7 @@ export const reply = mutation({
       v.object({
         id: v.id("templates"),
         variables: v.record(v.string(), v.string()),
+        headerFileId: v.optional(v.id("storedFiles")),
       })
     ),
     from: v.optional(v.string()),
@@ -737,7 +785,14 @@ export const reply = mutation({
                     type: "template",
                     template: {
                       id: template.id,
-                      variables: template.variables,
+                      variables: {
+                        ...template.variables,
+                        ...(template.headerFileId
+                          ? {
+                              header_media: `opensend-file:${template.headerFileId}`,
+                            }
+                          : {}),
+                      },
                     },
                   }
                 : channelStrategies[conversation.channel].replyBody(text!)),

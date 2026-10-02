@@ -40,16 +40,20 @@ export function FileUploadField({
   from,
   disabled,
   accept,
+  required = false,
   onUploaded,
   onRemoved,
+  onUploadingChange,
 }: {
   label?: string
   use: StorageUse
   from?: string
   disabled?: boolean
   accept?: string
+  required?: boolean
   onUploaded: (id: Id<"storedFiles">, file: File) => void
   onRemoved?: () => void
+  onUploadingChange?: (uploading: boolean) => void
 }) {
   const upload = useFileUpload()
   const id = React.useId()
@@ -76,6 +80,7 @@ export function FileUploadField({
     setStatus("uploading")
     const controller = new AbortController()
     pending.current = controller
+    onUploadingChange?.(true)
     try {
       const fileId = await upload(next, {
         use,
@@ -92,12 +97,14 @@ export function FileUploadField({
       setError(actionError(e))
     } finally {
       if (pending.current === controller) pending.current = null
+      if (!controller.signal.aborted) onUploadingChange?.(false)
     }
   }
 
   function remove() {
     pending.current?.abort()
     pending.current = null
+    onUploadingChange?.(false)
     onRemoved?.()
     setFile(null)
     setStatus("idle")
@@ -108,7 +115,10 @@ export function FileUploadField({
 
   return (
     <Field data-invalid={status === "error"} data-disabled={disabled}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id}>
+        {label}
+        {required ? " (required)" : ""}
+      </FieldLabel>
       <input
         ref={input}
         id={id}
@@ -118,6 +128,7 @@ export function FileUploadField({
         aria-invalid={status === "error"}
         aria-describedby={`${id}-hint${error ? ` ${id}-error` : ""}`}
         accept={accept ?? uploadAccept(use)}
+        aria-required={required}
         disabled={disabled || busy}
         onChange={(event) => {
           const next = event.target.files?.[0]

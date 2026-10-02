@@ -805,10 +805,31 @@ export class TemplateVariablesMissing extends Error {
   }
 }
 
+/** Local sample files are sendable; Meta's resumable upload handles are not. */
+export function templateMediaHeader(components: readonly TemplateComponent[]) {
+  const header = find(components, "HEADER")
+  const format = upper(header?.format)
+  if (!["IMAGE", "VIDEO", "DOCUMENT"].includes(format)) return null
+  const sample = text(list(record(header?.example).header_handle)[0])
+  return {
+    format: format as MediaFormat,
+    sampleFileId: sample.startsWith("opensend-file:")
+      ? sample.slice("opensend-file:".length) || undefined
+      : undefined,
+  }
+}
+
+export class TemplateHeaderMediaMissing extends Error {
+  constructor(format: MediaFormat) {
+    super(`This template needs a header ${format.toLowerCase()}.`)
+    this.name = "TemplateHeaderMediaMissing"
+  }
+}
+
 /** The message's `template.components` for one send of a template: each
     variable (keyed as in `templateVariables`) becomes its parameter. A
-    media header without `header_media` reuses its sample when that is a
-    public URL. Throws TemplateVariablesMissing naming what is missing. */
+    media header without `header_media` reuses its stored sample file.
+    Meta review handles are never message links. */
 export function templateSendComponents(
   components: readonly TemplateComponent[],
   format: ParameterFormat,
@@ -842,11 +863,26 @@ export function templateSendComponents(
     })
   if (variables.some((variable) => variable.where === "header_media")) {
     const media = upper(header?.format).toLowerCase()
-    const sample = text(list(record(header?.example).header_handle)[0])
-    const link = value(
-      HEADER_MEDIA_KEY,
-      /^https:\/\//.test(sample) ? sample : undefined
-    )
+    const sampleFileId = templateMediaHeader(components)?.sampleFileId
+    const link = String(
+      values[HEADER_MEDIA_KEY] ||
+        (sampleFileId ? `opensend-file:${sampleFileId}` : "")
+    ).trim()
+    if (!link || link === "opensend-file:")
+      throw new TemplateHeaderMediaMissing(upper(header?.format) as MediaFormat)
+    if (!link.startsWith("opensend-file:")) {
+      let valid = false
+      try {
+        const url = new URL(link)
+        valid = ["https:", "http:"].includes(url.protocol) && !!url.hostname
+      } catch {
+        /* A Meta upload handle is not a URL. */
+      }
+      if (!valid)
+        throw new Error(
+          "Header media must be a file upload or a public HTTP URL."
+        )
+    }
     sends.push({
       type: "header",
       parameters: [

@@ -223,12 +223,12 @@ export function useApprovedTemplates(
 }
 
 /** The approved template's variables on this thread's number. */
-export function useTemplateVariables(
+export function useTemplateInputs(
   id: Id<"conversations"> | undefined,
   templateId: string | undefined
 ) {
   return useQuery(
-    api.conversations.templateVariables,
+    api.conversations.templateInputs,
     id && templateId
       ? { id, templateId: templateId as Id<"templates"> }
       : "skip"

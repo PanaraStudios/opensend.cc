@@ -15,6 +15,7 @@ import {
   APP_SECRET,
   SENDER,
   WABA_ID,
+  PHONE_ID,
   fakeGraph,
   inboundFixture,
   incoming,
@@ -23,6 +24,7 @@ import {
 import { createChannelMessage } from "./channels/messages"
 import { insertRow, patchRow } from "./counts"
 import { WHATSAPP_WINDOW_CLOSED as WINDOW_CLOSED } from "../lib/meta/payloads"
+import { storeUpload } from "./testHelpers/storage.fixture"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -172,6 +174,223 @@ const renderedOrder = (name: string) => ({
   body: `Hi ${name}, your order is ready.`,
   footer: "Thank you",
   buttons: [{ type: "QUICK_REPLY", text: "Thanks!" }],
+})
+
+for (const format of ["IMAGE", "VIDEO", "DOCUMENT"] as const) {
+  test(`reply sends a ${format} template header from a supplied upload, and refuses missing media`, async () => {
+    const f = await setup()
+    const template = await approvedTemplate(f)
+    await f.t.run(async (ctx) => {
+      const published = (await ctx.db
+        .query("publishedTemplates")
+        .withIndex("by_templateId", (q) => q.eq("templateId", template._id))
+        .unique())!
+      await ctx.db.patch("publishedTemplates", published._id, {
+        components: [
+          {
+            type: "HEADER",
+            format,
+            example: { header_handle: ["4::review-only-handle"] },
+          },
+          { type: "BODY", text: "Hi {{1}}" },
+        ],
+      })
+    })
+    await project(f, incoming())
+    const id = await thread(f, "whatsapp")
+    await expire(f, id)
+    const expected = `This template needs a header ${format.toLowerCase()}.`
+    expect(
+      await f.member.client.query(api.conversations.templateInputs, {
+        id,
+        templateId: template._id,
+      })
+    ).toEqual({ variables: ["header_media", "1"], header: { format } })
+    await expect(
+      f.member.client.mutation(api.conversations.reply, {
+        id,
+        template: { id: template._id, variables: { "1": "Ada" } },
+      })
+    ).rejects.toMatchObject({ data: expected })
+    await expect(
+      f.t.run((ctx) =>
+        createChannelMessage(
+          ctx,
+          {
+            channel: "whatsapp",
+            from: f.account,
+            to: SENDER,
+            body: { template: { id: template._id, variables: { "1": "Ada" } } },
+          },
+          { organizationId: f.team, source: "api" }
+        )
+      )
+    ).rejects.toMatchObject({
+      data: { statusCode: 422, message: expected },
+    })
+    const contentType =
+      format === "IMAGE"
+        ? "image/png"
+        : format === "VIDEO"
+          ? "video/mp4"
+          : "application/pdf"
+    const pending = await f.member.client.action(
+      api.storage.objects.createUpload,
+      {
+        organizationId: f.team,
+        input: {
+          use: "whatsapp",
+          from: f.account,
+          filename: "header",
+          contentType,
+          size: 3,
+        },
+      }
+    )
+    const storageId = await storeUpload(
+      f.t,
+      new Blob(["abc"], { type: contentType })
+    )
+    await f.member.client.action(api.storage.objects.completeUpload, {
+      organizationId: f.team,
+      id: pending.id,
+      storageId,
+    })
+    const sent = (await f.member.client.mutation(api.conversations.reply, {
+      id,
+      template: {
+        id: template._id,
+        variables: { "1": "Ada" },
+        headerFileId: pending.id,
+      },
+    })) as Id<"channelMessages">
+    const content = await f.t.run((ctx) =>
+      ctx.db
+        .query("channelMessageContents")
+        .withIndex("by_messageId", (q) => q.eq("messageId", sent))
+        .unique()
+    )
+    const media = format.toLowerCase()
+    expect(JSON.parse(content!.payload).template.components[0]).toEqual({
+      type: "header",
+      parameters: [{ type: media, [media]: { id: pending.id } }],
+    })
+    const graph = fakeGraph([
+      {
+        method: "POST",
+        path: `/${PHONE_ID}/media`,
+        respond: () => ({ id: "900123" }),
+      },
+      {
+        method: "POST",
+        path: `/${PHONE_ID}/messages`,
+        respond: () => ({ messages: [{ id: "wamid.header" }] }),
+      },
+    ])
+    await f.t.action(internal.channels.deliver.deliver, {
+      id: sent,
+      generation: 0,
+    })
+    expect(graph.to(`/${PHONE_ID}/media`)).toHaveLength(1)
+    expect(graph.to(`/${PHONE_ID}/messages`)[0].body).toMatchObject({
+      template: {
+        components: [
+          {
+            type: "header",
+            parameters: [{ type: media, [media]: { id: "900123" } }],
+          },
+          { type: "body", parameters: [{ type: "text", text: "Ada" }] },
+        ],
+      },
+    })
+  })
+}
+
+test("reply falls back to a retained template sample, uploads it on the sending account, and requires media if storage disappears", async () => {
+  const f = await setup()
+  const template = await approvedTemplate(f)
+  const sample = await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["png"], { type: "image/png" })
+    )
+    const fileId = await ctx.db.insert("storedFiles", {
+      organizationId: f.team,
+      provider: "convex",
+      feature: "template",
+      state: "ready",
+      storageId,
+      size: 3,
+      contentType: "image/png",
+      filename: "sample.png",
+    })
+    await ctx.db.patch("templates", template._id, {
+      whatsapp: { ...template.whatsapp!, sampleFileId: fileId },
+    })
+    const published = (await ctx.db
+      .query("publishedTemplates")
+      .withIndex("by_templateId", (q) => q.eq("templateId", template._id))
+      .unique())!
+    await ctx.db.patch("publishedTemplates", published._id, {
+      components: [
+        {
+          type: "HEADER",
+          format: "IMAGE",
+          example: { header_handle: ["4::review-handle"] },
+        },
+        { type: "BODY", text: "An update" },
+      ],
+    })
+    return { fileId, storageId }
+  })
+  await project(f, incoming())
+  const id = await thread(f, "whatsapp")
+  await expire(f, id)
+  expect(
+    await f.member.client.query(api.conversations.templateInputs, {
+      id,
+      templateId: template._id,
+    })
+  ).toMatchObject({ header: { format: "IMAGE", sampleFileId: sample.fileId } })
+  const sent = (await f.member.client.mutation(api.conversations.reply, {
+    id,
+    template: { id: template._id, variables: {} },
+  })) as Id<"channelMessages">
+  const graph = fakeGraph([
+    {
+      method: "POST",
+      path: `/${PHONE_ID}/media`,
+      respond: () => ({ id: "900456" }),
+    },
+    {
+      method: "POST",
+      path: `/${PHONE_ID}/messages`,
+      respond: () => ({ messages: [{ id: "wamid.sample" }] }),
+    },
+  ])
+  await f.t.action(internal.channels.deliver.deliver, {
+    id: sent,
+    generation: 0,
+  })
+  expect(graph.to(`/${PHONE_ID}/media`)).toHaveLength(1)
+  expect(graph.to(`/${PHONE_ID}/messages`)[0].body).toMatchObject({
+    template: {
+      components: [
+        {
+          type: "header",
+          parameters: [{ type: "image", image: { id: "900456" } }],
+        },
+      ],
+    },
+  })
+  await f.t.run((ctx) => ctx.storage.delete(sample.storageId))
+  await expect(
+    f.member.client.mutation(api.conversations.reply, {
+      id,
+      template: { id: template._id, variables: {} },
+    })
+  ).rejects.toMatchObject({
+    data: expect.stringContaining("This template needs a header image."),
+  })
 })
 
 test("an inbound WhatsApp message opens an unread thread the inbox lists, filters, searches and counts", async () => {

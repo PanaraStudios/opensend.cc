@@ -21,6 +21,7 @@ import {
   formFromComponents,
   storedComponents,
   renderedTemplateFromForm,
+  templateMediaHeader,
 } from "@/lib/meta/templates"
 import {
   CONTACT_VARIABLE_FIELDS,
@@ -181,6 +182,7 @@ export function WhatsAppCampaignFields({
     channel === "whatsapp" ? "Approved template" : "Published template"
   const selected = options?.selected
   const components = storedComponents(selected?.components)
+  const header = templateMediaHeader(components)
   const values = resolveVariables(
     config.variables,
     sample ?? {
@@ -262,11 +264,19 @@ export function WhatsAppCampaignFields({
               }
             />
           </Field>
-          {channel === "whatsapp" &&
-          (selected?.variables ?? []).includes("header_media") ? (
+          {channel === "whatsapp" && header ? (
             <FileUploadField
-              label="Upload header media"
+              key={`${config.accountId}:${config.templateId}`}
+              label={`Header ${header.format.toLowerCase()}`}
               use="whatsapp"
+              required={!header.sampleFileId}
+              accept={
+                header.format === "IMAGE"
+                  ? "image/jpeg,image/png"
+                  : header.format === "VIDEO"
+                    ? "video/mp4,video/3gpp"
+                    : undefined
+              }
               from={config.accountId}
               disabled={!config.accountId}
               onRemoved={() => {
@@ -285,27 +295,29 @@ export function WhatsAppCampaignFields({
               }
             />
           ) : null}
-          {(selected?.variables ?? []).map((name) => (
-            <VariableMapping
-              key={name}
-              name={name}
-              value={config.variables[name] ?? { value: "" }}
-              onChange={(source) =>
-                onChange({
-                  ...config,
-                  variables: {
-                    ...Object.fromEntries(
-                      (selected?.variables ?? []).map((key) => [
-                        key,
-                        config.variables[key] ?? { value: "" },
-                      ])
-                    ),
-                    [name]: source,
-                  },
-                })
-              }
-            />
-          ))}
+          {(selected?.variables ?? [])
+            .filter((name) => name !== "header_media")
+            .map((name) => (
+              <VariableMapping
+                key={name}
+                name={name}
+                value={config.variables[name] ?? { value: "" }}
+                onChange={(source) =>
+                  onChange({
+                    ...config,
+                    variables: {
+                      ...Object.fromEntries(
+                        (selected?.variables ?? []).map((key) => [
+                          key,
+                          config.variables[key] ?? { value: "" },
+                        ])
+                      ),
+                      [name]: source,
+                    },
+                  })
+                }
+              />
+            ))}
           {selected && channel === "whatsapp" ? (
             <FieldSet>
               <FieldLegend variant="label">Preview</FieldLegend>

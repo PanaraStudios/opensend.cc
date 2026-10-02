@@ -160,6 +160,68 @@ async function setup() {
   }
 }
 type Fixture = Awaited<ReturnType<typeof setup>>
+
+test("broadcast media headers require an upload or reuse a stored sample without a variable mapping", async () => {
+  const f = await setup()
+  const published = await f.t.run(async (ctx) => {
+    const row = (await ctx.db
+      .query("publishedTemplates")
+      .withIndex("by_templateId", (q) => q.eq("templateId", f.template._id))
+      .unique())!
+    await ctx.db.patch("publishedTemplates", row._id, {
+      components: [
+        {
+          type: "HEADER",
+          format: "IMAGE",
+          example: { header_handle: ["4::review-handle"] },
+        },
+        { type: "BODY", text: "An update" },
+      ],
+    })
+    return row._id
+  })
+  await f.contacts([{ phone: "+14155552671", firstName: "Ada" }])
+  const id = await f.create()
+  await expect(f.fanout(id)).rejects.toMatchObject({
+    data: "This template needs a header image.",
+  })
+  const fileId = await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["png"], { type: "image/png" })
+    )
+    const sample = await ctx.db.insert("storedFiles", {
+      organizationId: f.owner.team,
+      provider: "convex",
+      feature: "template",
+      state: "ready",
+      storageId,
+      size: 3,
+      contentType: "image/png",
+    })
+    await ctx.db.patch("templates", f.template._id, {
+      whatsapp: { ...f.template.whatsapp!, sampleFileId: sample },
+    })
+    return sample
+  })
+  expect(await f.fanout(id)).toBe(1)
+  const recipients = await f.recipients(id)
+  expect(recipients).toHaveLength(1)
+  expect(recipients[0].skipReason).toBeUndefined()
+  const message = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) =>
+        q.eq("messageId", recipients[0].messageId as Id<"channelMessages">)
+      )
+      .unique()
+  )
+  expect(JSON.parse(message!.payload).template.components).toEqual([
+    { type: "header", parameters: [{ type: "image", image: { id: fileId } }] },
+  ])
+  expect(
+    await f.t.run((ctx) => ctx.db.get("publishedTemplates", published))
+  ).toBeDefined()
+})
 async function project(f: Fixture, value: unknown) {
   expect(
     (await f.t.fetch("/meta/webhook", await signedWebhook(APP_SECRET, value)))

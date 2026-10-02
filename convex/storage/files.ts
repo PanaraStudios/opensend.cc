@@ -100,10 +100,22 @@ export const byString = internalQuery({
   },
 })
 export const mediaTarget = internalQuery({
-  args: { id: v.id("storedFiles") },
+  args: {
+    id: v.id("storedFiles"),
+    accountId: v.optional(v.id("channelAccounts")),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      accountId: v.id("channelAccounts"),
+      phoneNumberId: v.string(),
+      encryptedToken: v.string(),
+      version: v.string(),
+    })
+  ),
   handler: async (
     ctx,
-    { id }
+    { id, accountId }
   ): Promise<{
     accountId: Id<"channelAccounts">
     phoneNumberId: string
@@ -112,7 +124,11 @@ export const mediaTarget = internalQuery({
   } | null> => {
     const row = await ctx.db.get("storedFiles", id)
     if (
-      !row?.accountId ||
+      !row ||
+      !(row.feature === "template" ? accountId : row.accountId) ||
+      (row.feature !== "template" &&
+        accountId &&
+        row.accountId !== accountId) ||
       row.state !== "ready" ||
       (await retirement(ctx, row.organizationId))
     )
@@ -120,7 +136,7 @@ export const mediaTarget = internalQuery({
     const account = await resolveChannelAccount(
       ctx,
       row.organizationId,
-      row.accountId,
+      row.feature === "template" ? accountId : row.accountId,
       "whatsapp"
     )
     const connection = await ctx.db.get("metaConnections", account.connectionId)

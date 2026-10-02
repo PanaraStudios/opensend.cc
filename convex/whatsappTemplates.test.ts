@@ -88,6 +88,46 @@ test("a completed template file uses the shared resumable Meta sample upload", a
       }),
     ]),
   })
+  const retained = await f.t.run(async (ctx) => ({
+    template: await ctx.db.get("templates", id),
+    file: await ctx.db.get("storedFiles", pending.id),
+  }))
+  expect(retained.template!.whatsapp!.sampleFileId).toBe(pending.id)
+  expect(retained.file!.references).toBe(1)
+  expect(retained.file!.expiresAt).toBeUndefined()
+  later()
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [
+      {
+        id: META_ID,
+        name: retained.template!.name,
+        language: "en_US",
+        category: "UTILITY",
+        status: "APPROVED",
+        parameterFormat: "positional",
+        components: [
+          {
+            type: "HEADER",
+            format: "IMAGE",
+            example: { header_handle: ["4::sample-handle"] },
+          },
+          { type: "BODY", text: "Your sample" },
+        ],
+      },
+    ],
+  })
+  const sends = await f.t.run(async (ctx) =>
+    (await resolveWhatsAppTemplate(ctx, f.team, { id })).sendComponents({})
+  )
+  expect(sends).toEqual([
+    {
+      type: "header",
+      parameters: [{ type: "image", image: { id: pending.id } }],
+    },
+  ])
 })
 
 const META_ID = "1689556908129832"
