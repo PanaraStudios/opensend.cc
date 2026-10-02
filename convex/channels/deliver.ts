@@ -36,7 +36,8 @@ export const deliver = internalAction({
                 await mediaLinks(
                   ctx,
                   JSON.parse(claim.payload),
-                  claim.organizationId
+                  claim.organizationId,
+                  claim.accountId
                 )
               ),
               ...(claim.messagingType

@@ -649,6 +649,7 @@ export const claim = internalMutation({
       phoneNumberId: v.string(),
       organizationId: v.string(),
       payload: v.string(),
+      accountId: v.id("channelAccounts"),
       messagingType: v.optional(v.string()),
     })
   ),
@@ -754,6 +755,7 @@ export const claim = internalMutation({
       phoneNumberId: channelStrategies[message.channel].endpoint(account),
       organizationId: message.organizationId,
       payload: body.payload,
+      accountId: account._id,
       ...(typeof payload.messaging_type === "string"
         ? { messagingType: payload.messaging_type }
         : {}),
