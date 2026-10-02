@@ -170,7 +170,6 @@ IVR bot actions validate an existing bot owned by the IVR team. Admission reserv
 
 8d-4 adds provider rendering and the IVR editor/tester; the verification report above describes the earlier 8d-3 engine snapshot.
 
-
 ## Prompt audio quality
 
 New WAV, MP3 and OGG uploads are decoded during upload completion by the calling
@@ -180,17 +179,24 @@ mono PCM16 WAV**, normalized to approximately **−18 LUFS**, with a **−2 dBTP
 ceiling and filtered resampling. Conversion succeeds before the file becomes ready;
 idempotent upload completion does not convert it again. The gateway must be available.
 
-ElevenLabs requests native `pcm_44100` (Pro tier or above); Sarvam Bulbul v3 requests
+ElevenLabs requests `pcm_44100` (Pro tier or above), falling back to uncompressed
+`pcm_24000` when the account receives a 403 for that format; Sarvam Bulbul v3 requests
 24 kHz PCM WAV. Both use the same converter before storage. Renderer version keys
 include the format and loudness policy, so new renders cannot reuse older assets.
 Re-render existing TTS prompts and re-upload existing recordings to apply this policy.
 
 FreeSWITCH plays call-scoped signed `http_cache://` URLs through `mod_sndfile`.
 Meta's live offer caps playback/capture at 16 kHz and average bitrate at 20 kbps.
-The Opus RTP clock remains 48 kHz; this does not imply 48 kHz audible bandwidth.
+FreeSWITCH enables bitrate negotiation so its 32 kbps local preference yields to
+Meta's lower 20 kbps offer. `keep-fec-enabled=false` prevents the forced-FEC
+policy from overriding that bitrate; Opus still chooses in-band FEC within it.
+An explicit 16 kHz playback ceiling preserves wideband encoding. The Opus RTP
+clock remains 48 kHz; this does not imply 48 kHz audible bandwidth.
 The Docker harness uses those same fmtp limits and verifies a 6 kHz tone, which
 would be lost through an 8 kHz path. No RTP or FreeSWITCH jitter settings changed;
 `rtp-rewrite-timestamps=true` from v2 remains essential across the bot L16/16k bridge.
 
 Provider references: [ElevenLabs formats](https://elevenlabs.io/docs/api-reference/text-to-speech/convert),
 [Sarvam sample rates](https://docs.sarvam.ai/api-reference/text-to-speech/convert).
+
+Codec negotiation follows the [pinned FreeSWITCH Opus implementation](https://github.com/signalwire/freeswitch/blob/ef32e205295e29f034f1453ad245ba5efb07b94a/src/mod/codecs/mod_opus/mod_opus.c), which otherwise overrides a lower remote bitrate with the local preference.
