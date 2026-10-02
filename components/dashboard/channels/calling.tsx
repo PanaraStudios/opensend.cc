@@ -480,8 +480,10 @@ export function CallingPanel({
                 <>
                   <FileUploadField
                     label="Voicemail announcement (Ogg Opus, under 60 seconds)"
-                    use="template"
+                    use="ivr"
+                    accept="audio/ogg,.ogg"
                     disabled={disabled}
+                    onRemoved={() => setAnnouncement(undefined)}
                     onUploaded={(id) => setAnnouncement(id)}
                   />
                   <Field>
