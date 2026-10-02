@@ -178,6 +178,7 @@ export function DnsRecordsTable({
 }) {
   return (
     <ResourceTable
+      framed={false}
       className={cn(
         "[&_table]:table-fixed",
         showPriority ? "[&_table]:min-w-176" : "[&_table]:min-w-160"

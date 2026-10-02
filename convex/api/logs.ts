@@ -80,7 +80,7 @@ export function registerLogRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/logs",
-    permission: "full_access",
+    scope: { resource: "logs", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.logs.list, {
         caller,
@@ -94,7 +94,7 @@ export function registerLogRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/logs/{id}",
-    permission: "full_access",
+    scope: { resource: "logs", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const found = await ctx.runQuery(internal.api.logs.get, {
         caller,

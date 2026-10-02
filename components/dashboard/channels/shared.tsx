@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useQuery } from "convex/react"
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import {
   CopyIcon,
   ChevronDownIcon,
@@ -24,13 +25,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { api } from "@/convex/_generated/api"
 import {
   InstagramIcon,
   MessengerIcon,
   WhatsAppIcon,
 } from "@/components/brand-icons"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -47,7 +47,8 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field"
-import { CodeInput } from "@/components/ui/input-otp"
+import { Input } from "@/components/ui/input"
+import { metaConfigurationNotice } from "@/lib/meta/connect-availability"
 import { toast } from "@/components/ui/toast"
 import {
   TypeToConfirmDialog,
@@ -109,6 +110,7 @@ export function ChannelCreateMenu({
   noun: "broadcast" | "template"
   onCreate: (channel: BroadcastChannel) => void
 }) {
+  const channels = useInstanceChannels()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button data-testid={`create-${noun}`} />}>
@@ -123,14 +125,49 @@ export function ChannelCreateMenu({
               const value = item.value as BroadcastChannel
               const Icon = channelIcon(value)
               return (
-                <DropdownMenuItem key={value} onClick={() => onCreate(value)}>
+                <DropdownMenuItem
+                  key={value}
+                  disabled={!channels?.[value === "email" ? "email" : "meta"]}
+                  onClick={() => onCreate(value)}
+                >
                   <Icon />
                   {channelLabel(value)}
+                  {!channels?.[value === "email" ? "email" : "meta"] &&
+                    " — not set up"}
                 </DropdownMenuItem>
               )
             }
           )}
         </DropdownMenuGroup>
+        {channels && (
+          <DropdownMenuGroup>
+            {(["email", "meta"] as const)
+              .filter((provider) => !channels[provider])
+              .map((provider) => (
+                <DropdownMenuItem
+                  key={provider}
+                  disabled={!channels.admin}
+                  render={
+                    channels.admin ? (
+                      <Link
+                        href={
+                          provider === "email"
+                            ? "/instance/ses"
+                            : "/instance/meta"
+                        }
+                      />
+                    ) : undefined
+                  }
+                >
+                  {channels.admin
+                    ? provider === "email"
+                      ? "Set up email"
+                      : "Set up the Meta app"
+                    : `${provider === "email" ? "Email" : "Meta"}: ask your instance admin`}
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -149,45 +186,26 @@ const META_APP_PAGE = INSTANCE_PAGES.find((page) => page.title === "Meta app")!
 /** Why a Meta login cannot open yet: no app, or no channel configuration. The installation admin gets a link to fix it. */
 export function MetaAppAlert({
   config,
-  channel = "whatsapp",
 }: {
-  channel?: "whatsapp" | "page"
   config: {
     configured: boolean
     configIds: { whatsapp?: string; facebookLogin?: string }
   }
 }) {
-  const installation = useQuery(api.installation.status)
-  const page = channel === "page"
-  if (
-    config.configured &&
-    (page ? config.configIds.facebookLogin : config.configIds.whatsapp)
-  )
-    return null
+  const installation = useInstanceChannels()
+  if (!config.configured) return <InstanceChannelConfiguration channel="meta" />
+  const notice = metaConfigurationNotice(config.configIds)
+  if (!notice) return null
   const admin = installation?.admin === true
   return (
     <Alert variant="warning">
       <TriangleAlertIcon />
-      <AlertTitle>
-        {config.configured
-          ? page
-            ? "Facebook Login for Business is not set up"
-            : "Embedded Signup is not set up"
-          : "Your administrator needs to set up the Meta app"}
-      </AlertTitle>
       <AlertDescription>
-        {config.configured
-          ? page
-            ? "Add the Facebook Login for Business configuration ID to connect a Facebook Page & Instagram. You can still connect with an access token."
-            : "Add the WhatsApp Embedded Signup configuration ID to the Meta app. You can still connect with an access token."
-          : admin
-            ? "Add your Meta app before teams connect WhatsApp, Messenger or Instagram."
-            : "Ask your installation administrator to add the Meta app before you connect WhatsApp, Messenger or Instagram."}
-        {admin && (
-          <>
-            {" "}
-            <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>.
-          </>
+        {notice}{" "}
+        {admin ? (
+          <Link href={META_APP_PAGE.href}>Set up the Meta app</Link>
+        ) : (
+          "Ask your instance admin"
         )}
       </AlertDescription>
     </Alert>
@@ -252,12 +270,17 @@ export function RegisterNumberDialog({
             <FieldLabel htmlFor="channel-pin">
               Two-step verification PIN
             </FieldLabel>
-            <CodeInput
+            <Input
+              credential
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
               id="channel-pin"
               value={pin}
               autoFocus
-              onChange={(next) => {
-                setPin(next)
+              onChange={(event) => {
+                setPin(event.target.value)
                 setError(null)
               }}
             />

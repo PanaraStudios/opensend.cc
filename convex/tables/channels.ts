@@ -1,22 +1,46 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
+import { RENDERED_HEADER_FORMATS } from "../../lib/meta/templates"
 import { v } from "convex/values"
 import { tagValue } from "./emails"
 import {
   CHANNEL_IDS,
+  CHANNEL_MESSAGE_STATUSES,
   PAGE_CHANNELS,
-  type MessagingChannel,
+  MESSAGING_CHANNELS as messagingChannels,
 } from "../../lib/channels"
 
 export const literals = <T extends string>(values: readonly T[]) =>
   v.union(...values.map((value) => v.literal(value)))
 
+const renderedTemplateFields = {
+  header: v.optional(
+    v.object({
+      format: literals(RENDERED_HEADER_FORMATS),
+      text: v.optional(v.string()),
+    })
+  ),
+  body: v.string(),
+  footer: v.optional(v.string()),
+  buttons: v.array(
+    v.object({
+      type: v.string(),
+      text: v.string(),
+      url: v.optional(v.string()),
+      code: v.optional(v.string()),
+    })
+  ),
+}
+export const renderedTemplateValue = v.object({
+  ...renderedTemplateFields,
+  cards: v.optional(v.array(v.object(renderedTemplateFields))),
+})
+
 /** Every channel a conversation can be on. */
 export const CHANNELS = CHANNEL_IDS
 export const channelValue = literals(CHANNELS)
 /** The Meta messaging channels. */
-export const MESSAGING_CHANNELS = CHANNEL_IDS.filter(
-  (channel): channel is MessagingChannel => channel !== "email"
-)
+export const MESSAGING_CHANNELS = messagingChannels
 export const messagingChannelValue = literals(MESSAGING_CHANNELS)
 export const pageChannelValue = literals(PAGE_CHANNELS)
 
@@ -35,14 +59,7 @@ export const channelQualityValue = literals(CHANNEL_QUALITIES)
 
 /** Outgoing messages move queued → sent → delivered → read, or fail;
     incoming ones are received. */
-export const CHANNEL_MESSAGE_STATUSES = [
-  "queued",
-  "sent",
-  "delivered",
-  "read",
-  "failed",
-  "received",
-] as const
+export { CHANNEL_MESSAGE_STATUSES }
 export const channelMessageStatusValue = literals(CHANNEL_MESSAGE_STATUSES)
 /** The message kinds the Meta channels carry. */
 export const CHANNEL_MESSAGE_TYPES = [
@@ -59,6 +76,10 @@ export const CHANNEL_MESSAGE_TYPES = [
   "button",
   "reaction",
   "unsupported",
+  "order",
+  "system",
+  "edit",
+  "revoke",
 ] as const
 export const channelMessageTypeValue = literals(CHANNEL_MESSAGE_TYPES)
 export const DIRECTIONS = ["inbound", "outbound"] as const
@@ -67,8 +88,9 @@ export const CONVERSATION_STATUSES = ["open", "closed"] as const
 export const conversationStatusValue = literals(CONVERSATION_STATUSES)
 /** An inbound media reference is pending until its file is fetched. */
 export const channelMediaValue = v.object({
-  storageId: v.optional(v.id("_storage")),
+  ...fileReference,
   contentType: v.string(),
+  mimeType: v.optional(v.string()),
   filename: v.optional(v.string()),
   size: v.optional(v.number()),
   error: v.optional(v.string()),
@@ -137,6 +159,11 @@ export const channelTables = {
     /** E.164, for WhatsApp. */
     phone: v.optional(v.string()),
     profileName: v.optional(v.string()),
+    username: v.optional(v.string()),
+    userId: v.optional(v.string()),
+    parentUserId: v.optional(v.string()),
+    userScopeId: v.optional(v.string()),
+    identityKeyHash: v.optional(v.string()),
     /** WhatsApp error 131050: the person stopped marketing messages. */
     marketingOptOut: v.boolean(),
     lastInboundAt: v.optional(v.number()),
@@ -150,6 +177,26 @@ export const channelTables = {
       "externalId",
     ])
     .index("by_contactId", ["contactId"]),
+  /** BSUIDs are business-scoped aliases of the stable channel identity. */
+  whatsappUserAliases: defineTable({
+    organizationId: v.string(),
+    businessId: v.string(),
+    userId: v.string(),
+    channelContactId: v.id("channelContacts"),
+    parentUserId: v.optional(v.string()),
+    username: v.optional(v.string()),
+    identityKeyHash: v.optional(v.string()),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_businessId_and_userId", [
+      "organizationId",
+      "businessId",
+      "userId",
+    ])
+    .index("by_channelContactId_and_businessId", [
+      "channelContactId",
+      "businessId",
+    ]),
   /** One thread per person and account, on any channel; received email
       threads are keyed by the sender's address. */
   conversations: defineTable({
@@ -190,7 +237,8 @@ export const channelTables = {
       "accountId",
       "channelContactId",
     ])
-    .index("by_channelContactId", ["channelContactId"]),
+    .index("by_channelContactId", ["channelContactId"])
+    .index("by_contactId", ["contactId"]),
   channelMessages: defineTable({
     organizationId: v.string(),
     channel: messagingChannelValue,
@@ -209,6 +257,9 @@ export const channelTables = {
     broadcastId: v.optional(v.id("broadcasts")),
     automationRunId: v.optional(v.id("automationRuns")),
     replyToId: v.optional(v.id("channelMessages")),
+    reactionTargetExternalId: v.optional(v.string()),
+    observedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
     tags: v.optional(v.array(tagValue)),
     source: v.optional(
       v.union(
@@ -232,6 +283,7 @@ export const channelTables = {
     rateReadyAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
+    readReceiptSentAt: v.optional(v.number()),
     error: v.optional(v.string()),
     errorCode: v.optional(v.number()),
     errorTitle: v.optional(v.string()),
@@ -265,12 +317,17 @@ export const channelTables = {
       "direction",
     ])
     .index("by_conversationId", ["conversationId"])
-    .index("by_channel_and_externalId", ["channel", "externalId"]),
+    .index("by_conversationId_and_direction", ["conversationId", "direction"])
+    .index("by_channel_and_externalId", ["channel", "externalId"])
+    .index("by_accountId_and_reactionTargetExternalId", [
+      "accountId",
+      "reactionTargetExternalId",
+    ]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
     mediaId: v.string(),
-    storageId: v.id("_storage"),
+    ...fileReference,
     contentType: v.string(),
     filename: v.string(),
     size: v.number(),
@@ -283,16 +340,33 @@ export const channelTables = {
     messageId: v.id("channelMessages"),
     /** The channel's message object as JSON. */
     payload: v.string(),
+    sendResponse: v.optional(v.string()),
+    paymentState: v.optional(v.string()),
+    statusState: v.optional(v.string()),
+    /** What the customer received, independent of later template edits. */
+    rendered: v.optional(renderedTemplateValue),
     /** A message carries at most a few files. */
     media: v.optional(v.array(channelMediaValue)),
   }).index("by_messageId", ["messageId"]),
   /** The message's timeline; status webhooks append to it. */
   channelMessageEvents: defineTable({
     messageId: v.id("channelMessages"),
-    type: channelMessageStatusValue,
+    type: v.union(
+      channelMessageStatusValue,
+      v.literal("payment_updated"),
+      v.literal("read_receipt_sent"),
+      v.literal("read_receipt_failed"),
+      v.literal("typing_failed")
+    ),
     at: v.number(),
     webhookEventId: v.optional(v.id("metaWebhookEvents")),
     /** Extra details as JSON, like Meta's error object. */
     details: v.optional(v.string()),
   }).index("by_messageId_and_at", ["messageId", "at"]),
 }
+
+export const controlJob = v.object({
+  messageId: v.id("channelMessages"),
+  read: v.boolean(),
+  typing: v.optional(v.boolean()),
+})

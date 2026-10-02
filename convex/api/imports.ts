@@ -9,7 +9,7 @@ import {
 } from "../_generated/server"
 import { internal } from "../_generated/api"
 import schema from "../schema"
-import type { Doc } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 import { enqueueImport } from "../contactImports"
 import { createProperty } from "../contactProperties"
 import { listProperties, SEGMENT_INPUT_LIMIT } from "../audience"
@@ -307,23 +307,33 @@ export function registerImportRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/contacts/imports",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "write" },
     bodyFormat: "multipart",
-    handler: async (ctx, { caller, body }) => ({
-      status: 201,
-      body: {
-        object: "contact_import",
-        id: await ctx.runMutation(internal.api.imports.create, {
+    handler: async (ctx, { caller, body }) => {
+      const input = objectBody(body)
+      const fileId = stringField(input, "file_id")
+      if (fileId)
+        input.file = await ctx.runAction(internal.storage.objects.importText, {
+          organizationId: caller.organizationId,
           caller,
-          body: JSON.stringify(body ?? {}),
-        }),
-      },
-    }),
+          id: fileId as Id<"storedFiles">,
+        })
+      return {
+        status: 201,
+        body: {
+          object: "contact_import",
+          id: await ctx.runMutation(internal.api.imports.create, {
+            caller,
+            body: JSON.stringify(input),
+          }),
+        },
+      }
+    },
   })
   apiRoute(http, {
     method: "GET",
     path: "/contacts/imports",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.imports.list, {
         caller,
@@ -338,7 +348,7 @@ export function registerImportRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/contacts/imports/{id}",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "read" },
     handler: async (ctx, { caller, params }) => ({
       body: view(
         await ctx.runQuery(internal.api.imports.get, { caller, id: params.id })

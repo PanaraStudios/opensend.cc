@@ -1,8 +1,20 @@
+import {
+  latestInbound,
+  scheduleControl,
+  typingMessage,
+} from "./channels/controls"
 import { contactIdentity } from "../lib/dashboard/contacts"
-import { primaryContactIdentity } from "./audience"
+import { primaryContactIdentity, teamRow } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
 import { object } from "../lib/meta/parse"
-import { channelMessagePayload } from "./channels/payload"
+import {
+  channelMessagePayload,
+  hydratedChannelMessage,
+} from "./channels/payload"
+import {
+  renderedChannelTemplate,
+  type TemplatePageCache,
+} from "./channels/templates"
 import { channelStrategies } from "../lib/meta/payloads"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
@@ -30,11 +42,19 @@ import { createChannelMessage } from "./channels/messages"
 import { upsertEmailThread } from "./channels/identity"
 import { resolveWhatsAppTemplate } from "./whatsapp/templates"
 import { mediaFiles } from "./messages"
+import { channelAccountAccess } from "./channels/messages"
+import { upsertChannelThread } from "./channels/identity"
+import { toWaId } from "../lib/dashboard/phone"
+import type {
+  WhatsAppContext,
+  WhatsAppReferral,
+} from "../packages/sdk/src/whatsapp/catalog"
 import {
   CHANNELS,
   CONVERSATION_STATUSES,
   channelValue,
   conversationStatusValue,
+  renderedTemplateValue,
 } from "./tables/channels"
 import { replyHeaders, replySubject } from "../lib/dashboard/conversations"
 
@@ -62,7 +82,12 @@ async function party(ctx: QueryCtx, conversation: Doc<"conversations">) {
       : null,
   ])
   const handle =
-    conversation.emailAddress ?? identity?.phone ?? identity?.externalId ?? ""
+    contactIdentity(
+      contact?.organizationId === conversation.organizationId
+        ? contact
+        : { email: conversation.emailAddress },
+      identity
+    ).secondary ?? ""
   const own = contact?.organizationId === conversation.organizationId
   const channelIdentity = own
     ? await primaryContactIdentity(ctx, contact)
@@ -127,6 +152,116 @@ export const list = query({
     return { ...result, page }
   },
 })
+
+/** Contact history uses the projected contact id, so every identity can be
+    paged without loading an unbounded list of channel identities first.
+    The address stream also covers email threads created before the contact. */
+export const contactHistory = query({
+  args: {
+    organizationId: v.string(),
+    contactId: v.id("contacts"),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      conversation: schema.doc("conversations"),
+      accountHandle: v.string(),
+      latest: v.object({
+        id: v.string(),
+        kind: v.union(
+          v.literal("email"),
+          v.literal("received"),
+          v.literal("channel")
+        ),
+      }),
+    })
+  ),
+  handler: async (ctx, { organizationId, contactId, paginationOpts }) => {
+    await requireTeam(ctx, organizationId)
+    const contact = await teamRow(ctx, "contacts", organizationId, contactId)
+    const rows = stream(ctx.db, schema).query("conversations")
+    const sources: QueryStream<Doc<"conversations">>[] = [
+      rows
+        .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+        .order("desc"),
+    ]
+    if (contact.email)
+      sources.push(
+        rows
+          .withIndex("by_organizationId_and_emailAddress", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("emailAddress", contact.email!)
+          )
+          .order("desc")
+          .filterWith(async (row) => row.contactId !== contactId)
+      )
+    // Merged streams read their source indexes in parallel. Native cursors
+    // preserve bounded pages, including old email threads and deduplication.
+    const result = await mergedStream(sources, ["_creationTime"]).paginate(
+      paginationOpts
+    )
+    const page = await Promise.all(
+      result.page.map(async (conversation) => {
+        if (conversation.organizationId !== organizationId) return null
+        const [account, latest] = await Promise.all([
+          conversation.accountId
+            ? ctx.db.get("channelAccounts", conversation.accountId)
+            : null,
+          latestMessage(ctx, conversation),
+        ])
+        if (!latest) return null
+        return {
+          conversation,
+          accountHandle:
+            account?.organizationId === organizationId
+              ? account.handle
+              : (conversation.emailAddress ?? ""),
+          latest,
+        }
+      })
+    )
+    return { ...result, page: page.filter((row) => row !== null) }
+  },
+})
+
+/** Read just the latest message header; history never loads message bodies. */
+async function latestMessage(
+  ctx: QueryCtx,
+  conversation: Doc<"conversations">
+) {
+  if (conversation.channel !== "email") {
+    const message = await ctx.db
+      .query("channelMessages")
+      .withIndex("by_conversationId", (q) =>
+        q.eq("conversationId", conversation._id)
+      )
+      .order("desc")
+      .first()
+    return message?.organizationId === conversation.organizationId
+      ? { id: message._id, kind: "channel" as const }
+      : null
+  }
+  if (!conversation.emailAddress) return null
+  const [received, recipient] = await Promise.all([
+    lastReceived(ctx, conversation),
+    ctx.db
+      .query("emailRecipients")
+      .withIndex("by_organizationId_and_address", (q) =>
+        q
+          .eq("organizationId", conversation.organizationId)
+          .eq("address", conversation.emailAddress!)
+      )
+      .order("desc")
+      .first(),
+  ])
+  const sent = recipient ? await ctx.db.get("emails", recipient.emailId) : null
+  const ownSent =
+    sent?.organizationId === conversation.organizationId ? sent : null
+  if (received && (!ownSent || received.receivedAt >= ownSent._creationTime))
+    return { id: received._id, kind: "received" as const }
+  return ownSent ? { id: ownSent._id, kind: "email" as const } : null
+}
 
 export const count = query({
   args: listFilters.fields,
@@ -233,6 +368,8 @@ const threadMessage = v.object({
   at: v.number(),
   status: v.string(),
   text: v.string(),
+  rendered: v.optional(renderedTemplateValue),
+  normalized: v.optional(v.any()),
   subject: v.optional(v.string()),
   error: v.optional(v.string()),
   media: v.array(
@@ -247,7 +384,12 @@ const threadMessage = v.object({
   ),
 })
 type EmailThreadRow = Doc<"receivedEmails"> | Doc<"emailRecipients">
-export type ThreadMessage = Infer<typeof threadMessage>
+export type ThreadMessage = Omit<Infer<typeof threadMessage>, "normalized"> & {
+  normalized?: Awaited<ReturnType<typeof hydratedChannelMessage>> & {
+    context?: WhatsAppContext
+    referral?: WhatsAppReferral
+  }
+}
 /** A bubble shows the start of a long email; its page has the rest. */
 const TEXT_LIMIT = 4000
 /** Email bodies are read with their rows, so a page stays small. */
@@ -301,19 +443,31 @@ export const messages = query({
       .withIndex("by_conversationId", (q) => q.eq("conversationId", id))
       .order("desc")
       .paginate(paginationOpts)
+    const account = conversation.accountId
+      ? await ctx.db.get("channelAccounts", conversation.accountId)
+      : null
+    const templateCache: TemplatePageCache = new Map()
     const page = await Promise.all(
       result.page.map(async (message) => {
         const content = await ctx.db
           .query("channelMessageContents")
           .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
           .unique()
+        const rendered = await renderedChannelTemplate(
+          ctx,
+          message,
+          content,
+          account,
+          templateCache
+        )
         return {
           id: message._id,
           kind: "channel" as const,
           direction: message.direction,
           at: message._creationTime,
           status: message.status,
-          text: bodyText(message, content),
+          text: rendered?.body ?? bodyText(message, content),
+          ...(rendered ? { rendered } : {}),
           ...(message.error
             ? {
                 error: message.errorTitle
@@ -322,6 +476,12 @@ export const messages = query({
               }
             : {}),
           media: mediaFiles(message, content),
+          normalized: await hydratedChannelMessage(
+            ctx,
+            message,
+            Date.now(),
+            content
+          ),
         }
       })
     )
@@ -415,11 +575,28 @@ export const markRead = mutation({
   returns: v.null(),
   handler: async (ctx, { id }) => {
     const conversation = await writableThread(ctx, id)
-    if (conversation.unread || conversation.unreadCount)
+    if (conversation.unread || conversation.unreadCount) {
+      if (conversation.channel !== "email") {
+        const message = await latestInbound(ctx, id)
+        if (message) await scheduleControl(ctx, message, true)
+      }
       await patchRow(ctx, "conversations", id, {
         unread: false,
         unreadCount: 0,
       })
+    }
+    return null
+  },
+})
+
+export const typing = mutation({
+  args: { id: v.id("conversations"), on: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, { id, on }) => {
+    const conversation = await writableThread(ctx, id)
+    if (conversation.channel === "email") return null
+    const message = await typingMessage(ctx, conversation)
+    if (message) await scheduleControl(ctx, message, false, on)
     return null
   },
 })
@@ -440,8 +617,10 @@ export const setStatus = mutation({
     own rules apply, like WhatsApp's 24-hour window. */
 export const reply = mutation({
   args: {
+    fileId: v.optional(v.id("storedFiles")),
     id: v.id("conversations"),
     text: v.optional(v.string()),
+    body: v.optional(v.record(v.string(), v.any())),
     template: v.optional(
       v.object({
         id: v.id("templates"),
@@ -451,13 +630,17 @@ export const reply = mutation({
     from: v.optional(v.string()),
   },
   returns: v.string(),
-  handler: async (ctx, { id, text, template, from }) => {
+  handler: async (ctx, { id, text, template, from, fileId, body }) => {
     const conversation = await writableThread(ctx, id)
     const organizationId = conversation.organizationId
-    if (!text?.trim() && !template)
+    if (!text?.trim() && !template && !fileId && !body)
       throw new ConvexError("Write a message or choose a template")
     try {
       if (conversation.channel === "email") {
+        if (body)
+          throw new ConvexError(
+            "Interactive messages require a messaging channel"
+          )
         const address = conversation.emailAddress
         if (!address || !text?.trim()) throw new ConvexError("Write a message")
         const last = await lastReceived(ctx, conversation)
@@ -472,7 +655,26 @@ export const reply = mutation({
             subject: replySubject(last?.subject),
             text,
             headers: replyHeaders(last?.messageId),
-            attachments: [],
+            attachments: fileId
+              ? [
+                  await (async () => {
+                    const file = await ctx.db.get("storedFiles", fileId)
+                    if (
+                      !file ||
+                      file.organizationId !== organizationId ||
+                      file.feature !== "email" ||
+                      file.state !== "ready"
+                    )
+                      throw new ConvexError("Attachment is not ready")
+                    return {
+                      fileId,
+                      filename: file.filename ?? "attachment",
+                      contentType: file.contentType,
+                      size: file.size,
+                    }
+                  })(),
+                ]
+              : [],
             tags: [],
           },
           { organizationId, source: "dashboard" }
@@ -497,12 +699,48 @@ export const reply = mutation({
           channel: conversation.channel,
           from: conversation.accountId,
           to: identity.externalId,
-          body: template
-            ? {
-                type: "template",
-                template: { id: template.id, variables: template.variables },
-              }
-            : channelStrategies[conversation.channel].replyBody(text!),
+          body:
+            body ??
+            (fileId
+              ? await (async () => {
+                  const file = await ctx.db.get("storedFiles", fileId)
+                  if (!file || conversation.channel !== "whatsapp")
+                    throw new ConvexError(
+                      "File replies are supported for WhatsApp and email"
+                    )
+                  const kind =
+                    file.contentType === "image/webp"
+                      ? "sticker"
+                      : file.contentType.startsWith("image/")
+                        ? "image"
+                        : file.contentType.startsWith("video/")
+                          ? "video"
+                          : file.contentType.startsWith("audio/")
+                            ? "audio"
+                            : "document"
+                  return {
+                    type: kind,
+                    [kind]: {
+                      id: fileId,
+                      ...(kind === "document"
+                        ? { filename: file.filename }
+                        : {}),
+                      ...(["image", "video", "document"].includes(kind) &&
+                      text?.trim()
+                        ? { caption: text.trim() }
+                        : {}),
+                    },
+                  }
+                })()
+              : template
+                ? {
+                    type: "template",
+                    template: {
+                      id: template.id,
+                      variables: template.variables,
+                    },
+                  }
+                : channelStrategies[conversation.channel].replyBody(text!)),
         },
         { organizationId, source: "dashboard" }
       )
@@ -512,5 +750,87 @@ export const reply = mutation({
       if (message) throw new ConvexError(message)
       throw error
     }
+  },
+})
+
+/** Open a compose destination without pretending a customer wrote to us.
+ * Existing threads retain their preview, unread state and service window. */
+export const start = mutation({
+  args: {
+    organizationId: v.string(),
+    contactId: v.id("contacts"),
+    channel: channelValue,
+    accountId: v.optional(v.id("channelAccounts")),
+  },
+  returns: v.id("conversations"),
+  handler: async (ctx, { organizationId, contactId, channel, accountId }) => {
+    await requireTeam(ctx, organizationId, "write")
+    const contact = await teamRow(ctx, "contacts", organizationId, contactId)
+    if (channel === "email") {
+      if (!contact.email)
+        throw new ConvexError("This contact has no email address")
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_organizationId_and_emailAddress", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("emailAddress", contact.email!)
+        )
+        .unique()
+      if (existing) return existing._id
+      return await upsertEmailThread(ctx, {
+        organizationId,
+        address: contact.email,
+        at: Date.now(),
+        direction: "outbound",
+        preview: "",
+      })
+    }
+    if (!accountId) throw new ConvexError("Choose a sending account")
+    const { account, connection } = await channelAccountAccess(
+      ctx,
+      organizationId,
+      accountId,
+      channel
+    )
+    const identities = await ctx.db
+      .query("channelContacts")
+      .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+      .take(100)
+    const identity = identities.find(
+      (row) =>
+        row.organizationId === organizationId &&
+        row.channel === channel &&
+        (channel === "whatsapp"
+          ? !!row.phone || row.userScopeId === connection.businessId
+          : row.scopeId === account.externalId)
+    )
+    if (!identity && (channel !== "whatsapp" || !contact.phone))
+      throw new ConvexError(
+        `This contact has no ${channel} identity for this account`
+      )
+    if (identity) {
+      const existing = await ctx.db
+        .query("conversations")
+        .withIndex("by_accountId_and_channelContactId", (q) =>
+          q.eq("accountId", account._id).eq("channelContactId", identity._id)
+        )
+        .unique()
+      if (existing) return existing._id
+    }
+    const phone =
+      identity?.phone ?? (channel === "whatsapp" ? contact.phone : undefined)
+    const result = await upsertChannelThread(ctx, account, {
+      externalId: phone ? toWaId(phone)! : identity!.externalId,
+      ...(phone ? { phone } : {}),
+      ...(identity?.userId ? { userId: identity.userId } : {}),
+      profileName: [contact.firstName, contact.lastName]
+        .filter(Boolean)
+        .join(" "),
+      at: Date.now(),
+      direction: "outbound",
+      preview: "",
+    })
+    return result.conversationId
   },
 })

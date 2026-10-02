@@ -1,5 +1,9 @@
 "use client"
 
+import {
+  EmailConfiguration,
+  InstanceChannelConfiguration,
+} from "@/components/ses/email-configuration"
 import * as React from "react"
 import { useParams, useRouter } from "next/navigation"
 import { MegaphoneIcon } from "lucide-react"
@@ -45,9 +49,13 @@ export function BroadcastEditor() {
   if (report) return null
 
   return item.channel === "whatsapp" ? (
-    <WhatsAppBroadcastEditor key={item.id} item={item} />
+    <InstanceChannelConfiguration channel="meta">
+      <WhatsAppBroadcastEditor key={item.id} item={item} />
+    </InstanceChannelConfiguration>
   ) : (
-    <BroadcastScreen key={item.id} item={item} />
+    <EmailConfiguration>
+      <BroadcastScreen key={item.id} item={item} />
+    </EmailConfiguration>
   )
 }
 

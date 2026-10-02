@@ -12,7 +12,7 @@ export const MESSAGING_CHANNELS = [
 export type MessagingChannel = (typeof MESSAGING_CHANNELS)[number]
 export type PageChannel = Exclude<MessagingChannel, "whatsapp">
 export type ChannelMessageStatus =
-  "queued" | "sent" | "delivered" | "read" | "failed" | "received"
+  "queued" | "sent" | "delivered" | "read" | "played" | "failed" | "received"
 export type ChannelRequestOptions = PostOptions & IdempotentRequest
 export type ChannelPage<T> = PaginatedData<T[]>
 export type ListChannelMessagesOptions<FilterKey extends string = "accountId"> =
@@ -35,6 +35,7 @@ export interface ChannelMessage<
   direction: "inbound" | "outbound"
   external_id: string | null
   created_at: string
+  read_receipt_sent_at: string | null
   text?: string
   media?: Record<string, unknown> | ChannelMessageEvents["media"]
   tags: { name: string; value: string }[]
@@ -43,7 +44,12 @@ export interface ChannelMessage<
 export interface ChannelMessageEvents {
   last_event: ChannelMessageStatus
   events: {
-    type: ChannelMessageStatus
+    type:
+      | ChannelMessageStatus
+      | "payment_updated"
+      | "read_receipt_sent"
+      | "read_receipt_failed"
+      | "typing_failed"
     created_at: string
     details: unknown
   }[]

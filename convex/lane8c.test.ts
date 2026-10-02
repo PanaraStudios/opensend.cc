@@ -549,7 +549,7 @@ test("every new route rejects sending-only credentials", async () => {
     ["/emails/metrics", "GET"],
   ])
     expect(
-      (await json(f.call(path, method, undefined, { token: f.sending }), 401))
+      (await json(f.call(path, method, undefined, { token: f.sending }), 403))
         .name
     ).toBe("restricted_api_key")
 })

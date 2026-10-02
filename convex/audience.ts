@@ -122,6 +122,7 @@ export async function primaryContactIdentity(
         channel: identity.channel,
         externalId: identity.externalId,
         profileName: identity.profileName,
+        username: identity.username,
         phone: identity.phone,
       }
     : null

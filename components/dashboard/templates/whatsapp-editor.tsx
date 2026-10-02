@@ -1,4 +1,5 @@
 "use client"
+import { FileUploadField } from "../file-upload"
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
@@ -54,6 +55,7 @@ import {
   buttonLabel,
   componentsFromForm,
   formFromComponents,
+  renderedTemplateFromForm,
   formParameterFormat,
   storedComponents,
   templateCategoryLabel,
@@ -381,6 +383,14 @@ export function WhatsAppTemplateEditorScreen({
                           patch({ headerSample: event.target.value })
                         }
                       />
+                      <FileUploadField
+                        label="Upload sample file"
+                        use="template"
+                        disabled={readOnly}
+                        onUploaded={(id) =>
+                          patch({ headerSample: `opensend-file:${id}` })
+                        }
+                      />
                       <FieldDescription>
                         Meta reviews the template with this sample. Each send
                         gives its own file.
@@ -590,7 +600,7 @@ export function WhatsAppTemplateEditorScreen({
           className="hidden w-96 shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-muted/40 p-6 lg:flex"
         >
           <h2 className="text-sm font-medium text-muted-foreground">Preview</h2>
-          <WhatsAppTemplatePreview form={form} />
+          <WhatsAppTemplatePreview rendered={renderedTemplateFromForm(form)} />
         </aside>
       </div>
     </div>

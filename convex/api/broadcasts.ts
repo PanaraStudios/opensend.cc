@@ -459,7 +459,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/broadcasts/{id}/recipients",
-    permission: "full_access",
+    scope: { resource: "broadcasts", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const type = enumField({ type: query.get("type") }, "type", [
         "sent",
@@ -522,7 +522,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/broadcasts/{id}/clicked-links",
-    permission: "full_access",
+    scope: { resource: "broadcasts", access: "read" },
     handler: async (ctx, { caller, params, query }) => ({
       body: {
         object: "list",
@@ -537,7 +537,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/broadcasts",
-    permission: "full_access",
+    scope: { resource: "broadcasts", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.broadcasts.list, {
         caller,
@@ -551,7 +551,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/broadcasts/{id}",
-    permission: "full_access",
+    scope: { resource: "broadcasts", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const { row, body } = await ctx.runQuery(internal.api.broadcasts.get, {
         caller,
@@ -585,7 +585,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/broadcasts",
-    permission: "full_access",
+    scope: { resource: "broadcasts", access: "write" },
     handler: async (ctx, { caller, body }) => ({
       status: 201,
       body: {
@@ -608,7 +608,7 @@ export function registerBroadcastRoutes(http: HttpRouter) {
       method:
         kind === "update" ? "PATCH" : kind === "remove" ? "DELETE" : "POST",
       path: `/broadcasts/{id}${["send", "cancel", "duplicate"].includes(kind) ? `/${kind}` : ""}`,
-      permission: "full_access",
+      scope: { resource: "broadcasts", access: "write" },
       handler: async (ctx, { caller, params, body }) => ({
         status: kind === "duplicate" ? 201 : 200,
         body: {

@@ -15,6 +15,14 @@ export const sesTables = {
     callbackOrigin: v.string(),
     environmentCheckedAt: v.number(),
     completedAt: v.optional(v.number()),
+    emailDeferredAt: v.optional(v.number()),
+    metaDeferredAt: v.optional(v.number()),
+    channels: v.optional(
+      v.object({
+        email: v.optional(v.boolean()),
+        meta: v.optional(v.boolean()),
+      })
+    ),
     accountId: v.optional(v.string()),
     credentialKind: v.optional(v.union(v.literal("role"), v.literal("keys"))),
     encryptedCredentials: v.optional(v.string()),

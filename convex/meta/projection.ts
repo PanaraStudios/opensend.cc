@@ -2,8 +2,10 @@ import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
+import { normalizePhone, fromWaId } from "../../lib/dashboard/phone"
+import { patchContact } from "../audience"
 import { insertRow, patchRow } from "../counts"
-import { upsertChannelThread } from "../channels/identity"
+import { upsertChannelThread, recordWhatsAppUser } from "../channels/identity"
 import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { customEventType } from "../automationEvents"
@@ -11,7 +13,7 @@ import { retirement } from "../teamLifecycle"
 import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
-import { channelMessagePayload } from "../channels/payload"
+import { hydratedChannelMessage } from "../channels/payload"
 import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
 import { TEMPLATE_WEBHOOK_FIELDS } from "../../lib/meta/templates"
@@ -49,7 +51,7 @@ const messagesByExternalId = (
 const statusMessage = async (
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
-  item: StatusItem
+  item: Pick<StatusItem, "sender" | "externalId">
 ) => {
   const candidates = (
     await messagesByExternalId(ctx, item.externalId, account.channel)
@@ -106,9 +108,16 @@ async function receive(
       externalId: sender,
       ...(phone ? { phone } : {}),
       profileName,
+      ...(item.userId ? { userId: item.userId } : {}),
+      ...(item.parentUserId ? { parentUserId: item.parentUserId } : {}),
+      ...(item.username ? { username: item.username } : {}),
+      ...(item.identityKeyHash
+        ? { identityKeyHash: item.identityKeyHash }
+        : {}),
       at,
       preview,
       direction: "inbound",
+      opensWindow: type !== "system",
     })
   const message = await insertRow(
     ctx,
@@ -123,7 +132,11 @@ async function receive(
       from: sender,
       to: account.externalId,
       type,
+      ...(type === "reaction" && string(object(data.reaction).message_id)
+        ? { reactionTargetExternalId: string(object(data.reaction).message_id) }
+        : {}),
       status: "received",
+      observedAt: at,
       preview,
       externalId,
       generation: 1,
@@ -148,8 +161,62 @@ async function receive(
       messageId,
       mediaId: file.mediaId,
     })
+  if (type === "system") {
+    const system = object(data.system)
+    if (string(system.user_id))
+      await recordWhatsAppUser(
+        ctx,
+        account,
+        channelContactId,
+        string(system.user_id)
+      )
+    const nextPhone = normalizePhone(fromWaId(string(system.wa_id)))
+    if (nextPhone) {
+      const existing = await ctx.db
+        .query("contacts")
+        .withIndex("by_organizationId_and_phone", (q) =>
+          q.eq("organizationId", account.organizationId).eq("phone", nextPhone)
+        )
+        .first()
+      const contact = await ctx.db.get("contacts", contactId)
+      if (contact && (!existing || existing._id === contactId))
+        await patchContact(ctx, contact, { phone: nextPhone }, at)
+      const existingIdentity = await ctx.db
+        .query("channelContacts")
+        .withIndex(
+          "by_organizationId_and_channel_and_scopeId_and_externalId",
+          (q) =>
+            q
+              .eq("organizationId", account.organizationId)
+              .eq("channel", "whatsapp")
+              .eq("scopeId", "whatsapp")
+              .eq("externalId", nextPhone.slice(1))
+        )
+        .first()
+      if (!existingIdentity || existingIdentity._id === channelContactId)
+        await ctx.db.patch("channelContacts", channelContactId, {
+          phone: nextPhone,
+          externalId: nextPhone.slice(1),
+          scopeId: "whatsapp",
+        })
+    }
+  }
+  if (type === "revoke") {
+    const target = (
+      await messagesByExternalId(
+        ctx,
+        string(object(data.revoke).original_message_id),
+        "whatsapp"
+      )
+    ).find(
+      (m) => m.accountId === account._id && m.conversationId === conversationId
+    )
+    if (target)
+      await patchRow(ctx, "channelMessages", target._id, { revokedAt: at })
+  }
   const identity = await ctx.db.get("channelContacts", channelContactId)
   if (
+    account.channel !== "whatsapp" &&
     !phone &&
     !identity?.profileName &&
     identity?.profileLookedUpAt === undefined
@@ -162,7 +229,7 @@ async function receive(
       accountId: account._id,
     })
   }
-  const payload = channelMessagePayload(message, data)
+  const payload = await hydratedChannelMessage(ctx, message, Date.now())
   await emitEvent(
     ctx,
     account.organizationId,
@@ -191,6 +258,14 @@ async function status(
     STATUS_RANK[next] <= STATUS_RANK[message.status]
   )
     return message
+  const content = await ctx.db
+    .query("channelMessageContents")
+    .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+    .unique()
+  if (content)
+    await ctx.db.patch("channelMessageContents", content._id, {
+      statusState: JSON.stringify(data),
+    })
   if (next === "sent") {
     return acceptChannelMessage(ctx, message, item.externalId, at)
   }
@@ -225,13 +300,10 @@ async function status(
     details: JSON.stringify(data),
   })
   // Every status stays on the timeline; customer events describe that observation.
-  const content = await ctx.db
-    .query("channelMessageContents")
-    .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
-    .unique()
-  const payload = channelMessagePayload(
+  const payload = await hydratedChannelMessage(
+    ctx,
     { ...current, status: next },
-    content ? object(JSON.parse(content.payload)) : {}
+    Date.now()
   )
   await emitEvent(
     ctx,
@@ -242,6 +314,10 @@ async function status(
       ...(errors.length ? { errors } : {}),
       ...(data.pricing ? { pricing: data.pricing } : {}),
       ...(data.conversation ? { conversation: data.conversation } : {}),
+      status_raw: data,
+      ...(data.biz_opaque_callback_data
+        ? { biz_opaque_callback_data: data.biz_opaque_callback_data }
+        : {}),
     }
   )
   if (errors.some((error) => error.code === 131050))
@@ -337,7 +413,8 @@ export const project = internalMutation({
     for (const [index, item] of items.entries()) {
       if (
         pendingIndexes &&
-        (!pendingIndexes.has(index) || item.kind !== "status")
+        (!pendingIndexes.has(index) ||
+          (item.kind !== "status" && item.kind !== "payment"))
       )
         continue
       const account = await accountFor(item)
@@ -351,8 +428,10 @@ export const project = internalMutation({
           continue
       }
       const message =
-        item.kind === "status" ? await statusMessage(ctx, account, item) : null
-      if (item.kind === "status" && !message) {
+        item.kind === "status" || item.kind === "payment"
+          ? await statusMessage(ctx, account, item)
+          : null
+      if ((item.kind === "status" || item.kind === "payment") && !message) {
         unmatched.push(index)
         continue
       }
@@ -360,8 +439,49 @@ export const project = internalMutation({
     }
     const observed = new Map<string, Doc<"channelMessages">>()
     for (const { item, account, message } of resolved) {
+      if (
+        (item.kind === "status" || item.kind === "payment") &&
+        message &&
+        string(item.data.recipient_user_id)
+      )
+        await recordWhatsAppUser(
+          ctx,
+          account,
+          message.channelContactId,
+          string(item.data.recipient_user_id),
+          {
+            ...(string(item.data.recipient_parent_user_id)
+              ? { parentUserId: string(item.data.recipient_parent_user_id) }
+              : {}),
+          }
+        )
       if (item.kind === "message") await receive(ctx, account, item, event)
-      else if (item.kind === "status" && message) {
+      else if (item.kind === "payment" && message) {
+        const content = await ctx.db
+          .query("channelMessageContents")
+          .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+          .unique()
+        if (content)
+          await ctx.db.patch("channelMessageContents", content._id, {
+            paymentState: JSON.stringify(item.data),
+          })
+        await ctx.db.insert("channelMessageEvents", {
+          messageId: message._id,
+          type: "payment_updated",
+          at: item.at,
+          webhookEventId: event._id,
+          details: JSON.stringify(item.data),
+        })
+        await emitEvent(
+          ctx,
+          account.organizationId,
+          "whatsapp.message.payment_updated",
+          {
+            ...(await hydratedChannelMessage(ctx, message, Date.now())),
+            status_raw: item.data,
+          }
+        )
+      } else if (item.kind === "status" && message) {
         const current = await status(
           ctx,
           account,

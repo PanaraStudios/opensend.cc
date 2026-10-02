@@ -1,4 +1,5 @@
 "use node"
+import { mediaLinks } from "../storage/objects"
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -14,7 +15,7 @@ export const deliver = internalAction({
     const claim = await ctx.runMutation(internal.channels.messages.claim, args)
     if (!claim) return null
     let outcome:
-      | { kind: "sent"; externalId: string }
+      | { kind: "sent"; externalId: string; response?: string }
       | {
           kind: "failed"
           error: string
@@ -31,7 +32,13 @@ export const deliver = internalAction({
           path: `${claim.phoneNumberId}/messages`,
           body: {
             json: {
-              ...object(JSON.parse(claim.payload)),
+              ...object(
+                await mediaLinks(
+                  ctx,
+                  JSON.parse(claim.payload),
+                  claim.organizationId
+                )
+              ),
               ...(claim.messagingType
                 ? { messaging_type: claim.messagingType }
                 : {}),
@@ -45,7 +52,7 @@ export const deliver = internalAction({
       // A malformed success is ambiguous; do not resend.
       if (!externalId)
         throw new Error("Meta accepted the call without a message id")
-      outcome = { kind: "sent", externalId }
+      outcome = { kind: "sent", externalId, response: JSON.stringify(result) }
     } catch (error) {
       if (isUnreachableError(error)) {
         outcome = {

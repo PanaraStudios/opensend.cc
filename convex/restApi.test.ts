@@ -258,12 +258,13 @@ describe("REST API", () => {
       domainId: f.domain,
     })
     const refused = await call(f, sending.token, "/domains")
-    expect(refused.status).toBe(401)
+    expect(refused.status).toBe(403)
     expect((await refused.json()).name).toBe("restricted_api_key")
     const begin = () =>
       f.t.mutation(internal.api.state.begin, {
         credential: { kind: "key", tokenHash: "" },
-        permission: "sending",
+        scope: { resource: "emails", access: "write" },
+        emailSending: true,
       })
     await f.t.run((ctx) =>
       patchRow(ctx, "apiKeys", sending.id, { tokenHash: "" })

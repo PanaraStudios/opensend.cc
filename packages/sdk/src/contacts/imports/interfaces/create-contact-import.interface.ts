@@ -28,7 +28,9 @@ export interface ContactImportTopic {
 }
 
 export interface CreateContactImportOptions {
-  file: Blob;
+  file?: Blob;
+  /** Completed direct upload with use=import. */
+  fileId?: string;
   columnMap?: ContactImportColumnMap;
   onConflict?: ContactImportOnConflict;
   segments?: ContactImportSegment[];

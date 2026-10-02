@@ -65,3 +65,42 @@ describe("automation config round trips", () => {
     expect(rowChannel({ channel: "whatsapp" })).toBe("whatsapp")
   })
 })
+
+for (const type of ["send_messenger", "send_instagram"] as const) {
+  describe(`${type} wire config`, () => {
+    for (const config of [
+      { accountId: "page", mode: "text" as const, text: "Reply" },
+      {
+        accountId: "page",
+        mode: "template" as const,
+        templateId: "published",
+        variables: {
+          name: { contact: "firstName" as const, fallback: "friend" },
+          company: { property: "company", fallback: "Acme" },
+          reply: { value: "YES" },
+        },
+      },
+    ]) {
+      it(`round trips ${config.mode} and its variable mappings`, () => {
+        const step: AutomationStep = { key: "reply", type, config }
+        const wire = parseStepConfig(step)
+        expect(wire.type).toBe(type)
+        expect(wire.config).toMatchObject({
+          account_id: "page",
+          mode: config.mode,
+        })
+        expect(wire.config).not.toHaveProperty("accountId")
+        expect(wire.config).not.toHaveProperty("templateId")
+        if (config.mode === "template")
+          expect(wire.config).toHaveProperty("template_id", "published")
+        else expect(wire.config).toHaveProperty("variables", {})
+        expect(
+          parseApiStepConfig({
+            type,
+            config: wire.config as Record<string, unknown>,
+          })
+        ).toMatchObject(config)
+      })
+    }
+  })
+}

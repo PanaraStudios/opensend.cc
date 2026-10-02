@@ -1,3 +1,4 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 
@@ -37,7 +38,7 @@ export const attachmentValue = v.object({
   contentType: v.string(),
   contentId: v.optional(v.string()),
   size: v.number(),
-  storageId: v.id("_storage"),
+  ...fileReference,
 })
 
 /* An email is four kinds of documents, so lists never read a body: the row

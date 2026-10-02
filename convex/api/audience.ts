@@ -441,7 +441,10 @@ export function registerAudienceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path,
-      permission: "full_access",
+      scope: {
+        resource: resource === "contactProperties" ? "contacts" : resource,
+        access: "read",
+      },
       handler: async (ctx, { caller, query }) => {
         const segment = resource === "contacts" ? query.get("segment_id") : null
         const page = segment
@@ -464,7 +467,10 @@ export function registerAudienceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "POST",
       path,
-      permission: "full_access",
+      scope: {
+        resource: resource === "contactProperties" ? "contacts" : resource,
+        access: "write",
+      },
       handler: async (ctx, { caller, body }) => ({
         status: 201,
         body: {
@@ -481,7 +487,10 @@ export function registerAudienceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path: `${path}/{id}`,
-      permission: "full_access",
+      scope: {
+        resource: resource === "contactProperties" ? "contacts" : resource,
+        access: "read",
+      },
       handler: async (ctx, { caller, params }) => {
         const result = await ctx.runQuery(internal.api.audience.get, {
           caller,
@@ -503,7 +512,10 @@ export function registerAudienceRoutes(http: HttpRouter) {
       apiRoute(http, {
         method,
         path: `${path}/{id}`,
-        permission: "full_access",
+        scope: {
+          resource: resource === "contactProperties" ? "contacts" : resource,
+          access: "write",
+        },
         handler: async (ctx, { caller, params, body }) => {
           const id = await ctx.runMutation(internal.api.audience.change, {
             caller,
@@ -700,7 +712,10 @@ function registerRelations(http: HttpRouter) {
         kind === "segmentContacts"
           ? "/segments/{id}/contacts"
           : `/contacts/{id}/${kind}`,
-      permission: "full_access",
+      scope: {
+        resource: kind === "segmentContacts" ? "segments" : "contacts",
+        access: "read",
+      },
       handler: async (ctx, { caller, params, query }) => {
         const result = await ctx.runQuery(internal.api.audience.relations, {
           caller,
@@ -729,7 +744,7 @@ function registerRelations(http: HttpRouter) {
     apiRoute(http, {
       method,
       path: "/contacts/{id}/segments/{segment}",
-      permission: "full_access",
+      scope: { resource: "contacts", access: "write" },
       handler: async (ctx, { caller, params }) => {
         const result = await ctx.runMutation(internal.api.audience.membership, {
           caller,
@@ -753,7 +768,7 @@ function registerRelations(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/contacts/{id}/topics",
-    permission: "full_access",
+    scope: { resource: "contacts", access: "write" },
     handler: async (ctx, { caller, params, body }) => ({
       body: {
         object: "contact_topics",

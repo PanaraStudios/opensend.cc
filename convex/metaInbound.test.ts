@@ -14,6 +14,7 @@ import {
   envelope,
   incoming,
 } from "./testHelpers/meta.fixture"
+import { createChannelMessage, acceptChannelMessage } from "./channels/messages"
 import { mediaDownloadLink } from "./channels/downloads"
 import { signedFileLink } from "./fileDownloads"
 import { limitedBody, BodyTooLarge } from "./ses/web"
@@ -433,13 +434,14 @@ test("media fetch stores bytes and signed downloads reject tampering, expiry, cr
   })
   const media = (await rows(f)).contents[0].media![0]
   expect(media).toMatchObject({
-    storageId: expect.any(String),
+    fileId: expect.any(String),
     size: 3,
     contentType: "image/png",
+    mimeType: "image/png",
   })
   expect(stub.spy.mock.calls[1][1]).toMatchObject({
     headers: { authorization: "Bearer connection-test-token" },
-    maxBytes: 25 * 1024 * 1024,
+    maxBytes: 5 * 1024 * 1024,
   })
   const link = await f.t.run((ctx) =>
     mediaDownloadLink(ctx, messageId, "media-1")
@@ -516,7 +518,7 @@ test("transient media failures retry; oversized media is final; deletion races r
   stub.spy.mockResolvedValue(
     Response.json({
       url: "https://media.example.test/file",
-      file_size: 26 * 1024 * 1024,
+      file_size: 101 * 1024 * 1024,
     })
   )
   await f.t.action(internal.channels.media.fetch, {
@@ -524,7 +526,9 @@ test("transient media failures retry; oversized media is final; deletion races r
     mediaId: "media-2",
     attempt: 5,
   })
-  expect((await rows(f)).contents[0].media![0].error).toContain("25 MB")
+  expect((await rows(f)).contents[0].media![0].error).toContain(
+    "104857600 bytes"
+  )
   const storageId = await f.t.run((ctx) =>
     ctx.storage.store(new Blob(["orphan"]))
   )
@@ -714,4 +718,199 @@ test("a status finds its message by wamid and recipient even beside a duplicate 
   ])
   expect(a?.status).toBe("delivered")
   expect(b?.status).toBe("sent")
+})
+
+test.each([false, true])(
+  "streamed stickers retain the animation-specific size limit: animated=%s",
+  async (animated) => {
+    const f = await inboundFixture()
+    const bytes = new Uint8Array(150 * 1024)
+    bytes.set(new TextEncoder().encode("VP8X"), 12)
+    if (animated) bytes[20] = 2
+    fakeGraph([
+      {
+        path: "/sticker-stream",
+        respond: () => ({
+          url: "https://media.example.test/sticker",
+          mime_type: "image/webp",
+        }),
+      },
+      {
+        path: "/sticker",
+        respond: () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                // Split the animation marker and flag across chunks.
+                controller.enqueue(bytes.subarray(0, 14))
+                controller.enqueue(bytes.subarray(14, 20))
+                controller.enqueue(bytes.subarray(20))
+                controller.close()
+              },
+            })
+          ),
+      },
+    ])
+    await project(
+      f,
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        messages: [
+          {
+            from: SENDER,
+            id: "wamid.sticker-stream",
+            type: "sticker",
+            sticker: {
+              id: "sticker-stream",
+              mime_type: "image/webp",
+              animated,
+            },
+          },
+        ],
+      })
+    )
+    const messageId = (await rows(f)).messages[0]._id
+    await f.t.action(internal.channels.media.fetch, {
+      messageId,
+      mediaId: "sticker-stream",
+      attempt: 5,
+    })
+    const media = (await rows(f)).contents[0].media![0]
+    if (animated) {
+      expect(media).toMatchObject({
+        fileId: expect.any(String),
+        size: bytes.length,
+        mimeType: "image/webp",
+      })
+      expect(media.error).toBeUndefined()
+    } else {
+      expect(media.error).toContain("102400 bytes")
+      expect(media.storageId).toBeUndefined()
+      expect(
+        await f.t.run((ctx) => ctx.db.system.query("_storage").collect())
+      ).toHaveLength(0)
+    }
+  }
+)
+
+test("carousel media combines retained files, Meta uploads and links without refetching stored files", async () => {
+  const f = await inboundFixture()
+  await project(f, incoming())
+  const fileId = await f.t.run(async (ctx) => {
+    await ctx.db.patch("channelAccounts", f.account, {
+      registeredAt: Date.now(),
+    })
+    const id = await ctx.db.insert("storedFiles", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      feature: "whatsapp",
+      provider: "convex",
+      storageId: await ctx.storage.store(
+        new Blob(["png"], { type: "image/png" })
+      ),
+      state: "ready",
+      contentType: "image/png",
+      size: 3,
+      filename: "stored.png",
+    })
+    await ctx.db.insert("channelMediaUploads", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      mediaId: "meta-upload",
+      contentType: "image/png",
+      filename: "meta.png",
+      size: 4,
+      expiresAt: Date.now() + 86400_000,
+    })
+    return id
+  })
+  const id = await f.t.run((ctx) =>
+    createChannelMessage(
+      ctx,
+      {
+        channel: "whatsapp",
+        from: f.account,
+        to: SENDER,
+        body: {
+          interactive: {
+            type: "carousel",
+            body: { text: "Choose" },
+            action: {
+              cards: [
+                { id: fileId },
+                { id: "meta-upload" },
+                { link: "https://example.com/image.png" },
+              ].map((image, card_index) => ({
+                card_index,
+                type: "cta_url",
+                header: { type: "image", image },
+                action: {
+                  name: "cta_url",
+                  parameters: {
+                    display_text: "Visit",
+                    url: "https://example.com",
+                  },
+                },
+              })),
+            },
+          },
+        },
+      },
+      { organizationId: f.owner.team, source: "api" }
+    )
+  )
+  const content = (await rows(f)).contents.find((row) => row.messageId === id)!
+  expect(content.media).toHaveLength(3)
+  expect(content.media).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        fileId,
+        mediaId: fileId,
+        mimeType: "image/png",
+        filename: "stored.png",
+      }),
+      expect.objectContaining({
+        mediaId: "meta-upload",
+        mimeType: "image/png",
+        filename: "meta.png",
+      }),
+      expect.objectContaining({ url: "https://example.com/image.png" }),
+    ])
+  )
+  expect(
+    await f.t.run((ctx) => ctx.db.get("storedFiles", fileId))
+  ).toMatchObject({ references: 1 })
+  await f.t.run(async (ctx) => {
+    const message = (await ctx.db.get("channelMessages", id))!
+    await acceptChannelMessage(ctx, message, "wamid.carousel", Date.now())
+  })
+  const jobs = await f.t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  const mediaIds = jobs
+    .flatMap((job) =>
+      job.args.map((args) => (args as { mediaId?: string }).mediaId)
+    )
+    .filter(Boolean)
+  expect(mediaIds).toContain("link:2")
+  expect(mediaIds).not.toContain(fileId)
+  expect(mediaIds).not.toContain("meta-upload")
+  await expect(
+    f.t.run((ctx) =>
+      createChannelMessage(
+        ctx,
+        {
+          channel: "whatsapp",
+          from: f.account,
+          to: SENDER,
+          body: { audio: { id: fileId, voice: true } },
+        },
+        { organizationId: f.owner.team, source: "api" }
+      )
+    )
+  ).rejects.toMatchObject({
+    data: expect.objectContaining({
+      message: expect.stringContaining("incompatible"),
+    }),
+  })
 })

@@ -1,5 +1,6 @@
 "use client"
 
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -230,78 +231,83 @@ export function TemplatesView() {
           className="ml-auto w-auto"
         />
       </ListToolbar>
-      {loading === "LoadingFirstPage" || hasTemplates === undefined ? (
-        <Skeleton className="h-40 w-full" />
-      ) : !hasTemplates ? (
-        <EmptyState
-          icon={FileCodeIcon}
-          title="No templates yet"
-          description="Create a new template to reuse in your emails."
-        >
-          {createButton}
-        </EmptyState>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={FileCodeIcon}
-          title="No templates found"
-          description="Nothing matches this search and these filters."
-        />
-      ) : (
-        <>
-          {layout === "grid" ? (
-            <ul
-              data-testid="templates-grid"
-              className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-x-6 gap-y-8"
-            >
-              {pageRows.map((item) => (
-                <TemplateCard key={item.id} item={item} />
-              ))}
-            </ul>
-          ) : (
-            <ResourceTable
-              headers={
-                <>
-                  <Th>Name</Th>
-                  <Th>Channel</Th>
-                  <Th>Status</Th>
-                  <Th>Alias</Th>
-                  <Th>Updated</Th>
-                  <Th className="w-10" />
-                </>
-              }
-            >
-              {pageRows.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <Link
-                      href={`/templates/${item.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {item.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <ChannelCell channel={item.channel} />
-                  </TableCell>
-                  <TableCell>
-                    <TemplateBadge item={item} />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <MonoValue copyValue={item.alias}>{item.alias}</MonoValue>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <RelativeTime at={item.updatedAt} />
-                  </TableCell>
-                  <TableCell>
-                    <TemplateMenu item={item} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </ResourceTable>
-          )}
-          <ListPagination {...pagination} noun="template" />
-        </>
-      )}
+      <InstanceChannelConfiguration
+        channel={channel === "email" ? "email" : "meta"}
+        required={channel !== "all"}
+      >
+        {loading === "LoadingFirstPage" || hasTemplates === undefined ? (
+          <Skeleton className="h-40 w-full" />
+        ) : !hasTemplates ? (
+          <EmptyState
+            icon={FileCodeIcon}
+            title="No templates yet"
+            description="Create a new template to reuse in your emails."
+          >
+            {createButton}
+          </EmptyState>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={FileCodeIcon}
+            title="No templates found"
+            description="Nothing matches this search and these filters."
+          />
+        ) : (
+          <>
+            {layout === "grid" ? (
+              <ul
+                data-testid="templates-grid"
+                className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-x-6 gap-y-8"
+              >
+                {pageRows.map((item) => (
+                  <TemplateCard key={item.id} item={item} />
+                ))}
+              </ul>
+            ) : (
+              <ResourceTable
+                headers={
+                  <>
+                    <Th>Name</Th>
+                    <Th>Channel</Th>
+                    <Th>Status</Th>
+                    <Th>Alias</Th>
+                    <Th>Updated</Th>
+                    <Th className="w-10" />
+                  </>
+                }
+              >
+                {pageRows.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <Link
+                        href={`/templates/${item.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {item.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <ChannelCell channel={item.channel} />
+                    </TableCell>
+                    <TableCell>
+                      <TemplateBadge item={item} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <MonoValue copyValue={item.alias}>{item.alias}</MonoValue>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <RelativeTime at={item.updatedAt} />
+                    </TableCell>
+                    <TableCell>
+                      <TemplateMenu item={item} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </ResourceTable>
+            )}
+            <ListPagination {...pagination} noun="template" />
+          </>
+        )}
+      </InstanceChannelConfiguration>
     </>
   )
 }

@@ -12,8 +12,12 @@ import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
 import type { ThreadMessage } from "@/convex/conversations"
-import { useTeamList } from "@/components/dashboard/primitives"
-import { useTeamQuery } from "@/components/auth/workspace"
+import {
+  useTeamList,
+  useLoadedPagination,
+} from "@/components/dashboard/primitives"
+import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
+import { pagedListState, PAGE_SIZES } from "@/lib/dashboard/pagination"
 import { asEmail } from "@/lib/emails/use-emails"
 import { asReceived } from "@/lib/received/use-received"
 import type {
@@ -157,6 +161,24 @@ export function useConversationList(filters: {
   return useTeamList(api.conversations.list, api.conversations.count, filters)
 }
 
+export function useContactConversations(contactId: string) {
+  const { activeTeamId } = useWorkspace()
+  const query = pagedListState(
+    usePaginatedQuery(
+      api.conversations.contactHistory,
+      activeTeamId
+        ? {
+            organizationId: activeTeamId,
+            contactId: contactId as Id<"contacts">,
+          }
+        : "skip",
+      { initialNumItems: PAGE_SIZES[0] }
+    ),
+    !activeTeamId
+  )
+  return { ...query, ...useLoadedPagination(query.results, query) }
+}
+
 export function useConversation(id: string | null) {
   return useQuery(api.conversations.get, id ? { id } : "skip")
 }
@@ -172,7 +194,7 @@ export function useThread(id: Id<"conversations"> | undefined) {
     { initialNumItems: THREAD_PAGE }
   )
   const messages = React.useMemo(
-    () => [...query.results].reverse(),
+    () => [...query.results].reverse() as ThreadMessage[],
     [query.results]
   )
   const { loadMore } = query
@@ -214,8 +236,9 @@ export function useTemplateVariables(
 }
 
 export function useConversationCommands() {
+  const typing = useMutation(api.conversations.typing)
   const markRead = useMutation(api.conversations.markRead)
   const setStatus = useMutation(api.conversations.setStatus)
   const reply = useMutation(api.conversations.reply)
-  return { markRead, setStatus, reply }
+  return { markRead, setStatus, reply, typing }
 }

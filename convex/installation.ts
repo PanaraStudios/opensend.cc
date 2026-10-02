@@ -9,6 +9,9 @@ import {
   allRegionsReady,
   defaultCallbackOrigin,
   findInstallation,
+  instanceChannels,
+  metaAppReady,
+  findMetaApp,
   findRegion,
   findTenant,
   installationAccess,
@@ -31,6 +34,12 @@ import { resubscribe } from "./ses/inboundRegions"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc } from "./_generated/dataModel"
 
+import {
+  emailSetupRequired,
+  metaSetupRequired,
+  nextSetupStep,
+  setupSteps,
+} from "../lib/dashboard/installation-setup"
 export { findInstallation }
 /* Every member needs the setup state to route the dashboard, so the AWS
    account, its key hint, the callback URL and the regional quotas are the
@@ -59,6 +68,8 @@ export const status = query({
   args: {},
   returns: v.object({
     admin: v.boolean(),
+    emailConfigured: v.boolean(),
+    channels: v.object({ email: v.boolean(), meta: v.boolean() }),
     suggestedCallbackOrigin: v.string(),
     installation: v.union(v.null(), publicInstallation),
     regions: v.array(publicRegion),
@@ -73,6 +84,9 @@ export const status = query({
           _creationTime: installation._creationTime,
           key: installation.key,
           completedAt: installation.completedAt,
+          emailDeferredAt: installation.emailDeferredAt,
+          metaDeferredAt: installation.metaDeferredAt,
+          channels: installation.channels,
           defaultRegion: installation.defaultRegion,
           setupStep: installation.setupStep,
           ...(admin
@@ -89,8 +103,11 @@ export const status = query({
             : {}),
         }
       : null
+    const channels = await instanceChannels(ctx)
     return {
       admin,
+      channels,
+      emailConfigured: channels.email,
       suggestedCallbackOrigin: admin ? defaultCallbackOrigin() : "",
       installation: safe,
       regions: (await listRegions(ctx)).map((region) => ({
@@ -136,8 +153,9 @@ export const saveEncryptionKey = internalMutation({
       ...(!installation.wrappedEncryptionKey
         ? { wrappedEncryptionKey: args.wrappedKey }
         : {}),
-      ...(!installation.setupStep || installation.setupStep === "welcome"
-        ? { setupStep: "aws" as const }
+      ...(!installation.completedAt &&
+      (!installation.setupStep || installation.setupStep === "welcome")
+        ? { setupStep: "channels" as const }
         : {}),
     }
     if (Object.keys(changes).length)
@@ -145,6 +163,84 @@ export const saveEncryptionKey = internalMutation({
     return null
   },
 })
+export const deferEmail = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await findInstallation(ctx)
+    if (!installation) throw new ConvexError("Start setup first")
+    if (installation.completedAt || installation.setupStep !== "aws")
+      throw new ConvexError("Defer email at the AWS step of installation setup")
+    if (installation.accountId)
+      throw new ConvexError("AWS is already connected")
+    await ctx.db.patch("installation", installation._id, {
+      emailDeferredAt: installation.emailDeferredAt ?? Date.now(),
+      setupStep: nextSetupStep(
+        { ...installation, emailDeferredAt: Date.now() },
+        "aws"
+      ),
+    })
+    return null
+  },
+})
+
+export const chooseChannels = mutation({
+  args: { email: v.boolean(), meta: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, channels) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await findInstallation(ctx)
+    if (!installation || installation.completedAt)
+      throw new ConvexError("Choose channels during installation setup")
+    if (!channels.email && !channels.meta)
+      throw new ConvexError("Choose at least one channel")
+    await ctx.db.patch("installation", installation._id, {
+      channels,
+      setupStep: "callback",
+    })
+    return null
+  },
+})
+export const deferMeta = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await requireInstallationAdmin(ctx)
+    const installation = await findInstallation(ctx)
+    if (
+      !installation ||
+      installation.completedAt ||
+      installation.setupStep !== "meta" ||
+      !installation.channels?.meta
+    )
+      throw new ConvexError(
+        "Defer Meta at the Meta app step of installation setup"
+      )
+    await ctx.db.patch("installation", installation._id, {
+      metaDeferredAt: Date.now(),
+      setupStep: "team",
+    })
+    return null
+  },
+})
+/** Shared prerequisite check for navigation and first-team creation. */
+export async function requireProvidersReady(
+  ctx: QueryCtx | MutationCtx,
+  installation: Doc<"installation">
+) {
+  if (!installation.environmentCheckedAt)
+    throw new ConvexError("Check your public callback URL first")
+  if (emailSetupRequired(installation)) {
+    if (!installation.accountId) throw new ConvexError("Connect AWS first")
+    if (!allRegionsReady(await listRegions(ctx)))
+      throw new ConvexError("Finish setting up your AWS regions first")
+  }
+  if (metaSetupRequired(installation) && !metaAppReady(await findMetaApp(ctx)))
+    throw new ConvexError(
+      "Save and verify the Meta app and subscribe webhooks first"
+    )
+}
 export const navigate = mutation({
   args: { step: setupStepValue },
   returns: v.null(),
@@ -153,20 +249,51 @@ export const navigate = mutation({
     const installation = await findInstallation(ctx)
     if (!installation) throw new ConvexError("Start setup first")
     if (
-      ["callback", "resources", "team", "domain"].includes(step) &&
-      !installation.accountId
+      !installation.channels &&
+      installation.setupStep === "channels" &&
+      !["welcome", "channels"].includes(step)
     )
-      throw new ConvexError("Connect AWS first")
-    if (
-      ["resources", "team", "domain"].includes(step) &&
-      !installation.environmentCheckedAt
-    )
-      throw new ConvexError("Check your delivery updates URL first")
-    if (
-      ["team", "domain"].includes(step) &&
-      !allRegionsReady(await listRegions(ctx))
-    )
-      throw new ConvexError("Finish setting up your AWS regions first")
+      throw new ConvexError("Choose channels first")
+    if (installation.channels) {
+      if (!setupSteps(installation).includes(step))
+        throw new ConvexError("This step is not needed for the chosen channels")
+      if (
+        ["aws", "resources", "meta", "team", "domain"].includes(step) &&
+        !installation.environmentCheckedAt
+      )
+        throw new ConvexError("Check your public callback URL first")
+      if (step === "resources" && !installation.accountId)
+        throw new ConvexError("Connect AWS first")
+      if (
+        ["meta", "team", "domain"].includes(step) &&
+        emailSetupRequired(installation)
+      ) {
+        if (!installation.accountId) throw new ConvexError("Connect AWS first")
+        if (!allRegionsReady(await listRegions(ctx)))
+          throw new ConvexError("Finish setting up your AWS regions first")
+      }
+      if (["team", "domain"].includes(step))
+        await requireProvidersReady(ctx, installation)
+    } else {
+      if (
+        ["callback", "resources", "team", "domain"].includes(step) &&
+        !installation.accountId &&
+        (!installation.emailDeferredAt ||
+          ["resources", "domain"].includes(step))
+      )
+        throw new ConvexError("Connect AWS first")
+      if (
+        ["resources", "team", "domain"].includes(step) &&
+        !installation.environmentCheckedAt
+      )
+        throw new ConvexError("Check your public callback URL first")
+      if (
+        ["team", "domain"].includes(step) &&
+        !installation.emailDeferredAt &&
+        !allRegionsReady(await listRegions(ctx))
+      )
+        throw new ConvexError("Finish setting up your AWS regions first")
+    }
     await ctx.db.patch("installation", installation._id, { setupStep: step })
     return null
   },
@@ -199,6 +326,17 @@ export const recordPolicyRevision = internalMutation({
     return null
   },
 })
+/** A subscription proves delivery only to the callback URL it used. */
+async function invalidateMetaCallback(
+  ctx: MutationCtx,
+  previous: string,
+  next: string
+) {
+  if (previous === next) return
+  const app = await findMetaApp(ctx)
+  if (app?.webhookSubscribedAt)
+    await ctx.db.patch("metaApps", app._id, { webhookSubscribedAt: undefined })
+}
 export const saveEnvironment = internalMutation({
   args: { siteUrl: v.string(), callbackOrigin: v.string() },
   returns: v.id("installation"),
@@ -215,11 +353,23 @@ export const saveEnvironment = internalMutation({
         throw new ConvexError(
           "Connection URLs are already in use. Keep the configured origins while provisioning resources."
         )
+      await invalidateMetaCallback(
+        ctx,
+        installation.callbackOrigin,
+        args.callbackOrigin
+      )
       await ctx.db.patch("installation", installation._id, {
         ...args,
         environmentCheckedAt: Date.now(),
         ...(!installation.completedAt
-          ? { setupStep: "resources" as const }
+          ? {
+              setupStep:
+                installation.channels?.email &&
+                installation.accountId &&
+                emailSetupRequired(installation)
+                  ? "resources"
+                  : nextSetupStep(installation, "callback"),
+            }
           : {}),
       })
       return installation._id
@@ -239,7 +389,8 @@ async function callbackMove(
   callbackOrigin: string
 ) {
   await requireInstallationAdmin(ctx)
-  const installation = await requireConnection(ctx)
+  const installation = await findInstallation(ctx)
+  if (!installation) throw new ConvexError("Start setup first")
   // Tracking CNAMEs point at its hostname, so it cannot carry a port.
   try {
     trackingTarget(callbackOrigin)
@@ -291,6 +442,11 @@ export const moveCallbackOrigin = internalMutation({
       ctx,
       callbackOrigin
     )
+    await invalidateMetaCallback(
+      ctx,
+      installation.callbackOrigin,
+      callbackOrigin
+    )
     await ctx.db.patch("installation", installation._id, {
       callbackOrigin,
       environmentCheckedAt: Date.now(),
@@ -306,10 +462,11 @@ export const moveCallbackOrigin = internalMutation({
     for (const row of inbound)
       if (row.operation === "provision" && row.topicArn)
         await resubscribe(ctx, row)
-    await startWorkflow(ctx, internal.ses.workflows.moveCallbackOrigin, {
-      regionIds: subscribed.map((region) => region._id),
-      regions: regions.map((region) => region.region),
-    })
+    if (regions.length || inbound.length)
+      await startWorkflow(ctx, internal.ses.workflows.moveCallbackOrigin, {
+        regionIds: subscribed.map((region) => region._id),
+        regions: regions.map((region) => region.region),
+      })
     return null
   },
 })
@@ -342,6 +499,10 @@ export const activateConnection = internalMutation({
       )
     await ctx.db.patch("installation", installation._id, {
       accountId: args.accountId,
+      emailDeferredAt: undefined,
+      ...(installation.channels
+        ? { channels: { ...installation.channels, email: true } }
+        : {}),
       credentialKind: args.credentialKind,
       encryptedCredentials: args.encryptedCredentials,
       accessKeyLast4: args.accessKeyLast4,
@@ -349,7 +510,14 @@ export const activateConnection = internalMutation({
       credentialRevision: args.revision + 1,
       // New credentials may belong to a user with an older policy.
       policyRevision: undefined,
-      ...(!installation.completedAt ? { setupStep: "callback" as const } : {}),
+      ...(!installation.completedAt
+        ? {
+            setupStep: nextSetupStep(
+              { ...installation, emailDeferredAt: undefined },
+              "aws"
+            ),
+          }
+        : {}),
     })
     for (const item of args.regions) {
       const current = existing.find((r) => r.region === item.region)
@@ -398,7 +566,8 @@ export const complete = mutation({
     return null
   },
 })
-/** Setup ends once the first domain is saved; DNS and identity review happen in the dashboard. */
+/** A checked callback and team finish deferred-email setup. Email-first setup
+    also needs the first domain; DNS review happens in the dashboard. */
 export async function completeInstallation(
   ctx: MutationCtx,
   organizationId: string
@@ -406,10 +575,18 @@ export async function completeInstallation(
   await requireInstallationAdmin(ctx)
   await requireTeam(ctx, organizationId, "admin")
   const installation = await findInstallation(ctx)
-  if (!installation?.accountId) throw new ConvexError("Connect AWS first")
+  if (!installation) throw new ConvexError("Start setup first")
   if (installation.completedAt) return
   if (!installation.environmentCheckedAt)
-    throw new ConvexError("Check delivery updates first")
+    throw new ConvexError("Check your public callback URL first")
+  if (installation.channels) await requireProvidersReady(ctx, installation)
+  if (!emailSetupRequired(installation)) {
+    await ctx.db.patch("installation", installation._id, {
+      completedAt: Date.now(),
+    })
+    return
+  }
+  if (!installation.accountId) throw new ConvexError("Connect AWS first")
   const domains = await ctx.db
     .query("domains")
     .withIndex("by_organizationId_and_deleted_and_name", (q) =>

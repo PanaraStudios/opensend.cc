@@ -15,6 +15,7 @@ import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
+  ApiKeyPermissionLabel,
   DeleteApiKeyDialog,
 } from "@/components/dashboard/api-keys/shared"
 import {
@@ -38,7 +39,7 @@ import {
 import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
-import { permissionLabel, pluralize } from "@/lib/dashboard/format"
+import { pluralize } from "@/lib/dashboard/format"
 import { useDomain } from "@/lib/domains/use-domains"
 import { asLog } from "@/lib/logs/use-logs"
 
@@ -102,7 +103,10 @@ export function ApiKeyDetail() {
       />
       <MetaStrip
         items={[
-          { label: "Permission", value: permissionLabel(apiKey.permission) },
+          {
+            label: "Permission",
+            value: <ApiKeyPermissionLabel apiKey={apiKey} />,
+          },
           {
             label: "Domain",
             value: apiKeyDomainLabel(domain ? [domain] : [], apiKey),

@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import { WhatsAppIcon } from "@/components/brand-icons"
+import { channelIcon } from "@/components/dashboard/channels/shared"
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -51,7 +51,9 @@ export const STEP_ICONS: Record<AutomationRunStep["type"], LucideIcon> = {
   delay: ClockIcon,
   wait_for_event: HourglassIcon,
   send_email: SendIcon,
-  send_whatsapp: WhatsAppIcon as LucideIcon,
+  send_whatsapp: channelIcon("whatsapp") as LucideIcon,
+  send_messenger: channelIcon("messenger") as LucideIcon,
+  send_instagram: channelIcon("instagram") as LucideIcon,
   contact_update: UserPenIcon,
   contact_delete: UserMinusIcon,
   add_to_segment: UsersIcon,

@@ -40,7 +40,6 @@ import {
   ConfirmDialog,
   DocsButton,
   EmptyState,
-  IconCell,
   ListPagination,
   ListToolbar,
   MonoValue,
@@ -79,7 +78,7 @@ import {
   contactIdentity,
   type ContactInput,
 } from "@/lib/dashboard/contacts"
-import { channelIcon } from "@/components/dashboard/channels/shared"
+import { channelHandle } from "@/lib/meta/account-display"
 import { normalizePhone } from "@/lib/dashboard/phone"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { formatDate, pluralize } from "@/lib/dashboard/format"
@@ -842,6 +841,7 @@ export function ContactsView() {
                 <Th>Contact</Th>
                 <Th>Email</Th>
                 <Th>Phone</Th>
+                <Th>Username</Th>
                 <Th>First name</Th>
                 <Th>Last name</Th>
                 <Th>Created</Th>
@@ -849,83 +849,78 @@ export function ContactsView() {
               </>
             }
           >
-            {pageRows.map((contact) => (
-              <TableRow key={contact.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={selectedSet.has(contact.id)}
-                    onCheckedChange={(checked) =>
-                      toggleOne(contact.id, checked === true)
-                    }
-                    aria-label={`Select ${contactIdentity(contact).label}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={`/contacts/${contact.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {!contact.email &&
-                    !contact.phone &&
-                    contact.channelIdentity ? (
-                      <IconCell
-                        icon={channelIcon(contact.channelIdentity.channel)}
-                      >
-                        <div className="flex min-w-0 flex-col">
-                          <span className="truncate">
-                            {contactIdentity(contact).label}
-                          </span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {contact.channelIdentity.externalId}
-                          </span>
-                        </div>
-                      </IconCell>
-                    ) : (
-                      contactIdentity(contact).label
-                    )}
-                  </Link>
-                  {contact.unsubscribed ? (
-                    <Badge variant="secondary" className="ml-2">
-                      Unsubscribed
-                    </Badge>
-                  ) : null}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {contact.email || "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {contact.phone || "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {contact.firstName || "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {contact.lastName || "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDate(contact.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        render={<Link href={`/contacts/${contact.id}`} />}
-                      >
-                        <PencilIcon />
-                        Edit Contact
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setPendingDelete(contact.id)}
-                      >
-                        <Trash2Icon />
-                        Delete Contact
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+            {pageRows.map((contact) => {
+              const identity = contactIdentity(contact)
+              return (
+                <TableRow key={contact.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedSet.has(contact.id)}
+                      onCheckedChange={(checked) =>
+                        toggleOne(contact.id, checked === true)
+                      }
+                      aria-label={`Select ${identity.label}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/contacts/${contact.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {/* Email, phone and username have their own columns. */}
+                      {identity.label}
+                    </Link>
+                    {contact.unsubscribed ? (
+                      <Badge variant="secondary" className="ml-2">
+                        Unsubscribed
+                      </Badge>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contact.email || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contact.phone || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contact.channelIdentity?.username
+                      ? channelHandle(
+                          "instagram",
+                          contact.channelIdentity.username
+                        )
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contact.firstName || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contact.lastName || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(contact.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          render={<Link href={`/contacts/${contact.id}`} />}
+                        >
+                          <PencilIcon />
+                          Edit Contact
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setPendingDelete(contact.id)}
+                        >
+                          <Trash2Icon />
+                          Delete Contact
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </ResourceTable>
           <ListPagination {...pagination} noun="contact" />
         </>

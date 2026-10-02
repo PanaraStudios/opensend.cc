@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { callingRoutingSchema } from "../services/call-gateway/src/voice/routing"
 import { resolve } from "node:path"
 import SwaggerParser from "@apidevtools/swagger-parser"
 import Ajv2020, { type AnySchema } from "ajv/dist/2020"
@@ -13,6 +14,7 @@ import {
 } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
 import { SESv2Client } from "@aws-sdk/client-sesv2"
+import { API_SCOPES, scopeName } from "../lib/api-scopes"
 import type { ApiRouteOptions } from "./api/route"
 import { api, components, internal } from "./_generated/api"
 import { WEBHOOK_EVENTS } from "../lib/dashboard/types"
@@ -40,15 +42,15 @@ import {
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
-  () => [] as Pick<ApiRouteOptions, "method" | "path" | "permission">[]
+  () => [] as Pick<ApiRouteOptions, "method" | "path" | "scope">[]
 )
 vi.mock("./api/route", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/route")>()
   return {
     ...actual,
     apiRoute: (...args: Parameters<typeof actual.apiRoute>) => {
-      const { method, path, permission } = args[1]
-      registrations.push({ method, path, permission })
+      const { method, path, scope } = args[1]
+      registrations.push({ method, path, scope })
       return actual.apiRoute(...args)
     },
   }
@@ -58,7 +60,7 @@ import http from "./http"
 
 type Operation = {
   operationId: string
-  "x-opensend-permission": string
+  "x-opensend-scope": string
   requestBody?: { content: Record<string, { schema: AnySchema }> }
   responses: Record<
     string,
@@ -243,6 +245,37 @@ describe("OpenAPI contract", () => {
       },
       { path: `/${PHONE_ID}/media`, respond: () => ({ id: "media-contract" }) },
     ])
+    const inboundMessage = await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").order("desc").first()
+    )
+    await response(
+      "/whatsapp/messages/{id}/read",
+      "POST",
+      await call(`/whatsapp/messages/${inboundMessage!._id}/read`, "POST", {
+        typing: true,
+      })
+    )
+    await response(
+      "/whatsapp/messages/{id}/read",
+      "POST",
+      await call(`/whatsapp/messages/${inboundMessage!._id}/read`, "POST", {}),
+      202
+    )
+    await response(
+      "/whatsapp/messages/{id}",
+      "GET",
+      await call(`/whatsapp/messages/${inboundMessage!._id}`)
+    )
+    await response(
+      "/whatsapp/conversations/{id}/typing",
+      "POST",
+      await call(
+        `/whatsapp/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: true }
+      ),
+      202
+    )
     const body = { to: SENDER, text: { body: "Contract", preview_url: true } }
     validateBody(contract.components.schemas.SendWhatsAppMessage, body)
     validateBody(contract.components.schemas.SendWhatsAppMessage, {
@@ -398,7 +431,7 @@ describe("OpenAPI contract", () => {
     )
   })
 
-  test("is OpenAPI 3.1 and exactly covers every registered REST method/path and permission", () => {
+  test("is OpenAPI 3.1 and exactly covers every registered REST method/path and scope", () => {
     expect(contract.openapi).toBe("3.1.0")
     expect(registrations.length).toBeGreaterThan(0)
     const actual = registrations
@@ -435,6 +468,13 @@ describe("OpenAPI contract", () => {
       "POST /ses/inbound",
       "GET /meta/webhook",
       "POST /meta/webhook",
+      "POST /calling/gateway/events",
+      "POST /calling/gateway/ivr/start",
+      "POST /calling/gateway/ivr/next",
+      "GET /calling/ivr/audio/*",
+      "POST /calling/gateway/voice/session",
+      "POST /calling/gateway/voice/tools",
+      "POST /calling/gateway/voice/events",
       "GET /t/o/*",
       "GET /t/c/*",
       "GET /t/ask",
@@ -446,14 +486,33 @@ describe("OpenAPI contract", () => {
       .map(([path, method]) => `${method} ${path}`)
       .filter((route) => !dispatchRoutes.has(route))
     expect(directRoutes.sort()).toEqual(protocols.sort())
-    for (const { path, method, permission } of registrations)
+    for (const { path, method, scope } of registrations) {
+      expect(scope).toBeDefined()
       expect(
-        contract.paths[path][method.toLowerCase()]["x-opensend-permission"]
-      ).toBe(permission)
+        contract.paths[path][method.toLowerCase()]["x-opensend-scope"]
+      ).toBe(scopeName(scope))
+      if (scope !== "full_access")
+        expect(scope.access).toBe(
+          method === "GET" || path === "/ivrs/{id}/validate" ? "read" : "write"
+        )
+    }
     const ids = Object.values(contract.paths).flatMap((ops) =>
       Object.values(ops).map((op) => op.operationId)
     )
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test("every registered route declares a catalog scope and API key scopes match the catalog", () => {
+    for (const { scope } of registrations) {
+      expect(scope).toBeDefined()
+      expect(
+        scope === "full_access" ||
+          API_SCOPES.includes(scopeName(scope) as (typeof API_SCOPES)[number])
+      ).toBe(true)
+    }
+    expect(contract.components.schemas.ApiScope).toMatchObject({
+      enum: API_SCOPES,
+    })
   })
 
   test("all request/response schemas compile as JSON Schema 2020-12", () => {
@@ -1223,6 +1282,51 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       ctx.db.query("metaWebhookEvents").order("desc").first()
     )
     await f.t.mutation(internal.meta.projection.project, { id: event!._id })
+    const inboundMessage = await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").order("desc").first()
+    )
+    await response(
+      `/${channel}/messages/{id}/read`,
+      "POST",
+      await call(`/${channel}/messages/${inboundMessage!._id}/read`, "POST", {
+        typing: true,
+      })
+    )
+    await response(
+      `/${channel}/messages/{id}/read`,
+      "POST",
+      await call(
+        `/${channel}/messages/${inboundMessage!._id}/read`,
+        "POST",
+        {}
+      ),
+      202
+    )
+    await response(
+      `/${channel}/messages/{id}`,
+      "GET",
+      await call(`/${channel}/messages/${inboundMessage!._id}`)
+    )
+    await response(
+      `/${channel}/conversations/{id}/typing`,
+      "POST",
+      await call(
+        `/${channel}/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: false }
+      ),
+      202
+    )
+    vi.advanceTimersByTime(5000)
+    await response(
+      `/${channel}/conversations/{id}/typing`,
+      "POST",
+      await call(
+        `/${channel}/conversations/${inboundMessage!.conversationId}/typing`,
+        "POST",
+        { on: false }
+      )
+    )
     const to = channel === "messenger" ? PSID : IGSID,
       resource = channel === "messenger" ? "pages" : "accounts",
       externalId = channel === "messenger" ? PAGE_ID : IG_ID
@@ -1308,4 +1412,250 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       await call(`/templates/${template.id}/publish`, "POST", {})
     )
   }
+})
+
+test("WhatsApp catalog request, response and customer webhook examples validate per type", async () => {
+  const { whatsappSendExamples, whatsappInboundExamples } =
+    await import("../lib/meta/whatsapp-fixtures")
+  const { readFileSync } = await import("node:fs")
+  // The dereferenced contract retains examples as well as the schema.
+  type ExamplesContent = {
+    schema: AnySchema
+    examples: Record<string, { value: unknown }>
+  }
+  const operation = contract.paths["/whatsapp/messages"].post
+  const requests = operation.requestBody!.content[
+    "application/json"
+  ] as ExamplesContent
+  const responses = contract.paths["/whatsapp/messages/{id}"].get.responses[
+    "200"
+  ].content["application/json"] as ExamplesContent
+  for (const name of Object.keys(whatsappSendExamples)) {
+    expect(requests.examples[name], name).toBeDefined()
+    validateBody(requests.schema, requests.examples[name].value)
+    validateBody(responses.schema, responses.examples[`sent_${name}`].value)
+  }
+  validateBody(requests.schema, requests.examples.bsuid.value)
+  for (const name of Object.keys(whatsappInboundExamples))
+    validateBody(responses.schema, responses.examples[name].value)
+  const source = readFileSync(resolve("openapi/opensend.yaml"), "utf8")
+  expect(source).toContain("whatsapp.message.played")
+  const webhook = (
+    contract as Contract & {
+      webhooks: {
+        whatsappMessage: {
+          post: {
+            requestBody: { content: { "application/json": ExamplesContent } }
+          }
+        }
+      }
+    }
+  ).webhooks.whatsappMessage.post.requestBody.content["application/json"]
+  for (const name of [
+    ...Object.keys(whatsappSendExamples).map((n) => `sent_${n}`),
+    ...Object.keys(whatsappInboundExamples),
+  ]) {
+    expect(webhook.examples[name], name).toBeDefined()
+    validateBody(webhook.schema, webhook.examples[name].value)
+  }
+})
+
+test("calling REST settings, permissions, lifecycle and idempotent connect validate real response schemas", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "calling-contract-key-".repeat(3))
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+  const { CALLING_TEST_SDP: sdp } = await import("../lib/meta/calling-fixtures")
+  const f = await inboundFixture()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  const { token } = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: {
+      name: "Calling contract",
+      permission: "full_access",
+      domainId: null,
+    },
+  })
+  const call = (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    idempotencyKey?: string
+  ) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+  }
+  const calling = {
+    status: "ENABLED",
+    call_icon_visibility: "DEFAULT",
+    call_hours: { status: "DISABLED" },
+  }
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling }),
+    },
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        messaging_product: "whatsapp",
+        permission: { status: "granted" },
+        actions: [],
+      }),
+    },
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (c) =>
+        (c.body as { action: string }).action === "connect"
+          ? { calls: [{ id: "wacid.contract" }] }
+          : { success: true },
+    },
+  ])
+  await response(
+    "/whatsapp/phone-numbers/{id}/calling",
+    "POST",
+    await call(`/whatsapp/phone-numbers/${PHONE_ID}/calling`, "POST", {
+      calling,
+      handling_mode: "api",
+    })
+  )
+  await response(
+    "/whatsapp/phone-numbers/{id}/calling",
+    "GET",
+    await call(`/whatsapp/phone-numbers/${PHONE_ID}/calling`)
+  )
+  await response(
+    "/whatsapp/call-permissions",
+    "GET",
+    await call("/whatsapp/call-permissions?recipient=US.42")
+  )
+  const input = {
+    recipient: "US.42",
+    route: "api",
+    session: { sdp_type: "offer", sdp },
+  }
+  validateBody(contract.components.schemas.ConnectWhatsAppCall, input)
+  const created = await response(
+    "/whatsapp/calls",
+    "POST",
+    await call("/whatsapp/calls", "POST", input, "connect-contract")
+  )
+  expect(
+    await response(
+      "/whatsapp/calls",
+      "POST",
+      await call("/whatsapp/calls", "POST", input, "connect-contract")
+    )
+  ).toEqual(created)
+  expect(graph.to(`/${PHONE_ID}/calls`)).toHaveLength(1)
+  await response("/whatsapp/calls", "GET", await call("/whatsapp/calls"))
+  await response(
+    "/whatsapp/calls/{id}",
+    "GET",
+    await call(`/whatsapp/calls/${created.id}`)
+  )
+  await response(
+    "/whatsapp/calls/{id}/terminate",
+    "POST",
+    await call(`/whatsapp/calls/${created.id}/terminate`, "POST", {})
+  )
+})
+
+test("IVR definitions, dry-run validation and customer completion sample validate against the public schemas", async () => {
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-key-".repeat(6))
+  const f = await fixture()
+  const key = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: { name: "IVR schema", permission: "full_access", domainId: null },
+  })
+  const call = (path: string, method = "GET", body?: unknown) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${key.token}`,
+        "content-type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  }
+  const input = {
+    name: "Reception",
+    language: "en",
+    entryMenuId: "main",
+    menus: [
+      {
+        id: "main",
+        name: "Main",
+        prompt: { kind: "tts", text: "Press one" },
+        options: { "1": { kind: "voicemail" } },
+        noInputAction: { kind: "hangup" },
+        failureAction: { kind: "hangup" },
+      },
+    ],
+  }
+  const created = await response(
+    "/ivrs",
+    "POST",
+    await call("/ivrs", "POST", input),
+    201
+  )
+  await response("/ivrs", "GET", await call("/ivrs"))
+  await response("/ivrs/{id}", "GET", await call(`/ivrs/${created.id}`))
+  await response(
+    "/ivrs/{id}",
+    "PATCH",
+    await call(`/ivrs/${created.id}`, "PATCH", { name: "Updated" })
+  )
+  await response(
+    "/ivrs/{id}/validate",
+    "POST",
+    await call(`/ivrs/${created.id}/validate`, "POST", {
+      entryMenuId: "missing",
+    })
+  )
+  await response(
+    "/ivrs/{id}",
+    "DELETE",
+    await call(`/ivrs/${created.id}`, "DELETE")
+  )
+  const spec = contract as unknown as {
+    webhooks: {
+      whatsappCallIvrCompleted: {
+        post: {
+          requestBody: {
+            content: {
+              "application/json": { schema: AnySchema; example: unknown }
+            }
+          }
+        }
+      }
+    }
+  }
+  const sample =
+    spec.webhooks.whatsappCallIvrCompleted.post.requestBody.content[
+      "application/json"
+    ]
+  validateBody(sample.schema, sample.example)
+})
+
+test("calling routing contract derives all four targets from the shared definition", () => {
+  expect(contract.components.schemas.CallingRouting).toEqual(
+    callingRoutingSchema
+  )
 })

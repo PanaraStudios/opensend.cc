@@ -442,7 +442,10 @@ test("SC identity: list, detail, suggestions and Inbox hydrate channel-only cont
   const thread = await f.t.run((ctx) => ctx.db.query("conversations").first())
   expect(
     await f.owner.client.query(api.conversations.get, { id: thread!._id })
-  ).toMatchObject({ name: PSID, contact: { channelIdentity: expected } })
+  ).toMatchObject({
+    name: "Unknown contact",
+    contact: { channelIdentity: expected },
+  })
   await expect(
     f.outsider.client.query(api.contacts.get, { id: identity!.contactId! })
   ).rejects.toMatchObject({ data: "You do not have permission" })

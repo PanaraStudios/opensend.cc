@@ -10,6 +10,8 @@ import type {
   AutomationStep,
 } from "@/lib/dashboard/types"
 
+import { isChannelSendStep } from "../channels"
+
 import { flattenSteps } from "@/lib/dashboard/automation"
 
 export function useStepContext(steps: AutomationStep[]) {
@@ -19,7 +21,9 @@ export function useStepContext(steps: AutomationStep[]) {
       ...new Set(
         flat.flatMap((step) =>
           step.type === "send_email" ||
-          (step.type === "send_whatsapp" && step.templateId)
+          ("templateId" in step &&
+            isChannelSendStep(step.type) &&
+            step.templateId)
             ? [step.templateId!]
             : []
         )

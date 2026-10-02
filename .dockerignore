@@ -6,6 +6,9 @@ node_modules
 .codex
 coverage
 packages
+# SDK sources hold shared contracts (WhatsApp catalog, calling types) that the app
+# and Convex import directly; its specs stay out via **/*.spec.* below.
+!packages/sdk/src
 *.tsbuildinfo
 .pnpm-store
 .playwright-mcp

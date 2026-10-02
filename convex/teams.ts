@@ -1,10 +1,11 @@
+import { withAssets, clearAsset } from "./storage/assets"
 import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server"
 import { env } from "./_generated/server"
 import { mutation, query, action } from "./_generated/server"
-import { components, internal } from "./_generated/api"
+import { api, components, internal } from "./_generated/api"
 import { v, ConvexError } from "convex/values"
 import {
   sessionId,
@@ -25,6 +26,11 @@ import {
 } from "./betterAuth/teams"
 import { sendAuthEmail } from "./authEmail"
 import { ensureTeamTenant, removeTeamTenants } from "./tenants"
+import {
+  emailSetupRequired,
+  nextSetupStep,
+} from "../lib/dashboard/installation-setup"
+import { requireProvidersReady } from "./installation"
 import { retirement } from "./teamLifecycle"
 const role = v.union(v.literal("admin"), v.literal("member"))
 /** A team is deleted only once it has no domains; its tenants go with it. */
@@ -53,9 +59,13 @@ export const snapshot = query({
   returns: v.union(v.null(), snapshotValue),
   handler: async (ctx) => {
     try {
-      return await ctx.runQuery(components.betterAuth.teams.snapshot, {
-        sessionId: await sessionId(ctx),
-      })
+      const snapshot = await ctx.runQuery(
+        components.betterAuth.teams.snapshot,
+        {
+          sessionId: await sessionId(ctx),
+        }
+      )
+      return { ...snapshot, teams: await withAssets(ctx, snapshot.teams) }
     } catch (error) {
       // MFA enrollment and logout can revoke the old JWT before the provider
       // fetches its replacement. Render the signed-out state instead of crashing.
@@ -84,9 +94,10 @@ export const create = mutation({
       if (
         !access.admin ||
         installation?.setupStep !== "team" ||
-        !installation.accountId ||
+        (emailSetupRequired(installation) && !installation.accountId) ||
         !installation.environmentCheckedAt ||
-        !allRegionsReady(await listRegions(ctx)) ||
+        (emailSetupRequired(installation) &&
+          !allRegionsReady(await listRegions(ctx))) ||
         (
           await ctx.runQuery(components.betterAuth.teams.snapshot, {
             sessionId: sid,
@@ -97,6 +108,8 @@ export const create = mutation({
           "Create your first team at the team step of installation setup"
         )
     }
+    if (installation && !installation.completedAt)
+      await requireProvidersReady(ctx, installation)
     const id = await ctx.runMutation(components.betterAuth.teams.create, {
       ...args,
       sessionId: sid,
@@ -110,7 +123,7 @@ export const create = mutation({
       await ensureTeamTenant(ctx, id, installation.defaultRegion)
     if (installation && !installation.completedAt)
       await ctx.db.patch("installation", installation._id, {
-        setupStep: "domain",
+        setupStep: nextSetupStep(installation, "team"),
       })
     return id
   },
@@ -245,17 +258,44 @@ export const uploadAvatar = action({
     contentType: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, args) =>
-    ctx.runAction(components.betterAuth.teams.uploadAvatar, {
-      ...args,
-      sessionId: await sessionId(ctx),
-    }),
+  handler: async (ctx, args): Promise<null> => {
+    await requireTeam(ctx, args.organizationId, "admin")
+    if (
+      !args.bytes.byteLength ||
+      args.bytes.byteLength > 1048576 ||
+      !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+        args.contentType
+      )
+    )
+      throw new ConvexError("Upload an image up to 1 MB")
+    const storageId = await ctx.storage.store(
+      new Blob([args.bytes], { type: args.contentType })
+    )
+    const ref = await ctx.runAction(internal.storage.objects.adopt, {
+      organizationId: args.organizationId,
+      feature: "asset",
+      storageId,
+      contentType: args.contentType,
+    })
+    try {
+      await ctx.runMutation(api.storage.assets.set, {
+        organizationId: args.organizationId,
+        fileId: ref.fileId!,
+      })
+    } catch (e) {
+      await ctx.runMutation(internal.storage.files.discard, ref)
+      throw e
+    }
+    return null
+  },
 })
 export const removeAvatar = mutation({
   args: { organizationId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireSetupComplete(ctx)
+    await requireTeam(ctx, args.organizationId, "admin")
+    await clearAsset(ctx, args.organizationId)
     return ctx.runMutation(components.betterAuth.teams.setAvatar, {
       ...args,
       sessionId: await sessionId(ctx),
@@ -266,11 +306,13 @@ export const removeAvatar = mutation({
 export const list = query({
   args: { paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(teamValue),
-  handler: async (ctx, args) =>
-    ctx.runQuery(components.betterAuth.teams.list, {
+  handler: async (ctx, args) => {
+    const page = await ctx.runQuery(components.betterAuth.teams.list, {
       ...args,
       sessionId: await sessionId(ctx),
-    }),
+    })
+    return { ...page, page: await withAssets(ctx, page.page) }
+  },
 })
 export const members = query({
   args: { organizationId: v.string(), paginationOpts: paginationOptsValidator },

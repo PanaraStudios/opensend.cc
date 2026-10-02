@@ -8,6 +8,7 @@ export const broadcastChannel = v.union(
 )
 export const skipReasonValue = v.union(
   v.literal("no_phone"),
+  v.literal("no_channel_identity"),
   v.literal("no_email"),
   v.literal("unsubscribed"),
   v.literal("topic_opt_out"),
@@ -143,6 +144,7 @@ export const broadcastTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_email", ["organizationId", "email"])
+    .index("by_organizationId_and_contactId", ["organizationId", "contactId"])
     .index("by_broadcastId_and_sent", ["broadcastId", "sent"])
     .index("by_broadcastId_and_email", ["broadcastId", "email"])
     .index("by_broadcastId_and_contactId", ["broadcastId", "contactId"])

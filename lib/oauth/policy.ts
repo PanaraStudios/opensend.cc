@@ -1,6 +1,10 @@
+import { API_SCOPES, scopeLabel, type ApiScope } from "../api-scopes"
 import { toHex } from "../tokens/signed"
 /** The only public permission registry. offline_access is protocol-internal. */
 export const oauthScopes = {
+  ...(Object.fromEntries(
+    API_SCOPES.map((scope) => [scope, scopeLabel(scope)])
+  ) as Record<ApiScope, string>),
   "emails:send": "Send emails",
   full_access: "Full team access",
 } as const

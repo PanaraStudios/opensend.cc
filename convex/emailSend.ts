@@ -1,4 +1,5 @@
 "use node"
+import { readFile } from "./storage/objects"
 import {
   DeleteSuppressedDestinationCommand,
   SendEmailCommand,
@@ -35,7 +36,7 @@ export const deliver = internalAction({
     try {
       const attachments = await Promise.all(
         message.attachments.map(async (attachment) => {
-          const blob = await ctx.storage.get(attachment.storageId)
+          const blob = await readFile(ctx, attachment)
           if (!blob) throw new ConvexError("An attachment is missing")
           return {
             RawContent: new Uint8Array(await blob.arrayBuffer()),

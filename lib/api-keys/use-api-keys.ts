@@ -19,6 +19,7 @@ export function asApiKey(row: ApiKeyRow): ApiKey {
     tokenPrefix: row.tokenPrefix,
     tokenLast4: row.tokenLast4,
     permission: row.permission,
+    scopes: row.scopes ?? [],
     domainId: row.domainId ?? null,
     createdAt: row._creationTime,
     lastUsedAt: row.lastUsedAt,
@@ -26,7 +27,7 @@ export function asApiKey(row: ApiKeyRow): ApiKey {
   }
 }
 
-type KeyValues = Pick<ApiKey, "name" | "permission" | "domainId">
+type KeyValues = Pick<ApiKey, "name" | "permission" | "domainId" | "scopes">
 
 export function useApiKeyCommands() {
   const workspace = useWorkspace()

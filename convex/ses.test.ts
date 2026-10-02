@@ -1285,7 +1285,7 @@ test("wizard progress persists and cannot skip missing setup prerequisites", asy
   )
   await expect(
     f.owner.client.mutation(api.installation.navigate, { step: "team" })
-  ).rejects.toThrow("delivery updates")
+  ).rejects.toThrow("public callback")
   await expect(
     f.outsider.client.mutation(api.installation.navigate, { step: "aws" })
   ).rejects.toThrow("installation administrator")
@@ -1555,7 +1555,13 @@ describe("native SES team tenants", () => {
     await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
     expect(f.aws.calls).not.toContain("DeleteTenantCommand")
     expect(f.aws.calls).not.toContain("DeleteEmailIdentityCommand")
-    expect((await f.owner.client.query(api.tenants.cleanup, { paginationOpts: { cursor: null, numItems: 20 } })).page).toHaveLength(1)
+    expect(
+      (
+        await f.owner.client.query(api.tenants.cleanup, {
+          paginationOpts: { cursor: null, numItems: 20 },
+        })
+      ).page
+    ).toHaveLength(1)
     await expect(
       f.outsider.client.mutation(api.tenants.retryCleanup, { id: f.tenant })
     ).rejects.toThrow("installation administrator")

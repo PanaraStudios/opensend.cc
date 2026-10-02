@@ -25,9 +25,19 @@ import {
   directionValue,
   messagingChannelValue,
 } from "../tables/channels"
-import { channelMessagePayload } from "../channels/payload"
+import {
+  channelMessagePayload,
+  hydratedChannelMessage,
+} from "../channels/payload"
 import { mediaDownloadLink } from "../channels/downloads"
-import { callerValue, requireCaller, notFound, type Caller } from "./caller"
+import {
+  callerValue,
+  requireCaller,
+  notFound,
+  invalid,
+  apiError,
+  type Caller,
+} from "./caller"
 import {
   apiRoute,
   listParams,
@@ -65,20 +75,31 @@ async function ownConversation(
   })
 }
 export const get = internalQuery({
-  args: { caller: callerValue, channel: messagingChannelValue, id: v.string() },
+  args: {
+    caller: callerValue,
+    channel: messagingChannelValue,
+    id: v.string(),
+    now: v.optional(v.number()),
+  },
   returns: v.union(
     v.null(),
     v.object({
       message: schema.doc("channelMessages"),
       content: v.union(v.null(), schema.doc("channelMessageContents")),
       events: v.array(schema.doc("channelMessageEvents")),
+      normalized: v.record(v.string(), v.any()),
     })
   ),
-  handler: async (ctx, { caller, channel, id }) => {
+  handler: async (ctx, { caller, channel, id, now }) => {
     await requireCaller(ctx, caller)
     const message = await ownMessage(ctx, caller, channel, id)
     if (!message) return null
     return {
+      normalized: await hydratedChannelMessage(
+        ctx,
+        message,
+        now ?? message._creationTime
+      ),
       message,
       content: await ctx.db
         .query("channelMessageContents")
@@ -101,10 +122,12 @@ export const list = internalQuery({
     direction: v.optional(directionValue),
     phoneNumberId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    now: v.optional(v.number()),
   },
   returns: v.object({
     has_more: v.boolean(),
     data: v.array(schema.doc("channelMessages")),
+    normalized: v.array(v.record(v.string(), v.any())),
   }),
   handler: async (
     ctx,
@@ -115,6 +138,7 @@ export const list = internalQuery({
       direction,
       phoneNumberId,
       conversationId,
+      now,
       ...page
     }
   ) => {
@@ -133,7 +157,7 @@ export const list = internalQuery({
       (!direction || row.direction === direction) &&
       (!account || row.accountId === account._id) &&
       (!conversation || row.conversationId === conversation._id)
-    return cursorPage(
+    const result = await cursorPage(
       page,
       async (id) => {
         const row = await ownMessage(ctx, caller, channel, id)
@@ -156,6 +180,14 @@ export const list = internalQuery({
         )
       }
     )
+    return {
+      ...result,
+      normalized: await Promise.all(
+        result.data.map((m) =>
+          hydratedChannelMessage(ctx, m, now ?? m._creationTime)
+        )
+      ),
+    }
   },
 })
 async function findAccount(
@@ -289,22 +321,55 @@ export function channelMessageRoutes(channel: Channel) {
       apiRoute(http, {
         method: "POST",
         path: `${prefix}/messages`,
-        permission: "sending",
+        scope: { resource: channel, access: "write" },
         handler: adapters.send,
       })
     if (adapters.media)
       apiRoute(http, {
         method: "POST",
         path: `${prefix}/media`,
-        permission: "sending",
+        scope: { resource: channel, access: "write" },
         bodyFormat: "multipart-binary",
         maxBody: adapters.media.maxBody,
         handler: adapters.media.handler,
       })
+    for (const read of [true, false]) {
+      apiRoute(http, {
+        method: "POST",
+        path: read
+          ? `${prefix}/messages/{id}/read`
+          : `${prefix}/conversations/{id}/typing`,
+        scope: { resource: channel, access: "write" },
+        handler: async (ctx, { caller, params, body }) => {
+          const input = objectBody(body)
+          const field = read ? "typing" : "on"
+          const value = input[field]
+          if ((!read || value !== undefined) && typeof value !== "boolean")
+            throw invalid(`The \`${field}\` field must be a boolean.`)
+          const job = await ctx.runMutation(
+            internal.channels.controls.prepare,
+            {
+              caller,
+              channel,
+              id: params.id,
+              read,
+              ...(typeof value === "boolean" ? { typing: value } : {}),
+            }
+          )
+          if (!job) return { status: 202, body: { id: params.id } }
+          const result = await ctx.runAction(
+            internal.channels.controlActions.send,
+            job
+          )
+          if (result.error) throw apiError(502, "meta_api_error", result.error)
+          return { body: { id: params.id } }
+        },
+      })
+    }
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/messages`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => {
         const filters = Object.fromEntries(
           ["status", "direction"].map((key) => [
@@ -316,17 +381,20 @@ export function channelMessageRoutes(channel: Channel) {
           caller,
           channel,
           ...listParams(query),
+          now: Date.now(),
           status: enumField(filters, "status", CHANNEL_MESSAGE_STATUSES),
           direction: enumField(filters, "direction", DIRECTIONS),
           phoneNumberId: query.get(definition.idParam) ?? undefined,
         })
-        return { body: listBody(result, (m) => channelMessagePayload(m)) }
+        return {
+          body: listBody({ ...result, data: result.normalized }, (m) => m),
+        }
       },
     })
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/messages/{id}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, params }) => ({
         body: await detail(ctx, caller, channel, params.id),
       }),
@@ -334,7 +402,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/${accountResource}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => ({
         body: listBody(
           await ctx.runQuery(internal.api.channelMessages.accounts, {
@@ -349,7 +417,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/${accountResource}/{id}`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, params }) => {
         const result = await ctx.runQuery(
           internal.api.channelMessages.accounts,
@@ -362,7 +430,7 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/conversations`,
-      permission: "full_access",
+      scope: { resource: channel, access: "read" },
       handler: async (ctx, { caller, query }) => ({
         body: listBody(
           await ctx.runQuery(internal.api.channelMessages.conversations, {
@@ -377,18 +445,19 @@ export function channelMessageRoutes(channel: Channel) {
     apiRoute(http, {
       method: "GET",
       path: `${prefix}/conversations/{id}/messages`,
-      permission: "full_access",
-      handler: async (ctx, { caller, query, params }) => ({
-        body: listBody(
-          await ctx.runQuery(internal.api.channelMessages.list, {
-            caller,
-            channel,
-            ...listParams(query),
-            conversationId: params.id,
-          }),
-          (m) => channelMessagePayload(m)
-        ),
-      }),
+      scope: { resource: channel, access: "read" },
+      handler: async (ctx, { caller, query, params }) => {
+        const result = await ctx.runQuery(internal.api.channelMessages.list, {
+          caller,
+          channel,
+          ...listParams(query),
+          conversationId: params.id,
+          now: Date.now(),
+        })
+        return {
+          body: listBody({ ...result, data: result.normalized }, (m) => m),
+        }
+      },
     })
   }
 }
@@ -402,6 +471,7 @@ async function detail(
     caller,
     channel,
     id,
+    now: Date.now(),
   })
   if (!result) throw notFound("Message")
   const payload = result.content
@@ -409,6 +479,7 @@ async function detail(
     : {}
   return {
     ...channelMessagePayload(result.message, payload),
+    ...result.normalized,
     last_event: result.message.status,
     events: result.events.map((e) => ({
       type: e.type,
@@ -419,7 +490,9 @@ async function detail(
       (result.content?.media ?? []).map(async (file) => {
         const link =
           file.mediaId &&
-          (file.storageId || result.message.direction === "outbound")
+          (file.storageId ||
+            file.fileId ||
+            result.message.direction === "outbound")
             ? await mediaDownloadLink(ctx, result.message._id, file.mediaId)
             : null
         return {
@@ -448,7 +521,12 @@ export function channelSendInput(body: unknown, channel: Channel) {
   })
   const fields =
     channel === "whatsapp"
-      ? WHATSAPP_SEND_TYPES
+      ? [
+          ...WHATSAPP_SEND_TYPES,
+          "recipient",
+          "context",
+          "biz_opaque_callback_data",
+        ]
       : ["text", "attachment", "template", "quick_replies", "tag"]
   const messageBody = Object.fromEntries(
     fields
@@ -462,9 +540,17 @@ export function channelSendInput(body: unknown, channel: Channel) {
   return {
     channel,
     from: stringField(input, "from"),
-    to: stringField(input, "to", true)!,
+    to: stringField(
+      input,
+      "to",
+      channel !== "whatsapp" || input.recipient === undefined
+    ),
     body: messageBody,
-    replyTo: stringField(input, "reply_to"),
+    replyTo:
+      stringField(input, "reply_to") ??
+      (channel === "whatsapp" && input.context
+        ? stringField(objectBody(input.context), "message_id", true)
+        : undefined),
     tags,
   }
 }

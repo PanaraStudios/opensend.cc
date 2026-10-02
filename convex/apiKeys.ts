@@ -29,6 +29,7 @@ import {
 import { filteredPage, matchesSearch, readTeamRow, hasTeamRows } from "./lists"
 import { logCount } from "./logs"
 import { createToken, tokenParts } from "../lib/dashboard/ids"
+import { parseScopes, scopeAllows } from "../lib/api-scopes"
 import { tokenHash } from "../lib/oauth/policy"
 
 /** `lastUsedAt` is written at most this often per key. */
@@ -37,7 +38,8 @@ const USAGE_INTERVAL = 60_000
 export const keyInput = v.object({
   name: v.string(),
   permission: apiKeyPermissionValue,
-  /** Sending access only; any other value is ignored for full access. */
+  scopes: v.optional(v.array(v.string())),
+  /** Sending access or custom emails:write; ignored otherwise. */
   domainId: v.optional(v.union(v.null(), v.string())),
 })
 type KeyInput = Infer<typeof keyInput>
@@ -65,14 +67,15 @@ export async function viewKey(ctx: QueryCtx, key: Doc<"apiKeys">) {
     tokenPrefix: key.tokenPrefix,
     tokenLast4: key.tokenLast4,
     permission: key.permission,
+    scopes: key.scopes,
     domainId: key.domainId,
     createdBy: key.createdBy,
     lastUsedAt: await lastUsed(ctx, key._id),
   }
 }
 
-/** Checks a name, permission and domain, and settles the domain: only a
-    sending key keeps one, and it must be a live domain of the same team. */
+/** Validate scopes and keep a domain only for sending access or custom
+    email writes. A new restriction must belong to a live domain of the team. */
 async function settle(
   ctx: MutationCtx,
   organizationId: string,
@@ -84,15 +87,29 @@ async function settle(
   if (!name) throw new ConvexError("Enter a name")
   if (name.length > 50)
     throw new ConvexError("The name must be at most 50 characters")
-  if (input.permission !== "sending_access" || !input.domainId)
-    return { name, permission: input.permission, domainId: undefined }
-  if (input.domainId === current)
-    return { name, permission: input.permission, domainId: current }
+  let scopes: string[] | undefined
+  try {
+    if (input.scopes !== undefined || input.permission === "custom")
+      scopes = parseScopes(input.scopes)
+  } catch (error) {
+    throw new ConvexError(
+      error instanceof Error ? error.message : "Invalid scopes"
+    )
+  }
+  if (input.permission !== "custom") scopes = undefined
+  const settled = { name, permission: input.permission, scopes }
+  const domainAllowed =
+    input.permission === "sending_access" ||
+    (input.permission === "custom" &&
+      scopeAllows(scopes ?? [], "emails", "write"))
+  if (!domainAllowed || !input.domainId)
+    return { ...settled, domainId: undefined }
+  if (input.domainId === current) return { ...settled, domainId: current }
   const id = ctx.db.normalizeId("domains", input.domainId)
   const domain = id ? await ctx.db.get("domains", id) : null
   if (!domain || domain.deleted || domain.organizationId !== organizationId)
     throw new ConvexError("Domain not found")
-  return { name, permission: input.permission, domainId: domain._id }
+  return { ...settled, domainId: domain._id }
 }
 
 /** A new key's token, made where randomness is real (an action). */
@@ -139,6 +156,7 @@ export async function patchKey(
     {
       name: patch.name ?? key.name,
       permission: patch.permission ?? key.permission,
+      scopes: patch.scopes ?? key.scopes,
       domainId: patch.domainId === undefined ? key.domainId : patch.domainId,
     },
     key.domainId

@@ -19,6 +19,7 @@ const COUNT_COMPONENTS = [
   "usageReceivedCounts",
   "usageAutomationCounts",
   "channelMessageCounts",
+  "voiceMinuteUsage",
   "conversationCounts",
   "broadcastMessageCounts",
   "channelAccountCounts",
@@ -58,10 +59,8 @@ const COUNT_COMPONENTS = [
   "emailEventCounts",
 ]
 const authModules = import.meta.glob("../betterAuth/**/*.ts")
-/** A connected us-east-1 installation on the current IAM policy revision: the
-    bootstrap admin ("owner") with a ready tenant and one domain, and a second
-    user ("outsider") with a team of their own. */
-export async function fixture() {
+/** Registered components and verified users, without installation or teams. */
+export async function authFixture() {
   const t = convexTest(schema, modules)
   t.registerComponent("betterAuth", authSchema, authModules)
   workpoolTest.register(t, "inboundPool")
@@ -70,7 +69,7 @@ export async function fixture() {
   rateLimiterTest.register(t)
   for (const name of COUNT_COMPONENTS) aggregateTest.register(t, name)
   migrationsTest.register(t)
-  async function actor(name: string, bootstrap = false) {
+  async function account(name: string, bootstrap = false) {
     const user = await t.mutation(components.betterAuth.adapter.create, {
       input: {
         model: "user",
@@ -101,12 +100,24 @@ export async function fixture() {
         email: user.email,
       })
     const client = t.withIdentity({ subject: user._id, sessionId: session._id })
+    return { client, user, session }
+  }
+  async function actor(name: string, bootstrap = false) {
+    const user = await account(name, bootstrap)
     const team = await t.mutation(components.betterAuth.teams.create, {
       name,
-      sessionId: session._id,
+      sessionId: user.session._id,
     })
-    return { client, team, user, session }
+    return { ...user, team }
   }
+  return { t, account, actor }
+}
+
+/** A connected us-east-1 installation on the current IAM policy revision: the
+    bootstrap admin ("owner") with a ready tenant and one domain, and a second
+    user ("outsider") with a team of their own. */
+export async function fixture() {
+  const { t, actor } = await authFixture()
   const owner = await actor("owner", true)
   const outsider = await actor("outsider")
   const installation = await owner.client.mutation(

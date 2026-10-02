@@ -190,7 +190,7 @@ test("multipart alternatives and inline/file attachments preserve their bytes", 
   })
   expect(
     await f.t.run(async (ctx) =>
-      (await ctx.storage.get(files[0].storageId))?.text()
+      (await ctx.storage.get(files[0].storageId!))?.text()
     )
   ).toBe("image")
 })
@@ -216,7 +216,7 @@ test("malformed MIME is visible and retains raw storage", async () => {
   expect(email.parseError).toBeTruthy()
   expect(email.subject).toBe("Fallback")
   expect(
-    await f.t.run(async (ctx) => (await ctx.storage.get(rawId))?.size)
+    await f.t.run(async (ctx) => (await ctx.storage.get(rawId!))?.size)
   ).toBeGreaterThan(0)
   expect(
     (
@@ -393,7 +393,7 @@ test("REST errors reject restricted keys, wrong teams, bad ids and pagination", 
     input: { name: "Send", permission: "sending_access", domainId: null },
   })
   expect((await request(f, "/emails/receiving", sending.token)).status).toBe(
-    401
+    403
   )
 })
 test("download URLs expire, reject tampering, and never expose permanent storage URLs", async () => {
@@ -422,7 +422,7 @@ test("retention deletes MIME, contents and attachments and keeps SNS tombstones"
   )
   await f.t.mutation(internal.received.prune, {})
   for (const storageId of [rawId, ...attachments.map((row) => row.storageId)])
-    expect(await f.t.run((ctx) => ctx.storage.get(storageId))).toBeNull()
+    expect(await f.t.run((ctx) => ctx.storage.get(storageId!))).toBeNull()
   expect(
     await f.t.run((ctx) => ctx.db.query("receivedContents").collect())
   ).toEqual([])

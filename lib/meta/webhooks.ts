@@ -39,15 +39,17 @@ export const STATUS_RANK = {
   sent: 1,
   delivered: 2,
   read: 3,
-  failed: 4,
+  played: 4,
+  failed: 5,
   received: 0,
 } as const
 export const outboundStatus = (
   value: unknown
-): "sent" | "delivered" | "read" | "failed" | null =>
+): "sent" | "delivered" | "read" | "played" | "failed" | null =>
   value === "sent" ||
   value === "delivered" ||
   value === "read" ||
+  value === "played" ||
   value === "failed"
     ? value
     : null
@@ -69,10 +71,15 @@ export type InboundItem = {
   files: {
     mediaId: string
     contentType: string
+    mimeType?: string
     filename?: string
     url?: string
   }[]
   phone?: string
+  userId?: string
+  parentUserId?: string
+  username?: string
+  identityKeyHash?: string
   at: number
   data: Record<string, unknown>
 }
@@ -84,6 +91,9 @@ export type StatusItem = {
   at: number
   data: Record<string, unknown>
 }
+export type PaymentItem = Omit<StatusItem, "kind" | "status"> & {
+  kind: "payment"
+}
 export type WebhookItem = {
   channel: MessagingChannel
   accountId: string
@@ -91,6 +101,7 @@ export type WebhookItem = {
 } & (
   | InboundItem
   | StatusItem
+  | PaymentItem
   | {
       kind: "watermark"
       sender: string
@@ -127,22 +138,44 @@ export function whatsappWebhookItems(
   const items: WebhookItem[] = []
   for (const raw of array(value.messages)) {
     const data = object(raw),
-      externalId = string(data.id),
-      sender = toWaId(string(data.from))
-    const phone = normalizePhone(fromWaId(sender))
-    if (!externalId || !sender || !phone) continue
+      externalId = string(data.id)
+    const waId = toWaId(string(data.from))
+    const userId = string(data.from_user_id)
+    const sender = waId || userId
+    const phone = waId ? normalizePhone(fromWaId(waId)) : undefined
+    if (!externalId || !sender || (waId && !phone)) continue
     const type = oneOf(data.type, CHANNEL_MESSAGE_TYPES) ?? "unsupported",
       media = object(data[type])
     const profile = array(value.contacts)
       .map(object)
-      .find((contact) => string(contact.wa_id) === sender)
+      .find(
+        (contact) =>
+          (waId && string(contact.wa_id) === waId) ||
+          (userId && string(contact.user_id) === userId)
+      )
     const mediaId = string(media.id)
     items.push({
       ...base,
       kind: "message",
       externalId,
       sender,
-      phone,
+      ...(phone ? { phone } : {}),
+      ...(userId || string(profile?.user_id)
+        ? { userId: userId || string(profile?.user_id) }
+        : {}),
+      ...(string(data.from_parent_user_id) || string(profile?.parent_user_id)
+        ? {
+            parentUserId:
+              string(data.from_parent_user_id) ||
+              string(profile?.parent_user_id),
+          }
+        : {}),
+      ...(string(object(profile?.profile).username)
+        ? { username: string(object(profile?.profile).username) }
+        : {}),
+      ...(string(profile?.identity_key_hash)
+        ? { identityKeyHash: string(profile?.identity_key_hash) }
+        : {}),
       type,
       profileName: string(object(profile?.profile).name),
       preview: (type === "text"
@@ -158,6 +191,9 @@ export function whatsappWebhookItems(
                 mediaId,
                 contentType:
                   string(media.mime_type) || "application/octet-stream",
+                ...(string(media.mime_type)
+                  ? { mimeType: string(media.mime_type) }
+                  : {}),
                 ...(string(media.filename)
                   ? { filename: string(media.filename) }
                   : {}),
@@ -170,12 +206,23 @@ export function whatsappWebhookItems(
     const data = object(raw),
       status = outboundStatus(data.status),
       externalId = string(data.id)
+    if (data.type === "payment" && externalId) {
+      items.push({
+        ...base,
+        kind: "payment",
+        externalId,
+        sender: string(data.recipient_id) || string(data.recipient_user_id),
+        at: timestamp(data.timestamp, fallback),
+        data,
+      })
+      continue
+    }
     if (status && externalId)
       items.push({
         ...base,
         kind: "status",
         externalId,
-        sender: string(data.recipient_id),
+        sender: string(data.recipient_id) || string(data.recipient_user_id),
         status,
         at: timestamp(data.timestamp, fallback),
         data,

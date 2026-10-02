@@ -5,93 +5,127 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   ImageIcon,
+  MapPinIcon,
   PhoneIcon,
   ReplyIcon,
   VideoIcon,
   type LucideIcon,
 } from "lucide-react"
 
-import { Bubble, BubbleContent, BubbleGroup } from "@/components/ui/bubble"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
-import {
-  buttonLabel,
-  fillParams,
-  formExample,
-  type ButtonType,
-  type HeaderFormat,
-  type TemplateForm,
-} from "@/lib/meta/templates"
+import { Separator } from "@/components/ui/separator"
+import { type RenderedTemplate } from "@/lib/meta/templates"
 import { cn } from "@/lib/utils"
 
-const HEADER_ICONS: Partial<Record<HeaderFormat, LucideIcon>> = {
+const HEADER_ICONS: Partial<
+  Record<NonNullable<RenderedTemplate["header"]>["format"], LucideIcon>
+> = {
   IMAGE: ImageIcon,
   VIDEO: VideoIcon,
   DOCUMENT: FileTextIcon,
+  LOCATION: MapPinIcon,
 }
-const BUTTON_ICONS: Record<ButtonType, LucideIcon> = {
+const BUTTON_ICONS: Partial<Record<string, LucideIcon>> = {
   QUICK_REPLY: ReplyIcon,
   URL: ExternalLinkIcon,
   PHONE_NUMBER: PhoneIcon,
   COPY_CODE: CopyIcon,
 }
 
-/** A WhatsApp template as the person receives it, variables shown with
-    their examples. The editor's preview and the list's cards both draw it. */
+/** One customer-facing template view. Embedded content inherits the Inbox
+ * bubble's colors without adding another bubble or card around it. */
 export function WhatsAppTemplatePreview({
-  form,
+  rendered,
+  embedded = false,
   className,
+  showButtons = true,
+  showHeader = true,
 }: {
-  form: TemplateForm
+  rendered: RenderedTemplate
+  embedded?: boolean
   className?: string
+  showButtons?: boolean
+  showHeader?: boolean
 }) {
-  const example = (where: "header" | "body") => (param: string) =>
-    formExample(form, where, param)?.trim() || undefined
-  const MediaIcon = HEADER_ICONS[form.headerFormat]
+  const MediaIcon = rendered.header && HEADER_ICONS[rendered.header.format]
+  const content = (
+    <div
+      className={cn("flex flex-col gap-1.5", embedded && className)}
+      data-testid="whatsapp-preview"
+    >
+      {showHeader && MediaIcon ? (
+        <div
+          className="flex aspect-[1.91/1] w-56 max-w-full items-center justify-center rounded-lg bg-muted text-muted-foreground"
+          aria-label={`${rendered.header!.format.toLowerCase()} header`}
+        >
+          <MediaIcon className="size-8" />
+        </div>
+      ) : null}
+      {showHeader &&
+      rendered.header?.format === "TEXT" &&
+      rendered.header.text ? (
+        <p className="font-semibold whitespace-pre-wrap">
+          {rendered.header.text}
+        </p>
+      ) : null}
+      <p
+        className={cn(
+          "whitespace-pre-wrap",
+          !rendered.body && "text-muted-foreground"
+        )}
+      >
+        {rendered.body || "Your message"}
+      </p>
+      {rendered.footer ? (
+        <p
+          className={cn(
+            "text-xs",
+            embedded ? "opacity-70" : "text-muted-foreground"
+          )}
+        >
+          {rendered.footer}
+        </p>
+      ) : null}
+      {rendered.cards?.length ? (
+        <div className="flex max-w-full gap-2 overflow-x-auto">
+          {rendered.cards.map((card, index) => (
+            <div key={index} className="w-56 shrink-0">
+              <WhatsAppTemplatePreview
+                rendered={card}
+                embedded
+                showButtons={showButtons}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {(showButtons ? rendered.buttons : []).map((button, index) => {
+        const Icon = BUTTON_ICONS[button.type]
+        return (
+          <div key={index} className="flex flex-col gap-1.5">
+            <Separator />
+            <div
+              className={cn(
+                "flex min-w-40 items-center justify-center gap-1.5",
+                !embedded && "text-primary"
+              )}
+            >
+              {Icon ? <Icon className="size-4 shrink-0" /> : null}
+              {button.text}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+  if (embedded) return content
   return (
-    <Message className={className} data-testid="whatsapp-preview">
+    <Message className={className}>
       <MessageContent>
-        <BubbleGroup>
-          <Bubble variant="outline" className="max-w-[90%]">
-            <BubbleContent className="flex flex-col gap-1.5">
-              {MediaIcon ? (
-                <div className="flex aspect-[1.91/1] w-56 max-w-full items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                  <MediaIcon className="size-8" />
-                </div>
-              ) : null}
-              {form.headerFormat === "TEXT" && form.headerText ? (
-                <p className="font-semibold">
-                  {fillParams(form.headerText, example("header"))}
-                </p>
-              ) : null}
-              <p
-                className={cn(
-                  "whitespace-pre-wrap",
-                  !form.body && "text-muted-foreground"
-                )}
-              >
-                {form.body
-                  ? fillParams(form.body, example("body"))
-                  : "Your message"}
-              </p>
-              {form.footer ? (
-                <p className="text-xs text-muted-foreground">{form.footer}</p>
-              ) : null}
-            </BubbleContent>
-          </Bubble>
-          {form.buttons.map((button, index) => {
-            const Icon = BUTTON_ICONS[button.type]
-            return (
-              <Bubble key={index} variant="outline" className="max-w-[90%]">
-                <BubbleContent className="flex min-w-40 items-center justify-center gap-1.5 text-primary">
-                  <Icon className="size-4" />
-                  {button.type === "COPY_CODE"
-                    ? buttonLabel(button.type)
-                    : button.text || buttonLabel(button.type)}
-                </BubbleContent>
-              </Bubble>
-            )
-          })}
-        </BubbleGroup>
+        <Bubble variant="outline" className="max-w-[90%]">
+          <BubbleContent>{content}</BubbleContent>
+        </Bubble>
       </MessageContent>
     </Message>
   )

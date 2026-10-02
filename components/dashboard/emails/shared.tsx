@@ -1,5 +1,18 @@
 "use client"
+import { SendMessageAction } from "../conversation/send-message-action"
 
+import * as React from "react"
+import { Badge } from "@/components/ui/badge"
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item"
+import { channelIcon } from "@/components/dashboard/channels/shared"
+import type { ConversationItem } from "@/lib/messages/use-messages"
 import { DownloadIcon, FileIcon } from "lucide-react"
 import {
   Attachment,
@@ -17,6 +30,7 @@ import { useMediaDownload, type MediaFile } from "@/lib/messages/use-messages"
 
 import {
   SectionChrome,
+  RelativeTime,
   channelMessageStatusDotClassName,
   emailStatusDotClassName,
   type SelectOption,
@@ -130,7 +144,16 @@ export function EmailsChrome({
   children?: React.ReactNode
 }) {
   return (
-    <SectionChrome title="Messages" tabs={EMAIL_TABS} actions={actions}>
+    <SectionChrome
+      title="Messages"
+      tabs={EMAIL_TABS}
+      actions={
+        <>
+          <SendMessageAction />
+          {actions}
+        </>
+      }
+    >
       {children}
     </SectionChrome>
   )
@@ -184,5 +207,49 @@ export function MessageFiles({
         </Attachment>
       ))}
     </AttachmentGroup>
+  )
+}
+
+/** A conversation's preview row, shared by Inbox and contact history. */
+export function ConversationRow({
+  conversation,
+  title,
+  render,
+  selected = false,
+}: {
+  conversation: ConversationItem["conversation"]
+  title: string
+  render: React.ReactElement
+  selected?: boolean
+}) {
+  return (
+    <Item
+      size="sm"
+      variant={selected ? "muted" : "default"}
+      aria-current={selected || undefined}
+      render={render}
+      data-testid="conversation"
+    >
+      <ItemMedia variant="icon">
+        {React.createElement(channelIcon(conversation.channel))}
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <ItemTitle>{title}</ItemTitle>
+        <ItemDescription className="line-clamp-1">
+          {conversation.lastDirection === "outbound" ? "You: " : ""}
+          {conversation.lastPreview}
+        </ItemDescription>
+      </ItemContent>
+      <ItemActions className="flex-col items-end gap-1 self-start">
+        <span className="text-xs text-muted-foreground">
+          <RelativeTime at={conversation.lastMessageAt} />
+        </span>
+        {conversation.unread ? (
+          <Badge variant="primary" aria-label="Unread">
+            {conversation.unreadCount || 1}
+          </Badge>
+        ) : null}
+      </ItemActions>
+    </Item>
   )
 }

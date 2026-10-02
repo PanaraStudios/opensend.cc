@@ -276,7 +276,7 @@ export function registerMetricsRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/metrics",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, query }) => ({
       body: JSON.parse(
         await ctx.runQuery(internal.api.metrics.get, {

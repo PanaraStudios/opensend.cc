@@ -2,6 +2,9 @@
 import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
+import Link from "next/link"
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
+import { isChannelSendStep } from "@/lib/channels"
 import type { Id } from "@/convex/_generated/dataModel"
 import { useParams } from "next/navigation"
 import {
@@ -109,6 +112,7 @@ const VIEW_ITEMS = [
 type BuilderView = (typeof VIEW_ITEMS)[number]["value"]
 
 function AddStep({ onAdd }: { onAdd: (type: AutomationStepType) => void }) {
+  const channels = useInstanceChannels()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -130,15 +134,55 @@ function AddStep({ onAdd }: { onAdd: (type: AutomationStepType) => void }) {
             <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
             {group.types.map((type) => {
               const Icon = STEP_ICONS[type]
+              const provider =
+                type === "send_email"
+                  ? "email"
+                  : isChannelSendStep(type)
+                    ? "meta"
+                    : null
+              const unavailable = provider && !channels?.[provider]
               return (
-                <DropdownMenuItem key={type} onClick={() => onAdd(type)}>
+                <DropdownMenuItem
+                  key={type}
+                  disabled={!!unavailable}
+                  onClick={() => onAdd(type)}
+                >
                   <Icon />
                   {STEP_LABELS[type]}
+                  {unavailable && " — not set up"}
                 </DropdownMenuItem>
               )
             })}
           </DropdownMenuGroup>
         ))}
+        {channels && (!channels.email || !channels.meta) && (
+          <DropdownMenuGroup>
+            {!channels.email && (
+              <DropdownMenuItem
+                disabled={!channels.admin}
+                render={
+                  channels.admin ? <Link href="/instance/ses" /> : undefined
+                }
+              >
+                {channels.admin
+                  ? "Set up email"
+                  : "Email: ask your instance admin"}
+              </DropdownMenuItem>
+            )}
+            {!channels.meta && (
+              <DropdownMenuItem
+                disabled={!channels.admin}
+                render={
+                  channels.admin ? <Link href="/instance/meta" /> : undefined
+                }
+              >
+                {channels.admin
+                  ? "Set up the Meta app"
+                  : "Meta: ask your instance admin"}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

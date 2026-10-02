@@ -1,0 +1,1013 @@
+// @vitest-environment node
+import { CALLING_TEST_SDP as SDP } from "../lib/meta/calling-fixtures"
+import { afterEach, beforeEach, expect, test, vi } from "vitest"
+import { api, internal } from "./_generated/api"
+import {
+  inboundFixture,
+  envelope,
+  PHONE_ID,
+  fakeGraph,
+  graphError,
+  signedWebhook,
+  APP_SECRET,
+} from "./testHelpers/meta.fixture"
+import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
+import { CallGatewayClient } from "../services/call-gateway/src/client"
+import { createHash } from "node:crypto"
+import { patchRow } from "./counts"
+const BSUID = "US.13491208655302741918"
+const secret = "a".repeat(64)
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
+  vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-key-".repeat(6))
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+})
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+})
+async function setup() {
+  const f = await inboundFixture()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  const key = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: { name: "Calling", permission: "full_access", domainId: null },
+  })
+  const caller = await f.t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", f.owner.team)
+      )
+      .first()
+    return {
+      organizationId: f.owner.team,
+      permission: "full_access" as const,
+      apiKeyId: row!._id,
+      name: "Calling",
+    }
+  })
+  const request = (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    token = key.token
+  ) => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  }
+  const project = async (value: unknown, field = "calls") => {
+    const body = envelope(value, field)
+    const response = await f.t.fetch(
+      "/meta/webhook",
+      await signedWebhook(APP_SECRET, body)
+    )
+    expect(response.status).toBe(200)
+    const row = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").order("desc").first()
+    )
+    await f.t.mutation(internal.calling.projection.project, { id: row!._id })
+    return row!
+  }
+  const webhook = (calls: unknown[] = [], statuses: unknown[] = []) => ({
+    metadata: { phone_number_id: PHONE_ID },
+    contacts: [
+      {
+        user_id: BSUID,
+        profile: { name: "Username caller", username: "caller" },
+      },
+    ],
+    calls,
+    statuses,
+  })
+  return { ...f, caller, request, project, webhook }
+}
+test("BSUID-only connect/terminate/status fixtures are durable, idempotent and cannot resurrect terminated calls", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const ended = {
+    id: "wacid.out-of-order",
+    event: "terminate",
+    direction: "USER_INITIATED",
+    from_user_id: BSUID,
+    timestamp: String(now + 40),
+    status: ["COMPLETED"],
+    start_time: String(now),
+    end_time: String(now + 40),
+    duration: 40,
+    biz_opaque_callback_data: "CRM-42",
+  }
+  await f.project(f.webhook([ended]))
+  await f.project(
+    f.webhook([
+      {
+        id: ended.id,
+        event: "connect",
+        direction: "USER_INITIATED",
+        from_user_id: BSUID,
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+        cta_payload: "click",
+        deeplink_payload: "link",
+      },
+    ])
+  )
+  await f.project(
+    f.webhook(
+      [],
+      [
+        {
+          id: ended.id,
+          type: "call",
+          status: "RINGING",
+          timestamp: String(now + 90),
+          recipient_user_id: BSUID,
+        },
+      ]
+    )
+  )
+  const event = await f.project(f.webhook([ended]))
+  await f.t.mutation(internal.calling.projection.project, { id: event._id })
+  const rows = await f.t.run((ctx) => ctx.db.query("calls").collect())
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({
+    status: "completed",
+    userId: BSUID,
+    duration: 40,
+    ctaPayload: "click",
+    bizOpaqueCallbackData: "CRM-42",
+  })
+  expect(
+    await f.t.run((ctx) => ctx.db.query("callEvents").collect())
+  ).toHaveLength(3)
+  expect(
+    await f.t.run((ctx) => ctx.db.query("channelContacts").collect())
+  ).toHaveLength(1)
+  expect((await f.request(`/whatsapp/calls/${rows[0]._id}`)).status).toBe(200)
+  const outsider = await f.outsider.client.action(api.apiKeys.create, {
+    organizationId: f.outsider.team,
+    input: { name: "Other", permission: "full_access", domainId: null },
+  })
+  expect(
+    (
+      await f.request(
+        `/whatsapp/calls/${rows[0]._id}`,
+        "GET",
+        undefined,
+        outsider.token
+      )
+    ).status
+  ).toBe(404)
+  const list = await (await f.request("/whatsapp/calls")).json()
+  expect(list.data[0]).toMatchObject({ user_id: BSUID, status: "completed" })
+  const thread = await f.t.run((ctx) =>
+    ctx.db.get("conversations", rows[0].conversationId!)
+  )
+  expect(thread?.windowExpiresAt).toBe((now + 40 + 86400) * 1000)
+})
+test("BIC statuses and API connect answer advance monotonically, and accept/reject/terminate Graph payloads are exact", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (call) =>
+        (call.body as { action: string }).action === "connect"
+          ? { calls: [{ id: "wacid.bic" }] }
+          : { success: true },
+    },
+  ])
+  const response = await f.request("/whatsapp/calls", "POST", {
+    recipient: BSUID,
+    route: "api",
+    session: { sdp_type: "offer", sdp: SDP },
+    recording: {
+      status: "ENABLED",
+      purpose: "Support",
+      announcement_language: "en",
+    },
+  })
+  expect(response.status).toBe(200)
+  const outbound = await response.json()
+  expect(graph.to(`/${PHONE_ID}/calls`)[0].body).toMatchObject({
+    messaging_product: "whatsapp",
+    action: "connect",
+    recipient: BSUID,
+    session: { sdp_type: "offer", sdp: SDP },
+    recording: { status: "ENABLED", purpose: "Support" },
+  })
+  await f.project(
+    f.webhook(
+      [],
+      [
+        {
+          id: "wacid.bic",
+          type: "call",
+          status: "ACCEPTED",
+          timestamp: String(now + 5),
+          recipient_user_id: BSUID,
+        },
+      ]
+    )
+  )
+  await f.project(
+    f.webhook(
+      [],
+      [
+        {
+          id: "wacid.bic",
+          type: "call",
+          status: "RINGING",
+          timestamp: String(now + 10),
+          recipient_user_id: BSUID,
+        },
+      ]
+    )
+  )
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.bic",
+        event: "connect",
+        direction: "BUSINESS_INITIATED",
+        to_user_id: BSUID,
+        timestamp: String(now + 15),
+        session: { sdp_type: "answer", sdp: SDP },
+      },
+    ])
+  )
+  const detail = await (
+    await f.request(`/whatsapp/calls/${outbound.id}`)
+  ).json()
+  expect(detail).toMatchObject({
+    status: "connected",
+    session: { sdp_type: "answer" },
+  })
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.uic",
+        event: "connect",
+        direction: "USER_INITIATED",
+        from_user_id: BSUID,
+        timestamp: String(now + 20),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const inbound = await f.t.run((ctx) =>
+    ctx.db
+      .query("calls")
+      .withIndex("by_accountId_and_wacid", (q) =>
+        q.eq("accountId", f.account).eq("wacid", "wacid.uic")
+      )
+      .unique()
+  )
+  for (const action of ["pre_accept", "accept"] as const)
+    expect(
+      (
+        await f.request(`/whatsapp/calls/${inbound!._id}/${action}`, "POST", {
+          session: { sdp_type: "answer", sdp: SDP },
+        })
+      ).status
+    ).toBe(200)
+  expect(
+    (await f.request(`/whatsapp/calls/${inbound!._id}/terminate`, "POST"))
+      .status
+  ).toBe(200)
+  const actions = graph.to(`/${PHONE_ID}/calls`).map((c) => c.body)
+  expect(actions).toContainEqual({
+    messaging_product: "whatsapp",
+    action: "pre_accept",
+    call_id: "wacid.uic",
+    session: { sdp_type: "answer", sdp: SDP },
+  })
+  expect(actions).toContainEqual({
+    messaging_product: "whatsapp",
+    action: "terminate",
+    call_id: "wacid.uic",
+  })
+})
+test("permission replies key BSUIDs and stale replies do not overwrite a permanent grant; both Graph vocabularies and limits are preserved", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const message = (id: string, at: number, response: string) => ({
+    id,
+    type: "interactive",
+    from_user_id: BSUID,
+    timestamp: String(at),
+    context: { id: "wamid.request" },
+    interactive: {
+      type: "call_permission_reply",
+      call_permission_reply: {
+        response,
+        is_permanent: true,
+        response_source: "user_action",
+      },
+    },
+  })
+  await f.project(
+    { ...f.webhook(), messages: [message("wamid.reply", now + 3, "accept")] },
+    "messages"
+  )
+  await f.project(
+    { ...f.webhook(), messages: [message("wamid.old", now, "reject")] },
+    "messages"
+  )
+  const permissions = await f.t.run((ctx) =>
+    ctx.db.query("callPermissions").collect()
+  )
+  expect(permissions).toHaveLength(1)
+  expect(permissions[0]).toMatchObject({ identity: BSUID, status: "permanent" })
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "granted" },
+        actions: [
+          {
+            action_name: "start_call",
+            can_perform_action: true,
+            limits: [{ max_allowed: 100, current_usage: 2 }],
+          },
+        ],
+      }),
+    },
+  ])
+  const data = await (
+    await f.request(`/whatsapp/call-permissions?recipient=${BSUID}`)
+  ).json()
+  expect(data.permission.status).toBe("granted")
+  expect(data.actions[0].limits[0].max_allowed).toBe(100)
+  expect(g.calls[0].query).toEqual({ recipient: BSUID })
+  expect(
+    (await f.request("/whatsapp/call-permissions?recipient=123456")).status
+  ).toBe(200)
+  expect(g.calls.at(-1)?.query).toEqual({ recipient: "123456" })
+  g.use({
+    path: `/${PHONE_ID}/call_permissions`,
+    respond: () => ({
+      permission: { status: "temporary", expiration_time: now + 600 },
+      actions: [],
+    }),
+  })
+  expect(
+    (
+      await (
+        await f.request(`/whatsapp/call-permissions?recipient=${BSUID}`)
+      ).json()
+    ).permission.status
+  ).toBe("temporary")
+})
+test("Meta recording and transcript fixtures fetch fresh URLs, verify SHA-256 and store via shared storage without reopening calls", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000),
+    data = Buffer.from("recording bytes"),
+    sha256 = createHash("sha256").update(data).digest("base64")
+  fakeGraph([
+    {
+      path: "/media.recording",
+      respond: () => ({
+        url: "https://lookaside.fbsbx.com/media",
+        mime_type: "audio/ogg",
+      }),
+    },
+    {
+      path: "/media.transcript",
+      respond: () => ({
+        url: "https://lookaside.fbsbx.com/transcript",
+        mime_type: "application/json",
+      }),
+    },
+    { path: "/media", respond: () => new Response(data) },
+    { path: "/transcript", respond: () => new Response(data) },
+  ])
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.recorded",
+        event: "terminate",
+        timestamp: String(now),
+        status: "COMPLETED",
+        from_user_id: BSUID,
+        duration: 20,
+      },
+    ])
+  )
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.recorded",
+        event: "call_recording_available",
+        timestamp: String(now + 10),
+        from_user_id: BSUID,
+        call_recording: {
+          type: "audio",
+          audio: {
+            id: "media.recording",
+            sha256,
+            mime_type: "audio/ogg",
+            url: "https://expired.test",
+          },
+        },
+      },
+      {
+        id: "wacid.recorded",
+        event: "call_transcription_available",
+        timestamp: String(now + 11),
+        from_user_id: BSUID,
+        call_transcript: {
+          document: {
+            id: "media.transcript",
+            sha256,
+            mime_type: "application/json",
+          },
+        },
+      },
+    ])
+  )
+  const row = await f.t.run((ctx) => ctx.db.query("calls").first())
+  for (const kind of ["recording", "transcription"] as const)
+    await f.t.action(internal.calling.media.fetch, { id: row!._id, kind })
+  const saved = await f.t.run((ctx) => ctx.db.get("calls", row!._id))
+  expect(saved?.recording?.storageId).toBeTruthy()
+  expect(saved?.transcription?.storageId).toBeTruthy()
+  expect(saved?.status).toBe("completed")
+  const events = await f.t.run((ctx) => ctx.db.query("events").collect())
+  expect(events.map((e) => e.type)).toContain("whatsapp.call.recording_ready")
+})
+test("calling settings replace call hours whole, enforce DTLS/SIP-off, and map Meta call errors", async () => {
+  const f = await setup()
+  const calling = {
+    status: "ENABLED",
+    call_hours: {
+      status: "ENABLED",
+      timezone_id: "UTC",
+      weekly_operating_hours: [
+        { day_of_week: "MONDAY", open_time: "0900", close_time: "1700" },
+      ],
+    },
+    voicemail: { status: "DISABLED" },
+  }
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling }),
+    },
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: () => graphError("No permission", 138006),
+    },
+  ])
+  expect(
+    (
+      await f.request(`/whatsapp/phone-numbers/${PHONE_ID}/calling`, "POST", {
+        calling,
+        handling_mode: "api",
+      })
+    ).status
+  ).toBe(200)
+  expect(g.calls[0].body).toEqual({
+    calling: {
+      ...calling,
+      srtp_key_exchange_protocol: "DTLS",
+      sip: { status: "DISABLED" },
+    },
+  })
+  const result = await f.request("/whatsapp/calls", "POST", {
+    recipient: BSUID,
+    route: "api",
+    session: { sdp_type: "offer", sdp: SDP },
+  })
+  expect(result.status).toBe(422)
+  expect((await result.json()).name).toBe("call_permission_required")
+  expect(
+    (
+      await f.request(`/whatsapp/phone-numbers/${PHONE_ID}/calling`, "POST", {
+        calling: { sip: { status: "ENABLED" } },
+      })
+    ).status
+  ).toBe(422)
+})
+test("gateway callbacks require exact HMAC, persist nonce replay protection and eventId dedupe, and never reopen ended calls", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.gateway",
+        event: "connect",
+        from_user_id: BSUID,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const row = await f.t.run((ctx) => ctx.db.query("calls").first())
+  const data = {
+    version: 1,
+    eventId: crypto.randomUUID(),
+    callId: row!._id,
+    timestamp: Date.now(),
+    event: "answer_ready",
+    answerSdp: SDP,
+  }
+  const body = JSON.stringify(data),
+    path = "/calling/gateway/events",
+    headers = {
+      "content-type": "application/json",
+      ...signRequest(secret, "POST", path, body),
+    }
+  expect(
+    (await f.t.fetch(path, { method: "POST", headers, body })).status
+  ).toBe(200)
+  expect(
+    (await f.t.fetch(path, { method: "POST", headers, body })).status
+  ).toBe(401)
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: signRequest(secret, "POST", path, body),
+        body,
+      })
+    ).status
+  ).toBe(200)
+  expect(
+    (await f.t.fetch(path, { method: "POST", headers, body: body + " " }))
+      .status
+  ).toBe(401)
+  await f.t.mutation(internal.calling.rows.finish, {
+    id: row!._id,
+    status: "completed",
+  })
+  const mediaBody = JSON.stringify({
+    ...data,
+    eventId: crypto.randomUUID(),
+    timestamp: Date.now() + 5000,
+    event: "media_up",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: signRequest(secret, "POST", path, mediaBody),
+        body: mediaBody,
+      })
+    ).status
+  ).toBe(200)
+  const ended = await f.t.run((ctx) => ctx.db.get("calls", row!._id))
+  expect(ended?.status).toBe("completed")
+  expect(ended?.mediaUpAt).toBeUndefined()
+  expect(
+    await f.t.run((ctx) => ctx.db.query("gatewayEvents").collect())
+  ).toHaveLength(2)
+})
+test("gateway client signs exact method/path/body and refuses redirects; accept releases RTP only after Graph 200", async () => {
+  const verifier = new HmacVerifier(secret),
+    calls: string[] = []
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(input),
+        headers = Object.fromEntries(new Headers(init?.headers))
+      verifier.verify(
+        init!.method!,
+        url.pathname,
+        init!.body as string,
+        headers
+      )
+      expect(init?.redirect).toBe("error")
+      calls.push(url.pathname)
+      return Response.json(
+        url.pathname === "/inbound" ? { answerSdp: SDP } : { ok: true }
+      )
+    })
+  )
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (call) => {
+        calls.push((call.body as { action: string }).action)
+        return { success: true }
+      },
+    },
+  ])
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.accept",
+        event: "connect",
+        from_user_id: BSUID,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const row = await f.t.run((ctx) => ctx.db.query("calls").first())
+  await f.t.action(internal.calling.callActions.gatewayConnect, {
+    id: row!._id,
+  })
+  expect(calls).toEqual(["/inbound", "pre_accept"])
+  const body = await (
+    await f.request(`/whatsapp/calls/${row!._id}/accept`, "POST", {})
+  ).json()
+  expect(body.success).toBe(true)
+  expect(calls).toEqual(["/inbound", "pre_accept", "accept", "/route"])
+  g.use({
+    path: `/${PHONE_ID}/calls`,
+    respond: () => graphError("Call unavailable", 138000),
+  })
+  await new CallGatewayClient("http://gateway.test", secret).hangup(row!._id)
+})
+
+test("an SDP answer arriving after a newer status is forwarded without regression, and Graph webhook races keep the client call id", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const id = await f.t.mutation(internal.calling.rows.create, {
+    organizationId: f.owner.team,
+    caller: f.caller,
+    recipient: BSUID,
+    mode: "api",
+  })
+  await f.project(
+    f.webhook(
+      [],
+      [
+        {
+          id: "wacid.race",
+          type: "call",
+          recipient_user_id: BSUID,
+          status: "ACCEPTED",
+          timestamp: String(now + 2),
+        },
+      ]
+    )
+  )
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.race",
+        to_user_id: BSUID,
+        event: "connect",
+        direction: "BUSINESS_INITIATED",
+        timestamp: String(now + 1),
+        session: { sdp_type: "answer", sdp: SDP },
+      },
+    ])
+  )
+  expect(await f.t.run((ctx) => ctx.db.query("calls").collect())).toHaveLength(
+    1
+  )
+  const row = await f.t.run((ctx) => ctx.db.get("calls", id))
+  expect(row).toMatchObject({
+    wacid: "wacid.race",
+    status: "connected",
+    remoteSession: { sdp_type: "answer" },
+  })
+  const events = await f.t.run((ctx) => ctx.db.query("events").collect())
+  expect(
+    events.filter((e) => e.type === "whatsapp.call.connected").at(-1)?.data
+  ).toMatchObject({ id, session: { sdp_type: "answer", sdp: SDP } })
+})
+test("rejection always signals terminate, terminal metadata is enriched, and API keys cannot use sending-only access", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const g = fakeGraph([
+    { path: `/${PHONE_ID}/calls`, respond: () => ({ success: true }) },
+  ])
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.reject",
+        event: "connect",
+        from_user_id: BSUID,
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const row = await f.t.run((ctx) => ctx.db.query("calls").first())
+  expect(
+    (await f.request(`/whatsapp/calls/${row!._id}/reject`, "POST", {})).status
+  ).toBe(200)
+  expect(g.calls.map((c) => (c.body as { action: string }).action)).toEqual([
+    "reject",
+    "terminate",
+  ])
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.reject",
+        event: "terminate",
+        from_user_id: BSUID,
+        timestamp: String(now + 20),
+        status: "FAILED",
+        duration: 0,
+      },
+    ])
+  )
+  expect(await f.t.run((ctx) => ctx.db.get("calls", row!._id))).toMatchObject({
+    status: "rejected",
+    duration: 0,
+  })
+  const key = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: { name: "Sending", permission: "sending_access", domainId: null },
+  })
+  expect(
+    (await f.request("/whatsapp/calls", "GET", undefined, key.token)).status
+  ).toBe(403)
+})
+test("a failed gateway accept cannot release RTP and sends termination with media cleanup", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000),
+    paths: string[] = []
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL) => {
+      paths.push(new URL(input).pathname)
+      return Response.json({ answerSdp: SDP, ok: true })
+    })
+  )
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (c) =>
+        (c.body as { action: string }).action === "accept"
+          ? graphError("Disabled", 138000)
+          : { success: true },
+    },
+  ])
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.gateway-failed",
+        event: "connect",
+        from_user_id: BSUID,
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const row = await f.t.run((ctx) => ctx.db.query("calls").first())
+  await f.t.action(internal.calling.callActions.gatewayConnect, {
+    id: row!._id,
+  })
+  expect(
+    (await f.request(`/whatsapp/calls/${row!._id}/accept`, "POST", {})).status
+  ).toBe(422)
+  expect(paths).not.toContain("/route")
+  expect(paths).toContain("/hangup")
+  expect(g.calls.map((c) => (c.body as { action: string }).action)).toContain(
+    "terminate"
+  )
+  expect(await f.t.run((ctx) => ctx.db.get("calls", row!._id))).toMatchObject({
+    status: "failed",
+  })
+})
+
+test("permission requests use the shared message pipeline for both free-form and approved template payloads", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/messages`,
+      respond: () => ({ messages: [{ id: crypto.randomUUID() }] }),
+    },
+  ])
+  const closed = await f.request("/whatsapp/call-permissions", "POST", {
+    recipient: BSUID,
+    text: "May we call?",
+  })
+  expect(closed.status).toBe(422)
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.permission-window",
+        event: "connect",
+        from_user_id: BSUID,
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const request = await f.request("/whatsapp/call-permissions", "POST", {
+    recipient: BSUID,
+    text: "May we call?",
+  })
+  expect(request.status).toBe(200)
+  const { id } = await request.json()
+  await f.t.action(internal.channels.deliver.deliver, { id, generation: 0 })
+  expect(g.calls.at(-1)?.body).toMatchObject({
+    recipient: BSUID,
+    interactive: {
+      type: "call_permission_request",
+      action: { name: "call_permission_request" },
+      body: { text: "May we call?" },
+    },
+  })
+  const template = await f.request("/whatsapp/call-permissions", "POST", {
+    recipient: BSUID,
+    template: {
+      name: "permission_request",
+      language: "en_US",
+      components: [
+        { type: "body", parameters: [{ type: "text", text: "Ada" }] },
+      ],
+    },
+  })
+  expect(template.status).toBe(200)
+  await f.t.action(internal.channels.deliver.deliver, {
+    id: (await template.json()).id,
+    generation: 0,
+  })
+  expect(g.calls.at(-1)?.body).toMatchObject({
+    type: "template",
+    template: { name: "permission_request", language: { code: "en_US" } },
+  })
+})
+test("gateway BIC passes the answer before routing, missed calls emit events and local recording callbacks persist their finalized file", async () => {
+  const f = await setup(),
+    paths: string[] = [],
+    now = Math.floor(Date.now() / 1000)
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL) => {
+      paths.push(new URL(input).pathname)
+      return Response.json({ offerSdp: SDP, ok: true })
+    })
+  )
+  fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (call) =>
+        (call.body as { action: string }).action === "connect"
+          ? { calls: [{ id: "wacid.gateway-bic" }] }
+          : { success: true },
+    },
+  ])
+  const created = await (
+    await f.request("/whatsapp/calls", "POST", {
+      recipient: BSUID,
+      route: "gateway",
+    })
+  ).json()
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.gateway-bic",
+        event: "connect",
+        direction: "BUSINESS_INITIATED",
+        to_user_id: BSUID,
+        timestamp: String(now + 2),
+        session: { sdp_type: "answer", sdp: SDP },
+      },
+    ])
+  )
+  await f.t.action(internal.calling.callActions.gatewayConnect, {
+    id: created.id,
+  })
+  expect(paths).toEqual(["/outbound", "/remoteAnswer", "/route"])
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises")
+  const { tmpdir } = await import("node:os")
+  const { join } = await import("node:path")
+  const root = await mkdtemp(join(tmpdir(), "calling-recording-")),
+    filename = `${crypto.randomUUID()}.wav`
+  try {
+    vi.stubEnv("CALL_GATEWAY_RECORDINGS_DIR", root)
+    await writeFile(join(root, filename), "finalized WAV fixture")
+    const data = {
+        version: 1,
+        eventId: crypto.randomUUID(),
+        callId: created.id,
+        timestamp: Date.now(),
+        event: "recording_ready",
+        recordingFile: `/recordings/${filename}`,
+      },
+      body = JSON.stringify(data),
+      path = "/calling/gateway/events"
+    expect(
+      (
+        await f.t.fetch(path, {
+          method: "POST",
+          headers: signRequest(secret, "POST", path, body),
+          body,
+        })
+      ).status
+    ).toBe(200)
+    await f.t.action(internal.calling.media.gatewayRecording, {
+      id: created.id,
+    })
+    expect(
+      (await f.t.run((ctx) => ctx.db.get("calls", created.id)))?.recording
+        ?.storageId
+    ).toBeTruthy()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.missed",
+        event: "terminate",
+        from_user_id: BSUID,
+        direction: "USER_INITIATED",
+        timestamp: String(now + 10),
+        status: "FAILED",
+        duration: 0,
+      },
+    ])
+  )
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("events").collect())).map(
+      (e) => e.type
+    )
+  ).toContain("whatsapp.call.missed")
+})
+
+test("phone lookups select this business's BSUID alias instead of the last business that updated the contact", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000),
+    phone = "16505551234"
+  await f.project(
+    f.webhook([
+      {
+        id: "wacid.known-phone",
+        event: "connect",
+        from: phone,
+        from_user_id: BSUID,
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  await f.t.run(async (ctx) => {
+    const identity = (await ctx.db.query("channelContacts").first())!
+    await ctx.db.insert("whatsappUserAliases", {
+      organizationId: f.owner.team,
+      businessId: "other-business",
+      userId: "US.other",
+      channelContactId: identity._id,
+    })
+    await ctx.db.patch("channelContacts", identity._id, {
+      userId: "US.other",
+      userScopeId: "other-business",
+    })
+  })
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({ permission: { status: "permanent" }, actions: [] }),
+    },
+  ])
+  expect(
+    (await f.request(`/whatsapp/call-permissions?to=${phone}`)).status
+  ).toBe(200)
+  expect(g.calls[0].query).toEqual({ recipient: BSUID })
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("callPermissions").first()))?.identity
+  ).toBe(BSUID)
+})
+
+test("a call committed before an interrupted Graph action is durably expired instead of remaining queued", async () => {
+  const f = await setup()
+  const id = await f.t.mutation(internal.calling.rows.create, {
+    organizationId: f.owner.team,
+    caller: f.caller,
+    recipient: BSUID,
+    mode: "api",
+  })
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(61000))
+  expect(await f.t.run((ctx) => ctx.db.get("calls", id))).toMatchObject({
+    status: "failed",
+    error: "Call setup timed out before Meta assigned a call id.",
+  })
+})

@@ -1,3 +1,4 @@
+import type { ChannelSendStepType } from '../channels';
 export type ConditionRule =
   | {
       type: 'rule';
@@ -60,10 +61,14 @@ export type WhatsAppVariableSource =
       | { property: string }
       | { value: string }
     ) & { fallback?: string });
-export type SendWhatsAppStepConfig = {
+export type SendChannelStepConfig = {
   accountId: string;
   variables?: Record<string, WhatsAppVariableSource>;
 } & ({ mode: 'template'; templateId: string } | { mode: 'text'; text: string });
+
+export type SendWhatsAppStepConfig = SendChannelStepConfig;
+export type SendMessengerStepConfig = SendChannelStepConfig;
+export type SendInstagramStepConfig = SendChannelStepConfig;
 
 export interface WaitForEventStepConfig {
   eventName: string;
@@ -93,7 +98,13 @@ export type AutomationStep =
   | { key: string; type: 'trigger'; config: TriggerStepConfig }
   | { key: string; type: 'delay'; config: DelayStepConfig }
   | { key: string; type: 'send_email'; config: SendEmailStepConfig }
-  | { key: string; type: 'send_whatsapp'; config: SendWhatsAppStepConfig }
+  | {
+      [T in ChannelSendStepType]: {
+        key: string;
+        type: T;
+        config: SendChannelStepConfig;
+      };
+    }[ChannelSendStepType]
   | { key: string; type: 'wait_for_event'; config: WaitForEventStepConfig }
   | { key: string; type: 'condition'; config: ConditionStepConfig }
   | { key: string; type: 'contact_update'; config: ContactUpdateStepConfig }

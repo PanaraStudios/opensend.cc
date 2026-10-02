@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
@@ -45,7 +47,10 @@ import {
   PageHeader,
   Surface,
   ToolbarFilters,
+  ResourceTable,
+  Th,
   emailStatusColor,
+  channelMessageStatusColor,
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { defaultEmailRange } from "@/lib/dashboard/email-range"
@@ -53,14 +58,26 @@ import {
   EMAIL_STATUS_TONE,
   emailStatusLabel,
   percent,
+  sentenceCase,
   type BadgeTone,
 } from "@/lib/dashboard/format"
+import { BOUNCE_RISK, COMPLAIN_RISK } from "@/lib/dashboard/metrics"
 import {
-  BOUNCE_RISK,
-  COMPLAIN_RISK,
-  type MetricsDay,
-} from "@/lib/dashboard/metrics"
-import { useMetrics } from "@/lib/metrics/use-metrics"
+  useMetrics,
+  useMetricsChunks,
+  useMetricsSpans,
+} from "@/lib/metrics/use-metrics"
+import { format } from "date-fns"
+import {
+  CHANNEL_IDS,
+  CHANNEL_MESSAGE_STATUSES,
+  CHANNELS,
+  type Channel,
+  type MessagingChannel,
+} from "@/lib/channels"
+import { channelRates, sumChannelCounts } from "@/lib/channel-metrics"
+import { ChannelCell } from "@/components/dashboard/channels/shared"
+import { TableCell, TableRow } from "@/components/ui/table"
 import { useClock } from "@/lib/time/use-clock"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -71,17 +88,24 @@ const EVENT_ITEMS: readonly SelectOption[] = [
   ...STATUS_ITEMS.slice(1),
 ]
 
+const METRIC_CHANNEL_ITEMS: readonly SelectOption[] = [
+  { value: "all", label: "All channels" },
+  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
+]
+
 export function Stat({
   label,
   value,
   className,
+  testId,
 }: {
+  testId?: string
   label: string
   value: string
   className?: string
 }) {
   return (
-    <div className={cn("min-w-0", className)}>
+    <div data-testid={testId} className={cn("min-w-0", className)}>
       <p className="font-mono text-caption text-muted-foreground uppercase">
         {label}
       </p>
@@ -92,26 +116,37 @@ export function Stat({
 
 function SeriesChart({
   rows,
-  dataKey,
-  label,
-  color,
+  dataKey = "",
+  label = "",
+  color = "var(--chart-1)",
+  series,
+  stacked = false,
   unit = "",
   minMax,
   risk,
   className,
 }: {
-  rows: MetricsDay[]
-  dataKey: keyof MetricsDay & string
-  label: string
-  color: string
+  rows: { label: string }[]
+  dataKey?: string
+  label?: string
+  color?: string
+  series?: { dataKey: string; label: string; color: string }[]
+  stacked?: boolean
   unit?: string
   /** Keeps an empty chart from collapsing its Y axis to 0..0. */
   minMax: number
   risk?: number
   className?: string
 }) {
-  const config = { [dataKey]: { label, color } } satisfies ChartConfig
-  const gradientId = `metrics-fill-${dataKey}`
+  const entries = series ?? [{ dataKey, label, color }]
+  const config = Object.fromEntries(
+    entries.map((entry) => [
+      entry.dataKey,
+      { label: entry.label, color: entry.color },
+    ])
+  ) satisfies ChartConfig
+  const chartId = React.useId().replace(/:/g, "")
+  const gradientId = (key: string) => `metrics-fill-${chartId}-${key}`
 
   return (
     <ChartContainer
@@ -120,10 +155,19 @@ function SeriesChart({
     >
       <AreaChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 8 }}>
         <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.25} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
+          {entries.map((entry) => (
+            <linearGradient
+              key={entry.dataKey}
+              id={gradientId(entry.dataKey)}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop offset="0%" stopColor={entry.color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={entry.color} stopOpacity={0} />
+            </linearGradient>
+          ))}
         </defs>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis
@@ -167,15 +211,20 @@ function SeriesChart({
             }}
           />
         ) : null}
-        <Area
-          dataKey={dataKey}
-          type="linear"
-          stroke={color}
-          strokeWidth={1.5}
-          fill={`url(#${gradientId})`}
-          dot={rows.length === 1}
-          isAnimationActive={false}
-        />
+        {series ? <ChartLegend content={<ChartLegendContent />} /> : null}
+        {entries.map((entry) => (
+          <Area
+            key={entry.dataKey}
+            dataKey={entry.dataKey}
+            type="linear"
+            stroke={entry.color}
+            strokeWidth={1.5}
+            fill={`url(#${gradientId(entry.dataKey)})`}
+            stackId={stacked ? "messages" : undefined}
+            dot={rows.length === 1}
+            isAnimationActive={false}
+          />
+        ))}
       </AreaChart>
     </ChartContainer>
   )
@@ -261,21 +310,17 @@ function RateCard({
 export function MetricsView() {
   const now = useClock()
   const [chosenRange, setRange] = React.useState<DateRange>()
-  // One object per choice: a fresh default each render re-subscribes the
-  // metrics queries every render.
   const range = React.useMemo(
     () => chosenRange ?? defaultEmailRange(now ?? 0),
     [chosenRange, now]
   )
+  const [channel, setChannel] = React.useState("all")
   const [domain, setDomain] = React.useState("all")
   const [domainSearch, setDomainSearch] = React.useState("")
-  const [event, setEvent] = React.useState("all")
-  const status = isFilterableStatus(event) ? event : null
-  const { loading, totals, days, domains } = useMetrics(range, domain, status)
   const { activeTeamId } = useWorkspace()
   const options = useQuery(
     api.metrics.domainOptions,
-    activeTeamId
+    activeTeamId && channel === "email"
       ? {
           organizationId: activeTeamId,
           search: domainSearch,
@@ -283,14 +328,7 @@ export function MetricsView() {
         }
       : "skip"
   )
-  const domainItems: SelectOption[] = [
-    { value: "all", label: "All domains" },
-    ...(options ?? []),
-  ]
-  if (now === null || loading) return <Skeleton className="h-64 w-full" />
-  const bounceRate = percent(totals.bounced, totals.sent, 2)
-  const complainRate = percent(totals.complained, totals.sent, 2)
-
+  if (now === null) return <Skeleton className="h-64 w-full" />
   return (
     <>
       <PageHeader title="Metrics">
@@ -301,16 +339,252 @@ export function MetricsView() {
           allowAllTime={false}
           filters={[
             {
-              search: { onChange: setDomainSearch },
-              value: domain,
-              onChange: setDomain,
-              items: domainItems,
-              "aria-label": "Domain",
+              value: channel,
+              onChange: setChannel,
+              items: METRIC_CHANNEL_ITEMS,
+              "aria-label": "Channel",
             },
+            ...(channel === "email"
+              ? [
+                  {
+                    search: { onChange: setDomainSearch },
+                    value: domain,
+                    onChange: setDomain,
+                    items: [
+                      { value: "all", label: "All domains" },
+                      ...(options ?? []),
+                    ],
+                    "aria-label": "Domain",
+                  },
+                ]
+              : []),
           ]}
         />
       </PageHeader>
+      {channel === "email" ? (
+        <EmailMetrics range={range} domain={domain} />
+      ) : (
+        <ChannelMetrics
+          range={range}
+          channel={
+            channel === "all" ? undefined : (channel as MessagingChannel)
+          }
+          onChannelChange={setChannel}
+        />
+      )}
+    </>
+  )
+}
 
+/** The Meta channels share the same tiles; receipt support lives in the registry. */
+function ChannelMetrics({
+  range,
+  channel,
+  onChannelChange,
+}: {
+  range: DateRange
+  channel?: MessagingChannel
+  onChannelChange: (channel: Channel) => void
+}) {
+  const { activeTeamId } = useWorkspace()
+  const spans = useMetricsSpans(range)
+  const args = React.useMemo(
+    () =>
+      activeTeamId ? { organizationId: activeTeamId, channel, spans } : null,
+    [activeTeamId, channel, spans]
+  )
+  const counts = useMetricsChunks(api.metrics.channelSummary, args, spans)
+  if (!counts) return <Skeleton className="h-64 w-full" />
+  const days = counts.map((rows, i) => ({
+    label: format(spans[i].from, "MMM d"),
+    ...Object.fromEntries(
+      rows.map((row) => [row.channel, row.counts.sent + row.counts.received])
+    ),
+    ...(channel ? rows[0].status : {}),
+    ...channelRates(sumChannelCounts(rows.map((row) => row.counts))),
+  }))
+  const totalsFor = (value: Channel) =>
+    sumChannelCounts(
+      counts.flatMap((rows) =>
+        rows.filter((row) => row.channel === value).map((row) => row.counts)
+      )
+    )
+  const allTotals = sumChannelCounts(
+    counts.flatMap((rows) => rows.map((row) => row.counts))
+  )
+  if (!channel)
+    return (
+      <>
+        <ResourceTable
+          headers={
+            <>
+              <Th>Channel</Th>
+              <Th>Sent</Th>
+              <Th>Received</Th>
+              <Th>Delivery rate</Th>
+              <Th>Failed</Th>
+            </>
+          }
+        >
+          {CHANNEL_IDS.map((value) => {
+            const totals = totalsFor(value)
+            return (
+              <TableRow
+                key={value}
+                data-testid={`metrics-channel-${value}`}
+                onClick={() => onChannelChange(value)}
+              >
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onChannelChange(value)}
+                    aria-label={`View ${CHANNELS[value].label} metrics`}
+                  >
+                    <ChannelCell channel={value} />
+                  </Button>
+                </TableCell>
+                <TableCell>{totals.sent}</TableCell>
+                <TableCell>{totals.received}</TableCell>
+                <TableCell>
+                  {CHANNELS[value].supports.delivered
+                    ? `${channelRates(totals).deliveryRate}%`
+                    : "—"}
+                </TableCell>
+                <TableCell>{totals.failed}</TableCell>
+              </TableRow>
+            )
+          })}
+        </ResourceTable>
+        <Surface>
+          <Stat
+            label="Messages per day"
+            value={String(allTotals.sent + allTotals.received)}
+          />
+          <SeriesChart
+            rows={days}
+            minMax={1}
+            className="h-72"
+            stacked
+            series={CHANNEL_IDS.map((value, i) => ({
+              dataKey: value,
+              label: CHANNELS[value].label,
+              color: `var(--chart-${i + 1})`,
+            }))}
+          />
+        </Surface>
+      </>
+    )
+  const totals = totalsFor(channel)
+  const rates = channelRates(totals)
+  const delivered = CHANNELS[channel].supports.delivered
+  const statuses = CHANNEL_MESSAGE_STATUSES.filter(
+    (status) => delivered || status !== "delivered"
+  )
+  return (
+    <>
+      <Surface>
+        <div className="flex flex-wrap items-start gap-x-10 gap-y-4">
+          {(["sent", "delivered", "read", "failed", "received"] as const)
+            .filter((key) => delivered || key !== "delivered")
+            .map((key) => (
+              <Stat
+                key={key}
+                label={sentenceCase(key)}
+                value={String(totals[key])}
+                testId={`metrics-stat-${key}`}
+              />
+            ))}
+        </div>
+        <SeriesChart
+          rows={days}
+          minMax={1}
+          className="h-72"
+          stacked
+          series={statuses.map((status) => ({
+            dataKey: status,
+            label: sentenceCase(status),
+            color: channelMessageStatusColor(status),
+          }))}
+        />
+      </Surface>
+      <div className="grid items-stretch gap-3 lg:grid-cols-2">
+        {delivered ? (
+          <RateCard
+            label="Delivery rate"
+            value={`${rates.deliveryRate}%`}
+            help="Delivered or read messages as a share of all outbound attempts, including queued and failed messages."
+            chart={
+              <SeriesChart
+                rows={days}
+                dataKey="deliveryRate"
+                label="Delivery rate (%)"
+                color="var(--chart-2)"
+                unit="%"
+                minMax={100}
+                className="h-56"
+              />
+            }
+          >
+            <Breakdown
+              tone="success"
+              rows={[
+                {
+                  label: "Delivered",
+                  count: totals.delivered,
+                  share: `${rates.deliveryRate}%`,
+                },
+              ]}
+            />
+          </RateCard>
+        ) : null}
+        <RateCard
+          label="Read rate"
+          value={`${rates.readRate}%`}
+          help="Read messages as a share of all outbound attempts, including queued and failed messages."
+          chart={
+            <SeriesChart
+              rows={days}
+              dataKey="readRate"
+              label="Read rate (%)"
+              color="var(--chart-3)"
+              unit="%"
+              minMax={100}
+              className="h-56"
+            />
+          }
+        >
+          <Breakdown
+            tone="success"
+            rows={[
+              {
+                label: "Read",
+                count: totals.read,
+                share: `${rates.readRate}%`,
+              },
+            ]}
+          />
+        </RateCard>
+      </div>
+      <p className="text-small text-muted-foreground">
+        Sent includes queued and failed outbound attempts. Daily statuses
+        reflect each message&apos;s current status.
+        {!delivered ? " Instagram does not provide delivered receipts." : ""}
+      </p>
+    </>
+  )
+}
+
+function EmailMetrics({ range, domain }: { range: DateRange; domain: string }) {
+  const [event, setEvent] = React.useState("all")
+  const status = isFilterableStatus(event) ? event : null
+  const { loading, totals, days, domains } = useMetrics(range, domain, status)
+  if (loading) return <Skeleton className="h-64 w-full" />
+  const bounceRate = percent(totals.bounced, totals.sent, 2)
+  const complainRate = percent(totals.complained, totals.sent, 2)
+
+  return (
+    <>
       <Surface>
         <div className="flex flex-wrap items-start gap-x-10 gap-y-4">
           <Stat label="Emails" value={String(totals.sent)} />

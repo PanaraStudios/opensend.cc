@@ -4159,6 +4159,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         boolean,
         Name
       >;
+      callingMembers: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string; sessionId: string },
+        Array<{ name: string; userId: string }>,
+        Name
+      >;
       checkSession: FunctionReference<
         "query",
         "internal",

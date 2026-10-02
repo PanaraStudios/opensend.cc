@@ -153,9 +153,9 @@ describe("Meta connect", () => {
         organizationId: f.owner.team,
       })
     ).toEqual({ configured: false, configIds: {}, graphVersion: "v25.0" })
-    await expect(f.manual(f.owner)).rejects.toThrow(
-      "Your administrator needs to set up the Meta app"
-    )
+    await expect(f.manual(f.owner)).rejects.toMatchObject({
+      data: { statusCode: 403, name: "channel_not_configured" },
+    })
     expect(graph.calls).toEqual([])
   })
 

@@ -300,3 +300,12 @@ export function useAudienceCommands() {
       removeProperty({ id: id as Id<"contactProperties"> }),
   }
 }
+
+export function useContactIdentities(id: string) {
+  const query = usePaginatedQuery(
+    api.contacts.identities,
+    { id: id as Id<"contacts"> },
+    { initialNumItems: PAGE_SIZES[0] }
+  )
+  return { ...query, ...useLoadedPagination(query.results, query) }
+}

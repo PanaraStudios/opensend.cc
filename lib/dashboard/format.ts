@@ -140,6 +140,7 @@ function snakeSentence(value: string): string {
 }
 const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   no_phone: "No phone number",
+  no_channel_identity: "No channel identity",
   no_email: "No email address",
   unsubscribed: "Unsubscribed",
   topic_opt_out: "Topic opt-out",
@@ -150,6 +151,7 @@ const SKIP_REASON_LABELS: Record<SkipReason, string> = {
 }
 export const SKIP_REASON_TONE: Record<SkipReason, BadgeTone> = {
   no_phone: "secondary",
+  no_channel_identity: "secondary",
   no_email: "secondary",
   unsubscribed: "secondary",
   topic_opt_out: "secondary",
@@ -187,7 +189,11 @@ export function exportStatusLabel(status: ExportStatus): string {
 }
 
 export function permissionLabel(permission: ApiKeyPermission): string {
-  return permission === "full_access" ? "Full access" : "Sending access"
+  return permission === "full_access"
+    ? "Full access"
+    : permission === "custom"
+      ? "Custom"
+      : "Sending access"
 }
 
 export function roleLabel(role: MemberRole): string {
@@ -326,6 +332,7 @@ export const CHANNEL_MESSAGE_STATUS_TONE: Record<
   sent: "outline",
   delivered: "success",
   read: "success",
+  played: "success",
   failed: "destructive",
   received: "secondary",
 }

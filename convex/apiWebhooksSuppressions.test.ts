@@ -437,7 +437,7 @@ describe("webhook REST parity", () => {
     ]
     for (const [path, method, body] of routes) {
       expect(await f.call(path, method, body, f.sending.token)).toMatchObject({
-        status: 401,
+        status: 403,
         body: { name: "restricted_api_key" },
       })
       if (path !== "/webhooks")
@@ -748,7 +748,7 @@ describe("suppression REST parity", () => {
       [`/suppressions/${added.body.id}`, "DELETE"],
     ] as [string, string, unknown?][])
       expect(await f.call(path, method, body, f.sending.token)).toMatchObject({
-        status: 401,
+        status: 403,
         body: { name: "restricted_api_key" },
       })
     for (const id of [added.body.id, "one%40example.com"])

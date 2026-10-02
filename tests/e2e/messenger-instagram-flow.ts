@@ -1,6 +1,8 @@
 import type { PageChannel } from "../../lib/channels"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page, type APIResponse } from "@playwright/test"
+import type { Id } from "../../convex/_generated/dataModel"
+import { choose } from "./whatsapp-campaigns-flow"
 import { api } from "../../convex/_generated/api"
 import { client } from "./ses-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
@@ -45,7 +47,7 @@ async function webhook(
 export function messengerInstagramTests(
   state: () => { owner: Page; organizationId: string }
 ) {
-  test("Page connection receives Messenger/Instagram, replies through REST, records customer webhooks and displays channel icons", async () => {
+  test("Page connection receives Messenger/Instagram, replies through REST and a UI automation, records customer webhooks and displays channel icons", async () => {
     const { owner, organizationId } = state(),
       backend = await client(owner)
     const connected = await backend.action(
@@ -82,6 +84,7 @@ export function messengerInstagramTests(
       expect(response.status()).toBe(200)
       return response.json()
     }
+    let automationId: Id<"automations"> | undefined
     try {
       await owner.request.post(`${fake()}/__reset`)
       for (const channel of ["messenger", "instagram"] as const) {
@@ -178,6 +181,116 @@ export function messengerInstagramTests(
           ])
         )
       }
+      // Build the reply in the dashboard, then drive it through the real webhook and Graph send path.
+      await owner.goto("/automations")
+      await owner
+        .getByRole("button", { name: "Create automation", exact: true })
+        .click()
+      await owner.waitForURL(/\/automations\/[^/]+$/)
+      automationId = new URL(owner.url()).pathname.split(
+        "/"
+      )[2] as Id<"automations">
+      await owner.getByTestId("workflow-node-start").click()
+      await owner.getByPlaceholder("Type or select an event").click()
+      await owner
+        .getByRole("option", {
+          name: "Messenger message received",
+          exact: true,
+        })
+        .click()
+      await owner.getByTestId("workflow-add-step").last().click()
+      await owner
+        .getByRole("menuitem", { name: "Send Messenger message", exact: true })
+        .click()
+      const messengerAccount = connected.accounts.find(
+        (account) => account.channel === "messenger"
+      )!
+      const accountDetail = await backend.query(api.meta.connect.getAccount, {
+        id: messengerAccount.id,
+      })
+      const account = accountDetail!.account
+      await choose(
+        owner,
+        "Sending page",
+        `${account.displayName} (${account.handle})`
+      )
+      await choose(owner, "Message type", "Text")
+      const reply = "Messenger automated reply E2E"
+      await owner.getByLabel("Messenger message", { exact: true }).fill(reply)
+      const id = automationId
+      await expect
+        .poll(
+          async () =>
+            (await backend.query(api.automations.get, { organizationId, id }))
+              ?.graph
+        )
+        .toContain(reply)
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-automation-builder.png`,
+        fullPage: true,
+      })
+      await owner.getByTestId("automation-toggle").click()
+      await expect(owner.getByTestId("automation-toggle")).toContainText("Stop")
+      await webhook(owner, "messenger", {
+        message: {
+          mid: "mid.e2e.messenger.automation",
+          text: "Please reply automatically",
+        },
+      })
+      await expect
+        .poll(
+          async () => {
+            const calls = await (
+              await owner.request.get(`${fake()}/__calls`)
+            ).json()
+            return calls.filter(
+              (call: { path: string; body?: { message?: { text: string } } }) =>
+                call.path === `/${PAGE_ID}/messages` &&
+                call.body?.message?.text === reply
+            ).length
+          },
+          { timeout: 45000 }
+        )
+        .toBe(1)
+      const calls = await (await owner.request.get(`${fake()}/__calls`)).json()
+      expect(calls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: `/${PAGE_ID}/messages`,
+            body: {
+              recipient: { id: PSID },
+              messaging_type: "RESPONSE",
+              message: { text: reply },
+            },
+          }),
+        ])
+      )
+      await expect
+        .poll(
+          async () =>
+            (
+              await backend.query(api.automations.runs, {
+                organizationId,
+                id,
+                paginationOpts: { cursor: null, numItems: 10 },
+              })
+            ).page.some((run) => run.status === "completed" && run.sent === 1),
+          { timeout: 45000 }
+        )
+        .toBe(true)
+      await owner.getByTestId("view-toggle-observability").click()
+      await expect(
+        owner.getByText("Completed", { exact: true }).first()
+      ).toBeVisible()
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-automation-runs.png`,
+        fullPage: true,
+      })
+      await backend.mutation(api.automations.setStatus, {
+        organizationId,
+        id,
+        status: "disabled",
+      })
       const closed = await rest(() =>
         owner.request.post(`${origin()}/messenger/messages`, {
           headers,
@@ -208,7 +321,29 @@ export function messengerInstagramTests(
       await expect(contactRow).toBeVisible()
       const identityLink = contactRow.getByRole("link", { name: /Ada E2E/ })
       await expect(identityLink).toHaveAttribute("href", /^\/contacts\//)
-      await expect(identityLink).toContainText(PSID)
+      await expect(contactRow).not.toContainText(PSID)
+      const instagramContact = owner
+        .getByRole("row")
+        .filter({ hasText: "Grace E2E" })
+      await expect(instagramContact).toBeVisible()
+      await expect(instagramContact).toContainText("@grace_e2e")
+      await expect(instagramContact).not.toContainText(IGSID)
+      expect(
+        await (await owner.request.get(`${fake()}/__calls`)).json()
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: `/${IGSID}`,
+            query: expect.objectContaining({
+              fields: "name,username,profile_pic",
+            }),
+          }),
+          expect.objectContaining({
+            path: `/${PSID}`,
+            query: expect.objectContaining({ fields: "first_name,last_name" }),
+          }),
+        ])
+      )
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-contact-identity.png`,
         fullPage: true,
@@ -217,6 +352,27 @@ export function messengerInstagramTests(
       await expect(
         owner.getByRole("heading", { name: "Ada E2E", exact: true })
       ).toBeVisible()
+      const messengerIdentity = owner.getByRole("region", {
+        name: "Contact channels",
+      })
+      await expect(
+        messengerIdentity.getByRole("row").filter({ hasText: "Messenger" })
+      ).toContainText(PSID)
+      await owner.goto("/contacts")
+      await owner
+        .getByRole("row")
+        .filter({ hasText: "Grace E2E" })
+        .getByRole("link", { name: /Grace E2E/ })
+        .click()
+      const instagramIdentity = owner.getByRole("region", {
+        name: "Contact channels",
+      })
+      await expect(instagramIdentity).toContainText("@grace_e2e")
+      await expect(instagramIdentity).toContainText("Opensend")
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/messenger-instagram-contact-channels.png`,
+        fullPage: true,
+      })
       await owner.goto("/channels")
       // The Instagram row names the same Page as its business.
       const messenger = owner
@@ -242,6 +398,11 @@ export function messengerInstagramTests(
         fullPage: true,
       })
     } finally {
+      if (automationId)
+        await backend.mutation(api.automations.remove, {
+          organizationId,
+          id: automationId,
+        })
       await backend.mutation(api.webhooks.remove, { id: customerWebhook })
     }
   })

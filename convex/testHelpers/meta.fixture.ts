@@ -1,6 +1,6 @@
 import { vi } from "vitest"
 import * as publicHttp from "../../lib/net/public-fetch"
-import { api, components } from "../_generated/api"
+import { api, internal, components } from "../_generated/api"
 import { metaSignature } from "../../lib/meta/signature"
 import { insertRow } from "../counts"
 import { fixture } from "./ses.fixture"
@@ -118,6 +118,11 @@ export async function metaFixture() {
     },
   })
   await f.owner.client.action(api.meta.app.save, META_APP)
+  await f.owner.client.mutation(internal.meta.app.record, {
+    appId: META_APP.appId,
+    verifiedAt: Date.now(),
+    webhookSubscribedAt: Date.now(),
+  })
   return { ...f, member }
 }
 

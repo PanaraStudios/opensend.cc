@@ -1,0 +1,1392 @@
+{
+  "send": {
+    "text": {
+      "text": {
+        "body": "Hello",
+        "preview_url": true
+      }
+    },
+    "image": {
+      "image": {
+        "id": "media.image",
+        "caption": "Photo"
+      }
+    },
+    "video": {
+      "video": {
+        "id": "media.video",
+        "caption": "Video"
+      }
+    },
+    "audio": {
+      "audio": {
+        "id": "media.audio"
+      }
+    },
+    "voice_note": {
+      "audio": {
+        "id": "media.voice",
+        "voice": true
+      }
+    },
+    "document": {
+      "document": {
+        "id": "media.document",
+        "filename": "guide.pdf",
+        "caption": "Guide"
+      }
+    },
+    "sticker": {
+      "sticker": {
+        "id": "media.sticker"
+      }
+    },
+    "location": {
+      "location": {
+        "latitude": 19.076,
+        "longitude": 72.8777,
+        "name": "Office",
+        "address": "Mumbai"
+      }
+    },
+    "contacts": {
+      "contacts": [
+        {
+          "name": {
+            "formatted_name": "Ada Lovelace",
+            "first_name": "Ada"
+          },
+          "phones": [
+            {
+              "phone": "+16505551234",
+              "wa_id": "16505551234",
+              "type": "WORK"
+            }
+          ],
+          "emails": [
+            {
+              "email": "ada@example.com",
+              "type": "WORK"
+            }
+          ],
+          "addresses": [
+            {
+              "city": "Mumbai",
+              "country_code": "IN"
+            }
+          ],
+          "org": {
+            "company": "Example"
+          },
+          "urls": [
+            {
+              "url": "https://example.com"
+            }
+          ],
+          "birthday": "1815-12-10"
+        }
+      ]
+    },
+    "reaction": {
+      "reaction": {
+        "message_id": "wamid.target",
+        "emoji": "\ud83d\udc4d"
+      }
+    },
+    "reaction_removal": {
+      "reaction": {
+        "message_id": "wamid.target",
+        "emoji": ""
+      }
+    },
+    "template": {
+      "template": {
+        "name": "hello_world",
+        "language": {
+          "code": "en_US"
+        },
+        "components": [
+          {
+            "type": "body",
+            "parameters": [
+              {
+                "type": "text",
+                "text": "Ada",
+                "parameter_name": "name"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "interactive_button": {
+      "interactive": {
+        "type": "button",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "buttons": [
+            {
+              "type": "reply",
+              "reply": {
+                "id": "yes",
+                "title": "Yes"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "interactive_list": {
+      "interactive": {
+        "type": "list",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "button": "Options",
+          "sections": [
+            {
+              "title": "Menu",
+              "rows": [
+                {
+                  "id": "one",
+                  "title": "One",
+                  "description": "First"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "interactive_cta_url": {
+      "interactive": {
+        "type": "cta_url",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "cta_url",
+          "parameters": {
+            "display_text": "Visit",
+            "url": "https://example.com"
+          }
+        }
+      }
+    },
+    "interactive_flow": {
+      "interactive": {
+        "type": "flow",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "flow",
+          "parameters": {
+            "flow_message_version": "3",
+            "flow_token": "token",
+            "flow_id": "123",
+            "flow_cta": "Book",
+            "mode": "published",
+            "flow_action": "navigate",
+            "flow_action_payload": {
+              "screen": "START",
+              "data": {}
+            }
+          }
+        }
+      }
+    },
+    "interactive_location_request_message": {
+      "interactive": {
+        "type": "location_request_message",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "send_location"
+        }
+      }
+    },
+    "interactive_address_message": {
+      "interactive": {
+        "type": "address_message",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "address_message",
+          "parameters": {
+            "country": "IN",
+            "values": {
+              "name": "Ada"
+            }
+          }
+        }
+      }
+    },
+    "interactive_voice_call": {
+      "interactive": {
+        "type": "voice_call",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "voice_call",
+          "parameters": {
+            "display_text": "Call",
+            "ttl_minutes": 10,
+            "payload": "call"
+          }
+        }
+      }
+    },
+    "interactive_call_permission_request": {
+      "interactive": {
+        "type": "call_permission_request",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "call_permission_request"
+        }
+      }
+    },
+    "interactive_request_contact_info": {
+      "interactive": {
+        "type": "request_contact_info",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "request_contact_info"
+        }
+      }
+    },
+    "interactive_catalog_message": {
+      "interactive": {
+        "type": "catalog_message",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "catalog_message",
+          "parameters": {
+            "thumbnail_product_retailer_id": "sku"
+          }
+        }
+      }
+    },
+    "interactive_product": {
+      "interactive": {
+        "type": "product",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "catalog_id": "catalog",
+          "product_retailer_id": "sku"
+        }
+      }
+    },
+    "interactive_product_list": {
+      "interactive": {
+        "type": "product_list",
+        "body": {
+          "text": "Choose an option"
+        },
+        "header": {
+          "type": "text",
+          "text": "Products"
+        },
+        "action": {
+          "catalog_id": "catalog",
+          "sections": [
+            {
+              "title": "Products",
+              "product_items": [
+                {
+                  "product_retailer_id": "sku"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "interactive_order_details": {
+      "interactive": {
+        "type": "order_details",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "review_and_pay",
+          "parameters": {
+            "reference_id": "order-1",
+            "type": "physical-goods",
+            "payment_type": "upi",
+            "payment_settings": [
+              {
+                "type": "upi",
+                "upi": {
+                  "vpa": "merchant@bank",
+                  "payee_name": "Shop"
+                }
+              }
+            ],
+            "currency": "INR",
+            "total_amount": {
+              "value": 10000,
+              "offset": 100
+            },
+            "order": {
+              "status": "pending",
+              "items": [
+                {
+                  "retailer_id": "sku",
+                  "name": "Book",
+                  "amount": {
+                    "value": 10000,
+                    "offset": 100
+                  },
+                  "quantity": 1
+                }
+              ],
+              "subtotal": {
+                "value": 10000,
+                "offset": 100
+              },
+              "tax": {
+                "value": 0,
+                "offset": 100
+              }
+            }
+          }
+        }
+      }
+    },
+    "interactive_order_status": {
+      "interactive": {
+        "type": "order_status",
+        "body": {
+          "text": "Choose an option"
+        },
+        "action": {
+          "name": "review_order",
+          "parameters": {
+            "reference_id": "order-1",
+            "order": {
+              "status": "shipped",
+              "description": "On the way"
+            }
+          }
+        }
+      }
+    },
+    "interactive_carousel_media": {
+      "interactive": {
+        "type": "carousel",
+        "body": {
+          "text": "Our picks"
+        },
+        "action": {
+          "cards": [
+            {
+              "card_index": 0,
+              "type": "cta_url",
+              "header": {
+                "type": "image",
+                "image": {
+                  "id": "media.0"
+                }
+              },
+              "body": {
+                "text": "Pick"
+              },
+              "action": {
+                "name": "cta_url",
+                "parameters": {
+                  "display_text": "Visit",
+                  "url": "https://example.com"
+                }
+              }
+            },
+            {
+              "card_index": 1,
+              "type": "cta_url",
+              "header": {
+                "type": "image",
+                "image": {
+                  "id": "media.1"
+                }
+              },
+              "body": {
+                "text": "Pick"
+              },
+              "action": {
+                "name": "cta_url",
+                "parameters": {
+                  "display_text": "Visit",
+                  "url": "https://example.com"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "interactive_carousel_product": {
+      "interactive": {
+        "type": "carousel",
+        "body": {
+          "text": "Our picks"
+        },
+        "action": {
+          "cards": [
+            {
+              "card_index": 0,
+              "type": "product",
+              "action": {
+                "catalog_id": "catalog",
+                "product_retailer_id": "sku0"
+              }
+            },
+            {
+              "card_index": 1,
+              "type": "product",
+              "action": {
+                "catalog_id": "catalog",
+                "product_retailer_id": "sku1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "template_parameter_text": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "body",
+            "parameters": [
+              {
+                "type": "text",
+                "text": "Ada"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_currency": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "body",
+            "parameters": [
+              {
+                "type": "currency",
+                "currency": {
+                  "fallback_value": "$1",
+                  "code": "USD",
+                  "amount_1000": 1000
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_date_time": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "body",
+            "parameters": [
+              {
+                "type": "date_time",
+                "date_time": {
+                  "fallback_value": "Tomorrow"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_image": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "header",
+            "parameters": [
+              {
+                "type": "image",
+                "image": {
+                  "id": "media.image"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_video": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "header",
+            "parameters": [
+              {
+                "type": "video",
+                "video": {
+                  "id": "media.video"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_document": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "header",
+            "parameters": [
+              {
+                "type": "document",
+                "document": {
+                  "id": "media.document"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_location": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "header",
+            "parameters": [
+              {
+                "type": "location",
+                "location": {
+                  "latitude": 1,
+                  "longitude": 2
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_parameter_product": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "header",
+            "parameters": [
+              {
+                "type": "product",
+                "product": {
+                  "catalog_id": "catalog",
+                  "product_retailer_id": "sku"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_quick_reply": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "quick_reply",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "payload",
+                "payload": "yes"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_url": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "text",
+                "text": "suffix"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_copy_code": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "copy_code",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "coupon_code",
+                "coupon_code": "SAVE20"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_flow": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "flow",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "action",
+                "action": {
+                  "flow_token": "token",
+                  "flow_action_data": {}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_CATALOG": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "CATALOG",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "action",
+                "action": {
+                  "thumbnail_product_retailer_id": "sku"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_mpm": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "mpm",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "action",
+                "action": {
+                  "thumbnail_product_retailer_id": "sku",
+                  "sections": [
+                    {
+                      "title": "Picks",
+                      "product_items": [
+                        {
+                          "product_retailer_id": "sku"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_voice_call": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "voice_call",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "ttl_minutes",
+                "ttl_minutes": 10
+              },
+              {
+                "type": "payload",
+                "payload": "call"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_button_order_details": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "button",
+            "sub_type": "order_details",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "action",
+                "action": {
+                  "order_details": {
+                    "reference_id": "order-1",
+                    "type": "physical-goods",
+                    "payment_type": "upi",
+                    "payment_settings": [
+                      {
+                        "type": "upi",
+                        "upi": {
+                          "vpa": "merchant@bank",
+                          "payee_name": "Shop"
+                        }
+                      }
+                    ],
+                    "currency": "INR",
+                    "total_amount": {
+                      "value": 10000,
+                      "offset": 100
+                    },
+                    "order": {
+                      "status": "pending",
+                      "items": [
+                        {
+                          "retailer_id": "sku",
+                          "name": "Book",
+                          "amount": {
+                            "value": 10000,
+                            "offset": 100
+                          },
+                          "quantity": 1
+                        }
+                      ],
+                      "subtotal": {
+                        "value": 10000,
+                        "offset": 100
+                      },
+                      "tax": {
+                        "value": 0,
+                        "offset": 100
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_otp": {
+      "template": {
+        "name": "otp",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "body",
+            "parameters": [
+              {
+                "type": "text",
+                "text": "123456"
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "text",
+                "text": "123456"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_carousel": {
+      "template": {
+        "name": "carousel",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "carousel",
+            "cards": [
+              {
+                "card_index": 0,
+                "components": [
+                  {
+                    "type": "header",
+                    "parameters": [
+                      {
+                        "type": "image",
+                        "image": {
+                          "id": "media.0"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "card_index": 1,
+                "components": [
+                  {
+                    "type": "header",
+                    "parameters": [
+                      {
+                        "type": "image",
+                        "image": {
+                          "id": "media.1"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_limited_time_offer": {
+      "template": {
+        "name": "offer",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "limited_time_offer",
+            "parameters": [
+              {
+                "type": "limited_time_offer",
+                "limited_time_offer": {
+                  "expiration_time_ms": 1800000000000
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_order_status": {
+      "template": {
+        "name": "status",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "order_status",
+            "parameters": [
+              {
+                "type": "order_status",
+                "order_status": {
+                  "reference_id": "order-1",
+                  "order": {
+                    "status": "shipped",
+                    "description": "On the way"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_call_permission_request": {
+      "template": {
+        "name": "call_permission",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "call_permission_request",
+            "parameters": []
+          }
+        ]
+      }
+    },
+    "interactive_carousel_replies": {
+      "interactive": {
+        "type": "carousel",
+        "body": {
+          "text": "Choose"
+        },
+        "action": {
+          "cards": [
+            {
+              "card_index": 0,
+              "type": "cta_url",
+              "header": {
+                "type": "image",
+                "image": {
+                  "id": "media.0"
+                }
+              },
+              "action": {
+                "buttons": [
+                  {
+                    "type": "quick_reply",
+                    "quick_reply": {
+                      "id": "pick-0",
+                      "title": "Pick"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "card_index": 1,
+              "type": "cta_url",
+              "header": {
+                "type": "image",
+                "image": {
+                  "id": "media.1"
+                }
+              },
+              "action": {
+                "buttons": [
+                  {
+                    "type": "quick_reply",
+                    "quick_reply": {
+                      "id": "pick-1",
+                      "title": "Pick"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "template_product_carousel": {
+      "template": {
+        "name": "catalog_example",
+        "language": "en_US",
+        "components": [
+          {
+            "type": "carousel",
+            "cards": [
+              {
+                "card_index": 0,
+                "components": [
+                  {
+                    "type": "header",
+                    "parameters": [
+                      {
+                        "type": "product",
+                        "product": {
+                          "catalog_id": "catalog",
+                          "product_retailer_id": "sku0"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "card_index": 1,
+                "components": [
+                  {
+                    "type": "header",
+                    "parameters": [
+                      {
+                        "type": "product",
+                        "product": {
+                          "catalog_id": "catalog",
+                          "product_retailer_id": "sku1"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "template_footer": {
+      "template": {
+        "name": "footer_example",
+        "language": "en_US"
+      }
+    }
+  },
+  "inbound": {
+    "text": {
+      "type": "text",
+      "text": {
+        "body": "Hello"
+      }
+    },
+    "image": {
+      "type": "image",
+      "image": {
+        "id": "media.image",
+        "mime_type": "image/jpeg",
+        "sha256": "hash",
+        "caption": "Photo",
+        "url": "https://cdn.example.com/image"
+      }
+    },
+    "video": {
+      "type": "video",
+      "video": {
+        "id": "media.video",
+        "mime_type": "video/mp4",
+        "sha256": "hash",
+        "caption": "Video"
+      }
+    },
+    "video_note": {
+      "type": "video",
+      "video": {
+        "id": "media.video-note",
+        "mime_type": "video/mp4",
+        "sha256": "hash"
+      }
+    },
+    "audio": {
+      "type": "audio",
+      "audio": {
+        "id": "media.audio",
+        "mime_type": "audio/mpeg",
+        "sha256": "hash",
+        "voice": false
+      }
+    },
+    "voice_note": {
+      "type": "audio",
+      "audio": {
+        "id": "media.voice",
+        "mime_type": "audio/ogg; codecs=opus",
+        "sha256": "hash",
+        "voice": true
+      }
+    },
+    "sticker": {
+      "type": "sticker",
+      "sticker": {
+        "id": "media.sticker",
+        "mime_type": "image/webp",
+        "sha256": "hash",
+        "animated": true
+      }
+    },
+    "document": {
+      "type": "document",
+      "document": {
+        "id": "media.doc",
+        "mime_type": "application/pdf",
+        "sha256": "hash",
+        "filename": "guide.pdf",
+        "caption": "Guide"
+      }
+    },
+    "location": {
+      "type": "location",
+      "location": {
+        "latitude": 1,
+        "longitude": 2,
+        "name": "Office",
+        "address": "Mumbai",
+        "url": "https://maps.example.com"
+      }
+    },
+    "contacts": {
+      "type": "contacts",
+      "contacts": [
+        {
+          "name": {
+            "formatted_name": "Ada Lovelace",
+            "first_name": "Ada"
+          },
+          "phones": [
+            {
+              "phone": "+16505551234",
+              "wa_id": "16505551234",
+              "type": "WORK"
+            }
+          ],
+          "emails": [
+            {
+              "email": "ada@example.com",
+              "type": "WORK"
+            }
+          ],
+          "addresses": [
+            {
+              "city": "Mumbai",
+              "country_code": "IN"
+            }
+          ],
+          "org": {
+            "company": "Example"
+          },
+          "urls": [
+            {
+              "url": "https://example.com"
+            }
+          ],
+          "birthday": "1815-12-10"
+        }
+      ]
+    },
+    "contact_request": {
+      "type": "contacts",
+      "contacts": [
+        {
+          "name": {
+            "formatted_name": "Ada"
+          },
+          "origin": "contact_request",
+          "vcard": "BEGIN:VCARD"
+        }
+      ]
+    },
+    "button": {
+      "type": "button",
+      "button": {
+        "payload": "yes",
+        "text": "Yes"
+      },
+      "context": {
+        "from": "15550783881",
+        "id": "wamid.target"
+      }
+    },
+    "button_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "button_reply",
+        "button_reply": {
+          "id": "yes",
+          "title": "Yes"
+        }
+      }
+    },
+    "list_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "list_reply",
+        "list_reply": {
+          "id": "one",
+          "title": "One",
+          "description": "First"
+        }
+      }
+    },
+    "flow_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "nfm_reply",
+        "nfm_reply": {
+          "name": "flow",
+          "body": "Sent",
+          "response_json": "{\"flow_token\":\"token\",\"answer\":\"yes\"}"
+        }
+      }
+    },
+    "address_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "nfm_reply",
+        "nfm_reply": {
+          "name": "address_message",
+          "response_json": "{\"city\":\"Mumbai\"}"
+        }
+      }
+    },
+    "call_permission_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "call_permission_reply",
+        "call_permission_reply": {
+          "response": "accept",
+          "is_permanent": true,
+          "expiration_timestamp": "1800000000",
+          "response_source": "user_action"
+        }
+      }
+    },
+    "order": {
+      "type": "order",
+      "order": {
+        "catalog_id": "catalog",
+        "text": "Cart",
+        "product_items": [
+          {
+            "product_retailer_id": "sku",
+            "quantity": 1,
+            "item_price": "100.00",
+            "currency": "INR"
+          }
+        ]
+      }
+    },
+    "reaction": {
+      "type": "reaction",
+      "reaction": {
+        "message_id": "wamid.target",
+        "emoji": "\ud83d\udc4d"
+      }
+    },
+    "reaction_removal": {
+      "type": "reaction",
+      "reaction": {
+        "message_id": "wamid.target"
+      }
+    },
+    "system_number": {
+      "type": "system",
+      "system": {
+        "body": "Number changed",
+        "type": "user_changed_number",
+        "wa_id": "16505551235",
+        "user_id": "BSUID-new"
+      }
+    },
+    "system_user_id": {
+      "type": "system",
+      "system": {
+        "body": "ID changed",
+        "type": "user_changed_user_id",
+        "user_id": "BSUID-new"
+      }
+    },
+    "unsupported": {
+      "type": "unsupported",
+      "unsupported": {
+        "type": "gif"
+      },
+      "errors": [
+        {
+          "code": 131051,
+          "title": "Unsupported message type",
+          "message": "Unsupported"
+        }
+      ]
+    },
+    "poll_creation": {
+      "type": "unsupported",
+      "unsupported": {
+        "type": "poll_creation"
+      }
+    },
+    "poll_update": {
+      "type": "unsupported",
+      "unsupported": {
+        "type": "poll_update"
+      }
+    },
+    "edit": {
+      "type": "edit",
+      "edit": {
+        "original_message_id": "wamid.target",
+        "text": {
+          "body": "Edited"
+        }
+      }
+    },
+    "revoke": {
+      "type": "revoke",
+      "revoke": {
+        "original_message_id": "wamid.target"
+      }
+    },
+    "context": {
+      "type": "text",
+      "text": {
+        "body": "Tell me more"
+      },
+      "context": {
+        "from": "15550783881",
+        "id": "wamid.target",
+        "forwarded": true,
+        "frequently_forwarded": true,
+        "referred_product": {
+          "catalog_id": "catalog",
+          "product_retailer_id": "sku"
+        }
+      }
+    },
+    "referral": {
+      "type": "text",
+      "text": {
+        "body": "From the ad"
+      },
+      "referral": {
+        "source_url": "https://fb.com/ad",
+        "source_id": "ad123",
+        "source_type": "ad",
+        "body": "Shop now",
+        "headline": "Books",
+        "media_type": "image",
+        "image_url": "https://example.com/ad.jpg",
+        "thumbnail_url": "https://example.com/thumb.jpg",
+        "ctwa_clid": "click",
+        "welcome_message": {
+          "text": "Welcome"
+        }
+      }
+    }
+  }
+}

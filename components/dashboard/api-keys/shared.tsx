@@ -43,6 +43,39 @@ import { maskToken, permissionLabel } from "@/lib/dashboard/format"
 import { useDomain, useDomainOptions } from "@/lib/domains/use-domains"
 import type { ApiKey, ApiKeyPermission, Domain } from "@/lib/dashboard/types"
 
+import { API_RESOURCES, scopeAllows, scopeLabel } from "@/lib/api-scopes"
+import {
+  Table,
+  TableHeader,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip"
+
+export function ApiKeyPermissionLabel({ apiKey }: { apiKey: ApiKey }) {
+  if (apiKey.permission !== "custom") return permissionLabel(apiKey.permission)
+  const scopes = apiKey.scopes ?? []
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span />} tabIndex={0}>
+        Custom · {scopes.length} scopes
+      </TooltipTrigger>
+      <TooltipContent>
+        {scopes.length
+          ? scopes.map(scopeLabel).join(", ")
+          : "No resource access"}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export const ApiKeyIcon = KeyRoundIcon
 
 export const PERMISSION_ITEMS: readonly SelectOption[] =
@@ -77,6 +110,7 @@ export type ApiKeyFormValues = {
   name: string
   permission: ApiKeyPermission
   domainId: string | null
+  scopes: string[]
 }
 
 /** One form for adding and editing. The dialog mounts it only while open, so
@@ -132,6 +166,7 @@ function ApiKeyForm({
   const [domainId, setDomainId] = React.useState<string | null>(
     apiKey?.domainId ?? null
   )
+  const [scopes, setScopes] = React.useState<string[]>(apiKey?.scopes ?? [])
   const domains = useDomainOptions({
     search: domainSearch,
     selectedId: domainId ? (domainId as Id<"domains">) : undefined,
@@ -139,7 +174,9 @@ function ApiKeyForm({
   const selectedDomain = useDomain(domainId)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState(false)
-  const sendingOnly = permission === "sending_access"
+  const domainAllowed =
+    permission === "sending_access" ||
+    (permission === "custom" && scopeAllows(scopes, "emails", "write"))
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -153,7 +190,8 @@ function ApiKeyForm({
       await onSubmit({
         name: name.trim().slice(0, 50),
         permission,
-        domainId: sendingOnly ? domainId : null,
+        domainId: domainAllowed ? domainId : null,
+        scopes: permission === "custom" ? scopes : [],
       })
       onOpenChange(false)
     } catch (e) {
@@ -164,15 +202,17 @@ function ApiKeyForm({
   }
 
   return (
-    <DialogContent className="sm:max-w-md">
-      <form onSubmit={submit}>
+    <DialogContent
+      className={permission === "custom" ? "sm:max-w-2xl" : "sm:max-w-md"}
+    >
+      <form onSubmit={submit} className="flex max-h-[85dvh] flex-col">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Keys authenticate the REST API and SMTP. The token is shown once.
           </DialogDescription>
         </DialogHeader>
-        <FieldGroup className="py-4">
+        <FieldGroup className="min-h-0 overflow-y-auto py-4">
           <Field>
             <FieldLabel htmlFor="api-key-name">Name</FieldLabel>
             <Input
@@ -200,6 +240,10 @@ function ApiKeyForm({
                   <b className="font-medium">Sending access</b>: can only send
                   emails.
                 </span>
+                <span>
+                  <b className="font-medium">Custom</b>: choose read or write
+                  access per resource. Write includes read.
+                </span>
               </InfoTip>
             </div>
             <OptionSelect
@@ -210,37 +254,146 @@ function ApiKeyForm({
               items={PERMISSION_ITEMS}
             />
           </Field>
-          <Field data-disabled={!sendingOnly}>
-            <FieldLabel htmlFor="api-key-domain">Domain</FieldLabel>
-            <OptionSelect
-              search={{ onChange: setDomainSearch }}
-              id="api-key-domain"
-              className="w-full"
-              disabled={!sendingOnly}
-              value={sendingOnly ? (domainId ?? ALL_DOMAINS) : ALL_DOMAINS}
-              onChange={(next) =>
-                setDomainId(next === ALL_DOMAINS ? null : next)
-              }
-              items={domainItems(domains)}
-              selectedItem={
-                sendingOnly && selectedDomain
-                  ? {
-                      value: selectedDomain.id,
-                      label: selectedDomain.name,
+          {permission === "custom" ? (
+            <Field>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel>Resource scopes</FieldLabel>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setScopes(API_RESOURCES.map(({ id }) => `${id}:read`))
                     }
-                  : undefined
-              }
-            />
-            <FieldDescription>
-              Only sending access can be restricted to a single domain.
-            </FieldDescription>
-          </Field>
+                  >
+                    Set all to Read
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setScopes([])}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Access</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {API_RESOURCES.map((resource, index) => (
+                    <React.Fragment key={resource.id}>
+                      {index === 0 ||
+                      API_RESOURCES[index - 1].group !== resource.group ? (
+                        <TableRow>
+                          <TableHead colSpan={2}>{resource.group}</TableHead>
+                        </TableRow>
+                      ) : null}
+                      <TableRow>
+                        <TableCell className="whitespace-normal">
+                          <span>{resource.label}</span>
+                          <FieldDescription>
+                            {resource.description}
+                          </FieldDescription>
+                        </TableCell>
+                        <TableCell>
+                          <ToggleGroup
+                            aria-label={`${resource.label} access`}
+                            variant="outline"
+                            size="sm"
+                            spacing={0}
+                            value={[
+                              scopeAllows(scopes, resource.id, "write")
+                                ? "write"
+                                : scopeAllows(scopes, resource.id, "read")
+                                  ? "read"
+                                  : "none",
+                            ]}
+                            onValueChange={(values) => {
+                              const access = values[0]
+                              if (!access) return
+                              setScopes((current) => [
+                                ...current.filter(
+                                  (s) => !s.startsWith(`${resource.id}:`)
+                                ),
+                                ...(access === "none"
+                                  ? []
+                                  : [`${resource.id}:${access}`]),
+                              ])
+                            }}
+                          >
+                            <ToggleGroupItem
+                              value="none"
+                              aria-label={`${resource.label} None`}
+                            >
+                              None
+                            </ToggleGroupItem>
+                            <ToggleGroupItem
+                              value="read"
+                              aria-label={`${resource.label} Read`}
+                            >
+                              Read
+                            </ToggleGroupItem>
+                            <ToggleGroupItem
+                              value="write"
+                              aria-label={`${resource.label} Write`}
+                            >
+                              Write
+                            </ToggleGroupItem>
+                          </ToggleGroup>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+              <FieldDescription>
+                Write includes read. API keys and team settings require Full
+                access.
+              </FieldDescription>
+            </Field>
+          ) : null}
+          {domainAllowed ? (
+            <Field>
+              <FieldLabel htmlFor="api-key-domain">Domain</FieldLabel>
+              <OptionSelect
+                search={{ onChange: setDomainSearch }}
+                id="api-key-domain"
+                className="w-full"
+                value={domainId ?? ALL_DOMAINS}
+                onChange={(next) =>
+                  setDomainId(next === ALL_DOMAINS ? null : next)
+                }
+                items={domainItems(domains)}
+                selectedItem={
+                  selectedDomain
+                    ? {
+                        value: selectedDomain.id,
+                        label: selectedDomain.name,
+                      }
+                    : undefined
+                }
+              />
+              <FieldDescription>
+                Sending access and Custom with Emails Write can be restricted to
+                a single sending domain.
+              </FieldDescription>
+            </Field>
+          ) : null}
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit">{submitLabel}</Button>
+          <Button type="submit" disabled={pending}>
+            {submitLabel}
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>

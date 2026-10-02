@@ -1,0 +1,47 @@
+# Lead-only harness overlay. Do not deploy: substitutes Convex callbacks with a fake server.
+services:
+  janus:
+    image: opensend-calling-test-janus:1.2.3
+    environment:
+      JANUS_STUN_SERVER: ""
+      JANUS_PUBLIC_IP: ""
+  freeswitch:
+    image: opensend-calling-test-freeswitch:1.11.3
+    environment:
+      FREESWITCH_PUBLIC_IP: auto
+    # Always use this project's certificate volume, even with a production env in the shell.
+    volumes:
+      - freeswitch-certs:/certs
+  drachtio:
+    image: opensend-calling-test-drachtio:0.9.11
+  voice-agent:
+    image: opensend-calling-test-voice-agent:0.1.0
+    environment:
+      VOICE_AGENT_FAKE_ENABLED: "true"
+      CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
+  call-gateway:
+    image: opensend-calling-test-gateway:0.1.0
+    environment:
+      CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
+      CALL_VOICE_FAKE_ENABLED: "true"
+  coturn:
+    image: opensend-calling-test-coturn:4.6
+  meta-peer:
+    profiles: [calling-test]
+    image: opensend-calling-test-harness:0.1.0
+    build:
+      context: .
+      dockerfile: services/call-gateway/Dockerfile
+      target: harness
+    environment:
+      CALL_GATEWAY_URL: http://call-gateway:8090
+      CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      JANUS_ADMIN_URL: http://janus:7088/admin
+      JANUS_API_SECRET: ${JANUS_API_SECRET:-}
+    volumes:
+      - calling-recordings:/recordings:ro
+    depends_on:
+      call-gateway:
+        condition: service_healthy
+      voice-agent:
+        condition: service_healthy

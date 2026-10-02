@@ -1,3 +1,4 @@
+import { HTTP_MULTIPART_LIMIT } from "../../lib/storage/policy"
 import { v } from "convex/values"
 import type { HttpRouter } from "convex/server"
 import { internalQuery } from "../_generated/server"
@@ -13,13 +14,10 @@ import {
 import { objectBody, stringField } from "./route"
 import { channelMessageRoutes, channelSendInput } from "./channelMessages"
 import { findMetaApp } from "../meta/app"
-import {
-  MAX_WHATSAPP_MEDIA_BYTES,
-  validateWhatsAppMedia,
-} from "../../lib/meta/media"
+import { validateWhatsAppMedia } from "../../lib/meta/media"
 
 export function assertChannelSendingKey(caller: Caller) {
-  if (caller.domainId)
+  if (caller.domainId && caller.permission !== "custom")
     throw apiError(
       403,
       "restricted_api_key",
@@ -63,7 +61,7 @@ export function registerWhatsAppRoutes(http: HttpRouter) {
       return { body: { id } }
     },
     media: {
-      maxBody: MAX_WHATSAPP_MEDIA_BYTES + 64 * 1024,
+      maxBody: HTTP_MULTIPART_LIMIT,
       handler: async (ctx, { caller, body }) => {
         const input = objectBody(body)
         const from = stringField(input, "from")

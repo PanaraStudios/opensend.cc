@@ -327,11 +327,9 @@ export const recipients = query({
       phone: v.optional(v.string()),
       contact: v.union(
         v.null(),
-        schema
-          .doc("contacts")
-          .extend({
-            channelIdentity: v.union(v.null(), contactChannelIdentityValue),
-          })
+        schema.doc("contacts").extend({
+          channelIdentity: v.union(v.null(), contactChannelIdentityValue),
+        })
       ),
       messageStatus: v.optional(channelMessageStatusValue),
     })

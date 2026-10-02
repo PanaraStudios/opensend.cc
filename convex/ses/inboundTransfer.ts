@@ -1,4 +1,6 @@
 "use node"
+import { storeFile } from "../storage/objects"
+import { Readable } from "node:stream"
 import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
@@ -27,40 +29,39 @@ export const transfer = internalAction({
       Key: row.objectKey,
       ExpectedBucketOwner: installation.accountId,
     }
-    if (!row.storageId) {
+    if (!row.storageId && !row.fileId) {
       const result = await s3.send(new GetObjectCommand(object))
       if (!result.Body) throw new Error("Inbound object body is missing")
-      const reader = result.Body.transformToWebStream().getReader()
-      const chunks: Uint8Array<ArrayBuffer>[] = []
-      let size = 0
-      try {
-        if ((result.ContentLength ?? 0) > MAX_INBOUND_BYTES)
-          throw new RangeError("Inbound message exceeds 40 MiB")
-        while (true) {
-          const chunk = await reader.read()
-          if (chunk.done) break
-          size += chunk.value.byteLength
-          if (size > MAX_INBOUND_BYTES)
-            throw new RangeError("Inbound message exceeds 40 MiB")
-          chunks.push(new Uint8Array(chunk.value))
-        }
-      } catch (error) {
-        await reader.cancel()
-        if (!(error instanceof RangeError)) throw error
+      if ((result.ContentLength ?? 0) > MAX_INBOUND_BYTES) {
         await ctx.runMutation(internal.ses.inboundMessages.reject, { id })
         return null
-      } finally {
-        reader.releaseLock()
       }
-      const storageId = await ctx.storage.store(
-        new Blob(chunks, { type: "message/rfc822" })
-      )
-      // The mutation also deletes a redundant file from concurrent delivery.
-      await ctx.runMutation(internal.ses.inboundMessages.stored, {
-        id,
-        storageId,
-        size,
-      })
+      try {
+        const file = await storeFile(ctx, {
+          organizationId: row.organizationId,
+          feature: "inbound",
+          contentType: "message/rfc822",
+          body: Readable.fromWeb(
+            result.Body.transformToWebStream() as import("node:stream/web").ReadableStream<Uint8Array>
+          ),
+          size: result.ContentLength,
+          maxBytes: MAX_INBOUND_BYTES,
+        })
+        const size = file.fileId
+          ? (await ctx.runQuery(internal.storage.files.get, {
+              id: file.fileId,
+            }))!.size
+          : (await ctx.storage.get(file.storageId!))!.size
+        await ctx.runMutation(internal.ses.inboundMessages.stored, {
+          id,
+          ...file,
+          size,
+        })
+      } catch (e) {
+        if (!(e instanceof RangeError)) throw e
+        await ctx.runMutation(internal.ses.inboundMessages.reject, { id })
+        return null
+      }
     }
     await s3.send(new DeleteObjectCommand(object))
     await ctx.runMutation(internal.ses.inboundMessages.deleted, { id })

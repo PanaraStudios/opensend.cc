@@ -1,0 +1,8 @@
+**
+!services/
+!services/voice-agent/
+!services/voice-agent/pyproject.toml
+!services/voice-agent/uv.lock
+!services/voice-agent/voice_agent/
+!services/voice-agent/voice_agent/**
+services/voice-agent/voice_agent/__pycache__

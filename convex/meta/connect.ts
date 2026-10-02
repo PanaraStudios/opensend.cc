@@ -27,7 +27,7 @@ import {
   messagingChannelValue,
   pageChannelValue,
 } from "../tables/channels"
-import { findMetaApp } from "./app"
+import { findMetaApp, requireMetaConfigured } from "../access"
 import { NUMBER_LIMIT, registration } from "../../lib/meta/whatsapp-account"
 
 /* A team's Meta connections and the sending endpoints they bring. The Graph
@@ -179,8 +179,7 @@ export const teamApp = internalQuery({
   }),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId, "write")
-    const app = await findMetaApp(ctx)
-    if (!app) throw new ConvexError(APP_MISSING)
+    const app = await requireMetaConfigured(ctx)
     return {
       appId: app.appId,
       graphVersion: app.graphVersion,

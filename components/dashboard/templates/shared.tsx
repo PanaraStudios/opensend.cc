@@ -1,5 +1,6 @@
 "use client"
 
+import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 import * as React from "react"
 import Link from "next/link"
 import {
@@ -33,7 +34,11 @@ import {
   templatePublishLabel,
 } from "@/lib/dashboard/template"
 import type { EmailTemplate } from "@/lib/dashboard/types"
-import { formFromComponents, storedComponents } from "@/lib/meta/templates"
+import {
+  formFromComponents,
+  storedComponents,
+  renderedTemplateFromForm,
+} from "@/lib/meta/templates"
 import { useTemplateCommands } from "@/lib/templates/use-templates"
 
 /* The email itself, drawn small: a 600px sheet at half size, cut off by the
@@ -50,7 +55,9 @@ export function TemplateThumbnail({
         className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted p-4"
       >
         <WhatsAppTemplatePreview
-          form={formFromComponents(storedComponents(item.components)).form}
+          rendered={renderedTemplateFromForm(
+            formFromComponents(storedComponents(item.components)).form
+          )}
         />
       </div>
     )
@@ -141,7 +148,11 @@ export function TemplateMenu({
   const publish = usePublishTemplate()
   const [aliasOpen, setAliasOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
-  const publishLabel = templatePublishLabel(item)
+  const email = !item.channel || item.channel === "email"
+  const channels = useInstanceChannels()
+  const publishLabel = !channels?.[email ? "email" : "meta"]
+    ? null
+    : templatePublishLabel(item)
 
   return (
     <>

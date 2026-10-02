@@ -1,3 +1,4 @@
+import { CHANNEL_SEND_STEPS, type ChannelSendStepType } from "../channels"
 import type { ContactChannelIdentity } from "./contacts"
 import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
@@ -69,7 +70,7 @@ export type TlsMode = "opportunistic" | "enforced"
 export type TopicDefault = Infer<typeof topicDefaultValue>
 export type TopicVisibility = Infer<typeof topicVisibilityValue>
 export type TopicSubscription = Infer<typeof topicSubscriptionValue>
-export type ApiKeyPermission = "full_access" | "sending_access"
+export type ApiKeyPermission = "full_access" | "sending_access" | "custom"
 export type MemberRole = "admin" | "member"
 
 export type EmailStatus = Infer<typeof emailStatusValue>
@@ -104,9 +105,22 @@ export const WEBHOOK_EVENTS = [
   "email.failed",
   "email.scheduled",
   "email.suppressed",
+  "whatsapp.call.ivr_completed",
+  "whatsapp.call.ringing",
+  "whatsapp.call.connected",
+  "whatsapp.call.completed",
+  "whatsapp.call.failed",
+  "whatsapp.call.missed",
+  "whatsapp.call.permission_updated",
+  "whatsapp.call.recording_ready",
+  "whatsapp.call.transcription_ready",
+  "whatsapp.call.bot_completed",
+  "whatsapp.call.transferred",
   "whatsapp.message.sent",
   "whatsapp.message.delivered",
   "whatsapp.message.read",
+  "whatsapp.message.played",
+  "whatsapp.message.payment_updated",
   "whatsapp.message.failed",
   "whatsapp.message.received",
   "messenger.message.sent",
@@ -118,6 +132,15 @@ export const WEBHOOK_EVENTS = [
   "instagram.message.read",
   "instagram.message.failed",
   "instagram.message.received",
+  "whatsapp.message.read_receipt_sent",
+  "whatsapp.message.read_receipt_failed",
+  "whatsapp.message.typing_failed",
+  "messenger.message.read_receipt_sent",
+  "messenger.message.read_receipt_failed",
+  "messenger.message.typing_failed",
+  "instagram.message.read_receipt_sent",
+  "instagram.message.read_receipt_failed",
+  "instagram.message.typing_failed",
   "whatsapp.template.status_updated",
   "whatsapp.phone_number.updated",
   "contact.created",
@@ -213,6 +236,7 @@ export type ApiKey = {
   tokenPrefix: string
   tokenLast4: string
   permission: ApiKeyPermission
+  scopes?: string[]
   domainId: string | null
   createdAt: number
   lastUsedAt: number | null
@@ -365,7 +389,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
-  "send_whatsapp",
+  ...CHANNEL_SEND_STEPS,
   "contact_update",
   "contact_delete",
   "add_to_segment",
@@ -401,13 +425,15 @@ export type AutomationStep = { key: string } & (
       variables: Record<string, string>
     }
   | {
-      type: "send_whatsapp"
-      accountId: string
-      mode: "template" | "text"
-      templateId?: string
-      variables: Record<string, VariableSource>
-      text?: string
-    }
+      [T in ChannelSendStepType]: {
+        type: T
+        accountId: string
+        mode: "template" | "text"
+        templateId?: string
+        variables: Record<string, VariableSource>
+        text?: string
+      }
+    }[ChannelSendStepType]
   | { type: "contact_update"; fields: AutomationContactField[] }
   | { type: "contact_delete" }
   | { type: "add_to_segment"; segmentId: string }

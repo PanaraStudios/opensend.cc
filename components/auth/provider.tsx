@@ -2,6 +2,7 @@
 import { useState } from "react"
 import { ConvexReactClient } from "convex/react"
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react"
+import { WorkspaceDataProvider } from "./workspace"
 import { authClient } from "@/lib/auth/client"
 export function AuthProvider({
   url,
@@ -13,7 +14,7 @@ export function AuthProvider({
   const [client] = useState(() => new ConvexReactClient(url))
   return (
     <ConvexBetterAuthProvider client={client} authClient={authClient}>
-      {children}
+      <WorkspaceDataProvider>{children}</WorkspaceDataProvider>
     </ConvexBetterAuthProvider>
   )
 }

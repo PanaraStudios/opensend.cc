@@ -1,4 +1,5 @@
 "use client"
+import { FileStorageSettings } from "./file-storage"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
 import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
@@ -44,10 +45,11 @@ export function SettingsSes() {
       />
     )
   const installation = status.installation
-  const connected = !!installation?.accountId
+  const connected = status.emailConfigured
   const callbackOrigin = installation?.callbackOrigin
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
+      <FileStorageSettings />
       <p className="text-sm text-muted-foreground">
         Manage the AWS connection used by all teams.
       </p>
@@ -62,7 +64,7 @@ export function SettingsSes() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setEditing(true)}>
               <KeyRoundIcon data-icon="inline-start" />
-              Update connection
+              {connected ? "Update connection" : "Connect Amazon SES"}
             </Button>
             {installation?.accountId && (
               <DownloadIamPolicyButton
@@ -96,15 +98,17 @@ export function SettingsSes() {
           </div>
         </dl>
       </SettingsCard>
+      {connected && (
+        <SettingsCard
+          title="Sending regions"
+          description="Account limits and delivery status for each region."
+        >
+          <SesRegions status={status} settings />
+        </SettingsCard>
+      )}
       <SettingsCard
-        title="Sending regions"
-        description="Account limits and delivery status for each region."
-      >
-        <SesRegions status={status} settings />
-      </SettingsCard>
-      <SettingsCard
-        title="Delivery updates"
-        description="AWS sends delivery and bounce events to this address."
+        title="Public callback URL"
+        description="Receives email delivery updates and Meta webhooks."
         footer={
           callbackOrigin ? (
             <div className="flex flex-wrap items-start gap-2">
@@ -113,12 +117,10 @@ export function SettingsSes() {
                 success="Connection checked"
                 onSubmit={() => check({ callbackOrigin })}
               />
-              {connected && (
-                <Button variant="outline" onClick={() => setMoving(true)}>
-                  <PencilIcon data-icon="inline-start" />
-                  Change
-                </Button>
-              )}
+              <Button variant="outline" onClick={() => setMoving(true)}>
+                <PencilIcon data-icon="inline-start" />
+                Change
+              </Button>
             </div>
           ) : undefined
         }
@@ -134,23 +136,29 @@ export function SettingsSes() {
           </p>
         )}
       </SettingsCard>
-      <SystemSender />
-      <TenantReputation />
-      <TenantCleanup />
+      {connected && (
+        <>
+          <SystemSender />
+          <TenantReputation />
+          <TenantCleanup />
+        </>
+      )}
       <ChangePublicUrlDialog open={moving} onOpenChange={setMoving} />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Update AWS connection</DialogTitle>
+            <DialogTitle>
+              {connected ? "Update AWS connection" : "Connect Amazon SES"}
+            </DialogTitle>
             <DialogDescription>
-              Validate a replacement key or update your sending regions.
+              Connect your AWS account or update your sending regions.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[65svh] overflow-y-auto py-1">
             {editing && (
               <AwsConnectionForm
                 status={status}
-                updating
+                updating={connected}
                 onSaved={() => {
                   setEditing(false)
                   toast.add({

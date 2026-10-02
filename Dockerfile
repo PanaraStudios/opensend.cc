@@ -28,6 +28,9 @@ COPY --from=migrate-deps --chown=node:node /out/node_modules ./node_modules
 COPY --chown=node:node package.json tsconfig.json ./
 COPY --chown=node:node convex ./convex
 COPY --chown=node:node lib ./lib
+# Convex bundles shared contracts from the SDK and the call-gateway client.
+COPY --chown=node:node packages/sdk/src ./packages/sdk/src
+COPY --chown=node:node services/call-gateway/src ./services/call-gateway/src
 COPY --chown=node:node scripts/convex-env.mjs ./scripts/convex-env.mjs
 COPY --chown=node:node docker/migrate/run.mjs ./docker/migrate/run.mjs
 USER node

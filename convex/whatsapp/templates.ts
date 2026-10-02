@@ -671,3 +671,33 @@ export const resolve = internalQuery({
   handler: (ctx, { organizationId, ...ref }) =>
     findResolved(ctx, organizationId, ref),
 })
+
+export const sampleFile = internalQuery({
+  args: {
+    templateId: v.id("templates"),
+    id: v.string(),
+    caller: v.optional(callerValue),
+  },
+  handler: async (
+    ctx,
+    { templateId, id, caller }
+  ): Promise<Doc<"storedFiles">> => {
+    const template = await ctx.db.get("templates", templateId)
+    if (!template) throw new ConvexError("Template not found")
+    if (caller) {
+      await requireCaller(ctx, caller)
+      if (caller.organizationId !== template.organizationId)
+        throw new ConvexError("Template not found")
+    } else await requireTeam(ctx, template.organizationId, "write")
+    const normalized = ctx.db.normalizeId("storedFiles", id)
+    const file = normalized ? await ctx.db.get("storedFiles", normalized) : null
+    if (
+      !file ||
+      file.organizationId !== template.organizationId ||
+      file.state !== "ready" ||
+      file.feature !== "template"
+    )
+      throw new ConvexError("Sample upload is not ready")
+    return file
+  },
+})

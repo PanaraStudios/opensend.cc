@@ -221,7 +221,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/events",
-    permission: "full_access",
+    scope: { resource: "events", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.events.list, {
         caller,
@@ -235,7 +235,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/events",
-    permission: "full_access",
+    scope: { resource: "events", access: "write" },
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       const id = await ctx.runMutation(internal.api.events.create, {
@@ -249,7 +249,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/events/send",
-    permission: "full_access",
+    scope: { resource: "events", access: "write" },
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       const event = stringField(input, "event", true)!
@@ -265,7 +265,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/events/{id}",
-    permission: "full_access",
+    scope: { resource: "events", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const event = await ctx.runQuery(internal.api.events.get, {
         caller,
@@ -278,7 +278,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/events/{id}",
-    permission: "full_access",
+    scope: { resource: "events", access: "write" },
     handler: async (ctx, { caller, params, body }) => {
       const input = objectBody(body)
       if (!("schema" in input)) throw missing("schema")
@@ -296,7 +296,7 @@ export function registerEventRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/events/{id}",
-    permission: "full_access",
+    scope: { resource: "events", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: {
         ...changed(

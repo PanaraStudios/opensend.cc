@@ -91,7 +91,13 @@ export async function seedSesConnection(page: Page) {
   const status = await (await client(page)).query(api.installation.status)
   importFixture(
     "installation",
-    { ...status.installation!, ...connection, setupStep: "callback" },
+    {
+      ...status.installation!,
+      ...connection,
+      callbackOrigin: "http://localhost:3211",
+      environmentCheckedAt: 0,
+      setupStep: "callback",
+    },
     true
   )
   importFixture("sesRegions", {
@@ -105,7 +111,8 @@ export async function seedSesConnection(page: Page) {
     },
     checkedAt: Date.now(),
     phase: "ready",
-    topicArn: "arn:aws:sns:us-east-1:123456789012:fixture",
+    // No SNS topic yet: provisioning subscribes the callback after this step,
+    // and a provisioned region would lock the callback origin.
     callbackConfirmed: false,
   })
 }

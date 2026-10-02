@@ -1,3 +1,4 @@
+import { readFile } from "../storage/urls"
 import { teamRow } from "../lists"
 import { stream } from "convex-helpers/server/stream"
 import { v } from "convex/values"
@@ -154,7 +155,7 @@ async function inlineHtml(
     if (!result.includes(cid)) continue
     // Leave room for metadata and JSON below Convex's 20 MiB HTTP limit.
     if (file.size > 6 * 1024 * 1024) return { html, html_format: "cid" }
-    const blob = await ctx.storage.get(file.storageId)
+    const blob = await readFile(ctx, file)
     if (!blob) continue
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ""
@@ -175,7 +176,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/receiving",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.received.list, {
         caller,
@@ -191,7 +192,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/emails/receiving/{id}",
-    permission: "full_access",
+    scope: { resource: "emails", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const format = query.get("html_format") ?? "data_uri"
       if (format !== "cid" && format !== "data_uri")
@@ -227,7 +228,7 @@ export function registerReceivedRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path: `/emails/receiving/{id}/attachments${single ? "/{attachmentId}" : ""}`,
-      permission: "full_access",
+      scope: { resource: "emails", access: "read" },
       handler: async (ctx, { caller, params, query }) => {
         const result = await ctx.runQuery(internal.api.received.attachments, {
           caller,

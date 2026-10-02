@@ -188,8 +188,8 @@
   /* card panel: near-black hairline ring + four stacked soft drops */
   --shadow-panel:
     0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px -0.5px rgb(0 0 0 / 0.03),
-    0 3px 3px -1.5px rgb(0 0 0 / 0.05),
-    0 5px 5px -2.5px rgb(0 0 0 / 0.03), 0 16px 16px -8px rgb(0 0 0 / 0.04);
+    0 3px 3px -1.5px rgb(0 0 0 / 0.05), 0 5px 5px -2.5px rgb(0 0 0 / 0.03),
+    0 16px 16px -8px rgb(0 0 0 / 0.04);
   --shadow-tile:
     inset 0 1px 0 0 rgb(255 255 255 / 0.5), 0 2px 4px -1px rgb(0 0 0 / 0.05);
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
@@ -797,7 +797,7 @@
 @layer components {
   /* bounded column with the two rails (double borders, as in the reference) */
   .rails {
-    @apply mx-auto w-full max-w-column border-double-l border-double-r bg-background;
+    @apply mx-auto w-full max-w-column bg-background border-double-l border-double-r;
     /* each border-double-* sets box-shadow; restate so both rails keep their glow */
     box-shadow:
       -1px 0 var(--border-double-glow),

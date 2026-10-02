@@ -12,7 +12,7 @@ import { query, mutation, internalQuery } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
-import { requireTeam } from "./access"
+import { requireTeam, requireEmailConfigured } from "./access"
 import { renderEmail } from "./email/render"
 import {
   countValue,
@@ -485,48 +485,63 @@ export async function approvedTemplateOptions(
 
 /** The team's newest templates, without their bodies: for pickers on other
     screens, which re-render on every autosave. */
-export const options = query({
-  args: {
-    organizationId: v.string(),
-    search: v.optional(v.string()),
-    selectedId: v.optional(v.id("templates")),
-    /** Email when left out: the email pickers predate channels. */
-    channel: v.optional(channelValue),
-    wabaId: v.optional(v.string()),
-    approvedOnly: v.optional(v.boolean()),
-  },
-  returns: v.array(schema.doc("templates")),
-  handler: async (
-    ctx,
-    { organizationId, search, selectedId, channel, wabaId, approvedOnly }
-  ) => {
-    await requireTeam(ctx, organizationId, "read")
-    if (wabaId || approvedOnly)
-      return approvedTemplateOptions(ctx, organizationId, {
-        wabaId,
-        approvedOnly,
-        search,
-        selectedId,
-      })
-    const rows = search?.trim()
-      ? (await searchOptions(ctx, "templates", organizationId, search)).filter(
-          (row) => templateChannel(row) === rowChannel({ channel })
+const templateOptionsArgs = v.object({
+  organizationId: v.string(),
+  search: v.optional(v.string()),
+  selectedId: v.optional(v.id("templates")),
+  /** Email when left out: the email pickers predate channels. */
+  channel: v.optional(channelValue),
+  publishedOnly: v.optional(v.boolean()),
+  wabaId: v.optional(v.string()),
+  approvedOnly: v.optional(v.boolean()),
+})
+export async function templateOptions(
+  ctx: QueryCtx,
+  {
+    organizationId,
+    search,
+    selectedId,
+    channel,
+    wabaId,
+    approvedOnly,
+    publishedOnly,
+  }: Infer<typeof templateOptionsArgs>
+) {
+  await requireTeam(ctx, organizationId, "read")
+  if (wabaId || approvedOnly)
+    return approvedTemplateOptions(ctx, organizationId, {
+      wabaId,
+      approvedOnly,
+      search,
+      selectedId,
+    })
+  const rows = search?.trim()
+    ? (await searchOptions(ctx, "templates", organizationId, search)).filter(
+        (row) => templateChannel(row) === rowChannel({ channel })
+      )
+    : await ctx.db
+        .query("templates")
+        .withIndex("by_organizationId_and_channel", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("channel", storedChannel(rowChannel({ channel })))
         )
-      : await ctx.db
-          .query("templates")
-          .withIndex("by_organizationId_and_channel", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("channel", storedChannel(rowChannel({ channel })))
-          )
-          .order("desc")
-          .take(OPTION_LIMIT)
-    return includeSelected(
-      rows,
-      await selectedOption(ctx, "templates", organizationId, selectedId),
-      (row) => row._id
-    )
-  },
+        .order("desc")
+        .take(OPTION_LIMIT)
+  const eligible = (row: Doc<"templates">) =>
+    !publishedOnly ||
+    (row.status === "published" &&
+      templateChannel(row) === rowChannel({ channel }))
+  return includeSelected(
+    rows.filter(eligible),
+    await selectedOption(ctx, "templates", organizationId, selectedId),
+    (row) => row._id
+  ).filter(eligible)
+}
+export const options = query({
+  args: templateOptionsArgs.fields,
+  returns: v.array(schema.doc("templates")),
+  handler: templateOptions,
 })
 
 /** A template of the active team with its draft, or null. */
@@ -979,6 +994,7 @@ export async function publishTemplate(
   ctx: MutationCtx,
   template: Doc<"templates">
 ) {
+  if (rowChannel(template) === "email") await requireEmailConfigured(ctx)
   const id = template._id
   const draft = await findDraft(ctx, id)
   const page =

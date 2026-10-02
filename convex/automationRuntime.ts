@@ -1,3 +1,4 @@
+import { channelForSendStep } from "../lib/channels"
 import schema from "./schema"
 import { retirement } from "./teamLifecycle"
 import { ConvexError, v } from "convex/values"
@@ -27,7 +28,7 @@ import {
   createChannelMessage,
   resolveChannelAccount,
 } from "./channels/messages"
-import { findWhatsAppIdentity } from "./channels/identity"
+import { findWhatsAppIdentity, findPageIdentity } from "./channels/identity"
 import { resolveVariables } from "../lib/meta/variables"
 import { recipientSkipReason, resolveWhatsAppSend } from "./broadcastWhatsApp"
 import { createEmail } from "./emails"
@@ -340,12 +341,22 @@ export const effect = internalMutation({
         await joinSegments(ctx, [contact], [segmentId])
         break
       }
+      case "send_messenger":
+      case "send_instagram":
       case "send_whatsapp": {
-        const basicReason = await recipientSkipReason(ctx, run, contact, null)
+        const channel = channelForSendStep(node.type)
+        const basicReason =
+          channel === "whatsapp"
+            ? await recipientSkipReason(ctx, run, contact, null)
+            : !contact || contact.organizationId !== run.organizationId
+              ? "contact_deleted"
+              : contact.unsubscribed
+                ? "unsubscribed"
+                : null
         if (basicReason)
           return { skipped: true, output: { reason: basicReason } }
         const target =
-          node.mode === "template"
+          channel === "whatsapp" && node.mode === "template"
             ? (await resolveWhatsAppSend(ctx, run.organizationId, {
                 accountId: node.accountId,
                 templateId: node.templateId!,
@@ -358,7 +369,7 @@ export const effect = internalMutation({
             ctx,
             run.organizationId,
             node.accountId,
-            "whatsapp"
+            channel
           ))
         const reason = target
           ? await recipientSkipReason(
@@ -371,14 +382,22 @@ export const effect = internalMutation({
             )
           : null
         if (reason) return { skipped: true, output: { reason } }
-        if (!contact?.phone)
-          return { skipped: true, output: { reason: "no_phone" } }
-        if (node.mode === "text") {
-          const identity = await findWhatsAppIdentity(
-            ctx,
-            run.organizationId,
-            contact.phone
-          )
+        // The eligibility check above establishes ownership before identity lookup.
+        if (!contact)
+          return { skipped: true, output: { reason: "contact_deleted" } }
+        const pageIdentity =
+          channel !== "whatsapp"
+            ? await findPageIdentity(ctx, account, contact._id)
+            : null
+        if (channel !== "whatsapp" && !pageIdentity)
+          return { skipped: true, output: { reason: "no_channel_identity" } }
+        const to =
+          channel === "whatsapp" ? contact.phone : pageIdentity!.externalId
+        if (!to) return { skipped: true, output: { reason: "no_phone" } }
+        if (channel !== "whatsapp" || node.mode === "text") {
+          const identity =
+            pageIdentity ??
+            (await findWhatsAppIdentity(ctx, run.organizationId, to))
           const conversation = identity
             ? await ctx.db
                 .query("conversations")
@@ -395,12 +414,14 @@ export const effect = internalMutation({
         const messageId = await createChannelMessage(
           ctx,
           {
-            channel: "whatsapp",
+            channel,
             from: account._id,
-            to: contact.phone,
+            to,
             body:
               node.mode === "text"
-                ? { type: "text", text: { body: node.text } }
+                ? channel === "whatsapp"
+                  ? { type: "text", text: { body: node.text } }
+                  : { text: node.text }
                 : {
                     type: "template",
                     template: {

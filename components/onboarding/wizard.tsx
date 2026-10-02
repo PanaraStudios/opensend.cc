@@ -1,5 +1,18 @@
 "use client"
 import * as React from "react"
+import Link from "next/link"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSet,
+  FieldLegend,
+  FieldTitle,
+} from "@/components/ui/field"
+import { SettingsMeta } from "@/components/dashboard/settings-meta"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
@@ -37,15 +50,13 @@ import { DeliveryUrlForm } from "@/components/ses/delivery-form"
 import { SesRegions } from "@/components/ses/regions"
 import { actionError } from "@/lib/action-error"
 import { resourcePrefix } from "@/convex/ses/contracts"
-const steps = [
-  "welcome",
-  "aws",
-  "callback",
-  "resources",
-  "team",
-  "domain",
-] as const
-type Step = (typeof steps)[number]
+import {
+  setupSteps,
+  nextSetupStep,
+  emailSetupRequired,
+  inferredSetupStep,
+  type SetupStep as Step,
+} from "@/lib/dashboard/installation-setup"
 const copy: Record<
   Step,
   { label: string; title: string; description: string }
@@ -53,17 +64,29 @@ const copy: Record<
   welcome: {
     label: "Welcome",
     title: "Set up Opensend",
-    description: "Bring your AWS account and a domain you own.",
+    description: "Connect messaging channels for your team. Email is optional.",
+  },
+  channels: {
+    label: "Choose channels",
+    title: "Choose channels",
+    description:
+      "Choose what this instance uses. You can add either channel later.",
+  },
+  meta: {
+    label: "Meta app",
+    title: "Set up your Meta app",
+    description:
+      "One app connects WhatsApp, Messenger and Instagram for every team.",
   },
   aws: {
     label: "AWS account",
     title: "Connect your AWS account",
-    description: "Choose a region and add your AWS access keys.",
+    description: "Connect Amazon SES for email, or set it up later.",
   },
   callback: {
-    label: "Delivery updates",
-    title: "Receive delivery updates",
-    description: "Give AWS an address for delivery and bounce events.",
+    label: "Public callback URL",
+    title: "Public callback URL",
+    description: "Receive email delivery updates and Meta webhooks.",
   },
   resources: {
     label: "Email delivery",
@@ -89,6 +112,9 @@ export function InstallationWizard() {
   const navigate = useMutation(api.installation.navigate)
   const provision = useMutation(api.installation.provisionRegion)
   const complete = useMutation(api.installation.complete)
+  const deferEmail = useMutation(api.installation.deferEmail)
+  const deferMeta = useMutation(api.installation.deferMeta)
+  const chooseChannels = useMutation(api.installation.chooseChannels)
   const [editingConnection, setEditingConnection] = React.useState(false)
   const [addOpen, setAddOpen] = React.useState(false)
   const [error, setError] = React.useState("")
@@ -101,16 +127,17 @@ export function InstallationWizard() {
   const active = workspace.teams.find(
     (team) => team.id === workspace.activeTeamId
   )
-  const inferred: Step = installation?.accountId
-    ? installation.environmentCheckedAt
-      ? ready
-        ? active
-          ? "domain"
-          : "team"
-        : "resources"
-      : "callback"
-    : "welcome"
-  const step = installation?.setupStep ?? inferred
+  const needsEmail = emailSetupRequired(installation ?? {})
+  const steps = setupSteps(installation ?? {})
+  const inferred = inferredSetupStep(
+    installation,
+    ready,
+    !!active,
+    !!status?.channels.meta
+  )
+  const saved = installation?.setupStep
+  const step =
+    saved && (steps.includes(saved) || saved === "channels") ? saved : inferred
   const index = steps.indexOf(step)
   const domains = useQuery(
     api.domains.list,
@@ -186,11 +213,9 @@ export function InstallationWizard() {
           {copy[step].description}
         </p>
       </header>
-      <section
-        key={step}
-        aria-label={copy[step].title}
-        className="flex flex-col gap-5"
-      >
+      {/* The h1 above already names this step; a duplicate region name would
+          also collide with field labels that share the step title. */}
+      <section key={step} className="flex flex-col gap-5">
         {step === "welcome" && (
           <>
             <ItemGroup className="gap-2">
@@ -198,7 +223,8 @@ export function InstallationWizard() {
                 {
                   Icon: CloudIcon,
                   title: "Connect AWS",
-                  description: "Use your own Amazon SES account.",
+                  description:
+                    "Optional: use your Amazon SES account for email.",
                 },
                 {
                   Icon: UsersIcon,
@@ -207,8 +233,9 @@ export function InstallationWizard() {
                 },
                 {
                   Icon: GlobeIcon,
-                  title: "Add a domain",
-                  description: "Finish DNS setup from your dashboard.",
+                  title: "Connect channels",
+                  description:
+                    "Connect WhatsApp, Messenger or Instagram from your dashboard.",
                 },
               ].map(({ Icon, title, description }) => (
                 <Item key={title} size="sm">
@@ -230,6 +257,74 @@ export function InstallationWizard() {
             />
           </>
         )}
+        {step === "channels" && (
+          <AsyncForm
+            fullWidth
+            submitLabel="Continue"
+            success={false}
+            onSubmit={(form) =>
+              chooseChannels({
+                email: form.get("email") !== null,
+                meta: form.get("meta") !== null,
+              })
+            }
+          >
+            <FieldSet>
+              <FieldLegend>Messaging channels</FieldLegend>
+              <FieldDescription>Choose at least one.</FieldDescription>
+              <FieldGroup>
+                {(
+                  [
+                    {
+                      name: "email",
+                      title: "Email",
+                      description: "Amazon SES; send, receive, broadcasts.",
+                    },
+                    {
+                      name: "meta",
+                      title: "WhatsApp, Messenger & Instagram",
+                      description: "One Meta app for this install.",
+                    },
+                  ] as const
+                ).map((choice) => (
+                  <FieldLabel key={choice.name}>
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        name={choice.name}
+                        defaultChecked={!!installation?.channels?.[choice.name]}
+                      />
+                      <FieldContent>
+                        <FieldTitle>{choice.title}</FieldTitle>
+                        <FieldDescription>
+                          {choice.description}
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </FieldLabel>
+                ))}
+              </FieldGroup>
+            </FieldSet>
+          </AsyncForm>
+        )}
+        {step === "meta" && (
+          <>
+            <SettingsMeta onboarding />
+            <Button
+              disabled={moving || !status.channels.meta}
+              onClick={() => void go(nextSetupStep(installation ?? {}, step))}
+            >
+              Continue
+              <ArrowRightIcon data-icon="inline-end" />
+            </Button>
+            <AsyncForm
+              submitLabel="Set up later"
+              submitVariant="outline"
+              fullWidth
+              success={false}
+              onSubmit={() => deferMeta({})}
+            />
+          </>
+        )}
         {step === "aws" &&
           (installation?.accountId && !editingConnection ? (
             <>
@@ -240,7 +335,12 @@ export function InstallationWizard() {
                 </ItemContent>
                 <Badge variant="success">Connected</Badge>
               </Item>
-              <Button disabled={moving} onClick={() => void go("callback")}>
+              <Button
+                disabled={moving}
+                onClick={() =>
+                  void go(nextSetupStep(installation ?? {}, "aws"))
+                }
+              >
                 Continue
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
@@ -252,10 +352,21 @@ export function InstallationWizard() {
               </Button>
             </>
           ) : (
-            <AwsConnectionForm
-              status={status}
-              updating={!!installation?.accountId}
-            />
+            <>
+              <AwsConnectionForm
+                status={status}
+                updating={!!installation?.accountId}
+              />
+              {!installation?.accountId && (
+                <AsyncForm
+                  submitLabel="Set up email later"
+                  submitVariant="outline"
+                  fullWidth
+                  success={false}
+                  onSubmit={() => deferEmail({})}
+                />
+              )}
+            </>
           ))}
         {step === "callback" && <DeliveryUrlForm status={status} />}
         {step === "resources" && (
@@ -273,7 +384,10 @@ export function InstallationWizard() {
               </p>
             </SetupDetails>
             {ready ? (
-              <Button disabled={moving} onClick={() => void go("team")}>
+              <Button
+                disabled={moving}
+                onClick={() => void go(nextSetupStep(installation ?? {}, step))}
+              >
                 Continue
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
@@ -298,10 +412,22 @@ export function InstallationWizard() {
           ) : active ? (
             <>
               <p className="text-sm">{active.name}</p>
-              <Button disabled={moving} onClick={() => void go("domain")}>
-                Continue
-                <ArrowRightIcon data-icon="inline-end" />
-              </Button>
+              {!needsEmail ? (
+                <AsyncForm
+                  fullWidth
+                  submitLabel="Finish setup"
+                  success={false}
+                  onSubmit={async () => {
+                    await complete({ organizationId: active.id })
+                    router.replace("/channels")
+                  }}
+                />
+              ) : (
+                <Button disabled={moving} onClick={() => void go("domain")}>
+                  Continue
+                  <ArrowRightIcon data-icon="inline-end" />
+                </Button>
+              )}
             </>
           ) : (
             <CreateTeamForm />
@@ -325,6 +451,14 @@ export function InstallationWizard() {
           </>
         )}
       </section>
+      {index === steps.length - 1 && (
+        <p className="text-sm text-muted-foreground">
+          <Link href="/instance/ses">Email</Link>:{" "}
+          {status.channels.email ? "set up" : "set up later"} ·{" "}
+          <Link href="/instance/meta">Meta</Link>:{" "}
+          {status.channels.meta ? "set up" : "set up later"}
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

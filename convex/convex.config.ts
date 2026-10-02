@@ -9,6 +9,7 @@ import migrations from "@convex-dev/migrations/convex.config.js"
 const app = defineApp({
   env: {
     SITE_URL: v.string(),
+
     SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),
@@ -75,5 +76,6 @@ app.use(aggregate, { name: "channelMessageCounts" })
 app.use(aggregate, { name: "conversationCounts" })
 app.use(aggregate, { name: "broadcastMessageCounts" })
 app.use(aggregate, { name: "channelAccountCounts" })
+app.use(aggregate, { name: "voiceMinuteUsage" })
 app.use(migrations)
 export default app

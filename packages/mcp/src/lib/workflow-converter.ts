@@ -1,4 +1,4 @@
-import { parseApiStepConfig } from "@opensendcc/sdk"
+import { parseApiStepConfig, isChannelSendStep } from "@opensendcc/sdk"
 import type {
   AutomationConnection,
   AutomationConnectionType,
@@ -70,7 +70,7 @@ export function workflowToSdkOptions(workflow: WorkflowDefinition): {
   const connections: AutomationConnection[] = []
 
   for (const step of workflow.steps) {
-    // Pass config through to SDK as-is, including send_whatsapp mappings;
+    // Pass config through to SDK as-is, including channel send mappings;
     // the SDK owns accountId/templateId wire conversion.
     steps.push({
       key: step.key,
@@ -131,10 +131,9 @@ export function sdkResponseToWorkflow(
   for (const step of responseSteps) {
     const conns = connectionsByFrom.get(step.key)
     // GET definitions use REST field names; workflows feed camelCase SDK options.
-    const config =
-      step.type === "send_whatsapp"
-        ? parseApiStepConfig(step)
-        : { ...step.config }
+    const config = isChannelSendStep(step.type)
+      ? parseApiStepConfig(step)
+      : { ...step.config }
     const branchTypes =
       BRANCHING_STEP_TYPES[step.type as keyof typeof BRANCHING_STEP_TYPES]
 

@@ -12,7 +12,10 @@ import {
   type Caller,
   domainRevoked,
   lacksPermission,
+  requiredScopeValue,
+  usesSendingDomain,
 } from "./caller"
+import { scopeName } from "../../lib/api-scopes"
 import { touchKey } from "../apiKeys"
 import { patchEmail } from "../emailRows"
 import { writeLog } from "../logs"
@@ -73,9 +76,11 @@ export const begin = internalMutation({
         grantId: v.string(),
         organizationId: v.string(),
         permission: apiKeyPermissionValue,
+        scopes: v.optional(v.array(v.string())),
       })
     ),
-    permission: v.union(v.literal("full_access"), v.literal("sending")),
+    scope: requiredScopeValue,
+    emailSending: v.optional(v.boolean()),
     smtp: v.optional(v.boolean()),
     idempotency: v.optional(
       v.object({ key: v.string(), requestHash: v.string() })
@@ -94,15 +99,21 @@ export const begin = internalMutation({
       caller = {
         organizationId: key.organizationId,
         permission: key.permission,
+        scopes: key.scopes,
+        scope: args.scope,
+        emailSending: args.emailSending,
         domainId: key.domainId,
         apiKeyId: key._id,
         name: `API key “${key.name}”`,
       }
     } else {
-      const { grantId, organizationId, permission } = args.credential
+      const { grantId, organizationId, permission, scopes } = args.credential
       caller = {
         organizationId,
         permission,
+        scopes,
+        scope: args.scope,
+        emailSending: args.emailSending,
         oauthGrantId: grantId,
         name: "OAuth application",
       }
@@ -138,19 +149,16 @@ export const begin = internalMutation({
         `Too many requests. You can only make ${API_RATE} requests per second. See rate limit response headers for more information.`,
         Math.max(1, Math.ceil(limit.retryAfter / 1000))
       )
-    if (lacksPermission(caller, args.permission))
-      return caller.apiKeyId
-        ? fail(
-            401,
-            "restricted_api_key",
-            "This API key is restricted to only send emails."
-          )
-        : fail(
-            403,
-            "invalid_permission",
-            "Access token is missing required scopes."
-          )
-    if (await domainRevoked(ctx, caller.organizationId, caller.domainId))
+    if (lacksPermission(caller, args.scope))
+      return fail(
+        403,
+        "restricted_api_key",
+        `This API key needs the \`${scopeName(args.scope)}\` scope.`
+      )
+    if (
+      usesSendingDomain(caller) &&
+      (await domainRevoked(ctx, caller.organizationId, caller.domainId))
+    )
       return fail(
         403,
         "restricted_api_key",

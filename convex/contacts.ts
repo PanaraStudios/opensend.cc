@@ -44,7 +44,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 
 export const contactChannelIdentityValue = schema
   .doc("channelContacts")
-  .pick("channel", "externalId", "profileName", "phone")
+  .pick("channel", "externalId", "profileName", "phone", "username")
 const contactWithIdentityValue = schema
   .doc("contacts")
   .extend({ channelIdentity: v.union(v.null(), contactChannelIdentityValue) })
@@ -238,6 +238,71 @@ export const get = query({
         subscription,
       })),
     }
+  },
+})
+
+/** Linked identities with their account names, hydrated on the server. */
+export const identities = query({
+  args: { id: v.id("contacts"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(
+    v.object({
+      identity: schema.doc("channelContacts"),
+      accounts: v.array(
+        v.object({ id: v.id("channelAccounts"), name: v.string() })
+      ),
+    })
+  ),
+  handler: async (ctx, { id, paginationOpts }) => {
+    const contact = await readTeamRow(ctx, "contacts", id)
+    if (!contact) throw new ConvexError("Contact not found")
+    const result = await ctx.db
+      .query("channelContacts")
+      .withIndex("by_contactId", (q) => q.eq("contactId", id))
+      .paginate(paginationOpts)
+    const page = await Promise.all(
+      result.page.map(async (identity) => {
+        if (identity.organizationId !== contact.organizationId) return null
+        // WhatsApp identities can span numbers; Page identities have one scope.
+        const rows =
+          identity.channel === "whatsapp"
+            ? await Promise.all(
+                (
+                  await ctx.db
+                    .query("conversations")
+                    .withIndex("by_channelContactId", (q) =>
+                      q.eq("channelContactId", identity._id)
+                    )
+                    .take(100)
+                )
+                  .filter(
+                    (row) => row.organizationId === contact.organizationId
+                  )
+                  .map((row) => row.accountId)
+                  .filter((id) => id !== undefined)
+                  .filter((id, index, ids) => ids.indexOf(id) === index)
+                  .map((id) => ctx.db.get("channelAccounts", id))
+              )
+            : await ctx.db
+                .query("channelAccounts")
+                .withIndex("by_channel_and_externalId", (q) =>
+                  q
+                    .eq("channel", identity.channel)
+                    .eq("externalId", identity.scopeId)
+                )
+                .take(100)
+        return {
+          identity,
+          accounts: rows
+            .filter(
+              (account): account is Doc<"channelAccounts"> =>
+                account !== null &&
+                account.organizationId === contact.organizationId
+            )
+            .map((account) => ({ id: account._id, name: account.displayName })),
+        }
+      })
+    )
+    return { ...result, page: page.filter((row) => row !== null) }
   },
 })
 

@@ -15,6 +15,7 @@ import {
   ApiKeyFormDialog,
   ApiKeyIcon,
   ApiKeyToken,
+  ApiKeyPermissionLabel,
   DeleteApiKeyDialog,
   PERMISSION_FILTER_ITEMS,
   ViewApiKeyDialog,
@@ -37,7 +38,6 @@ import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
 import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
-import { permissionLabel } from "@/lib/dashboard/format"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
 
@@ -149,7 +149,9 @@ export function ApiKeysView() {
                 <TableCell className="text-muted-foreground">
                   <ApiKeyToken apiKey={apiKey} />
                 </TableCell>
-                <TableCell>{permissionLabel(apiKey.permission)}</TableCell>
+                <TableCell>
+                  <ApiKeyPermissionLabel apiKey={apiKey} />
+                </TableCell>
                 <TableCell className="text-muted-foreground">
                   <RelativeTime at={apiKey.lastUsedAt} fallback="Never" />
                 </TableCell>

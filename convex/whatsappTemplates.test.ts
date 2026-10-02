@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { storeUpload } from "./testHelpers/storage.fixture"
 import { upsertChannelThread } from "./channels/identity"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
@@ -26,6 +27,68 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 const later = () => vi.setSystemTime(Date.now() + 1000)
+
+test("a completed template file uses the shared resumable Meta sample upload", async () => {
+  vi.stubEnv("BETTER_AUTH_SECRET", "template-storage-test-secret-32-bytes")
+  const f = await setup()
+  const pending = await f.owner.action(api.storage.objects.createUpload, {
+    organizationId: f.team,
+    input: {
+      use: "template",
+      filename: "sample.png",
+      contentType: "image/png",
+      size: 3,
+    },
+  })
+  const storageId = await storeUpload(
+    f.t,
+    new Blob(["png"], { type: "image/png" })
+  )
+  await f.owner.action(api.storage.objects.completeUpload, {
+    organizationId: f.team,
+    id: pending.id,
+    storageId,
+  })
+  const id = await f.create("Media sample", {
+    content: componentsFromForm({
+      ...EMPTY_TEMPLATE_FORM,
+      headerFormat: "IMAGE",
+      headerSample: `opensend-file:${pending.id}`,
+      body: "Your sample",
+    }),
+  })
+  f.graph.use(
+    {
+      method: "POST",
+      path: "/1234567890/uploads",
+      respond: () => ({ id: "upload:sample" }),
+    },
+    {
+      method: "POST",
+      path: "/upload:sample",
+      respond: () => ({ h: "4::sample-handle" }),
+    }
+  )
+  await f.owner.action(api.whatsapp.templateActions.publish, { id })
+  expect(f.graph.to("/1234567890/uploads")[0].query).toMatchObject({
+    file_name: "sample.png",
+    file_type: "image/png",
+    file_length: "3",
+  })
+  expect(f.graph.to("/upload:sample")[0]).toMatchObject({
+    authorization: "OAuth connection-test-token",
+    body: "png",
+  })
+  expect(
+    f.graph.to(`/${WABA_ID}/message_templates`, "POST")[0].body
+  ).toMatchObject({
+    components: expect.arrayContaining([
+      expect.objectContaining({
+        example: { header_handle: ["4::sample-handle"] },
+      }),
+    ]),
+  })
+})
 
 const META_ID = "1689556908129832"
 const BODY = componentsFromForm({

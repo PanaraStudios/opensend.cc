@@ -54,7 +54,7 @@ export function registerEmailShareRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/emails/{email_id}/share",
-    permission: "full_access",
+    scope: { resource: "emails", access: "write" },
     handler: async (ctx, { caller, params, body }) => ({
       body: await ctx.runMutation(internal.api.emailShares.create, {
         caller,

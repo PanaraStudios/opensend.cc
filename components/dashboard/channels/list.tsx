@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { DisabledTooltip } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
@@ -54,9 +55,7 @@ export function ChannelsView() {
   const { canWrite, syncAccount, syncing } = useChannelCommands()
   const config = useMetaPublicConfig()
   const [channel, setChannel] = React.useState("all")
-  const [manualOpen, setManualOpen] = React.useState<
-    "whatsapp" | "page" | null
-  >(null)
+  const [manualOpen, setManualOpen] = React.useState(false)
   const [registering, setRegistering] = React.useState<{
     id: string
     handle: string
@@ -80,19 +79,25 @@ export function ChannelsView() {
 
   const connectButtons = (
     <>
-      <Button
-        variant="outline"
-        disabled={!canWrite || !config?.configured}
-        onClick={() => setManualOpen("whatsapp")}
+      <DisabledTooltip
+        reason={
+          !canWrite
+            ? "Create or join a team to connect a channel"
+            : !config?.configured
+              ? "Ask your instance admin to add the Meta app in Meta app settings"
+              : null
+        }
       >
-        <KeyRoundIcon />
-        Connect manually
-      </Button>
-      <ConnectMetaButton
-        config={config}
-        onConnected={connected}
-        onManualPage={() => setManualOpen("page")}
-      />
+        <Button
+          variant="outline"
+          disabled={!canWrite || !config?.configured}
+          onClick={() => setManualOpen(true)}
+        >
+          <KeyRoundIcon />
+          Connect manually
+        </Button>
+      </DisabledTooltip>
+      <ConnectMetaButton config={config} onConnected={connected} />
     </>
   )
 
@@ -105,14 +110,7 @@ export function ChannelsView() {
         {connectButtons}
         <DocsButton />
       </PageHeader>
-      {config ? (
-        <>
-          <MetaAppAlert config={config} />
-          {config.configured ? (
-            <MetaAppAlert config={config} channel="page" />
-          ) : null}
-        </>
-      ) : null}
+      {config ? <MetaAppAlert config={config} /> : null}
       <div className="flex flex-wrap items-center gap-2">
         <ToolbarFilters
           filters={[
@@ -136,9 +134,7 @@ export function ChannelsView() {
               ? "Connect a WhatsApp Business Account or Facebook Page and its linked Instagram account."
               : "No channels match this filter."
           }
-        >
-          {unfiltered ? connectButtons : null}
-        </EmptyState>
+        />
       ) : (
         <>
           <ResourceTable
@@ -235,11 +231,8 @@ export function ChannelsView() {
         </>
       )}
       <ManualConnectDialog
-        open={manualOpen !== null}
-        mode={manualOpen ?? "whatsapp"}
-        onOpenChange={(open) => {
-          if (!open) setManualOpen(null)
-        }}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
         onConnected={connected}
       />
       <RegisterNumberDialog

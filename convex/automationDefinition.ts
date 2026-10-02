@@ -64,11 +64,15 @@ export function readGraph(graph: string): AutomationStep[] {
         case "delay":
           strings(step, "duration")
           break
+        case "send_messenger":
+        case "send_instagram":
         case "send_whatsapp":
           strings(step, "accountId")
           if (step.mode !== "template" && step.mode !== "text") invalid()
           if (step.mode === "template") strings(step, "templateId")
           if (step.mode === "text") strings(step, "text")
+          if (step.type !== "send_whatsapp" && step.variables === undefined)
+            step.variables = {}
           if (variableSourcesError(step.variables)) invalid()
           break
         case "send_email":

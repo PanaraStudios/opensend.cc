@@ -18,7 +18,7 @@ export function registerUsageRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/usage",
-    permission: "full_access",
+    scope: "full_access",
     handler: async (ctx, { caller }) => ({
       body: await ctx.runQuery(internal.api.usage.get, { caller }),
     }),

@@ -5,7 +5,8 @@ import { teamSafePath } from "./nav"
 describe("teamSafePath", () => {
   it("keeps list and settings routes", () => {
     assert.equal(teamSafePath("/emails"), "/emails")
-    assert.equal(teamSafePath("/emails/inbox"), "/emails/inbox")
+    for (const tab of ["", "/inbox", "/calls", "/ivr", "/voice-bot"])
+      assert.equal(teamSafePath(`/playground${tab}`), `/playground${tab}`)
     assert.equal(teamSafePath("/emails/receiving"), "/emails/receiving")
     assert.equal(teamSafePath("/settings/team"), "/settings/team")
     assert.equal(teamSafePath("/instance/ses"), "/instance/ses")
@@ -19,6 +20,8 @@ describe("teamSafePath", () => {
     assert.equal(teamSafePath("/domains/dom_1"), "/domains")
     assert.equal(teamSafePath("/emails/receiving/rcv_1"), "/emails/receiving")
     assert.equal(teamSafePath("/emails/messages/msg_1"), "/emails")
+    assert.equal(teamSafePath("/emails/inbox"), "/emails")
+    assert.equal(teamSafePath("/emails/calls"), "/emails")
   })
 
   it("falls back to emails for unknown routes", () => {

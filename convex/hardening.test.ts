@@ -198,7 +198,7 @@ test("API transactions refuse a key whose permission changed after authenticatio
   const created = await key(f)
   const begun = await f.t.mutation(internal.api.state.begin, {
     credential: { kind: "key", tokenHash: await tokenHash(created.token) },
-    permission: "full_access",
+    scope: "full_access",
   })
   if (begun.kind !== "ok") throw new Error("Expected authenticated caller")
   await f.owner.client.mutation(api.apiKeys.update, {
@@ -218,7 +218,8 @@ test("API transactions refuse a sending domain removed after authentication", as
   })
   const begun = await f.t.mutation(internal.api.state.begin, {
     credential: { kind: "key", tokenHash: await tokenHash(created.token) },
-    permission: "sending",
+    scope: { resource: "emails", access: "write" },
+    emailSending: true,
   })
   if (begun.kind !== "ok") throw new Error("Expected authenticated caller")
   await f.t.run((ctx) => patchRow(ctx, "domains", f.domain, { deleted: true }))

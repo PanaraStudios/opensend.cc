@@ -1,3 +1,9 @@
+import { ivrTests } from "./ivr-flow"
+import { voiceBotTests } from "./voice-bot-flow"
+import { softphoneTests } from "./softphone-flow"
+import { callingTests } from "./calling-flow"
+import { fileStorageTests } from "./file-storage-flow"
+import { chooseEmailSetup } from "./setup-channels-flow"
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
 import {
   client,
@@ -16,6 +22,7 @@ import { hardeningSearchTests } from "./hardening-search-flow"
 import { docsLinksTests } from "./docs-links-flow"
 import { shortcutTests } from "./shortcuts-flow"
 import { messengerInstagramTests } from "./messenger-instagram-flow"
+import { apiKeyScopesTests } from "./api-key-scopes-flow"
 import { whatsappSendTests } from "./whatsapp-send-flow"
 import { metaInboundTests } from "./meta-inbound-flow"
 import { metaAppTests } from "./meta-app-flow"
@@ -255,11 +262,12 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       pendingClient.mutation(api.teams.create, { name: "Bypass setup" })
     ).rejects.toBeTruthy()
-    await expect(owner.getByLabel("Public backend URL")).toHaveCount(0)
+    await expect(owner.getByLabel("Public callback URL")).toHaveCount(0)
     await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
     await owner
       .getByRole("button", { name: "Get started", exact: true })
       .click()
+    await chooseEmailSetup(owner)
     await expect(
       owner.getByRole("heading", {
         name: "Connect your AWS account",
@@ -296,13 +304,23 @@ test.describe.serial("Docker self-hosted authentication", () => {
         exact: true,
       })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Back", exact: true }).click()
+    for (const heading of [
+      "Public callback URL",
+      "Choose channels",
+      "Set up Opensend",
+    ]) {
+      await owner.getByRole("button", { name: "Back", exact: true }).click()
+      await expect(
+        owner.getByRole("heading", { name: heading, exact: true })
+      ).toBeVisible()
+    }
     await expect(
       owner.getByRole("heading", { name: "Set up Opensend", exact: true })
     ).toBeVisible()
     await owner
       .getByRole("button", { name: "Get started", exact: true })
       .click()
+    await chooseEmailSetup(owner)
     await expect(
       owner.getByRole("heading", {
         name: "Connect your AWS account",
@@ -381,13 +399,15 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await seedSesConnection(owner)
     await expect(
       owner.getByRole("heading", {
-        name: "Receive delivery updates",
+        name: "Public callback URL",
         exact: true,
       })
     ).toBeVisible()
-    await expect(owner.getByLabel("Public backend URL")).toHaveValue("")
+    await expect(owner.getByLabel("Public callback URL")).toHaveValue("")
     await expect(
-      owner.getByText("AWS cannot reach localhost.", { exact: false })
+      owner.getByText("Messaging providers cannot reach localhost.", {
+        exact: false,
+      })
     ).toBeVisible()
     await expect(owner.getByLabel("AWS account ID")).toHaveCount(0)
     await owner.screenshot({
@@ -844,7 +864,10 @@ test.describe.serial("Docker self-hosted authentication", () => {
     const record = (error: Error) => errors.push(error.message)
     owner.on("pageerror", record)
     for (const route of [
-      "/emails/inbox",
+      "/playground/inbox",
+      "/playground/calls",
+      "/playground/ivr",
+      "/playground/voice-bot",
       "/emails",
       "/emails/receiving",
       "/emails/suppressions",
@@ -1229,10 +1252,16 @@ test.describe.serial("Docker self-hosted authentication", () => {
   channelsTests(() => ({ owner, member }))
   metaInboundTests(() => ({ owner, organizationId }))
   whatsappSendTests(() => ({ owner, organizationId }))
+  callingTests(() => ({ owner, organizationId }))
+  ivrTests(() => ({ owner, organizationId }))
+  voiceBotTests(() => ({ owner, organizationId }))
+  softphoneTests(() => ({ owner, organizationId }))
+  apiKeyScopesTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
   whatsappCampaignsTests(() => ({ owner, organizationId }))
   messengerInstagramTests(() => ({ owner, organizationId }))
   inboxTests(() => ({ owner, organizationId, sendingDomainId }))
+  fileStorageTests(() => ({ owner, organizationId }))
 
   test("enrolls MFA, checks OTP and backup codes, regenerates and disables securely", async () => {
     await member.goto("/profile")

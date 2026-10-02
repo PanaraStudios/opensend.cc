@@ -1,5 +1,6 @@
 import { normalizePhone } from "./phone"
-import type { MessagingChannel } from "../channels"
+import { CHANNELS, type MessagingChannel } from "../channels"
+import { channelHandle } from "../meta/account-display"
 import { isEmail } from "./format"
 import type {
   Contact,
@@ -13,6 +14,7 @@ export type ContactChannelIdentity = {
   channel: MessagingChannel
   externalId: string
   profileName?: string
+  username?: string
   phone?: string
 }
 export function contactIdentity(
@@ -33,33 +35,25 @@ export function contactIdentity(
   const name = [contact.firstName?.trim(), contact.lastName?.trim()]
     .filter(Boolean)
     .join(" ")
-  const handle = channelIdentity?.phone || channelIdentity?.externalId
-  const channelLabel = channelIdentity?.profileName?.trim() || handle
   const channel = channelIdentity?.channel
-  if (name)
-    return {
-      label: name,
-      secondary: contact.email || contact.phone || handle,
-      kind: "name",
-      channel,
-    }
+  const username = channelIdentity?.username?.trim()
+  const handle = username ? channelHandle("instagram", username) : undefined
+  const secondary =
+    contact.email ||
+    contact.phone ||
+    handle ||
+    (channel ? CHANNELS[channel].label : undefined)
+  if (name) return { label: name, secondary, kind: "name", channel }
   if (contact.email)
-    return {
-      label: contact.email,
-      secondary: contact.phone || handle,
-      kind: "email",
-      channel,
-    }
+    return { label: contact.email, secondary, kind: "email", channel }
   if (contact.phone)
-    return { label: contact.phone, secondary: handle, kind: "phone", channel }
-  if (channelLabel)
-    return {
-      label: channelLabel,
-      secondary: handle !== channelLabel ? handle : undefined,
-      kind: "channel",
-      channel,
-    }
-  return { label: "Unknown contact", kind: "channel" }
+    return { label: contact.phone, secondary, kind: "phone", channel }
+  return {
+    label: handle || channelIdentity?.profileName?.trim() || "Unknown contact",
+    secondary,
+    kind: "channel",
+    channel,
+  }
 }
 
 export const RESERVED_PROPERTY_KEYS = [

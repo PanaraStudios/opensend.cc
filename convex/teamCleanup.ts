@@ -1,3 +1,5 @@
+import { minuteUsage } from "./voice/usage"
+import { deleteFile } from "./storage/files"
 import { deleteReceived } from "./received"
 import { v } from "convex/values"
 import type { OrderedQuery } from "convex/server"
@@ -64,10 +66,25 @@ export const TEAM_TABLES = [
   "channelMediaUploads",
   "channelMessages",
   "conversations",
+  "whatsappUserAliases",
   "channelContacts",
   "channelAccounts",
   "whatsappBusinessAccounts",
   "metaConnections",
+  "teamAssets",
+  "storedFiles",
+  "callTranscripts",
+  "voiceBots",
+  "voiceProviders",
+  "calls",
+  "callEvents",
+  "callPermissions",
+  "ivrs",
+  "ivrPromptRenders",
+  "ivrSessions",
+  "callingSettings",
+  "gatewayEvents",
+  "callAgents",
 ] as const
 
 export const CHILD_TABLES = [
@@ -91,7 +108,13 @@ async function erase<T extends TableNames>(
 ) {
   if ((COUNTED_TABLES as readonly string[]).includes(table))
     await deleteRow(ctx, table as CountedTable, id as Id<CountedTable>)
-  else await ctx.db.delete(table, id)
+  else {
+    if (table === "calls") {
+      const call = await ctx.db.get("calls", id as Id<"calls">)
+      if (call?.botStartedAt) await minuteUsage.deleteIfExists(ctx, call)
+    }
+    await ctx.db.delete(table, id)
+  }
 }
 
 async function children<T extends TableNames>(
@@ -170,8 +193,26 @@ export const purge = internalMutation({
       await next()
       return null
     }
-    if (name === "inboundMessages" && "storageId" in row && row.storageId)
-      await ctx.storage.delete(row.storageId)
+    if (name === "calls") {
+      const call = await ctx.db.get("calls", row._id as Id<"calls">)
+      if (call?.recording) await deleteFile(ctx, call.recording)
+      if (call?.transcription) await deleteFile(ctx, call.transcription)
+      if (call?.mode === "gateway")
+        await ctx.scheduler.runAfter(
+          0,
+          internal.calling.callActions.disposeGateway,
+          { id: call._id }
+        )
+    }
+    if (name === "storedFiles")
+      await deleteFile(ctx, { fileId: row._id as Id<"storedFiles"> }, true)
+    if (name === "teamAssets" && "fileId" in row)
+      await deleteFile(ctx, { fileId: row.fileId })
+    if (
+      name === "inboundMessages" &&
+      (("storageId" in row && row.storageId) || ("fileId" in row && row.fileId))
+    )
+      await deleteFile(ctx, row)
     let pending = false
     if (name === "emails") {
       const id = row._id as Id<"emails">
@@ -188,7 +229,7 @@ export const purge = internalMutation({
         "channelMediaUploads",
         row._id as Id<"channelMediaUploads">
       )
-      if (file) await ctx.storage.delete(file.storageId)
+      if (file) await deleteFile(ctx, file)
     } else if (name === "broadcasts") {
       await retireBroadcastCounters(ctx, row._id as Id<"broadcasts">)
     } else if (name === "channelMessages") {
@@ -249,8 +290,11 @@ export const purge = internalMutation({
             q.eq("webhookId", row._id as Id<"webhooks">)
           )
       )
-    } else if (name === "exports" && "storageId" in row && row.storageId) {
-      await ctx.storage.delete(row.storageId)
+    } else if (
+      name === "exports" &&
+      (("storageId" in row && row.storageId) || ("fileId" in row && row.fileId))
+    ) {
+      await deleteFile(ctx, row)
     } else if (
       name === "automationRuns" &&
       "workflowId" in row &&

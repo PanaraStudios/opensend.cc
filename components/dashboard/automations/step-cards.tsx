@@ -1,4 +1,7 @@
 "use client"
+import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
+
+import { channelForSendStep } from "@/lib/channels"
 
 import * as React from "react"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -302,29 +305,36 @@ function StepBody({
       )
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
+    case "send_messenger":
+    case "send_instagram":
     case "send_whatsapp":
       return (
-        <WhatsAppCampaignFields
-          config={step}
-          allowText
-          onChange={(config) =>
-            onChange({
-              ...step,
-              ...config,
-              mode: config.mode ?? "template",
-              templateId: config.templateId ?? "",
-              text: config.text ?? "",
-            })
-          }
-        />
+        <InstanceChannelConfiguration channel="meta">
+          <WhatsAppCampaignFields
+            config={step}
+            channel={channelForSendStep(step.type)}
+            allowText
+            onChange={(config) =>
+              onChange({
+                ...step,
+                ...config,
+                mode: config.mode ?? "template",
+                templateId: config.templateId ?? "",
+                text: config.text ?? "",
+              })
+            }
+          />
+        </InstanceChannelConfiguration>
       )
     case "send_email":
       return (
-        <SendEmailBody
-          trigger={automation.trigger}
-          step={step}
-          onChange={onChange}
-        />
+        <InstanceChannelConfiguration channel="email">
+          <SendEmailBody
+            trigger={automation.trigger}
+            step={step}
+            onChange={onChange}
+          />
+        </InstanceChannelConfiguration>
       )
     case "contact_update":
       return (

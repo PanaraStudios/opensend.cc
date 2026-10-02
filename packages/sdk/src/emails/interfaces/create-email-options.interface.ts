@@ -32,8 +32,10 @@ interface EmailTemplateOptions {
   };
 }
 
-interface CreateEmailBaseOptionsWithTemplate
-  extends Omit<CreateEmailBaseOptions, 'from' | 'subject'> {
+interface CreateEmailBaseOptionsWithTemplate extends Omit<
+  CreateEmailBaseOptions,
+  'from' | 'subject'
+> {
   from?: string;
   subject?: string;
 }
@@ -119,8 +121,7 @@ export type CreateEmailOptions =
     });
 
 export interface CreateEmailRequestOptions
-  extends PostOptions,
-    IdempotentRequest {}
+  extends PostOptions, IdempotentRequest {}
 
 export interface CreateEmailResponseSuccess {
   /** The ID of the newly created email. */
@@ -130,6 +131,8 @@ export interface CreateEmailResponseSuccess {
 export type CreateEmailResponse = Response<CreateEmailResponseSuccess>;
 
 export interface Attachment {
+  /** Completed opensend.media.upload id; no content or path is needed. */
+  id?: string;
   /** Content of an attached file. */
   content?: string | Buffer;
   /** Name of attached file. */

@@ -27,6 +27,7 @@ import {
   retireBroadcastCounters,
 } from "./counts"
 import { stream } from "convex-helpers/server/stream"
+import { channelMessageStatusValue } from "./tables/channels"
 import { filteredPage, matchesSearch, selectedOption } from "./lists"
 import {
   BROADCAST_STATUSES,
@@ -514,30 +515,63 @@ export const review = action({
     }
   },
 })
+const historyFilters = v.object({
+  organizationId: v.string(),
+  email: v.optional(v.string()),
+  contactId: v.optional(v.id("contacts")),
+})
+const broadcastHistoryItem = schema.doc("broadcasts").extend({
+  recipient: schema.doc("broadcastRecipients"),
+  messageStatus: v.optional(channelMessageStatusValue),
+})
+
 export const history = query({
-  args: {
-    organizationId: v.string(),
-    email: v.string(),
-    paginationOpts: paginationOptsValidator,
-  },
-  returns: paginationResultValidator(schema.doc("broadcasts")),
+  args: { ...historyFilters.fields, paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(broadcastHistoryItem),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
+    // Every recipient row names its contact; an email alone looks up by address.
+    if (args.contactId)
+      await teamRow(ctx, "contacts", args.organizationId, args.contactId)
+    const email = args.email?.trim().toLowerCase()
+    if (!args.contactId && !email)
+      return { page: [], isDone: true, continueCursor: "" }
     const result = await ctx.db
       .query("broadcastRecipients")
-      .withIndex("by_organizationId_and_email", (q) =>
-        q
-          .eq("organizationId", args.organizationId)
-          .eq("email", args.email.toLowerCase())
+      .withIndex(
+        args.contactId
+          ? "by_organizationId_and_contactId"
+          : "by_organizationId_and_email",
+        (q) =>
+          args.contactId
+            ? q
+                .eq("organizationId", args.organizationId)
+                .eq("contactId", args.contactId)
+            : q.eq("organizationId", args.organizationId).eq("email", email!)
       )
       .order("desc")
       .paginate(args.paginationOpts)
-    const page = []
-    for (const recipient of result.page) {
-      const row = await ctx.db.get("broadcasts", recipient.broadcastId)
-      if (row) page.push(row)
-    }
-    return { ...result, page }
+    const page = await Promise.all(
+      result.page.map(async (recipient) => {
+        const [row, message] = await Promise.all([
+          ctx.db.get("broadcasts", recipient.broadcastId),
+          recipient.messageId
+            ? ctx.db.get("channelMessages", recipient.messageId)
+            : null,
+        ])
+        return row?.organizationId === args.organizationId
+          ? {
+              ...row,
+              recipient,
+              messageStatus:
+                message?.organizationId === args.organizationId
+                  ? message.status
+                  : undefined,
+            }
+          : null
+      })
+    )
+    return { ...result, page: page.filter((row) => row !== null) }
   },
 })
 export const eventList = query({
@@ -562,10 +596,16 @@ export const eventList = query({
 })
 
 export const historyCount = query({
-  args: { organizationId: v.string(), email: v.string() },
+  args: historyFilters.fields,
   returns: countValue,
-  handler: async (ctx, { organizationId, email }) => {
+  handler: async (ctx, { organizationId, email, contactId }) => {
     await requireTeam(ctx, organizationId)
+    if (contactId) {
+      await teamRow(ctx, "contacts", organizationId, contactId)
+      // Existing aggregates are email-keyed; leave their key shape intact.
+      return { total: null }
+    }
+    if (!email) return { total: 0 }
     return {
       total: await counters.broadcastHistory.total(
         ctx,

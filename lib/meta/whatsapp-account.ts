@@ -188,3 +188,15 @@ export function tokenBusinessId(info: TokenInfo): string | undefined {
   const ids = info.targets.business_management
   return ids?.length === 1 ? ids[0] : undefined
 }
+
+/** The WhatsApp Business Account fields opensend.cc projects. */
+export const WHATSAPP_WEBHOOK_FIELDS = [
+  "messages",
+  "calls",
+  "account_settings_update",
+  "message_template_status_update",
+  "template_category_update",
+  "phone_number_quality_update",
+  "account_update",
+  "phone_number_name_update",
+] as const

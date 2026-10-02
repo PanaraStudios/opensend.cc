@@ -1,19 +1,27 @@
 "use client"
+import { FileUploadField } from "./file-upload"
 
 import * as React from "react"
+import { CHANNELS, type MessagingChannel } from "@/lib/channels"
 import { api } from "@/convex/_generated/api"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { OptionSelect, SettingsCard } from "@/components/dashboard/primitives"
+import { OptionSelect } from "@/components/dashboard/primitives"
 import {
   Field,
   FieldGroup,
   FieldLabel,
   FieldDescription,
+  FieldSet,
+  FieldLegend,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
-import { formFromComponents, storedComponents } from "@/lib/meta/templates"
+import {
+  formFromComponents,
+  storedComponents,
+  renderedTemplateFromForm,
+} from "@/lib/meta/templates"
 import {
   CONTACT_VARIABLE_FIELDS,
   normalizeVariableSource,
@@ -129,26 +137,48 @@ function VariableMapping({
   )
 }
 
-/** Shared sending-number/template controls and mappings for broadcasts and steps. */
+/** Shared account/template controls and mappings for broadcasts and channel steps. */
 export function WhatsAppCampaignFields({
   config,
   onChange,
   sample,
   allowText = false,
+  channel = "whatsapp",
 }: {
   config: WhatsAppCampaignConfig
   onChange: (config: WhatsAppCampaignConfig) => void
   sample?: VariableContact | null
   allowText?: boolean
+  channel?: MessagingChannel
 }) {
   const [accountSearch, setAccountSearch] = React.useState("")
   const [templateSearch, setTemplateSearch] = React.useState("")
-  const options = useTeamQuery(api.broadcastWhatsApp.options, {
+  const pickerArgs = {
     accountId: config.accountId,
     templateId: config.templateId,
     accountSearch,
     templateSearch,
-  })
+  }
+  const whatsappOptions = useTeamQuery(
+    api.broadcastWhatsApp.options,
+    pickerArgs,
+    { enabled: channel === "whatsapp" }
+  )
+  const pageOptions = useTeamQuery(
+    api.automations.channelOptions,
+    {
+      ...pickerArgs,
+      channel: channel === "instagram" ? "instagram" : "messenger",
+    },
+    { enabled: channel !== "whatsapp" }
+  )
+  const options = channel === "whatsapp" ? whatsappOptions : pageOptions
+  const accountLabel =
+    channel === "whatsapp"
+      ? "Sending number"
+      : `Sending ${CHANNELS[channel].accountNoun.toLowerCase()}`
+  const templateLabel =
+    channel === "whatsapp" ? "Approved template" : "Published template"
   const selected = options?.selected
   const components = storedComponents(selected?.components)
   const values = resolveVariables(
@@ -164,11 +194,11 @@ export function WhatsAppCampaignFields({
   return (
     <FieldGroup>
       <Field>
-        <FieldLabel>Sending number</FieldLabel>
+        <FieldLabel>{accountLabel}</FieldLabel>
         <OptionSelect
-          aria-label="Sending number"
+          aria-label={accountLabel}
           value={config.accountId}
-          placeholder="Select a WhatsApp number"
+          placeholder={`Select a ${CHANNELS[channel].label} ${CHANNELS[channel].accountNoun.toLowerCase()}`}
           search={{ onChange: setAccountSearch }}
           items={(options?.accounts ?? []).map((account) => ({
             value: account.id,
@@ -199,7 +229,7 @@ export function WhatsAppCampaignFields({
         <Field>
           <FieldLabel>Message</FieldLabel>
           <Textarea
-            aria-label="WhatsApp message"
+            aria-label={`${CHANNELS[channel].label} message`}
             value={config.text ?? ""}
             onChange={(event) =>
               onChange({ ...config, text: event.target.value })
@@ -212,12 +242,16 @@ export function WhatsAppCampaignFields({
       ) : (
         <>
           <Field>
-            <FieldLabel>Approved template</FieldLabel>
+            <FieldLabel>{templateLabel}</FieldLabel>
             <OptionSelect
-              aria-label="Approved template"
+              aria-label={templateLabel}
               value={config.templateId ?? ""}
               disabled={!config.accountId}
-              placeholder="Select an approved template"
+              placeholder={
+                channel === "whatsapp"
+                  ? "Select an approved template"
+                  : "Select a published template"
+              }
               search={{ onChange: setTemplateSearch }}
               items={(options?.templates ?? []).map((template) => ({
                 value: template.id,
@@ -228,6 +262,24 @@ export function WhatsAppCampaignFields({
               }
             />
           </Field>
+          {channel === "whatsapp" &&
+          (selected?.variables ?? []).includes("header_media") ? (
+            <FileUploadField
+              label="Upload header media"
+              use="whatsapp"
+              from={config.accountId}
+              disabled={!config.accountId}
+              onUploaded={(id) =>
+                onChange({
+                  ...config,
+                  variables: {
+                    ...config.variables,
+                    header_media: { value: `opensend-file:${id}` },
+                  },
+                })
+              }
+            />
+          ) : null}
           {(selected?.variables ?? []).map((name) => (
             <VariableMapping
               key={name}
@@ -249,17 +301,19 @@ export function WhatsAppCampaignFields({
               }
             />
           ))}
-          {selected ? (
-            <SettingsCard title="Preview" description="Sample contact values">
+          {selected && channel === "whatsapp" ? (
+            <FieldSet>
+              <FieldLegend variant="label">Preview</FieldLegend>
+              <FieldDescription>Sample contact values</FieldDescription>
               <div data-testid="whatsapp-campaign-preview">
                 <WhatsAppTemplatePreview
-                  form={{
+                  rendered={renderedTemplateFromForm({
                     ...formFromComponents(components).form,
                     examples: values,
-                  }}
+                  })}
                 />
               </div>
-            </SettingsCard>
+            </FieldSet>
           ) : null}
         </>
       )}

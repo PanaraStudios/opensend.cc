@@ -188,6 +188,7 @@ import {
   canGoNext,
   hasPages,
   lastLoadedPage,
+  pagedListState,
   pageLabel,
   type Pager,
 } from "@/lib/dashboard/pagination"
@@ -552,6 +553,7 @@ export function SettingsCard({
   actions,
   footer,
   flush = false,
+  inline = false,
   children,
 }: {
   title?: string
@@ -560,8 +562,20 @@ export function SettingsCard({
   actions?: React.ReactNode
   footer?: React.ReactNode
   flush?: boolean
+  inline?: boolean
   children?: React.ReactNode
 }) {
+  if (inline)
+    return (
+      <DetailSection title={title ?? ""} actions={actions}>
+        {heading}
+        {description && (
+          <p className="text-sm text-muted-foreground">{description}</p>
+        )}
+        {children}
+        {footer}
+      </DetailSection>
+    )
   return (
     <CardFrame>
       <Card>
@@ -676,19 +690,22 @@ export function EventTrail({
 
 /* ----------------------------------------------------------------- tables */
 
+/** Disable the frame when a table lives inside an existing panel or card. */
 export function ResourceTable({
   children,
   headers,
   className,
+  framed = true,
 }: {
   headers: React.ReactNode
   children: React.ReactNode
   className?: string
+  framed?: boolean
 }) {
   const ref = useTableShortcuts()
   return (
-    <div ref={ref} className={cn("frame", className)}>
-      <div className="panel overflow-hidden p-0">
+    <div ref={ref} className={cn(framed && "frame", className)}>
+      <div className={cn(framed && "panel", "overflow-hidden p-0")}>
         <Table>
           <TableHeader>
             <TableRow>{headers}</TableRow>
@@ -823,9 +840,12 @@ export function usePagedList<
   lead: readonly Row[] = NO_ROWS,
   tail: readonly Row[] = NO_ROWS
 ) {
-  const query = usePaginatedQuery(list, args, {
-    initialNumItems: PAGE_SIZES[0],
-  })
+  const query = pagedListState(
+    usePaginatedQuery(list, args, {
+      initialNumItems: PAGE_SIZES[0],
+    }),
+    args === "skip"
+  )
   const counted = useQuery(
     count as FunctionReference<"query">,
     args === "skip" ? "skip" : args
@@ -839,9 +859,11 @@ export function usePagedList<
     [lead, tail, query.results, query.status, map]
   )
   const total =
-    counted?.total == null
-      ? null
-      : { total: counted.total + lead.length + tail.length }
+    args === "skip"
+      ? { total: lead.length + tail.length }
+      : counted?.total == null
+        ? null
+        : { total: counted.total + lead.length + tail.length }
   return { ...query, rows, ...useLoadedPagination(rows, query, total) }
 }
 const identity = <T,>(item: T) => item
@@ -1073,6 +1095,12 @@ export function channelMessageStatusDotClassName(
   status: ChannelMessageStatus
 ): string {
   return badgeDotClassName(CHANNEL_MESSAGE_STATUS_TONE[status])
+}
+
+export function channelMessageStatusColor(
+  status: ChannelMessageStatus
+): string {
+  return badgeToneColor(CHANNEL_MESSAGE_STATUS_TONE[status])
 }
 
 export function broadcastStatusDotClassName(status: BroadcastStatus): string {
@@ -1363,8 +1391,8 @@ export function IconCell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="icon-tile size-8 rounded-lg [&_svg]:size-4">
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="icon-tile size-8 shrink-0 rounded-lg [&_svg]:size-4">
         <Icon />
       </span>
       {children}

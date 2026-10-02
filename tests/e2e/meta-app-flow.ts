@@ -4,6 +4,7 @@ import {
   INSTAGRAM_WEBHOOK_FIELDS,
   PAGE_WEBHOOK_FIELDS,
 } from "../../lib/meta/page-account"
+import { WHATSAPP_WEBHOOK_FIELDS } from "../../lib/meta/whatsapp-account"
 
 type State = { owner: Page; member: Page }
 /** A request tests/e2e/fake-graph.mjs recorded. */
@@ -18,8 +19,6 @@ type GraphCall = {
 
 const APP_ID = "1234567890123"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
-const WEBHOOK_FIELDS =
-  "messages,message_template_status_update,template_category_update,phone_number_quality_update,account_update,phone_number_name_update"
 const fakeGraph = () => process.env.OPENSEND_FAKE_GRAPH_URL!
 /** Open menus close when a full-page capture resizes the viewport. */
 const screenshot = (page: Page, name: string, fullPage = true) =>
@@ -126,7 +125,7 @@ export function metaAppTests(state: () => State) {
       // One subscription per webhook object: WhatsApp, Pages and Instagram.
       ...(
         [
-          ["whatsapp_business_account", WEBHOOK_FIELDS],
+          ["whatsapp_business_account", WHATSAPP_WEBHOOK_FIELDS.join(",")],
           ["page", PAGE_WEBHOOK_FIELDS.join(",")],
           ["instagram", INSTAGRAM_WEBHOOK_FIELDS.join(",")],
         ] as const

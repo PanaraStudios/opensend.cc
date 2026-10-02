@@ -322,7 +322,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/webhooks",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "write" },
     handler: async (ctx, { caller, body }) => {
       const fields = input(body, true)
       return {
@@ -339,7 +339,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/webhooks",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const page = await ctx.runQuery(internal.api.webhooks.list, {
         caller,
@@ -351,7 +351,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/webhooks/{webhook_id}",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const args = { caller, id: params.webhook_id }
       return {
@@ -369,7 +369,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "PATCH",
     path: "/webhooks/{webhook_id}",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "write" },
     handler: async (ctx, { caller, params, body }) => ({
       body: await ctx.runMutation(internal.api.webhooks.change, {
         caller,
@@ -382,7 +382,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "DELETE",
     path: "/webhooks/{webhook_id}",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runMutation(internal.api.webhooks.change, {
         caller,
@@ -394,7 +394,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/webhooks/{webhook_id}/signing-secret/rotate",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runMutation(internal.api.webhooks.change, {
         caller,
@@ -407,7 +407,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/webhooks/{webhook_id}/events",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const page = await ctx.runQuery(internal.api.webhooks.listEvents, {
         caller,
@@ -422,7 +422,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/webhooks/{webhook_id}/events/{event_id}",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const row = await ctx.runQuery(internal.api.webhooks.getEvent, {
         caller,
@@ -446,7 +446,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "POST",
     path: "/webhooks/{webhook_id}/events/{event_id}/replay",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "write" },
     handler: async (ctx, { caller, params }) => ({
       body: await ctx.runMutation(internal.api.webhooks.replay, {
         caller,
@@ -458,7 +458,7 @@ export function registerWebhookRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/webhooks/{webhook_id}/events/{event_id}/attempts",
-    permission: "full_access",
+    scope: { resource: "webhooks", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const page = await ctx.runQuery(internal.api.webhooks.listAttempts, {
         caller,

@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "docker/smtp"
   - "docker/migrate"
+  - "services/*"
 
 allowBuilds:
   sharp: true

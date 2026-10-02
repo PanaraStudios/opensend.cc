@@ -353,7 +353,7 @@ export const profile = internalAction({
           fields:
             target.channel === "messenger"
               ? "first_name,last_name"
-              : "name,username",
+              : "name,username,profile_pic",
         },
       })
       const name =
@@ -361,11 +361,15 @@ export const profile = internalAction({
           ? [data.first_name, data.last_name]
               .filter((part) => typeof part === "string")
               .join(" ")
-          : data.name || data.username || ""
+          : data.name || ""
       if (typeof name === "string")
         await ctx.runMutation(internal.meta.pageState.profileComplete, {
           identityId: args.identityId,
           name,
+          username:
+            target.channel === "instagram" && typeof data.username === "string"
+              ? data.username
+              : undefined,
         })
     } catch {
       /* Profile permission failures do not lose incoming messages. */

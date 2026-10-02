@@ -1,5 +1,6 @@
 "use client"
 
+import { EmailConfiguration } from "@/components/ses/email-configuration"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 
 import * as React from "react"
@@ -142,61 +143,64 @@ export function EmailsView() {
         // Exports cover email; other channels have no export yet.
         onExport={channel === "email" ? exporting.open : undefined}
       />
-      {log.status === "LoadingFirstPage" ? (
-        <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={MailIcon}
-          title="No messages"
-          description="Send an email with POST /emails or a WhatsApp message with POST /whatsapp/messages, and it appears here with its delivery events."
-        />
-      ) : (
-        <>
-          <ResourceTable
-            headers={
-              <>
-                <Th>To</Th>
-                <Th>Status</Th>
-                <Th>Sent</Th>
-                <Th className="w-10" />
-              </>
-            }
-          >
-            {pageRows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <LogCell row={row} />
-                </TableCell>
-                <TableCell>
-                  <LogStatusBadge status={row.status} />
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDateTime(row.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem render={<Link href={row.href} />}>
-                        <EyeIcon />
-                        View message
-                      </DropdownMenuItem>
-                      {row.channel === "email" ? (
-                        <DropdownMenuItem
-                          render={<Link href={`/logs?email=${row.id}`} />}
-                        >
-                          <ScrollTextIcon />
-                          View log
+      <EmailConfiguration required={channel === "email"}>
+        {log.status === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={MailIcon}
+            title="No messages"
+            description="Connect a channel, then send a message through the API to see delivery events here."
+          />
+        ) : (
+          <>
+            <ResourceTable
+              headers={
+                <>
+                  <Th>To</Th>
+                  <Th>Status</Th>
+                  <Th>Sent</Th>
+                  <Th className="w-10" />
+                </>
+              }
+            >
+              {pageRows.map((row) => (
+                <TableRow key={row.id}>
+                  {/* Takes the free width; max-w-0 lets the preview truncate. */}
+                  <TableCell className="w-full max-w-0">
+                    <LogCell row={row} />
+                  </TableCell>
+                  <TableCell>
+                    <LogStatusBadge status={row.status} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDateTime(row.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem render={<Link href={row.href} />}>
+                          <EyeIcon />
+                          View message
                         </DropdownMenuItem>
-                      ) : null}
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
-          <ListPagination {...pagination} noun="message" />
-        </>
-      )}
+                        {row.channel === "email" ? (
+                          <DropdownMenuItem
+                            render={<Link href={`/logs?email=${row.id}`} />}
+                          >
+                            <ScrollTextIcon />
+                            View log
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+            <ListPagination {...pagination} noun="message" />
+          </>
+        )}
+      </EmailConfiguration>
     </EmailsChrome>
   )
 }
@@ -206,10 +210,12 @@ function LogCell({ row }: { row: LogRow }) {
   return (
     <IconCell icon={channelIcon(row.channel)}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <Link href={row.href} className="font-medium hover:underline">
+        <Link href={row.href} className="truncate font-medium hover:underline">
           {row.party}
         </Link>
-        <span className="text-xs text-muted-foreground">{row.summary}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {row.summary}
+        </span>
       </div>
     </IconCell>
   )
@@ -269,53 +275,56 @@ export function ReceivingView() {
           onExport={channel === "email" ? exporting.open : undefined}
         />
       </div>
-      {received.status === "LoadingFirstPage" ? (
-        <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={InboxIcon}
-          title="Nothing received"
-          description="Enable receiving on a verified domain or connect a WhatsApp number, then send a message to it."
-        />
-      ) : (
-        <>
-          <ResourceTable
-            headers={
-              <>
-                <Th>From</Th>
-                <Th>To</Th>
-                <Th>Received</Th>
-                <Th className="w-10" />
-              </>
-            }
-          >
-            {pageRows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <LogCell row={row} />
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {row.to}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDateTime(row.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem render={<Link href={row.href} />}>
-                        <EyeIcon />
-                        View message
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
-          <ListPagination {...pagination} noun="message" />
-        </>
-      )}
+      <EmailConfiguration required={channel === "email"}>
+        {received.status === "LoadingFirstPage" ? (
+          <Skeleton className="h-40 w-full" />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={InboxIcon}
+            title="Nothing received"
+            description="Connect a channel on the Channels page, then send a message to it."
+          />
+        ) : (
+          <>
+            <ResourceTable
+              headers={
+                <>
+                  <Th>From</Th>
+                  <Th>To</Th>
+                  <Th>Received</Th>
+                  <Th className="w-10" />
+                </>
+              }
+            >
+              {pageRows.map((row) => (
+                <TableRow key={row.id}>
+                  {/* Takes the free width; max-w-0 lets the preview truncate. */}
+                  <TableCell className="w-full max-w-0">
+                    <LogCell row={row} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {row.to}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDateTime(row.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <MoreMenu>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem render={<Link href={row.href} />}>
+                          <EyeIcon />
+                          View message
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </MoreMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+            <ListPagination {...pagination} noun="message" />
+          </>
+        )}
+      </EmailConfiguration>
     </EmailsChrome>
   )
 }

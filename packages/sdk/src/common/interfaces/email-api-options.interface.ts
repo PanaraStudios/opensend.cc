@@ -1,6 +1,7 @@
 import type { Tag } from '../../interfaces';
 
 export interface EmailApiAttachment {
+  id?: string;
   content?: string | Buffer;
   filename?: string | false | undefined;
   path?: string;

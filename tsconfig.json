@@ -31,5 +31,11 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "packages", ".claude"]
+  "exclude": [
+    "node_modules",
+    "packages",
+    ".claude",
+    "test-results",
+    "services/voice-agent/.venv"
+  ]
 }

@@ -1,7 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { isMacPlatform, matchesShortcut, sequenceKey } from "./shortcuts"
+import {
+  isMacPlatform,
+  matchesShortcut,
+  sequenceKey,
+  shortcutEventKey,
+} from "./shortcuts"
 
 type Binding = {
   keys: string
@@ -46,7 +51,9 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
       prefix = null
     }
     function onKeyDown(event: KeyboardEvent) {
+      const key = shortcutEventKey(event.key)
       if (
+        key === null ||
         event.defaultPrevented ||
         event.isComposing ||
         event.keyCode === 229 ||
@@ -67,7 +74,6 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
         (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
       )
       const now = Date.now()
-      const key = event.key.toLowerCase()
       const sequence = sequenceKey(prefix, key, now)
       reset()
       for (const binding of ordered) {

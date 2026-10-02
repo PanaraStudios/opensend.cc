@@ -27,6 +27,8 @@ const realmFile = resolve(resultDir, "oidc-realm.json")
 writeFileSync(realmFile, JSON.stringify(realm), { mode: 0o600 })
 const compose = [
   "compose",
+  "-f",
+  "compose.yaml",
   "--env-file",
   filename,
   "-p",
@@ -77,6 +79,7 @@ const env = {
   ...process.env,
   OPENSEND_ENV_FILE: filename,
   COMPOSE_PROJECT_NAME: project,
+  COMPOSE_FILE: "compose.yaml",
   OPENSEND_BASE_URL: values.SITE_URL,
   OPENSEND_CONVEX_URL: values.CONVEX_PUBLIC_URL,
   OPENSEND_CALLBACK_ORIGIN: values.CONVEX_PUBLIC_SITE_URL,

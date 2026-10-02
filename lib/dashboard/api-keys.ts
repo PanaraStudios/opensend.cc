@@ -3,6 +3,7 @@ import type { ApiKey, ApiKeyPermission, Domain } from "./types"
 export const API_KEY_PERMISSIONS: readonly ApiKeyPermission[] = [
   "full_access",
   "sending_access",
+  "custom",
 ]
 
 /** Sentinel for "no permission filter", shared by the select and the filter. */

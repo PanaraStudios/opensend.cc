@@ -3,7 +3,21 @@ import { retirement } from "../teamLifecycle"
 import { ConvexError, v, type Infer } from "convex/values"
 import { components } from "../_generated/api"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
+import {
+  API_RESOURCES,
+  scopeAllows,
+  scopeName,
+  type RequiredScope,
+} from "../../lib/api-scopes"
 import { apiKeyPermissionValue } from "../tables/api"
+
+export const requiredScopeValue = v.union(
+  v.literal("full_access"),
+  v.object({
+    resource: v.union(...API_RESOURCES.map(({ id }) => v.literal(id))),
+    access: v.union(v.literal("read"), v.literal("write")),
+  })
+)
 
 /** Who signed a REST request: an `os_` API key or an OAuth access token,
     reduced to the same shape. */
@@ -11,6 +25,10 @@ export const callerValue = v.object({
   organizationId: v.string(),
   idempotencyId: v.optional(v.id("apiIdempotency")),
   permission: apiKeyPermissionValue,
+  scopes: v.optional(v.array(v.string())),
+  scope: v.optional(requiredScopeValue),
+  /** Preserve legacy email-send-only grants within the broader email resource. */
+  emailSending: v.optional(v.boolean()),
   /** A sending key limited to one domain. */
   domainId: v.optional(v.id("domains")),
   apiKeyId: v.optional(v.id("apiKeys")),
@@ -41,17 +59,23 @@ export const missing = (field: string) =>
 export async function requireCaller(
   ctx: QueryCtx | MutationCtx,
   caller: Caller,
-  permission: "full_access" | "sending" = "full_access"
+  scope?: RequiredScope | "sending"
 ) {
   const key = caller.apiKeyId
     ? await ctx.db.get("apiKeys", caller.apiKeyId)
     : null
   if (
     key &&
-    (key.permission !== caller.permission || key.domainId !== caller.domainId)
+    (key.permission !== caller.permission ||
+      key.domainId !== caller.domainId ||
+      JSON.stringify(key.scopes ?? []) !== JSON.stringify(caller.scopes ?? []))
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (key && (await domainRevoked(ctx, key.organizationId, key.domainId)))
+  if (
+    key &&
+    usesSendingDomain(caller) &&
+    (await domainRevoked(ctx, key.organizationId, key.domainId))
+  )
     throw apiError(403, "invalid_api_key", "API key is invalid")
   const live = caller.apiKeyId
     ? key?.organizationId
@@ -67,11 +91,21 @@ export async function requireCaller(
     (await retirement(ctx, caller.organizationId))
   )
     throw apiError(403, "invalid_api_key", "API key is invalid")
-  if (lacksPermission(caller, permission))
+  const required: RequiredScope =
+    caller.scope ??
+    (scope === "sending" ? { resource: "emails", access: "write" } : scope) ??
+    "full_access"
+  if (
+    lacksPermission(
+      caller,
+      required,
+      scope === "sending" ? true : caller.emailSending
+    )
+  )
     throw apiError(
-      401,
+      403,
       "restricted_api_key",
-      "This API key is restricted to only send emails."
+      `This API key needs the \`${scopeName(required)}\` scope.`
     )
 }
 
@@ -91,9 +125,29 @@ export async function requireTeamRow<T extends TeamRowTable>(
 /* Policy checks shared by `begin` and `requireCaller`; each entry point keeps
    its own wire error. */
 export const lacksPermission = (
-  caller: Pick<Caller, "permission">,
-  permission: "full_access" | "sending"
-) => permission === "full_access" && caller.permission !== "full_access"
+  caller: Pick<Caller, "permission" | "scopes" | "emailSending">,
+  scope: RequiredScope,
+  emailSending = caller.emailSending ?? false
+) => {
+  if (caller.permission === "full_access") return false
+  if (scope === "full_access") return true
+  if (caller.permission === "sending_access")
+    return (
+      scope.resource !== "emails" || scope.access !== "write" || !emailSending
+    )
+  return !scopeAllows(caller.scopes ?? [], scope.resource, scope.access)
+}
+
+/** Domain restrictions on custom keys affect email writes only. */
+export function usesSendingDomain(caller: Caller) {
+  return (
+    caller.permission !== "custom" ||
+    (caller.scope !== undefined &&
+      caller.scope !== "full_access" &&
+      caller.scope.resource === "emails" &&
+      caller.scope.access === "write")
+  )
+}
 
 /** A domain-limited key whose domain was removed or left the team. */
 export async function domainRevoked(

@@ -163,3 +163,22 @@ export const bootstrapRecipient = query({
     return !!user && user.email.toLowerCase() === email.trim().toLowerCase()
   },
 })
+
+/** Bounded roster for the gateway's 100 browser slots, authorized against live membership. */
+export const callingMembers = query({
+  args: { sessionId: v.string(), organizationId: v.string() },
+  returns: v.array(v.object({ userId: v.string(), name: v.string() })),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.sessionId, args.organizationId)
+    const members = await ctx.db
+      .query("member")
+      .withIndex("organizationId", (q) =>
+        q.eq("organizationId", args.organizationId)
+      )
+      .take(100)
+    const users = await Promise.all(
+      members.map((m) => ctx.db.get("user", m.userId as Id<"user">))
+    )
+    return users.flatMap((u) => (u ? [{ userId: u._id, name: u.name }] : []))
+  },
+})

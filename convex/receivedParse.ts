@@ -1,9 +1,10 @@
 "use node"
+import { storeFile, readFile } from "./storage/objects"
+import type { FileReference } from "./storage/files"
 import { simpleParser, type AddressObject } from "mailparser"
 import { v, type Infer } from "convex/values"
 import { internalAction } from "./_generated/server"
 import { internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
 import {
   receivedAttachment,
   receivedMetadata,
@@ -23,8 +24,8 @@ export const parse = internalAction({
   returns: v.null(),
   handler: async (ctx, { id }): Promise<null> => {
     const row = await ctx.runQuery(internal.received.parseSource, { id })
-    if (!row?.storageId) return null
-    const raw = await ctx.storage.get(row.storageId)
+    if (!row?.storageId && !row?.fileId) return null
+    const raw = await readFile(ctx, row)
     if (!raw) throw new Error("Stored inbound MIME is missing")
     const notification = JSON.parse(row.notification)
     const common = notification.mail?.commonHeaders ?? {}
@@ -124,16 +125,22 @@ export const parse = internalAction({
       }
       parsed = undefined
     }
-    const stored: Id<"_storage">[] = []
+    const stored: FileReference[] = []
     try {
       const attachments: Infer<typeof receivedAttachment>[] = []
       for (const file of parsed?.attachments ?? []) {
-        const storageId = await ctx.storage.store(
-          new Blob([new Uint8Array(file.content)], { type: file.contentType })
-        )
-        stored.push(storageId)
+        const ref = await storeFile(ctx, {
+          organizationId: row.organizationId,
+          feature: "received",
+          contentType: file.contentType,
+          body: new Blob([new Uint8Array(file.content)], {
+            type: file.contentType,
+          }),
+          size: file.size,
+        })
+        stored.push(ref)
         attachments.push({
-          storageId,
+          ...ref,
           filename: file.filename?.slice(0, 1024) ?? null,
           contentType: file.contentType.slice(0, 256),
           contentId:
@@ -151,7 +158,8 @@ export const parse = internalAction({
       })
       if (committed) stored.length = 0
     } finally {
-      for (const storageId of stored) await ctx.storage.delete(storageId)
+      for (const ref of stored)
+        await ctx.runMutation(internal.storage.files.discard, ref)
     }
     return null
   },

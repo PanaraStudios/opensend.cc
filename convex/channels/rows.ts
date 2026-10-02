@@ -1,3 +1,4 @@
+import { deleteFile } from "../storage/files"
 import { stream } from "convex-helpers/server/stream"
 import schema from "../schema"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
@@ -13,8 +14,7 @@ export async function deleteChannelMessageContent(
     .withIndex("by_messageId", (q) => q.eq("messageId", id))
     .unique()
   if (!content) return
-  for (const media of content.media ?? [])
-    if (media.storageId) await ctx.storage.delete(media.storageId)
+  for (const media of content.media ?? []) await deleteFile(ctx, media)
   await ctx.db.delete("channelMessageContents", content._id)
 }
 

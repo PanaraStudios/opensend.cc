@@ -3,35 +3,17 @@ import { createHmac } from "node:crypto"
 import { expect, test, type Page, type APIResponse } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import { client } from "./ses-fixtures"
+import { whatsappSendExamples } from "../../lib/meta/whatsapp-fixtures"
+import { whatsappPayload } from "../../lib/meta/payloads"
 import { createApiKey } from "./broadcast-received-flow"
 const SENDER = "16505551234"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const origin = () => process.env.OPENSEND_CALLBACK_ORIGIN!
 const fake = () => process.env.OPENSEND_FAKE_GRAPH_URL!
-async function statusWebhook(page: Page, id: string, status: string) {
+async function messageWebhook(page: Page, value: unknown) {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
-    entry: [
-      {
-        id: WABA,
-        changes: [
-          {
-            field: "messages",
-            value: {
-              metadata: { phone_number_id: PHONE_ID },
-              statuses: [
-                {
-                  id,
-                  status,
-                  recipient_id: SENDER,
-                  timestamp: String(Math.floor(Date.now() / 1000)),
-                },
-              ],
-            },
-          },
-        ],
-      },
-    ],
+    entry: [{ id: WABA, changes: [{ field: "messages", value }] }],
   })
   const response = await page.request.post(`${origin()}/meta/webhook`, {
     data: body,
@@ -41,6 +23,19 @@ async function statusWebhook(page: Page, id: string, status: string) {
     },
   })
   expect(response.status()).toBe(200)
+}
+async function statusWebhook(page: Page, id: string, status: string) {
+  return messageWebhook(page, {
+    metadata: { phone_number_id: PHONE_ID },
+    statuses: [
+      {
+        id,
+        status,
+        recipient_id: SENDER,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+      },
+    ],
+  })
 }
 export function whatsappSendTests(
   state: () => { owner: Page; organizationId: string }
@@ -151,21 +146,21 @@ export function whatsappSendTests(
         },
       })
       expect(media.status()).toBe(200)
-      expect(await media.json()).toMatchObject({
-        id: expect.stringMatching(/^meta-upload-/),
-      })
+      const storage = await backend.query(api.storage.files.settings)
+      expect(await media.json()).toMatchObject({ id: expect.any(String) })
       const mediaCalls = await (
         await owner.request.get(`${fake()}/__calls`)
       ).json()
-      expect(mediaCalls).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            method: "POST",
-            path: `/${PHONE_ID}/media`,
-            body: expect.stringContaining('name="messaging_product"'),
-          }),
-        ])
-      )
+      if (storage.provider === "convex")
+        expect(mediaCalls).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              method: "POST",
+              path: `/${PHONE_ID}/media`,
+              body: expect.stringContaining('name="messaging_product"'),
+            }),
+          ])
+        )
       // The existing receiver pattern: .invalid never leaves the backend,
       // and the durable delivery record carries the signed payload.
       const deliveries = () =>
@@ -193,6 +188,117 @@ export function whatsappSendTests(
         type: "whatsapp.message.sent",
         data: { id, channel: "whatsapp", status: "sent" },
       })
+      // API-first catalog coverage; the existing fake Graph send route accepts
+      // all wire bodies. Rendering/composer assertions belong to Task 7a-2.
+      for (const [name, example] of Object.entries(whatsappSendExamples)) {
+        const input = structuredClone(example)
+        if (input.reaction)
+          (input.reaction as { message_id: string }).message_id =
+            detail.external_id
+        const result = await post(
+          { from: PHONE_ID, to: SENDER, ...input },
+          `whatsapp-catalog-${name}`
+        )
+        expect(result.status(), name).toBe(200)
+        const messageId = (await result.json()).id
+        await expect
+          .poll(async () => (await get(messageId)).status, { timeout: 45000 })
+          .toBe("sent")
+        const message = await get(messageId)
+        const expected = whatsappPayload({ to: SENDER, ...input })
+        expect(message).toMatchObject({
+          type: expected.type,
+          content: expected[expected.type],
+          raw: expected,
+        })
+        if (name === "voice_note") {
+          await statusWebhook(owner, message.external_id, "played")
+          await expect
+            .poll(async () => (await get(messageId)).status)
+            .toBe("played")
+        }
+      }
+      const catalogCalls = await (
+        await owner.request.get(`${fake()}/__calls`)
+      ).json()
+      for (const example of Object.values(whatsappSendExamples)) {
+        const input = structuredClone(example)
+        if (input.reaction)
+          (input.reaction as { message_id: string }).message_id =
+            detail.external_id
+        expect(catalogCalls).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: `/${PHONE_ID}/messages`,
+              body: whatsappPayload({ to: SENDER, ...input }),
+            }),
+          ])
+        )
+      }
+      expect(
+        (
+          await post({
+            from: PHONE_ID,
+            to: SENDER,
+            text: { body: "x".repeat(4097) },
+          })
+        ).status()
+      ).toBe(422)
+      expect(
+        (
+          await post({
+            from: PHONE_ID,
+            to: SENDER,
+            type: "poll",
+            poll: { question: "Unsupported" },
+          })
+        ).status()
+      ).toBe(422)
+      await messageWebhook(owner, {
+        metadata: { phone_number_id: PHONE_ID },
+        contacts: [
+          {
+            user_id: "BSUID-e2e-catalog",
+            profile: { name: "Catalog user", username: "catalog_user" },
+          },
+        ],
+        messages: [
+          {
+            id: "wamid.e2e.catalog",
+            from_user_id: "BSUID-e2e-catalog",
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "interactive",
+            interactive: {
+              type: "nfm_reply",
+              nfm_reply: { name: "flow", response_json: '{"answer":"yes"}' },
+            },
+          },
+        ],
+      })
+      await expect
+        .poll(
+          async () => {
+            const response = await rest(() =>
+              owner.request.get(
+                `${origin()}/whatsapp/messages?direction=inbound&limit=100`,
+                { headers }
+              )
+            )
+            const messages = (await response.json()).data as {
+              external_id: string
+              identity: { user_id?: string }
+              content: unknown
+            }[]
+            return messages.find(
+              (message) => message.external_id === "wamid.e2e.catalog"
+            )
+          },
+          { timeout: 45000 }
+        )
+        .toMatchObject({
+          identity: { user_id: "BSUID-e2e-catalog" },
+          content: { type: "nfm_reply", response: { answer: "yes" } },
+        })
       await owner.request.post(`${fake()}/__responses`, {
         data: {
           method: "POST",

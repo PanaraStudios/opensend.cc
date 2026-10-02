@@ -1,3 +1,6 @@
+import { pageChannelValue } from "./tables/channels"
+import { isChannelSendStep, channelForSendStep } from "../lib/channels"
+import { localTemplateDefinition } from "./channels/templates"
 import { ConvexError, v } from "convex/values"
 import {
   paginationOptsValidator,
@@ -15,7 +18,7 @@ import { startRun, stopRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
 import { resolveChannelAccount } from "./channels/messages"
 import { resolveWhatsAppSend } from "./broadcastWhatsApp"
-import { publishedTemplate } from "./templates"
+import { publishedTemplate, templateOptions } from "./templates"
 import {
   automationStatus,
   payloadValue,
@@ -222,8 +225,17 @@ export async function setAutomationStatus(
     const templates = []
     const segments = []
     for (const step of flattenSteps(steps)) {
-      if (step.type === "send_whatsapp" && step.accountId) {
-        if (step.mode === "template" && step.templateId)
+      if (
+        "accountId" in step &&
+        isChannelSendStep(step.type) &&
+        step.accountId
+      ) {
+        const channel = channelForSendStep(step.type)
+        if (
+          channel === "whatsapp" &&
+          step.mode === "template" &&
+          step.templateId
+        )
           await resolveWhatsAppSend(ctx, organizationId, {
             accountId: step.accountId,
             templateId: step.templateId,
@@ -234,8 +246,28 @@ export async function setAutomationStatus(
             ctx,
             organizationId,
             step.accountId,
-            "whatsapp"
+            channel
           )
+        if (
+          channel !== "whatsapp" &&
+          step.mode === "template" &&
+          step.templateId
+        ) {
+          const { published } = await localTemplateDefinition(
+            ctx,
+            organizationId,
+            channel,
+            { id: step.templateId }
+          )
+          if (
+            published.variables.some(
+              (variable) =>
+                step.variables[variable.key] === undefined &&
+                variable.fallback === undefined
+            )
+          )
+            throw new ConvexError("Map every template variable before sending")
+        }
       }
       if (step.type === "send_email") {
         const template = await publishedTemplate(
@@ -595,5 +627,91 @@ export const stepContext = query({
         segments.push({ id: row._id, name: row.name })
     }
     return { templates, segments }
+  },
+})
+
+/** Page send steps use only their channel's connected accounts and published templates. */
+export const channelOptions = query({
+  args: {
+    organizationId: v.string(),
+    channel: pageChannelValue,
+    accountId: v.optional(v.string()),
+    templateId: v.optional(v.string()),
+    accountSearch: v.optional(v.string()),
+    templateSearch: v.optional(v.string()),
+  },
+  returns: v.object({
+    accounts: v.array(
+      v.object({ id: v.id("channelAccounts"), name: v.string() })
+    ),
+    templates: v.array(v.object({ id: v.id("templates"), name: v.string() })),
+    selected: v.union(
+      v.null(),
+      v.object({ components: v.any(), variables: v.array(v.string()) })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    const rows = await ctx.db
+      .query("channelAccounts")
+      .withIndex("by_organizationId_and_channel_and_disconnectedAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("channel", args.channel)
+          .eq("disconnectedAt", undefined)
+      )
+      .take(200)
+    const active = []
+    for (const row of rows) {
+      try {
+        await resolveChannelAccount(
+          ctx,
+          args.organizationId,
+          row._id,
+          args.channel
+        )
+        active.push(row)
+      } catch {
+        /* The picker follows the pipeline's sendability rules. */
+      }
+    }
+    const account = active.find((row) => row._id === args.accountId)
+    const templates = account
+      ? await templateOptions(ctx, {
+          organizationId: args.organizationId,
+          channel: args.channel,
+          publishedOnly: true,
+          search: args.templateSearch,
+          selectedId:
+            ctx.db.normalizeId("templates", args.templateId ?? "") ?? undefined,
+        })
+      : []
+    let selected = null
+    if (templates.some((row) => row._id === args.templateId)) {
+      const { published } = await localTemplateDefinition(
+        ctx,
+        args.organizationId,
+        args.channel,
+        { id: args.templateId }
+      )
+      selected = {
+        components: published.components,
+        variables: published.variables.map((variable) => variable.key),
+      }
+    }
+    const matches = matchesSearch(args.accountSearch)
+    return {
+      accounts: active
+        .filter(
+          (row) =>
+            row._id === args.accountId || matches(row.displayName, row.handle)
+        )
+        .map((row) => ({
+          id: row._id,
+          name: `${row.displayName} (${row.handle})`,
+        })),
+      templates: templates.map((row) => ({ id: row._id, name: row.name })),
+      selected,
+    }
   },
 })

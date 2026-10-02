@@ -242,8 +242,33 @@ test("broadcast pages enqueue once per phone contact, record all skip reasons an
       .filter(Boolean)
       .sort()
   ).toEqual(["marketing_opt_out", "no_phone", "topic_opt_out", "unsubscribed"])
-  for (const recipient of recipients.filter((row) => row.messageId))
+  for (const recipient of recipients.filter((row) => row.messageId)) {
+    const detail = await f.owner.client.query(api.messages.get, {
+      id: recipient.messageId!,
+    })
+    const body =
+      recipient.contactId === ids[0]
+        ? "Hi Alex, Custom is ready."
+        : "Hi there, Acme is ready."
+    expect(detail).toMatchObject({
+      rendered: { body, buttons: [] },
+      message: { preview: body, source: "broadcast" },
+    })
+    const snapshot = await f.t.run((ctx) =>
+      ctx.db
+        .query("channelMessageContents")
+        .withIndex("by_messageId", (q) =>
+          q.eq("messageId", recipient.messageId!)
+        )
+        .unique()
+    )
+    expect(snapshot?.rendered).toEqual({ body, buttons: [] })
+    const conversation = await f.t.run((ctx) =>
+      ctx.db.get("conversations", detail!.message.conversationId)
+    )
+    expect(conversation?.lastPreview).toBe(body)
     await deliver(f, recipient.messageId!)
+  }
   const parameters = f.graph
     .to(`/${PHONE_ID}/messages`)
     .map(

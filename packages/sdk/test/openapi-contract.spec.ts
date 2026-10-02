@@ -36,7 +36,7 @@ const sources = (dir: string): string[] =>
   })
 
 const firstLiteral = (text: string) =>
-  text.match(/(['`])(\/[^'`]*)\1/)?.[2] ?? null
+  text.match(/(['"`])(\/[^'"`]*)\1/)?.[2] ?? null
 
 function sdkRequests() {
   const found = new Set<string>()
@@ -47,10 +47,12 @@ function sdkRequests() {
       /super\(client, [\'"](whatsapp|messenger|instagram)[\'"]\)/
     )?.[1]
     if (channel && text.includes("extends ChannelConversations")) {
+      found.add(`POST /${channel}/conversations/{}/typing`)
       found.add(`GET /${channel}/conversations`)
       found.add(`GET /${channel}/conversations/{}/messages`)
     }
     if (channel && text.includes("extends ChannelMessages")) {
+      found.add(`POST /${channel}/messages/{}/read`)
       found.add(`POST /${channel}/messages`)
       found.add(`GET /${channel}/messages`)
       found.add(`GET /${channel}/messages/{}`)
@@ -69,7 +71,7 @@ function sdkRequests() {
         assignments.push({ at: match.index, name: match[1], literal })
     }
     const calls = text.matchAll(
-      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['`])[\s\S]*?\3|\w+)/g
+      /this\.resend\.(get|post|put|patch|delete)(?:<[\s\S]*?>)?\(\s*((['"`])[\s\S]*?\3|\w+)/g
     )
     for (const call of calls) {
       const [, method, argument] = call

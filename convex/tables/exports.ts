@@ -1,3 +1,4 @@
+import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 
@@ -23,7 +24,7 @@ export const exportTables = {
     rows: v.number(),
     error: v.optional(v.string()),
     notificationEmailId: v.optional(v.id("emails")),
-    storageId: v.optional(v.id("_storage")),
+    ...fileReference,
     expiresAt: v.number(),
     /** The list filters the export was started with, as the source reads
         them. */

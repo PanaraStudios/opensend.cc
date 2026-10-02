@@ -64,6 +64,12 @@ const workflow = {
 }
 const overrides: Record<string, Record<string, unknown>> = {
   "batch-remove-suppressions": { ids: ["test-id"] },
+  "connect-whatsapp-call": { route: "gateway", recipient: "US.123" },
+  "get-whatsapp-call-permissions": { recipient: "US.123" },
+  "request-whatsapp-call-permission": {
+    recipient: "US.123",
+    text: "May we call?",
+  },
   "send-email": { text: "Hello" },
   "send-messenger-message": { to: "psid", text: "Hello" },
   "send-instagram-message": { to: "igsid", text: "Hello" },

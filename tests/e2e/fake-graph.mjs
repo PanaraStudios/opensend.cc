@@ -30,6 +30,8 @@ export const graphError = (message, code, extra = {}) => ({
    the server's lifetime; /__reset clears only calls and overrides. */
 let messageSequence = 0
 let mediaSequence = 0
+let callSequence = 0
+const callingSettings = new Map()
 const numbers = new Map()
 const phoneNumberOf = (wabaId) => {
   const id = `${wabaId}0`
@@ -89,22 +91,83 @@ const appIdOf = (authorization = "") =>
 /** Canned answers: `respond(match, call)` returns `{ status?, body }`. */
 export const ROUTES = [
   {
+    method: "GET",
+    path: /^\/\d+\/settings$/,
+    respond: ([path]) => ({
+      body: { calling: callingSettings.get(path) ?? { status: "DISABLED" } },
+    }),
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/settings$/,
+    respond: ([path], call) => {
+      callingSettings.set(path, {
+        ...(callingSettings.get(path) ?? {}),
+        ...call.body.calling,
+      })
+      return { body: { success: true } }
+    },
+  },
+  {
+    method: "POST",
+    path: /^\/\d+\/calls$/,
+    respond: (_, call) => ({
+      body:
+        call.body.action === "connect"
+          ? { calls: [{ id: `wacid.e2e.${++callSequence}` }] }
+          : { success: true },
+    }),
+  },
+  {
+    method: "GET",
+    path: /^\/\d+\/call_permissions$/,
+    respond: (_, call) => ({
+      body: {
+        messaging_product: "whatsapp",
+        permission: {
+          status:
+            call.query.recipient === "US.13491208655302741919"
+              ? "no_permission"
+              : "permanent",
+        },
+        actions: [
+          {
+            action_name: "send_call_permission_request",
+            can_perform_action: true,
+          },
+          {
+            action_name: "start_call",
+            can_perform_action:
+              call.query.recipient !== "US.13491208655302741919",
+            limits: [
+              { time_period: "P1D", max_allowed: 100, current_usage: 0 },
+            ],
+          },
+        ],
+      },
+    }),
+  },
+  {
     method: "POST",
     path: /^\/\d+\/messages$/,
     respond: (_, call) =>
-      call.body?.recipient
-        ? {
-            body: {
-              recipient_id: call.body.recipient.id,
-              message_id: `mid.${++messageSequence}`,
-            },
-          }
-        : {
-            body: {
-              messaging_product: "whatsapp",
-              messages: [{ id: `wamid.${++messageSequence}` }],
-            },
-          },
+      call.body?.status === "read"
+        ? { body: { success: true } }
+        : call.body?.sender_action
+          ? { body: { recipient_id: call.body.recipient.id } }
+          : call.body?.recipient && typeof call.body.recipient === "object"
+            ? {
+                body: {
+                  recipient_id: call.body.recipient.id,
+                  message_id: `mid.${++messageSequence}`,
+                },
+              }
+            : {
+                body: {
+                  messaging_product: "whatsapp",
+                  messages: [{ id: `wamid.${++messageSequence}` }],
+                },
+              },
   },
   {
     method: "POST",
@@ -286,8 +349,13 @@ export const ROUTES = [
           ? FACEBOOK_PAGE
           : call.query.fields === "first_name,last_name"
             ? { id, first_name: "Ada", last_name: "E2E" }
-            : call.query.fields === "name,username"
-              ? { id, name: "Grace E2E", username: "grace_e2e" }
+            : call.query.fields === "name,username,profile_pic"
+              ? {
+                  id,
+                  name: "Grace E2E",
+                  username: "grace_e2e",
+                  profile_pic: "https://example.com/grace.png",
+                }
               : { id, name: "Opensend E2E" },
     }),
   },
@@ -379,7 +447,7 @@ export async function startFakeGraph(port) {
           status = 200,
           body,
           contentType,
-        } = route.respond(
+        } = await route.respond(
           match,
           call,
           `http://host.docker.internal:${server.address().port}`

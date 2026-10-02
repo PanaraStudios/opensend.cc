@@ -373,7 +373,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
         kind === "create"
           ? "/automations"
           : `/automations/{automation_id}${kind === "duplicate" || kind === "stop" ? `/${kind}` : ""}`,
-      permission: "full_access",
+      scope: { resource: "automations", access: "write" },
       handler: async (ctx, { caller, params, body }) => ({
         status: kind === "create" || kind === "duplicate" ? 201 : 200,
         body: reply(
@@ -390,7 +390,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/automations",
-    permission: "full_access",
+    scope: { resource: "automations", access: "read" },
     handler: async (ctx, { caller, query }) => {
       const result = await ctx.runQuery(internal.api.automations.list, {
         caller,
@@ -409,7 +409,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/automations/{automation_id}",
-    permission: "full_access",
+    scope: { resource: "automations", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const row = await ctx.runQuery(internal.api.automations.get, {
         caller,
@@ -427,7 +427,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/automations/{automation_id}/runs",
-    permission: "full_access",
+    scope: { resource: "automations", access: "read" },
     handler: async (ctx, { caller, params, query }) => {
       const result = await ctx.runQuery(internal.api.automations.runs, {
         caller,
@@ -443,7 +443,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/automations/{automation_id}/runs/{run_id}",
-    permission: "full_access",
+    scope: { resource: "automations", access: "read" },
     handler: async (ctx, { caller, params }) => {
       const { row, steps } = await ctx.runQuery(internal.api.automations.run, {
         caller,

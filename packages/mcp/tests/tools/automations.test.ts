@@ -100,3 +100,58 @@ describe("automation REST results", () => {
     expect(text).toContain("ID: aut_2")
   })
 })
+
+it("documents Page send constraints and passes Messenger/Instagram shapes to the SDK", async () => {
+  create.mockResolvedValue({ data: { id: "aut_pages" }, error: null })
+  const client = await makeClient()
+  const tools = await client.listTools()
+  const guidance = tools.tools.find(
+    (tool) => tool.name === "create-automation"
+  )!.description!
+  for (const text of [
+    "send_messenger",
+    "send_instagram",
+    "no_channel_identity",
+    "window_closed",
+    "HUMAN_AGENT",
+  ])
+    expect(guidance).toContain(text)
+  const steps = [
+    {
+      key: "start",
+      type: "trigger",
+      config: { eventName: "opensend:messenger.message.received" },
+      next: "messenger",
+    },
+    {
+      key: "messenger",
+      type: "send_messenger",
+      config: { accountId: "page", mode: "text", text: "Reply" },
+      next: "instagram",
+    },
+    {
+      key: "instagram",
+      type: "send_instagram",
+      config: {
+        accountId: "ig",
+        mode: "template",
+        templateId: "published",
+        variables: { name: { contact: "firstName" } },
+      },
+      next: null,
+    },
+  ]
+  const result = await client.callTool({
+    name: "create-automation",
+    arguments: { name: "Page replies", workflow: { steps } },
+  })
+  expect(result.isError).toBeFalsy()
+  expect(create).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      steps: steps.map(({ next: _next, ...step }) => {
+        void _next
+        return step
+      }),
+    })
+  )
+})

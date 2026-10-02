@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<document type="freeswitch/xml">
+  <X-PRE-PROCESS cmd="set" data="domain=freeswitch"/>
+  <X-PRE-PROCESS cmd="set" data="recordings_dir=/recordings"/>
+  <section name="configuration">
+    <configuration name="modules.conf" description="Calling modules only">
+      <modules>
+        <load module="mod_console"/><load module="mod_commands"/>
+        <load module="mod_dptools"/><load module="mod_hash"/><load module="mod_expr"/>
+        <load module="mod_opus"/><load module="mod_sndfile"/><load module="mod_tone_stream"/>
+        <load module="mod_event_socket"/><load module="mod_xml_curl"/><load module="mod_sofia"/>
+        <load module="mod_dialplan_xml"/><load module="mod_http_cache"/>
+      </modules>
+    </configuration>
+    <configuration name="http_cache.conf" description="Cached IVR prompts">
+      <settings>
+        <param name="enable-file-formats" value="false"/>
+        <param name="location" value="/opt/freeswitch/cache/http"/>
+        <param name="max-urls" value="10000"/>
+        <param name="default-max-age" value="86400"/>
+        <param name="prefetch-thread-count" value="8"/>
+        <param name="prefetch-queue-size" value="100"/>
+        <param name="ssl-cacert" value="/etc/ssl/certs/ca-certificates.crt"/>
+        <param name="ssl-verifypeer" value="true"/>
+        <param name="ssl-verifyhost" value="true"/>
+      </settings>
+    </configuration>
+    <configuration name="xml_curl.conf" description="Uncached ephemeral agent and gateway directory">
+      <bindings><binding name="opensend-agents">
+        <param name="gateway-url" value="http://call-gateway:8090/agents/directory" bindings="directory"/>
+        <param name="gateway-credentials" value="directory:${FREESWITCH_DIRECTORY_SECRET}"/>
+        <param name="auth-scheme" value="basic"/>
+        <param name="timeout" value="3"/>
+      </binding></bindings>
+    </configuration>
+    <configuration name="switch.conf" description="Media ports">
+      <settings>
+        <param name="rtp-start-port" value="20400"/>
+        <param name="rtp-end-port" value="20799"/>
+        <param name="max-sessions" value="200"/>
+      </settings>
+    </configuration>
+    <configuration name="acl.conf" description="Internal event socket">
+      <network-lists><list name="calling-esl" default="deny">
+        <node type="allow" cidr="127.0.0.1/32"/>
+        <node type="allow" cidr="172.16.0.0/12"/>
+        <node type="allow" cidr="10.0.0.0/8"/>
+        <node type="allow" cidr="192.168.0.0/16"/>
+      </list></network-lists>
+    </configuration>
+    <configuration name="event_socket.conf" description="Private ESL">
+      <settings>
+        <param name="listen-ip" value="0.0.0.0"/>
+        <param name="listen-port" value="8021"/>
+        <param name="password" value="${FREESWITCH_ESL_SECRET}"/>
+        <param name="apply-inbound-acl" value="calling-esl"/>
+        <param name="nat-map" value="false"/>
+      </settings>
+    </configuration>
+    <configuration name="opus.conf" description="Opus at 48 kHz, 20 ms, no DTX">
+      <settings>
+        <param name="use-vbr" value="1"/>
+        <param name="use-dtx" value="0"/>
+        <param name="maxaveragebitrate" value="32000"/>
+      </settings>
+    </configuration>
+    <configuration name="sofia.conf" description="Internal SIP and browser SIP over WSS">
+      <global_settings><param name="log-level" value="0"/></global_settings>
+      <profiles><profile name="internal">
+        <settings>
+          <param name="sip-ip" value="$${local_ip_v4}"/>
+          <param name="rtp-ip" value="$${local_ip_v4}"/>
+          <param name="ext-sip-ip" value="${FREESWITCH_PUBLIC_IP}"/>
+          <param name="ext-rtp-ip" value="${FREESWITCH_PUBLIC_IP}"/>
+          <param name="sip-port" value="5060"/>
+          <param name="wss-binding" value=":7443"/>
+          <param name="tls-cert-dir" value="/certs"/>
+          <param name="context" value="calling"/>
+          <param name="dialplan" value="XML"/>
+          <param name="inbound-codec-prefs" value="OPUS@48000h@20i"/>
+          <param name="outbound-codec-prefs" value="OPUS@48000h@20i"/>
+          <param name="inbound-codec-negotiation" value="generous"/>
+          <param name="inbound-late-negotiation" value="false"/>
+          <param name="auth-calls" value="true"/>
+          <param name="challenge-realm" value="freeswitch"/>
+          <param name="force-register-domain" value="freeswitch"/>
+          <param name="force-register-db-domain" value="freeswitch"/>
+          <param name="force-subscription-domain" value="freeswitch"/>
+          <param name="manage-presence" value="false"/>
+          <!-- Accept private Docker/LAN agents as well as public/relay candidates. -->
+          <param name="apply-candidate-acl" value="rfc1918.auto"/>
+          <param name="apply-candidate-acl" value="wan.auto"/>
+          <param name="local-network-acl" value="localnet.auto"/>
+          <param name="suppress-cng" value="true"/>
+          <param name="disable-transcoding" value="false"/>
+          <param name="rtp-timeout-sec" value="60"/>
+          <param name="rtp-timer-name" value="soft"/>
+        </settings>
+      </profile></profiles>
+    </configuration>
+  </section>
+  <section name="directory"/>
+  <section name="dialplan">
+    <context name="calling">
+      <extension name="incoming-gateway">
+        <condition field="destination_number" expression="^c2b-sip$">
+          <action application="set" data="opensend_call_id=${sip_h_X-OpenSend-Call-Id}"/>
+          <action application="set" data="rtp_secure_media=mandatory"/>
+          <action application="set" data="absolute_codec_string=OPUS@48000h@20i"/>
+          <action application="set" data="send_silence_when_idle=400"/>
+          <action application="answer"/>
+          <!-- Janus drops this leg's RTP until the authenticated /route call. -->
+          <action application="park"/>
+        </condition>
+      </extension>
+      <extension name="record-routed-call" continue="true">
+        <condition field="${opensend_record}" expression="^true$">
+          <action application="set" data="RECORD_STEREO=false"/>
+          <action application="record_session" data="/recordings/${uuid}.wav"/>
+          <action application="set" data="opensend_record=false"/>
+        </condition>
+      </extension>
+      <extension name="agent-bridge">
+        <condition field="destination_number" expression="^agent-route$">
+          <action application="set" data="send_silence_when_idle=400"/>
+          <action application="playback" data="silence_stream://1000"/>
+          <action application="set" data="ringback=%(2000,4000,440,480)"/>
+          <action application="set" data="instant_ringback=true"/>
+          <action application="set" data="hangup_after_bridge=true"/>
+          <action application="export" data="nolocal:absolute_codec_string=OPUS@48000h@20i"/>
+          <action application="export" data="nolocal:media_webrtc=true"/>
+          <action application="bridge" data="user/${opensend_agent}@freeswitch"/>
+          <action application="hangup"/>
+        </condition>
+      </extension>
+      <extension name="voice-control">
+        <condition field="destination_number" expression="^voice-control$">
+          <action application="set" data="socket_resume=false"/>
+          <action application="set" data="hangup_after_bridge=true"/>
+          <action application="socket" data="call-gateway:8093 async full"/>
+          <action application="hangup"/>
+        </condition>
+      </extension>
+      <extension name="ivr-demo">
+        <condition field="destination_number" expression="^ivr-demo$">
+          <action application="set" data="send_silence_when_idle=400"/>
+          <action application="play_and_get_digits" data="1 1 3 5000 # /opt/freeswitch/sounds/calling-welcome.wav /opt/freeswitch/sounds/calling-invalid.wav choice [12]"/>
+          <action application="transfer" data="ivr-${choice} XML calling"/>
+        </condition>
+      </extension>
+      <extension name="ivr-tone">
+        <condition field="destination_number" expression="^ivr-1$">
+          <action application="playback" data="tone_stream://%(2000,0,440);loops=30"/>
+          <action application="transfer" data="ivr-demo XML calling"/>
+        </condition>
+      </extension>
+      <extension name="ivr-repeat">
+        <condition field="destination_number" expression="^ivr-(2|)$">
+          <action application="transfer" data="ivr-demo XML calling"/>
+        </condition>
+      </extension>
+    </context>
+    <!-- All browser routing requires backend authorization. -->
+    <context name="softphone-deny"/>
+  </section>
+</document>
