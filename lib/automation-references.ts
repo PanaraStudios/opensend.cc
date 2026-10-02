@@ -1,3 +1,4 @@
+import { STEP_LABELS } from "./dashboard/automation"
 import type {
   AutomationRule,
   AutomationStep,
@@ -5,9 +6,9 @@ import type {
 } from "./dashboard/types"
 import {
   catalogEvent,
+  catalogContactSchema,
   flattenSchema,
   schemaField,
-  CONTACT_SCHEMA,
   type CatalogEvent,
   type EventField,
 } from "./event-catalog"
@@ -18,6 +19,18 @@ export type ReferenceScope = {
   contact: Record<string, unknown>
   steps?: Record<string, Record<string, unknown>>
 }
+export const readablePath = (path: string) =>
+  path
+    .split(".")
+    .map((part) =>
+      /^\d+$/.test(part)
+        ? `Item ${Number(part) + 1}`
+        : part
+            .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+            .replaceAll("_", " ")
+            .replace(/^./, (letter) => letter.toUpperCase())
+    )
+    .join(" › ")
 const forbidden = new Set(["__proto__", "prototype", "constructor"])
 export function referenceValue(scope: ReferenceScope, path: string): unknown {
   const keys = path
@@ -36,6 +49,25 @@ export function referenceValue(scope: ReferenceScope, path: string): unknown {
 const tokens = /(?<!\{)\{\{\s*([^{}]+?)\s*\}\}(?!\})/g
 export function references(value: string): string[] {
   return [...value.matchAll(tokens)].map((match) => match[1].trim())
+}
+/** Literal spans and tokens keep their original offsets for the chip editor. */
+export function referenceParts(value: string) {
+  const parts: { text: string; start: number; end: number; path?: string }[] =
+    []
+  let start = 0
+  for (const match of value.matchAll(tokens)) {
+    const end = match.index!
+    parts.push({ text: value.slice(start, end), start, end })
+    start = end + match[0].length
+    parts.push({
+      text: match[0],
+      path: match[1].trim(),
+      start: end,
+      end: start,
+    })
+  }
+  parts.push({ text: value.slice(start), start, end: value.length })
+  return parts
 }
 export function escapeHtml(value: string): string {
   return value.replace(
@@ -79,23 +111,6 @@ export function resolveText(
 ): string {
   return display(resolveReference(value, scope, options))
 }
-export const contactSnapshot = (contact: {
-  _id: string
-  email?: string
-  phone?: string
-  firstName: string
-  lastName: string
-  unsubscribed: boolean
-  properties: Record<string, string>
-}) => ({
-  id: contact._id,
-  email: contact.email ?? "",
-  phone: contact.phone ?? "",
-  first_name: contact.firstName,
-  last_name: contact.lastName,
-  unsubscribed: contact.unsubscribed,
-  properties: contact.properties,
-})
 const messageOutput = object({
   message_id: field("string", "Queued message id", "msg_123", {
     optional: true,
@@ -109,7 +124,7 @@ const messageOutput = object({
 export function stepOutputSchema(
   step: AutomationStep,
   catalog: readonly CatalogEvent[],
-  contact = CONTACT_SCHEMA
+  contact = catalogContactSchema(catalog)
 ): EventField {
   switch (step.type) {
     case "send_email":
@@ -181,7 +196,7 @@ export function variableOptions(
   steps: readonly AutomationStep[],
   key: string,
   catalog: readonly CatalogEvent[],
-  contact = CONTACT_SCHEMA
+  contact = catalogContactSchema(catalog)
 ): VariableOption[] {
   const sources = [
     {
@@ -189,9 +204,9 @@ export function variableOptions(
       group: "Trigger",
       schema: catalogEvent(catalog, trigger)?.schema ?? object({}),
     },
-    ...(previousSteps(steps, key) ?? []).map((step) => ({
+    ...(previousSteps(steps, key) ?? []).map((step, index) => ({
       prefix: `steps.${step.key}`,
-      group: `${step.type.replaceAll("_", " ")} (${step.key})`,
+      group: `${STEP_LABELS[step.type]} ${index + 1}`,
       schema: stepOutputSchema(step, catalog, contact),
     })),
     { prefix: "contact", group: "Contact", schema: contact },
@@ -200,10 +215,7 @@ export function variableOptions(
     flattenSchema(source.schema).map(({ path, field }) => ({
       path: `${source.prefix}.${path}`,
       group: source.group,
-      label: `${source.group} › ${path
-        .split(".")
-        .map((p) => p.replaceAll("_", " "))
-        .join(" › ")}`,
+      label: `${source.group} › ${readablePath(path)}`,
       field,
     }))
   )
@@ -218,7 +230,7 @@ export function referenceErrors(
   trigger: string,
   steps: readonly AutomationStep[],
   catalog: readonly CatalogEvent[],
-  contact = CONTACT_SCHEMA,
+  contact = catalogContactSchema(catalog),
   filters: readonly AutomationRule[] = []
 ): string[] {
   const errors: string[] = []
@@ -248,8 +260,9 @@ export function referenceErrors(
           errors.push(`${key}: Unknown or unreachable reference {{${path}}}`)
     for (const rule of rules) {
       const path = references(rule.field)[0] ?? rule.field
-      const type = lookup(path)?.type
+      const type = lookup(path)?.dynamic ? undefined : lookup(path)?.type
       if (!type) {
+        if (lookup(path)?.dynamic) continue
         const event = catalogEvent(catalog, trigger)
         const legacyUntyped =
           /^(event|trigger)\./.test(rule.field) &&
@@ -261,12 +274,21 @@ export function referenceErrors(
         continue
       }
       if (["exists", "is_empty"].includes(rule.operator)) continue
-      const expected =
-        references(rule.value).length === 1 &&
-        rule.value.trim().startsWith("{{")
-          ? lookup(references(rule.value)[0])?.type
+      const operandReferences = references(rule.value)
+      const wholeReference = /^\{\{\s*[^{}]+?\s*\}\}$/.test(rule.value.trim())
+      const expected = wholeReference
+        ? lookup(operandReferences[0])?.type
+        : operandReferences.length
+          ? "string"
           : undefined
-      if (expected && expected !== type)
+      if (
+        expected &&
+        expected !== type &&
+        !(
+          ["string", "enum"].includes(expected) &&
+          ["string", "enum"].includes(type)
+        )
+      )
         errors.push(
           `${key}: ${path} is ${type}, but the comparison is ${expected}`
         )

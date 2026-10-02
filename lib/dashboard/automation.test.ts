@@ -148,6 +148,11 @@ describe("durations and names", () => {
   it("reserves the system prefix and refuses duplicates", () => {
     assert.equal(eventNameError("user.created"), null)
     assert.match(eventNameError("opensend:ping") ?? "", /reserved/)
+    assert.match(eventNameError("contact.note_created") ?? "", /reserved/)
+    assert.equal(
+      eventNameError("contact.note_created", [], { allowSystem: true }),
+      null
+    )
     assert.match(eventNameError("a", ["a"]) ?? "", /already exists/)
     assert.match(eventNameError("  ") ?? "", /Enter/)
   })

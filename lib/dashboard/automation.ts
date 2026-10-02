@@ -347,6 +347,11 @@ export function eventNameError(
   ) {
     return `Names starting with ${RESERVED_EVENT_PREFIX} are reserved for system events`
   }
+  if (
+    !options.allowSystem &&
+    SYSTEM_EVENTS.some((event) => event.value === trimmed)
+  )
+    return "This event name is reserved for system events"
   if (taken.includes(trimmed)) return "An event with this name already exists"
   return null
 }
@@ -403,7 +408,7 @@ export function ruleText(rule: AutomationRule): string {
 
 export function ruleError(rule: AutomationRule): string | null {
   if (
-    !/^(?:(?:event|trigger|contact|steps)\.[A-Za-z0-9_.-]+|\{\{\s*(?:event|trigger|contact|steps)\.[A-Za-z0-9_.-]+\s*\}\})$/.test(
+    !/^(?:(?:event|trigger|contact|steps)\.[A-Za-z0-9_.\[\]-]+|\{\{\s*(?:event|trigger|contact|steps)\.[A-Za-z0-9_.\[\]-]+\s*\}\})$/.test(
       rule.field.trim()
     )
   ) {
@@ -452,12 +457,14 @@ export function stepTasks(
           ? []
           : ["Enter a date or reference"]
       return step.duration.trim()
-        ? [durationError(step.duration)].flatMap((error) => error ?? [])
+        ? [
+            step.duration.includes("{{") ? null : durationError(step.duration),
+          ].flatMap((error) => error ?? [])
         : ["Set a delay"]
     case "wait_for_event":
       return [
         triggerEventError(step.eventName) ? "Set event" : null,
-        durationError(step.timeout),
+        step.timeout.includes("{{") ? null : durationError(step.timeout),
       ].flatMap((task) => task ?? [])
     case "send_messenger":
     case "send_instagram":
@@ -555,7 +562,10 @@ export function stepSummary(
         ? step.rules.map(ruleText).join(` ${step.match} `)
         : null
     case "wait_for_event":
-      return step.eventName || null
+      return (
+        SYSTEM_EVENTS.find((event) => event.value === step.eventName)?.label ??
+        (step.eventName || null)
+      )
     case "send_messenger":
     case "send_instagram":
     case "send_whatsapp":

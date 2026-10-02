@@ -1,4 +1,4 @@
-import { contactSnapshot } from "../lib/automation-references"
+import { contactEventData, eventSegmentIds } from "./audience"
 import { SYSTEM_EVENT_CATALOG } from "../lib/event-catalog"
 import { parseMailbox } from "../lib/dashboard/email-send"
 import { requireActiveTeam } from "./teamLifecycle"
@@ -69,12 +69,20 @@ export async function emitEvent(
         )
         .unique()
     }
+    if (contact && contact.organizationId !== organizationId) contact = null
     if (contact?.organizationId === organizationId)
       data = {
         ...data,
-        contact: contactSnapshot(contact),
+        contact: contactEventData(
+          contact,
+          await eventSegmentIds(ctx, contact._id)
+        ),
         contact_id: contact._id,
       }
+    if (
+      ["contact.created", "contact.updated", "contact.deleted"].includes(type)
+    )
+      data = { ...data, contact: originalData }
     if (type.includes(".message.") || type.startsWith("email."))
       data = { ...data, message: { ...originalData } }
   }

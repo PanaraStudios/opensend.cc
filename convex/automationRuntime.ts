@@ -1,4 +1,4 @@
-import { contactSnapshot, resolveReference } from "../lib/automation-references"
+import { resolveReference, resolveText } from "../lib/automation-references"
 import { SYSTEM_EVENT_CATALOG } from "../lib/event-catalog"
 import { channelForSendStep } from "../lib/channels"
 import schema from "./schema"
@@ -20,6 +20,8 @@ import { deleteRow, insertRow, patchRow } from "./counts"
 import { customEventName } from "./automationEvents"
 import {
   deleteContact,
+  contactEventData,
+  eventSegmentIds,
   joinSegments,
   listProperties,
   teamRow,
@@ -305,17 +307,17 @@ export const effect = internalMutation({
       trigger: run.payload,
       event: run.payload,
       contact: contact
-        ? contactSnapshot(contact)
+        ? contactEventData(contact, await eventSegmentIds(ctx, contact._id))
         : ((run.payload.contact as Record<string, unknown> | undefined) ?? {}),
       steps: Object.fromEntries(
         records
-          .filter((s) => s.status === "completed")
+          .filter((s) => s.status === "completed" || s.status === "skipped")
           .map((s) => [s.key, s.output ?? {}])
       ),
     }
     const resolve = (value: unknown): unknown => {
       if (typeof value === "string")
-        return resolveReference(value, scope, { legacy: true })
+        return resolveText(value, scope, { legacy: true })
       if (Array.isArray(value)) return value.map(resolve)
       if (value && typeof value === "object")
         return Object.fromEntries(
@@ -329,6 +331,13 @@ export const effect = internalMutation({
         .filter(([k]) => !["met", "notMet", "received", "timedOut"].includes(k))
         .map(([k, v]) => [k, k === "rules" ? v : resolve(v)])
     )
+    if (node.type === "send_email")
+      inputs.variables = Object.fromEntries(
+        Object.entries(node.variables).map(([name, value]) => [
+          name,
+          resolveReference(value, scope, { legacy: true }),
+        ])
+      )
     if ("variables" in inputs && contact && node.type !== "send_email")
       inputs.variables = resolveVariables(
         inputs.variables as Parameters<typeof resolveVariables>[0],
@@ -378,7 +387,12 @@ export const effect = internalMutation({
         }
       }
       case "wait_for_event": {
-        const deadline = Date.now() + parseDuration(node.timeout)!
+        const duration = parseDuration(String(node.timeout))
+        if (duration === null || duration < 0 || duration > 30 * 86400000)
+          throw new ConvexError(
+            "Event timeout must resolve to a duration within 30 days"
+          )
+        const deadline = Date.now() + duration
         await patchRow(ctx, "automationRuns", id, {
           waitingName: node.eventName,
           waitingKey: key,
@@ -424,14 +438,15 @@ export const effect = internalMutation({
           else if (field.property === "last_name")
             patch.lastName = String(value)
           else if (field.property === "unsubscribed")
-            patch.unsubscribed = value === true || value === "true"
+            patch.unsubscribed = String(value) === "true"
           else patch.properties[field.property] = String(value)
         }
         await updateContact(ctx, contact, patch)
         return {
           output: {
-            contact: contactSnapshot(
-              (await ctx.db.get("contacts", contact._id))!
+            contact: contactEventData(
+              (await ctx.db.get("contacts", contact._id))!,
+              await eventSegmentIds(ctx, contact._id)
             ),
           },
         }
@@ -566,7 +581,11 @@ export const effect = internalMutation({
         const values: Record<string, string | number> = Object.fromEntries(
           Object.entries(node.variables).map(([key, value]) => [
             key,
-            typeof value === "number" ? value : String(value),
+            typeof value === "number"
+              ? value
+              : value && typeof value === "object"
+                ? JSON.stringify(value)
+                : String(value),
           ])
         )
         for (const [key, value] of Object.entries(scope.contact))
@@ -661,11 +680,14 @@ export const finishWait = internalMutation({
       await patchRow(ctx, "automationRunSteps", record._id, {
         status: "completed",
         completedAt: Date.now(),
-        output: {
-          ...record.output,
-          event_received: received,
-          ...(payload ? { ...payload, payload } : {}),
-        },
+        output:
+          record.type === "wait_for_event"
+            ? {
+                ...record.output,
+                event_received: received,
+                ...(payload ? { ...payload, payload } : {}),
+              }
+            : record.output,
       })
     return true
   },
@@ -836,13 +858,13 @@ export const dispatch = internalMutation({
     const payload =
       custom !== null ? (data.payload as Record<string, unknown>) : data
     if (phase === "wait") {
-      if (contact) {
+      {
         const page = await ctx.db
           .query("automationRuns")
           .withIndex("by_organizationId_and_contactId_and_waitingName", (q) =>
             q
               .eq("organizationId", event.organizationId)
-              .eq("contactId", contact!._id)
+              .eq("contactId", contact?._id)
               .eq("waitingName", name)
           )
           .paginate({ numItems: BATCH, cursor })
@@ -899,13 +921,16 @@ export const dispatch = internalMutation({
         )
         contact = await ctx.db.get("contacts", made.id)
       }
+      const filterContact = contact
+        ? contactEventData(contact, await eventSegmentIds(ctx, contact._id))
+        : {}
       if (
         automation.triggerFilters?.length &&
         !automation.triggerFilters.every((rule) =>
           evaluateRule(rule, {
             trigger: payload,
             event: payload,
-            contact: contact ? contactSnapshot(contact) : {},
+            contact: filterContact,
           })
         )
       )

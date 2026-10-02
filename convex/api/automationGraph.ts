@@ -45,13 +45,19 @@ export function rule(value: unknown): AutomationRule {
   if (
     ["gt", "gte", "lt", "lte"].includes(operator) &&
     (typeof r.value !== "number" || !Number.isFinite(r.value)) &&
-    !(typeof r.value === "string" && r.value.includes("{{")) &&
+    !(
+      typeof r.value === "string" &&
+      (r.value.includes("{{") || !Number.isNaN(Date.parse(r.value)))
+    ) &&
     !(r.value && typeof r.value === "object" && "var" in r.value)
   )
-    throw invalid("Numeric condition operators require a numeric value.")
+    throw invalid(
+      "Ordered condition operators require a number, date or reference."
+    )
   if (
     ["contains", "starts_with", "ends_with"].includes(operator) &&
-    typeof r.value !== "string"
+    typeof r.value !== "string" &&
+    !(r.value && typeof r.value === "object" && "var" in r.value)
   )
     throw invalid("Text condition operators require a string value.")
   return {
@@ -401,7 +407,7 @@ export function automationGraph(row: {
                 ? null
                 : /^(event|contact)\./.test(f.value)
                   ? { var: f.value }
-                  : f.property === "unsubscribed"
+                  : f.property === "unsubscribed" && !f.value.includes("{{")
                     ? f.value === "true"
                     : f.value
           }

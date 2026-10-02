@@ -194,6 +194,7 @@ describe("event definitions in the dashboard", () => {
     const { define } = await setup()
     await expect(define("   ")).rejects.toThrow("Enter an event name")
     await expect(define("opensend:email.sent")).rejects.toThrow("reserved")
+    await expect(define("contact.note_created")).rejects.toThrow("reserved")
     await expect(define("x".repeat(257))).rejects.toThrow("256")
     await define("user.created")
     await expect(define("user.created")).rejects.toThrow("already exists")

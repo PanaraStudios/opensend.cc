@@ -1,5 +1,5 @@
 import { referenceErrors } from "../lib/automation-references"
-import { CONTACT_SCHEMA } from "../lib/event-catalog"
+import { catalogContactSchema } from "../lib/event-catalog"
 import { teamEventCatalog } from "./automationEvents"
 import { triggerFiltersValue } from "./tables/automations"
 import { pageChannelValue } from "./tables/channels"
@@ -196,9 +196,7 @@ export async function updateAutomation(
     if (error) throw new ConvexError(error)
   }
   const catalog = await teamEventCatalog(ctx, organizationId)
-  const contactSchema =
-    catalog.find((event) => event.schema.fields?.contact)?.schema.fields
-      ?.contact ?? CONTACT_SCHEMA
+  const contactSchema = catalogContactSchema(catalog)
   const problems = referenceErrors(
     patch.trigger ?? row.trigger,
     readGraph(patch.graph ?? row.graph),
@@ -246,9 +244,7 @@ export async function setAutomationStatus(
   const row = await ownedAutomation(ctx, organizationId, id)
   if (status === "enabled") {
     const catalog = await teamEventCatalog(ctx, organizationId)
-    const contactSchema =
-      catalog.find((event) => event.schema.fields?.contact)?.schema.fields
-        ?.contact ?? CONTACT_SCHEMA
+    const contactSchema = catalogContactSchema(catalog)
     const referenceProblems = referenceErrors(
       row.trigger,
       readGraph(row.graph),

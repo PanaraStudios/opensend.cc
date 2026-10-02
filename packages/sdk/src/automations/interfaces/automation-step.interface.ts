@@ -5,7 +5,7 @@ export type ConditionRule =
       type: "rule"
       field: string
       operator: "eq" | "neq"
-      value: string | number | boolean | null
+      value: string | number | boolean | null | { var: string }
     }
   | {
       type: "rule"
@@ -17,7 +17,7 @@ export type ConditionRule =
       type: "rule"
       field: string
       operator: "contains" | "starts_with" | "ends_with"
-      value: string
+      value: string | { var: string }
     }
   | {
       type: "rule"
@@ -72,7 +72,7 @@ export type SendMessengerStepConfig = SendChannelStepConfig
 export type SendInstagramStepConfig = SendChannelStepConfig
 
 export interface WaitForEventStepConfig {
-  eventName: string
+  eventName: SystemTriggerName | (string & {})
   timeout?: string
   filterRule?: ConditionRule
 }
@@ -82,7 +82,7 @@ export type ConditionStepConfig = ConditionRule
 export interface ContactUpdateStepConfig {
   firstName?: string | null | { var: string }
   lastName?: string | null | { var: string }
-  unsubscribed?: boolean | { var: string }
+  unsubscribed?: boolean | string | { var: string }
   properties?: Record<
     string,
     string | number | boolean | null | { var: string }
