@@ -12327,7 +12327,7 @@ paths:
         - WhatsApp
       summary: list Calls
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: query
           name: limit
@@ -12376,7 +12376,7 @@ paths:
       summary: connect Call
       description: Start a call using gateway media or your complete SDP offer. recipient is a BSUID; to
         must resolve to a known BSUID. Meta enforces permissions and country restrictions.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -12419,7 +12419,7 @@ paths:
         - WhatsApp
       summary: get Call
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: path
           name: id
@@ -12455,7 +12455,7 @@ paths:
       summary: pre_accept Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12507,7 +12507,7 @@ paths:
       summary: accept Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12559,7 +12559,7 @@ paths:
       summary: reject Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12605,7 +12605,7 @@ paths:
       summary: terminate Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12650,7 +12650,7 @@ paths:
         - WhatsApp
       summary: get Calling
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: path
           name: id
@@ -12686,7 +12686,7 @@ paths:
       description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
         DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
         seconds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12729,7 +12729,7 @@ paths:
       description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
         DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
         seconds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12772,7 +12772,7 @@ paths:
       summary: get Call Permission
       description: Supply recipient (BSUID) or to. Meta returns permission and available actions/limits in
         either documented status vocabulary.
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: query
           name: from
@@ -12814,7 +12814,7 @@ paths:
       summary: request Call Permission
       description: Free-form requests require an open service window; templates must be approved
         call-permission templates. Meta enforces limits.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -13315,7 +13315,7 @@ paths:
       tags:
         - Voice Bots
       summary: createVoiceProvider
-      x-opensend-scope: voice_bots:write
+      x-opensend-scope: voice_providers:write
       parameters: []
       requestBody:
         required: true
@@ -13355,7 +13355,7 @@ paths:
       tags:
         - Voice Bots
       summary: listVoiceProviders
-      x-opensend-scope: voice_bots:read
+      x-opensend-scope: voice_providers:read
       parameters:
         - $ref: "#/components/parameters/PaginationLimit"
         - $ref: "#/components/parameters/PaginationAfter"
@@ -13387,7 +13387,7 @@ paths:
       tags:
         - Voice Bots
       summary: deleteVoiceProvider
-      x-opensend-scope: voice_bots:write
+      x-opensend-scope: voice_providers:write
       parameters:
         - name: id
           in: path
@@ -13430,7 +13430,7 @@ paths:
       tags:
         - Voice Bots
       summary: getWhatsAppCallTranscript
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - name: id
           in: path
@@ -18661,8 +18661,14 @@ components:
     ApiScope:
       type: string
       enum:
+        - calling:read
+        - calling:write
         - ivrs:read
         - ivrs:write
+        - voice_bots:read
+        - voice_bots:write
+        - voice_providers:read
+        - voice_providers:write
         - media:read
         - media:write
         - emails:read
@@ -18693,8 +18699,6 @@ components:
         - webhooks:write
         - logs:read
         - logs:write
-        - voice_bots:read
-        - voice_bots:write
     ApiKey:
       type: object
       properties:
