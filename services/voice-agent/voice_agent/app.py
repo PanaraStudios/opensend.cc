@@ -18,6 +18,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMAssistantAggregatorParams,
 )
 from pipecat.frames.frames import LLMRunFrame, TTSSpeakFrame
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.turns.user_mute.mute_until_first_bot_complete_user_mute_strategy import (
     MuteUntilFirstBotCompleteUserMuteStrategy,
 )
@@ -28,6 +29,7 @@ from .serializer import VoiceSerializer
 from .tools import ToolRouter
 from .factory import create_services, summarize, tool_schema
 from .telemetry import Telemetry
+from .transcript import TranscriptTap
 from .fake import FakePipeline
 from .playback import PlaybackObserver
 
@@ -127,19 +129,12 @@ async def session(websocket: WebSocket):
                 ),
             )
             telemetry = Telemetry(emit, serializer, context)
+            if services.realtime:
+                services.llm.attach_transcripts(telemetry.turns, telemetry.now)
             for function in schema.standard_tools:
                 services.llm.register_function(
                     function.name, tools.handle, cancel_on_interruption=True
                 )
-
-            @aggregators.user().event_handler("on_user_turn_message_added")
-            async def user_line(aggregator, message):
-                await telemetry.line("caller", message.content)
-
-            @aggregators.assistant().event_handler("on_assistant_turn_stopped")
-            async def assistant_line(aggregator, message):
-                if message.content:
-                    await telemetry.line("agent", message.content, message.interrupted)
 
             @aggregators.user().event_handler("on_user_turn_idle")
             async def idle(aggregator):
@@ -156,7 +151,17 @@ async def session(websocket: WebSocket):
             processors = [transport.input()]
             if services.stt:
                 processors.append(services.stt)
-            processors.extend([aggregators.user(), services.llm])
+            # Downstream tap sees cascade STT. Upstream tap sees Gemini input
+            # transcription. The user aggregator consumes both, so each frame
+            # hits only one tap.
+            processors.extend(
+                [
+                    TranscriptTap(telemetry.turns, telemetry.now, FrameDirection.DOWNSTREAM),
+                    aggregators.user(),
+                    TranscriptTap(telemetry.turns, telemetry.now, FrameDirection.UPSTREAM),
+                    services.llm,
+                ]
+            )
             if services.tts:
                 processors.append(services.tts)
             processors.extend([telemetry, transport.output(), PlaybackObserver(emit, serializer), aggregators.assistant()])
