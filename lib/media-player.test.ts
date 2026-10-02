@@ -156,7 +156,7 @@ test("custom players provide labeled controls and never expose native browser co
   )
   for (const label of ["voice-player", "Play voice note", "Seek voice note"])
     assert.ok(audio.includes(label))
-  assert.doesNotMatch(audio, /Playback speed/)
+  assert.match(audio, /Playback speed 1×/)
   assert.doesNotMatch(audio, /data-slot="avatar"/)
   assert.match(audio, /role="slider"/)
   assert.match(audio, /aria-valuetext="0:00 of 0:00"/)

@@ -81,7 +81,7 @@ test("inline media and borderless stickers replace generic file chips", () => {
   assert.doesNotMatch(video, /<video[^>]*controls/)
   const audio = html(fixture(whatsappInboundExamples.audio))
   assert.doesNotMatch(audio, /<audio[^>]*controls/)
-  assert.doesNotMatch(audio, /Playback speed/)
+  assert.match(audio, /Playback speed 1×/)
   assert.match(audio, /Seek audio/)
   assert.match(
     html(fixture(whatsappInboundExamples.voice_note)),
