@@ -30,16 +30,16 @@ function encoded(format: string, rate = 44100) {
   return result.stdout
 }
 
-test("WAV, MP3 and OGG uploads become 48 kHz mono PCM16 with preserved duration", async () => {
+test("WAV, MP3 and OGG uploads become 16 kHz mono PCM16 with preserved duration", async () => {
   for (const format of ["wav", "mp3", "ogg"]) {
     const wav = await normalizePrompt(encoded(format))
     assert.equal(wav.toString("ascii", 0, 4), "RIFF")
     assert.equal(wav.readUInt32LE(4), wav.length - 8)
     assert.equal(wav.readUInt16LE(20), 1)
     assert.equal(wav.readUInt16LE(22), 1)
-    assert.equal(wav.readUInt32LE(24), 48000)
+    assert.equal(wav.readUInt32LE(24), 16000)
     assert.equal(wav.readUInt16LE(34), 16)
-    assert.ok(wav.length > 23000 && wav.length < 30000)
+    assert.ok(wav.length > 7500 && wav.length < 10000)
   }
   await assert.rejects(
     normalizePrompt(Buffer.from("#EXTM3U\nfile:///etc/passwd"))
@@ -67,4 +67,58 @@ test("converter authenticates signed requests and does not accept unsigned audio
   } finally {
     await new Promise<void>((r) => server.close(() => r()))
   }
+})
+
+test("normalization controls hot source loudness/peaks and filters above the 16k Nyquist limit", async () => {
+  const generated = spawnSync("ffmpeg", [
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc=0.65*sin(2*PI*1000*t)+0.3*sin(2*PI*12000*t):s=44100:d=2",
+    "-f",
+    "wav",
+    "pipe:1",
+  ])
+  assert.equal(generated.status, 0)
+  const wav = await normalizePrompt(generated.stdout)
+  let peak = 0
+  for (let at = 44; at < wav.length; at += 2)
+    peak = Math.max(peak, Math.abs(wav.readInt16LE(at)))
+  assert.ok(peak < 32768 * 10 ** (-1.8 / 20), `Peak too hot: ${peak}`)
+  const measured = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-i",
+      "pipe:0",
+      "-af",
+      "loudnorm=I=-18:TP=-2:LRA=11:print_format=json",
+      "-f",
+      "null",
+      "-",
+    ],
+    { input: wav }
+  )
+  assert.equal(measured.status, 0)
+  const loudness = JSON.parse(
+    measured.stderr.toString().match(/\{[\s\S]*\}/)![0]
+  )
+  assert.ok(
+    Math.abs(Number(loudness.input_i) + 18) < 1,
+    `Loudness: ${loudness.input_i}`
+  )
+  const power = (hz: number) => {
+    let real = 0,
+      imaginary = 0
+    const count = (wav.length - 44) / 2
+    for (let n = 500; n < count - 500; n++) {
+      const value = wav.readInt16LE(44 + n * 2)
+      real += value * Math.cos((2 * Math.PI * hz * n) / 16000)
+      imaginary += value * Math.sin((2 * Math.PI * hz * n) / 16000)
+    }
+    return real ** 2 + imaginary ** 2
+  }
+  assert.ok(power(4000) < power(1000) * 0.0001, "12k source aliased into 4k")
 })

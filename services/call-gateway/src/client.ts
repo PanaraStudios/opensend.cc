@@ -102,7 +102,7 @@ export class CallGatewayClient implements GatewayApi {
     const header = new DataView(await result.slice(0, 44).arrayBuffer())
     if (
       header.byteLength < 44 ||
-      header.getUint32(24, true) !== 48000 ||
+      header.getUint32(24, true) !== 16000 ||
       header.getUint16(20, true) !== 1 ||
       header.getUint16(22, true) !== 1 ||
       header.getUint16(34, true) !== 16

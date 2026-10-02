@@ -173,27 +173,24 @@ IVR bot actions validate an existing bot owned by the IVR team. Admission reserv
 
 ## Prompt audio quality
 
-New WAV, MP3 and OGG uploads are decoded once, during upload completion, by the
-calling gateway's authenticated `/prompts/normalize` endpoint. Its ffmpeg process
-accepts only local pipe data, has bounded concurrency, a 20-second timeout and a
-16 MiB output limit. Stored prompts are mono, signed 16-bit PCM WAV at 48 kHz.
-The limit also bounds decoded duration to approximately 174 seconds. Conversion
-must succeed before a file becomes ready; an idempotent completion does not convert
-it again. The calling gateway must be configured and available when uploading.
+New WAV, MP3 and OGG uploads are decoded during upload completion by the calling
+gateway's signed `/prompts/normalize` endpoint. ffmpeg uses pipe-only input, bounded
+concurrency, a 20-second timeout and a 16 MiB limit. Stored prompts are **16 kHz
+mono PCM16 WAV**, normalized to approximately **−18 LUFS**, with a **−2 dBTP**
+ceiling and filtered resampling. Conversion succeeds before the file becomes ready;
+idempotent upload completion does not convert it again. The gateway must be available.
 
-ElevenLabs renders request `pcm_44100` (requires the provider's Pro tier or above);
-Sarvam Bulbul v3 requests 24 kHz PCM WAV. Both then use the same 48 kHz converter.
-Renderer version keys changed so new renders do not reuse old 16 kHz assets.
-Re-save/re-render existing TTS prompts and re-upload existing recorded prompts to
-replace their old stored audio. Upsampling cannot restore detail missing from a
-low-quality source.
+ElevenLabs requests native `pcm_44100` (Pro tier or above); Sarvam Bulbul v3 requests
+24 kHz PCM WAV. Both use the same converter before storage. Renderer version keys
+include the format and loudness policy, so new renders cannot reuse older assets.
+Re-render existing TTS prompts and re-upload existing recordings to apply this policy.
 
-Playback still uses call-scoped signed URLs and `http_cache://` with `mod_sndfile`.
-FreeSWITCH's Meta leg is Opus at 48 kHz / 20 ms. The local ceiling is 64 kbps;
-`bitrate-negotiation` and `asymmetric-sample-rates` respect lower remote fmtp limits.
-The Docker `ivr-engine` case verifies a 10 kHz tone at the fake Meta receiver,
-which would disappear through an 8 or 16 kHz PCM bottleneck.
+FreeSWITCH plays call-scoped signed `http_cache://` URLs through `mod_sndfile`.
+Meta's live offer caps playback/capture at 16 kHz and average bitrate at 20 kbps.
+The Opus RTP clock remains 48 kHz; this does not imply 48 kHz audible bandwidth.
+The Docker harness uses those same fmtp limits and verifies a 6 kHz tone, which
+would be lost through an 8 kHz path. No RTP or FreeSWITCH jitter settings changed;
+`rtp-rewrite-timestamps=true` from v2 remains essential across the bot L16/16k bridge.
 
 Provider references: [ElevenLabs formats](https://elevenlabs.io/docs/api-reference/text-to-speech/convert),
-[Sarvam sample rates](https://docs.sarvam.ai/api-reference/text-to-speech/convert),
-[pinned FreeSWITCH Opus negotiation](https://github.com/signalwire/freeswitch/blob/v1.11.3/src/mod/codecs/mod_opus/mod_opus.c).
+[Sarvam sample rates](https://docs.sarvam.ai/api-reference/text-to-speech/convert).

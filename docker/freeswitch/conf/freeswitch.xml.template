@@ -61,11 +61,7 @@
       <settings>
         <param name="use-vbr" value="1"/>
         <param name="use-dtx" value="0"/>
-        <param name="maxplaybackrate" value="48000"/>
-        <param name="sprop-maxcapturerate" value="48000"/>
-        <param name="bitrate-negotiation" value="true"/>
-        <param name="asymmetric-sample-rates" value="true"/>
-        <param name="maxaveragebitrate" value="64000"/>
+        <param name="maxaveragebitrate" value="32000"/>
       </settings>
     </configuration>
     <configuration name="sofia.conf" description="Internal SIP and browser SIP over WSS">

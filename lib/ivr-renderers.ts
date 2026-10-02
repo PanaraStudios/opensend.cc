@@ -9,8 +9,8 @@ export interface IvrPromptVoice {
 }
 export function promptRendererName(provider: IvrPromptVoice["provider"]) {
   return provider === "sarvam"
-    ? "sarvam-bulbul-v3-pcm24k-wav48k-v2"
-    : "elevenlabs-multilingual-v2-pcm44k-wav48k-v2"
+    ? "sarvam-bulbul-v3-pcm24k-wav16k-lufs18-v3"
+    : "elevenlabs-multilingual-v2-pcm44k-wav16k-lufs18-v3"
 }
 export function pcmWav(pcm: Uint8Array, sampleRate = 16000): Blob {
   if (!pcm.length || pcm.length % 2 || pcm.length > 16 * 1024 * 1024 - 44)

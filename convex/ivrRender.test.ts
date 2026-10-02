@@ -8,7 +8,7 @@ import * as net from "../lib/net/public-fetch"
 import type { Id } from "./_generated/dataModel"
 beforeEach(() => {
   vi.spyOn(audio, "normalizeIvrAudio").mockImplementation(async () =>
-    pcmWav(new Uint8Array([1, 0, 2, 0]), 48000)
+    pcmWav(new Uint8Array([1, 0, 2, 0]), 16000)
   )
   vi.useFakeTimers()
   vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
@@ -302,7 +302,7 @@ test("uploaded IVR audio is normalized once before readiness and completion rema
   const bytes = await f.t.run(async (ctx) =>
     (await ctx.storage.get(row!.storageId!))!.arrayBuffer()
   )
-  expect(new DataView(bytes).getUint32(24, true)).toBe(48000)
+  expect(new DataView(bytes).getUint32(24, true)).toBe(16000)
   expect(await f.t.run((ctx) => ctx.storage.get(storageId))).toBeNull()
 })
 
