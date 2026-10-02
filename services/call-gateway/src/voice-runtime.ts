@@ -16,6 +16,7 @@ interface ControlledCall {
   machine: CallStateMachine
   end: (reason: string) => Promise<void>
   socket?: OutboundCall
+  socketDisconnected?: boolean
   releaseMedia?: () => Promise<void>
   tools?: VoiceTools
   abort: AbortController
@@ -47,7 +48,8 @@ export class VoiceRuntime {
       throw new Error("Unknown outbound channel")
     call.socket = socket
     socket.once("close", () => {
-      if (!call.stopped) void call.end("Outbound ESL disconnected")
+      call.socketDisconnected = true
+      if (!call.stopped) this.afterAnchor(call, "Outbound ESL disconnected")
     })
     socket.on("event", (event) => {
       if (
@@ -62,6 +64,10 @@ export class VoiceRuntime {
       if (!call.stopped) await this.run(call, socket)
     } catch (error) {
       if (call.stopped) return
+      if (call.socketDisconnected) {
+        this.afterAnchor(call, "Outbound ESL disconnected")
+        return
+      }
       console.error(
         "Voice control failed",
         call.callId,
