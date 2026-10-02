@@ -853,7 +853,7 @@ export function defaultVoiceBotSystemPrompt(
   language: string,
   gender: VoiceGender = "unknown"
 ) {
-  return `${safetyInstructions}\n${defaultVoiceBotLanguageLine(language)}\n${defaultVoiceBotGenderLine(gender)}\nWhen end_call is enabled, call it when the caller says goodbye, asks to end the call, or confirms the conversation is complete and needs no more help. Briefly say goodbye, then invoke end_call; saying goodbye alone does not hang up. Do not end while a request or transfer is still pending.`
+  return `${safetyInstructions}\n${defaultVoiceBotLanguageLine(language)}\n${defaultVoiceBotGenderLine(gender)}\nWhen end_call is enabled, call it when the caller says goodbye, asks to end the call, or confirms the conversation is complete and needs no more help. Briefly say goodbye, then invoke end_call; saying goodbye alone does not hang up. Do not end while a request or transfer is still pending.\nCaller context from the CRM is already provided when the call starts. Use lookup_contact only to refresh it.`
 }
 
 export function voiceBotDefaults(

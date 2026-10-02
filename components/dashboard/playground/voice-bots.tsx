@@ -669,6 +669,20 @@ function BotForm({ row }: { row: VoiceBotResource }) {
         )}
       </RailSection>
       <RailSection title="Tools">
+        <Field>
+          <div className="flex items-center justify-between gap-3">
+            <FieldLabel>Look up the caller when the call starts</FieldLabel>
+            <Switch
+              aria-label="Look up the caller when the call starts"
+              checked={draft.callerContext !== false}
+              onCheckedChange={(callerContext) => patch({ callerContext })}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Adds this caller’s CRM record to the instructions before the first
+            reply.
+          </p>
+        </Field>
         {Object.entries(VOICE_TOOL_LABELS).map(([name, label]) => (
           <Field key={name}>
             <div className="flex items-center justify-between gap-3">

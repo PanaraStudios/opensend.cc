@@ -41,6 +41,12 @@ const fields = {
   greeting: z.string().max(2000).optional(),
   disclosure: z.string().min(1).max(2000).optional(),
   recording: z.boolean().optional(),
+  callerContext: z
+    .boolean()
+    .optional()
+    .describe(
+      "Look up the caller when each bot session starts and include that CRM context in the instructions. Defaults to true. Use lookup_contact during the call to refresh it."
+    ),
   maxDurationSeconds: z.number().int().min(1).max(3600).optional(),
   silenceTimeoutSeconds: z.number().int().min(1).max(300).optional(),
   monthlyMinuteBudget: z.number().min(0).optional(),

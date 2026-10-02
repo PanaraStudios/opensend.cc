@@ -92,6 +92,8 @@ export interface VoiceBotConfig {
   maxDurationSeconds: number
   silenceTimeoutSeconds: number
   recording: boolean
+  /** Absent means look the caller up when each bot session starts. */
+  callerContext: boolean
   disclosure: string
   monthlyMinuteBudget?: number
   maxConcurrentCalls?: number
@@ -100,6 +102,8 @@ export interface VoiceSessionConfig extends VoiceBotConfig {
   voiceGender?: import("./voices.js").VoiceGender
   keys: { live?: string; stt?: string; llm?: string; tts?: string }
   botId: string
+  /** CRM block for this session. Omitted when lookup is off, late, or failed. */
+  callerContextBlock?: string
 }
 export const ELEVENLABS_STT_LANGUAGES = [
   "af",
@@ -360,6 +364,7 @@ export function validateBot(input: Record<string, unknown>): VoiceBotConfig {
     "maxDurationSeconds",
     "silenceTimeoutSeconds",
     "recording",
+    "callerContext",
     "disclosure",
     "monthlyMinuteBudget",
     "maxConcurrentCalls",
@@ -397,6 +402,7 @@ export function validateBot(input: Record<string, unknown>): VoiceBotConfig {
     maxDurationSeconds: 600,
     silenceTimeoutSeconds: 20,
     recording: false,
+    callerContext: true,
     disclosure: "This call is answered by an AI assistant and may be recorded.",
     ...input,
     engine,
@@ -680,6 +686,8 @@ export function validateBot(input: Record<string, unknown>): VoiceBotConfig {
   )
     throw new Error("Invalid handoff")
   if (typeof value.recording !== "boolean") throw new Error("Invalid recording")
+  if (typeof value.callerContext !== "boolean")
+    throw new Error("Invalid callerContext")
   for (const [key, max] of [
     ["maxDurationSeconds", 3600],
     ["silenceTimeoutSeconds", 300],

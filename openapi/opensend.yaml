@@ -28099,6 +28099,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28231,6 +28235,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28362,6 +28370,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28395,6 +28407,7 @@ components:
         - maxDurationSeconds
         - silenceTimeoutSeconds
         - recording
+        - callerContext
         - disclosure
         - createdAt
         - updatedAt

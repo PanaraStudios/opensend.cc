@@ -34,6 +34,8 @@ export interface VoiceBotInput {
   maxDurationSeconds?: number
   silenceTimeoutSeconds?: number
   recording?: boolean
+  /** Look up the caller at the start of each session. Defaults to true when omitted. */
+  callerContext?: boolean
   disclosure?: string
   monthlyMinuteBudget?: number
   maxConcurrentCalls?: number

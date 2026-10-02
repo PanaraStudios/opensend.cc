@@ -54,7 +54,11 @@ const publicBot = (row: Doc<"voiceBots">) => {
   const { _id, _creationTime, organizationId, ...config } = row
   void _creationTime
   void organizationId
-  return { id: _id, ...config }
+  return {
+    id: _id,
+    ...config,
+    callerContext: row.callerContext !== false,
+  }
 }
 const publicProvider = (row: Doc<"voiceProviders">) => ({
   id: row._id,

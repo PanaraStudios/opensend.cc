@@ -43,6 +43,8 @@ export const botConfig = v.object({
   maxDurationSeconds: v.number(),
   silenceTimeoutSeconds: v.number(),
   recording: v.boolean(),
+  // Absent on bots and call snapshots saved before this field: lookup stays on.
+  callerContext: v.optional(v.boolean()),
   disclosure: v.string(),
   monthlyMinuteBudget: v.optional(v.number()),
   maxConcurrentCalls: v.optional(v.number()),

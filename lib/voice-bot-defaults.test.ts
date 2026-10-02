@@ -220,10 +220,32 @@ test("default prompts explain when to hang up without rewriting customized promp
     "asks to end",
     "conversation is complete",
     "pending",
+    "already provided",
+    "lookup_contact only to refresh",
   ])
-    assert.ok(prompt.includes(instruction))
+    assert.ok(prompt.includes(instruction), instruction)
   const custom = "Only follow my custom business flow."
   assert.equal(replaceDefaultVoiceBotPromptLanguage(custom, "hi"), custom)
+  assert.equal(custom.includes("lookup_contact"), false)
+  assert.equal(
+    replaceDefaultVoiceBotPromptLanguage(
+      defaultVoiceBotSystemPrompt("en-US"),
+      "hi-IN"
+    ),
+    defaultVoiceBotSystemPrompt("hi")
+  )
+})
+
+test("forms default caller lookup on and keep an explicit off switch", () => {
+  const draft = newVoiceBot("gemini_live", "en-US")
+  draft.name = "Support"
+  draft.credentialId = "key"
+  assert.equal(draft.callerContext, true)
+  assert.equal(voiceBotFormPayload(draft).callerContext, true)
+  assert.equal(
+    voiceBotFormPayload({ ...draft, callerContext: false }).callerContext,
+    false
+  )
 })
 
 test("voice changes update built-in gendered copy in both engines, preserving edited text", () => {
