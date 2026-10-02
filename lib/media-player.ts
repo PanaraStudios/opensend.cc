@@ -9,6 +9,52 @@ export function formatMediaTime(seconds: number) {
     : `${minutes}:${remainder}`
 }
 
+export const AUDIO_WAVEFORM_BARS = 44
+
+/** Take absolute peaks across every channel, then normalize quiet recordings. */
+export function downsampleAudioPeaks(
+  channels: readonly Float32Array[],
+  count = AUDIO_WAVEFORM_BARS
+) {
+  const length = Math.max(0, ...channels.map((channel) => channel.length))
+  const peaks = Array.from({ length: count }, (_, bar) => {
+    const start = Math.floor((bar * length) / count)
+    const end = Math.max(start + 1, Math.floor(((bar + 1) * length) / count))
+    let peak = 0
+    for (const channel of channels)
+      for (
+        let sample = start;
+        sample < Math.min(end, channel.length);
+        sample++
+      ) {
+        const value = channel[sample]
+        if (Number.isFinite(value)) peak = Math.max(peak, Math.abs(value))
+      }
+    return peak
+  })
+  const maximum = Math.max(0, ...peaks)
+  return peaks.map((peak) => (maximum ? peak / maximum : 0))
+}
+
+/** Stable on the server and client, even when CORS or a codec blocks decoding. */
+export function fallbackAudioPeaks(src: string, count = AUDIO_WAVEFORM_BARS) {
+  let hash = 2166136261
+  for (let i = 0; i < src.length; i++)
+    hash = Math.imul(hash ^ src.charCodeAt(i), 16777619)
+  return Array.from({ length: count }, () => {
+    hash = (Math.imul(hash, 1664525) + 1013904223) >>> 0
+    return 0.15 + (hash / 4294967295) * 0.85
+  })
+}
+
+export function audioTimeText(
+  position: number,
+  duration: number,
+  playing: boolean
+) {
+  return formatMediaTime(playing || position > 0 ? position : duration)
+}
+
 /** Preserve signed URLs and caller-provided fragments; thumbnails take priority. */
 export function videoPreviewSource(src: string, poster?: string) {
   return poster || src.includes("#") ? src : `${src}#t=0.001`
