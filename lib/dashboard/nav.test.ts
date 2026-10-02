@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   DASHBOARD_NAV,
+  EMAIL_CHANNELS_HREF,
   EMAIL_TABS,
   PLAYGROUND_TABS,
   navItemActive,
@@ -35,4 +36,23 @@ test("Playground follows Webhooks and is active across all its tabs", () => {
       assert.equal(tabActive(href, tab.href), href === tab.href)
   }
   assert.equal(navItemActive("/playground-other", playground), false)
+})
+
+test("Channels replaces Domains and stays active on a domain's page", () => {
+  assert.equal(
+    DASHBOARD_NAV.some((item) => item.title === "Domains"),
+    false
+  )
+  const channels = DASHBOARD_NAV.find((item) => item.href === "/channels")!
+  for (const path of ["/channels", "/channels/acc_1", "/domains/dom_1"])
+    assert.equal(navItemActive(path, channels), true, path)
+  assert.equal(navItemActive("/domains-other", channels), false)
+  assert.deepEqual(channels.keywords, [
+    "Domains",
+    "Email",
+    "WhatsApp",
+    "Messenger",
+    "Instagram",
+  ])
+  assert.equal(EMAIL_CHANNELS_HREF, "/channels?type=email")
 })
