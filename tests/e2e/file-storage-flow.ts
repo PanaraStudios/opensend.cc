@@ -74,7 +74,15 @@ export function fileStorageTests(
         if (request.method() === "POST") requests.push(request.url())
       }
       owner.on("request", record)
-      await owner.getByLabel("Attach file", { exact: true }).setInputFiles(file)
+      // Attachments sit behind the composer's + menu, in their own dialog.
+      await owner
+        .getByRole("button", { name: "More message options", exact: true })
+        .click()
+      await owner.getByRole("button", { name: "Attach file", exact: true }).click()
+      await owner
+        .getByRole("dialog", { name: "Attach file" })
+        .getByLabel("Attach file", { exact: true })
+        .setInputFiles(file)
       await expect(
         owner.getByRole("button", { name: `Remove ${file.name}` })
       ).toBeVisible({ timeout: 45_000 })
