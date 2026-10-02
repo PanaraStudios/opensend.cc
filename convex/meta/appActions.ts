@@ -7,19 +7,8 @@ import {
   PAGE_WEBHOOK_FIELDS,
   INSTAGRAM_WEBHOOK_FIELDS,
 } from "../../lib/meta/page-account"
+import { WHATSAPP_WEBHOOK_FIELDS } from "../../lib/meta/whatsapp-account"
 import { appAccessToken, graph, graphFailure } from "./graph"
-
-/** The WhatsApp Business Account fields opensend.cc projects. */
-export const WHATSAPP_WEBHOOK_FIELDS = [
-  "messages",
-  "calls",
-  "account_settings_update",
-  "message_template_status_update",
-  "template_category_update",
-  "phone_number_quality_update",
-  "account_update",
-  "phone_number_name_update",
-] as const
 
 /** Runs a Graph call with the app access token (`appId|appSecret`) and
     records its outcome or failure on the app. */

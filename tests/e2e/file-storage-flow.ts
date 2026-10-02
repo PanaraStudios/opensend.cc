@@ -61,7 +61,11 @@ export function fileStorageTests(
       {
         name: "convex-image.png",
         mimeType: "image/png",
-        buffer: Buffer.from([137, 80, 78, 71]),
+        // A real 1×1 PNG, so the bubble renders and opens in the viewer.
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+          "base64"
+        ),
       },
       {
         name: "large-document.pdf",
@@ -74,7 +78,15 @@ export function fileStorageTests(
         if (request.method() === "POST") requests.push(request.url())
       }
       owner.on("request", record)
-      await owner.getByLabel("Attach file", { exact: true }).setInputFiles(file)
+      // Attachments sit behind the composer's + menu, in their own dialog.
+      await owner
+        .getByRole("button", { name: "More message options", exact: true })
+        .click()
+      await owner.getByRole("button", { name: "Attach file", exact: true }).click()
+      await owner
+        .getByRole("dialog", { name: "Attach file" })
+        .getByLabel("Attach file", { exact: true })
+        .setInputFiles(file)
       await expect(
         owner.getByRole("button", { name: `Remove ${file.name}` })
       ).toBeVisible({ timeout: 45_000 })
@@ -92,7 +104,17 @@ export function fileStorageTests(
       await expect(bubble.getByTestId("message-status")).toHaveText("Sent", {
         timeout: 45_000,
       })
-      await expect(bubble.getByLabel(`Download ${file.name}`)).toBeVisible()
+      if (file.mimeType.startsWith("image/")) {
+        // Photos open in the media viewer, which holds the download.
+        await bubble.getByRole("button", { name: "Open photo" }).click()
+        const viewer = owner.getByRole("dialog")
+        await expect(
+          viewer.getByRole("button", { name: "Download", exact: true })
+        ).toBeVisible()
+        await owner.keyboard.press("Escape")
+        await expect(viewer).toHaveCount(0)
+      } else
+        await expect(bubble.getByLabel(`Download ${file.name}`)).toBeVisible()
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/file-storage-${file.name}.png`,
         fullPage: true,
