@@ -28485,6 +28485,15 @@ components:
           type: boolean
         timestampMs:
           type: number
+          description: Milliseconds since the call was answered.
+        timeline:
+          type: string
+          enum:
+            - call
+          description: Present when timestampMs is milliseconds since the call was answered. Older rows omit it.
+        createdAt:
+          type: number
+          description: Row creation time. Stable tie-break when timestampMs matches.
         toolId:
           type: string
         toolName:

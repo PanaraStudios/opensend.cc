@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
   newVoiceBot,
+  orderCallTranscript,
   voiceBotFormPayload,
   voiceDiagnostic,
 } from "./voice-bot-form"
@@ -31,6 +32,55 @@ test("bot form whitelists REST config and roundtrips independent cascade credent
   assert.deepEqual(result.handoff, b.handoff)
   assert.ok(!("id" in result))
   assert.ok(!("updatedAt" in result))
+})
+test("call transcript order uses one clock and falls back for older rows", () => {
+  const firstOffset = 10_000
+  const secondOffset = 300_000
+  const lines = [
+    {
+      id: "second",
+      timestampMs: secondOffset + 7412,
+      timeline: "call" as const,
+      createdAt: 3,
+    },
+    {
+      id: "tool",
+      timestampMs: 294356,
+      timeline: "call" as const,
+      createdAt: 2,
+    },
+    {
+      id: "first",
+      timestampMs: firstOffset + 156194,
+      timeline: "call" as const,
+      createdAt: 1,
+    },
+    {
+      id: "tie-later",
+      timestampMs: 294356,
+      timeline: "call" as const,
+      createdAt: 4,
+    },
+  ]
+  assert.deepEqual(
+    orderCallTranscript(lines).map((line) => line.id),
+    ["first", "tool", "tie-later", "second"]
+  )
+  const legacy = [
+    { id: "created-first", timestampMs: 180_000, createdAt: 1 },
+    { id: "created-second", timestampMs: 1000, createdAt: 2 },
+  ]
+  assert.deepEqual(
+    orderCallTranscript(legacy).map((line) => line.id),
+    ["created-first", "created-second"]
+  )
+  assert.deepEqual(
+    orderCallTranscript([
+      ...lines.slice(0, 1),
+      { id: "old", timestampMs: 1, createdAt: 9 },
+    ]).map((line) => line.id),
+    ["second", "old"]
+  )
 })
 test("bot defaults require a key and diagnostics preserve real timing and interruption evidence", () => {
   assert.throws(() => voiceBotFormPayload(newVoiceBot()), /credentialId|name/)

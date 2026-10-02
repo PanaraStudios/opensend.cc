@@ -95,6 +95,23 @@ export type VoiceBotResource = VoiceBotConfig & {
   updatedAt: number
 }
 
+/**
+ * Call-relative rows sort by milliseconds since answer, then creation time.
+ * A page that still contains pre-fix rows (no `timeline: "call"`) keeps the
+ * order it was loaded, which is creation order.
+ */
+export function orderCallTranscript<
+  T extends { timestampMs: number; timeline?: string; createdAt?: number },
+>(lines: T[]): T[] {
+  if (lines.some((line) => line.timeline !== "call")) return lines.slice()
+  return lines
+    .slice()
+    .sort(
+      (a, b) =>
+        a.timestampMs - b.timestampMs ||
+        (a.createdAt ?? 0) - (b.createdAt ?? 0)
+    )
+}
 export function voiceDiagnostic(line: { kind: string; text?: string }) {
   if (line.kind !== "media" || !line.text) return null
   try {

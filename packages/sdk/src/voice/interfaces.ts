@@ -89,7 +89,12 @@ export interface CallTranscriptLine {
   role?: "caller" | "agent"
   text?: string
   final?: boolean
+  /** Milliseconds since the call was answered. */
   timestampMs: number
+  /** Present when timestampMs uses the call-relative clock. */
+  timeline?: "call"
+  /** Creation time. Tie-break for equal timestampMs. */
+  createdAt?: number
   toolId?: string
   toolName?: string
   arguments?: string
