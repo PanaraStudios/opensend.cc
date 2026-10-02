@@ -27,7 +27,7 @@ class ToolRouter:
         async def report(status, **fields):
             event = {"type": "tool_observed", "id": identifier[:128], "name": name[:128],
                      "status": status, **fields}
-            # Never log arguments, results, caller data or provider exceptions.
+            # Log bounded backend validation errors, never arguments, results or provider exceptions.
             logging.getLogger("voice-agent").warning(json.dumps({"callId": self.call_id, **event}))
             await self.emit(event)
         await report("requested")
@@ -40,7 +40,7 @@ class ToolRouter:
             result = {"ok": False, "error": "Tool execution failed"}
         await report("succeeded" if result.get("ok") else "failed",
                      latencyMs=round((time.monotonic() - started) * 1000),
-                     **({} if result.get("ok") else {"error": "tool_failed"}))
+                     **({} if result.get("ok") else {"error": str(result.get("error", "Tool execution failed"))[:512]}))
         return result
 
     async def _run(self, identifier: str, name: str, arguments: dict):

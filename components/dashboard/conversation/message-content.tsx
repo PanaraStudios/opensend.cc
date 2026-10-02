@@ -2,7 +2,10 @@
 import { UserIcon, ExternalLinkIcon } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { object, array, string } from "@/lib/meta/parse"
-import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
+import {
+  safeMessageUrl,
+  messageContentPreview,
+} from "@/lib/dashboard/conversation-content"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 import { AttachedButtons, BusinessCard, LocationCard } from "./business-card"
 import { ConversationMedia } from "./media"
@@ -87,7 +90,11 @@ export function NormalizedMessageContent({
       </div>
     )
   if (type === "button")
-    return <FormattedText text={string(content.text) || message.text} />
+    return (
+      <FormattedText
+        text={messageContentPreview(type, content, message.text)}
+      />
+    )
   if (type === "interactive") {
     const subtype = string(content.type)
     if (subtype === "button_reply" || subtype === "list_reply") {
@@ -159,7 +166,9 @@ export function NormalizedMessageContent({
     )
   return (
     <div>
-      <FormattedText text={string(content.body) || message.text} />
+      <FormattedText
+        text={messageContentPreview(type ?? "text", content, message.text)}
+      />
       {array(data?.quick_replies).length ? (
         <AttachedButtons
           buttons={array(data?.quick_replies).map((reply) => ({

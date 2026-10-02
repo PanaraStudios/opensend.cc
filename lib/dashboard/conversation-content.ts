@@ -1,4 +1,50 @@
 /** Presentation helpers for normalized channel content. Never reads `raw`. */
+import { object, string } from "../meta/parse"
+
+/** Readable text for the same normalized content shown in the conversation. */
+export function messageContentPreview(
+  type: string,
+  value: unknown,
+  fallback: string,
+  rendered?: { body: string } | null
+) {
+  const content = object(value)
+  if (type === "revoke") return "Message deleted"
+  if (type === "template") return rendered?.body || fallback
+  if (["image", "video", "audio", "document", "sticker"].includes(type))
+    return `${type[0].toUpperCase()}${type.slice(1)}${string(content.caption) ? `: ${string(content.caption)}` : ""}`
+  if (type === "interactive") {
+    const subtype = string(content.type)
+    if (["button_reply", "list_reply"].includes(subtype)) {
+      const reply = object(content[subtype])
+      return (
+        [string(reply.title), string(reply.description)]
+          .filter(Boolean)
+          .join(" — ") || fallback
+      )
+    }
+    if (subtype === "nfm_reply") {
+      const reply = object(content.nfm_reply)
+      return string(reply.body) || "Form response"
+    }
+    if (subtype === "call_permission_reply")
+      return `Call permission: ${string(object(content.call_permission_reply).response)}`
+    return string(object(content.body).text) || fallback
+  }
+  if (type === "reaction")
+    return `Reaction: ${string(content.emoji) || "removed"}`
+  if (type === "button") return string(content.text) || fallback
+  return string(content.body) || fallback
+}
+
+export function relativeMessageTime(at: number, now: number) {
+  const seconds = Math.max(0, Math.floor((now - at) / 1000))
+  if (seconds < 60) return "just now"
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  return `${Math.floor(seconds / 86400)}d ago`
+}
+
 export function safeMessageUrl(
   value: unknown,
   phone = false

@@ -123,7 +123,7 @@ export function voiceDiagnostic(line: { kind: string; text?: string }) {
     if (v.type === "tool_call" && "toolName" in v && "status" in v)
       return {
         label: "Tool call",
-        detail: `${String(v.toolName)} · ${String(v.status)}${"latencyMs" in v && typeof v.latencyMs === "number" ? ` · ${v.latencyMs} ms` : ""}`,
+        detail: `${String(v.toolName)} · ${String(v.status)}${"latencyMs" in v && typeof v.latencyMs === "number" ? ` · ${v.latencyMs} ms` : ""}${"error" in v && typeof v.error === "string" ? ` · ${v.error}` : ""}`,
       }
     if (v.type === "bot_completed")
       return {
