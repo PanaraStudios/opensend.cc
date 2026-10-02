@@ -19,6 +19,7 @@ export interface GatewayApi {
   remoteAnswer(callId: string, sdp: string): Promise<void>
   hangup(callId: string): Promise<void>
   route(request: RouteRequest): Promise<void>
+  playground?(request: { callId: string; extension: string }): Promise<void>
   healthy(): Promise<boolean>
 }
 export type CallbackPayload =

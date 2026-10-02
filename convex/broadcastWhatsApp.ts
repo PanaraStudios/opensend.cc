@@ -21,6 +21,7 @@ import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import {
   resolveVariables,
+  normalizeVariableSource,
   variableSourcesError,
   type VariableSource,
 } from "../lib/meta/variables"
@@ -39,6 +40,7 @@ import { skipReasonValue } from "./tables/broadcasts"
 import { channelMessageStatusValue } from "./tables/channels"
 import { teamTemplate, approvedTemplateOptions } from "./templates"
 import { insertRow } from "./counts"
+import { templateMediaHeader, storedComponents } from "../lib/meta/templates"
 
 export async function resolveWhatsAppSend(
   ctx: QueryCtx,
@@ -89,7 +91,22 @@ export async function resolveWhatsAppSend(
     id: config.templateId,
     wabaId: account.wabaId,
   })
-  if (template.variables.some((key) => config.variables[key] === undefined))
+  const header = templateMediaHeader(storedComponents(template.components))
+  const source = config.variables.header_media
+  const media =
+    source === undefined ? undefined : normalizeVariableSource(source)
+  const emptyMedia =
+    !media ||
+    ("value" in media && !media.value.trim() && !media.fallback?.trim())
+  if (header && !header.sampleFileId && emptyMedia)
+    throw new ConvexError(
+      `This template needs a header ${header.format.toLowerCase()}.`
+    )
+  if (
+    template.variables.some(
+      (key) => key !== "header_media" && config.variables[key] === undefined
+    )
+  )
     throw new ConvexError("Map every template variable before sending")
   return { account, template }
 }

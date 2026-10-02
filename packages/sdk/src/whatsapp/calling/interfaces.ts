@@ -1,12 +1,6 @@
 import type { CallingRouting } from "./routing"
-import type {
-  IvrPathEntry,
-  IvrAction,
-} from "../../ivrs/interfaces"
-import type {
-  BotOutcome,
-  VoiceUsage,
-} from "../../voice/interfaces"
+import type { IvrPathEntry, IvrAction } from "../../ivrs/interfaces"
+import type { BotOutcome, VoiceUsage } from "../../voice/interfaces"
 import type { PaginationOptions } from "../../common/interfaces/pagination-options.interface"
 import type { WhatsAppTemplate } from "../catalog"
 export type CallHandlingMode = "gateway" | "api"
@@ -51,6 +45,8 @@ export interface CallFile {
 }
 export interface WhatsAppCall {
   object: "whatsapp_call"
+  /** Playground calls never signal Meta or emit customer lifecycle webhooks. */
+  test?: boolean
   id: string
   account_id: string
   wacid: string | null
@@ -79,6 +75,7 @@ export interface WhatsAppCall {
   ivr_id: string | null
   ivr_path: IvrPathEntry[]
   ivr_outcome: IvrAction | null
+  bot_name?: string | null
   bot_id: string | null
   bot_outcome: BotOutcome | null
   bot_summary: string | null

@@ -25,11 +25,11 @@ set -eu
   c build janus freeswitch drachtio voice-agent call-gateway meta-peer
   c up -d janus freeswitch drachtio voice-agent call-gateway
   if [ "$#" -eq 0 ]; then
-    set -- baseline agent voice bot-engine ivr-engine ivr-bot-agent bot-ivr
+    set -- playground playground-bot baseline agent voice bot-engine ivr-engine ivr-bot-agent bot-ivr
   fi
   for harness_mode in "$@"; do
     case "$harness_mode" in
-      baseline|agent|voice|bot-engine|ivr-engine|ivr-bot-agent|bot-ivr) ;;
+      playground|playground-bot|baseline|agent|voice|bot-engine|ivr-engine|ivr-bot-agent|bot-ivr) ;;
       *) echo "Unknown calling harness mode: $harness_mode" >&2; exit 2 ;;
     esac
     c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts "$harness_mode"

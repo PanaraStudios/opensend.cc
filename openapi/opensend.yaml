@@ -12327,7 +12327,7 @@ paths:
         - WhatsApp
       summary: list Calls
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: query
           name: limit
@@ -12376,7 +12376,7 @@ paths:
       summary: connect Call
       description: Start a call using gateway media or your complete SDP offer. recipient is a BSUID; to
         must resolve to a known BSUID. Meta enforces permissions and country restrictions.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -12419,7 +12419,7 @@ paths:
         - WhatsApp
       summary: get Call
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: path
           name: id
@@ -12455,7 +12455,7 @@ paths:
       summary: pre_accept Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12507,7 +12507,7 @@ paths:
       summary: accept Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12559,7 +12559,7 @@ paths:
       summary: reject Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12605,7 +12605,7 @@ paths:
       summary: terminate Call
       description: Gateway mode uses its prepared SDP. API mode supplies a complete answer. pre_accept and
         accept must use identical SDP; media is released only after accept succeeds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12650,7 +12650,7 @@ paths:
         - WhatsApp
       summary: get Calling
       description: ""
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: path
           name: id
@@ -12686,7 +12686,7 @@ paths:
       description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
         DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
         seconds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12729,7 +12729,7 @@ paths:
       description: call_hours replaces the complete schedule, including holidays. SIP remains disabled and
         DTLS is enforced. announcement_file_id references a finalized team Ogg Opus file under 60
         seconds.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - in: path
           name: id
@@ -12772,7 +12772,7 @@ paths:
       summary: get Call Permission
       description: Supply recipient (BSUID) or to. Meta returns permission and available actions/limits in
         either documented status vocabulary.
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - in: query
           name: from
@@ -12814,7 +12814,7 @@ paths:
       summary: request Call Permission
       description: Free-form requests require an open service window; templates must be approved
         call-permission templates. Meta enforces limits.
-      x-opensend-scope: whatsapp:write
+      x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -13088,6 +13088,34 @@ paths:
           $ref: "#/components/responses/Error422"
         "429":
           $ref: "#/components/responses/Error429"
+  /ivrs/{id}/render:
+    post:
+      operationId: ivrs/render
+      tags: [IVRs]
+      summary: Retry failed IVR prompts
+      description: Re-render failed prompts with the saved team provider credential; cached ready prompts are reused.
+      x-opensend-scope: ivrs:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: IVR with per-prompt render statuses
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ivr" }
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
   /voice-bots:
     post:
       operationId: createVoiceBot
@@ -13287,7 +13315,7 @@ paths:
       tags:
         - Voice Bots
       summary: createVoiceProvider
-      x-opensend-scope: voice_bots:write
+      x-opensend-scope: voice_providers:write
       parameters: []
       requestBody:
         required: true
@@ -13327,7 +13355,7 @@ paths:
       tags:
         - Voice Bots
       summary: listVoiceProviders
-      x-opensend-scope: voice_bots:read
+      x-opensend-scope: voice_providers:read
       parameters:
         - $ref: "#/components/parameters/PaginationLimit"
         - $ref: "#/components/parameters/PaginationAfter"
@@ -13359,7 +13387,7 @@ paths:
       tags:
         - Voice Bots
       summary: deleteVoiceProvider
-      x-opensend-scope: voice_bots:write
+      x-opensend-scope: voice_providers:write
       parameters:
         - name: id
           in: path
@@ -13402,7 +13430,7 @@ paths:
       tags:
         - Voice Bots
       summary: getWhatsAppCallTranscript
-      x-opensend-scope: whatsapp:read
+      x-opensend-scope: calling:read
       parameters:
         - name: id
           in: path
@@ -18633,8 +18661,14 @@ components:
     ApiScope:
       type: string
       enum:
+        - calling:read
+        - calling:write
         - ivrs:read
         - ivrs:write
+        - voice_bots:read
+        - voice_bots:write
+        - voice_providers:read
+        - voice_providers:write
         - media:read
         - media:write
         - emails:read
@@ -18665,8 +18699,6 @@ components:
         - webhooks:write
         - logs:read
         - logs:write
-        - voice_bots:read
-        - voice_bots:write
     ApiKey:
       type: object
       properties:
@@ -26918,6 +26950,9 @@ components:
           type:
             - string
             - "null"
+        test:
+          type: boolean
+          description: Playground test call; excluded from customer lifecycle webhooks.
         ivr_path:
           type: array
           maxItems: 100
@@ -27030,6 +27065,9 @@ components:
           type:
             - string
             - "null"
+        bot_name:
+          type: [string, "null"]
+          description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
             - string
@@ -27095,6 +27133,9 @@ components:
           type:
             - string
             - "null"
+        test:
+          type: boolean
+          description: Playground test call; excluded from customer lifecycle webhooks.
         ivr_path:
           type: array
           maxItems: 100
@@ -27225,6 +27266,9 @@ components:
               - at
               - details
             additionalProperties: false
+        bot_name:
+          type: [string, "null"]
+          description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
             - string
@@ -27764,6 +27808,15 @@ components:
     IvrDefinition:
       type: object
       properties: &a2
+        promptVoice:
+          type: object
+          properties:
+            provider: { type: string, enum: [elevenlabs, sarvam] }
+            voice: { type: string }
+            language: { type: string }
+            credentialId: { type: string }
+          required: [provider, voice, language, credentialId]
+          additionalProperties: false
         name: &a3
           type: string
           minLength: 1
@@ -27789,12 +27842,48 @@ components:
       additionalProperties: false
     IvrPatch:
       type: object
-      properties: *a2
+      properties:
+        name: *a3
+        language: *a4
+        entryMenuId: *a1
+        menus: *a5
+        promptVoice:
+          anyOf:
+            - $ref: "#/components/schemas/IvrDefinition/properties/promptVoice"
+            - type: "null"
+        businessHours:
+          anyOf:
+            - $ref: "#/components/schemas/IvrBusinessHours"
+            - type: "null"
       required: []
       additionalProperties: false
     Ivr:
       type: object
       properties:
+        prompt_renders:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [audio, tts] }
+              status: { type: string, enum: [pending_render, rendering, ready, failed] }
+              text: { type: string }
+              voice: { type: [string, "null"] }
+              hash: { type: string }
+              fileId: { type: string }
+              error: { type: [string, "null"] }
+              audio_url: { type: [string, "null"] }
+            required: [kind, status, audio_url]
+            additionalProperties: false
+        promptVoice:
+          type: object
+          properties:
+            provider: { type: string, enum: [elevenlabs, sarvam] }
+            voice: { type: string }
+            language: { type: string }
+            credentialId: { type: string }
+          required: [provider, voice, language, credentialId]
+          additionalProperties: false
         object:
           type: string
           const: ivr
@@ -27816,6 +27905,7 @@ components:
           enum:
             - ready
             - pending_render
+            - failed
       required:
         - object
         - id

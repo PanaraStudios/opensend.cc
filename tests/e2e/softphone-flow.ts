@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import { connectWhatsApp, WABA, PHONE_ID } from "./meta-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
-import { client } from "./ses-fixtures"
+import { client, testBackend } from "./ses-fixtures"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
 const BSUID = "US.13491208655302741919"
@@ -86,6 +86,15 @@ export function softphoneTests(
       owner.getByRole("tab", { name: "Calls", exact: true })
     ).toBeVisible()
     await expect(
+      owner.getByRole("button", { name: "Open softphone", exact: true })
+    ).toHaveCount(0)
+    // A gateway-mode number enables the entry even when the gateway is offline.
+    testBackend("calling/settingsState:store", {
+      accountId,
+      mode: "gateway",
+      settings: "{}",
+    })
+    await expect(
       owner.getByRole("button", { name: "Go online", exact: true })
     ).toBeVisible()
     const header = owner
@@ -99,7 +108,7 @@ export function softphoneTests(
       header.getByRole("link", { name: "Calls", exact: true })
     ).toHaveCount(0)
     await expect(
-      owner.getByText("Missed voice call", { exact: true }).first()
+      owner.getByText("Missed", { exact: true }).first()
     ).toBeVisible()
     await owner.getByRole("button", { name: "Softphone", exact: true }).click()
     await expect(
@@ -119,9 +128,24 @@ export function softphoneTests(
     await expect(entry).toBeVisible()
     await entry.click()
     await expect(
+      owner.getByRole("switch", { name: "Online", exact: true })
+    ).not.toBeChecked()
+    await expect(
+      owner.getByRole("combobox", { name: "Softphone microphone", exact: true })
+    ).toContainText("Default microphone")
+    await expect(
+      owner.getByRole("link", { name: "View calls", exact: true })
+    ).toHaveAttribute("href", "/playground/calls")
+    await expect(
       owner.getByText("Go online to receive and make calls", { exact: true })
     ).toBeVisible()
     await owner.getByRole("button", { name: "Close", exact: true }).click()
+    testBackend("calling/settingsState:store", {
+      accountId,
+      mode: "api",
+      settings: "{}",
+    })
+    await expect(entry).toHaveCount(0)
     await owner
       .getByRole("button", { name: "Call", exact: true })
       .first()

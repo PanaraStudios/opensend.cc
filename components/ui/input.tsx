@@ -35,6 +35,10 @@ function Input({
           className
         )}
         {...props}
+        name={
+          props.name ??
+          (credential && type === "password" ? "service-secret" : undefined)
+        }
         {...(credential ? credentialInputProps(type === "password") : {})}
       />
     </InputValidation>

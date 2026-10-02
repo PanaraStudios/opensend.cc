@@ -14,6 +14,18 @@ export async function messageFiles(
   accountId: Doc<"channelAccounts">["_id"]
 ) {
   const files: Infer<typeof channelMediaValue>[] = []
+  const templateHeaders = new Set<string>()
+  const template = object(object(value).template)
+  if (Array.isArray(template.components))
+    for (const component of template.components) {
+      const header = object(component)
+      if (header.type !== "header" || !Array.isArray(header.parameters))
+        continue
+      for (const parameter of header.parameters)
+        for (const kind of ["image", "video", "document"])
+          if (typeof object(object(parameter)[kind]).id === "string")
+            templateHeaders.add(object(object(parameter)[kind]).id as string)
+    }
   async function visit(value: unknown): Promise<void> {
     if (Array.isArray(value)) {
       for (const item of value) await visit(item)
@@ -27,15 +39,18 @@ export async function messageFiles(
         if (
           !row ||
           row.organizationId !== organizationId ||
-          row.accountId !== accountId ||
-          row.feature !== "whatsapp" ||
+          !(
+            (row.feature === "template" && templateHeaders.has(id)) ||
+            (row.feature === "whatsapp" && row.accountId === accountId)
+          ) ||
+          !row.storageId ||
           row.state !== "ready"
         )
           throw invalid(
             "Media upload is not ready or does not belong to this account"
           )
         if (files.some((file) => file.fileId === id)) return
-        await retainFile(ctx, id, organizationId, "whatsapp")
+        await retainFile(ctx, id, organizationId, row.feature)
         files.push({
           fileId: id,
           mediaId: id,

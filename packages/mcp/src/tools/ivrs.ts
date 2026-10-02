@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import type { Opensend, IvrDefinition } from "@opensendcc/sdk"
+import type { Opensend, IvrDefinition, IvrPatch } from "@opensendcc/sdk"
 import { z } from "zod"
 import {
   channelOutput,
@@ -28,6 +28,14 @@ const action = z.union([
   z.object({ kind: z.literal("hangup") }),
 ])
 const definition = {
+  promptVoice: z
+    .object({
+      provider: z.enum(["elevenlabs", "sarvam"]),
+      voice: z.string(),
+      language: z.string(),
+      credentialId: z.string(),
+    })
+    .optional(),
   name: z.string().min(1).max(256),
   language: z.string(),
   entryMenuId: z.string(),
@@ -100,7 +108,7 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     {
       title: "Create IVR",
       description:
-        "Create a team IVR menu tree. TTS remains pending_render until a renderer is configured.",
+        "Create a team IVR menu tree. Configure promptVoice with a team provider credential to render typed prompts.",
       inputSchema: { ...definition, idempotencyKey: z.string().optional() },
       annotations: write,
     },
@@ -138,9 +146,14 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     },
     async ({ id }) => channelOutput("IVR", await opensend.ivrs.get(id))
   )
-  const partial = Object.fromEntries(
+  const optionalFields = Object.fromEntries(
     Object.entries(definition).map(([k, v]) => [k, v.optional()])
   )
+  const partial = {
+    ...optionalFields,
+    promptVoice: definition.promptVoice.nullable(),
+    businessHours: definition.businessHours.nullable(),
+  }
   server.registerTool(
     "update-ivr",
     {
@@ -150,10 +163,7 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
       annotations: { ...write, idempotentHint: true },
     },
     async ({ id, ...input }) =>
-      channelOutput(
-        "IVR",
-        await opensend.ivrs.update(id, input as Partial<IvrDefinition>)
-      )
+      channelOutput("IVR", await opensend.ivrs.update(id, input as IvrPatch))
   )
   server.registerTool(
     "remove-ivr",
@@ -174,9 +184,17 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
       annotations: read,
     },
     async ({ id, ...input }) =>
-      channelOutput(
-        "IVR",
-        await opensend.ivrs.validate(id, input as Partial<IvrDefinition>)
-      )
+      channelOutput("IVR", await opensend.ivrs.validate(id, input as IvrPatch))
+  )
+  server.registerTool(
+    "render-ivr",
+    {
+      title: "Render IVR prompts",
+      description:
+        "Retry failed IVR prompts using the saved team provider key. Returns per-prompt render statuses.",
+      inputSchema: { id: z.string() },
+      annotations: write,
+    },
+    async ({ id }) => channelOutput("IVR", await opensend.ivrs.render(id))
   )
 }

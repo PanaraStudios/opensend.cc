@@ -444,3 +444,40 @@ test("anchored FreeSWITCH hangup cause wins a racing Janus SIP termination", asy
     await f.controller.close()
   }
 })
+
+test("playground anchors an authorized browser caller and runs the same controlled IVR route without Janus signaling", async () => {
+  const voice = {
+    fakeEnabled: false,
+    prepare() {},
+    reportState() {},
+    async stop() {},
+    async close() {},
+  } as unknown as VoiceRuntime
+  const { controller, commands } = fixture(undefined, voice)
+  await assert.rejects(
+    controller.playground({ callId: "test-call", extension: "1000" }),
+    /Invalid browser/
+  )
+  await controller.playground({ callId: "test-call", extension: "2001" })
+  await controller.route({
+    callId: "test-call",
+    target: "ivr",
+    ivrId: "ivr-reception",
+    organizationId: "team",
+  })
+  assert.ok(
+    commands.some((c) => c.startsWith("originate ") && c.includes("user/2001@"))
+  )
+  assert.ok(commands.some((c) => c.includes("voice-control XML calling")))
+  assert.ok(commands.some((c) => c.startsWith("sched_hangup +300")))
+  assert.ok(!commands.some((c) => c.startsWith("janus:opensend_media")))
+  await assert.rejects(
+    controller.playground({ callId: "test-call", extension: "2002" }),
+    /Browser call differs/
+  )
+  await controller.hangup("test-call")
+  await assert.rejects(
+    controller.playground({ callId: "test-call", extension: "2001" }),
+    /Call already ended/
+  )
+})

@@ -94,7 +94,7 @@ test("inline media and borderless stickers replace generic file chips", () => {
   )
   assert.match(
     html(fixture(whatsappInboundExamples.document)),
-    /Download document/
+    /aria-label="Download fixture\.file"/
   )
   assert.match(
     html(fixture(whatsappInboundExamples.location)),

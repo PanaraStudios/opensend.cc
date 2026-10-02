@@ -12,8 +12,8 @@ import { invalid } from "./caller"
 import { channelSendInput } from "./channelMessages"
 
 export function registerCallingRoutes(http: HttpRouter) {
-  const read = { resource: "whatsapp", access: "read" } as const,
-    write = { resource: "whatsapp", access: "write" } as const
+  const read = { resource: "calling", access: "read" } as const,
+    write = { resource: "calling", access: "write" } as const
   apiRoute(http, {
     method: "GET",
     path: "/whatsapp/calls",

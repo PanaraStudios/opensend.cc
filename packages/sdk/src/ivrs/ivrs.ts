@@ -1,5 +1,5 @@
 import type { Opensend } from "../resend"
-import type { Ivr, IvrDefinition } from "./interfaces"
+import type { Ivr, IvrDefinition, IvrPatch } from "./interfaces"
 import type { PaginationOptions } from "../common/interfaces/pagination-options.interface"
 import type { IdempotentRequest } from "../common/interfaces/idempotent-request.interface"
 import type {
@@ -25,11 +25,7 @@ export class Ivrs {
   get(id: string, options: GetOptions = {}) {
     return this.resend.get<Ivr>(`/ivrs/${encodeURIComponent(id)}`, options)
   }
-  update(
-    id: string,
-    input: Partial<IvrDefinition>,
-    options: PatchOptions = {}
-  ) {
+  update(id: string, input: IvrPatch, options: PatchOptions = {}) {
     return this.resend.patch<Ivr>(
       `/ivrs/${encodeURIComponent(id)}`,
       input,
@@ -43,14 +39,17 @@ export class Ivrs {
       options
     )
   }
-  validate(
-    id: string,
-    input: Partial<IvrDefinition> = {},
-    options: PostOptions = {}
-  ) {
+  validate(id: string, input: IvrPatch = {}, options: PostOptions = {}) {
     return this.resend.post<{ valid: boolean; errors: string[] }>(
       `/ivrs/${encodeURIComponent(id)}/validate`,
       input,
+      options
+    )
+  }
+  render(id: string, options: PostOptions = {}) {
+    return this.resend.post<Ivr>(
+      `/ivrs/${encodeURIComponent(id)}/render`,
+      {},
       options
     )
   }

@@ -15,6 +15,10 @@ import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
 import { CallGatewayClient } from "../services/call-gateway/src/client"
 import { createHash } from "node:crypto"
 import { patchRow } from "./counts"
+import { writableCallingSettings } from "../lib/meta/calling"
+import { actionError } from "../lib/action-error"
+import { MetaError, parseGraphError } from "../lib/meta/errors"
+import { graphFailure } from "./meta/graph"
 const BSUID = "US.13491208655302741918"
 const secret = "a".repeat(64)
 beforeEach(() => {
@@ -449,7 +453,7 @@ test("Meta recording and transcript fixtures fetch fresh URLs, verify SHA-256 an
   const events = await f.t.run((ctx) => ctx.db.query("events").collect())
   expect(events.map((e) => e.type)).toContain("whatsapp.call.recording_ready")
 })
-test("calling settings replace call hours whole, enforce DTLS/SIP-off, and map Meta call errors", async () => {
+test("calling settings replace call hours whole, omit unused signaling defaults, and map Meta call errors", async () => {
   const f = await setup()
   const calling = {
     status: "ENABLED",
@@ -488,9 +492,9 @@ test("calling settings replace call hours whole, enforce DTLS/SIP-off, and map M
   ).toBe(200)
   expect(g.calls[0].body).toEqual({
     calling: {
-      ...calling,
-      srtp_key_exchange_protocol: "DTLS",
-      sip: { status: "DISABLED" },
+      status: "ENABLED",
+      call_icon_visibility: "DEFAULT",
+      call_hours: calling.call_hours,
     },
   })
   const result = await f.request("/whatsapp/calls", "POST", {
@@ -499,7 +503,10 @@ test("calling settings replace call hours whole, enforce DTLS/SIP-off, and map M
     session: { sdp_type: "offer", sdp: SDP },
   })
   expect(result.status).toBe(422)
-  expect((await result.json()).name).toBe("call_permission_required")
+  expect(await result.json()).toMatchObject({
+    name: "call_permission_required",
+    message: expect.stringContaining("No permission"),
+  })
   expect(
     (
       await f.request(`/whatsapp/phone-numbers/${PHONE_ID}/calling`, "POST", {
@@ -507,6 +514,134 @@ test("calling settings replace call hours whole, enforce DTLS/SIP-off, and map M
       })
     ).status
   ).toBe(422)
+})
+
+test("dashboard enables calling from Meta defaults and toggles callback permission with valid enums", async () => {
+  const f = await setup()
+  const remote = {
+    status: "DISABLED",
+    call_icon_visibility: "DEFAULT",
+    callback_permission_status: "",
+    audio: { additional_codecs: [] },
+    call_icons: { restrict_to_user_countries: [] },
+    call_hours: {
+      status: "DISABLED",
+      timezone_id: "UTC",
+      weekly_operating_hours: [],
+    },
+    voicemail: { status: "DISABLED" },
+    sip: { status: "DISABLED" },
+    srtp_key_exchange_protocol: "DTLS",
+  }
+  await f.t.mutation(internal.calling.settingsState.store, {
+    accountId: f.account,
+    settings: JSON.stringify(remote),
+    mode: "api",
+  })
+  const g = fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling: remote }),
+    },
+  ])
+  const form = { ...writableCallingSettings(remote), status: "ENABLED" }
+  await f.owner.client.action(api.calling.settings.dashboardUpdate, {
+    organizationId: f.owner.team,
+    from: f.account,
+    calling: form,
+  })
+  expect(g.calls[0].body).toEqual({
+    calling: { status: "ENABLED", call_icon_visibility: "DEFAULT" },
+  })
+  for (const checked of [true, false]) {
+    const callback_permission_status = checked === true ? "ENABLED" : "DISABLED"
+    await f.owner.client.action(api.calling.settings.dashboardUpdate, {
+      organizationId: f.owner.team,
+      from: f.account,
+      calling: { ...form, callback_permission_status },
+    })
+    expect(g.to(`/${PHONE_ID}/settings`, "POST").at(-1)?.body).toEqual({
+      calling: {
+        status: "ENABLED",
+        call_icon_visibility: "DEFAULT",
+        callback_permission_status,
+      },
+    })
+  }
+  const posts = g.to(`/${PHONE_ID}/settings`, "POST").length
+  await expect(
+    f.owner.client.action(api.calling.settings.dashboardUpdate, {
+      organizationId: f.owner.team,
+      from: f.account,
+      calling: { callback_permission_status: true },
+    })
+  ).rejects.toThrow("callback_permission_status must be ENABLED or DISABLED")
+  expect(g.to(`/${PHONE_ID}/settings`, "POST")).toHaveLength(posts)
+})
+
+test("settings errors reach the API and dashboard toast with every Meta reason field, never the token", async () => {
+  const f = await setup()
+  const details = "callback_permission_status must be ENABLED or DISABLED"
+  const body = {
+    error: {
+      code: 100,
+      message: "(#100) Invalid parameter connection-test-token",
+      error_user_title: "Invalid calling settings",
+      error_user_msg: "Check callback permission",
+      error_data: { details },
+      access_token: "connection-test-token",
+    },
+  }
+  fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      respond: () => Response.json(body, { status: 400 }),
+    },
+  ])
+  const result = await f.request(
+    `/whatsapp/phone-numbers/${PHONE_ID}/calling`,
+    "POST",
+    { calling: { status: "ENABLED" } }
+  )
+  expect(result.status).toBe(422)
+  const error = await result.json()
+  expect(error.name).toBe("invalid_calling_settings")
+  for (const reason of [
+    details,
+    body.error.error_user_title,
+    body.error.error_user_msg,
+    "(#100) Invalid parameter",
+  ])
+    expect(error.message).toContain(reason)
+  expect(error.message).not.toContain("SDP")
+  expect(JSON.stringify(error)).not.toContain("connection-test-token")
+  const dashboardError = await f.owner.client
+    .action(api.calling.settings.dashboardUpdate, {
+      organizationId: f.owner.team,
+      from: f.account,
+      calling: { status: "ENABLED" },
+    })
+    .catch((error: unknown) => error)
+  expect(actionError(dashboardError)).toBe(error.message)
+  const failure = graphFailure(
+    new MetaError(
+      parseGraphError(400, JSON.stringify(body), ["connection-test-token"])
+    )
+  )
+  for (const reason of [
+    details,
+    body.error.error_user_title,
+    body.error.error_user_msg,
+    "(#100) Invalid parameter",
+  ])
+    expect(failure).toContain(reason)
+  expect(failure).not.toContain("connection-test-token")
 })
 test("gateway callbacks require exact HMAC, persist nonce replay protection and eventId dedupe, and never reopen ended calls", async () => {
   const f = await setup()

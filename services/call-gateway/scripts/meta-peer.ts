@@ -23,8 +23,12 @@ import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
 
 const returnFlow = process.argv.includes("bot-ivr")
 const combinedFlow = process.argv.includes("ivr-bot-agent")
+const playgroundBot = process.argv.includes("playground-bot")
 const pipecatEngine =
-  process.argv.includes("bot-engine") || combinedFlow || returnFlow
+  playgroundBot ||
+  process.argv.includes("bot-engine") ||
+  combinedFlow ||
+  returnFlow
 const secret = process.env.CALL_GATEWAY_SECRET ?? ""
 const verifier = new HmacVerifier(secret)
 const gateway = new CallGatewayClient(
@@ -193,7 +197,11 @@ const receiver = createServer(async (request, response) => {
       verifier.verify(request.method!, request.url, body, request.headers)
       const session = JSON.parse(body)
       assert.equal(session.organizationId, "harness-team")
-      assert.ok(session.callId.startsWith("harness-inbound-"))
+      assert.ok(
+        session.callId.startsWith(
+          playgroundBot ? "playground-" : "harness-inbound-"
+        )
+      )
       response
         .writeHead(200, {
           "content-type": "application/json",
@@ -235,7 +243,11 @@ const receiver = createServer(async (request, response) => {
       const tool = JSON.parse(body) as VoiceToolRequest
       assert.equal(tool.version, 1)
       assert.equal(tool.organizationId, "harness-team")
-      assert.ok(tool.callId.startsWith("harness-inbound-"))
+      assert.ok(
+        tool.callId.startsWith(
+          playgroundBot ? "playground-" : "harness-inbound-"
+        )
+      )
       assert.ok(
         tool.toolCall.name === "lookup_contact" ||
           (combinedFlow && tool.toolCall.name === "transfer_to_agent") ||
@@ -375,6 +387,8 @@ async function browserAgent() {
     const currentPage = page
     return {
       extension: credential.extension,
+      dtmf: (digit: string) =>
+        currentPage.evaluate((d) => window.agent.dtmf(d), digit),
       stats: () => currentPage.evaluate(() => window.agent.stats()),
       async close() {
         await currentPage
@@ -976,7 +990,64 @@ async function run(
   }
 }
 try {
-  if (returnFlow || combinedFlow) {
+  if (process.argv.includes("playground") || playgroundBot) {
+    const agent = await browserAgent(),
+      callId = `playground-${randomUUID()}`
+    try {
+      await gateway.playground({ callId, extension: agent.extension })
+      await gateway.route({
+        callId,
+        target: playgroundBot ? "bot" : "ivr",
+        ...(playgroundBot
+          ? { botId: "harness-bot", maxDurationSeconds: 6 }
+          : { ivrId: "harness-ivr" }),
+        organizationId: "harness-team",
+      })
+      await waitUntil(
+        async () => (await agent.stats()).inboundPackets > 10,
+        "Browser did not receive IVR/bot audio"
+      )
+      if (playgroundBot) {
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (e) => e.callId === callId && e.type === "bot_completed"
+            ),
+          "Browser bot did not finish its Pipecat session",
+          15000
+        )
+        console.log(
+          "PASS playground bot: ephemeral SIP.js caller → FreeSWITCH → gateway Path B → Pipecat, signed session/events and completion"
+        )
+      } else {
+        await delay(1500)
+        await agent.dtmf("1")
+        await waitUntil(
+          () => ivrPaths.some((p) => p.callId === callId && p.digits === "1"),
+          "Browser RFC2833 main digit missing"
+        )
+        await delay(1500)
+        await agent.dtmf("2")
+        await waitUntil(
+          () => ivrPaths.filter((p) => p.callId === callId).length === 2,
+          "Browser submenu digit missing"
+        )
+        assert.ok(ivrAudioFetches >= 2)
+        await gateway.hangup(callId)
+        await waitUntil(
+          () =>
+            callbacks.some((e) => e.callId === callId && e.event === "hangup"),
+          "Browser hangup callback missing"
+        )
+        console.log(
+          "PASS playground: ephemeral SIP.js caller → FreeSWITCH → real IVR runner, HTTP-cache WAV, RFC2833 1 → 2 → voicemail, signed path decisions and hangup"
+        )
+      }
+    } finally {
+      await gateway.hangup(callId).catch(() => undefined)
+      await agent.close()
+    }
+  } else if (returnFlow || combinedFlow) {
     const agent = await browserAgent()
     try {
       await run("inbound", agent, returnFlow ? "bot-ivr" : "ivr-bot-agent")

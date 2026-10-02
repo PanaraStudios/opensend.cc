@@ -32,7 +32,8 @@ import {
   type IvrDefinition,
   type IvrAction,
 } from "../../lib/ivr"
-import { promptHash, IVR_RENDERER } from "../../lib/ivr-prompts"
+import { renderHash, renderSpec } from "../../lib/ivr-prompts"
+import { fileUrl } from "../storage/urls"
 import { definition } from "./validators"
 import type { Doc } from "../_generated/dataModel"
 
@@ -68,6 +69,7 @@ export function readDefinition(row: IvrDefinition): IvrDefinition {
     language: row.language,
     entryMenuId: row.entryMenuId,
     menus: row.menus,
+    ...(row.promptVoice ? { promptVoice: row.promptVoice } : {}),
     ...(row.businessHours ? { businessHours: row.businessHours } : {}),
   }
 }
@@ -125,6 +127,16 @@ export async function checked(
   } catch (e) {
     throw invalid((e as Error).message)
   }
+  if (d.promptVoice) {
+    const id = ctx.db.normalizeId("voiceProviders", d.promptVoice.credentialId),
+      key = id ? await ctx.db.get("voiceProviders", id) : null
+    if (
+      !key ||
+      key.organizationId !== organizationId ||
+      key.provider !== d.promptVoice.provider
+    )
+      throw invalid("Choose a team key for the prompt provider")
+  }
   for (const p of ivrPrompts(d))
     if (p.kind === "audio") await audioFile(ctx, organizationId, p.fileId)
   for (const a of [
@@ -142,27 +154,79 @@ async function cachePrompts(
 ) {
   for (const p of ivrPrompts(d))
     if (p.kind === "tts") {
-      const hash = await promptHash(p.text, d.language, p.voice, IVR_RENDERER)
-      if (
-        !(await ctx.db
-          .query("ivrPromptRenders")
-          .withIndex("by_organizationId_and_hash", (q) =>
-            q.eq("organizationId", organizationId).eq("hash", hash)
-          )
-          .unique())
-      )
+      const hash = await renderHash(d, p),
+        spec = renderSpec(d, p)
+      const cached = await ctx.db
+        .query("ivrPromptRenders")
+        .withIndex("by_organizationId_and_hash", (q) =>
+          q.eq("organizationId", organizationId).eq("hash", hash)
+        )
+        .unique()
+      if (!cached)
         await ctx.db.insert("ivrPromptRenders", {
           organizationId,
           hash,
-          text: p.text,
-          language: d.language,
-          ...(p.voice ? { voice: p.voice } : {}),
-          renderer: IVR_RENDERER,
+          ...spec,
           status: "pending_render",
+        })
+      else if (cached.status === "failed")
+        await ctx.db.patch("ivrPromptRenders", cached._id, {
+          status: "pending_render",
+          error: undefined,
+          lease: undefined,
+          leaseUntil: undefined,
         })
     }
 }
-export async function payload(row: Doc<"ivrs">) {
+export async function payload(ctx: QueryCtx, row: Doc<"ivrs">) {
+  const prompt_renders = await Promise.all(
+    ivrPrompts(row).map(async (p) => {
+      if (p.kind === "audio") {
+        try {
+          return {
+            kind: p.kind,
+            fileId: p.fileId,
+            status: "ready" as const,
+            audio_url: await fileUrl(
+              ctx,
+              await audioFile(ctx, row.organizationId, p.fileId)
+            ),
+          }
+        } catch {
+          return {
+            kind: p.kind,
+            fileId: p.fileId,
+            status: "failed" as const,
+            error: "Audio prompt file is unavailable",
+            audio_url: null,
+          }
+        }
+      }
+      const hash = await renderHash(row, p),
+        cached = await ctx.db
+          .query("ivrPromptRenders")
+          .withIndex("by_organizationId_and_hash", (q) =>
+            q.eq("organizationId", row.organizationId).eq("hash", hash)
+          )
+          .unique()
+      const file = cached?.fileId
+        ? await ctx.db.get("storedFiles", cached.fileId)
+        : null
+      return {
+        kind: p.kind,
+        text: p.text,
+        voice: p.voice ?? row.promptVoice?.voice ?? null,
+        hash,
+        status: cached?.status ?? "pending_render",
+        error: cached?.error ?? null,
+        audio_url:
+          file?.organizationId === row.organizationId
+            ? await fileUrl(ctx, file)
+            : null,
+      }
+    })
+  )
+
   return {
     object: "ivr" as const,
     id: row._id,
@@ -170,9 +234,12 @@ export async function payload(row: Doc<"ivrs">) {
     created_at: new Date(row.createdAt).toISOString(),
     updated_at: new Date(row.updatedAt).toISOString(),
     webhook_signing_secret: await decryptSecret(row.webhookSecret),
-    prompt_status: ivrPrompts(row).some((p) => p.kind === "tts")
-      ? ("pending_render" as const)
-      : ("ready" as const),
+    prompt_renders,
+    prompt_status: prompt_renders.some((p) => p.status === "failed")
+      ? "failed"
+      : prompt_renders.some((p) => p.status !== "ready")
+        ? "pending_render"
+        : "ready",
   }
 }
 async function writeDefinition(
@@ -236,9 +303,12 @@ async function writeDefinition(
       await ctx.db.patch("ivrs", id, {
         ...d,
         businessHours: d.businessHours,
+        promptVoice: d.promptVoice,
         updatedAt: now,
       })
-    return payload((await ctx.db.get("ivrs", id))!)
+    if (d.promptVoice)
+      await ctx.scheduler.runAfter(0, internal.ivr.rendering.render, { id })
+    return payload(ctx, (await ctx.db.get("ivrs", id))!)
   }
   return args.caller
     ? idempotent(ctx, args.caller, operation, (body) => ({
@@ -280,7 +350,7 @@ async function getDefinition(
   args: { organizationId: string; caller?: Caller; id: string }
 ) {
   await authorize(ctx, args)
-  return payload(await own(ctx, args.organizationId, args.id))
+  return payload(ctx, await own(ctx, args.organizationId, args.id))
 }
 export const get = internalQuery({
   args: { ...actor, id: v.string() },
@@ -330,7 +400,7 @@ async function listDefinitions(
   return {
     object: "list",
     has_more: page.has_more,
-    data: await Promise.all(page.data.map(payload)),
+    data: await Promise.all(page.data.map((row) => payload(ctx, row))),
   }
 }
 export const list = internalQuery({
@@ -362,4 +432,11 @@ export const validate = internalQuery({
       }
     }
   },
+})
+
+export const dashboardValidate = action({
+  args: { organizationId: v.string(), id: v.string(), body: v.string() },
+  returns: v.object({ valid: v.boolean(), errors: v.array(v.string()) }),
+  handler: (ctx, args): Promise<{ valid: boolean; errors: string[] }> =>
+    ctx.runQuery(internal.ivr.definitions.validate, args),
 })

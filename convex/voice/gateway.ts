@@ -248,6 +248,13 @@ async function execute(
       }
     }
     case "send_whatsapp_message": {
+      if (call.test)
+        return {
+          test: true,
+          action: "send_whatsapp_message",
+          preview: args,
+          message: "Test preview; no message sent",
+        }
       if (!call.userId && !call.from)
         throw new Error("Caller identity unavailable")
       const body = args.template
@@ -362,15 +369,16 @@ export const event = internalMutation({
         botSessionUsage: finalUsage,
       })
       const updated = (await ctx.db.get("calls", call._id))!
-      await minuteUsage.replaceOrInsert(ctx, call, updated)
-      await emitEvent(
-        ctx,
-        call.organizationId,
-        botOutcome.startsWith("transferred_")
-          ? "whatsapp.call.transferred"
-          : "whatsapp.call.bot_completed",
-        await payload(ctx, updated)
-      )
+      if (!call.test) await minuteUsage.replaceOrInsert(ctx, call, updated)
+      if (!call.test)
+        await emitEvent(
+          ctx,
+          call.organizationId,
+          botOutcome.startsWith("transferred_")
+            ? "whatsapp.call.transferred"
+            : "whatsapp.call.bot_completed",
+          await payload(ctx, updated)
+        )
     } else if (data.type === "usage") {
       const delta = usage(data.usage),
         old = call.botUsage ?? {}

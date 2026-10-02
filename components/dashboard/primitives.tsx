@@ -1014,7 +1014,9 @@ export function EmptyState({
         <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
           <Icon className="size-4" />
         </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyTitle role="heading" aria-level={size === "sm" ? 3 : 2}>
+          {title}
+        </EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
       {children ? <EmptyContent>{children}</EmptyContent> : null}
@@ -1107,7 +1109,7 @@ export function broadcastStatusDotClassName(status: BroadcastStatus): string {
   return badgeDotClassName(BROADCAST_STATUS_TONE[status])
 }
 
-function ToneBadge({ tone, label }: { tone: BadgeTone; label: string }) {
+export function ToneBadge({ tone, label }: { tone: BadgeTone; label: string }) {
   return (
     <Badge variant={tone} dot>
       {label}
@@ -1854,7 +1856,7 @@ export function RadioCards<Value extends string>({
       {options.map((option) => (
         <label
           key={option.value}
-          className="flex items-start gap-3 rounded-lg border border-border p-3"
+          className="flex items-start gap-3 rounded-lg border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted"
         >
           <RadioGroupItem value={option.value} className="mt-0.5" />
           <span>
@@ -2477,6 +2479,9 @@ export function SecretField({
       <InputGroupInput
         id={id}
         readOnly
+        credential
+        name="service-secret"
+        type={revealed ? "text" : "password"}
         aria-label={label}
         value={revealed ? value : "•".repeat(value.length)}
         className="font-mono text-[13px]"

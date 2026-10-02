@@ -1,9 +1,11 @@
+import { internal } from "../_generated/api"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
 import {
   internalMutation,
   internalQuery,
   query,
+  action,
   type QueryCtx,
 } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
@@ -29,13 +31,14 @@ export const actor = {
 export async function authorize(
   ctx: QueryCtx,
   args: { organizationId: string; caller?: Caller },
-  write = false
+  write = false,
+  providers = false
 ) {
   if (args.caller) {
     if (args.caller.organizationId !== args.organizationId)
       throw notFound("Team")
     await requireCaller(ctx, args.caller, {
-      resource: "voice_bots",
+      resource: providers ? "voice_providers" : "voice_bots",
       access: write ? "write" : "read",
     })
   } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")
@@ -81,7 +84,7 @@ async function listResources(
     providers?: boolean
   }
 ) {
-  await authorize(ctx, args)
+  await authorize(ctx, args, false, !!args.providers)
   if (
     !Number.isInteger(args.limit) ||
     args.limit < 1 ||
@@ -108,10 +111,23 @@ async function listResources(
   return {
     object: "list",
     has_more: page.has_more,
-    data: page.data.map((row) =>
-      table === "voiceProviders"
-        ? publicProvider(row as Doc<"voiceProviders">)
-        : publicBot(row as Doc<"voiceBots">)
+    data: await Promise.all(
+      page.data.map(async (row) => {
+        if (table === "voiceProviders")
+          return publicProvider(row as Doc<"voiceProviders">)
+        const bot = row as Doc<"voiceBots">
+        const lastTest = await ctx.db
+          .query("calls")
+          .withIndex("by_organizationId_and_botId_and_test", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("botId", bot._id)
+              .eq("test", true)
+          )
+          .order("desc")
+          .first()
+        return { ...publicBot(bot), lastTestAt: lastTest?.observedAt ?? null }
+      })
     ),
   }
 }
@@ -227,7 +243,7 @@ export const credential = internalMutation({
   args: { ...actor, input: v.record(v.string(), v.any()) },
   returns: v.object({ id: v.id("voiceProviders") }),
   handler: async (ctx, args) => {
-    await authorize(ctx, args, true)
+    await authorize(ctx, args, true, true)
     const { provider, label, key } = args.input
     if (
       (provider !== "gemini" &&
@@ -268,7 +284,7 @@ export const remove = internalMutation({
   args: { ...actor, id: v.string(), providers: v.optional(v.boolean()) },
   returns: v.object({ id: v.string(), deleted: v.boolean() }),
   handler: async (ctx, args) => {
-    await authorize(ctx, args, true)
+    await authorize(ctx, args, true, !!args.providers)
     if (args.providers) {
       const id = ctx.db.normalizeId("voiceProviders", args.id),
         row = id ? await ctx.db.get("voiceProviders", id) : null
@@ -298,11 +314,17 @@ export const remove = internalMutation({
           )
           .first(),
       ])
-      if (references.some(Boolean))
+      const ivr = await ctx.db
+        .query("ivrs")
+        .withIndex("by_promptVoice_credentialId", (q) =>
+          q.eq("promptVoice.credentialId", row._id)
+        )
+        .first()
+      if (references.some(Boolean) || ivr)
         throw apiError(
           409,
           "credential_in_use",
-          "Delete bots using this credential first"
+          "Remove bots or IVR prompt voices using this credential first"
         )
       await ctx.db.delete("voiceProviders", row._id)
     } else {
@@ -327,12 +349,15 @@ export const transcript = internalQuery({
   returns: v.any(),
   handler: async (ctx, args) => {
     // Transcripts require the existing WhatsApp scope, independently of bot CRUD.
-    if (!args.caller || args.caller.organizationId !== args.organizationId)
-      throw notFound("Call")
-    await requireCaller(ctx, args.caller, {
-      resource: "whatsapp",
-      access: "read",
-    })
+    if (args.caller) {
+      if (args.caller.organizationId !== args.organizationId)
+        throw notFound("Call")
+      await requireCaller(ctx, args.caller, {
+        resource: "calling",
+        access: "read",
+      })
+    } else await requireTeam(ctx, args.organizationId, "read")
+    await requireActiveTeam(ctx, args.organizationId)
     const id = ctx.db.normalizeId("calls", args.id),
       call = id ? await ctx.db.get("calls", id) : null
     if (!call || call.organizationId !== args.organizationId)
@@ -367,4 +392,53 @@ export const transcript = internalQuery({
       }),
     }
   },
+})
+
+export const dashboardGet = query({
+  args: { organizationId: v.string(), id: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    return publicBot(await ownedBot(ctx, args.organizationId, args.id))
+  },
+})
+export const dashboardWrite = action({
+  args: {
+    organizationId: v.string(),
+    kind: v.union(
+      v.literal("bot"),
+      v.literal("provider"),
+      v.literal("removeBot"),
+      v.literal("removeProvider")
+    ),
+    id: v.optional(v.string()),
+    body: v.string(),
+  },
+  returns: v.any(),
+  handler: (ctx, args): Promise<{ id: string; deleted?: boolean }> =>
+    args.kind === "bot"
+      ? ctx.runMutation(internal.voice.resources.save, {
+          organizationId: args.organizationId,
+          id: args.id,
+          input: JSON.parse(args.body),
+        })
+      : args.kind === "provider"
+        ? ctx.runMutation(internal.voice.resources.credential, {
+            organizationId: args.organizationId,
+            input: JSON.parse(args.body),
+          })
+        : ctx.runMutation(internal.voice.resources.remove, {
+            organizationId: args.organizationId,
+            id: args.id!,
+            providers: args.kind === "removeProvider",
+          }),
+})
+export const dashboardTranscript = query({
+  args: { organizationId: v.string(), id: v.string(), ...listArgs },
+  returns: v.any(),
+  handler: (
+    ctx,
+    args
+  ): Promise<{ object: string; has_more: boolean; data: unknown[] }> =>
+    ctx.runQuery(internal.voice.resources.transcript, args),
 })

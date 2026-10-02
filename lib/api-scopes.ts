@@ -1,10 +1,28 @@
 /** Shared REST, OAuth and dashboard permission catalog. Write includes read. */
 export const API_RESOURCES = [
   {
+    id: "calling",
+    label: "Calling",
+    group: "Calling",
+    description: "Manage voice calls and phone routing.",
+  },
+  {
     id: "ivrs",
     label: "IVRs",
-    group: "Messaging",
+    group: "Calling",
     description: "Manage call menus, prompts and routing.",
+  },
+  {
+    id: "voice_bots",
+    label: "Voice bots",
+    group: "Calling",
+    description: "Manage voice bots and their behavior.",
+  },
+  {
+    id: "voice_providers",
+    label: "Voice providers",
+    group: "Calling",
+    description: "Manage encrypted AI provider keys.",
   },
   {
     id: "media",
@@ -97,12 +115,6 @@ export const API_RESOURCES = [
     group: "Setup",
     description: "API request logs.",
   },
-  {
-    id: "voice_bots",
-    label: "Voice bots",
-    group: "Messaging",
-    description: "Voice bots and write-only provider credentials.",
-  },
 ] as const
 export type ApiResource = (typeof API_RESOURCES)[number]["id"]
 export type ScopeAccess = "read" | "write"
@@ -140,7 +152,14 @@ export function scopeAllows(
   resource: ApiResource,
   access: ScopeAccess
 ): boolean {
+  const previous =
+    resource === "calling"
+      ? "whatsapp"
+      : resource === "voice_providers"
+        ? "voice_bots"
+        : undefined
   return (
+    (previous !== undefined && scopeAllows(scopes, previous, access)) ||
     scopes.includes(`${resource}:write`) ||
     (access === "read" && scopes.includes(`${resource}:read`))
   )

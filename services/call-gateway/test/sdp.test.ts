@@ -80,3 +80,37 @@ test("outbound answer requires a passive DTLS peer, and preserves ICE credential
   assert.match(metaSdp(passive, "answer"), /a=ice-pwd:123456789012345678901234/)
   assert.throws(() => metaSdp(offer, "answer"))
 })
+test("accepts Meta's live offer, whose ice-pwd carries base64 padding", () => {
+  // Captured from a real user-initiated WhatsApp call (2026-10-02).
+  const live = [
+    "v=0",
+    "o=- 1790963543407 2 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "a=group:BUNDLE audio",
+    "a=msid-semantic: WMS 7da83f2b-4810-4fe9-b568-5c88eb1b1724",
+    "a=ice-lite",
+    "m=audio 3480 UDP/TLS/RTP/SAVPF 111 126",
+    "c=IN IP4 57.144.43.49",
+    "a=rtcp:9 IN IP4 0.0.0.0",
+    "a=candidate:2275956755 1 udp 2122260223 57.144.43.49 3480 typ host generation 0 network-cost 50",
+    "a=candidate:2684782176 1 udp 2122262783 2a03:2880:f312:131:face:b00c:0:699c 3480 typ host generation 0 network-cost 50",
+    "a=ice-ufrag:NvPeRHRlBReaRYCZ",
+    "a=ice-pwd:+219v9nKr3xSQIn8s+Fy8g==",
+    "a=fingerprint:sha-256 75:85:02:48:2F:A1:97:65:81:65:4C:B3:2D:13:72:84:8F:D4:BE:31:6E:A0:71:34:52:C3:7A:28:76:43:C6:71",
+    "a=setup:actpass",
+    "a=mid:audio",
+    "a=sendrecv",
+    "a=msid:7da83f2b-4810-4fe9-b568-5c88eb1b1724 WhatsAppTrack1",
+    "a=rtcp-mux",
+    "a=rtpmap:111 opus/48000/2",
+    "a=rtcp-fb:111 transport-cc",
+    "a=fmtp:111 maxaveragebitrate=20000;maxplaybackrate=16000;minptime=20;sprop-maxcapturerate=16000;useinbandfec=1",
+    "a=rtpmap:126 telephone-event/8000",
+    "a=maxptime:20",
+    "a=ptime:20",
+    "a=ssrc:613016344 cname:WhatsAppAudioStream1",
+    "",
+  ].join("\r\n")
+  assert.match(metaSdp(live, "offer"), /a=ice-pwd:\+219v9nKr3xSQIn8s\+Fy8g==/)
+})

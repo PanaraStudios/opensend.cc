@@ -11,6 +11,7 @@ test("credential IDs and secrets discourage browsers and password managers", () 
     assert.equal(props.autoComplete, secret ? "new-password" : "off")
     assert.equal(props["data-1p-ignore"], true)
     assert.equal(props["data-lpignore"], "true")
+    assert.equal(props["data-bwignore"], "true")
     assert.equal(props.spellCheck, false)
   }
 })
@@ -50,4 +51,22 @@ test("ordinary inputs retain their autofill behavior", () => {
   )
   assert.match(html, /autoComplete="email"/i)
   assert.doesNotMatch(html, /data-1p-ignore|data-lpignore/)
+})
+
+test("secret fields get a service name while account passwords keep credential semantics", () => {
+  const html = renderToStaticMarkup(
+    createElement(Input, { credential: true, type: "password" })
+  )
+  assert.match(html, /autoComplete="new-password"/i)
+  assert.match(html, /name="service-secret"/)
+  assert.match(html, /data-bwignore="true"/)
+  const login = renderToStaticMarkup(
+    createElement(Input, {
+      type: "password",
+      name: "password",
+      autoComplete: "current-password",
+    })
+  )
+  assert.match(login, /name="password"/)
+  assert.match(login, /autoComplete="current-password"/i)
 })

@@ -74,11 +74,23 @@ export const consume = internalMutation({
           gatewayAt: at,
         })
       } else if (event === "media_up")
-        await ctx.db.patch("calls", row._id, { mediaUpAt: at, gatewayAt: at })
+        await ctx.db.patch("calls", row._id, {
+          mediaUpAt: at,
+          gatewayAt: at,
+          ...(row.test
+            ? {
+                status: "connected" as const,
+                connectedAt: row.connectedAt ?? at,
+                observedAt: at,
+              }
+            : {}),
+        })
       else if (event === "hangup" && at >= row.observedAt)
         await ctx.scheduler.runAfter(
           0,
-          internal.calling.callActions.gatewayHangup,
+          row.test
+            ? internal.calling.playground.ended
+            : internal.calling.callActions.gatewayHangup,
           { id: row._id, at, reason: string(data.reason) }
         )
     }

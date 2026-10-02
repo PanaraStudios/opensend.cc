@@ -82,11 +82,17 @@ export function fileStorageTests(
       await owner
         .getByRole("button", { name: "More message options", exact: true })
         .click()
-      await owner.getByRole("button", { name: "Attach file", exact: true }).click()
+      await owner
+        .getByRole("button", { name: "Attach file", exact: true })
+        .click()
       await owner
         .getByRole("dialog", { name: "Attach file" })
         .getByLabel("Attach file", { exact: true })
         .setInputFiles(file)
+      await owner
+        .getByRole("dialog", { name: "Attach file" })
+        .getByRole("button", { name: "Done", exact: true })
+        .click({ timeout: 45_000 })
       await expect(
         owner.getByRole("button", { name: `Remove ${file.name}` })
       ).toBeVisible({ timeout: 45_000 })

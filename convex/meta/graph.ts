@@ -6,7 +6,11 @@ import { decryptSecret } from "../secrets"
 import { publicFetch } from "../../lib/net/public-fetch"
 import { localHttpOrigin } from "../../lib/meta/graph-url"
 import { ConvexError } from "convex/values"
-import { MetaError, parseGraphResponse } from "../../lib/meta/errors"
+import {
+  MetaError,
+  metaErrorReason,
+  parseGraphResponse,
+} from "../../lib/meta/errors"
 import { readTokenInfo, type TokenInfo } from "../../lib/meta/whatsapp-account"
 import { graphUrl, type GraphQuery } from "../../lib/meta/graph-url"
 
@@ -70,17 +74,27 @@ export async function graph<T = unknown>(input: {
     maxBytes: 5 * 1024 * 1024,
     localOrigin,
   })
-  return parseGraphResponse(response.status, await response.text()) as T
+  return parseGraphResponse(response.status, await response.text(), [
+    input.token,
+  ]) as T
 }
 
 /** What the dashboard shows for a failed Graph action: a ConvexError's own
     message, Meta's reason, or a network failure. */
 export function graphFailure(error: unknown) {
-  return error instanceof ConvexError && typeof error.data === "string"
-    ? error.data
-    : error instanceof MetaError
-      ? `Meta refused the request: ${error.message}`
-      : "Could not reach Meta. Try again."
+  if (error instanceof ConvexError) {
+    if (typeof error.data === "string") return error.data
+    if (
+      error.data &&
+      typeof error.data === "object" &&
+      "message" in error.data &&
+      typeof error.data.message === "string"
+    )
+      return error.data.message
+  }
+  return error instanceof MetaError
+    ? `Meta refused the request: ${metaErrorReason(error)}`
+    : "Could not reach Meta. Try again."
 }
 
 export const TOKEN_REFUSED =
@@ -98,9 +112,11 @@ export async function friendly<T>(
   } catch (e) {
     if (e instanceof MetaError && e.action === "token_invalid") {
       if (!connectionId)
-        throw new ConvexError("Meta refused the token. Check it and try again.")
+        throw new ConvexError(
+          `Meta refused the token. Check it and try again. ${metaErrorReason(e)}`
+        )
       await markTokenInvalid(ctx, connectionId)
-      throw new ConvexError(TOKEN_REFUSED)
+      throw new ConvexError(`${TOKEN_REFUSED} ${metaErrorReason(e)}`)
     }
     throw new ConvexError(graphFailure(e))
   }

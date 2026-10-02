@@ -5,6 +5,7 @@ import {
   classifyGraphError,
   parseGraphError,
   parseGraphResponse,
+  metaErrorReason,
 } from "./errors"
 
 const classify = (code?: number, status = 400, isTransient = false) =>
@@ -34,6 +35,51 @@ describe("classifyGraphError", () => {
     assert.equal(classify(190, 401), "token_invalid")
     assert.equal(classify(190, 500, true), "token_invalid")
   })
+})
+
+test("Graph reasons retain user title, user message, details and message without echoed tokens", () => {
+  const token = "app-id|secret-token"
+  const body = JSON.stringify({
+    error: {
+      code: 100,
+      error_user_title: "Invalid settings",
+      error_user_msg: `Check callback permissions ${token}`,
+      error_data: {
+        details: `callback_permission_status must be ENABLED or DISABLED ${encodeURIComponent(token)}`,
+      },
+      message: "(#100) Invalid parameter",
+      access_token: token,
+    },
+  })
+  const info = parseGraphError(400, body, [token])
+  const reason = metaErrorReason(new MetaError(info))
+  for (const value of [
+    "Invalid settings",
+    "Check callback permissions",
+    "callback_permission_status must be ENABLED or DISABLED",
+    "(#100) Invalid parameter",
+  ])
+    assert.ok(reason.includes(value))
+  assert.ok(!reason.includes(token))
+  assert.ok(!reason.includes(encodeURIComponent(token)))
+  assert.throws(
+    () => parseGraphResponse(400, body, [token]),
+    (error: unknown) =>
+      error instanceof MetaError && metaErrorReason(error) === reason
+  )
+  assert.equal(
+    metaErrorReason(
+      new MetaError({
+        status: 400,
+        isTransient: false,
+        title: "Same",
+        userMessage: "Same",
+        details: "Same",
+        message: "Same",
+      })
+    ),
+    "Same"
+  )
 })
 
 describe("parseGraphError", () => {

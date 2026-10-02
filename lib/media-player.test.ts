@@ -6,6 +6,10 @@ import {
   clampMediaTime,
   createAudioCoordinator,
   formatMediaTime,
+  AUDIO_WAVEFORM_BARS,
+  audioTimeText,
+  downsampleAudioPeaks,
+  fallbackAudioPeaks,
   mediaKeyAction,
   nextPlaybackSpeed,
   isVideoNoteFrame,
@@ -35,6 +39,46 @@ test("playback speed wraps through the supported rates", () => {
     assert.equal(speed, next)
   }
   assert.equal(nextPlaybackSpeed(0), 1)
+})
+
+test("audio text shows the duration at rest and the playhead during playback or a mid-way pause", () => {
+  assert.equal(audioTimeText(0, 95, false), "1:35")
+  assert.equal(audioTimeText(0, 95, true), "0:00")
+  assert.equal(audioTimeText(9.9, 95, true), "0:09")
+  assert.equal(audioTimeText(9.9, 95, false), "0:09")
+  assert.equal(audioTimeText(0, Infinity, false), "0:00")
+})
+
+test("waveform peaks preserve transients, polarity and both channels", () => {
+  assert.deepEqual(
+    downsampleAudioPeaks(
+      [
+        new Float32Array([0, -0.2, 0, 0.1, 0, 0.4, 0, 0]),
+        new Float32Array([0, 0, 0, 0, -0.8, 0, 0, 0.4]),
+      ],
+      4
+    ),
+    [0.25, 0.125, 1, 0.5]
+  )
+  assert.deepEqual(downsampleAudioPeaks([new Float32Array(8)], 4), [0, 0, 0, 0])
+  assert.deepEqual(downsampleAudioPeaks([], 4), [0, 0, 0, 0])
+  assert.deepEqual(
+    downsampleAudioPeaks([new Float32Array([NaN, Infinity, -Infinity, 1])], 2),
+    [0, 1]
+  )
+  assert.equal(
+    downsampleAudioPeaks([new Float32Array([0.2])]).length,
+    AUDIO_WAVEFORM_BARS
+  )
+})
+
+test("fallback waveform is stable per source, bounded and has the same bar count as decoded audio", () => {
+  const peaks = fallbackAudioPeaks("https://example.test/audio")
+  assert.deepEqual(peaks, fallbackAudioPeaks("https://example.test/audio"))
+  assert.notDeepEqual(peaks, fallbackAudioPeaks("https://example.test/other"))
+  assert.equal(peaks.length, AUDIO_WAVEFORM_BARS)
+  assert.ok(peaks.every((peak) => peak >= 0.15 && peak <= 1))
+  assert.equal(fallbackAudioPeaks("", 3).length, 3)
 })
 
 test("video preview keeps signed queries, explicit fragments and server posters intact", () => {
@@ -110,13 +154,22 @@ test("custom players provide labeled controls and never expose native browser co
   const audio = renderToStaticMarkup(
     React.createElement(AudioPlayer, { src, compact: true })
   )
-  for (const label of [
-    "voice-player",
-    "Play voice note",
-    "Seek voice note",
-    "Playback speed 1×",
-  ])
+  for (const label of ["voice-player", "Play voice note", "Seek voice note"])
     assert.ok(audio.includes(label))
+  assert.match(audio, /Playback speed 1×/)
+  assert.doesNotMatch(audio, /data-slot="avatar"/)
+  assert.match(audio, /role="slider"/)
+  assert.match(audio, /aria-valuetext="0:00 of 0:00"/)
+  assert.equal(
+    (audio.match(/bg-muted-foreground\/40/g) ?? []).length,
+    AUDIO_WAVEFORM_BARS
+  )
+  const file = renderToStaticMarkup(
+    React.createElement(AudioPlayer, { src, label: "recording.mp3" })
+  )
+  assert.match(file, /recording\.mp3/)
+  assert.match(file, /Seek audio/)
+  assert.doesNotMatch(file, /<svg[^>]*lucide-mic/)
   assert.doesNotMatch(audio, /<audio[^>]*controls/)
   assert.match(audio, /<audio[^>]*preload="metadata"/)
   const video = renderToStaticMarkup(React.createElement(VideoPlayer, { src }))

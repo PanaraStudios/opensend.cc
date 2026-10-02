@@ -1,4 +1,7 @@
 "use client"
+import Link from "next/link"
+import { Switch } from "@/components/ui/switch"
+import { Field, FieldLabel } from "@/components/ui/field"
 import {
   createContext,
   useContext,
@@ -12,6 +15,7 @@ import { useAction, useMutation } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { DtmfKeypad } from "./dtmf-keypad"
 import { BrowserPhone, RingSound } from "@/lib/calling/browser"
 import {
   softphoneTransition,
@@ -19,7 +23,7 @@ import {
   callTimer,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import {
@@ -50,6 +54,18 @@ interface SoftphoneContext {
   callLabel: string
   open: () => void
   toggleOnline: () => void
+  currentId: Id<"calls"> | null
+  phase: SoftphonePhase
+  muted: boolean
+  mute: () => void
+  dtmf: (digit: string) => Promise<void>
+  hangup: () => Promise<void>
+  testCall: (
+    accountId: Id<"channelAccounts">,
+    target: { ivrId: Id<"ivrs"> } | { botId: Id<"voiceBots"> },
+    contactId?: Id<"contacts">,
+    microphoneId?: string
+  ) => Promise<Id<"calls">>
   outbound: (
     accountId: Id<"channelAccounts">,
     recipient: string
@@ -131,6 +147,13 @@ function TeamSoftphone({
   const [error, setError] = useState("")
   const [queues, setQueues] = useState<string[]>([])
   const [target, setTarget] = useState("")
+  const [microphoneId, setMicrophoneId] = useState("default")
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([])
+  const setup = useTeamQuery(
+    api.calling.playgroundState.setup,
+    {},
+    { enabled: !!organizationId }
+  )
   const [now, setNow] = useState(0)
   const audio = useRef<HTMLAudioElement>(null)
   const phone = useRef<BrowserPhone | null>(null)
@@ -152,11 +175,33 @@ function TeamSoftphone({
   const answerAction = useAction(api.calling.softphone.answer)
   const hangupAction = useAction(api.calling.softphone.hangup)
   const outboundAction = useAction(api.calling.softphone.outbound)
+  const startTest = useAction(api.calling.playground.start)
+  const hangupTest = useAction(api.calling.playground.hangup)
+  const testCallId = useRef<Id<"calls"> | null>(null)
   const controlAction = useAction(api.calling.softphone.control)
   const presence = useMutation(api.calling.softphoneState.presence)
   const claim = useMutation(api.calling.softphoneState.claim)
   const release = useMutation(api.calling.softphoneState.release)
   const args = { organizationId, browserId }
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    const refresh = () => {
+      void navigator.mediaDevices
+        ?.enumerateDevices()
+        .then((devices) => {
+          if (alive)
+            setMicrophones(devices.filter((d) => d.kind === "audioinput"))
+        })
+        .catch(() => undefined)
+    }
+    refresh()
+    navigator.mediaDevices?.addEventListener("devicechange", refresh)
+    return () => {
+      alive = false
+      navigator.mediaDevices?.removeEventListener("devicechange", refresh)
+    }
+  }, [open])
   const current = state?.calls.find((c) => c._id === currentId)
   const incoming =
     online && !currentId
@@ -172,6 +217,7 @@ function TeamSoftphone({
 
   function reset() {
     active.current = null
+    testCallId.current = null
     seen.current = null
     setCurrentId(null)
     setMuted(false)
@@ -191,7 +237,11 @@ function TeamSoftphone({
     const browser = phone.current
     phone.current = null
     try {
-      if (active.current) await hangupAction({ ...args, id: active.current })
+      if (active.current)
+        await (testCallId.current ? hangupTest : hangupAction)({
+          ...args,
+          id: active.current,
+        })
     } catch (reason) {
       fail(reason)
     } finally {
@@ -208,7 +258,7 @@ function TeamSoftphone({
       operation.current = false
     }
   }
-  async function goOnline() {
+  async function goOnline(selectedMicrophone = microphoneId) {
     if (operation.current || !organizationId) return
     operation.current = true
     dispatch("online")
@@ -231,15 +281,17 @@ function TeamSoftphone({
           for (let i = 0; i < 40 && alive.current; i++) {
             const call = latest.current.find(
               (c) =>
-                c.agentLeaseId === expectedLease.current &&
-                c.status === "connected"
+                (c.agentLeaseId === expectedLease.current ||
+                  (c.test && c.testBrowserId === browserId)) &&
+                (c.status === "connected" || (c.test && c.status === "ringing"))
             )
             if (call) {
               active.current = call._id
               started.current = Date.now()
               dispatch("answer")
               setCurrentId(call._id)
-              setOpen(true)
+              if (call.test) testCallId.current = call._id
+              else setOpen(true)
               return true
             }
             await new Promise((resolve) => setTimeout(resolve, 100))
@@ -249,7 +301,7 @@ function TeamSoftphone({
         connected: () => {
           if (alive.current) {
             dispatch("connected")
-            setOpen(true)
+            if (!testCallId.current) setOpen(true)
           }
         },
         ended: () => {
@@ -260,6 +312,7 @@ function TeamSoftphone({
           void goAway().catch(() => undefined)
         },
       }))
+      browser.setMicrophone(selectedMicrophone)
       await browser.microphone()
       await browser.register(credential)
       if (!alive.current) {
@@ -334,7 +387,10 @@ function TeamSoftphone({
     operation.current = true
     dispatch("hangup")
     try {
-      await hangupAction({ ...args, id: active.current })
+      await (testCallId.current ? hangupTest : hangupAction)({
+        ...args,
+        id: active.current,
+      })
       await phone.current?.hangup()
       reset()
     } catch (reason) {
@@ -376,7 +432,7 @@ function TeamSoftphone({
       clearInterval(tick)
       ring.current?.close()
       if (active.current)
-        void hangupAction({
+        void (testCallId.current ? hangupTest : hangupAction)({
           organizationId,
           browserId,
           id: active.current,
@@ -385,7 +441,7 @@ function TeamSoftphone({
       if (phone.current)
         void revoke({ organizationId, browserId }).catch(() => undefined)
     }
-  }, [organizationId, browserId, hangupAction, revoke])
+  }, [organizationId, browserId, hangupAction, hangupTest, revoke])
   useEffect(() => {
     if (!online) return
     let stopped = false,
@@ -438,7 +494,10 @@ function TeamSoftphone({
   useEffect(() => {
     if (!currentId || !state) return
     const owned = state.calls.some(
-      (c) => c._id === currentId && c.agentLeaseId === expectedLease.current
+      (c) =>
+        c._id === currentId &&
+        (c.agentLeaseId === expectedLease.current ||
+          (c.test && c.testBrowserId === browserId))
     )
     if (owned) {
       seen.current = currentId
@@ -450,7 +509,7 @@ function TeamSoftphone({
       void phone.current?.hangup().catch(() => undefined)
       reset()
     }
-  }, [state, currentId, now])
+  }, [state, currentId, now, browserId])
   const transferItems = [
     ...(state?.agents ?? [])
       .filter(
@@ -468,7 +527,9 @@ function TeamSoftphone({
       value={{
         online,
         busy: !!currentId || working || phase === "connecting",
-        available: !!organizationId,
+        available:
+          !!organizationId &&
+          (!!currentId || !!setup?.numbers.some((n) => n.mode === "gateway")),
         connecting: phase === "connecting",
         working,
         callLabel: incoming
@@ -479,6 +540,36 @@ function TeamSoftphone({
         open: () => setOpen(true),
         toggleOnline: () => {
           void (online ? goAway() : goOnline()).catch(fail)
+        },
+        currentId,
+        phase,
+        muted,
+        mute: () => {
+          phone.current?.mute(!muted)
+          setMuted(!muted)
+        },
+        dtmf: async (digit) => {
+          await phone.current?.dtmf(digit)
+        },
+        hangup,
+        testCall: async (
+          accountId,
+          target,
+          contactId,
+          microphoneId = "default"
+        ) => {
+          if (active.current || operation.current)
+            throw new Error("Finish your current call first")
+          if (!online) await goOnline(microphoneId)
+          if (!phone.current) throw new Error("Calling could not connect")
+          operation.current = true
+          try {
+            phone.current.setMicrophone(microphoneId)
+            await phone.current.microphone()
+            return await startTest({ ...args, accountId, ...target, contactId })
+          } finally {
+            operation.current = false
+          }
         },
         outbound,
       }}
@@ -499,6 +590,47 @@ function TeamSoftphone({
                 "Browser softphone"}
             </DialogDescription>
           </DialogHeader>
+          {!currentId ? (
+            <div className="flex flex-col gap-4">
+              <Field orientation="horizontal">
+                <FieldLabel>Online</FieldLabel>
+                <Switch
+                  aria-label="Online"
+                  checked={online}
+                  disabled={working || phase === "connecting"}
+                  onCheckedChange={(next) => {
+                    void (next ? goOnline() : goAway()).catch(fail)
+                  }}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Microphone</FieldLabel>
+                <OptionSelect
+                  aria-label="Softphone microphone"
+                  value={microphoneId}
+                  items={[
+                    { value: "default", label: "Default microphone" },
+                    ...microphones
+                      .filter((d) => d.deviceId !== "default")
+                      .map((d, i) => ({
+                        value: d.deviceId,
+                        label: d.label || `Microphone ${i + 1}`,
+                      })),
+                  ]}
+                  onChange={setMicrophoneId}
+                  disabled={online || working}
+                />
+              </Field>
+              <Link
+                href="/playground/calls"
+                data-slot="button"
+                className={buttonVariants({ variant: "outline" })}
+                onClick={() => setOpen(false)}
+              >
+                View calls
+              </Link>
+            </div>
+          ) : null}
           <p role="status">
             {currentId
               ? `${phase} · ${callTimer(callElapsed(current?.connectedAt, now))}`
@@ -578,21 +710,12 @@ function TeamSoftphone({
                   Transfer
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2" aria-label="DTMF keypad">
-                {"123456789*0#".split("").map((digit) => (
-                  <Button
-                    key={digit}
-                    variant="outline"
-                    disabled={phase !== "active"}
-                    aria-label={`Send ${digit}`}
-                    onClick={() => {
-                      void phone.current?.dtmf(digit).catch(fail)
-                    }}
-                  >
-                    {digit}
-                  </Button>
-                ))}
-              </div>
+              <DtmfKeypad
+                disabled={phase !== "active"}
+                send={(digit) => {
+                  void phone.current?.dtmf(digit).catch(fail)
+                }}
+              />
             </div>
           ) : null}
         </DialogContent>

@@ -1,8 +1,7 @@
+export const metadata: Metadata = { title: { absolute: "IVR · opensend.cc" } }
 import type { Metadata } from "next"
-import { PlaygroundComingSoon } from "@/components/dashboard/playground/coming-soon"
-
-export const metadata: Metadata = { title: "IVR" }
+import { IvrList } from "@/components/dashboard/playground/ivr"
 
 export default function Page() {
-  return <PlaygroundComingSoon tab="ivr" />
+  return <IvrList />
 }

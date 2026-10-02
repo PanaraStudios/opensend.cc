@@ -728,6 +728,7 @@ export function SettingsSso() {
           <Field>
             <FieldLabel htmlFor="sso-secret">Client secret</FieldLabel>
             <Input
+              credential
               id="sso-secret"
               name="clientSecret"
               type="password"

@@ -47,7 +47,7 @@ export async function authorize(
     if (args.caller.organizationId !== args.organizationId)
       throw notFound("Call")
     await requireCaller(ctx, args.caller, {
-      resource: "whatsapp",
+      resource: "calling",
       access: write ? "write" : "read",
     })
   } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")
@@ -83,6 +83,7 @@ export async function payload(
   return {
     object: "whatsapp_call" as const,
     id: row._id,
+    test: row.test ?? false,
     account_id: row.accountId,
     wacid: row.wacid ?? null,
     direction: row.direction,
@@ -119,6 +120,7 @@ export async function payload(
     ivr_path: row.ivrPath ?? [],
     ivr_outcome: row.ivrOutcome ?? null,
     bot_id: row.botId ?? null,
+    bot_name: row.botConfig?.name ?? null,
     bot_outcome: row.botOutcome ?? null,
     bot_summary: row.botSummary ?? null,
     bot_duration: row.botDuration ?? null,
@@ -131,6 +133,7 @@ export async function callEvent(
   row: Doc<"calls">,
   status: string
 ) {
+  if (row.test) return
   await emitEvent(
     ctx,
     row.organizationId,
@@ -528,7 +531,14 @@ export const finish = internalMutation({
       patch.observedAt = Date.now()
       if (args.status === "connected")
         patch.connectedAt = row.connectedAt ?? Date.now()
-      if (CALL_TERMINAL.has(args.status)) patch.endedAt = Date.now()
+      if (CALL_TERMINAL.has(args.status)) {
+        patch.endedAt = Date.now()
+        if (row.test && row.connectedAt)
+          patch.duration = Math.max(
+            0,
+            Math.round((Date.now() - row.connectedAt) / 1000)
+          )
+      }
     }
     if (args.error) {
       patch.error = args.error

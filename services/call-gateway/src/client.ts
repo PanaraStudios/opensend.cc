@@ -81,6 +81,9 @@ export class CallGatewayClient implements GatewayApi {
   async control(request: AgentControl) {
     await this.post("/control", request)
   }
+  async playground(request: { callId: string; extension: string }) {
+    await this.post("/playground", request)
+  }
   async healthy() {
     const response = await fetch(new URL("/healthz", this.baseUrl), {
       signal: AbortSignal.timeout(2000),

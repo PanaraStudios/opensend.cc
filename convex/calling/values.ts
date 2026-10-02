@@ -16,6 +16,7 @@ const media = v.union(
 export const callPayloadFields = {
   object: v.literal("whatsapp_call"),
   id: v.id("calls"),
+  test: v.optional(v.boolean()),
   account_id: v.id("channelAccounts"),
   wacid: nullableString,
   direction: v.union(v.literal("inbound"), v.literal("outbound")),
@@ -43,6 +44,7 @@ export const callPayloadFields = {
   ivr_id: v.union(v.id("ivrs"), v.null()),
   ivr_path: v.array(pathEntry),
   ivr_outcome: v.union(ivrAction, v.null()),
+  bot_name: v.optional(v.union(v.string(), v.null())),
   bot_id: v.union(v.id("voiceBots"), v.null()),
   bot_outcome: v.union(botOutcome, v.null()),
   bot_summary: nullableString,

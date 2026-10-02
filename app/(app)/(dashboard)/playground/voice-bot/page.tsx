@@ -1,8 +1,9 @@
+export const metadata: Metadata = {
+  title: { absolute: "Voice bots · opensend.cc" },
+}
 import type { Metadata } from "next"
-import { PlaygroundComingSoon } from "@/components/dashboard/playground/coming-soon"
-
-export const metadata: Metadata = { title: "Voice bot" }
+import { VoiceBotList } from "@/components/dashboard/playground/voice-bots"
 
 export default function Page() {
-  return <PlaygroundComingSoon tab="voice-bot" />
+  return <VoiceBotList />
 }

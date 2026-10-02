@@ -1,3 +1,4 @@
+import { promptRendererName } from "./ivr-renderers"
 export interface PromptRenderer {
   readonly name: string
   render(
@@ -78,4 +79,30 @@ export async function verifyPrompt(
     bytes,
     content(callId, fileId, expires)
   )
+}
+
+export function renderSpec(
+  d: import("./ivr").IvrDefinition,
+  p: Extract<import("./ivr").IvrPrompt, { kind: "tts" }>
+) {
+  return d.promptVoice
+    ? {
+        text: p.text,
+        language: d.promptVoice.language,
+        voice: p.voice ?? d.promptVoice.voice,
+        renderer: promptRendererName(d.promptVoice.provider),
+      }
+    : {
+        text: p.text,
+        language: d.language,
+        voice: p.voice,
+        renderer: IVR_RENDERER,
+      }
+}
+export function renderHash(
+  d: import("./ivr").IvrDefinition,
+  p: Extract<import("./ivr").IvrPrompt, { kind: "tts" }>
+) {
+  const r = renderSpec(d, p)
+  return promptHash(r.text, r.language, r.voice, r.renderer)
 }

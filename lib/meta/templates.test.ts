@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 import {
   EMPTY_TEMPLATE_FORM,
   TemplateVariablesMissing,
+  TemplateHeaderMediaMissing,
   componentsFromForm,
   componentsParameterFormat,
   formFromComponents,
@@ -281,22 +282,103 @@ describe("templateSendComponents", () => {
       ]
     )
   })
-  it("links a media header, falling back to a public sample", () => {
+  it("links a media header supplied for this send", () => {
     const components = componentsFromForm({
       ...EMPTY_TEMPLATE_FORM,
       headerFormat: "IMAGE",
       headerSample: "https://cdn.example/sale.png",
       body: "Our sale is on.",
     })
-    assert.deepEqual(templateSendComponents(components, "positional", {}), [
-      {
-        type: "header",
-        parameters: [
-          { type: "image", image: { link: "https://cdn.example/sale.png" } },
-        ],
-      },
-    ])
+    assert.deepEqual(
+      templateSendComponents(components, "positional", {
+        header_media: "https://cdn.example/sale.png",
+      }),
+      [
+        {
+          type: "header",
+          parameters: [
+            { type: "image", image: { link: "https://cdn.example/sale.png" } },
+          ],
+        },
+      ]
+    )
   })
+  for (const format of ["IMAGE", "VIDEO", "DOCUMENT"] as const) {
+    const media = format.toLowerCase()
+    const components = componentsFromForm({
+      ...EMPTY_TEMPLATE_FORM,
+      headerFormat: format,
+      headerSample: "4::meta-review-handle",
+      body: "An update",
+    })
+    it(`builds a ${format} header from a provided file`, () => {
+      assert.deepEqual(
+        templateSendComponents(components, "positional", {
+          header_media: "opensend-file:provided",
+        }),
+        [
+          {
+            type: "header",
+            parameters: [{ type: media, [media]: { id: "provided" } }],
+          },
+        ]
+      )
+    })
+    it(`falls back to a stored ${format} sample`, () => {
+      const local = componentsFromForm({
+        ...EMPTY_TEMPLATE_FORM,
+        headerFormat: format,
+        headerSample: "opensend-file:sample",
+        body: "An update",
+      })
+      assert.deepEqual(templateSendComponents(local, "positional", {}), [
+        {
+          type: "header",
+          parameters: [{ type: media, [media]: { id: "sample" } }],
+        },
+      ])
+      assert.deepEqual(
+        templateSendComponents(local, "positional", {
+          header_media: "opensend-file:provided",
+        }),
+        [
+          {
+            type: "header",
+            parameters: [{ type: media, [media]: { id: "provided" } }],
+          },
+        ]
+      )
+    })
+    it(`requires a sendable ${format} header and never sends review handles`, () => {
+      assert.throws(
+        () => templateSendComponents(components, "positional", {}),
+        (error) =>
+          error instanceof TemplateHeaderMediaMissing &&
+          error.message === `This template needs a header ${media}.`
+      )
+      assert.throws(
+        () =>
+          templateSendComponents(components, "positional", {
+            header_media: "4::meta-review-handle",
+          }),
+        /Header media must be a file upload or a public HTTP URL/
+      )
+      assert.throws(
+        () =>
+          templateSendComponents(
+            componentsFromForm({
+              ...EMPTY_TEMPLATE_FORM,
+              headerFormat: format,
+              headerSample: "https://cdn.example/sample",
+              body: "An update",
+            }),
+            "positional",
+            {}
+          ),
+        TemplateHeaderMediaMissing
+      )
+    })
+  }
   it("names every missing variable", () => {
     assert.throws(
       () =>

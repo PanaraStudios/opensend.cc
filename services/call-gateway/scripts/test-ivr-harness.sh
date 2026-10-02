@@ -1,4 +1,4 @@
 #!/bin/sh
-# The shared harness includes the IVR DTMF, Pipecat and combined handoff flows.
+# Shared locked harness covers playground, IVR, Pipecat and combined handoffs.
 set -eu
 exec sh scripts/test-calling-harness.sh "$@"

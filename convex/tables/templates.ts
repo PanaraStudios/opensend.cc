@@ -40,6 +40,8 @@ export const whatsappTemplateValue = v.object({
   submittedAt: v.optional(v.number()),
   /** The last sync that changed this template. The WABA records every sync. */
   syncedAt: v.optional(v.number()),
+  /** Retained local sample, separate from Meta's review-only upload handle. */
+  sampleFileId: v.optional(v.id("storedFiles")),
 })
 
 export const resolvedTemplateValue = v.object({

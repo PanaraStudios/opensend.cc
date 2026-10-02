@@ -12,6 +12,7 @@ export interface BrowserAgentState {
 export interface BrowserAgentHarness {
   state: BrowserAgentState
   start: (credential: { extension: string; password: string }) => Promise<void>
+  dtmf: (digit: string) => void
   stats: () => Promise<BrowserAgentState>
   stop: () => Promise<void>
 }
@@ -71,6 +72,11 @@ window.agent = {
         },
       },
     })
+  },
+  dtmf(digit) {
+    const handler = invitation?.sessionDescriptionHandler as
+      SessionDescriptionHandler | undefined
+    if (!handler?.sendDtmf(digit)) throw new Error("RFC2833 sender unavailable")
   },
   async stats() {
     const handler = invitation?.sessionDescriptionHandler as

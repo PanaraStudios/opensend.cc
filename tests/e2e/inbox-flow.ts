@@ -132,12 +132,14 @@ export function inboxTests(
     await expect(owner.locator('[aria-label="Softphone"]')).toHaveCount(0)
 
     for (const [tab, route, title] of [
-      ["IVR", "ivr", "IVR testing is coming soon"],
-      ["Voice bot", "voice-bot", "Voice bot testing is coming soon"],
+      ["IVR", "ivr", "Create IVR"],
+      ["Voice bot", "voice-bot", "Create voice bot"],
     ]) {
       await owner.getByRole("tab", { name: tab, exact: true }).click()
       await expect(owner).toHaveURL(new RegExp(`/playground/${route}$`))
-      await expect(owner.getByText(title, { exact: true })).toBeVisible()
+      await expect(
+        owner.getByRole("button", { name: title, exact: true }).first()
+      ).toBeVisible()
     }
     await owner.getByRole("tab", { name: "Inbox", exact: true }).click()
     await shots(owner, "playground")

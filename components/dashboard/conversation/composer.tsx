@@ -23,7 +23,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { toast } from "@/components/ui/toast"
 import { OptionSelect } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
@@ -35,7 +40,7 @@ import { useClock } from "@/lib/time/use-clock"
 import {
   useApprovedTemplates,
   useConversationCommands,
-  useTemplateVariables,
+  useTemplateInputs,
   type ConversationDetail,
 } from "@/lib/messages/use-messages"
 import type { Id } from "@/convex/_generated/dataModel"
@@ -318,12 +323,24 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
             use={email ? "email" : "whatsapp"}
             from={conversation.accountId}
             disabled={sending}
+            onRemoved={() => {
+              setFileId(undefined)
+              setFilename("")
+            }}
             onUploaded={(id, file) => {
               setFileId(id)
               setFilename(file.name)
-              setAttachmentsOpen(false)
             }}
           />
+          <DialogFooter>
+            <Button
+              type="button"
+              disabled={!fileId}
+              onClick={() => setAttachmentsOpen(false)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
@@ -359,24 +376,32 @@ export function TemplateComposer({
   const [templateId, setTemplateId] = React.useState<string>()
   const [values, setValues] = React.useState<Record<string, string>>({})
   const templates = useApprovedTemplates(detail.account?.wabaId, search)
-  const variables = useTemplateVariables(conversation._id, templateId)
+  const inputs = useTemplateInputs(conversation._id, templateId)
+  const variables = inputs?.variables.filter((key) => key !== "header_media")
+  const header = inputs?.header
+  const [headerFileId, setHeaderFileId] = React.useState<Id<"storedFiles">>()
+  const [headerUploading, setHeaderUploading] = React.useState(false)
   const { sending, send } = useSend()
   const items = templates.map((row) => ({
     value: row._id,
     label: `${row.name} · ${row.whatsapp?.language ?? ""}`,
   }))
-  const missing = (variables ?? []).some((key) => !values[key]?.trim())
+  const missing =
+    (variables ?? []).some((key) => !values[key]?.trim()) ||
+    !!(header && !header.sampleFileId && !headerFileId)
 
   return (
     <form
       className="flex flex-col gap-3"
       onSubmit={async (event) => {
         event.preventDefault()
-        if (!templateId || missing || sending) return
+        if (!templateId || !inputs || missing || headerUploading || sending)
+          return
         const sent = await send({
           id: conversation._id,
           template: {
             id: templateId as Id<"templates">,
+            headerFileId,
             variables: Object.fromEntries(
               (variables ?? []).map((key) => [key, values[key] ?? ""])
             ),
@@ -386,6 +411,8 @@ export function TemplateComposer({
           onSent?.()
           setTemplateId(undefined)
           setValues({})
+          setHeaderFileId(undefined)
+          setHeaderUploading(false)
         }
       }}
     >
@@ -406,12 +433,34 @@ export function TemplateComposer({
             onChange={(value) => {
               setTemplateId(value)
               setValues({})
+              setHeaderFileId(undefined)
+              setHeaderUploading(false)
             }}
             items={items}
             search={{ onChange: setSearch, placeholder: "Search templates…" }}
             placeholder="Choose an approved template"
           />
         </Field>
+        {header ? (
+          <FileUploadField
+            key={templateId}
+            label={`Header ${header.format.toLowerCase()}`}
+            use="whatsapp"
+            from={conversation.accountId}
+            disabled={sending}
+            required={!header.sampleFileId}
+            accept={
+              header.format === "IMAGE"
+                ? "image/jpeg,image/png"
+                : header.format === "VIDEO"
+                  ? "video/mp4,video/3gpp"
+                  : undefined
+            }
+            onUploaded={setHeaderFileId}
+            onUploadingChange={setHeaderUploading}
+            onRemoved={() => setHeaderFileId(undefined)}
+          />
+        ) : null}
         {(variables ?? []).map((key) => (
           <Field key={key}>
             <FieldLabel htmlFor={`reply-variable-${key}`}>
@@ -433,7 +482,9 @@ export function TemplateComposer({
       <Button
         type="submit"
         className="self-end"
-        disabled={!templateId || variables === undefined || missing || sending}
+        disabled={
+          !templateId || !inputs || missing || headerUploading || sending
+        }
       >
         <SendIcon data-icon="inline-start" />
         Send template

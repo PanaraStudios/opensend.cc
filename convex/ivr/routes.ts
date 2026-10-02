@@ -60,4 +60,16 @@ export function registerIvrRoutes(http: HttpRouter) {
       }),
     }),
   })
+  apiRoute(http, {
+    method: "POST",
+    path: "/ivrs/{id}/render",
+    scope: { resource: "ivrs", access: "write" },
+    handler: async (ctx, { caller, params }) => ({
+      body: await ctx.runMutation(internal.ivr.renderState.retry, {
+        organizationId: caller.organizationId,
+        caller,
+        id: params.id,
+      }),
+    }),
+  })
 }
