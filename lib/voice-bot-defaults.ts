@@ -2,6 +2,7 @@ import {
   botVoiceGender,
   type VoiceGender,
 } from "../services/call-gateway/src/voice/voices"
+type LiveVoiceGender = { readonly value: string; readonly gender: VoiceGender }
 /** Pure phone-call copy shared by the create dialog and settings editor. */
 type LanguageCopy = readonly [
   name: string,
@@ -952,6 +953,10 @@ export function updateVoiceBotVoice<
     voice: string
     tts?: { provider: "gemini" | "sarvam" | "elevenlabs"; voice?: string }
   },
->(value: T): T {
-  return updateVoiceBotLanguage(value, value.language, botVoiceGender(value))
+>(value: T, elevenLabsVoices?: readonly LiveVoiceGender[]): T {
+  return updateVoiceBotLanguage(
+    value,
+    value.language,
+    botVoiceGender(value, elevenLabsVoices)
+  )
 }

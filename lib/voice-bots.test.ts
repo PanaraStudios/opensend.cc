@@ -103,3 +103,20 @@ test("tool arguments never select authority or destinations", () => {
     })
   )
 })
+
+test("contact note tools allow up to 10,000 plain text characters", () => {
+  assert.doesNotThrow(() =>
+    validateTool({
+      id: "note",
+      name: "create_note",
+      arguments: { text: "x".repeat(10000) },
+    })
+  )
+  assert.throws(() =>
+    validateTool({
+      id: "note",
+      name: "create_note",
+      arguments: { text: "x".repeat(10001) },
+    })
+  )
+})

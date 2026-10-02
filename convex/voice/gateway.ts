@@ -1,3 +1,4 @@
+import { createNote, noteBody } from "../contactNotes"
 import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
 import { ConvexError } from "convex/values"
 import { updateVoiceBotVoice } from "../../lib/voice-bot-defaults"
@@ -7,7 +8,10 @@ import {
 } from "../../lib/voice-caller-context"
 import { lookupContact } from "./callerContext"
 import { own as ownedIvr } from "../ivr/definitions"
-import { resolveCallPerson } from "../channels/identity"
+import {
+  resolveCallPerson,
+  resolveOrCreateCallPerson,
+} from "../channels/identity"
 import { knownUserForPhone } from "../calling/rows"
 import { minuteUsage } from "./usage"
 import { v } from "convex/values"
@@ -121,9 +125,27 @@ export const session = internalMutation({
           }
         )
       : undefined
+    let liveVoices:
+      { value: string; gender: "female" | "male" | "unknown" }[] | undefined
+    const tts = call.botConfig!.tts
+    if (
+      call.botConfig!.engine !== "gemini_live" &&
+      tts?.provider === "elevenlabs"
+    ) {
+      const cache = (
+        await ctx.db
+          .query("elevenLabsVoiceCaches")
+          .withIndex("by_credentialId", (q) =>
+            q.eq("credentialId", tts.credentialId)
+          )
+          .take(1)
+      )[0]
+      // No row keeps the static Sarah/Adam fallback. An empty cache is unknown.
+      if (cache) liveVoices = cache.voices
+    }
     return {
-      ...updateVoiceBotVoice(call.botConfig!),
-      voiceGender: botVoiceGender(call.botConfig!),
+      ...updateVoiceBotVoice(call.botConfig!, liveVoices),
+      voiceGender: botVoiceGender(call.botConfig!, liveVoices),
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
@@ -225,7 +247,8 @@ async function execute(
       return profile
     }
     case "create_note": {
-      const person = await resolveCallPerson(ctx, call)
+      const body = noteBody(string(args.text))
+      const person = await resolveOrCreateCallPerson(ctx, call)
       if (person.contact || person.identity)
         await ctx.db.patch("calls", call._id, {
           ...(person.contact ? { contactId: person.contact._id } : {}),
@@ -239,13 +262,21 @@ async function execute(
         callId: call._id,
         eventId: crypto.randomUUID(),
         kind: "note",
-        text: string(args.text),
+        text: body,
         timestampMs: callTimestamp(call),
         timeline: "call",
       })
+      if (person.contact) {
+        const note = await createNote(ctx, person.contact, {
+          body,
+          author: { kind: "bot", id: call.botId!, name: call.botConfig!.name },
+          source: { callId: call._id },
+        })
+        return { noteId: note._id, storedOn: "contact" }
+      }
       return {
         storedOn: "call",
-        message: "Saved on the call record; contact notes are not available.",
+        message: "Saved on the call record; caller identity unavailable.",
       }
     }
     case "send_whatsapp_message": {

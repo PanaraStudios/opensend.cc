@@ -578,6 +578,7 @@ function IvrForm({ row }: { row: IvrResource }) {
             : [],
         voice: draft.promptVoice?.voice,
         provider: draft.promptVoice?.provider,
+        credentialId: draft.promptVoice?.credentialId,
       }}
     >
       <div className="flex min-w-0 flex-col gap-5">

@@ -330,6 +330,12 @@ export const remove = internalMutation({
           "credential_in_use",
           "Remove bots or IVR prompt voices using this credential first"
         )
+      const caches = await ctx.db
+        .query("elevenLabsVoiceCaches")
+        .withIndex("by_credentialId", (q) => q.eq("credentialId", row._id))
+        .take(5)
+      for (const cache of caches)
+        await ctx.db.delete("elevenLabsVoiceCaches", cache._id)
       await ctx.db.delete("voiceProviders", row._id)
     } else {
       const row = await ownedBot(ctx, args.organizationId, args.id)

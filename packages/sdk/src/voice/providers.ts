@@ -1,7 +1,11 @@
 import type { Opensend } from "../resend"
 import type { ChannelPage, ChannelRequestOptions } from "../channels/interfaces"
 import type { PaginationOptions } from "../common/interfaces/pagination-options.interface"
-import type { VoiceProviderCredential, CreateVoiceProvider } from "./interfaces"
+import type {
+  VoiceProviderCredential,
+  CreateVoiceProvider,
+  ElevenLabsVoiceList,
+} from "./interfaces"
 export class VoiceProviders {
   constructor(private readonly resend: Opensend) {}
   create(input: CreateVoiceProvider, options?: ChannelRequestOptions) {
@@ -18,6 +22,16 @@ export class VoiceProviders {
   remove(id: string) {
     return this.resend.delete<{ id: string; deleted: boolean }>(
       `/voice-providers/${encodeURIComponent(id)}`
+    )
+  }
+  listVoices(options?: { credentialId?: string; refresh?: boolean }) {
+    const query = new URLSearchParams()
+    if (options?.credentialId) query.set("credential_id", options.credentialId)
+    if (options?.refresh) query.set("refresh", "true")
+    const search = query.toString()
+    const prefix = search ? "?" + search : ""
+    return this.resend.get<ElevenLabsVoiceList>(
+      `/voice-providers/elevenlabs/voices${prefix}`
     )
   }
 }

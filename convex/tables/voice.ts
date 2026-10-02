@@ -49,6 +49,23 @@ export const botConfig = v.object({
   monthlyMinuteBudget: v.optional(v.number()),
   maxConcurrentCalls: v.optional(v.number()),
 })
+export const elevenLabsVoiceValue = v.object({
+  value: v.string(),
+  label: v.string(),
+  gender: v.union(v.literal("female"), v.literal("male"), v.literal("unknown")),
+  accent: v.optional(v.string()),
+  language: v.optional(v.string()),
+  description: v.optional(v.string()),
+  category: v.union(
+    v.literal("premade"),
+    v.literal("cloned"),
+    v.literal("professional"),
+    v.literal("generated"),
+    v.literal("famous"),
+    v.literal("high_quality"),
+    v.literal("unknown")
+  ),
+})
 export const voiceUsage = v.object({
   inputTokens: v.optional(v.number()),
   outputTokens: v.optional(v.number()),
@@ -67,6 +84,16 @@ export const voiceTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_provider", ["organizationId", "provider"]),
+  elevenLabsVoiceCaches: defineTable({
+    organizationId: v.string(),
+    credentialId: v.id("voiceProviders"),
+    refreshedAt: v.number(),
+    voices: v.array(elevenLabsVoiceValue),
+    error: v.optional(v.string()),
+    hasMore: v.optional(v.boolean()),
+  })
+    .index("by_credentialId", ["credentialId"])
+    .index("by_organizationId", ["organizationId"]),
   voiceBots: defineTable({
     organizationId: v.string(),
     ...botConfig.fields,

@@ -152,4 +152,22 @@ export function addVoiceTools(server: McpServer, opensend: Opensend) {
       )
     }
   )
+  server.registerTool(
+    "list-elevenlabs-voices",
+    {
+      title: "List ElevenLabs Voices",
+      description:
+        "List voices available to this team's ElevenLabs key. Names, gender, accent and category only. The key is never returned. Pass refresh to fetch again before the one-hour cache expires.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        credentialId: z.string().optional(),
+        refresh: z.boolean().optional(),
+      },
+    },
+    async ({ credentialId, refresh }) =>
+      channelOutput(
+        "Voice providers",
+        await opensend.voiceProviders.listVoices({ credentialId, refresh })
+      )
+  )
 }

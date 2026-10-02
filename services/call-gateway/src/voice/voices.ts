@@ -4,8 +4,10 @@
  * Sarah: https://github.com/elevenlabs/plugin/blob/main/skills/general/text-to-speech/SKILL.md
  * Adam: https://elevenlabs.io/docs/eleven-api/guides/how-to/text-to-speech/streaming
  * ElevenLabs: https://elevenlabs.io/docs/api-reference/voices/get (labels.gender)
+ * Sarah and Adam are gender fallbacks. The picker uses the live catalog.
  */
 export type VoiceGender = "female" | "male" | "unknown"
+type LiveVoiceGender = { readonly value: string; readonly gender: VoiceGender }
 export const VOICE_CATALOG = {
   gemini: [
     { value: "Zephyr", label: "Zephyr", gender: "female" },
@@ -79,7 +81,6 @@ export const VOICE_CATALOG = {
     { value: "rupali", label: "Rupali", gender: "female" },
   ],
   elevenlabs: [
-    { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel", gender: "female" },
     { value: "EXAVITQu4vr4xnSDxMaL", label: "Sarah", gender: "female" },
     { value: "pNInz6obpgDQGcFmaJgB", label: "Adam", gender: "male" },
   ],
@@ -88,20 +89,35 @@ export const GEMINI_VOICES = VOICE_CATALOG.gemini.map((v) => v.value)
 export const SARVAM_VOICES = VOICE_CATALOG.sarvam.map((v) => v.value)
 export function voiceGender(
   provider: keyof typeof VOICE_CATALOG,
-  voice: string
+  voice: string,
+  elevenLabsVoices?: readonly LiveVoiceGender[]
 ): VoiceGender {
+  // A provided list, even empty, is the account catalog. Do not guess from
+  // the static fallbacks, or a missing voice would keep the wrong gender.
+  if (provider === "elevenlabs" && elevenLabsVoices)
+    return (
+      elevenLabsVoices.find((item) => item.value === voice)?.gender ?? "unknown"
+    )
   return (
-    VOICE_CATALOG[provider].find((v) => v.value === voice)?.gender ?? "unknown"
+    VOICE_CATALOG[provider].find((item) => item.value === voice)?.gender ??
+    "unknown"
   )
 }
-export function botVoiceGender(config: {
-  engine: string
-  voice: string
-  tts?: { provider: keyof typeof VOICE_CATALOG; voice?: string }
-}): VoiceGender {
+export function botVoiceGender(
+  config: {
+    engine: string
+    voice: string
+    tts?: { provider: keyof typeof VOICE_CATALOG; voice?: string }
+  },
+  elevenLabsVoices?: readonly LiveVoiceGender[]
+): VoiceGender {
   return config.engine === "gemini_live"
     ? voiceGender("gemini", config.voice)
     : config.tts
-      ? voiceGender(config.tts.provider, config.tts.voice ?? "")
+      ? voiceGender(
+          config.tts.provider,
+          config.tts.voice ?? "",
+          elevenLabsVoices
+        )
       : "unknown"
 }

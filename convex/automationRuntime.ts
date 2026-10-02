@@ -700,7 +700,9 @@ export const dispatch = internalMutation({
             .eq("email", data.email as string)
         )
         .unique()
-    const payload = data.payload as Record<string, unknown>
+    const payload = (
+      event.type === "contact.note_created" ? data : data.payload
+    ) as Record<string, unknown>
     if (phase === "wait") {
       if (contact) {
         const page = await ctx.db

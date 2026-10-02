@@ -311,10 +311,11 @@ it("supports a WhatsApp step and known system events for triggers and reply wait
   )
 })
 
-it("all messaging reply events are valid triggers but custom system names are refused", () => {
+it("contact notes and messaging replies are valid triggers but unknown system names are refused", () => {
   assert.deepEqual(
     SYSTEM_EVENTS.map((event) => event.value),
     [
+      "contact.note_created",
       "opensend:whatsapp.message.received",
       "opensend:messenger.message.received",
       "opensend:instagram.message.received",

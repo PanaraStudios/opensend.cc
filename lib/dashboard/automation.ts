@@ -319,10 +319,13 @@ export function durationError(text: string): string | null {
 /* ------------------------------------------------------------ validation */
 
 export const RESERVED_EVENT_PREFIX = "opensend:"
-export const SYSTEM_EVENTS = messagingChannelValue.members.map(({ value }) => ({
-  value: `opensend:${value}.message.received`,
-  label: `${channelLabel(value)} message received`,
-}))
+export const SYSTEM_EVENTS = [
+  { value: "contact.note_created", label: "Contact note created" },
+  ...messagingChannelValue.members.map(({ value }) => ({
+    value: `opensend:${value}.message.received`,
+    label: `${channelLabel(value)} message received`,
+  })),
+]
 export function triggerEventError(name: string): string | null {
   return eventNameError(name, [], { allowSystem: true })
 }
@@ -632,8 +635,21 @@ export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
 
 /** What a test event sends when the schema is all there is to go on. */
 export function samplePayload(
-  event: Pick<AutomationEvent, "schema"> | undefined
+  event:
+    | (Pick<AutomationEvent, "schema"> & Partial<Pick<AutomationEvent, "name">>)
+    | undefined
 ): Record<string, unknown> {
+  if (event?.name === "contact.note_created")
+    return {
+      object: "contact_note",
+      id: "note-example",
+      contact_id: "contact-example",
+      body: "Follow up tomorrow.",
+      author: { kind: "bot", id: "bot-example", name: "Support" },
+      source: { call_id: "call-example" },
+      created_at: "2026-10-03T10:00:00.000Z",
+      updated_at: "2026-10-03T10:00:00.000Z",
+    }
   const samples = { string: "example", number: 1, boolean: true }
   return Object.fromEntries(
     (event?.schema ?? []).map((field) => [

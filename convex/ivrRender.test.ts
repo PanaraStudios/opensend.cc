@@ -111,7 +111,7 @@ test("render failure is per-prompt, secrets stay hidden and failed prompts can r
     { organizationId: f.owner.team, id: f.id }
   )
   expect(resource.prompt_status).toBe("failed")
-  expect(resource.prompt_renders[0].error).toContain("Check the key")
+  expect(resource.prompt_renders[0].error).toBe("Sarvam: [redacted]")
   expect(JSON.stringify(resource)).not.toContain("private-key-1234")
   expect(http).toHaveBeenCalledTimes(1)
   const retry = await f.owner.client.action(api.ivr.rendering.dashboardRender, {

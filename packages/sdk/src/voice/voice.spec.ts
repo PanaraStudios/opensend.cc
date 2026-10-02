@@ -46,6 +46,18 @@ it("voice resources preserve stage credentials, pagination, escaped IDs and rout
     "bot 1"
   )
   await client.voiceProviders.list({ limit: 3 })
+  await client.voiceProviders.listVoices()
+  expect(fetch.mock.calls.at(-1)![0]).toBe(
+    "https://api.example.test/voice-providers/elevenlabs/voices"
+  )
+  await client.voiceProviders.listVoices({
+    credentialId: "key/1",
+    refresh: true,
+  })
+  const voices = new URL(fetch.mock.calls.at(-1)![0])
+  expect(voices.pathname).toBe("/voice-providers/elevenlabs/voices")
+  expect(voices.searchParams.get("credential_id")).toBe("key/1")
+  expect(voices.searchParams.get("refresh")).toBe("true")
   await client.voiceProviders.remove("key/1")
   expect(fetch.mock.calls.at(-1)![0]).toBe(
     "https://api.example.test/voice-providers/key%2F1"

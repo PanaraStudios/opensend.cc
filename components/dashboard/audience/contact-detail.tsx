@@ -1,4 +1,5 @@
 "use client"
+import { ContactNotes } from "./contact-notes"
 import { SendMessageAction } from "../conversation/send-message-action"
 import { CallButton } from "@/components/dashboard/calling/call-button"
 import { contactIdentity } from "@/lib/dashboard/contacts"
@@ -428,6 +429,7 @@ function ContactPage({
               )}
             </section>
           </div>
+          <ContactNotes contactId={contact.id} />
           <ContactChannels contactId={contact.id} />
         </TabsContent>
         <TabsContent value="history">

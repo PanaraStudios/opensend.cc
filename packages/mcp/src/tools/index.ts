@@ -27,3 +27,5 @@ export { addCallingTools } from "./calling.js"
 
 export { addIvrTools } from "./ivrs.js"
 export { addVoiceTools } from "./voice.js"
+
+export { addContactNoteTools } from "./contactNotes.js"
