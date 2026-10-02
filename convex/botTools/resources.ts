@@ -268,6 +268,7 @@ export const remove = internalMutation({
       organizationId: args.organizationId,
       kind: "tool",
       id: row._id,
+      paginationOpts: { numItems: 20, cursor: null },
     })
     return { id: args.id, deleted: true }
   },

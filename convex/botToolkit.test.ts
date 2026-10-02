@@ -659,11 +659,13 @@ test("gateway declares attached tools, validates scalar save_field and durably d
     organizationId: f.organizationId,
     kind: "tool",
     id: tool.id,
+    paginationOpts: { numItems: 20, cursor: null },
   })
   await f.t.mutation(internal.botToolkitAccess.detach, {
     organizationId: f.organizationId,
     kind: "knowledge",
     id: f.baseId,
+    paginationOpts: { numItems: 20, cursor: null },
   })
   expect(
     await f.t.run((ctx) => ctx.db.get("voiceBots", bot.id as Id<"voiceBots">))
@@ -779,4 +781,50 @@ test("toolkit REST request and response bodies validate against the published Op
     "DELETE"
   )
   await check("/knowledge-bases/{id}", `/knowledge-bases/${base.id}`, "DELETE")
+})
+
+test("deleted attachment cleanup follows native pagination across teams and pages", async () => {
+  const f = await setup()
+  const bot = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.organizationId,
+    kind: "bot",
+    body: JSON.stringify({
+      name: "Reusable",
+      provider: "gemini",
+      credentialId: f.credentialId,
+      knowledgeBaseIds: [f.baseId],
+    }),
+  })
+  const foreignId = await f.t.run(async (ctx) => {
+    const row = (await ctx.db.get("voiceBots", bot.id as Id<"voiceBots">))!
+    const { _id, _creationTime, ...config } = row
+    void _id
+    void _creationTime
+    for (let i = 0; i < 21; i++) await ctx.db.insert("voiceBots", config)
+    return ctx.db.insert("voiceBots", {
+      ...config,
+      organizationId: f.outsider.team,
+    })
+  })
+  await f.owner.client.action(api.knowledge.resources.dashboardWrite, {
+    organizationId: f.organizationId,
+    id: f.baseId,
+    remove: true,
+    body: "{}",
+  })
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimersAsync())
+  const bots = await f.t.run((ctx) =>
+    ctx.db
+      .query("voiceBots")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", f.organizationId)
+      )
+      .collect()
+  )
+  expect(bots).toHaveLength(22)
+  expect(bots.every((bot) => bot.knowledgeBaseIds?.length === 0)).toBe(true)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("voiceBots", foreignId)))!
+      .knowledgeBaseIds
+  ).toEqual([f.baseId])
 })

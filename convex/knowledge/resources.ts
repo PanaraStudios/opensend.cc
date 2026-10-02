@@ -421,6 +421,7 @@ export const remove = internalMutation({
         organizationId: args.organizationId,
         kind: "knowledge",
         id: row._id,
+        paginationOpts: { numItems: 20, cursor: null },
       })
       await ctx.scheduler.runAfter(
         0,

@@ -1,4 +1,5 @@
 import { v } from "convex/values"
+import { paginationOptsValidator } from "convex/server"
 import { callerValue, requireCaller, notFound, type Caller } from "./api/caller"
 import { requireTeam } from "./access"
 import { requireActiveTeam } from "./teamLifecycle"
@@ -39,7 +40,7 @@ export const detach = internalMutation({
     organizationId: v.string(),
     kind: v.union(v.literal("knowledge"), v.literal("tool")),
     id: v.string(),
-    cursor: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -48,7 +49,7 @@ export const detach = internalMutation({
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId)
       )
-      .paginate({ numItems: 20, cursor: args.cursor ?? null })
+      .paginate(args.paginationOpts)
     for (const bot of page.page) {
       if (
         args.kind === "knowledge" &&
@@ -70,7 +71,7 @@ export const detach = internalMutation({
     if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.botToolkitAccess.detach, {
         ...args,
-        cursor: page.continueCursor,
+        paginationOpts: { ...args.paginationOpts, cursor: page.continueCursor },
       })
     return null
   },
