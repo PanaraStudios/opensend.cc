@@ -1,4 +1,5 @@
 import { fileUrl } from "../storage/urls"
+import { byteRange } from "../../lib/storage/range"
 import type { HttpRouter } from "convex/server"
 import { httpAction, type ActionCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
@@ -55,8 +56,22 @@ export const download = httpAction(async (ctx, request) => {
   }
   const blob = storageId ? await ctx.storage.get(storageId) : null
   if (!blob || !file) return new Response(null, { status: 404 })
-  return new Response(blob, {
+  const range = byteRange(request.headers.get("Range"), blob.size)
+  if (range === "unsatisfiable")
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${blob.size}`,
+        "Access-Control-Allow-Origin": "*",
+      },
+    })
+  return new Response(range ? blob.slice(range.start, range.end + 1) : blob, {
+    status: range ? 206 : 200,
     headers: {
+      ...(range
+        ? { "Content-Range": `bytes ${range.start}-${range.end}/${blob.size}` }
+        : {}),
+      "Accept-Ranges": "bytes",
       "Content-Type": file.contentType,
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.filename ?? "attachment")}`,
       "Cache-Control": "no-store",

@@ -83,7 +83,6 @@ function AudioPlayerContent({
   const [speed, setSpeed] = React.useState(1)
   const [peaks, setPeaks] = React.useState(() => fallbackAudioPeaks(src))
   const kind = compact ? "voice note" : "audio"
-  const midPlayback = playing || (position > 0 && position < duration)
 
   React.useEffect(() => {
     let mounted = true
@@ -166,8 +165,7 @@ function AudioPlayerContent({
           seek={seek}
           onKeyDown={onKeyDown}
         />
-        {midPlayback ? (
-          <Tooltip>
+        <Tooltip>
             <TooltipTrigger
               render={
                 <Button
@@ -187,7 +185,6 @@ function AudioPlayerContent({
             </TooltipTrigger>
             <TooltipContent>Change playback speed</TooltipContent>
           </Tooltip>
-        ) : null}
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {audioTimeText(position, duration, playing)}
         </span>
