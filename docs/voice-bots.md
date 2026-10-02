@@ -17,6 +17,13 @@ Pipecat's WhatsApp transport would answer Meta directly over WebRTC. This applic
 uses its FastAPI WebSocket transport so IVR, agent transfers, recording, duration
 caps and the stable call record continue to belong to FreeSWITCH and Convex.
 
+`callTranscripts.timestampMs` is milliseconds since the call was answered. Each bot
+media session starts its own clock at 0; the gateway adds that session's offset
+from answer before the row is stored. Tool, note, hangup and diagnostic rows use
+the same origin (`connectedAt`, then the first bot start). Rows written before
+this clock omit `timeline: "call"`, and the call detail view leaves those in
+creation order. Audio packet `timestampMs` is still relative to the media session.
+
 | Brief section       | Result                                                                                                                                                                                                                                       |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Credentials         | DONE: team-scoped encrypted Gemini, Sarvam and ElevenLabs credentials; write-only keys; `lastFour` on reads; credential POST bodies redacted in API logs.                                                                                    |

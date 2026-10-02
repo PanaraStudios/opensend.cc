@@ -663,8 +663,10 @@ See [voice tools](voice-bots.md) for the result contract and bounds. Caller-prov
 team, contact, recipient, SIP URI and agent extension arguments are never accepted.
 
 `POST /calling/gateway/voice/events` carries `{version:1,eventId,callId,timestamp,
-type,...}`. `timestamp` is epoch milliseconds; audio/transcript positions are
-relative milliseconds. Event variants are `state {state}`, `ivr_digits {digits}`,
+type,...}`. `timestamp` is epoch milliseconds. Transcript `timestampMs` is
+milliseconds since the call was answered: the gateway adds each bot session's
+start offset to the session clock. Audio `timestampMs` stays relative to the
+media session. Event variants are `state {state}`, `ivr_digits {digits}`,
 `transcript {transcript:{role,text,final,timestampMs}}`,
 `barge_in {playedMs,flushedMs,turnId?}` and
 `media {codec,received,sent,playedMs,lost,late,maxTickDelayMs,firstInputMs?,firstOutputMs?}`.

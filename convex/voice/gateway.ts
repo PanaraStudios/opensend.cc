@@ -187,7 +187,8 @@ export const tool = internalMutation({
       callId: call._id,
       eventId: `tool:${toolCall.id}`,
       kind: "tool",
-      timestampMs: Date.now() - call.botStartedAt!,
+      timestampMs: callTimestamp(call),
+      timeline: "call",
       toolId: toolCall.id,
       toolName: toolCall.name,
       arguments: serialized,
@@ -303,7 +304,8 @@ async function execute(
         eventId: crypto.randomUUID(),
         kind: "note",
         text: string(args.text),
-        timestampMs: Date.now() - call.botStartedAt!,
+        timestampMs: callTimestamp(call),
+        timeline: "call",
       })
       return {
         storedOn: "call",
@@ -465,19 +467,20 @@ export const event = internalMutation({
       })
     }
     const line = object(data.transcript)
+    const supplied = Number(line.timestampMs)
     await ctx.db.insert("callTranscripts", {
       organizationId: call.organizationId,
       callId: call._id,
       eventId,
       kind: data.type === "transcript" ? "transcript" : "media",
-      timestampMs: Number(
-        line.timestampMs ??
-          Math.max(
-            0,
-            Number(data.timestamp) -
-              (call.botStartedAt ?? call.connectedAt ?? call._creationTime)
-          )
-      ),
+      // Transcript lines already include the gateway session offset.
+      timestampMs:
+        data.type === "transcript" &&
+        Number.isFinite(supplied) &&
+        supplied >= 0
+          ? Math.round(supplied)
+          : callTimestamp(call, Number(data.timestamp)),
+      timeline: "call",
       ...(data.type === "transcript"
         ? {
             role: line.role as "caller" | "agent",
@@ -493,6 +496,12 @@ export const event = internalMutation({
     return null
   },
 })
+/** Milliseconds since the call was answered. */
+function callTimestamp(call: Doc<"calls">, at = Date.now()) {
+  const origin = call.connectedAt ?? call.botStartedAt ?? call._creationTime
+  const delta = at - origin
+  return Number.isFinite(delta) ? Math.max(0, Math.round(delta)) : 0
+}
 function usage(value: unknown) {
   const input = object(value),
     result: NonNullable<Doc<"calls">["botUsage"]> = {}

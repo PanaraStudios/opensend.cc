@@ -443,14 +443,14 @@ test("answer signals Graph before routing to the winning browser extension, then
     id: f.call,
   })
   expect(order).toEqual(["graph:accept", "route:agent"])
+  const answered = await f.t.run((ctx) => ctx.db.get("calls", f.call))
   expect(route).toHaveBeenCalledWith({
     callId: f.call,
     target: "agent",
     extension: "2000",
+    answeredAt: answered?.connectedAt,
   })
-  expect((await f.t.run((ctx) => ctx.db.get("calls", f.call)))?.status).toBe(
-    "connected"
-  )
+  expect(answered?.status).toBe("connected")
   await f.owner.client.mutation(api.calling.softphoneState.presence, {
     ...f.ownerArgs,
     status: "away",

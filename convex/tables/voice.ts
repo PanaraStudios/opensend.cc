@@ -89,7 +89,10 @@ export const voiceTables = {
     role: v.optional(v.union(v.literal("caller"), v.literal("agent"))),
     text: v.optional(v.string()),
     final: v.optional(v.boolean()),
+    // Milliseconds since the call was answered. Rows written before that
+    // clock omit `timeline` and the call view keeps creation order.
     timestampMs: v.number(),
+    timeline: v.optional(v.literal("call")),
     toolId: v.optional(v.string()),
     toolName: v.optional(v.string()),
     arguments: v.optional(v.string()),

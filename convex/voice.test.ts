@@ -327,16 +327,20 @@ test("tool catalog rejects tenant/recipient overrides, durably deduplicates note
     }
   expect((await f.signed("events", event)).status).toBe(200)
   expect((await f.signed("events", event)).status).toBe(200)
-  expect(
-    await f.t.run((ctx) =>
-      ctx.db
-        .query("callTranscripts")
-        .withIndex("by_callId_and_eventId", (q) =>
-          q.eq("callId", callId).eq("eventId", eventId)
-        )
-        .take(2)
-    )
-  ).toHaveLength(1)
+  const stored = await f.t.run((ctx) =>
+    ctx.db
+      .query("callTranscripts")
+      .withIndex("by_callId_and_eventId", (q) =>
+        q.eq("callId", callId).eq("eventId", eventId)
+      )
+      .take(2)
+  )
+  expect(stored).toHaveLength(1)
+  expect(stored[0]).toMatchObject({
+    timeline: "call",
+    timestampMs: 100,
+    text: "hello",
+  })
   await f.t.run((ctx) => ctx.db.patch("calls", callId, { status: "completed" }))
   expect((await tool("late", "end_call", {})).status).toBe(404)
 })
