@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as botTools_routes from "../botTools/routes.js";
 import type * as knowledge_routes from "../knowledge/routes.js";
+import type * as botTools_execute from "../botTools/execute.js";
+import type * as botTools_resources from "../botTools/resources.js";
 import type * as knowledge_search from "../knowledge/search.js";
 import type * as knowledge_ingest from "../knowledge/ingest.js";
 import type * as knowledge_state from "../knowledge/state.js";
@@ -253,7 +256,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "botTools/routes": typeof botTools_routes;
   "knowledge/routes": typeof knowledge_routes;
+  "botTools/execute": typeof botTools_execute;
+  "botTools/resources": typeof botTools_resources;
   "knowledge/search": typeof knowledge_search;
   "knowledge/ingest": typeof knowledge_ingest;
   "knowledge/state": typeof knowledge_state;

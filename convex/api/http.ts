@@ -1,4 +1,5 @@
 import { registerKnowledgeRoutes } from "../knowledge/routes"
+import { registerBotToolRoutes } from "../botTools/routes"
 import { registerContactNoteRoutes } from "./contactNotes"
 import { registerIvrRoutes } from "../ivr/routes"
 import { registerVoiceRoutes } from "./voice"
@@ -27,6 +28,7 @@ import { registerLogRoutes } from "./logs"
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
   registerKnowledgeRoutes(http)
+  registerBotToolRoutes(http)
   registerIvrRoutes(http)
   registerCallingRoutes(http)
   registerVoiceRoutes(http)
