@@ -44,9 +44,15 @@ class FakePipeline(FrameProcessor):
                         "timestampMs": self.frames * 20,
                     }
                 )
+            if self.frames == 40 and "create_note" in self.tools.catalog:
+                await self.tools.run("fake-note-1", "create_note", {"text": "Harness call note"})
+            if self.frames == 60 and "send_whatsapp_message" in self.tools.catalog:
+                await self.tools.run("fake-message-1", "send_whatsapp_message", {"text": "Harness follow-up"})
             if self.frames == 80:
                 if "transfer_to_agent" in self.tools.catalog:
                     await self.tools.run("fake-transfer-1", "transfer_to_agent", {"summary": "Harness caller needs an agent"})
+                elif "end_call" in self.tools.catalog:
+                    await self.tools.run("fake-end-1", "end_call", {})
                 elif "transfer_to_ivr" in self.tools.catalog:
                     await self.tools.run("fake-transfer-1", "transfer_to_ivr", {})
         else:

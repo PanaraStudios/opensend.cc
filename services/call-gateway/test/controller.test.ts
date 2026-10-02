@@ -481,3 +481,37 @@ test("playground anchors an authorized browser caller and runs the same controll
     /Call already ended/
   )
 })
+
+test("Meta hangup callback and Janus teardown do not wait for bot summarization", async () => {
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const voice = new (class extends VoiceRuntime {
+    constructor() {
+      super(
+        { port: 0, fakeEnabled: true },
+        {} as VoiceMediaEndpoint,
+        {} as VoiceBackend
+      )
+    }
+    override async stop() {
+      await blocked
+    }
+    override async close() {}
+  })()
+  const f = fixture(undefined, voice)
+  try {
+    await f.controller.inbound(offer, "slow-summary")
+    const ending = f.controller.hangup("slow-summary")
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.ok(f.commands.some((c) => c.startsWith("uuid_kill ")))
+    assert.ok(f.commands.includes("janus:destroy"))
+    assert.equal(f.events.filter((e) => e.event === "hangup").length, 1)
+    release()
+    await ending
+  } finally {
+    release()
+    await f.controller.close()
+  }
+})

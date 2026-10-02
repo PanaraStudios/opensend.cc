@@ -29,6 +29,7 @@ interface ControlledCall {
   outcome?: "transferred_agent" | "transferred_ivr" | "ended_by_bot" | "failed"
   nextRoute?: RouteRequest
   botCompleted?: boolean
+  ending?: NodeJS.Timeout
   silence?: NodeJS.Timeout
   lastActivity?: number
   stopped: boolean
@@ -116,7 +117,11 @@ export class VoiceRuntime {
   }
   private event(call: ControlledCall, event: VoiceEvent) {
     // Keep media timing and state transitions observable without logging provider keys.
-    if (["state", "barge_in", "media", "latency"].includes(event.type))
+    if (
+      ["state", "barge_in", "media", "latency", "tool_call", "hangup"].includes(
+        event.type
+      )
+    )
       console.log(
         JSON.stringify({ callId: call.callId, timestamp: Date.now(), ...event })
       )
@@ -230,6 +235,7 @@ export class VoiceRuntime {
             void call.end("Bot silence timeout")
         }, 1000)
         const provider = adapter as VoiceAdapterBase
+        provider.onToolObserved((event) => this.event(call, event))
         provider.onActivity(() => {
           call.lastActivity = Date.now()
         })
@@ -252,6 +258,13 @@ export class VoiceRuntime {
         call.route.organizationId!
       ))
       adapter.onToolCall((toolCall) => {
+        if (
+          call.stopped ||
+          call.ending ||
+          call.route !== botRoute ||
+          call.nextRoute
+        )
+          return
         void tools
           .run(toolCall)
           .then((result) => {
@@ -294,8 +307,14 @@ export class VoiceRuntime {
                 action.action === "end_call"
               ) {
                 call.outcome = "ended_by_bot"
-                setTimeout(() => {
-                  if (!call.stopped) void call.end("Ended by bot")
+                clearInterval(call.silence)
+                call.ending ??= setTimeout(() => {
+                  if (
+                    !call.stopped &&
+                    call.route === botRoute &&
+                    !call.nextRoute
+                  )
+                    void call.end("Ended by bot")
                 }, 3000).unref()
               }
             }
@@ -346,8 +365,7 @@ export class VoiceRuntime {
       })
       call.releaseMedia = reserved.release
       // Explicit per-leg codecs permit transcoding without changing Meta's Opus leg.
-      const codecs =
-        call.route.codec === "PCMU" ? "PCMU" : "L16@16000h@20i,PCMU"
+      const codecs = call.route.codec === "PCMU" ? "PCMU" : "L16@16000h@20i"
       await socket.api(`uuid_setvar ${socket.uuid} hangup_after_bridge false`)
       await socket.execute(
         "bridge",
@@ -398,8 +416,10 @@ export class VoiceRuntime {
   async stop(callId: string, reason = "Call ended") {
     const call = this.calls.get(callId)
     if (!call) return
+    this.event(call, { type: "hangup", reason })
     call.abort.abort()
     call.stopped = true
+    clearTimeout(call.ending)
     clearInterval(call.silence)
     call.tools?.stop()
     call.commit()

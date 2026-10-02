@@ -1,18 +1,21 @@
 """All side effects are authorized by Convex; FreeSWITCH controls return via the gateway."""
 
 import asyncio
+import json
+import logging
+import time
 
 CONTROL_TOOLS = {"transfer_to_agent", "transfer_to_ivr", "end_call"}
 
 
 class ToolRouter:
-    def __init__(self, backend, emit, catalog: list[dict]):
+    def __init__(self, backend, emit, catalog: list[dict], call_id=None):
+        self.call_id = call_id
         self.backend = backend
         self.emit = emit
         self.catalog = {tool["name"]: tool for tool in catalog}
         self.pending: dict[str, asyncio.Future] = {}
         self.count = 0
-        self.goodbye = None
 
     def result(self, identifier, result):
         future = self.pending.get(identifier)
@@ -20,6 +23,27 @@ class ToolRouter:
             future.set_result(result)
 
     async def run(self, identifier: str, name: str, arguments: dict):
+        started = time.monotonic()
+        async def report(status, **fields):
+            event = {"type": "tool_observed", "id": identifier[:128], "name": name[:128],
+                     "status": status, **fields}
+            # Never log arguments, results, caller data or provider exceptions.
+            logging.getLogger("voice-agent").warning(json.dumps({"callId": self.call_id, **event}))
+            await self.emit(event)
+        await report("requested")
+        try:
+            result = await self._run(identifier, name, arguments)
+        except asyncio.CancelledError:
+            await report("failed", latencyMs=round((time.monotonic() - started) * 1000), error="cancelled")
+            raise
+        except Exception:
+            result = {"ok": False, "error": "Tool execution failed"}
+        await report("succeeded" if result.get("ok") else "failed",
+                     latencyMs=round((time.monotonic() - started) * 1000),
+                     **({} if result.get("ok") else {"error": "tool_failed"}))
+        return result
+
+    async def _run(self, identifier: str, name: str, arguments: dict):
         tool = self.catalog.get(name)
         if not tool or not isinstance(arguments, dict) or self.count >= 128:
             return {"ok": False, "error": "Tool is not enabled"}
@@ -35,8 +59,6 @@ class ToolRouter:
         try:
             if name not in CONTROL_TOOLS:
                 return await self.backend.tool(call)
-            if name == "end_call" and self.goodbye:
-                await self.goodbye()
             if len(self.pending) >= 8:
                 return {"ok": False, "error": "Tool concurrency limit"}
             future = asyncio.get_running_loop().create_future()

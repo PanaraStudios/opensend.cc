@@ -55,6 +55,61 @@ export class CallGatewayClient implements GatewayApi {
       )
     return result
   }
+  async normalizePrompt(audio: Blob, attempt = 0): Promise<Blob> {
+    if (!audio.size || audio.size > 16 * 1024 * 1024)
+      throw new Error("Invalid prompt size")
+    const path = "/prompts/normalize"
+    const body = JSON.stringify({
+      audio: Buffer.from(await audio.arrayBuffer()).toString("base64"),
+    })
+    const response = await fetch(new URL(path, this.baseUrl), {
+      method: "POST",
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(30000),
+      headers: {
+        "content-type": "application/json",
+        ...signRequest(this.secret, "POST", path, body),
+      },
+    })
+    if (!response.ok) {
+      await response.body?.cancel()
+      if (response.status === 503 && attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * 4 ** attempt))
+        return this.normalizePrompt(audio, attempt + 1)
+      }
+      throw new Error(
+        "IVR audio conversion failed; check the calling gateway and retry"
+      )
+    }
+    const chunks: Uint8Array<ArrayBuffer>[] = []
+    const reader = response.body!.getReader()
+    let size = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.length
+        if (size > 16 * 1024 * 1024)
+          throw new Error("Converted prompt exceeds 16 MiB")
+        chunks.push(new Uint8Array(value))
+      }
+    } finally {
+      await reader.cancel()
+      reader.releaseLock()
+    }
+    const result = new Blob(chunks, { type: "audio/wav" })
+    const header = new DataView(await result.slice(0, 44).arrayBuffer())
+    if (
+      header.byteLength < 44 ||
+      header.getUint32(24, true) !== 48000 ||
+      header.getUint16(20, true) !== 1 ||
+      header.getUint16(22, true) !== 1 ||
+      header.getUint16(34, true) !== 16
+    )
+      throw new Error("Invalid normalized WAV")
+    return result
+  }
   inbound(offerSdp: string, callId: string) {
     return this.post<{ answerSdp: string }>("/inbound", { offerSdp, callId })
   }

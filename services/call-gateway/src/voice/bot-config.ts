@@ -96,6 +96,7 @@ export interface VoiceBotConfig {
   maxConcurrentCalls?: number
 }
 export interface VoiceSessionConfig extends VoiceBotConfig {
+  voiceGender?: import("./voices.js").VoiceGender
   keys: { live?: string; stt?: string; llm?: string; tts?: string }
   botId: string
 }

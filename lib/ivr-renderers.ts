@@ -1,44 +1,6 @@
 import type { PromptRenderer } from "./ivr-prompts"
 export const IVR_TTS_PROVIDERS = ["elevenlabs", "sarvam"] as const
-export const SARVAM_PROMPT_VOICES = [
-  "shubh",
-  "aditya",
-  "ritu",
-  "priya",
-  "neha",
-  "rahul",
-  "pooja",
-  "rohan",
-  "simran",
-  "kavya",
-  "amit",
-  "dev",
-  "ishita",
-  "shreya",
-  "ratan",
-  "varun",
-  "manan",
-  "sumit",
-  "roopa",
-  "kabir",
-  "aayan",
-  "ashutosh",
-  "advait",
-  "anand",
-  "tanya",
-  "tarun",
-  "sunny",
-  "mani",
-  "gokul",
-  "vijay",
-  "shruti",
-  "suhani",
-  "mohit",
-  "kavitha",
-  "rehan",
-  "soham",
-  "rupali",
-] as const
+export { SARVAM_VOICES as SARVAM_PROMPT_VOICES } from "../services/call-gateway/src/voice/voices"
 export interface IvrPromptVoice {
   provider: "elevenlabs" | "sarvam"
   voice: string
@@ -47,10 +9,10 @@ export interface IvrPromptVoice {
 }
 export function promptRendererName(provider: IvrPromptVoice["provider"]) {
   return provider === "sarvam"
-    ? "sarvam-bulbul-v3-pcm16k-v1"
-    : "elevenlabs-multilingual-v2-pcm16k-v1"
+    ? "sarvam-bulbul-v3-pcm24k-wav48k-v2"
+    : "elevenlabs-multilingual-v2-pcm44k-wav48k-v2"
 }
-export function pcmWav(pcm: Uint8Array): Blob {
+export function pcmWav(pcm: Uint8Array, sampleRate = 16000): Blob {
   if (!pcm.length || pcm.length % 2 || pcm.length > 16 * 1024 * 1024 - 44)
     throw new Error("Invalid provider PCM audio")
   const bytes = new Uint8Array(44 + pcm.length),
@@ -62,8 +24,8 @@ export function pcmWav(pcm: Uint8Array): Blob {
   view.setUint32(16, 16, true)
   view.setUint16(20, 1, true)
   view.setUint16(22, 1, true)
-  view.setUint32(24, 16000, true)
-  view.setUint32(28, 32000, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
   view.setUint16(32, 2, true)
   view.setUint16(34, 16, true)
   bytes.set(text.encode("data"), 36)
@@ -122,7 +84,7 @@ export class ElevenLabsPromptRenderer implements PromptRenderer {
   ) {}
   async render(text: string, language: string, voice?: string) {
     const r = await this.request(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice ?? "")}?output_format=pcm_16000`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice ?? "")}?output_format=pcm_44100`,
       {
         method: "POST",
         headers: { "xi-api-key": this.key, "content-type": "application/json" },
@@ -138,7 +100,7 @@ export class ElevenLabsPromptRenderer implements PromptRenderer {
     await status(r)
     if (r.headers.get("content-type")?.includes("json"))
       throw new PromptProviderError(false)
-    return { audio: pcmWav(await bounded(r)) }
+    return { audio: pcmWav(await bounded(r), 44100) }
   }
 }
 export class SarvamPromptRenderer implements PromptRenderer {
@@ -159,7 +121,7 @@ export class SarvamPromptRenderer implements PromptRenderer {
         language_code: language,
         speaker: voice,
         model: "bulbul:v3",
-        speech_sample_rate: 16000,
+        speech_sample_rate: 24000,
         output_audio_codec: "wav",
       }),
       signal: AbortSignal.timeout(20000),
@@ -199,7 +161,7 @@ export class SarvamPromptRenderer implements PromptRenderer {
           length >= 16 &&
           view.getUint16(at + 8, true) === 1 &&
           view.getUint16(at + 10, true) === 1 &&
-          view.getUint32(at + 12, true) === 16000 &&
+          view.getUint32(at + 12, true) === 24000 &&
           view.getUint16(at + 22, true) === 16
       }
       if (new TextDecoder().decode(audio.slice(at, at + 4)) === "data")
@@ -207,7 +169,7 @@ export class SarvamPromptRenderer implements PromptRenderer {
       at += 8 + length + (length % 2)
     }
     if (!fmt || !data)
-      throw new Error("Provider must return 16 kHz mono PCM WAV")
+      throw new Error("Provider must return 24 kHz mono PCM WAV")
     return { audio: new Blob([audio], { type: "audio/wav" }) }
   }
 }

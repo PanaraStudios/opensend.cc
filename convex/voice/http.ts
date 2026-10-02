@@ -44,6 +44,8 @@ function handler(kind: "session" | "tool" | "event") {
           !Number.isFinite(data.timestamp) ||
           ![
             "state",
+            "tool_call",
+            "hangup",
             "ivr_digits",
             "transcript",
             "barge_in",
@@ -52,6 +54,24 @@ function handler(kind: "session" | "tool" | "event") {
             "latency",
             "bot_completed",
           ].includes(string(data.type))
+        )
+          return new Response(null, { status: 400 })
+        if (
+          data.type === "tool_call" &&
+          (typeof data.toolId !== "string" ||
+            data.toolId.length > 128 ||
+            typeof data.toolName !== "string" ||
+            data.toolName.length > 128 ||
+            (data.latencyMs !== undefined &&
+              (typeof data.latencyMs !== "number" ||
+                !Number.isFinite(data.latencyMs) ||
+                data.latencyMs < 0)) ||
+            !["requested", "succeeded", "failed"].includes(string(data.status)))
+        )
+          return new Response(null, { status: 400 })
+        if (
+          data.type === "hangup" &&
+          (typeof data.reason !== "string" || data.reason.length > 1024)
         )
           return new Response(null, { status: 400 })
         if (data.type === "transcript") {

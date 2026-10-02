@@ -6,7 +6,6 @@ import {
   type VoiceProvider,
   type VoiceToolName,
 } from "../voice-bots"
-import { SARVAM_PROMPT_VOICES } from "../ivr-renderers"
 
 export const VOICE_PROVIDER_LABELS: Record<VoiceProvider, string> = {
   gemini: "Gemini",
@@ -21,56 +20,10 @@ export const VOICE_TOOL_LABELS: Record<VoiceToolName, string> = {
   transfer_to_ivr: "Transfer to IVR",
   end_call: "End call",
 }
-// https://ai.google.dev/gemini-api/docs/live-api/capabilities#change-voice-and-language
-export const GEMINI_VOICES = [
-  "Zephyr",
-  "Puck",
-  "Charon",
-  "Kore",
-  "Fenrir",
-  "Leda",
-  "Orus",
-  "Aoede",
-  "Callirrhoe",
-  "Autonoe",
-  "Enceladus",
-  "Iapetus",
-  "Umbriel",
-  "Algieba",
-  "Despina",
-  "Erinome",
-  "Algenib",
-  "Rasalgethi",
-  "Laomedeia",
-  "Achernar",
-  "Alnilam",
-  "Schedar",
-  "Gacrux",
-  "Pulcherrima",
-  "Achird",
-  "Zubenelgenubi",
-  "Vindemiatrix",
-  "Sadachbia",
-  "Sadaltager",
-  "Sulafat",
-] as const
+export { GEMINI_VOICES } from "../../services/call-gateway/src/voice/voices"
+import { VOICE_CATALOG } from "../../services/call-gateway/src/voice/voices"
 export function voiceItems(provider: VoiceProvider) {
-  if (provider === "elevenlabs")
-    return [
-      { value: "21m00Tcm4TlvDq8ikWAM", label: "Rachel" },
-      { value: "EXAVITQu4vr4xnSDxMaL", label: "Sarah" },
-      { value: "pNInz6obpgDQGcFmaJgB", label: "Adam" },
-    ]
-  return (
-    provider === "gemini"
-      ? GEMINI_VOICES
-      : provider === "sarvam"
-        ? SARVAM_PROMPT_VOICES
-        : []
-  ).map((value) => ({
-    value,
-    label: value[0].toUpperCase() + value.slice(1),
-  }))
+  return [...VOICE_CATALOG[provider]]
 }
 const languageNames = new Intl.DisplayNames(["en"], { type: "language" })
 export function voiceLanguageLabel(value: string) {

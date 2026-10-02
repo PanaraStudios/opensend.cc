@@ -23,8 +23,11 @@ export async function opusTone(frequency: number) {
     encoder.delete()
   }
 }
-export async function decodeOpus(packets: Buffer[]) {
-  const decoder = new OpusScript(16000, 1, OpusScript.Application.VOIP)
+export async function decodeOpus(
+  packets: Buffer[],
+  sampleRate: 16000 | 48000 = 16000
+) {
+  const decoder = new OpusScript(sampleRate, 1, OpusScript.Application.VOIP)
   try {
     return Buffer.concat(
       packets.map((packet) => Buffer.from(decoder.decode(packet)))
@@ -33,19 +36,19 @@ export async function decodeOpus(packets: Buffer[]) {
     decoder.delete()
   }
 }
-export function tonePower(pcm: Buffer, frequency: number) {
+export function tonePower(pcm: Buffer, frequency: number, sampleRate = 16000) {
   // Average 100ms windows so packet concealment/phase jumps cannot cancel a
   // present speech tone across the entire capture.
   let power = 0,
     windows = 0
-  for (let start = 0; start < pcm.length / 2; start += 1600) {
-    const count = Math.min(1600, pcm.length / 2 - start)
+  for (let start = 0; start < pcm.length / 2; start += sampleRate / 10) {
+    const count = Math.min(sampleRate / 10, pcm.length / 2 - start)
     if (count < 320) break
     let real = 0,
       imaginary = 0
     for (let i = 0; i < count; i++) {
       const value = pcm.readInt16LE((start + i) * 2),
-        phase = (2 * Math.PI * frequency * i) / 16000
+        phase = (2 * Math.PI * frequency * i) / sampleRate
       real += value * Math.cos(phase)
       imaginary += value * Math.sin(phase)
     }

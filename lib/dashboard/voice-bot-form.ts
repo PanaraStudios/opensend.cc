@@ -14,7 +14,7 @@ export function newVoiceBot(
     provider: engine === "gemini_live" ? "gemini" : "sarvam",
     credentialId: "unset",
     language,
-    ...voiceBotDefaults(language),
+    ...voiceBotDefaults(language, engine === "gemini_live" ? "female" : "male"),
     ...(engine === "cascade"
       ? {
           tts: {
@@ -117,6 +117,13 @@ export function voiceDiagnostic(line: { kind: string; text?: string }) {
       return {
         label: "Interrupted",
         detail: `Caller interrupted after ${v.playedMs} ms of playback`,
+      }
+    if (v.type === "hangup" && "reason" in v && typeof v.reason === "string")
+      return { label: "Call ended", detail: v.reason }
+    if (v.type === "tool_call" && "toolName" in v && "status" in v)
+      return {
+        label: "Tool call",
+        detail: `${String(v.toolName)} · ${String(v.status)}${"latencyMs" in v && typeof v.latencyMs === "number" ? ` · ${v.latencyMs} ms` : ""}`,
       }
     if (v.type === "bot_completed")
       return {

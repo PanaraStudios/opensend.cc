@@ -620,13 +620,17 @@ export class CallController implements GatewayApi {
       await this.fs
         .api(`uuid_kill ${call.uuid} NORMAL_CLEARING`)
         .catch(() => undefined)
-    await this.voice?.stop(call.id, reason)
+    // Signal Meta and tear down Janus even if bot summarization/media cleanup stalls.
+    this.notify(call, { event: "hangup", reason })
+    const cleanup = this.voice?.stop(call.id, reason)
     const recording = call.uuid && this.recordings.get(call.uuid)
     if (recording) recording.expires = Date.now() + 60000
     this.ended.set(call.id, Date.now() + 300000)
-    this.notify(call, { event: "hangup", reason })
-    await call.janus.close()
-    this.calls.delete(call.id)
+    try {
+      await Promise.all([call.janus.close(), cleanup])
+    } finally {
+      this.calls.delete(call.id)
+    }
   }
   private fsEvent(event: Record<string, string>) {
     const id =

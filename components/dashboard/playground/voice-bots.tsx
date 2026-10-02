@@ -48,6 +48,7 @@ import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
 import {
   updateVoiceBotLanguage,
+  updateVoiceBotVoice,
   voiceBotDefaults,
   type VoiceBotText,
 } from "@/lib/voice-bot-defaults"
@@ -263,7 +264,11 @@ function CreateBot({ close }: { close: () => void }) {
   const patchInstructions = (patch: Partial<VoiceBotText>) =>
     setInstructions((current) => ({ ...current, ...patch }))
   const changeLanguage = (language: string) => {
-    const next = updateVoiceBotLanguage(instructions, language)
+    const next = updateVoiceBotLanguage(
+      instructions,
+      language,
+      engine === "gemini_live" ? "female" : "male"
+    )
     setLanguage(language)
     setInstructions(next)
     notifyLanguageUpdate(instructions, next, language)
@@ -314,7 +319,9 @@ function CreateBot({ close }: { close: () => void }) {
             const result = await write({
               organizationId: activeTeamId!,
               kind: "bot",
-              body: JSON.stringify(voiceBotFormPayload(config)),
+              body: JSON.stringify(
+                voiceBotFormPayload(updateVoiceBotVoice(config))
+              ),
             })
             close()
             router.push(`/playground/voice-bot/${result.id}`)
@@ -528,7 +535,12 @@ function BotForm({ row }: { row: VoiceBotResource }) {
   const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
   const write = useAction(api.voice.resources.dashboardWrite)
   const patch = (p: Partial<VoiceBotConfig>) =>
-    setDraft((d) => ({ ...d, ...p }))
+    setDraft((d) => {
+      const next = { ...d, ...p }
+      return p.voice !== undefined || p.tts !== undefined
+        ? updateVoiceBotVoice(next)
+        : next
+    })
   useEffect(() => {
     document.title = `${row.name} · opensend.cc`
   }, [row.name])
@@ -610,7 +622,7 @@ function BotForm({ row }: { row: VoiceBotResource }) {
                 )
           }
           onChange={(language) => {
-            const next = updateVoiceBotLanguage(draft, language)
+            const next = updateVoiceBotVoice({ ...draft, language })
             setDraft(next)
             notifyLanguageUpdate(draft, next, language)
           }}

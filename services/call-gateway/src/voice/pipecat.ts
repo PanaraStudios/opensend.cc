@@ -127,6 +127,35 @@ export class PipecatAdapter extends VoiceAdapterBase {
               timestampMs: data.timestampMs,
             })
             break
+          case "tool_observed":
+            if (
+              typeof data.id !== "string" ||
+              data.id.length > 128 ||
+              typeof data.name !== "string" ||
+              data.name.length > 128
+            )
+              throw new Error("Invalid tool observation")
+            if (
+              !["requested", "succeeded", "failed"].includes(
+                String(data.status)
+              ) ||
+              (data.latencyMs !== undefined &&
+                (typeof data.latencyMs !== "number" ||
+                  !Number.isFinite(data.latencyMs) ||
+                  data.latencyMs < 0))
+            )
+              throw new Error("Invalid tool status")
+            this.events.emit("tool_observed", {
+              type: "tool_call",
+              toolId: data.id,
+              toolName: data.name,
+              status: data.status,
+              ...(data.latencyMs === undefined
+                ? {}
+                : { latencyMs: data.latencyMs }),
+              ...(data.error ? { error: "tool_failed" } : {}),
+            })
+            break
           case "tool_call":
             if (
               typeof data.id !== "string" ||

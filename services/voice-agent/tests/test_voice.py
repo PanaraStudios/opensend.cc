@@ -251,3 +251,70 @@ def test_authenticated_fake_pipeline_starts_and_finishes_over_websocket(monkeypa
                         if data["type"] == "end":
                             assert data["summary"].startswith("Harness caller")
                             break
+
+
+def test_end_call_instructions_are_conditional_and_preserve_custom_prompt():
+    from voice_agent.factory import system_instruction
+    value = config()
+    original = value["systemPrompt"]
+    assert "end_call" not in system_instruction(value)
+    value["toolCatalog"] = [{"name": "end_call"}]
+    instruction = system_instruction(value)
+    assert instruction.startswith(original)
+    for text in ["says goodbye", "asks to hang up", "conversation is complete", "invoke end_call", "pending"]:
+        assert text in instruction
+    assert value["systemPrompt"] == original
+
+
+@pytest.mark.parametrize("names", [[], ["end_call"], ["lookup_contact", "send_whatsapp_message", "create_note", "end_call", "transfer_to_agent", "transfer_to_ivr"]])
+async def test_live_first_websocket_setup_declares_all_enabled_tools(names):
+    from voice_agent.fake_live import capture_live_setup, setup_tool_names
+    value = config()
+    value.update(engine="gemini_live", model="gemini-3.8-live", voice="Kore", keys={"live": "fake"})
+    value["toolCatalog"] = [{"name": name, "description": "Test " + name,
+        "parameters": {"properties": {"text": {"type": "string"}}, "required": []}} for name in names]
+    legacy_setup = await capture_live_setup(value, declare_tools=False)
+    assert setup_tool_names(legacy_setup) == []
+    setup = await capture_live_setup(value)
+    assert setup_tool_names(setup) == names
+    if names:
+        assert setup["tools"][0]["functionDeclarations"][0]["parameters"]["properties"]["text"]["type"].lower() == "string"
+
+
+@pytest.mark.parametrize("provider", ["sarvam", "gemini"])
+def test_cascade_invocation_contains_same_tool_declarations(provider):
+    from voice_agent.factory import tool_schema
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    value = config()
+    value["llm"].update(provider=provider, model="gemini-3.8-flash" if provider == "gemini" else "sarvam-105b-conversations")
+    value["toolCatalog"] = [{"name": name, "description": name,
+        "parameters": {"properties": {}, "required": []}} for name in ["create_note", "end_call"]]
+    schema = tool_schema(value)
+    services = create_services(value, schema)
+    context = LLMContext(messages=[], tools=schema)
+    for function in schema.standard_tools:
+        services.llm.register_function(function.name, AsyncMock())
+    params = services.llm.get_llm_adapter().get_llm_invocation_params(context, **({"convert_developer_to_user": False} if provider == "sarvam" else {}))
+    serialized = json.dumps(params, default=str)
+    assert "create_note" in serialized and "end_call" in serialized
+
+
+@pytest.mark.parametrize("gender, word", [("female", "feminine"), ("male", "masculine")])
+def test_voice_gender_is_in_runtime_prompt(gender, word):
+    from voice_agent.factory import system_instruction
+    value = config()
+    value["voiceGender"] = gender
+    assert word in system_instruction(value)
+
+
+async def test_tool_logs_and_gateway_observations_exclude_private_arguments(caplog):
+    backend, emit = Mock(), AsyncMock()
+    backend.tool = AsyncMock(return_value={"ok": False, "error": "Private caller data"})
+    router = ToolRouter(backend, emit, [{"name": "create_note", "parameters": {
+        "properties": {"text": {"type": "string"}}, "required": ["text"]}}])
+    await router.run("note-1", "create_note", {"text": "Secret note contents"})
+    events = [call.args[0] for call in emit.await_args_list]
+    assert [e["status"] for e in events] == ["requested", "failed"]
+    assert events[-1]["latencyMs"] >= 0
+    assert "create_note" in caplog.text
+    assert "Secret note" not in caplog.text and "Private caller" not in caplog.text

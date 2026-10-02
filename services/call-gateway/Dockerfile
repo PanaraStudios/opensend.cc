@@ -34,6 +34,8 @@ USER node
 CMD ["node", "node_modules/tsx/dist/cli.mjs", "scripts/meta-peer.ts"]
 
 FROM node:22.17.0-bookworm-slim@sha256:b04ce4ae4e95b522112c2e5c52f781471a5cbc3b594527bcddedee9bc48c03a0 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production PORT=8090
 WORKDIR /app
 # Include the pinned drachtio-srf production dependency and its closure.

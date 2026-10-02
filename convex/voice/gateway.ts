@@ -1,3 +1,5 @@
+import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
+import { updateVoiceBotVoice } from "../../lib/voice-bot-defaults"
 import { own as ownedIvr } from "../ivr/definitions"
 import { normalizePhone } from "../../lib/dashboard/phone"
 import { minuteUsage } from "./usage"
@@ -99,7 +101,8 @@ export const session = internalMutation({
         keys[name] = await decryptSecret(key.encryptedKey)
       }
     return {
-      ...call.botConfig,
+      ...updateVoiceBotVoice(call.botConfig!),
+      voiceGender: botVoiceGender(call.botConfig!),
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),

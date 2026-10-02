@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
-import { inboundFixture } from "./testHelpers/meta.fixture"
+import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
 import { patchRow } from "./counts"
 import { signRequest } from "../services/call-gateway/src/auth"
 import type { Id } from "./_generated/dataModel"
@@ -510,4 +510,93 @@ test("cascade stage credentials are team-scoped, fetched only in the signed sess
     ctx.db.query("apiLogBodies").take(100)
   )
   expect(JSON.stringify(logBodies)).not.toContain("fake-eleven-key")
+})
+
+test("end_call authorization and signed gateway hangup terminate the Meta call", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", callId, { wacid: "wacid.bot-end" })
+  )
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const tool = await f.signed("tools", {
+    callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "end-1", name: "end_call", arguments: {} },
+  })
+  expect(await tool.json()).toEqual({
+    ok: true,
+    result: { action: "end_call" },
+  })
+  for (const event of [
+    {
+      type: "tool_call",
+      toolId: "end-1",
+      toolName: "end_call",
+      status: "succeeded",
+    },
+    { type: "hangup", reason: "Ended by bot" },
+  ])
+    expect(
+      (
+        await f.signed("events", {
+          callId,
+          timestamp: Date.now(),
+          eventId: crypto.randomUUID(),
+          ...event,
+        })
+      ).status
+    ).toBe(200)
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+  ])
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ ok: true }))
+  )
+  const path = "/calling/gateway/events"
+  const body = JSON.stringify({
+    version: 1,
+    callId,
+    eventId: crypto.randomUUID(),
+    timestamp: Date.now(),
+    event: "hangup",
+    reason: "Ended by bot",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...signRequest(secret, "POST", path, body),
+        },
+        body,
+      })
+    ).status
+  ).toBe(200)
+  await f.t.finishInProgressScheduledFunctions()
+  // Run due jobs, including the gatewayHangup action scheduled by the real callback mutation.
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+  expect(
+    graph.to(`/${PHONE_ID}/calls`, "POST").map((c) => c.body)
+  ).toContainEqual({
+    messaging_product: "whatsapp",
+    action: "terminate",
+    call_id: "wacid.bot-end",
+  })
+  const row = await f.t.run((ctx) => ctx.db.get("calls", callId))
+  expect(row?.status).toBe("completed")
+  const lines = await f.t.run((ctx) =>
+    ctx.db
+      .query("callTranscripts")
+      .withIndex("by_callId_and_eventId", (q) => q.eq("callId", callId))
+      .collect()
+  )
+  expect(lines.some((l) => l.toolName === "end_call")).toBe(true)
+  expect(lines.some((l) => l.text?.includes("Ended by bot"))).toBe(true)
 })

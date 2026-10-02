@@ -176,7 +176,7 @@ the local harness uses container host candidates on the shared network and disab
 STUN; it does not validate public NAT/firewall behavior.
 
 Opus/48000/2 at 20 ms is used on the Meta/Janus SIP leg and browser agent legs.
-The private Path B bot leg uses mono L16/16000 with PCMU/8000 fallback; FreeSWITCH
+The private Path B bot leg uses mono L16/16000 (PCMU/8000 is only an explicit interoperability-test option); FreeSWITCH
 transcodes between these legs.
 `telephone-event/8000` is an optional DTMF payload retained when offered, so IVR
 digits work without adding a second speech codec. Video and data m-lines are
@@ -552,7 +552,7 @@ Additional `/route` fields (all private/HMAC-authenticated):
 | `target`             | Existing agent/ivr/queue/bot plus voicemail/hangup                                       |
 | `organizationId`     | Required for bot tools; captured from the authorized backend route                       |
 | `adapter`            | Only `fake-echo` in this foundation                                                      |
-| `codec`              | Optional `L16` (default, with PCMU fallback) or forced `PCMU` for interoperability tests |
+| `codec`              | Optional `L16` (default, no narrowband fallback) or forced `PCMU` for interoperability tests |
 | `maxDurationSeconds` | Controlled-call cap, integer 1–3600, default 300                                         |
 
 `CALL_VOICE_FAKE_ENABLED=true` enables fake routing only in the test overlay. The
@@ -840,3 +840,20 @@ flows. Both held the shared lock, rebuilt only test-project images, and removed
 their containers/network before releasing it. `pnpm test:e2e` was not run; its
 sources compile with both feature suites registered. No push or backend deployment
 was performed.
+
+
+### Call quality verification (October 2026)
+
+The harness overlay publishes no host ports; all peers communicate on the isolated
+`opensend-calling-test` network. Continue to hold the shared harness lock for every
+build/up/test/down operation. This permits testing alongside the live stack without
+changing its bindings, containers or volumes.
+
+The `bot-end-call` case captures the actual Gemini setup JSON through a fake socket
+before running the media pipeline. It checks enabled contact/note/message/end tools,
+name/status/latency events, `ended_by_bot`, removal of the Janus handle, finalized
+FreeSWITCH recording, and receipt of `terminate` by fake Meta. The real Convex
+callback-to-Graph path is covered independently by `convex/voice.test.ts`.
+The `ivr-engine` case sends 440 Hz plus 10 kHz through stored 48 kHz WAV playback,
+then measures both tones in decoded Meta-side Opus. See [IVR audio](ivr.md#prompt-audio-quality)
+and [bot tools and voice grammar](voice-bots.md#tool-setup-hangup-and-voice-grammar).

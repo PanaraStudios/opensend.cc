@@ -5,6 +5,7 @@ import type { Doc } from "../_generated/dataModel"
 import { payload } from "./definitions"
 import { internal } from "../_generated/api"
 import { decryptSecret } from "../secrets"
+import { normalizeIvrAudio } from "../storage/ivrAudio"
 import { storeFile } from "../storage/objects"
 import {
   ElevenLabsPromptRenderer,
@@ -50,7 +51,7 @@ export const render = internalAction({
             feature: "ivr",
             filename: `${job.hash}.wav`,
             contentType: "audio/wav",
-            body: rendered.audio,
+            body: await normalizeIvrAudio(rendered.audio),
             maxBytes: 16 * 1024 * 1024,
           })
           const accepted = await ctx.runMutation(
