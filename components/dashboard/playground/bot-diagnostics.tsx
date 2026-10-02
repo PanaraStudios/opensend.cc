@@ -20,7 +20,11 @@ export function Transcript({ lines }: { lines: TranscriptRow[] }) {
     <div aria-label="Transcript" className="flex flex-col gap-4">
       {ordered.map((line, i) => {
         const diagnostic = voiceDiagnostic(line)
-        if (line.kind === "media") return null
+        if (
+          line.kind === "media" &&
+          !["Call ended", "Tool call"].includes(diagnostic?.label ?? "")
+        )
+          return null
         if (line.kind === "tool")
           return (
             <details key={line.id} className="self-start">
@@ -63,11 +67,13 @@ export function Transcript({ lines }: { lines: TranscriptRow[] }) {
           >
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>
-                {line.kind === "note"
-                  ? "Call note"
-                  : line.role === "caller"
-                    ? "Caller"
-                    : "Bot"}
+                {line.kind === "media"
+                  ? diagnostic?.label
+                  : line.kind === "note"
+                    ? "Call note"
+                    : line.role === "caller"
+                      ? "Caller"
+                      : "Bot"}
               </span>
               <time>
                 {Math.floor(line.timestampMs / 60000)}:

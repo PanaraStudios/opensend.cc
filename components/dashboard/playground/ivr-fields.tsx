@@ -31,6 +31,8 @@ import {
   promptStatusBadge,
 } from "@/lib/dashboard/voice-options"
 import type { VoiceProvider } from "@/lib/voice-bots"
+import { ElevenLabsVoiceField } from "./elevenlabs-voices"
+import type { ElevenLabsVoice } from "@/lib/elevenlabs-voices"
 
 export type PromptRenderInfo = {
   kind: string
@@ -45,6 +47,7 @@ export const PromptRendersContext = createContext<{
   renders: PromptRenderInfo[]
   voice?: string
   provider?: VoiceProvider
+  credentialId?: string
 }>({ renders: [] })
 export function VoiceField({
   label,
@@ -114,13 +117,40 @@ export function ProviderVoiceField({
   value,
   onChange,
   inherit = false,
+  credentialId,
+  quietError = false,
+  adoptDefault = false,
+  onAdopted,
+  onError,
+  onVoices,
 }: {
   label: string
   provider?: VoiceProvider
   value: string
   onChange: (voice: string) => void
   inherit?: boolean
+  credentialId?: string
+  quietError?: boolean
+  adoptDefault?: boolean
+  onAdopted?: () => void
+  onError?: (error: string) => void
+  onVoices?: (voices: ElevenLabsVoice[] | undefined) => void
 }) {
+  if (provider === "elevenlabs")
+    return (
+      <ElevenLabsVoiceField
+        label={label}
+        value={value}
+        credentialId={credentialId}
+        inherit={inherit}
+        quietError={quietError}
+        adoptDefault={adoptDefault}
+        onAdopted={onAdopted}
+        onError={onError}
+        onVoices={onVoices}
+        onChange={onChange}
+      />
+    )
   return (
     <VoiceChoiceField
       label={label}
@@ -200,6 +230,7 @@ export function PromptField({
           </Field>
           <ProviderVoiceField
             provider={context.provider}
+            credentialId={context.credentialId}
             inherit
             label="Voice"
             value={value.voice ?? ""}

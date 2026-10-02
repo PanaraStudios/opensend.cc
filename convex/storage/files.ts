@@ -169,7 +169,11 @@ export const beginComplete = internalMutation({
     )
       throw invalid("File not found")
     if (row.state === "ready") {
-      if (args.storageId && args.storageId !== row.storageId)
+      if (
+        args.storageId &&
+        args.storageId !== row.storageId &&
+        args.storageId !== row.uploadStorageId
+      )
         throw invalid("Unexpected file")
       return row
     }
@@ -200,7 +204,13 @@ export const beginComplete = internalMutation({
   },
 })
 export const ready = internalMutation({
-  args: { ...actor, id: v.id("storedFiles") },
+  args: {
+    ...actor,
+    id: v.id("storedFiles"),
+    normalized: v.optional(
+      v.object({ storageId: v.id("_storage"), size: v.number() })
+    ),
+  },
   returns: v.id("storedFiles"),
   handler: async (ctx, args) => {
     await authorize(ctx, args.organizationId, args.caller)
@@ -214,6 +224,15 @@ export const ready = internalMutation({
     )
       throw invalid("Upload expired")
     await ctx.db.patch("storedFiles", row._id, {
+      ...(args.normalized && row.feature === "ivr"
+        ? {
+            storageId: args.normalized.storageId,
+            uploadStorageId: row.storageId,
+            size: args.normalized.size,
+            contentType: "audio/wav",
+            filename: `${(row.filename ?? "prompt").replace(/\.[^.]+$/, "")}.wav`,
+          }
+        : {}),
       state: "ready",
       expiresAt: Date.now() + 30 * 86400_000,
       references: 0,

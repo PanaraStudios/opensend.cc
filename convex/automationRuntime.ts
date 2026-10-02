@@ -419,10 +419,7 @@ export const effect = internalMutation({
           properties: Record<string, string>
         } = { properties: {} }
         for (const field of node.fields) {
-          const value =
-            field.action === "clear"
-              ? ""
-              : field.value
+          const value = field.action === "clear" ? "" : field.value
           if (field.property === "first_name") patch.firstName = String(value)
           else if (field.property === "last_name")
             patch.lastName = String(value)
@@ -815,9 +812,8 @@ export const dispatch = internalMutation({
     const custom = customEventName(event.type)
     const name =
       custom ??
-      (SYSTEM_EVENT_CATALOG.some((e) => e.name === event.type)
-        ? `opensend:${event.type}`
-        : null)
+      SYSTEM_EVENT_CATALOG.find((e) => e.name === event.type)?.trigger ??
+      null
     if (name === null) return null
     const data = event.data
     const contactId =

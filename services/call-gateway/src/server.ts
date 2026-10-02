@@ -1,18 +1,26 @@
 import { createServer, type IncomingMessage } from "node:http"
+import { normalizePrompt } from "./prompt-audio.js"
 import { HmacVerifier } from "./auth.js"
 import type { GatewayApi, RouteRequest } from "./contracts.js"
 import { AgentSessions, directoryAuthorized } from "./agents.js"
 import type { AgentControl } from "./contracts.js"
 import { GatewayError } from "./errors.js"
 
-async function bodyOf(request: IncomingMessage): Promise<string> {
+async function bodyOf(
+  request: IncomingMessage,
+  limit = 128 * 1024
+): Promise<string> {
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk)
     size += buffer.length
-    if (size > 128 * 1024)
-      throw new GatewayError("BODY_TOO_LARGE", "Request exceeds 128 KiB", 413)
+    if (size > limit)
+      throw new GatewayError(
+        "BODY_TOO_LARGE",
+        "Request exceeds size limit",
+        413
+      )
     chunks.push(buffer)
   }
   try {
@@ -87,6 +95,7 @@ export function createGatewayServer(
       if (
         request.method !== "POST" ||
         ![
+          "/prompts/normalize",
           "/inbound",
           "/outbound",
           "/playground",
@@ -101,7 +110,10 @@ export function createGatewayServer(
         throw new GatewayError("NOT_FOUND", "Unknown endpoint", 404)
       if (request.headers["content-type"]?.split(";")[0] !== "application/json")
         throw new GatewayError("CONTENT_TYPE", "Use application/json", 415)
-      const raw = await bodyOf(request)
+      const raw = await bodyOf(
+        request,
+        path === "/prompts/normalize" ? 23 * 1024 * 1024 : 128 * 1024
+      )
       verifier.verify("POST", path, raw, request.headers)
       let body: Record<string, unknown>
       try {
@@ -111,6 +123,15 @@ export function createGatewayServer(
         body = parsed as Record<string, unknown>
       } catch {
         throw new GatewayError("INVALID_JSON", "Expected a JSON object")
+      }
+      if (path === "/prompts/normalize") {
+        const audio = textField(body, "audio")
+        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(audio))
+          throw new GatewayError("INVALID_AUDIO", "Invalid base64 audio")
+        const wav = await normalizePrompt(Buffer.from(audio, "base64"))
+        response.setHeader("content-type", "audio/wav")
+        response.end(wav)
+        return
       }
       if (path === "/agents/session" || path === "/agents/revoke") {
         if (!agents?.directorySecret)

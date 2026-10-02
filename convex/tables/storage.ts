@@ -40,6 +40,8 @@ export const storageTables = {
     provider: v.union(v.literal("convex"), v.literal("object")),
     key: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
+    // Receipt retained for idempotent completion after IVR normalization replaces the object.
+    uploadStorageId: v.optional(v.id("_storage")),
     size: v.number(),
     contentType: v.string(),
     filename: v.optional(v.string()),

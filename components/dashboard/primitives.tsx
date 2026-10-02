@@ -1900,6 +1900,7 @@ export function SearchableSelect({
   disabled,
   align = "start",
   contentClassName,
+  emptyLabel,
 }: {
   value?: string
   defaultValue?: string
@@ -1912,6 +1913,7 @@ export function SearchableSelect({
   disabled?: boolean
   align?: "start" | "center" | "end"
   contentClassName?: string
+  emptyLabel?: string
 }) {
   const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue)
   const selectedValue = value ?? uncontrolledValue
@@ -1923,6 +1925,7 @@ export function SearchableSelect({
     found &&
     (found.value !== remembered?.value ||
       found.label !== remembered.label ||
+      found.description !== remembered.description ||
       found.dotClassName !== remembered.dotClassName)
   ) {
     setRemembered(found)
@@ -2000,7 +2003,7 @@ export function SearchableSelect({
           placeholder={search.placeholder ?? "Search…"}
           aria-label={search.placeholder ?? "Search"}
         />
-        <ComboboxEmpty>No results found.</ComboboxEmpty>
+        <ComboboxEmpty>{emptyLabel ?? "No results found."}</ComboboxEmpty>
         <ComboboxList>
           {Array.from(new Set(choices.map((item) => item.group ?? ""))).map(
             (group) => (
@@ -2055,6 +2058,7 @@ export function OptionSelect({
   className,
   disabled,
   placeholder,
+  emptyLabel,
   "aria-label": ariaLabel,
 }: {
   value?: string
@@ -2063,6 +2067,7 @@ export function OptionSelect({
   selectedItem?: SelectOption
   search?: SelectSearch
   items: readonly SelectOption[]
+  emptyLabel?: string
   /** Shown while no item is chosen. */
   placeholder?: string
   id?: string
@@ -2085,6 +2090,7 @@ export function OptionSelect({
         name={name}
         disabled={disabled}
         align={align}
+        emptyLabel={emptyLabel}
         trigger={(current) => (
           <button
             type="button"

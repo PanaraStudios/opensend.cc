@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
-import { inboundFixture } from "./testHelpers/meta.fixture"
+import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
 import { patchRow } from "./counts"
+import { upsertContact } from "./audience"
+import { upsertChannelThread } from "./channels/identity"
 import { signRequest } from "../services/call-gateway/src/auth"
 import type { Id } from "./_generated/dataModel"
 const secret = "a".repeat(64)
@@ -230,17 +232,34 @@ test("tool catalog rejects tenant/recipient overrides, durably deduplicates note
   const note = await (
     await tool("note", "create_note", { text: "Caller needs support" })
   ).json()
-  expect(note).toMatchObject({ ok: true, result: { storedOn: "call" } })
+  expect(note).toMatchObject({
+    ok: true,
+    result: { storedOn: "contact", noteId: expect.any(String) },
+  })
   expect(
     await (
       await tool("note", "create_note", { text: "Caller needs support" })
     ).json()
   ).toEqual(note)
+  const storedNotes = await f.t.run((ctx) =>
+    ctx.db.query("contactNotes").collect()
+  )
+  expect(storedNotes).toHaveLength(1)
+  expect(storedNotes[0]).toMatchObject({
+    _id: note.result.noteId,
+    body: "Caller needs support",
+    organizationId: f.owner.team,
+    author: { kind: "bot", id: f.bot, name: "Support" },
+    source: { callId },
+  })
+  expect(
+    await f.t.run((ctx) => ctx.db.get("contacts", storedNotes[0].contactId))
+  ).toMatchObject({ organizationId: f.owner.team })
   expect(
     await (await tool("note", "create_note", { text: "different" })).json()
   ).toMatchObject({ ok: false })
   expect(await (await tool("ivr", "transfer_to_ivr", {})).json()).toMatchObject(
-    { ok: false, error: expect.stringContaining("could not be completed") }
+    { ok: false, error: "IVR handoff disabled" }
   )
   expect(
     await (
@@ -510,4 +529,386 @@ test("cascade stage credentials are team-scoped, fetched only in the signed sess
     ctx.db.query("apiLogBodies").take(100)
   )
   expect(JSON.stringify(logBodies)).not.toContain("fake-eleven-key")
+})
+
+test("end_call authorization and signed gateway hangup terminate the Meta call", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", callId, { wacid: "wacid.bot-end" })
+  )
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const tool = await f.signed("tools", {
+    callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "end-1", name: "end_call", arguments: {} },
+  })
+  expect(await tool.json()).toEqual({
+    ok: true,
+    result: { action: "end_call" },
+  })
+  for (const event of [
+    {
+      type: "tool_call",
+      toolId: "end-1",
+      toolName: "end_call",
+      status: "succeeded",
+    },
+    { type: "playback_done", turnId: "goodbye", playedMs: 600 },
+    { type: "hangup", reason: "Ended by bot" },
+  ])
+    expect(
+      (
+        await f.signed("events", {
+          callId,
+          timestamp: Date.now(),
+          eventId: crypto.randomUUID(),
+          ...event,
+        })
+      ).status
+    ).toBe(200)
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+  ])
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ ok: true }))
+  )
+  const path = "/calling/gateway/events"
+  const body = JSON.stringify({
+    version: 1,
+    callId,
+    eventId: crypto.randomUUID(),
+    timestamp: Date.now(),
+    event: "hangup",
+    reason: "Ended by bot",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...signRequest(secret, "POST", path, body),
+        },
+        body,
+      })
+    ).status
+  ).toBe(200)
+  await f.t.finishInProgressScheduledFunctions()
+  // Run due jobs, including the gatewayHangup action scheduled by the real callback mutation.
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+  expect(
+    graph.to(`/${PHONE_ID}/calls`, "POST").map((c) => c.body)
+  ).toContainEqual({
+    messaging_product: "whatsapp",
+    action: "terminate",
+    call_id: "wacid.bot-end",
+  })
+  const row = await f.t.run((ctx) => ctx.db.get("calls", callId))
+  expect(row?.status).toBe("completed")
+  const lines = await f.t.run((ctx) =>
+    ctx.db
+      .query("callTranscripts")
+      .withIndex("by_callId_and_eventId", (q) => q.eq("callId", callId))
+      .collect()
+  )
+  expect(lines.some((l) => l.toolName === "end_call")).toBe(true)
+  expect(lines.some((l) => l.text?.includes("Ended by bot"))).toBe(true)
+})
+test.each([true, false])(
+  "voice tools resolve linked and legacy BSUID callers: linked=%s",
+  async (linked) => {
+    const f = await fixture()
+    const links = await f.t.run(async (ctx) => {
+      const account = (await ctx.db.get("channelAccounts", f.account))!
+      const contact = await upsertContact(
+        ctx,
+        f.owner.team,
+        { phone: "+919316108172", firstName: "Kamal" },
+        { properties: [], segmentIds: [], skipExisting: true }
+      )
+      const links = await upsertChannelThread(ctx, account, {
+        externalId: "919316108172",
+        phone: "+919316108172",
+        at: Date.now(),
+        direction: "inbound",
+        preview: "Prior message",
+      })
+      await ctx.db.patch("channelContacts", links.channelContactId, {
+        userId: "US.caller",
+        contactId: contact.id,
+      })
+      return { ...links, contactId: contact.id }
+    })
+    const callId = await f.createCall()
+    await f.t.run((ctx) =>
+      ctx.db.patch("calls", callId, {
+        from: "US.caller",
+        ...(linked ? links : {}),
+      })
+    )
+    await f.t.mutation(internal.voice.routing.select, { id: callId })
+    const tool = (id: string, name: string, args: Record<string, unknown>) =>
+      f.signed("tools", {
+        callId,
+        organizationId: f.owner.team,
+        toolCall: { id, name, arguments: args },
+      })
+    expect(
+      await (await tool("lookup-kamal", "lookup_contact", {})).json()
+    ).toMatchObject({ ok: true, result: { name: "Kamal" } })
+    expect(
+      await (
+        await tool("note-kamal", "create_note", { text: "Follow up tomorrow" })
+      ).json()
+    ).toMatchObject({
+      ok: true,
+      result: { storedOn: "contact", noteId: expect.any(String) },
+    })
+    expect(await f.t.run((ctx) => ctx.db.get("calls", callId))).toMatchObject(
+      links
+    )
+    const sent = await (
+      await tool("send-kamal", "send_whatsapp_message", {
+        text: "Thanks for calling",
+      })
+    ).json()
+    expect(sent).toMatchObject({ ok: true, result: { id: expect.any(String) } })
+    const message = (await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").first()
+    ))!
+    expect(message).toMatchObject({
+      channelContactId: links.channelContactId,
+      conversationId: links.conversationId,
+      to: "US.caller",
+    })
+    const content = (await f.t.run((ctx) =>
+      ctx.db.query("channelMessageContents").first()
+    ))!
+    expect(JSON.parse(content.payload)).toMatchObject({
+      recipient: "US.caller",
+    })
+    expect(JSON.parse(content.payload).to).toBeUndefined()
+    expect(
+      await f.t.run((ctx) => ctx.db.query("channelContacts").collect())
+    ).toHaveLength(1)
+  }
+)
+
+test("lookup_contact returns caller properties, segments, identities and readable recent messages", async () => {
+  const f = await fixture()
+  const now = Date.now()
+  const linked = await f.t.run(async (ctx) => {
+    const contact = await upsertContact(
+      ctx,
+      f.owner.team,
+      {
+        phone: "+919316108172",
+        firstName: "Kamal",
+        properties: { plan: "Pro" },
+      },
+      {
+        properties: [{ key: "plan", type: "string" }],
+        segmentIds: [],
+        skipExisting: true,
+      }
+    )
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const thread = await upsertChannelThread(ctx, account, {
+      externalId: "919316108172",
+      phone: "+919316108172",
+      at: now,
+      direction: "inbound",
+      preview: "Prior message",
+    })
+    await ctx.db.patch("channelContacts", thread.channelContactId, {
+      contactId: contact.id,
+      userId: "US.caller",
+    })
+    const segmentId = await ctx.db.insert("segments", {
+      organizationId: f.owner.team,
+      name: "VIP",
+    })
+    await ctx.db.insert("segmentMembers", {
+      organizationId: f.owner.team,
+      segmentId,
+      contactId: contact.id,
+    })
+    for (const [type, direction, payload, rendered] of [
+      [
+        "interactive",
+        "inbound",
+        {
+          interactive: {
+            type: "button_reply",
+            button_reply: { title: "Yes please" },
+          },
+        },
+        undefined,
+      ],
+      [
+        "interactive",
+        "outbound",
+        {
+          interactive: {
+            type: "button",
+            body: { text: "Would you like help?" },
+          },
+        },
+        undefined,
+      ],
+      ["image", "inbound", { image: { caption: "My receipt" } }, undefined],
+      [
+        "template",
+        "outbound",
+        { template: { name: "welcome" } },
+        { body: "Welcome Kamal", buttons: [] },
+      ],
+    ] as const) {
+      const messageId = await ctx.db.insert("channelMessages", {
+        organizationId: f.owner.team,
+        accountId: f.account,
+        channelContactId: thread.channelContactId,
+        conversationId: thread.conversationId,
+        channel: "whatsapp",
+        direction,
+        type,
+        status: direction === "inbound" ? "received" : "sent",
+        from: "919316108172",
+        to: "business",
+        preview: `[${type}]`,
+        generation: 0,
+        attempts: 0,
+        observedAt: now - 2 * 3600_000,
+      })
+      await ctx.db.insert("channelMessageContents", {
+        messageId,
+        payload: JSON.stringify({ type, ...payload }),
+        ...(rendered ? { rendered: { body: rendered.body, buttons: [] } } : {}),
+      })
+    }
+    return { ...thread, contactId: contact.id }
+  })
+  const callId = await f.createCall()
+  await f.t.run((ctx) => ctx.db.patch("calls", callId, linked))
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const response = await f.signed("tools", {
+    callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "readable-1", name: "lookup_contact", arguments: {} },
+  })
+  const { result } = await response.json()
+  expect(result).toMatchObject({
+    name: "Kamal",
+    phone: "+919316108172",
+    properties: { plan: "Pro" },
+    tags: ["VIP"],
+    channelIdentities: [
+      { channel: "whatsapp", userId: "US.caller", phone: "+919316108172" },
+    ],
+  })
+  for (const line of [
+    "Customer (2h ago): Yes please",
+    "Business (2h ago): Would you like help?",
+    "Customer (2h ago): Image: My receipt",
+    "Business (2h ago): Welcome Kamal",
+  ])
+    expect(result.recentMessageSummary).toContain(line)
+  expect(result.recentMessageSummary).not.toContain("[interactive]")
+})
+
+test("create_note falls back to the call record when caller identity is unavailable", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run((ctx) => ctx.db.patch("calls", callId, { userId: undefined }))
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const result = await (
+    await f.signed("tools", {
+      callId,
+      organizationId: f.owner.team,
+      toolCall: {
+        id: "fallback-note",
+        name: "create_note",
+        arguments: { text: "Call only" },
+      },
+    })
+  ).json()
+  expect(result).toMatchObject({ ok: true, result: { storedOn: "call" } })
+  expect(
+    await f.t.run((ctx) => ctx.db.query("contactNotes").collect())
+  ).toEqual([])
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("callTranscripts")
+        .filter((q) => q.eq(q.field("kind"), "note"))
+        .first()
+    )
+  ).toMatchObject({ callId, text: "Call only" })
+})
+
+test("REST contact note sources are scoped and preserved across edits", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  const contact = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.owner.team,
+    contacts: [{ phone: "+14155550100" }],
+    segmentIds: [],
+  })
+  const path = `/contacts/${contact.createdIds[0]}/notes`
+  const response = await f.request(path, "POST", {
+    body: "Call context",
+    source: { call_id: callId },
+  })
+  expect(response.status).toBe(201)
+  const note = await response.json()
+  expect(note.source).toEqual({ call_id: callId })
+  const edit = await f.request(`${path}/${note.id}`, "PATCH", {
+    body: "Edited",
+    source: {},
+  })
+  expect(edit.status).toBe(200)
+  expect((await edit.json()).source).toEqual(note.source)
+  const foreignCall = await f.t.run((ctx) =>
+    ctx.db.insert("calls", {
+      organizationId: f.outsider.team,
+      accountId: f.account,
+      direction: "inbound",
+      status: "connected",
+      mode: "gateway",
+      observedAt: Date.now(),
+    })
+  )
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Foreign",
+        source: { call_id: foreignCall },
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Malformed",
+        source: { call_id: "invalid-id" },
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    (
+      await f.request(path, "POST", {
+        body: "Malformed",
+        source: "not-an-object",
+      })
+    ).status
+  ).toBe(422)
+  expect(
+    await f.t.run((ctx) => ctx.db.query("contactNotes").collect())
+  ).toHaveLength(1)
 })

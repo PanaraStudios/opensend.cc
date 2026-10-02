@@ -71,3 +71,4 @@ export type {
   SystemEventName,
   SystemTriggerName,
 } from "./events/catalog"
+export type * from "./contacts/notes/interfaces"

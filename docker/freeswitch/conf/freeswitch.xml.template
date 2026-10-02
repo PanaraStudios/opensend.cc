@@ -62,6 +62,12 @@
         <param name="use-vbr" value="1"/>
         <param name="use-dtx" value="0"/>
         <param name="maxaveragebitrate" value="32000"/>
+        <!-- Respect Meta's lower maxaveragebitrate without changing RTP timing. -->
+        <param name="bitrate-negotiation" value="true"/>
+        <!-- Keep the negotiated bitrate; allow Opus to choose FEC within it. -->
+        <param name="keep-fec-enabled" value="false"/>
+        <!-- Preserve wideband IVR audio at Meta's 16 kHz playback ceiling. -->
+        <param name="maxplaybackrate" value="16000"/>
       </settings>
     </configuration>
     <configuration name="sofia.conf" description="Internal SIP and browser SIP over WSS">
@@ -95,6 +101,10 @@
           <param name="disable-transcoding" value="false"/>
           <param name="rtp-timeout-sec" value="60"/>
           <param name="rtp-timer-name" value="soft"/>
+          <!-- Bridged legs run different clocks (Opus 48 kHz to Meta, L16 16 kHz to
+               the voice bot). Without this, FreeSWITCH copies the bot leg's
+               timestamps onto the WhatsApp leg and the phone plays garbled audio. -->
+          <param name="rtp-rewrite-timestamps" value="true"/>
         </settings>
       </profile></profiles>
     </configuration>

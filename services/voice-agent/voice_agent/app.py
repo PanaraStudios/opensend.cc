@@ -8,8 +8,6 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.workers.runner import WorkerRunner
@@ -28,9 +26,10 @@ from .auth import SessionTokens
 from .backend import VoiceBackend
 from .serializer import VoiceSerializer
 from .tools import ToolRouter
-from .factory import create_services, summarize
+from .factory import create_services, summarize, tool_schema
 from .telemetry import Telemetry
 from .fake import FakePipeline
+from .playback import PlaybackObserver
 
 # Provider SDK logs can include request details. Our own events contain only bounded safe fields.
 logger.remove()
@@ -80,7 +79,7 @@ async def session(websocket: WebSocket):
                 await websocket.send_json(message)
 
         serializer = VoiceSerializer(emit)
-        tools = ToolRouter(backend, emit, config["toolCatalog"])
+        tools = ToolRouter(backend, emit, config["toolCatalog"], call_id=call_id)
         serializer.on_result = tools.result
         transport = FastAPIWebsocketTransport(
             websocket,
@@ -97,25 +96,22 @@ async def session(websocket: WebSocket):
         runner = WorkerRunner(handle_sigint=False)
         fake = os.getenv("VOICE_AGENT_FAKE_ENABLED") == "true"
         if fake:
-            pipeline = Pipeline([transport.input(), FakePipeline(emit, tools), transport.output()])
+            from .fake_live import capture_live_setup, setup_tool_names
+            if config["engine"] == "gemini_live":
+                setup = await capture_live_setup(config)
+                declared = setup_tool_names(setup)
+            else:
+                # Cascade LLMs read tools on each invocation from this same schema.
+                declared = [f.name for f in tool_schema(config).standard_tools]
+            if declared != list(tools.catalog):
+                raise ValueError("Gemini setup is missing enabled tools")
+            logging.getLogger("voice-agent").warning("Harness Gemini setup declarations: %s", declared)
+            pipeline = Pipeline([transport.input(), FakePipeline(emit, tools), transport.output(), PlaybackObserver(emit, serializer)])
             serializer.finalize = lambda: fake_summary()
         else:
-            services = create_services(config)
-
-            async def goodbye():
-                await worker.queue_frame(services.goodbye_frame())
-
-            tools.goodbye = goodbye
-            functions = [
-                FunctionSchema(
-                    name=tool["name"],
-                    description=tool["description"],
-                    properties=tool["parameters"]["properties"],
-                    required=tool["parameters"].get("required", []),
-                )
-                for tool in config["toolCatalog"]
-            ]
-            context = LLMContext(messages=[], tools=ToolsSchema(standard_tools=functions))
+            schema = tool_schema(config)
+            services = create_services(config, schema)
+            context = LLMContext(messages=[], tools=schema)
             aggregators = LLMContextAggregatorPair(
                 context,
                 realtime_service_mode=services.realtime,
@@ -131,7 +127,7 @@ async def session(websocket: WebSocket):
                 ),
             )
             telemetry = Telemetry(emit, serializer, context)
-            for function in functions:
+            for function in schema.standard_tools:
                 services.llm.register_function(
                     function.name, tools.handle, cancel_on_interruption=True
                 )
@@ -163,7 +159,7 @@ async def session(websocket: WebSocket):
             processors.extend([aggregators.user(), services.llm])
             if services.tts:
                 processors.append(services.tts)
-            processors.extend([telemetry, transport.output(), aggregators.assistant()])
+            processors.extend([telemetry, transport.output(), PlaybackObserver(emit, serializer), aggregators.assistant()])
             pipeline = Pipeline(processors)
 
         worker = PipelineWorker(

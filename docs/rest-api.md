@@ -843,3 +843,32 @@ Graph server. Only when that origin is local, the reserved fixture endpoint
 `https://whatsapp-send.invalid/events` is delivered to its `/__webhooks`
 receiver, so the suite can inspect real signed customer deliveries. Every
 other customer endpoint keeps the public HTTPS and DNS checks.
+
+### Contact notes
+
+Contact notes are plain text context attached to any contact, independent of a
+channel or CRM. Bodies must contain text and be at most 10,000 characters.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /contacts/{id}/notes` | Requires `contacts:read`. Newest first; supports `limit`, `after`, and `before` ID cursors. |
+| `POST /contacts/{id}/notes` | Requires `contacts:write`. Accepts `{ body, source? }`; returns the complete note with status 201. Supports `Idempotency-Key`. |
+| `PATCH /contacts/{id}/notes/{note_id}` | Requires `contacts:write`. Updates `{ body }` and preserves the author, source, and creation time. |
+| `DELETE /contacts/{id}/notes/{note_id}` | Requires `contacts:write`. Returns `{ object: "contact_note", id, deleted: true }`. |
+
+A note contains `id`, `contact_id`, `body`, `author`, `source`, `created_at`, and
+`updated_at`. The server derives the author from the dashboard user, API
+key/OAuth caller, or voice bot. API requests can include source metadata with
+`call_id`, `conversation_id`, or `message_id`; each reference must belong to the
+same organization. Contacts may be addressed by ID or email, as on other contact
+routes. Deleting a contact or team also deletes its notes.
+
+Every create emits `contact.note_created` with the complete note as webhook
+`data` and as the automation trigger payload. Edits and deletes do not emit this
+event. Voice bots save on the caller's resolved contact, create it from a known
+caller identity when needed, and keep the call-record copy. Calls without a
+resolvable identity keep the call-record fallback.
+
+The SDK exposes `opensend.contacts.notes.create/list/update/remove`, using
+`contactId` and `noteId` options. MCP exposes `create-contact-note`,
+`list-contact-notes`, `update-contact-note`, and `remove-contact-note`.

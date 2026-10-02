@@ -1,3 +1,4 @@
+import { contactNoteTables } from "./tables/contactNotes"
 import { ivrTables } from "./tables/ivr"
 import { voiceTables } from "./tables/voice"
 import { callingTables } from "./tables/calling"
@@ -29,6 +30,7 @@ import { webhookTables } from "./tables/webhooks"
 /* Each feature owns one file in ./tables, so features can be built in
    parallel without editing the same lines here. */
 export default defineSchema({
+  ...contactNoteTables,
   ...ivrTables,
   ...callingTables,
   ...voiceTables,

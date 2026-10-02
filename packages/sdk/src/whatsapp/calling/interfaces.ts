@@ -57,6 +57,8 @@ export interface WhatsAppCall {
   from: string | null
   to: string | null
   contact_id: string | null
+  contact_name: string
+  contact_phone: string | null
   conversation_id: string | null
   created_at: string
   observed_at: number

@@ -5,9 +5,11 @@ import type { Doc } from "../_generated/dataModel"
 import { payload } from "./definitions"
 import { internal } from "../_generated/api"
 import { decryptSecret } from "../secrets"
+import { normalizeIvrAudio } from "../storage/ivrAudio"
 import { storeFile } from "../storage/objects"
 import {
   ElevenLabsPromptRenderer,
+  PromptProviderError,
   SarvamPromptRenderer,
   renderWithBackoff,
 } from "../../lib/ivr-renderers"
@@ -50,7 +52,7 @@ export const render = internalAction({
             feature: "ivr",
             filename: `${job.hash}.wav`,
             contentType: "audio/wav",
-            body: rendered.audio,
+            body: await normalizeIvrAudio(rendered.audio),
             maxBytes: 16 * 1024 * 1024,
           })
           const accepted = await ctx.runMutation(
@@ -59,12 +61,14 @@ export const render = internalAction({
           )
           if (!accepted)
             await ctx.runMutation(internal.storage.files.discard, stored)
-        } catch {
+        } catch (error) {
           await ctx.runMutation(internal.ivr.renderState.finish, {
             id: job._id,
             lease: job.lease!,
             error:
-              "Voice provider could not render this prompt. Check the key, voice and language, then retry.",
+              error instanceof PromptProviderError
+                ? error.message
+                : "Voice provider could not render this prompt. Check the key, voice and language, then retry.",
           })
         }
       })

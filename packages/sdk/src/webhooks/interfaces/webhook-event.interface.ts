@@ -1,3 +1,4 @@
+import type { ContactNote } from "../../contacts/notes/interfaces"
 import type {
   WhatsAppCall,
   CallPermission,
@@ -36,6 +37,7 @@ export type WebhookEvent =
   | "email.failed"
   | "email.suppressed"
   | "contact.created"
+  | "contact.note_created"
   | "contact.updated"
   | "contact.deleted"
   | "domain.created"
@@ -309,6 +311,7 @@ export type WebhookEventPayload =
   | EmailFailedEvent
   | EmailSuppressedEvent
   | ContactCreatedEvent
+  | ContactNoteCreatedEvent
   | ContactUpdatedEvent
   | ContactDeletedEvent
   | DomainCreatedEvent
@@ -316,3 +319,9 @@ export type WebhookEventPayload =
   | DomainDeletedEvent
   | SuppressionAddedEvent
   | SuppressionRemovedEvent
+
+export interface ContactNoteCreatedEvent {
+  type: "contact.note_created"
+  created_at: string
+  data: ContactNote
+}

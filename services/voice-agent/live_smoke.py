@@ -98,7 +98,7 @@ async def main():
                 "tts": {
                     "provider": "elevenlabs" if eleven else "sarvam",
                     "model": "eleven_v4_turbo" if eleven else "bulbul:v3",
-                    "voice": os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+                    "voice": os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
                     if eleven
                     else "shubh",
                 },

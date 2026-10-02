@@ -50,3 +50,38 @@ test("bot defaults require a key and diagnostics preserve real timing and interr
   )
   assert.equal(voiceDiagnostic({ kind: "media", text: "bad json" }), null)
 })
+
+test("call detail diagnostics explain tool outcome, latency and hangup reason", () => {
+  assert.equal(
+    voiceDiagnostic({
+      kind: "media",
+      text: JSON.stringify({
+        type: "tool_call",
+        toolName: "transfer_to_agent",
+        status: "failed",
+        latencyMs: 20,
+        error: "No agent available",
+      }),
+    })?.detail,
+    "transfer_to_agent · failed · 20 ms · No agent available"
+  )
+  assert.deepEqual(
+    voiceDiagnostic({
+      kind: "media",
+      text: JSON.stringify({
+        type: "tool_call",
+        toolName: "end_call",
+        status: "succeeded",
+        latencyMs: 42,
+      }),
+    }),
+    { label: "Tool call", detail: "end_call · succeeded · 42 ms" }
+  )
+  assert.deepEqual(
+    voiceDiagnostic({
+      kind: "media",
+      text: JSON.stringify({ type: "hangup", reason: "Ended by bot" }),
+    }),
+    { label: "Call ended", detail: "Ended by bot" }
+  )
+})

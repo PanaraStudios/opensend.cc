@@ -1,3 +1,4 @@
+import { samplePayload } from "../lib/dashboard/automation"
 // @vitest-environment node
 import { callingRoutingSchema } from "../services/call-gateway/src/voice/routing"
 import { resolve } from "node:path"
@@ -1695,5 +1696,253 @@ test("IVR definitions, dry-run validation and customer completion sample validat
 test("calling routing contract derives all four targets from the shared definition", () => {
   expect(contract.components.schemas.CallingRouting).toEqual(
     callingRoutingSchema
+  )
+})
+
+test("contact note CRUD, cursors, idempotency and webhook sample match the public contract", async () => {
+  vi.stubEnv(
+    "SSO_ENCRYPTION_KEY",
+    "contact-notes-fixture-encryption-".repeat(3)
+  )
+  const f = await setup()
+  const contact = await response(
+    "/contacts",
+    "POST",
+    await f.call("/contacts", "POST", { email: "notes@example.test" })
+  )
+  const secondContact = await response(
+    "/contacts",
+    "POST",
+    await f.call("/contacts", "POST", { email: "second@example.test" })
+  )
+  const path = `/contacts/${contact.id}/notes`
+  const contractPath = "/contacts/{id}/notes"
+  const itemPath = "/contacts/{id}/notes/{note_id}"
+  const first = await response(
+    contractPath,
+    "POST",
+    await f.call(path, "POST", {
+      body: "First\nplain text",
+      author: { kind: "bot", name: "Spoof" },
+    }),
+    201
+  )
+  expect(first).toMatchObject({
+    body: "First\nplain text",
+    contact_id: contact.id,
+    author: { kind: "api", name: "API key “Contract”" },
+    source: null,
+  })
+  const second = await response(
+    contractPath,
+    "POST",
+    await f.call(path, "POST", { body: "Second" }),
+    201
+  )
+  const page = await response(
+    contractPath,
+    "GET",
+    await f.call(`${path}?limit=1`)
+  )
+  expect(page.has_more).toBe(true)
+  expect(page.data.map((note: { id: string }) => note.id)).toEqual([second.id])
+  const older = await response(
+    contractPath,
+    "GET",
+    await f.call(`${path}?after=${second.id}`)
+  )
+  expect(older.data.map((note: { id: string }) => note.id)).toEqual([first.id])
+  const newer = await response(
+    contractPath,
+    "GET",
+    await f.call(`${path}?before=${first.id}`)
+  )
+  expect(newer.data.map((note: { id: string }) => note.id)).toEqual([second.id])
+  const edited = await response(
+    itemPath,
+    "PATCH",
+    await f.call(`${path}/${first.id}`, "PATCH", {
+      body: "Edited",
+      author: { kind: "bot" },
+    })
+  )
+  expect(edited.author).toEqual(first.author)
+  expect(edited.created_at).toEqual(first.created_at)
+  expect(edited.updated_at > first.updated_at).toBe(true)
+  expect(edited.body).toBe("Edited")
+  await response(
+    itemPath,
+    "DELETE",
+    await f.call(`${path}/${second.id}`, "DELETE")
+  )
+  await response(
+    itemPath,
+    "PATCH",
+    await f.call(`${path}/${second.id}`, "PATCH", { body: "Gone" }),
+    404
+  )
+  for (const body of [
+    {},
+    { body: 7 },
+    { body: " \n" },
+    { body: "x".repeat(10001) },
+  ])
+    await response(contractPath, "POST", await f.call(path, "POST", body), 422)
+  await response(
+    itemPath,
+    "DELETE",
+    await f.call(`/contacts/${secondContact.id}/notes/${first.id}`, "DELETE"),
+    404
+  )
+  await response(
+    contractPath,
+    "GET",
+    await f.call(`/contacts/${secondContact.id}/notes?after=${first.id}`),
+    422
+  )
+  const foreign = await f.outsider.client.action(api.apiKeys.create, {
+    organizationId: f.outsider.team,
+    input: { name: "Foreign", permission: "full_access", domainId: null },
+  })
+  for (const [url, method, input] of [
+    [path, "GET", undefined],
+    [path, "POST", { body: "Foreign" }],
+    [`${path}/${first.id}`, "PATCH", { body: "Foreign" }],
+    [`${path}/${first.id}`, "DELETE", undefined],
+  ] as const)
+    await response(
+      method === "POST" || method === "GET" ? contractPath : itemPath,
+      method,
+      await f.call(url, method, input, foreign.token),
+      404
+    )
+  const key = async (scope: string) =>
+    f.owner.client.action(api.apiKeys.create, {
+      organizationId: f.owner.team,
+      input: {
+        name: scope,
+        permission: "custom",
+        scopes: [scope],
+        domainId: null,
+      },
+    })
+  const read = await key("contacts:read")
+  const write = await key("contacts:write")
+  const unrelated = await key("events:write")
+  await response(
+    contractPath,
+    "GET",
+    await f.call(path, "GET", undefined, read.token)
+  )
+  await response(
+    contractPath,
+    "POST",
+    await f.call(path, "POST", { body: "Denied" }, read.token),
+    403
+  )
+  await response(
+    itemPath,
+    "PATCH",
+    await f.call(
+      `${path}/${first.id}`,
+      "PATCH",
+      { body: "Denied" },
+      read.token
+    ),
+    403
+  )
+  await response(
+    itemPath,
+    "DELETE",
+    await f.call(`${path}/${first.id}`, "DELETE", undefined, read.token),
+    403
+  )
+  await response(
+    contractPath,
+    "GET",
+    await f.call(path, "GET", undefined, unrelated.token),
+    403
+  )
+  const authorized = await response(
+    contractPath,
+    "POST",
+    await f.call(path, "POST", { body: "Authorized" }, write.token),
+    201
+  )
+  await response(
+    itemPath,
+    "PATCH",
+    await f.call(
+      `${path}/${authorized.id}`,
+      "PATCH",
+      { body: "Authorized edit" },
+      write.token
+    )
+  )
+  await response(
+    itemPath,
+    "DELETE",
+    await f.call(`${path}/${authorized.id}`, "DELETE", undefined, write.token)
+  )
+  const once = () => {
+    vi.setSystemTime(Date.now() + 1100)
+    return f.t.fetch(path, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${write.token}`,
+        "content-type": "application/json",
+        "idempotency-key": "contact-note-once",
+      },
+      body: JSON.stringify({ body: "Once" }),
+    })
+  }
+  const created = await response(contractPath, "POST", await once(), 201)
+  expect(await response(contractPath, "POST", await once(), 201)).toEqual(
+    created
+  )
+  const events = await f.t.run((ctx) =>
+    ctx.db
+      .query("events")
+      .filter((q) => q.eq(q.field("type"), "contact.note_created"))
+      .collect()
+  )
+  expect(events.filter((e) => e.data.id === created.id)).toHaveLength(1)
+  const event = events.find((e) => e.data.id === created.id)!
+  const hook = await f.owner.client.action(api.webhooks.create, {
+    organizationId: f.owner.team,
+    endpoint: "https://example.com/notes",
+    events: ["contact.note_created"],
+  })
+  await f.t.mutation(internal.webhooks.deliverEvent, { id: event._id })
+  const delivery = await f.t.run((ctx) =>
+    ctx.db.query("webhookDeliveries").first()
+  )
+  expect(delivery).toMatchObject({
+    event: "contact.note_created",
+    payload: { data: created },
+  })
+  expect(hook).toBeDefined()
+  const spec = contract as unknown as {
+    webhooks: {
+      contactNoteCreated: {
+        post: {
+          requestBody: {
+            content: {
+              "application/json": { schema: AnySchema; example: unknown }
+            }
+          }
+        }
+      }
+    }
+  }
+  const sample =
+    spec.webhooks.contactNoteCreated.post.requestBody.content[
+      "application/json"
+    ]
+  validateBody(sample.schema, sample.example)
+  validateBody(sample.schema, delivery!.payload)
+  validateBody(
+    contract.components.schemas.ContactNote,
+    samplePayload({ name: "contact.note_created", schema: [] })
   )
 })

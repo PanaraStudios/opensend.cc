@@ -49,6 +49,7 @@ export const SYSTEM_EVENT_NAMES = [
   "whatsapp.template.status_updated",
   "whatsapp.phone_number.updated",
   "contact.created",
+  "contact.note_created",
   "contact.updated",
   "contact.deleted",
   "domain.created",
@@ -59,7 +60,8 @@ export const SYSTEM_EVENT_NAMES = [
 ] as const
 
 export type SystemEventName = (typeof SYSTEM_EVENT_NAMES)[number]
-export type SystemTriggerName = `opensend:${SystemEventName}`
+export type SystemTriggerName =
+  `opensend:${SystemEventName}` | "contact.note_created"
 export type EventField = {
   type: "string" | "number" | "boolean" | "date" | "enum" | "object" | "array"
   description: string
@@ -356,6 +358,22 @@ function schemaFor(name: SystemEventName): EventField {
       ...dates("read_receipt_sent_at"),
     })
   if (name.includes(".message.")) return message
+  if (name === "contact.note_created")
+    return object({
+      ...strings("object", "id", "contact_id", "body"),
+      author: object({
+        kind: field("enum", "Note author kind", "api", {
+          values: ["user", "bot", "api"],
+        }),
+        ...strings("id", "name"),
+      }),
+      source: {
+        ...object(strings("call_id", "conversation_id", "message_id")),
+        nullable: true,
+      },
+      ...dates("created_at", "updated_at"),
+      contact: { ...CONTACT_SCHEMA, optional: true, nullable: true },
+    })
   if (name.startsWith("contact.")) return CONTACT_SCHEMA
   if (name.startsWith("domain."))
     return object({
@@ -400,7 +418,7 @@ function schemaFor(name: SystemEventName): EventField {
 export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
   SYSTEM_EVENT_NAMES.map((name) => ({
     name,
-    trigger: `opensend:${name}`,
+    trigger: name === "contact.note_created" ? name : `opensend:${name}`,
     group: name.startsWith("whatsapp.call.")
       ? "WhatsApp calls"
       : (

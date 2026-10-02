@@ -635,8 +635,21 @@ export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
 
 /** What a test event sends when the schema is all there is to go on. */
 export function samplePayload(
-  event: Pick<AutomationEvent, "schema"> | undefined
+  event:
+    | (Pick<AutomationEvent, "schema"> & Partial<Pick<AutomationEvent, "name">>)
+    | undefined
 ): Record<string, unknown> {
+  if (event?.name === "contact.note_created")
+    return {
+      object: "contact_note",
+      id: "note-example",
+      contact_id: "contact-example",
+      body: "Follow up tomorrow.",
+      author: { kind: "bot", id: "bot-example", name: "Support" },
+      source: { call_id: "call-example" },
+      created_at: "2026-10-03T10:00:00.000Z",
+      updated_at: "2026-10-03T10:00:00.000Z",
+    }
   const samples = { string: "example", number: 1, boolean: true }
   return Object.fromEntries(
     (event?.schema ?? []).map((field) => [

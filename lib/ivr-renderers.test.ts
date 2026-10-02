@@ -7,11 +7,11 @@ import {
   pcmWav,
   renderWithBackoff,
 } from "./ivr-renderers"
-test("ElevenLabs requests raw 16 kHz PCM and wraps mono signed 16-bit audio in WAV", async () => {
+test("ElevenLabs requests raw 44.1 kHz PCM and wraps mono signed 16-bit audio in WAV", async () => {
   const request: typeof fetch = async (url, init) => {
     assert.equal(
       String(url),
-      "https://api.elevenlabs.io/v1/text-to-speech/voice%2Fid?output_format=pcm_16000"
+      "https://api.elevenlabs.io/v1/text-to-speech/voice%2Fid?output_format=pcm_44100"
     )
     assert.equal(
       (init!.headers as Record<string, string>)["xi-api-key"],
@@ -32,12 +32,14 @@ test("ElevenLabs requests raw 16 kHz PCM and wraps mono signed 16-bit audio in W
   const bytes = await result.audio.arrayBuffer(),
     view = new DataView(bytes)
   assert.equal(bytes.byteLength, 48)
-  assert.equal(view.getUint32(24, true), 16000)
+  assert.equal(view.getUint32(24, true), 44100)
   assert.equal(view.getUint16(22, true), 1)
   assert.equal(view.getUint16(34, true), 16)
 })
 test("Sarvam explicitly requests Bulbul v3 WAV and refuses a mismatched sample rate", async () => {
-  const wav = new Uint8Array(await pcmWav(new Uint8Array([1, 0])).arrayBuffer())
+  const wav = new Uint8Array(
+    await pcmWav(new Uint8Array([1, 0]), 24000).arrayBuffer()
+  )
   const request: typeof fetch = async (url, init) => {
     assert.equal(String(url), "https://api.sarvam.ai/text-to-speech")
     assert.equal(
@@ -49,7 +51,7 @@ test("Sarvam explicitly requests Bulbul v3 WAV and refuses a mismatched sample r
       language_code: "hi-IN",
       speaker: "shubh",
       model: "bulbul:v3",
-      speech_sample_rate: 16000,
+      speech_sample_rate: 24000,
       output_audio_codec: "wav",
     })
     return Response.json({ audios: [Buffer.from(wav).toString("base64")] })
@@ -64,14 +66,66 @@ test("Sarvam explicitly requests Bulbul v3 WAV and refuses a mismatched sample r
     ).audio.type,
     "audio/wav"
   )
-  new DataView(wav.buffer).setUint32(24, 24000, true)
+  new DataView(wav.buffer).setUint32(24, 16000, true)
   await assert.rejects(
     new SarvamPromptRenderer("secret", request).render(
       "नमस्ते",
       "hi-IN",
       "shubh"
     ),
-    /16 kHz/
+    /24 kHz/
+  )
+})
+test("ElevenLabs lower-tier credentials fall back to 24k PCM rather than failing prompt generation", async () => {
+  const urls: string[] = []
+  const renderer = new ElevenLabsPromptRenderer("secret", async (url) => {
+    urls.push(String(url))
+    return urls.length === 1
+      ? new Response("Format requires Pro", { status: 403 })
+      : new Response(new Uint8Array([1, 0, 2, 0]))
+  })
+  const result = await renderer.render("Hello", "en-US", "voice")
+  assert.ok(urls[0].endsWith("pcm_44100"))
+  assert.ok(urls[1].endsWith("pcm_24000"))
+  assert.equal(
+    new DataView(await result.audio.arrayBuffer()).getUint32(24, true),
+    24000
+  )
+})
+test("provider rejections keep their own message", async () => {
+  const eleven = new ElevenLabsPromptRenderer("secret", async () =>
+    Response.json(
+      {
+        detail: {
+          status: "voice_not_found",
+          message: "A voice with the voice_id abc was not found.",
+        },
+      },
+      { status: 400 }
+    )
+  )
+  await assert.rejects(
+    eleven.render("Hello", "en", "abc"),
+    (error) =>
+      error instanceof PromptProviderError &&
+      !error.retryable &&
+      error.message ===
+        "ElevenLabs: voice_not_found — A voice with the voice_id abc was not found."
+  )
+  const sarvam = new SarvamPromptRenderer("secret", async () =>
+    Response.json(
+      { error: { code: "invalid_speaker", message: "Unknown speaker secret" } },
+      { status: 400 }
+    )
+  )
+  await assert.rejects(
+    sarvam.render("Hello", "hi-IN", "nope"),
+    (error) =>
+      error instanceof PromptProviderError &&
+      !error.retryable &&
+      error.message ===
+        "Sarvam: invalid_speaker — Unknown speaker [redacted]" &&
+      !error.message.includes("secret")
   )
 })
 test("retries are bounded with backoff and provider errors never expose keys or response bodies", async () => {

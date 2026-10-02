@@ -27,6 +27,7 @@ export interface VoiceAgentAdapter {
   onBargeIn(listener: () => void): () => void
   onToolCall(listener: (call: VoiceToolCall) => void): () => void
   onTranscript(listener: (transcript: VoiceTranscript) => void): () => void
+  onPlaybackDone?(listener: (turnId: string) => void): () => void
   onEnd(listener: (reason: string) => void): () => void
   sendToolResult(id: string, result: unknown): void
   interrupt(playedMs: number): void

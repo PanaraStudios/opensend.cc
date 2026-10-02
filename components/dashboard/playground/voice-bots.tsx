@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
@@ -48,6 +48,7 @@ import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
 import {
   updateVoiceBotLanguage,
+  updateVoiceBotVoice,
   voiceBotDefaults,
   type VoiceBotText,
 } from "@/lib/voice-bot-defaults"
@@ -78,6 +79,12 @@ import {
   sttLanguageItems,
 } from "@/lib/dashboard/voice-options"
 import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  defaultElevenLabsVoice,
+  ELEVENLABS_FALLBACK_VOICE_ID,
+  type ElevenLabsVoice,
+} from "@/lib/elevenlabs-voices"
+import { useElevenLabsVoices } from "./elevenlabs-voices"
 
 const engineLabel = (engine: string) =>
   engine === "gemini_live" ? "Gemini Live" : "Sarvam + ElevenLabs"
@@ -260,10 +267,24 @@ function CreateBot({ close }: { close: () => void }) {
     router = useRouter(),
     write = useAction(api.voice.resources.dashboardWrite)
   const provider = engine === "gemini_live" ? "gemini" : "sarvam"
+  const elevenKey = keys?.data.find((key) => key.provider === "elevenlabs")
+  const catalog = useElevenLabsVoices(
+    elevenKey?.id,
+    engine === "cascade" && !!elevenKey
+  )
+  const elevenReady =
+    engine === "cascade" &&
+    ttsLanguageItems("elevenlabs", "eleven_multilingual_v2").some(
+      (item) => item.value === language.split("-")[0]
+    )
   const patchInstructions = (patch: Partial<VoiceBotText>) =>
     setInstructions((current) => ({ ...current, ...patch }))
   const changeLanguage = (language: string) => {
-    const next = updateVoiceBotLanguage(instructions, language)
+    const next = updateVoiceBotLanguage(
+      instructions,
+      language,
+      engine === "gemini_live" ? "female" : "male"
+    )
     setLanguage(language)
     setInstructions(next)
     notifyLanguageUpdate(instructions, next, language)
@@ -290,6 +311,10 @@ function CreateBot({ close }: { close: () => void }) {
             ).some((item) => item.value === language.split("-")[0])
               ? keys?.data.find((k) => k.provider === "elevenlabs")
               : undefined
+            const live =
+              eleven && catalog.loaded && catalog.hasKey
+                ? catalog.voices
+                : undefined
             const config = {
               ...draft,
               name,
@@ -304,7 +329,7 @@ function CreateBot({ close }: { close: () => void }) {
                       ? {
                           provider: "elevenlabs" as const,
                           model: "eleven_multilingual_v2",
-                          voice: "21m00Tcm4TlvDq8ikWAM",
+                          voice: defaultElevenLabsVoice(live ?? []),
                           credentialId: eleven.id,
                         }
                       : { ...draft.tts!, credentialId: key.id },
@@ -314,7 +339,9 @@ function CreateBot({ close }: { close: () => void }) {
             const result = await write({
               organizationId: activeTeamId!,
               kind: "bot",
-              body: JSON.stringify(voiceBotFormPayload(config)),
+              body: JSON.stringify(
+                voiceBotFormPayload(updateVoiceBotVoice(config, live))
+              ),
             })
             close()
             router.push(`/playground/voice-bot/${result.id}`)
@@ -392,9 +419,9 @@ function CreateBot({ close }: { close: () => void }) {
               Add a {VOICE_PROVIDER_LABELS[provider]} key to create this bot.
             </p>
           ) : null}
-          {error ? (
+          {error || (elevenReady ? catalog.error : "") ? (
             <p role="alert" className="text-destructive">
-              {error}
+              {error || catalog.error}
             </p>
           ) : null}
         </FieldGroup>
@@ -479,7 +506,9 @@ function StageFields({
             ...(name === "tts"
               ? {
                   voice:
-                    provider === "sarvam" ? "shubh" : "21m00Tcm4TlvDq8ikWAM",
+                    provider === "sarvam"
+                      ? "shubh"
+                      : ELEVENLABS_FALLBACK_VOICE_ID,
                 }
               : {}),
           })
@@ -521,14 +550,26 @@ function BotForm({ row }: { row: VoiceBotResource }) {
     [saved, setSaved] = useState(() => JSON.stringify(voiceBotFormPayload(row)))
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [voiceError, setVoiceError] = useState(""),
+    [adoptVoice, setAdoptVoice] = useState(false),
     [deleting, setDeleting] = useState(false),
     [settings, setSettings] = useState(false),
     [expand, setExpand] = useState(false),
     [rename, setRename] = useState(false)
+  const liveVoices = useRef<ElevenLabsVoice[] | undefined>(undefined)
   const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
   const write = useAction(api.voice.resources.dashboardWrite)
+  const gendered = (next: VoiceBotConfig) =>
+    next.engine === "cascade" && next.tts?.provider === "elevenlabs"
+      ? liveVoices.current
+      : undefined
   const patch = (p: Partial<VoiceBotConfig>) =>
-    setDraft((d) => ({ ...d, ...p }))
+    setDraft((d) => {
+      const next = { ...d, ...p }
+      return p.voice !== undefined || p.tts !== undefined
+        ? updateVoiceBotVoice(next, gendered(next))
+        : next
+    })
   useEffect(() => {
     document.title = `${row.name} · opensend.cc`
   }, [row.name])
@@ -584,19 +625,34 @@ function BotForm({ row }: { row: VoiceBotResource }) {
           provider={
             draft.engine === "gemini_live" ? "gemini" : draft.tts!.provider
           }
+          credentialId={
+            draft.engine === "gemini_live" ? undefined : draft.tts!.credentialId
+          }
+          quietError
+          adoptDefault={
+            adoptVoice &&
+            draft.engine === "cascade" &&
+            draft.tts?.provider === "elevenlabs"
+          }
+          onAdopted={() => setAdoptVoice(false)}
+          onError={setVoiceError}
+          onVoices={(voices) => {
+            liveVoices.current = voices
+          }}
           label="Voice"
           value={
             draft.engine === "gemini_live"
               ? draft.voice
               : (draft.tts!.voice ?? "")
           }
-          onChange={(voice) =>
+          onChange={(voice) => {
+            setAdoptVoice(false)
             patch(
               draft.engine === "gemini_live"
                 ? { voice }
                 : { tts: { ...draft.tts!, voice } }
             )
-          }
+          }}
         />
         <VoiceChoiceField
           label="Language"
@@ -610,7 +666,10 @@ function BotForm({ row }: { row: VoiceBotResource }) {
                 )
           }
           onChange={(language) => {
-            const next = updateVoiceBotLanguage(draft, language)
+            const next = updateVoiceBotVoice(
+              { ...draft, language },
+              gendered({ ...draft, language })
+            )
             setDraft(next)
             notifyLanguageUpdate(draft, next, language)
           }}
@@ -641,7 +700,15 @@ function BotForm({ row }: { row: VoiceBotResource }) {
               key={name}
               name={name}
               stage={draft[name]!}
-              onChange={(stage) =>
+              onChange={(stage) => {
+                if (
+                  name === "tts" &&
+                  stage.provider === "elevenlabs" &&
+                  draft.tts?.provider !== "elevenlabs"
+                )
+                  setAdoptVoice(true)
+                else if (name === "tts" && stage.provider !== "elevenlabs")
+                  setAdoptVoice(false)
                 patch({
                   [name]: stage,
                   ...(name === "stt"
@@ -651,7 +718,7 @@ function BotForm({ row }: { row: VoiceBotResource }) {
                       }
                     : {}),
                 })
-              }
+              }}
             />
           ))
         )}
@@ -813,9 +880,12 @@ function BotForm({ row }: { row: VoiceBotResource }) {
           </>
         }
       />
-      {error ? (
+      {error ||
+      (draft.engine === "cascade" && draft.tts?.provider === "elevenlabs"
+        ? voiceError
+        : "") ? (
         <p role="alert" className="text-destructive">
-          {error}
+          {error || voiceError}
         </p>
       ) : null}
       <div className="grid min-w-0 overflow-hidden rounded-xl border border-border lg:grid-cols-[minmax(0,1fr)_380px]">

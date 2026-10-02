@@ -138,6 +138,11 @@ export const callingTables = {
       "mode",
       "status",
     ])
+    .index("by_channelContactId", ["channelContactId"])
+    .index("by_conversationId_and_channelContactId", [
+      "conversationId",
+      "channelContactId",
+    ])
     .index("by_accountId_and_userId", ["accountId", "userId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_accountId_and_wacid", ["accountId", "wacid"])

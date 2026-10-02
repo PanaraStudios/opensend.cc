@@ -16,6 +16,7 @@ interface ControlledCall {
   machine: CallStateMachine
   end: (reason: string) => Promise<void>
   socket?: OutboundCall
+  socketDisconnected?: boolean
   releaseMedia?: () => Promise<void>
   tools?: VoiceTools
   abort: AbortController
@@ -29,6 +30,9 @@ interface ControlledCall {
   outcome?: "transferred_agent" | "transferred_ivr" | "ended_by_bot" | "failed"
   nextRoute?: RouteRequest
   botCompleted?: boolean
+  ending?: NodeJS.Timeout
+  playbackDone?: boolean
+  playbackHangup?: NodeJS.Timeout
   silence?: NodeJS.Timeout
   lastActivity?: number
   stopped: boolean
@@ -44,7 +48,8 @@ export class VoiceRuntime {
       throw new Error("Unknown outbound channel")
     call.socket = socket
     socket.once("close", () => {
-      if (!call.stopped) void call.end("Outbound ESL disconnected")
+      call.socketDisconnected = true
+      if (!call.stopped) this.afterAnchor(call, "Outbound ESL disconnected")
     })
     socket.on("event", (event) => {
       if (
@@ -59,6 +64,10 @@ export class VoiceRuntime {
       if (!call.stopped) await this.run(call, socket)
     } catch (error) {
       if (call.stopped) return
+      if (call.socketDisconnected) {
+        this.afterAnchor(call, "Outbound ESL disconnected")
+        return
+      }
       console.error(
         "Voice control failed",
         call.callId,
@@ -116,7 +125,17 @@ export class VoiceRuntime {
   }
   private event(call: ControlledCall, event: VoiceEvent) {
     // Keep media timing and state transitions observable without logging provider keys.
-    if (["state", "barge_in", "media", "latency"].includes(event.type))
+    if (
+      [
+        "state",
+        "barge_in",
+        "playback_done",
+        "media",
+        "latency",
+        "tool_call",
+        "hangup",
+      ].includes(event.type)
+    )
       console.log(
         JSON.stringify({ callId: call.callId, timestamp: Date.now(), ...event })
       )
@@ -230,7 +249,11 @@ export class VoiceRuntime {
             void call.end("Bot silence timeout")
         }, 1000)
         const provider = adapter as VoiceAdapterBase
+        provider.onToolObserved((event) => this.event(call, event))
         provider.onActivity(() => {
+          // A previous answer finishing is not completion of the next goodbye.
+          call.playbackDone = false
+          clearTimeout(call.playbackHangup)
           call.lastActivity = Date.now()
         })
         provider.onUsage((usage) => {
@@ -243,7 +266,10 @@ export class VoiceRuntime {
           this.event(call, { type: "latency", ...timing })
         )
       }
+      call.playbackDone = false
       adapter.onAudio(() => {
+        call.playbackDone = false
+        clearTimeout(call.playbackHangup)
         call.lastActivity = Date.now()
       })
       const tools = (call.tools = new VoiceTools(
@@ -252,6 +278,13 @@ export class VoiceRuntime {
         call.route.organizationId!
       ))
       adapter.onToolCall((toolCall) => {
+        if (
+          call.stopped ||
+          call.ending ||
+          call.route !== botRoute ||
+          call.nextRoute
+        )
+          return
         void tools
           .run(toolCall)
           .then((result) => {
@@ -294,9 +327,16 @@ export class VoiceRuntime {
                 action.action === "end_call"
               ) {
                 call.outcome = "ended_by_bot"
-                setTimeout(() => {
-                  if (!call.stopped) void call.end("Ended by bot")
-                }, 3000).unref()
+                clearInterval(call.silence)
+                call.ending ??= setTimeout(() => {
+                  if (
+                    !call.stopped &&
+                    call.route === botRoute &&
+                    !call.nextRoute
+                  )
+                    void call.end("Ended by bot")
+                }, 2500).unref()
+                if (call.playbackDone) this.endAfterPlayback(call)
               }
             }
           })
@@ -320,7 +360,17 @@ export class VoiceRuntime {
       })
       const reserved = this.media.reserve({
         adapter,
-        event: (event) => this.event(call, event),
+        event: (event) => {
+          this.event(call, event)
+          if (event.type === "barge_in") {
+            call.playbackDone = false
+            clearTimeout(call.playbackHangup)
+          }
+          if (event.type === "playback_done") {
+            call.playbackDone = true
+            if (call.ending) this.endAfterPlayback(call)
+          }
+        },
         barge: async () => {
           const application = await socket.api(
             `uuid_getvar ${socket.uuid} current_application`
@@ -346,8 +396,7 @@ export class VoiceRuntime {
       })
       call.releaseMedia = reserved.release
       // Explicit per-leg codecs permit transcoding without changing Meta's Opus leg.
-      const codecs =
-        call.route.codec === "PCMU" ? "PCMU" : "L16@16000h@20i,PCMU"
+      const codecs = call.route.codec === "PCMU" ? "PCMU" : "L16@16000h@20i"
       await socket.api(`uuid_setvar ${socket.uuid} hangup_after_bridge false`)
       await socket.execute(
         "bridge",
@@ -356,6 +405,14 @@ export class VoiceRuntime {
       )
       if (!call.nextRoute) this.afterAnchor(call, "Bot bridge completed")
     }
+  }
+  private endAfterPlayback(call: ControlledCall) {
+    clearTimeout(call.playbackHangup)
+    // Allow the final RTP packet to reach the anchored Opus leg before teardown.
+    call.playbackHangup = setTimeout(() => {
+      if (!call.stopped && call.playbackDone && call.outcome === "ended_by_bot")
+        void call.end("Ended by bot")
+    }, 100).unref()
   }
   private afterAnchor(call: ControlledCall, reason: string) {
     // SIP BYE/application completion can precede the anchor's hangup event.
@@ -398,8 +455,11 @@ export class VoiceRuntime {
   async stop(callId: string, reason = "Call ended") {
     const call = this.calls.get(callId)
     if (!call) return
+    this.event(call, { type: "hangup", reason })
     call.abort.abort()
     call.stopped = true
+    clearTimeout(call.ending)
+    clearTimeout(call.playbackHangup)
     clearInterval(call.silence)
     call.tools?.stop()
     call.commit()

@@ -17,14 +17,18 @@ import {
 import { chromium, type Browser, type Page } from "playwright"
 import type { BrowserAgentState } from "./browser-agent.js"
 import { HmacVerifier, signRequest } from "../src/auth.js"
+import { FreeSwitch } from "../src/esl.js"
 import { CallGatewayClient } from "../src/client.js"
 import type { GatewayCallback } from "../src/contracts.js"
 import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
 
+const endCallFlow = process.argv.includes("bot-end-call")
+const metaTerminations: string[] = []
 const returnFlow = process.argv.includes("bot-ivr")
 const combinedFlow = process.argv.includes("ivr-bot-agent")
 const playgroundBot = process.argv.includes("playground-bot")
 const pipecatEngine =
+  endCallFlow ||
   playgroundBot ||
   process.argv.includes("bot-engine") ||
   combinedFlow ||
@@ -77,7 +81,7 @@ function fixtureMenu(id: string, step: number) {
   }
 }
 function promptWav() {
-  const samples = 16000,
+  const samples = 48000,
     wav = Buffer.alloc(44 + samples * 2)
   wav.write("RIFF")
   wav.writeUInt32LE(wav.length - 8, 4)
@@ -85,19 +89,23 @@ function promptWav() {
   wav.writeUInt32LE(16, 16)
   wav.writeUInt16LE(1, 20)
   wav.writeUInt16LE(1, 22)
-  wav.writeUInt32LE(16000, 24)
-  wav.writeUInt32LE(32000, 28)
+  wav.writeUInt32LE(48000, 24)
+  wav.writeUInt32LE(96000, 28)
   wav.writeUInt16LE(2, 32)
   wav.writeUInt16LE(16, 34)
   wav.write("data", 36)
   wav.writeUInt32LE(samples * 2, 40)
   for (let i = 0; i < samples; i++)
     wav.writeInt16LE(
-      Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / 16000)),
+      Math.round(
+        4000 * Math.sin((2 * Math.PI * 440 * i) / 48000) +
+          4000 * Math.sin((2 * Math.PI * 6000 * i) / 48000)
+      ),
       44 + i * 2
     )
   return wav
 }
+let cachedFixtureAudio = promptWav()
 const receiver = createServer(async (request, response) => {
   try {
     if (request.url?.startsWith("/test/ivr/prompt.wav")) {
@@ -109,7 +117,9 @@ const receiver = createServer(async (request, response) => {
         createHmac("sha256", secret).update(String(expires)).digest("hex")
       )
       ivrAudioFetches++
-      response.writeHead(200, { "content-type": "audio/wav" }).end(promptWav())
+      response
+        .writeHead(200, { "content-type": "audio/wav" })
+        .end(cachedFixtureAudio)
       return
     }
     const chunks: Buffer[] = []
@@ -172,6 +182,14 @@ const receiver = createServer(async (request, response) => {
       }
       return
     }
+    // Fake Graph receiver, distinct from the signed Convex callback endpoint.
+    if (request.url === "/test/meta/calls") {
+      const signal = JSON.parse(body)
+      assert.equal(signal.action, "terminate")
+      metaTerminations.push(signal.call_id)
+      response.writeHead(200).end('{"success":true}')
+      return
+    }
     // Fake authenticated Convex action: exercises the exact 8c HMAC issuance API.
     if (request.url === "/test/agent/session") {
       verifier.verify(request.method!, request.url, body, request.headers)
@@ -214,25 +232,39 @@ const receiver = createServer(async (request, response) => {
               provider: "gemini",
               engine: "gemini_live",
               credentialId: "harness-credential",
-              tools: returnFlow
-                ? ["lookup_contact", "transfer_to_ivr"]
-                : combinedFlow
-                  ? ["lookup_contact", "transfer_to_agent"]
-                  : ["lookup_contact"],
+              tools: endCallFlow
+                ? [
+                    "lookup_contact",
+                    "create_note",
+                    "send_whatsapp_message",
+                    "end_call",
+                  ]
+                : returnFlow
+                  ? ["lookup_contact", "transfer_to_ivr"]
+                  : combinedFlow
+                    ? ["lookup_contact", "transfer_to_agent"]
+                    : ["lookup_contact"],
               handoff: {
                 agents: true,
                 ...(returnFlow ? { ivrId: "harness-ivr" } : {}),
               },
-              maxDurationSeconds: returnFlow ? 30 : 6,
+              maxDurationSeconds: returnFlow || endCallFlow ? 30 : 6,
             }),
             botId: "harness-bot",
             keys: { live: "fake-key" },
             toolCatalog: toolDeclarations(
-              returnFlow
-                ? ["lookup_contact", "transfer_to_ivr"]
-                : combinedFlow
-                  ? ["lookup_contact", "transfer_to_agent"]
-                  : ["lookup_contact"]
+              endCallFlow
+                ? [
+                    "lookup_contact",
+                    "create_note",
+                    "send_whatsapp_message",
+                    "end_call",
+                  ]
+                : returnFlow
+                  ? ["lookup_contact", "transfer_to_ivr"]
+                  : combinedFlow
+                    ? ["lookup_contact", "transfer_to_agent"]
+                    : ["lookup_contact"]
             ),
           })
         )
@@ -250,6 +282,10 @@ const receiver = createServer(async (request, response) => {
       )
       assert.ok(
         tool.toolCall.name === "lookup_contact" ||
+          (endCallFlow &&
+            ["end_call", "create_note", "send_whatsapp_message"].includes(
+              tool.toolCall.name
+            )) ||
           (combinedFlow && tool.toolCall.name === "transfer_to_agent") ||
           (returnFlow && tool.toolCall.name === "transfer_to_ivr")
       )
@@ -260,14 +296,16 @@ const receiver = createServer(async (request, response) => {
         JSON.stringify({
           ok: true,
           result:
-            tool.toolCall.name === "transfer_to_ivr"
-              ? { action: "transfer_to_ivr", ivrId: "harness-ivr" }
-              : tool.toolCall.name === "transfer_to_agent"
-                ? {
-                    action: "transfer_to_agent",
-                    extension: harnessAgentExtension!,
-                  }
-                : { contactId: "fixture-contact" },
+            tool.toolCall.name === "end_call"
+              ? { action: "end_call" }
+              : tool.toolCall.name === "transfer_to_ivr"
+                ? { action: "transfer_to_ivr", ivrId: "harness-ivr" }
+                : tool.toolCall.name === "transfer_to_agent"
+                  ? {
+                      action: "transfer_to_agent",
+                      extension: harnessAgentExtension!,
+                    }
+                  : { contactId: "fixture-contact" },
         })
       )
       return
@@ -278,12 +316,23 @@ const receiver = createServer(async (request, response) => {
     assert.equal(event.version, 1)
     if (!callbacks.some((previous) => previous.eventId === event.eventId))
       callbacks.push(event)
+    if (endCallFlow && event.event === "hangup") {
+      // This harness has no deployed Convex. Its callback fixture models gatewayHangup;
+      // convex/voice.test.ts independently runs the real mutation/action against fake Graph.
+      const terminated = await fetch("http://127.0.0.1:8091/test/meta/calls", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "terminate", call_id: event.callId }),
+      })
+      assert.equal(terminated.status, 200)
+    }
     response.writeHead(200).end('{"ok":true}')
   } catch (error) {
     response.writeHead(401).end(String(error))
   }
 })
 await new Promise<void>((resolve) => receiver.listen(8091, "0.0.0.0", resolve))
+
 const watchdog = setTimeout(() => {
   console.error("Harness exceeded 120 seconds")
   process.exit(1)
@@ -450,6 +499,8 @@ async function run(
           clockRate: 48000,
           channels: 2,
           payloadType: 111,
+          parameters:
+            "minptime=10;useinbandfec=1;maxaveragebitrate=20000;maxplaybackrate=16000;sprop-maxcapturerate=16000",
         }),
         new RTCRtpCodecParameters({
           mimeType: "audio/telephone-event",
@@ -539,7 +590,7 @@ async function run(
               : { adapter: "fake-echo" as const }),
             organizationId: "harness-team",
             codec: voice === "PCMU" ? ("PCMU" as const) : ("L16" as const),
-            maxDurationSeconds: returnFlow ? 30 : 6,
+            maxDurationSeconds: returnFlow || endCallFlow ? 30 : 6,
             record: true,
           }
         : agent && !combinedFlow && !returnFlow
@@ -643,6 +694,74 @@ async function run(
           "Bot did not enter IVR on the anchored channel"
         )
       clearInterval(sending)
+      if (voice === "ivr-engine") {
+        await waitUntil(
+          () => ivrStarts.includes(callId) && ivrAudioFetches > 0,
+          "IVR prompt was not fetched before measuring playback"
+        )
+        const beforePrompt = received
+        await waitUntil(
+          () => received >= beforePrompt + 60,
+          "IVR playback did not continue"
+        )
+        const fs = new FreeSwitch(
+          "freeswitch",
+          8021,
+          process.env.FREESWITCH_ESL_SECRET!
+        )
+        try {
+          await fs.open()
+          const channels = JSON.parse(
+            await fs.api("show channels as json")
+          ) as { rows: { uuid: string }[] }
+          for (const channel of channels.rows ?? []) {
+            if (
+              (await fs.api(`uuid_getvar ${channel.uuid} opensend_call_id`)) !==
+              callId
+            )
+              continue
+            const variables: Record<string, string> = {}
+            for (const name of [
+              "read_codec",
+              "read_rate",
+              "write_codec",
+              "write_rate",
+              "sip_remote_audio_fmtp",
+              "current_application",
+            ])
+              variables[name] = await fs.api(
+                `uuid_getvar ${channel.uuid} ${name}`
+              )
+            console.log("IVR codec path", JSON.stringify(variables))
+            assert.equal(variables.write_codec.toUpperCase(), "OPUS")
+            assert.ok(
+              Number(variables.write_rate) >= 16000,
+              "FreeSWITCH playback rate fell below 16k"
+            )
+          }
+        } finally {
+          fs.close()
+        }
+        console.log(
+          `IVR source tones: 6k=${tonePower(cachedFixtureAudio.subarray(44), 6000)}, 440=${tonePower(cachedFixtureAudio.subarray(44), 440)}`
+        )
+        const pcm = await decodeOpus(
+          captured.map((p) => p.payload),
+          48000
+        )
+        console.log("IVR Opus configurations", [
+          ...new Set(captured.map((p) => p.payload[0] >> 3)),
+        ])
+        const high = tonePower(pcm, 6000, 48000),
+          low = tonePower(pcm, 440, 48000)
+        assert.ok(
+          high > 100 && high > low * 0.2,
+          `IVR lost wideband audio: 6kHz=${high}, 440Hz=${low}`
+        )
+        console.log(
+          `PASS IVR wideband: normalized 16kHz WAV → http_cache/mod_sndfile → Opus → Meta; 6kHz=${high.toFixed(0)}, 440Hz=${low.toFixed(0)}`
+        )
+      }
       const info = await infoFor(callId)
       const negotiated = peer.remoteDescription!.sdp.match(
         /a=rtpmap:(\d+) telephone-event\/8000/i
@@ -885,7 +1004,10 @@ async function run(
         "Tool result did not reach adapter"
       )
       assert.equal(
-        toolRequests.filter((tool) => tool.callId === callId).length,
+        toolRequests.filter(
+          (tool) =>
+            tool.callId === callId && tool.toolCall.name === "lookup_contact"
+        ).length,
         1
       )
       await delay(1200)
@@ -915,7 +1037,113 @@ async function run(
       assert.ok(Date.now() - routeAt < 8500)
       assert.equal(ended.event, "hangup")
       if (ended.event === "hangup")
-        assert.equal(ended.reason, "ALLOTTED_TIMEOUT")
+        assert.equal(
+          ended.reason,
+          endCallFlow ? "Ended by bot" : "ALLOTTED_TIMEOUT"
+        )
+      if (endCallFlow) {
+        const done = voiceEvents.find(
+          (e) => e.callId === callId && e.type === "playback_done"
+        )!
+        const tool = voiceEvents.find(
+          (e) =>
+            e.callId === callId &&
+            e.type === "tool_call" &&
+            e.toolName === "end_call" &&
+            e.status === "succeeded"
+        )!
+        assert.ok(done, "Goodbye playback completion missing")
+        assert.ok(
+          ended.timestamp >= done.timestamp,
+          "Call ended before goodbye playback"
+        )
+        assert.ok(
+          ended.timestamp - Math.max(done.timestamp, tool.timestamp) < 1000,
+          "Playback-done hangup was delayed"
+        )
+        assert.ok(
+          ended.timestamp - tool.timestamp < 2500,
+          "Fixed hangup wait survived"
+        )
+        console.log(
+          `PASS goodbye timing ${voice}: hangup ${ended.timestamp - done.timestamp}ms after playback, ${ended.timestamp - tool.timestamp}ms after end_call`
+        )
+        const goodbye = await decodeOpus(
+          captured
+            .filter((packet) => packet.time > tool.timestamp - 100)
+            .map((packet) => packet.payload)
+        )
+        assert.ok(
+          tonePower(goodbye, 1320) > 100,
+          "Goodbye audio never reached Meta"
+        )
+        await waitUntil(
+          () => metaTerminations.includes(callId),
+          "Meta peer never received terminate"
+        )
+        await waitUntil(async () => {
+          try {
+            await infoFor(callId)
+            return false
+          } catch (error) {
+            if (String(error).includes("Missing Janus handle")) return true
+            throw error
+          }
+        }, "Janus leg survived end_call")
+        await waitUntil(
+          () =>
+            voiceEvents.some(
+              (e) =>
+                e.callId === callId &&
+                e.type === "bot_completed" &&
+                e.outcome === "ended_by_bot"
+            ),
+          "Wrong bot outcome"
+        )
+        assert.ok(
+          voiceEvents.some(
+            (e) =>
+              e.callId === callId &&
+              e.type === "tool_call" &&
+              e.toolName === "end_call" &&
+              e.status === "succeeded"
+          )
+        )
+        assert.ok(
+          voiceEvents.some(
+            (e) =>
+              e.callId === callId &&
+              e.type === "hangup" &&
+              e.reason === "Ended by bot"
+          )
+        )
+        for (const name of [
+          "lookup_contact",
+          "create_note",
+          "send_whatsapp_message",
+          "end_call",
+        ]) {
+          assert.equal(
+            toolRequests.filter(
+              (t) => t.callId === callId && t.toolCall.name === name
+            ).length,
+            1
+          )
+          assert.ok(
+            voiceEvents.some(
+              (e) =>
+                e.callId === callId &&
+                e.type === "tool_call" &&
+                e.toolName === name &&
+                e.status === "succeeded" &&
+                typeof e.latencyMs === "number"
+            )
+          )
+        }
+        console.log(
+          "PASS end_call: tool authorized, FreeSWITCH recording finalized, Janus removed, fake Meta observed terminate, reason and ended_by_bot persisted"
+        )
+      }
       await waitUntil(
         () =>
           voiceEvents.some(
@@ -943,7 +1171,7 @@ async function run(
       }
       if (barge.type === "barge_in")
         console.log(
-          `PASS barge-in ${voice}: played ${barge.playedMs}ms, flushed ${barge.flushedMs}ms; tool HMAC request/result delivered once; sched_hangup ALLOTTED_TIMEOUT at ${ended.timestamp - routeAt}ms`
+          `PASS barge-in ${voice}: played ${barge.playedMs}ms, flushed ${barge.flushedMs}ms; tool HMAC request/result delivered once; ${endCallFlow ? "end_call" : "sched_hangup ALLOTTED_TIMEOUT"} at ${ended.timestamp - routeAt}ms`
         )
     }
     await gateway.hangup(callId)
@@ -972,6 +1200,25 @@ async function run(
         (await stat(recording.recordingFile)).size > 44,
         "Recording has no audio"
       )
+    if (endCallFlow && recording.event === "recording_ready") {
+      const fs = new FreeSwitch(
+        "freeswitch",
+        8021,
+        process.env.FREESWITCH_ESL_SECRET!
+      )
+      try {
+        await fs.open()
+        const uuid = recording.recordingFile.match(/([a-f0-9-]{36})\.wav$/i)![1]
+        assert.equal(
+          await fs.api(`uuid_exists ${uuid}`),
+          "false",
+          "FreeSWITCH anchor survived end_call"
+        )
+        console.log("PASS FreeSWITCH uuid_exists=false after bot hangup")
+      } finally {
+        fs.close()
+      }
+    }
     assert.ok(
       callbacks.some(
         (event) =>
@@ -990,6 +1237,19 @@ async function run(
   }
 }
 try {
+  cachedFixtureAudio = Buffer.from(
+    await (
+      await gateway.normalizePrompt(
+        new Blob([new Uint8Array(promptWav())], { type: "audio/wav" })
+      )
+    ).arrayBuffer()
+  )
+  assert.equal(cachedFixtureAudio.readUInt32LE(24), 16000)
+  assert.equal(cachedFixtureAudio.readUInt16LE(22), 1)
+  assert.equal(cachedFixtureAudio.readUInt16LE(34), 16)
+  console.log(
+    "PASS prompt normalization: signed gateway converter returned 16kHz mono PCM16 WAV"
+  )
   if (process.argv.includes("playground") || playgroundBot) {
     const agent = await browserAgent(),
       callId = `playground-${randomUUID()}`

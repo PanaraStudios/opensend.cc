@@ -1,4 +1,5 @@
 "use client"
+import { useState } from "react"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { ProviderKeySelect } from "./provider-keys"
 import { DetailSection, OptionSelect } from "@/components/dashboard/primitives"
@@ -8,6 +9,7 @@ import {
   SARVAM_PROMPT_LANGUAGE_ITEMS,
   ttsLanguageItems,
 } from "@/lib/dashboard/voice-options"
+import { ELEVENLABS_FALLBACK_VOICE_ID } from "@/lib/elevenlabs-voices"
 export function IvrPromptVoiceFields({
   value,
   onChange,
@@ -15,6 +17,7 @@ export function IvrPromptVoiceFields({
   value: IvrPromptVoice | undefined
   onChange: (voice: IvrPromptVoice | undefined) => void
 }) {
+  const [adopt, setAdopt] = useState(false)
   return (
     <DetailSection title="Prompt voice">
       <p className="text-sm text-muted-foreground">
@@ -30,18 +33,22 @@ export function IvrPromptVoiceFields({
             { value: "sarvam", label: "Sarvam Bulbul v3" },
             { value: "elevenlabs", label: "ElevenLabs" },
           ]}
-          onChange={(provider) =>
+          onChange={(provider) => {
+            setAdopt(provider === "elevenlabs")
             onChange(
               provider === "none"
                 ? undefined
                 : {
                     provider: provider as "sarvam" | "elevenlabs",
                     credentialId: "",
-                    voice: provider === "sarvam" ? "shubh" : "21m00Tcm4TlvDq8ikWAM",
+                    voice:
+                      provider === "sarvam"
+                        ? "shubh"
+                        : ELEVENLABS_FALLBACK_VOICE_ID,
                     language: provider === "sarvam" ? "en-IN" : "en",
                   }
             )
-          }
+          }}
         />
       </Field>
       {value ? (
@@ -55,8 +62,14 @@ export function IvrPromptVoiceFields({
           <ProviderVoiceField
             label="Prompt voice"
             provider={value.provider}
+            credentialId={value.credentialId}
+            adoptDefault={adopt && value.provider === "elevenlabs"}
+            onAdopted={() => setAdopt(false)}
             value={value.voice}
-            onChange={(voice) => onChange({ ...value, voice })}
+            onChange={(voice) => {
+              setAdopt(false)
+              onChange({ ...value, voice })
+            }}
           />
           <VoiceChoiceField
             items={

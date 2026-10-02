@@ -1,5 +1,19 @@
+import { createNote, noteBody } from "../contactNotes"
+import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
+import { ConvexError } from "convex/values"
+import {
+  messageContentPreview,
+  relativeMessageTime,
+} from "../../lib/dashboard/conversation-content"
+import { channelMessagePayload } from "../channels/payload"
+import { renderedChannelTemplate } from "../channels/templates"
+import { updateVoiceBotVoice } from "../../lib/voice-bot-defaults"
 import { own as ownedIvr } from "../ivr/definitions"
-import { normalizePhone } from "../../lib/dashboard/phone"
+import {
+  resolveCallPerson,
+  resolveOrCreateCallPerson,
+} from "../channels/identity"
+import { knownUserForPhone } from "../calling/rows"
 import { minuteUsage } from "./usage"
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
@@ -98,8 +112,27 @@ export const session = internalMutation({
           throw notFound("Voice credential")
         keys[name] = await decryptSecret(key.encryptedKey)
       }
+    let liveVoices:
+      { value: string; gender: "female" | "male" | "unknown" }[] | undefined
+    const tts = call.botConfig!.tts
+    if (
+      call.botConfig!.engine !== "gemini_live" &&
+      tts?.provider === "elevenlabs"
+    ) {
+      const cache = (
+        await ctx.db
+          .query("elevenLabsVoiceCaches")
+          .withIndex("by_credentialId", (q) =>
+            q.eq("credentialId", tts.credentialId)
+          )
+          .take(1)
+      )[0]
+      // No row keeps the static Sarah/Adam fallback. An empty cache is unknown.
+      if (cache) liveVoices = cache.voices
+    }
     return {
-      ...call.botConfig,
+      ...updateVoiceBotVoice(call.botConfig!, liveVoices),
+      voiceGender: botVoiceGender(call.botConfig!, liveVoices),
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
@@ -159,10 +192,16 @@ export const tool = internalMutation({
           arguments_
         ),
       }
-    } catch {
+    } catch (error) {
       result = {
         ok: false,
-        error: "Tool could not be completed for this caller",
+        // These are backend validation/availability errors, never provider SDK exceptions.
+        error: (error instanceof ConvexError && typeof error.data === "string"
+          ? error.data
+          : error instanceof Error
+            ? error.message
+            : "Tool could not be completed for this caller"
+        ).slice(0, 512),
       }
     }
     await ctx.db.insert("callTranscripts", {
@@ -187,64 +226,119 @@ async function execute(
 ) {
   switch (name) {
     case "lookup_contact": {
-      const identity = call.channelContactId
-        ? await ctx.db.get("channelContacts", call.channelContactId)
-        : null
-      const id =
-        call.contactId ??
-        (identity?.organizationId === call.organizationId
-          ? identity.contactId
-          : undefined)
-      const phone =
-        call.from && /^\+?\d{7,15}$/.test(call.from)
-          ? normalizePhone(
-              call.from.startsWith("+") ? call.from : `+${call.from}`
-            )
-          : null
-      const contact = id
-        ? await ctx.db.get("contacts", id)
-        : phone
-          ? await ctx.db
-              .query("contacts")
-              .withIndex("by_organizationId_and_phone", (q) =>
-                q.eq("organizationId", call.organizationId).eq("phone", phone)
-              )
-              .unique()
-          : null
+      const { contact, conversationId } = await resolveCallPerson(ctx, call)
       if (!contact || contact.organizationId !== call.organizationId)
         return { contact: null }
-      const messages = call.conversationId
+      const messages = conversationId
         ? await ctx.db
             .query("channelMessages")
             .withIndex("by_conversationId", (q) =>
-              q.eq("conversationId", call.conversationId!)
+              q.eq("conversationId", conversationId!)
             )
             .order("desc")
             .take(5)
         : []
+      const now = Date.now()
+      const account = await ctx.db.get("channelAccounts", call.accountId)
+      const previews = await Promise.all(
+        messages
+          .filter((message) => message.organizationId === call.organizationId)
+          .map(async (message) => {
+            const content = await ctx.db
+              .query("channelMessageContents")
+              .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+              .unique()
+            const normalized = channelMessagePayload(
+              message,
+              object(JSON.parse(content?.payload ?? "{}"))
+            )
+            const rendered = await renderedChannelTemplate(
+              ctx,
+              message,
+              content,
+              account
+            )
+            const preview = message.revokedAt
+              ? "Message deleted"
+              : messageContentPreview(
+                  message.type,
+                  normalized.content,
+                  message.preview,
+                  rendered
+                )
+            return `${message.direction === "inbound" ? "Customer" : "Business"} (${relativeMessageTime(message.observedAt ?? message._creationTime, now)}): ${preview.slice(0, 600)}`
+          })
+      )
+      const members = await ctx.db
+        .query("segmentMembers")
+        .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
+        .take(100)
+      const segments = await Promise.all(
+        members
+          .filter((m) => m.organizationId === call.organizationId)
+          .map((m) => ctx.db.get("segments", m.segmentId))
+      )
+      const identities = await ctx.db
+        .query("channelContacts")
+        .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
+        .take(100)
       return {
         name: [contact.firstName, contact.lastName].filter(Boolean).join(" "),
         email: contact.email ?? null,
-        tags: [],
-        recentMessageSummary: messages
-          .filter((m) => m.organizationId === call.organizationId)
-          .map((m) => m.preview)
-          .join("\n")
-          .slice(0, 2000),
+        phone: contact.phone ?? null,
+        properties: contact.properties,
+        tags: segments
+          .filter((segment) => segment?.organizationId === call.organizationId)
+          .map((segment) => segment!.name),
+        channelIdentities: identities
+          .filter(
+            (identity) =>
+              identity.organizationId === call.organizationId &&
+              !identity.mergedIntoId
+          )
+          .map((identity) => ({
+            channel: identity.channel,
+            externalId: identity.externalId,
+            scopeId: identity.scopeId,
+            phone: identity.phone ?? null,
+            userId: identity.userId ?? null,
+            parentUserId: identity.parentUserId ?? null,
+            username: identity.username ?? null,
+            profileName: identity.profileName ?? null,
+          })),
+        recentMessageSummary: previews.join("\n").slice(0, 3500),
       }
     }
     case "create_note": {
+      const body = noteBody(string(args.text))
+      const person = await resolveOrCreateCallPerson(ctx, call)
+      if (person.contact || person.identity)
+        await ctx.db.patch("calls", call._id, {
+          ...(person.contact ? { contactId: person.contact._id } : {}),
+          ...(person.identity ? { channelContactId: person.identity._id } : {}),
+          ...(person.conversationId
+            ? { conversationId: person.conversationId }
+            : {}),
+        })
       await ctx.db.insert("callTranscripts", {
         organizationId: call.organizationId,
         callId: call._id,
         eventId: crypto.randomUUID(),
         kind: "note",
-        text: string(args.text),
+        text: body,
         timestampMs: Date.now() - call.botStartedAt!,
       })
+      if (person.contact) {
+        const note = await createNote(ctx, person.contact, {
+          body,
+          author: { kind: "bot", id: call.botId!, name: call.botConfig!.name },
+          source: { callId: call._id },
+        })
+        return { noteId: note._id, storedOn: "contact" }
+      }
       return {
         storedOn: "call",
-        message: "Saved on the call record; contact notes are not available.",
+        message: "Saved on the call record; caller identity unavailable.",
       }
     }
     case "send_whatsapp_message": {
@@ -255,7 +349,14 @@ async function execute(
           preview: args,
           message: "Test preview; no message sent",
         }
-      if (!call.userId && !call.from)
+      const person = await resolveCallPerson(ctx, call)
+      const account = await ctx.db.get("channelAccounts", call.accountId)
+      const userId =
+        call.userId ??
+        (account && person.phone
+          ? await knownUserForPhone(ctx, account, person.phone)
+          : undefined)
+      if (!userId && !person.phone)
         throw new Error("Caller identity unavailable")
       const body = args.template
         ? { template: object(JSON.parse(string(args.template))) }
@@ -266,9 +367,9 @@ async function execute(
           {
             channel: "whatsapp",
             from: call.accountId,
-            to: call.userId ? undefined : call.from,
+            to: userId ? undefined : (person.phone ?? undefined),
             body: {
-              ...(call.userId ? { recipient: call.userId } : {}),
+              ...(userId ? { recipient: userId } : {}),
               ...body,
             },
           },
