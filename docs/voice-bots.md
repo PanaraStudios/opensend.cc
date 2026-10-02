@@ -180,3 +180,47 @@ optional call/routing fields, indexes and the `voiceMinuteUsage` Aggregate compo
 New bot data needs no backfill. Operators with a large existing call history should
 plan index backfill/activation before enabling the new query paths. No dashboard
 screens were changed, and no marketing/private-website code was added.
+
+## Tool setup, hangup and voice grammar
+
+Live calls have verified contact lookup, notes, WhatsApp sends, transfers and hangup.
+The shared enabled-tool schema is supplied to Pipecat's provider and conversation context.
+The harness captures the Google SDK setup and exercises those tools without provider keys.
+
+Default and runtime instructions tell the bot to invoke `end_call` after a caller's
+goodbye, explicit hangup request, or confirmed completion. Saved custom prompts
+are preserved. Runtime guidance is conditional on the enabled tool catalog.
+The gateway authorizes the tool through Convex, waits for Pipecat output completion and the gateway RTP playback queue to drain
+(plus 100 ms for the last packet, with a 2.5-second fallback cap), kills the FreeSWITCH anchor and destroys Janus. Its hangup callback
+schedules Convex `gatewayHangup`, which sends Meta `terminate`. Meta signaling and
+Janus teardown no longer wait for bot summarization. Tool names, requested/succeeded/
+failed status and execution latency are logged without arguments, results or keys;
+call detail displays these events, bounded backend validation errors and the hangup reason.
+
+The shared voice catalog includes provider-published male/female metadata for all
+listed Gemini, ElevenLabs and Sarvam voices. Gender-aware defaults update when the
+language, voice or TTS provider changes, matching only exact built-in strings.
+Edited copy remains intact. The session also derives gender from the selected voice
+and instructs the model to use matching first-person grammar. Unknown custom voice
+IDs are not assigned a gender. Sources are linked beside the catalog.
+
+Bot transport remains mono PCM16 at 16 kHz through Pipecat and the L16 SIP leg.
+Pipecat resamples Gemini's native output to that rate once at transport output.
+Cascade TTS requests 16 kHz directly. Production bot routes no longer silently
+fall back to 8 kHz PCMU; the explicit PCMU harness case remains for compatibility.
+
+`pnpm test:calling-harness bot-end-call ivr-engine` checks tool declarations through
+Pipecat and the Google SDK's fake socket, then executes fake contact/note/message/
+hangup tools over the real Docker media path. Its fake Convex callback forwards
+`terminate` to a separate fake Meta HTTP endpoint. `convex/voice.test.ts` separately
+runs the real signed callback, scheduler and `gatewayHangup` against fake Graph.
+These tests do not use live provider keys or send real WhatsApp messages.
+
+`lookup_contact` takes no arguments and resolves only the current caller, including
+BSUID callers. It returns name, email, phone, `properties`, `tags` (contact segment
+names), `channelIdentities` (channel, scope, external/user/parent-user IDs, phone,
+username and profile name), and `recentMessageSummary`. The last five messages
+include readable interactive text, rendered template bodies and media type/caption,
+with direction and relative time, for example `Customer (2h ago): I need help`.
+Deleted messages show a deletion marker. These fields are untrusted customer data,
+not instructions. Metadata is bounded to 100 memberships/identities per lookup.

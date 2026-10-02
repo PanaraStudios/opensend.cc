@@ -10,6 +10,7 @@ import { validateWhatsAppMedia } from "../../lib/meta/media"
 import type { FileReference } from "./files"
 import { readFile } from "./urls"
 export { readFile } from "./urls"
+import { normalizeIvrAudio } from "./ivrAudio"
 import { uploadMedia } from "../channels/mediaUpload"
 
 export async function storeFile(
@@ -176,11 +177,30 @@ async function completeFile(
         row.contentType.trim().toLowerCase()
       )
     }
-    const id = await ctx.runMutation(internal.storage.files.ready, {
-      organizationId: args.organizationId,
-      caller: args.caller,
-      id: row._id,
-    })
+    let normalized: { storageId: Id<"_storage">; size: number } | undefined
+    if (row.feature === "ivr") {
+      const original = await ctx.storage.get(row.storageId!)
+      if (!original) throw new Error("Uploaded prompt is missing")
+      const audio = await normalizeIvrAudio(original)
+      normalized = {
+        storageId: await ctx.storage.store(audio),
+        size: audio.size,
+      }
+    }
+    let id: Id<"storedFiles">
+    try {
+      id = await ctx.runMutation(internal.storage.files.ready, {
+        organizationId: args.organizationId,
+        caller: args.caller,
+        id: row._id,
+        normalized,
+      })
+    } catch (error) {
+      if (normalized) await ctx.storage.delete(normalized.storageId)
+      throw error
+    }
+    if (normalized)
+      await ctx.storage.delete(row.storageId!).catch(() => undefined)
     return { id }
   } catch (e) {
     await ctx.runMutation(internal.storage.files.discard, { fileId: row._id })
@@ -240,6 +260,22 @@ export const adopt = internalAction({
       storageId: args.storageId,
     })
     if (!metadata) throw new Error("Staged file missing")
+    if (args.feature === "ivr") {
+      const original = await ctx.storage.get(args.storageId)
+      if (!original) throw new Error("Staged prompt missing")
+      try {
+        return await storeFile(ctx, {
+          organizationId: args.organizationId,
+          feature: "ivr",
+          filename: `${(args.filename ?? "prompt").replace(/\.[^.]+$/, "")}.wav`,
+          contentType: "audio/wav",
+          body: await normalizeIvrAudio(original),
+          maxBytes: 16 * 1024 * 1024,
+        })
+      } finally {
+        await ctx.storage.delete(args.storageId)
+      }
+    }
     try {
       const fileId: Id<"storedFiles"> = await ctx.runMutation(
         internal.storage.files.insert,

@@ -2,7 +2,7 @@
 
 import math
 import struct
-from pipecat.frames.frames import Frame, StartFrame, InputAudioRawFrame, OutputAudioRawFrame
+from pipecat.frames.frames import Frame, StartFrame, InputAudioRawFrame, TTSAudioRawFrame, TTSStoppedFrame
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 
 
@@ -21,7 +21,7 @@ class FakePipeline(FrameProcessor):
                 struct.pack("<h", round(4000 * math.sin(2 * math.pi * 880 * n / 16000)))
                 for n in range(48000)
             )
-            await self.push_frame(OutputAudioRawFrame(pcm, 16000, 1))
+            await self.push_frame(TTSAudioRawFrame(pcm, 16000, 1))
         elif isinstance(frame, InputAudioRawFrame):
             samples = struct.unpack(f"<{len(frame.audio) // 2}h", frame.audio)
             if not samples or sum(n * n for n in samples) / len(samples) < 10000:
@@ -29,8 +29,8 @@ class FakePipeline(FrameProcessor):
             self.frames += 1
             if self.frames == 10:
                 await self.broadcast_interruption()
-            if self.frames >= 10:
-                await self.push_frame(OutputAudioRawFrame(frame.audio, 16000, 1))
+            if self.frames >= 10 and not getattr(self, "ending", False):
+                await self.push_frame(TTSAudioRawFrame(frame.audio, 16000, 1))
             if self.frames == 20:
                 result = await self.tools.run("fake-tool-1", "lookup_contact", {})
                 import json
@@ -44,9 +44,21 @@ class FakePipeline(FrameProcessor):
                         "timestampMs": self.frames * 20,
                     }
                 )
+            if self.frames == 40 and "create_note" in self.tools.catalog:
+                await self.tools.run("fake-note-1", "create_note", {"text": "Harness call note"})
+            if self.frames == 60 and "send_whatsapp_message" in self.tools.catalog:
+                await self.tools.run("fake-message-1", "send_whatsapp_message", {"text": "Harness follow-up"})
             if self.frames == 80:
                 if "transfer_to_agent" in self.tools.catalog:
                     await self.tools.run("fake-transfer-1", "transfer_to_agent", {"summary": "Harness caller needs an agent"})
+                elif "end_call" in self.tools.catalog:
+                    self.ending = True
+                    # A queued farewell must finish even when tool authorization wins the race.
+                    farewell = b"".join(struct.pack("<h", round(4000 * math.sin(2 * math.pi * 1320 * n / 16000)))
+                                        for n in range(9600))
+                    await self.push_frame(TTSAudioRawFrame(farewell, 16000, 1))
+                    await self.push_frame(TTSStoppedFrame())
+                    await self.tools.run("fake-end-1", "end_call", {})
                 elif "transfer_to_ivr" in self.tools.catalog:
                     await self.tools.run("fake-transfer-1", "transfer_to_ivr", {})
         else:

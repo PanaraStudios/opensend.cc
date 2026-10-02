@@ -102,6 +102,12 @@ export class PipecatAdapter extends VoiceAdapterBase {
               throw new Error("Invalid turn")
             if (!this.cancelled.has(data.turnId)) this.turnId = data.turnId
             break
+          case "playback_done":
+            if (typeof data.turnId !== "string" || data.turnId.length > 128)
+              throw new Error("Invalid playback completion")
+            if (!this.cancelled.has(data.turnId))
+              this.events.emit("playback_done", data.turnId)
+            break
           case "clear":
             if (this.turnId) {
               this.cancelled.add(this.turnId)
@@ -125,6 +131,37 @@ export class PipecatAdapter extends VoiceAdapterBase {
               text: data.text,
               final: data.final,
               timestampMs: data.timestampMs,
+            })
+            break
+          case "tool_observed":
+            if (
+              typeof data.id !== "string" ||
+              data.id.length > 128 ||
+              typeof data.name !== "string" ||
+              data.name.length > 128
+            )
+              throw new Error("Invalid tool observation")
+            if (
+              !["requested", "succeeded", "failed"].includes(
+                String(data.status)
+              ) ||
+              (data.latencyMs !== undefined &&
+                (typeof data.latencyMs !== "number" ||
+                  !Number.isFinite(data.latencyMs) ||
+                  data.latencyMs < 0))
+            )
+              throw new Error("Invalid tool status")
+            this.events.emit("tool_observed", {
+              type: "tool_call",
+              toolId: data.id,
+              toolName: data.name,
+              status: data.status,
+              ...(data.latencyMs === undefined
+                ? {}
+                : { latencyMs: data.latencyMs }),
+              ...(typeof data.error === "string"
+                ? { error: data.error.slice(0, 512) }
+                : {}),
             })
             break
           case "tool_call":

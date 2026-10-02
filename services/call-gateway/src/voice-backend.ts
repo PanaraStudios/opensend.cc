@@ -5,6 +5,16 @@ import type { VoiceToolCall, VoiceTranscript } from "./voice-adapter.js"
 import type { CallState } from "./call-state.js"
 
 export type VoiceEvent =
+  | {
+      type: "tool_call"
+      toolId: string
+      toolName: string
+      latencyMs?: number
+      error?: string
+      status: "requested" | "succeeded" | "failed"
+    }
+  | { type: "playback_done"; turnId: string; playedMs: number }
+  | { type: "hangup"; reason: string }
   | { type: "usage"; usage: import("./voice/base.js").VoiceUsage }
   | { type: "latency"; turnId: string; latencyMs: number }
   | {

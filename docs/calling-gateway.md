@@ -176,7 +176,7 @@ the local harness uses container host candidates on the shared network and disab
 STUN; it does not validate public NAT/firewall behavior.
 
 Opus/48000/2 at 20 ms is used on the Meta/Janus SIP leg and browser agent legs.
-The private Path B bot leg uses mono L16/16000 with PCMU/8000 fallback; FreeSWITCH
+The private Path B bot leg uses mono L16/16000 (PCMU/8000 is only an explicit interoperability-test option); FreeSWITCH
 transcodes between these legs.
 `telephone-event/8000` is an optional DTMF payload retained when offered, so IVR
 digits work without adding a second speech codec. Video and data m-lines are
@@ -547,13 +547,13 @@ Recording remains opt-in except for an explicitly selected voicemail route.
 
 Additional `/route` fields (all private/HMAC-authenticated):
 
-| Field                | Meaning                                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------- |
-| `target`             | Existing agent/ivr/queue/bot plus voicemail/hangup                                       |
-| `organizationId`     | Required for bot tools; captured from the authorized backend route                       |
-| `adapter`            | Only `fake-echo` in this foundation                                                      |
-| `codec`              | Optional `L16` (default, with PCMU fallback) or forced `PCMU` for interoperability tests |
-| `maxDurationSeconds` | Controlled-call cap, integer 1–3600, default 300                                         |
+| Field                | Meaning                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `target`             | Existing agent/ivr/queue/bot plus voicemail/hangup                                           |
+| `organizationId`     | Required for bot tools; captured from the authorized backend route                           |
+| `adapter`            | Only `fake-echo` in this foundation                                                          |
+| `codec`              | Optional `L16` (default, no narrowband fallback) or forced `PCMU` for interoperability tests |
+| `maxDurationSeconds` | Controlled-call cap, integer 1–3600, default 300                                             |
 
 `CALL_VOICE_FAKE_ENABLED=true` enables fake routing only in the test overlay. The
 normal calling profile leaves it disabled (`501 BOT_UNAVAILABLE`); this is not a
@@ -632,7 +632,7 @@ meta-peer implements both for tests. They are separate from the existing
   "toolCall": {
     "id": "PROVIDER_TOOL_ID",
     "name": "lookup_contact",
-    "arguments": { "query": "fixture" }
+    "arguments": {}
   }
 }
 ```
@@ -645,21 +645,22 @@ conflicting reuse, and permits at most eight concurrent/128 lifetime requests.
 Tool ids are 1–128 safe characters. All argument values are strings up to 4096
 characters; unknown keys and tool names are rejected. The initial schema boundary is:
 
-| Tool                  | Required arguments | Optional arguments     |
-| --------------------- | ------------------ | ---------------------- |
-| lookup_contact        | query              | —                      |
-| create_task           | title              | contactId, description |
-| send_whatsapp_message | contactId, text    | —                      |
-| transfer_to_agent     | extension          | —                      |
-| transfer_to_ivr       | ivrId              | —                      |
-| end_call              | —                  | —                      |
+| Tool                  | Required arguments | Optional arguments |
+| --------------------- | ------------------ | ------------------ |
+| lookup_contact        | —                  | —                  |
+| create_note           | text               | —                  |
+| send_whatsapp_message | —                  | text, template     |
+| transfer_to_agent     | —                  | summary            |
+| transfer_to_ivr       | —                  | —                  |
+| end_call              | —                  | —                  |
 
-These are foundation contracts, not shipped operations. In 8d-2 the backend must
-verify HMAC/replay protection, durably deduplicate `(callId, toolCall.id)`, resolve
-call ownership from persisted records, verify the provided team matches that call,
-validate tool enablement/schema and contact/task/message ownership, and apply
-existing WhatsApp permission/window checks. Handoff tools must use an authorized
-local controller action; returning provider-chosen SIP strings is never permitted.
+The backend verifies HMAC/replay protection, durable tool-id deduplication, call/team
+ownership, enablement and argument schemas. It resolves the caller and handoff
+destinations server-side. `lookup_contact` returns name, email, phone, custom
+`properties`, `tags` (segment names), `channelIdentities` and readable previews with
+customer/business direction and relative time in `recentMessageSummary`.
+See [voice tools](voice-bots.md) for the result contract and bounds. Caller-provided
+team, contact, recipient, SIP URI and agent extension arguments are never accepted.
 
 `POST /calling/gateway/voice/events` carries `{version:1,eventId,callId,timestamp,
 type,...}`. `timestamp` is epoch milliseconds; audio/transcript positions are
@@ -840,3 +841,19 @@ flows. Both held the shared lock, rebuilt only test-project images, and removed
 their containers/network before releasing it. `pnpm test:e2e` was not run; its
 sources compile with both feature suites registered. No push or backend deployment
 was performed.
+
+### Call quality verification (October 2026)
+
+The harness overlay publishes no host ports; all peers communicate on the isolated
+`opensend-calling-test` network. Continue to hold the shared harness lock for every
+build/up/test/down operation. This permits testing alongside the live stack without
+changing its bindings, containers or volumes.
+
+The `bot-end-call` case captures the actual Gemini setup JSON through a fake socket
+before running the media pipeline. It checks enabled contact/note/message/end tools,
+name/status/latency events, `ended_by_bot`, removal of the Janus handle, finalized
+FreeSWITCH recording, and receipt of `terminate` by fake Meta. The real Convex
+callback-to-Graph path is covered independently by `convex/voice.test.ts`.
+The `ivr-engine` case sends 440 Hz plus 6 kHz through normalized 16 kHz WAV playback,
+then measures both tones in decoded Meta-side Opus. See [IVR audio](ivr.md#prompt-audio-quality)
+and [bot tools and voice grammar](voice-bots.md#tool-setup-hangup-and-voice-grammar).

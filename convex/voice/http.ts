@@ -44,14 +44,47 @@ function handler(kind: "session" | "tool" | "event") {
           !Number.isFinite(data.timestamp) ||
           ![
             "state",
+            "tool_call",
+            "hangup",
             "ivr_digits",
             "transcript",
             "barge_in",
+            "playback_done",
             "media",
             "usage",
             "latency",
             "bot_completed",
           ].includes(string(data.type))
+        )
+          return new Response(null, { status: 400 })
+        if (
+          data.type === "tool_call" &&
+          (typeof data.toolId !== "string" ||
+            data.toolId.length > 128 ||
+            typeof data.toolName !== "string" ||
+            data.toolName.length > 128 ||
+            (data.latencyMs !== undefined &&
+              (typeof data.latencyMs !== "number" ||
+                !Number.isFinite(data.latencyMs) ||
+                data.latencyMs < 0)) ||
+            (data.error !== undefined &&
+              (typeof data.error !== "string" || data.error.length > 512)) ||
+            !["requested", "succeeded", "failed"].includes(string(data.status)))
+        )
+          return new Response(null, { status: 400 })
+        if (
+          data.type === "hangup" &&
+          (typeof data.reason !== "string" || data.reason.length > 1024)
+        )
+          return new Response(null, { status: 400 })
+        if (
+          data.type === "playback_done" &&
+          (typeof data.turnId !== "string" ||
+            data.turnId.length > 128 ||
+            typeof data.playedMs !== "number" ||
+            !Number.isFinite(data.playedMs) ||
+            data.playedMs < 0 ||
+            data.playedMs > 3600000)
         )
           return new Response(null, { status: 400 })
         if (data.type === "transcript") {

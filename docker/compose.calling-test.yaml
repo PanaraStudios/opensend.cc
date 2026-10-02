@@ -1,11 +1,15 @@
 # Lead-only harness overlay. Do not deploy: substitutes Convex callbacks with a fake server.
 services:
   janus:
+    # Harness peers use the compose network; never compete with live host ports.
+    ports: !reset []
     image: opensend-calling-test-janus:1.2.3
     environment:
       JANUS_STUN_SERVER: ""
       JANUS_PUBLIC_IP: ""
   freeswitch:
+    # Harness peers use the compose network; never compete with live host ports.
+    ports: !reset []
     image: opensend-calling-test-freeswitch:1.11.3
     environment:
       FREESWITCH_PUBLIC_IP: auto
@@ -20,6 +24,8 @@ services:
       VOICE_AGENT_FAKE_ENABLED: "true"
       CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
   call-gateway:
+    # Harness peers use the compose network; never compete with live host ports.
+    ports: !reset []
     image: opensend-calling-test-gateway:0.1.0
     environment:
       CALL_GATEWAY_CONVEX_HTTP_URL: http://meta-peer:8091
@@ -36,6 +42,7 @@ services:
     environment:
       CALL_GATEWAY_URL: http://call-gateway:8090
       CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       JANUS_ADMIN_URL: http://janus:7088/admin
       JANUS_API_SECRET: ${JANUS_API_SECRET:-}
     volumes:

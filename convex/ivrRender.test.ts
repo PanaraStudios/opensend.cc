@@ -3,9 +3,13 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 import { pcmWav } from "../lib/ivr-renderers"
+import * as audio from "./storage/ivrAudio"
 import * as net from "../lib/net/public-fetch"
 import type { Id } from "./_generated/dataModel"
 beforeEach(() => {
+  vi.spyOn(audio, "normalizeIvrAudio").mockImplementation(async () =>
+    pcmWav(new Uint8Array([1, 0, 2, 0]), 16000)
+  )
   vi.useFakeTimers()
   vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
   vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-key-".repeat(6))
@@ -64,7 +68,7 @@ async function setup() {
 }
 test("rendering uses the team key, caches by content hash and exposes ready audio", async () => {
   const f = await setup(),
-    wav = await pcmWav(new Uint8Array([1, 0, 2, 0])).arrayBuffer()
+    wav = await pcmWav(new Uint8Array([1, 0, 2, 0]), 24000).arrayBuffer()
   const http = vi
     .spyOn(net, "publicFetch")
     .mockImplementation(async (_url, init) => {
@@ -135,7 +139,7 @@ test("an IVR cannot select another team's provider credential", async () => {
 
 test("identical hashes are cached independently for different teams", async () => {
   const f = await setup(),
-    wav = await pcmWav(new Uint8Array([1, 0])).arrayBuffer()
+    wav = await pcmWav(new Uint8Array([1, 0]), 24000).arrayBuffer()
   vi.spyOn(net, "publicFetch").mockResolvedValue(
     Response.json({ audios: [Buffer.from(wav).toString("base64")] })
   )
@@ -215,7 +219,7 @@ test("PATCH null clears a saved provider voice and business hours", async () => 
 
 test("saving a corrected provider key retries failed content while retaining its hash", async () => {
   const f = await setup(),
-    wav = await pcmWav(new Uint8Array([1, 0])).arrayBuffer()
+    wav = await pcmWav(new Uint8Array([1, 0]), 24000).arrayBuffer()
   const http = vi
     .spyOn(net, "publicFetch")
     .mockResolvedValue(new Response("invalid key", { status: 401 }))
@@ -262,4 +266,72 @@ test("saving a corrected provider key retries failed content while retaining its
       })
     ).prompt_status
   ).toBe("ready")
+})
+
+test("uploaded IVR audio is normalized once before readiness and completion remains idempotent", async () => {
+  const f = await inboundFixture()
+  const { storeUpload } = await import("./testHelpers/storage.fixture")
+  const original = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/mpeg" })
+  const upload = await f.owner.client.action(api.storage.objects.createUpload, {
+    organizationId: f.owner.team,
+    input: {
+      use: "ivr",
+      filename: "welcome.mp3",
+      contentType: original.type,
+      size: original.size,
+    },
+  })
+  const storageId = await storeUpload(f.t, original)
+  const finish = () =>
+    f.owner.client.action(api.storage.objects.completeUpload, {
+      organizationId: f.owner.team,
+      id: upload.id,
+      storageId,
+    })
+  await finish()
+  await finish()
+  expect(audio.normalizeIvrAudio).toHaveBeenCalledTimes(1)
+  const row = await f.t.run((ctx) => ctx.db.get("storedFiles", upload.id))
+  expect(row).toMatchObject({
+    state: "ready",
+    contentType: "audio/wav",
+    filename: "welcome.wav",
+    uploadStorageId: storageId,
+  })
+  expect(row?.storageId).not.toBe(storageId)
+  const bytes = await f.t.run(async (ctx) =>
+    (await ctx.storage.get(row!.storageId!))!.arrayBuffer()
+  )
+  expect(new DataView(bytes).getUint32(24, true)).toBe(16000)
+  expect(await f.t.run((ctx) => ctx.storage.get(storageId))).toBeNull()
+})
+
+test("invalid IVR upload never becomes playable when normalization fails", async () => {
+  const f = await inboundFixture()
+  const { storeUpload } = await import("./testHelpers/storage.fixture")
+  vi.mocked(audio.normalizeIvrAudio).mockRejectedValueOnce(
+    new Error("Invalid audio")
+  )
+  const upload = await f.owner.client.action(api.storage.objects.createUpload, {
+    organizationId: f.owner.team,
+    input: {
+      use: "ivr",
+      filename: "broken.wav",
+      contentType: "audio/wav",
+      size: 3,
+    },
+  })
+  const storageId = await storeUpload(
+    f.t,
+    new Blob(["bad"], { type: "audio/wav" })
+  )
+  await expect(
+    f.owner.client.action(api.storage.objects.completeUpload, {
+      organizationId: f.owner.team,
+      id: upload.id,
+      storageId,
+    })
+  ).rejects.toThrow("Invalid audio")
+  const row = await f.t.run((ctx) => ctx.db.get("storedFiles", upload.id))
+  expect(row?.state).not.toBe("ready")
 })

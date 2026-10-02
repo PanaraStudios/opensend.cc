@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
-import { inboundFixture } from "./testHelpers/meta.fixture"
+import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
 import { patchRow } from "./counts"
 import { upsertContact } from "./audience"
 import { upsertChannelThread } from "./channels/identity"
@@ -242,7 +242,7 @@ test("tool catalog rejects tenant/recipient overrides, durably deduplicates note
     await (await tool("note", "create_note", { text: "different" })).json()
   ).toMatchObject({ ok: false })
   expect(await (await tool("ivr", "transfer_to_ivr", {})).json()).toMatchObject(
-    { ok: false, error: expect.stringContaining("could not be completed") }
+    { ok: false, error: "IVR handoff disabled" }
   )
   expect(
     await (
@@ -514,6 +514,95 @@ test("cascade stage credentials are team-scoped, fetched only in the signed sess
   expect(JSON.stringify(logBodies)).not.toContain("fake-eleven-key")
 })
 
+test("end_call authorization and signed gateway hangup terminate the Meta call", async () => {
+  const f = await fixture()
+  const callId = await f.createCall()
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", callId, { wacid: "wacid.bot-end" })
+  )
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const tool = await f.signed("tools", {
+    callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "end-1", name: "end_call", arguments: {} },
+  })
+  expect(await tool.json()).toEqual({
+    ok: true,
+    result: { action: "end_call" },
+  })
+  for (const event of [
+    {
+      type: "tool_call",
+      toolId: "end-1",
+      toolName: "end_call",
+      status: "succeeded",
+    },
+    { type: "playback_done", turnId: "goodbye", playedMs: 600 },
+    { type: "hangup", reason: "Ended by bot" },
+  ])
+    expect(
+      (
+        await f.signed("events", {
+          callId,
+          timestamp: Date.now(),
+          eventId: crypto.randomUUID(),
+          ...event,
+        })
+      ).status
+    ).toBe(200)
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      method: "POST",
+      respond: () => ({ success: true }),
+    },
+  ])
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ ok: true }))
+  )
+  const path = "/calling/gateway/events"
+  const body = JSON.stringify({
+    version: 1,
+    callId,
+    eventId: crypto.randomUUID(),
+    timestamp: Date.now(),
+    event: "hangup",
+    reason: "Ended by bot",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...signRequest(secret, "POST", path, body),
+        },
+        body,
+      })
+    ).status
+  ).toBe(200)
+  await f.t.finishInProgressScheduledFunctions()
+  // Run due jobs, including the gatewayHangup action scheduled by the real callback mutation.
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+  expect(
+    graph.to(`/${PHONE_ID}/calls`, "POST").map((c) => c.body)
+  ).toContainEqual({
+    messaging_product: "whatsapp",
+    action: "terminate",
+    call_id: "wacid.bot-end",
+  })
+  const row = await f.t.run((ctx) => ctx.db.get("calls", callId))
+  expect(row?.status).toBe("completed")
+  const lines = await f.t.run((ctx) =>
+    ctx.db
+      .query("callTranscripts")
+      .withIndex("by_callId_and_eventId", (q) => q.eq("callId", callId))
+      .collect()
+  )
+  expect(lines.some((l) => l.toolName === "end_call")).toBe(true)
+  expect(lines.some((l) => l.text?.includes("Ended by bot"))).toBe(true)
+})
 test.each([true, false])(
   "voice tools resolve linked and legacy BSUID callers: linked=%s",
   async (linked) => {
@@ -590,3 +679,125 @@ test.each([true, false])(
     ).toHaveLength(1)
   }
 )
+
+test("lookup_contact returns caller properties, segments, identities and readable recent messages", async () => {
+  const f = await fixture()
+  const now = Date.now()
+  const linked = await f.t.run(async (ctx) => {
+    const contact = await upsertContact(
+      ctx,
+      f.owner.team,
+      {
+        phone: "+919316108172",
+        firstName: "Kamal",
+        properties: { plan: "Pro" },
+      },
+      {
+        properties: [{ key: "plan", type: "string" }],
+        segmentIds: [],
+        skipExisting: true,
+      }
+    )
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const thread = await upsertChannelThread(ctx, account, {
+      externalId: "919316108172",
+      phone: "+919316108172",
+      at: now,
+      direction: "inbound",
+      preview: "Prior message",
+    })
+    await ctx.db.patch("channelContacts", thread.channelContactId, {
+      contactId: contact.id,
+      userId: "US.caller",
+    })
+    const segmentId = await ctx.db.insert("segments", {
+      organizationId: f.owner.team,
+      name: "VIP",
+    })
+    await ctx.db.insert("segmentMembers", {
+      organizationId: f.owner.team,
+      segmentId,
+      contactId: contact.id,
+    })
+    for (const [type, direction, payload, rendered] of [
+      [
+        "interactive",
+        "inbound",
+        {
+          interactive: {
+            type: "button_reply",
+            button_reply: { title: "Yes please" },
+          },
+        },
+        undefined,
+      ],
+      [
+        "interactive",
+        "outbound",
+        {
+          interactive: {
+            type: "button",
+            body: { text: "Would you like help?" },
+          },
+        },
+        undefined,
+      ],
+      ["image", "inbound", { image: { caption: "My receipt" } }, undefined],
+      [
+        "template",
+        "outbound",
+        { template: { name: "welcome" } },
+        { body: "Welcome Kamal", buttons: [] },
+      ],
+    ] as const) {
+      const messageId = await ctx.db.insert("channelMessages", {
+        organizationId: f.owner.team,
+        accountId: f.account,
+        channelContactId: thread.channelContactId,
+        conversationId: thread.conversationId,
+        channel: "whatsapp",
+        direction,
+        type,
+        status: direction === "inbound" ? "received" : "sent",
+        from: "919316108172",
+        to: "business",
+        preview: `[${type}]`,
+        generation: 0,
+        attempts: 0,
+        observedAt: now - 2 * 3600_000,
+      })
+      await ctx.db.insert("channelMessageContents", {
+        messageId,
+        payload: JSON.stringify({ type, ...payload }),
+        ...(rendered ? { rendered: { body: rendered.body, buttons: [] } } : {}),
+      })
+    }
+    return { ...thread, contactId: contact.id }
+  })
+  const callId = await f.createCall()
+  await f.t.run((ctx) => ctx.db.patch("calls", callId, linked))
+  await f.t.mutation(internal.voice.routing.select, { id: callId })
+  const response = await f.signed("tools", {
+    callId,
+    organizationId: f.owner.team,
+    toolCall: { id: "readable-1", name: "lookup_contact", arguments: {} },
+  })
+  const { result } = await response.json()
+  expect(result).toMatchObject({
+    name: "Kamal",
+    phone: "+919316108172",
+    properties: { plan: "Pro" },
+    tags: ["VIP"],
+    channelIdentities: [
+      { channel: "whatsapp", userId: "US.caller", phone: "+919316108172" },
+    ],
+  })
+  for (const line of [
+    "Customer (2h ago): Yes please",
+    "Business (2h ago): Would you like help?",
+    "Customer (2h ago): Image: My receipt",
+    "Business (2h ago): Welcome Kamal",
+  ])
+    expect(result.recentMessageSummary).toContain(line)
+  expect(result.recentMessageSummary).not.toContain("[interactive]")
+})

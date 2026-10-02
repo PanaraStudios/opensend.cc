@@ -38,6 +38,8 @@ test("Pipecat adapter bridges PCM, tools, transcripts, cancellation epochs and f
   const received: Record<string, unknown>[] = [],
     audio: string[] = [],
     transcripts: string[] = []
+  const done: string[] = [],
+    observed: unknown[] = []
   let peer: import("ws").WebSocket | undefined,
     binaryBytes = 0,
     barge = 0
@@ -74,6 +76,8 @@ test("Pipecat adapter bridges PCM, tools, transcripts, cancellation epochs and f
     assert.equal(frame.sampleRate, 16000)
     audio.push(frame.turnId)
   })
+  adapter.onPlaybackDone((turnId) => done.push(turnId))
+  adapter.onToolObserved((event) => observed.push(event))
   adapter.onBargeIn(() => {
     barge++
     adapter.interrupt(40)
@@ -109,6 +113,26 @@ test("Pipecat adapter bridges PCM, tools, transcripts, cancellation epochs and f
     peer!.send(Buffer.alloc(640))
     await wait(() => audio.length === 2)
     assert.deepEqual(audio, ["old", "new"])
+    send({ type: "playback_done", turnId: "old" })
+    send({ type: "playback_done", turnId: "new" })
+    send({
+      type: "tool_observed",
+      id: "fail-1",
+      name: "transfer_to_agent",
+      status: "failed",
+      latencyMs: 12,
+      error: "No agent available",
+    })
+    await wait(() => done.length === 1 && observed.length === 1)
+    assert.deepEqual(done, ["new"])
+    assert.deepEqual(observed[0], {
+      type: "tool_call",
+      toolId: "fail-1",
+      toolName: "transfer_to_agent",
+      status: "failed",
+      latencyMs: 12,
+      error: "No agent available",
+    })
     send({
       type: "transcript",
       role: "caller",

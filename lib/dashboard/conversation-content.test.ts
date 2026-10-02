@@ -6,9 +6,40 @@ import {
   messageTextParts,
   safeMessageUrl,
   sameMessageGroup,
+  messageContentPreview,
+  relativeMessageTime,
 } from "./conversation-content"
 import { composerInteractive } from "./conversation-composer"
 import { validateWhatsAppBody } from "../../packages/sdk/src/whatsapp/validation"
+
+test("shared readable previews describe replies, templates and media; times are relative", () => {
+  assert.equal(
+    messageContentPreview(
+      "interactive",
+      { type: "button_reply", button_reply: { title: "Yes" } },
+      "[interactive]"
+    ),
+    "Yes"
+  )
+  assert.equal(
+    messageContentPreview(
+      "interactive",
+      { body: { text: "Choose a time" } },
+      "[interactive]"
+    ),
+    "Choose a time"
+  )
+  assert.equal(
+    messageContentPreview("template", {}, "[template]", { body: "Hello Ada" }),
+    "Hello Ada"
+  )
+  assert.equal(
+    messageContentPreview("image", { caption: "Receipt" }, "[image]"),
+    "Image: Receipt"
+  )
+  assert.equal(messageContentPreview("audio", {}, "[audio]"), "Audio")
+  assert.equal(relativeMessageTime(0, 2 * 3600_000), "2h ago")
+})
 
 test("WhatsApp formatting preserves text and never permits script URLs", () => {
   assert.deepEqual(

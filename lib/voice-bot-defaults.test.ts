@@ -6,6 +6,7 @@ import {
   isDefaultVoiceBotText,
   replaceDefaultVoiceBotPromptLanguage,
   updateVoiceBotLanguage,
+  updateVoiceBotVoice,
   voiceBotDefaults,
 } from "./voice-bot-defaults"
 import { ELEVENLABS_STT_LANGUAGES } from "./voice-bots"
@@ -26,7 +27,7 @@ test("every shared voice language has localized call copy and a script instructi
     assert.ok(defaults.greeting.length > 0, language)
     assert.ok(defaults.disclosure.length > 0, language)
     assert.ok(
-      defaults.systemPrompt.endsWith(defaultVoiceBotLanguageLine(language))
+      defaults.systemPrompt.includes(defaultVoiceBotLanguageLine(language))
     )
     assert.ok(!defaults.systemPrompt.includes("caller's language"))
     if (language.split("-")[0] !== "en") {
@@ -199,8 +200,83 @@ test("existing English default prompts migrate and new bots submit the chosen la
       const payload = voiceBotFormPayload(draft)
       assert.equal(payload.language, language)
       for (const field of ["greeting", "disclosure", "systemPrompt"] as const) {
-        assert.equal(payload[field], voiceBotDefaults(language)[field])
+        assert.equal(
+          payload[field],
+          voiceBotDefaults(
+            language,
+            engine === "gemini_live" ? "female" : "male"
+          )[field]
+        )
       }
     }
   }
+})
+
+test("default prompts explain when to hang up without rewriting customized prompts", () => {
+  const prompt = defaultVoiceBotSystemPrompt("en")
+  for (const instruction of [
+    "end_call",
+    "says goodbye",
+    "asks to end",
+    "conversation is complete",
+    "pending",
+  ])
+    assert.ok(prompt.includes(instruction))
+  const custom = "Only follow my custom business flow."
+  assert.equal(replaceDefaultVoiceBotPromptLanguage(custom, "hi"), custom)
+})
+
+test("voice changes update built-in gendered copy in both engines, preserving edited text", () => {
+  for (const language of [
+    "hi",
+    "mr",
+    "gu",
+    "pa",
+    "ur",
+    "th",
+    "fr",
+    "ar",
+    "te",
+  ]) {
+    const female = updateVoiceBotVoice({
+      ...voiceBotDefaults(language),
+      language,
+      engine: "gemini_live",
+      voice: "Kore",
+    })
+    assert.deepEqual(
+      { greeting: female.greeting, disclosure: female.disclosure },
+      {
+        greeting: voiceBotDefaults(language, "female").greeting,
+        disclosure: voiceBotDefaults(language, "female").disclosure,
+      }
+    )
+    assert.ok(female.systemPrompt.includes("Speak as a woman"))
+    const male = updateVoiceBotVoice({ ...female, voice: "Puck" })
+    assert.equal(male.greeting, voiceBotDefaults(language, "male").greeting)
+    assert.ok(male.systemPrompt.includes("Speak as a man"))
+    const custom = {
+      ...female,
+      voice: "Puck",
+      greeting: female.greeting + " ",
+      disclosure: "Custom disclosure",
+      systemPrompt: "Custom persona",
+    }
+    assert.deepEqual(updateVoiceBotVoice(custom), custom)
+  }
+  const sarvam = newVoiceBot("cascade", "hi-IN")
+  const next = updateVoiceBotVoice({
+    ...sarvam,
+    tts: { ...sarvam.tts!, voice: "priya" },
+  })
+  assert.ok(next.greeting.includes("सकती हूँ"))
+  const eleven = updateVoiceBotVoice({
+    ...next,
+    tts: {
+      ...next.tts!,
+      provider: "elevenlabs" as const,
+      voice: "pNInz6obpgDQGcFmaJgB",
+    },
+  })
+  assert.ok(eleven.greeting.includes("सकता हूँ"))
 })

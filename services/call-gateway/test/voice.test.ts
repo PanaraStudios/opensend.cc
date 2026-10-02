@@ -105,6 +105,23 @@ test("barge-in counts only handed-off audio, removes partial frames and refuses 
   assert.equal(partial.take()!.pcm.length, 320)
 })
 
+test("playback completion pads the final partial packet so goodbye tails are sent", () => {
+  const queue = new PlaybackQueue(16000)
+  const tail = tone(16000, 440, 10)
+  queue.push(tail, 16000, "goodbye", 0)
+  assert.equal(queue.queuedMs, 0)
+  queue.finishTurn("other")
+  assert.equal(queue.queuedMs, 0)
+  queue.finishTurn("goodbye")
+  const frame = queue.take()!
+  assert.deepEqual(frame.pcm.subarray(0, tail.length), tail)
+  assert.equal(
+    frame.pcm.subarray(tail.length).every((byte) => byte === 0),
+    true
+  )
+  assert.equal(queue.queuedMs, 0)
+})
+
 test("state machine serializes transitions and cannot resurrect a call hung up during an effect", async () => {
   const machine = new CallStateMachine()
   let release!: () => void

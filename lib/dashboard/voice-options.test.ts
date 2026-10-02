@@ -64,3 +64,17 @@ test("prompt readiness distinguishes missing voice, rendering, success and failu
   assert.equal(promptStatusBadge("ready", true).label, "Ready")
   assert.equal(promptStatusBadge("failed", true).label, "Failed")
 })
+
+test("every selectable voice has provider-sourced gender metadata", () => {
+  for (const provider of ["gemini", "sarvam", "elevenlabs"] as const)
+    for (const voice of voiceItems(provider))
+      assert.ok(["female", "male"].includes(voice.gender), voice.value)
+  assert.equal(
+    voiceItems("gemini").find((v) => v.value === "Kore")?.gender,
+    "female"
+  )
+  assert.equal(
+    voiceItems("sarvam").find((v) => v.value === "shubh")?.gender,
+    "male"
+  )
+})
