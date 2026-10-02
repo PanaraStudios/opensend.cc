@@ -269,6 +269,11 @@ export function WhatsAppCampaignFields({
               use="whatsapp"
               from={config.accountId}
               disabled={!config.accountId}
+              onRemoved={() => {
+                const variables = { ...config.variables }
+                delete variables.header_media
+                onChange({ ...config, variables })
+              }}
               onUploaded={(id) =>
                 onChange({
                   ...config,

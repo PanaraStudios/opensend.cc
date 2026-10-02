@@ -46,7 +46,11 @@ export const download = httpAction(async (ctx, request) => {
     if (url)
       return new Response(null, {
         status: 302,
-        headers: { Location: url, "Cache-Control": "no-store" },
+        headers: {
+          Location: url,
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
       })
   }
   const blob = storageId ? await ctx.storage.get(storageId) : null
@@ -57,6 +61,9 @@ export const download = httpAction(async (ctx, request) => {
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.filename ?? "attachment")}`,
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      // The URL is a short-lived signed token, so cross-origin reads (the
+      // dashboard's waveform decoding) expose nothing beyond the link itself.
+      "Access-Control-Allow-Origin": "*",
     },
   })
 })

@@ -387,6 +387,7 @@ export function WhatsAppTemplateEditorScreen({
                         label="Upload sample file"
                         use="template"
                         disabled={readOnly}
+                        onRemoved={() => patch({ headerSample: "" })}
                         onUploaded={(id) =>
                           patch({ headerSample: `opensend-file:${id}` })
                         }

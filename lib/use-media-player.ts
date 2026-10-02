@@ -10,7 +10,10 @@ import {
 const audioCoordinator = createAudioCoordinator()
 
 /** Native media events are the source of truth, including external pauses. */
-export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
+export function useMediaPlayer<T extends HTMLMediaElement>(
+  exclusive = false,
+  { resetOnEnd = false }: { resetOnEnd?: boolean } = {}
+) {
   const ref = React.useRef<T>(null)
   const [playing, setPlaying] = React.useState(false)
   const [started, setStarted] = React.useState(false)
@@ -20,14 +23,43 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
   const [duration, setDuration] = React.useState(0)
   const probing = React.useRef(false)
 
+  const updateDuration = React.useCallback(() => {
+    const media = ref.current
+    const value = media?.duration ?? 0
+    if (!Number.isFinite(value)) return setDuration(0)
+    setDuration(value)
+    if (media && probing.current) {
+      probing.current = false
+      media.currentTime = 0
+    }
+  }, [])
+
+  const resolveMetadata = React.useCallback(() => {
+    const media = ref.current
+    // Ogg/Opus voice notes (WhatsApp) carry no duration header, so Chrome reports
+    // Infinity until the end is read. Seeking past the end makes it resolve.
+    if (media?.duration === Infinity && !probing.current) {
+      probing.current = true
+      media.currentTime = Number.MAX_SAFE_INTEGER
+    }
+    updateDuration()
+    setLoading(false)
+  }, [updateDuration])
+
   React.useEffect(() => {
     const media = ref.current
     if (!media) return
+    let mounted = true
+    // Cached metadata can load before hydration attaches React's event handlers.
+    queueMicrotask(() => {
+      if (mounted && media.readyState >= 1) resolveMetadata()
+    })
     return () => {
+      mounted = false
       media.pause()
       if (exclusive) audioCoordinator.release(media)
     }
-  }, [exclusive])
+  }, [exclusive, resolveMetadata])
 
   function fail() {
     setError("Media could not be played. Try again or download the file.")
@@ -69,31 +101,11 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
       seek(action.position)
     }
   }
-  function updateDuration() {
-    const media = ref.current
-    const value = media?.duration ?? 0
-    if (!Number.isFinite(value)) return setDuration(0)
-    setDuration(value)
-    if (media && probing.current) {
-      probing.current = false
-      media.currentTime = 0
-    }
-  }
   const events = {
     onLoadStart() {
       setLoading(true)
     },
-    onLoadedMetadata() {
-      const media = ref.current
-      // Ogg/Opus voice notes (WhatsApp) carry no duration header, so Chrome reports
-      // Infinity until the end is read. Seeking past the end makes it resolve.
-      if (media?.duration === Infinity) {
-        probing.current = true
-        media.currentTime = Number.MAX_SAFE_INTEGER
-      }
-      updateDuration()
-      setLoading(false)
-    },
+    onLoadedMetadata: resolveMetadata,
     onPlay() {
       if (exclusive && ref.current) audioCoordinator.claim(ref.current)
       setPlaying(true)
@@ -109,6 +121,11 @@ export function useMediaPlayer<T extends HTMLMediaElement>(exclusive = false) {
     onEnded() {
       setPlaying(false)
       setLoading(false)
+      if (resetOnEnd && ref.current && !probing.current) {
+        ref.current.currentTime = 0
+        setPosition(0)
+        setStarted(false)
+      }
     },
     onWaiting() {
       setLoading(true)
