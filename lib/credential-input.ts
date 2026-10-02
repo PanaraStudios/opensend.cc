@@ -4,6 +4,7 @@ export function credentialInputProps(secret = false) {
     autoComplete: secret ? "new-password" : "off",
     "data-1p-ignore": true,
     "data-lpignore": "true",
+    "data-bwignore": "true",
     spellCheck: false,
   } as const
 }

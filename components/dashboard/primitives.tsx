@@ -1856,7 +1856,7 @@ export function RadioCards<Value extends string>({
       {options.map((option) => (
         <label
           key={option.value}
-          className="flex items-start gap-3 rounded-lg border border-border p-3"
+          className="flex items-start gap-3 rounded-lg border border-border p-3 has-data-checked:border-foreground has-data-checked:bg-muted"
         >
           <RadioGroupItem value={option.value} className="mt-0.5" />
           <span>
@@ -2479,6 +2479,9 @@ export function SecretField({
       <InputGroupInput
         id={id}
         readOnly
+        credential
+        name="service-secret"
+        type={revealed ? "text" : "password"}
         aria-label={label}
         value={revealed ? value : "•".repeat(value.length)}
         className="font-mono text-[13px]"

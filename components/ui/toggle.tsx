@@ -11,7 +11,7 @@ const toggleVariants = cva(
       variant: {
         default: "bg-transparent text-muted-foreground",
         outline:
-          "border-border bg-surface bg-(image:--gradient-surface) text-foreground shadow-control hover:border-border-strong aria-pressed:bg-none data-[state=on]:bg-none",
+          "border-border bg-surface bg-(image:--gradient-surface) text-foreground shadow-control hover:border-border-strong aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:bg-none aria-pressed:text-background aria-pressed:hover:text-background data-[state=on]:border-foreground data-[state=on]:bg-foreground data-[state=on]:bg-none data-[state=on]:text-background data-[state=on]:hover:text-background",
       },
       size: {
         default:
