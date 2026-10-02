@@ -2,9 +2,9 @@
 
 The dashboard automation list, builder, test-event dialog and observability
 screen use Convex. The existing `POST /events/send` route starts runs through
-the custom-event outbox consumer. Inbound WhatsApp messages also emit the system
-event `opensend:whatsapp.message.received`, with a contact ID and message payload,
-so phone-only contacts can start runs without an email address.
+the custom-event outbox consumer. All system events use the same outbox row as webhooks. The automation catalog
+includes every email, WhatsApp, Messenger, Instagram, calling, contact, note,
+domain and suppression event; phone-only contacts can start runs without email.
 
 ## Stored definitions and execution
 
@@ -68,12 +68,13 @@ cancelled. These operations cannot retract a message already handed to the
 sending pipeline. Workflow journals persist for live run history and are cleaned
 up on automation deletion.
 
-The trigger picker offers custom events and a System events group with WhatsApp
-message received. `wait_for_event` accepts that same system event to wait for a
-reply from the contact. Reserved system names cannot be created through the
+The trigger picker groups all system and team custom events by channel.
+`wait_for_event` accepts any catalog event. Contact events resume matching
+contact waits; contactless events resume contactless waits within the team. Reserved system names cannot be created through the
 custom event API.
-Remove-from-segment and topic steps, wait-event variable selectors and an export
-button are absent, so this lane does not add them or change the UI to expose them.
+Remove-from-segment, topic, and HTTP webhook action blocks are outside the
+existing automation step model. Catalog variables are available in all supported
+step text fields, including conditions, event waits, templates and delays.
 The shared dashboard topic mutation now emits `contact.updated` when its choice
 changes, consistent with the recipient preference page.
 
@@ -108,11 +109,18 @@ team's custom events, with labels, groups, descriptions and nested schemas.
 Each field declares a type, example and description. Objects have `fields`;
 arrays have `items`. Optional and nullable fields describe provider variations.
 `contact.properties` lists that team's property definitions. Provider extension
-objects retain their original values. The catalog is shared with the SDK.
+objects retain their original values. `dynamic` identifies provider-defined JSON;
+`valueTypes` describes wire fields that accept multiple types. Nested WhatsApp
+fields derive from the existing SDK wire schemas, including interactive replies,
+shared contacts, media and orders. The catalog is shared with the SDK.
 
 System triggers use `opensend:<webhook event name>`, for example
 `opensend:whatsapp.message.received`, `opensend:instagram.message.received`,
-`opensend:email.opened`, and `opensend:whatsapp.call.completed`. Custom names
+`opensend:email.opened`, and `opensend:whatsapp.call.completed`. The existing
+`contact.note_created` trigger retains its unprefixed name. Its payload includes
+`body`, `author.kind`, `author.id`, `author.name`, optional `source.call_id`,
+`source.conversation_id`, `source.message_id`, timestamps and the contact.
+Custom names
 remain unchanged, including a custom event called `email.opened`. Custom events
 cannot claim the reserved `opensend:` prefix. Both automation and webhook
 consumers receive the same internal outbox row; inbound projection no longer
@@ -129,22 +137,38 @@ outcome. The builder uses the same condition editor for filters.
   "name": "Reply to price enquiries",
   "status": "enabled",
   "steps": [
-    { "key": "start", "type": "trigger", "config": {
-      "event_name": "opensend:whatsapp.message.received",
-      "filters": [{ "type": "rule", "field": "trigger.message.text", "operator": "contains", "value": "price" }]
-    }},
-    { "key": "reply", "type": "send_whatsapp", "config": {
-      "account_id": "your-account-id", "mode": "text",
-      "text": "Hi {{contact.first_name}}, you asked: {{trigger.message.text}}"
-    }}
+    {
+      "key": "start",
+      "type": "trigger",
+      "config": {
+        "event_name": "opensend:whatsapp.message.received",
+        "filters": [
+          {
+            "type": "rule",
+            "field": "trigger.message.text",
+            "operator": "contains",
+            "value": "price"
+          }
+        ]
+      }
+    },
+    {
+      "key": "reply",
+      "type": "send_whatsapp",
+      "config": {
+        "account_id": "your-account-id",
+        "mode": "text",
+        "text": "Hi {{contact.first_name}}, you asked: {{trigger.message.text}}"
+      }
+    }
   ],
   "connections": [{ "from": "start", "to": "reply", "type": "default" }]
 }
 ```
 
 All step text fields accept `{{trigger.<path>}}`, `{{steps.<stepKey>.<path>}}`
-and `{{contact.<path>}}`. Arrays use `.0` or `[0]`. A whole token retains its
-value's type; tokens within text interpolate as strings. Missing values become
+and `{{contact.<path>}}`. Arrays use `.0` or `[0]`. Whole tokens retain types in
+condition operands and email template variables; text inputs interpolate as strings. Missing values become
 empty strings; channel variable `{ value: "{{trigger.text}}", fallback: "..." }`
 provides an optional fallback. Values inserted into email HTML are escaped.
 The pure resolver executes no code and refuses prototype traversal. Legacy

@@ -1,9 +1,11 @@
 "use client"
-import { referenceErrors } from "@/lib/automation-references"
-import { CONTACT_SCHEMA } from "@/lib/event-catalog"
+import { readablePath, referenceErrors } from "@/lib/automation-references"
+import { catalogContactSchema } from "@/lib/event-catalog"
 import { FieldError } from "@/components/ui/field"
 import {
   ReferenceInput,
+  ReferenceFieldSelect,
+  useReferenceOptions,
   ReferenceProvider,
   ReferenceVariableField,
   useEventCatalog,
@@ -26,7 +28,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EventFormDialog } from "@/components/dashboard/automations/events"
 import {
@@ -46,13 +47,10 @@ import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import {
   SYSTEM_EVENTS,
-  CONTACT_FIELDS,
   contactFieldLabel,
   operatorTakesValue,
   RULE_OPERATOR_LABELS,
   ruleError,
-  ruleText,
-  splitField,
   stepSummary,
   stepTasks,
   stepTitle,
@@ -195,19 +193,22 @@ function EventNameInput(props: {
           </Button>
         )}
       />
-      <SuggestInput
-        {...props}
-        options={options}
-        placeholder="Type or select an event"
-        createLabel="Create event"
-      />
+      {!catalogEvent(catalog, props.value) ? (
+        <SuggestInput
+          {...props}
+          options={options.filter((item) => item.group === "Custom events")}
+          placeholder="Custom event name"
+          createLabel="Create event"
+        />
+      ) : null}
       {catalogEvent(catalog, props.value) ? (
         <div className="flex max-h-40 flex-col gap-1 overflow-auto text-caption text-muted-foreground">
           <span>{catalogEvent(catalog, props.value)?.description}</span>
           {flattenSchema(catalogEvent(catalog, props.value)!.schema).map(
             ({ path, field }) => (
               <span key={path}>
-                {path} · {field.type} · {JSON.stringify(field.example)}
+                {readablePath(path)} · {field.type} ·{" "}
+                {JSON.stringify(field.example)}
               </span>
             )
           )}
@@ -234,6 +235,14 @@ export function TriggerCard({
   onChange: (trigger: string) => void
   onFiltersChange: (rules: AutomationRule[]) => void
 }) {
+  const catalog = useEventCatalog()
+  const errors = referenceErrors(
+    automation.trigger,
+    [],
+    catalog,
+    catalogContactSchema(catalog),
+    automation.triggerFilters
+  ).filter((error) => error.startsWith("Trigger:"))
   const [editingEvent, setEditingEvent] = React.useState(false)
   const event = useAutomationEvent(automation.trigger)
 
@@ -277,7 +286,6 @@ export function TriggerCard({
       {selected ? (
         <ReferenceProvider automation={automation} stepKey="start">
           <ConditionBody
-            trigger={automation.trigger}
             step={{
               key: "start",
               type: "condition",
@@ -292,6 +300,7 @@ export function TriggerCard({
           />
         </ReferenceProvider>
       ) : null}
+      {errors.length ? <FieldError>{errors.join("; ")}</FieldError> : null}
       <EventFormDialog
         event={event ?? null}
         open={editingEvent}
@@ -325,8 +334,7 @@ export function StepCard({
     automation.trigger,
     automation.steps,
     catalog,
-    catalog.find((event) => event.schema.fields?.contact)?.schema.fields
-      ?.contact ?? CONTACT_SCHEMA,
+    catalogContactSchema(catalog),
     automation.triggerFilters
   ).filter((error) => error.startsWith(`${step.key}:`))
   const context = useStepContext(automation.steps)
@@ -392,13 +400,7 @@ function StepBody({
         </>
       )
     case "condition":
-      return (
-        <ConditionBody
-          trigger={automation.trigger}
-          step={step}
-          onChange={onChange}
-        />
-      )
+      return <ConditionBody step={step} onChange={onChange} />
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
     case "send_messenger":
@@ -473,10 +475,10 @@ function DurationInput({
   id?: string
   "aria-label"?: string
 }) {
-  const draft = useDraft(value, onChange)
   return (
-    <Input
-      {...draft}
+    <ReferenceInput
+      value={value}
+      onValueChange={onChange}
       id={id}
       aria-label={ariaLabel}
       placeholder="e.g. 10 minutes, 2h, 1h 30m"
@@ -568,16 +570,15 @@ function SegmentBody({
 /* -------------------------------------------------------------- condition */
 
 function ConditionBody({
-  trigger,
   step,
   onChange,
 }: {
-  trigger: string
   step: StepOf<"condition">
   onChange: (step: AutomationStep) => void
 }) {
   /* The rule in the form: a new one (its index is the list's length), one
      being edited, or none. */
+  const variables = useReferenceOptions()
   const [editing, setEditing] = React.useState<number | null>(
     step.rules.length === 0 ? 0 : null
   )
@@ -593,10 +594,15 @@ function ConditionBody({
               </span>
             ) : null}
             <Badge variant="outline" className="shrink-0">
-              {splitField(rule.field).scope === "contact" ? "Contact" : trigger}
+              {rule.field.startsWith("contact.") ? "Contact" : "Event"}
             </Badge>
             <span className="min-w-0 flex-1 truncate text-sm">
-              {ruleText(rule)}
+              {variables.find(
+                (item) =>
+                  item.path === rule.field.replace(/^event\./, "trigger.")
+              )?.label ?? readablePath(rule.field)}{" "}
+              {RULE_OPERATOR_LABELS[rule.operator]}{" "}
+              {rule.value.includes("{{") ? "variable" : rule.value}
             </span>
             <Button
               variant="ghost"
@@ -646,7 +652,6 @@ function ConditionBody({
       ) : (
         <RuleForm
           key={editing}
-          trigger={trigger}
           rule={step.rules[editing]}
           onCancel={
             step.rules.length === 0 ? undefined : () => setEditing(null)
@@ -662,79 +667,24 @@ function ConditionBody({
 }
 
 function RuleForm({
-  trigger,
   rule,
   onCancel,
   onSubmit,
 }: {
-  trigger: string
   rule: AutomationRule | undefined
   onCancel?: () => void
   onSubmit: (rule: AutomationRule) => void
 }) {
-  const custom = usePropertyOptions("properties.", CONTACT_FIELDS)
-  const eventReferences = useEventReferences(trigger)
-  const [scope, setScope] = React.useState<"event" | "contact" | null>(
-    rule ? splitField(rule.field).scope : null
-  )
-  const [property, setProperty] = React.useState(
-    rule ? splitField(rule.field).property : ""
-  )
+  const [field, setField] = React.useState(rule?.field ?? "")
   const [operator, setOperator] = React.useState<AutomationRuleOperator>(
     rule?.operator ?? "eq"
   )
   const [value, setValue] = React.useState(rule?.value ?? "")
-
-  if (scope === null) {
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        <Button variant="outline" size="sm" onClick={() => setScope("event")}>
-          <EventIcon data-icon="inline-start" />
-          {trigger || "Event"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setScope("contact")}>
-          Contact
-        </Button>
-      </div>
-    )
-  }
-
-  const next: AutomationRule = {
-    field: `${scope}.${property.trim()}`,
-    operator,
-    value,
-  }
-  const properties =
-    scope === "event"
-      ? eventReferences.map((name) => splitField(name).property)
-      : custom.pageRows
+  const next: AutomationRule = { field, operator, value }
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">
-          {scope === "contact" ? "Contact" : trigger || "Event"}
-        </Badge>
-        {rule ? null : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Choose another source"
-            onClick={() => setScope(null)}
-          >
-            <XIcon />
-          </Button>
-        )}
-      </div>
-      <SuggestInput
-        aria-label="Property name"
-        value={property}
-        onChange={setProperty}
-        options={properties}
-        onSearch={scope === "contact" ? custom.setSearch : undefined}
-        placeholder="Property name"
-        className="font-mono"
-      />
+      <ReferenceFieldSelect value={field} onChange={setField} />
       <div className="flex gap-2">
         <OptionSelect
           className="min-w-0 flex-1"
@@ -757,7 +707,7 @@ function RuleForm({
       </div>
       {/* Said once a property is in, so the Add button is never dead without
           a reason. */}
-      {property.trim() && ruleError(next) ? (
+      {field.trim() && ruleError(next) ? (
         <p className="text-caption text-muted-foreground">{ruleError(next)}</p>
       ) : null}
       <div className="flex justify-end gap-1.5">

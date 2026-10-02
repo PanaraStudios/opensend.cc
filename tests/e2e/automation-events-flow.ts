@@ -71,9 +71,13 @@ export function automationEventsTests(
         .click()
       await expect(
         owner.getByLabel("WhatsApp message", { exact: true })
-      ).toHaveValue(
-        "Hi {{contact.first_name}}, you asked: {{trigger.message.text}}"
-      )
+      ).toHaveValue("Hi ")
+      const message = owner.getByRole("group", {
+        name: "WhatsApp message field",
+        exact: true,
+      })
+      await expect(message).toContainText("Contact › First name")
+      await expect(message).toContainText("Trigger › Message › Text")
       await owner
         .getByTestId("workflow-node-reply")
         .getByRole("combobox", { name: "Insert variable", exact: true })
