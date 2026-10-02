@@ -248,6 +248,7 @@ export function WorkflowCard({
         {onSelect ? (
           <button
             type="button"
+            aria-label={title}
             className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             onClick={onSelect}
           >

@@ -4,6 +4,7 @@ import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { Textarea } from "@/components/ui/textarea"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { AudioPlayer } from "@/components/ui/audio-player"
@@ -120,14 +121,6 @@ export function ProviderVoiceField({
   onChange: (voice: string) => void
   inherit?: boolean
 }) {
-  if (provider === "elevenlabs")
-    return (
-      <VoiceField
-        label={`${label} ID${inherit ? " (optional)" : ""}`}
-        value={value}
-        onChange={onChange}
-      />
-    )
   return (
     <VoiceChoiceField
       label={label}
@@ -171,21 +164,24 @@ export function PromptField({
   )
   return (
     <div className="flex flex-col gap-3">
-      <OptionSelect
-        aria-label="Prompt source"
-        value={value.kind}
-        onChange={(kind) =>
-          onChange(
-            kind === "tts"
-              ? { kind: "tts", text: "" }
-              : { kind: "audio", fileId: "" }
-          )
-        }
-        items={[
-          { value: "tts", label: "Typed text" },
-          { value: "audio", label: "Uploaded audio" },
-        ]}
-      />
+      <Field>
+        <FieldLabel>Prompt source</FieldLabel>
+        <SegmentedToggle
+          aria-label="Prompt source"
+          value={value.kind}
+          onValueChange={(kind) =>
+            onChange(
+              kind === "tts"
+                ? { kind: "tts", text: "" }
+                : { kind: "audio", fileId: "" }
+            )
+          }
+          items={[
+            { value: "tts", label: "Typed text" },
+            { value: "audio", label: "Upload audio" },
+          ]}
+        />
+      </Field>
       {rendered?.error ? (
         <p role="alert" className="text-destructive">
           {rendered.error}
@@ -255,8 +251,8 @@ const actionItems = [
   { value: "agents", label: "Transfer to agents" },
   { value: "bot", label: "Voice bot" },
   { value: "voicemail", label: "Voicemail" },
-  { value: "playAndHangup", label: "Play and hang up" },
-  { value: "webhook", label: "Webhook decision" },
+  { value: "playAndHangup", label: "Play message and hang up" },
+  { value: "webhook", label: "Ask webhook" },
   { value: "hangup", label: "Hang up" },
 ]
 export function ActionField({
@@ -273,53 +269,62 @@ export function ActionField({
   const bots = useTeamQuery(api.voice.resources.dashboardList, { limit: 100 })
   return (
     <div className="flex flex-col gap-2">
-      <OptionSelect
-        aria-label={label}
-        value={value.kind}
-        items={actionItems}
-        onChange={(kind) => {
-          switch (kind) {
-            case "submenu":
-              onChange({ kind, menuId: menus[0]?.id ?? "" })
-              break
-            case "bot":
-              onChange({ kind, botId: "" })
-              break
-            case "webhook":
-              onChange({ kind, url: "" })
-              break
-            case "playAndHangup":
-              onChange({ kind, prompt: { kind: "tts", text: "" } })
-              break
-            case "agents":
-            case "voicemail":
-            case "hangup":
-              onChange({ kind })
-              break
-          }
-        }}
-      />
-      {value.kind === "submenu" ? (
+      <Field>
+        <FieldLabel>{label}</FieldLabel>
         <OptionSelect
-          aria-label="Submenu"
-          value={value.menuId}
-          items={menus.map((m) => ({
-            value: m.id,
-            label: `${m.name} (${m.id})`,
-          }))}
-          onChange={(menuId) => onChange({ ...value, menuId })}
+          aria-label={label}
+          value={value.kind}
+          items={actionItems}
+          onChange={(kind) => {
+            switch (kind) {
+              case "submenu":
+                onChange({ kind, menuId: menus[0]?.id ?? "" })
+                break
+              case "bot":
+                onChange({ kind, botId: "" })
+                break
+              case "webhook":
+                onChange({ kind, url: "" })
+                break
+              case "playAndHangup":
+                onChange({ kind, prompt: { kind: "tts", text: "" } })
+                break
+              case "agents":
+              case "voicemail":
+              case "hangup":
+                onChange({ kind })
+                break
+            }
+          }}
         />
+      </Field>
+      {value.kind === "submenu" ? (
+        <Field>
+          <FieldLabel>Submenu</FieldLabel>
+          <OptionSelect
+            aria-label="Submenu"
+            value={value.menuId}
+            items={menus.map((m) => ({
+              value: m.id,
+              label: m.name,
+            }))}
+            onChange={(menuId) => onChange({ ...value, menuId })}
+          />
+        </Field>
       ) : null}
       {value.kind === "bot" ? (
-        <OptionSelect
-          aria-label="Voice bot"
-          placeholder="Choose a voice bot"
-          value={value.botId}
-          items={(bots?.data ?? []).flatMap((b) =>
-            "name" in b ? [{ value: b.id, label: b.name }] : []
-          )}
-          onChange={(botId) => onChange({ ...value, botId })}
-        />
+        <Field>
+          <FieldLabel>Voice bot</FieldLabel>
+          <OptionSelect
+            aria-label="Voice bot"
+            placeholder="Choose a voice bot"
+            value={value.botId}
+            items={(bots?.data ?? []).flatMap((b) =>
+              "name" in b ? [{ value: b.id, label: b.name }] : []
+            )}
+            onChange={(botId) => onChange({ ...value, botId })}
+          />
+        </Field>
       ) : null}
       {value.kind === "webhook" ? (
         <>
@@ -327,17 +332,6 @@ export function ActionField({
             label="Webhook URL"
             value={value.url}
             onChange={(url) => onChange({ ...value, url })}
-          />
-          <VoiceField
-            label="Webhook secret ID (optional)"
-            value={value.secretId ?? ""}
-            onChange={(secretId) =>
-              onChange({
-                kind: "webhook",
-                url: value.url,
-                ...(secretId ? { secretId } : {}),
-              })
-            }
           />
         </>
       ) : null}
@@ -362,12 +356,7 @@ export function MenuFields({
   const patch = (p: Partial<IvrMenu>) => onChange({ ...menu, ...p })
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <VoiceField
-          label="Menu ID"
-          value={menu.id}
-          onChange={(id) => patch({ id })}
-        />
+      <div className="grid gap-4">
         <VoiceField
           label="Menu name"
           value={menu.name}
@@ -417,6 +406,7 @@ export function MenuFields({
         }
       >
         <ResourceTable
+          framed={false}
           headers={
             <>
               <Th>Digit</Th>
@@ -427,7 +417,7 @@ export function MenuFields({
         >
           {Object.entries(menu.options).map(([digit, action]) => (
             <TableRow key={digit}>
-              <TableCell className="w-28">
+              <TableCell className="w-16">
                 <OptionSelect
                   aria-label={`Digit ${digit}`}
                   value={digit}
@@ -473,7 +463,6 @@ export function MenuFields({
       </DetailSection>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field>
-          <FieldLabel>No input</FieldLabel>
           <ActionField
             label="No input action"
             menus={menus}
@@ -482,9 +471,8 @@ export function MenuFields({
           />
         </Field>
         <Field>
-          <FieldLabel>Failure / invalid digits</FieldLabel>
           <ActionField
-            label="Failure action"
+            label="Invalid input action"
             menus={menus}
             value={menu.failureAction}
             onChange={(failureAction) => patch({ failureAction })}
@@ -558,7 +546,7 @@ export function BusinessHoursFields({
       {value?.status === "ENABLED" ? (
         <>
           <VoiceField
-            label="IANA timezone"
+            label="Timezone"
             value={value.timezone_id ?? "UTC"}
             onChange={(timezone_id) => onChange({ ...value, timezone_id })}
           />
