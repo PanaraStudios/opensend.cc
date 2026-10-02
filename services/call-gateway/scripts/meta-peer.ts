@@ -99,7 +99,7 @@ function promptWav() {
     wav.writeInt16LE(
       Math.round(
         4000 * Math.sin((2 * Math.PI * 440 * i) / 48000) +
-          4000 * Math.sin((2 * Math.PI * 10000 * i) / 48000)
+          4000 * Math.sin((2 * Math.PI * 6000 * i) / 48000)
       ),
       44 + i * 2
     )
@@ -500,7 +500,7 @@ async function run(
           channels: 2,
           payloadType: 111,
           parameters:
-            "minptime=10;useinbandfec=1;maxaveragebitrate=64000;maxplaybackrate=48000",
+            "minptime=10;useinbandfec=1;maxaveragebitrate=20000;maxplaybackrate=16000;sprop-maxcapturerate=16000",
         }),
         new RTCRtpCodecParameters({
           mimeType: "audio/telephone-event",
@@ -695,18 +695,71 @@ async function run(
         )
       clearInterval(sending)
       if (voice === "ivr-engine") {
+        await waitUntil(
+          () => ivrStarts.includes(callId) && ivrAudioFetches > 0,
+          "IVR prompt was not fetched before measuring playback"
+        )
+        const beforePrompt = received
+        await waitUntil(
+          () => received >= beforePrompt + 60,
+          "IVR playback did not continue"
+        )
+        const fs = new FreeSwitch(
+          "freeswitch",
+          8021,
+          process.env.FREESWITCH_ESL_SECRET!
+        )
+        try {
+          await fs.open()
+          const channels = JSON.parse(
+            await fs.api("show channels as json")
+          ) as { rows: { uuid: string }[] }
+          for (const channel of channels.rows ?? []) {
+            if (
+              (await fs.api(`uuid_getvar ${channel.uuid} opensend_call_id`)) !==
+              callId
+            )
+              continue
+            const variables: Record<string, string> = {}
+            for (const name of [
+              "read_codec",
+              "read_rate",
+              "write_codec",
+              "write_rate",
+              "sip_remote_audio_fmtp",
+              "current_application",
+            ])
+              variables[name] = await fs.api(
+                `uuid_getvar ${channel.uuid} ${name}`
+              )
+            console.log("IVR codec path", JSON.stringify(variables))
+            assert.equal(variables.write_codec.toUpperCase(), "OPUS")
+            assert.ok(
+              Number(variables.write_rate) >= 16000,
+              "FreeSWITCH playback rate fell below 16k"
+            )
+          }
+        } finally {
+          fs.close()
+        }
+        console.log(
+          `IVR source tones: 6k=${tonePower(cachedFixtureAudio.subarray(44), 6000)}, 440=${tonePower(cachedFixtureAudio.subarray(44), 440)}`
+        )
         const pcm = await decodeOpus(
           captured.map((p) => p.payload),
           48000
         )
-        const high = tonePower(pcm, 10000, 48000),
+        console.log("IVR Opus configurations", [
+          ...new Set(captured.map((p) => p.payload[0] >> 3)),
+        ])
+        const high = tonePower(pcm, 6000, 48000),
           low = tonePower(pcm, 440, 48000)
         assert.ok(
           high > 100 && high > low * 0.2,
-          `IVR lost fullband audio: 10kHz=${high}, 440Hz=${low}`
+          `IVR lost wideband audio: 6kHz=${high}, 440Hz=${low}`
         )
         console.log(
-          `PASS IVR fullband: 48kHz WAV → http_cache/mod_sndfile → Opus → Meta; 10kHz=${high.toFixed(0)}, 440Hz=${low.toFixed(0)}`
+          `PASS IVR wideband: normalized 16kHz WAV → http_cache/mod_sndfile → Opus → Meta; 6kHz=${high.toFixed(0)}, 440Hz=${low.toFixed(0)}`
         )
       }
       const info = await infoFor(callId)
@@ -989,6 +1042,41 @@ async function run(
           endCallFlow ? "Ended by bot" : "ALLOTTED_TIMEOUT"
         )
       if (endCallFlow) {
+        const done = voiceEvents.find(
+          (e) => e.callId === callId && e.type === "playback_done"
+        )!
+        const tool = voiceEvents.find(
+          (e) =>
+            e.callId === callId &&
+            e.type === "tool_call" &&
+            e.toolName === "end_call" &&
+            e.status === "succeeded"
+        )!
+        assert.ok(done, "Goodbye playback completion missing")
+        assert.ok(
+          ended.timestamp >= done.timestamp,
+          "Call ended before goodbye playback"
+        )
+        assert.ok(
+          ended.timestamp - Math.max(done.timestamp, tool.timestamp) < 1000,
+          "Playback-done hangup was delayed"
+        )
+        assert.ok(
+          ended.timestamp - tool.timestamp < 2500,
+          "Fixed hangup wait survived"
+        )
+        console.log(
+          `PASS goodbye timing ${voice}: hangup ${ended.timestamp - done.timestamp}ms after playback, ${ended.timestamp - tool.timestamp}ms after end_call`
+        )
+        const goodbye = await decodeOpus(
+          captured
+            .filter((packet) => packet.time > tool.timestamp - 100)
+            .map((packet) => packet.payload)
+        )
+        assert.ok(
+          tonePower(goodbye, 1320) > 100,
+          "Goodbye audio never reached Meta"
+        )
         await waitUntil(
           () => metaTerminations.includes(callId),
           "Meta peer never received terminate"
@@ -1156,11 +1244,11 @@ try {
       )
     ).arrayBuffer()
   )
-  assert.equal(cachedFixtureAudio.readUInt32LE(24), 48000)
+  assert.equal(cachedFixtureAudio.readUInt32LE(24), 16000)
   assert.equal(cachedFixtureAudio.readUInt16LE(22), 1)
   assert.equal(cachedFixtureAudio.readUInt16LE(34), 16)
   console.log(
-    "PASS prompt normalization: signed gateway converter returned 48kHz mono PCM16 WAV"
+    "PASS prompt normalization: signed gateway converter returned 16kHz mono PCM16 WAV"
   )
   if (process.argv.includes("playground") || playgroundBot) {
     const agent = await browserAgent(),
