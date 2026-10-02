@@ -13424,6 +13424,45 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+  /voice-providers/elevenlabs/voices:
+    get:
+      operationId: listElevenLabsVoices
+      tags:
+        - Voice Bots
+      summary: listElevenLabsVoices
+      x-opensend-scope: voice_providers:read
+      parameters:
+        - name: credential_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: refresh
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElevenLabsVoiceList"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
   /whatsapp/calls/{id}/transcript:
     get:
       operationId: getWhatsAppCallTranscript
@@ -28446,6 +28485,63 @@ components:
         - lastFour
         - createdAt
         - updatedAt
+      additionalProperties: false
+    ElevenLabsVoice:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+        gender:
+          enum:
+            - female
+            - male
+            - unknown
+        accent:
+          type: string
+        language:
+          type: string
+        description:
+          type: string
+        category:
+          enum:
+            - premade
+            - cloned
+            - professional
+            - generated
+            - famous
+            - high_quality
+            - unknown
+      required:
+        - value
+        - label
+        - gender
+        - category
+      additionalProperties: false
+    ElevenLabsVoiceList:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElevenLabsVoice"
+        cached_at:
+          type: number
+        credential_id:
+          type: string
+        error:
+          type: string
+      required:
+        - object
+        - has_more
+        - data
+        - cached_at
+        - credential_id
       additionalProperties: false
     VoiceUsage:
       type: object

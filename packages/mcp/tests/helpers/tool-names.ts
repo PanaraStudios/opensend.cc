@@ -66,6 +66,7 @@ export const toolNames = [
   "list-contact-topics",
   "list-contacts",
   "list-domains",
+  "list-elevenlabs-voices",
   "list-emails",
   "list-instagram-accounts",
   "list-instagram-messages",
