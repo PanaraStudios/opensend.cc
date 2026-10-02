@@ -100,3 +100,71 @@ References checked against the existing UI's scope:
 - [Update automation](https://resend.com/docs/api-reference/automations/update-automation)
 - [Send event](https://resend.com/docs/api-reference/events/send-event)
 - [Convex workflow](https://github.com/get-convex/workflow)
+
+## System events and mapping between steps
+
+`GET /events/catalog` (scope `events:read`) returns every webhook event and the
+team's custom events, with labels, groups, descriptions and nested schemas.
+Each field declares a type, example and description. Objects have `fields`;
+arrays have `items`. Optional and nullable fields describe provider variations.
+`contact.properties` lists that team's property definitions. Provider extension
+objects retain their original values. The catalog is shared with the SDK.
+
+System triggers use `opensend:<webhook event name>`, for example
+`opensend:whatsapp.message.received`, `opensend:instagram.message.received`,
+`opensend:email.opened`, and `opensend:whatsapp.call.completed`. Custom names
+remain unchanged, including a custom event called `email.opened`. Custom events
+cannot claim the reserved `opensend:` prefix. Both automation and webhook
+consumers receive the same internal outbox row; inbound projection no longer
+creates a second event for automations. Runs deduplicate by team, automation
+and outbox event id. Contactless events such as domain changes can run flow
+steps; contact-dependent steps require a contact.
+
+Trigger config accepts `filters`, an AND list of the same rules used by a
+Condition step. Filters can select an account, message type, text or call
+outcome. The builder uses the same condition editor for filters.
+
+```json
+{
+  "name": "Reply to price enquiries",
+  "status": "enabled",
+  "steps": [
+    { "key": "start", "type": "trigger", "config": {
+      "event_name": "opensend:whatsapp.message.received",
+      "filters": [{ "type": "rule", "field": "trigger.message.text", "operator": "contains", "value": "price" }]
+    }},
+    { "key": "reply", "type": "send_whatsapp", "config": {
+      "account_id": "your-account-id", "mode": "text",
+      "text": "Hi {{contact.first_name}}, you asked: {{trigger.message.text}}"
+    }}
+  ],
+  "connections": [{ "from": "start", "to": "reply", "type": "default" }]
+}
+```
+
+All step text fields accept `{{trigger.<path>}}`, `{{steps.<stepKey>.<path>}}`
+and `{{contact.<path>}}`. Arrays use `.0` or `[0]`. A whole token retains its
+value's type; tokens within text interpolate as strings. Missing values become
+empty strings; channel variable `{ value: "{{trigger.text}}", fallback: "..." }`
+provides an optional fallback. Values inserted into email HTML are escaped.
+The pure resolver executes no code and refuses prototype traversal. Legacy
+`event.plan` and `contact.first_name` values continue to work.
+
+Send steps output `message_id` and `status: "queued"` (email also keeps
+`email_id` and `to`). Wait steps expose the received payload directly and as
+`payload`, plus `event_received`. Contact updates output `contact`; conditions
+output `condition_met` and `branch`. Delay steps output `until` and accept an
+ISO date or token through the `until` field. Delete and segment steps output
+`deleted` and `segment_id`. Outputs are retained on the run's step records.
+Run detail exposes `inputs` and `output` in both the dashboard and REST API.
+
+Unknown tokens, inaccessible steps (future steps or a different branch), and
+condition type mismatches are rejected on save with `422 validation_error`.
+Drafts can still contain blank prerequisites. Step keys should remain stable
+when editing references. Variables show only trigger fields, earlier steps on
+the current path, and contact fields. The variable picker inserts at the cursor,
+shows type and example, and previews interpolation with sample values.
+
+SDK: `await opensend.events.catalog()` returns `{ data, error }`. Trigger types
+include `SystemTriggerName`; SDK config uses `eventName` and `filters`.
+MCP: `list-event-catalog` lists events or accepts `event` to show one event's fields.

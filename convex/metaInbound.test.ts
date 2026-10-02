@@ -211,11 +211,9 @@ test("a text creates phone-only audience, identity, conversation, timeline and b
     text: "Does it come in another color?",
     created_at: expect.any(String),
   })
-  expect(
-    data.events.find(
-      (event) => event.type === "custom:opensend:whatsapp.message.received"
-    )?.data
-  ).toEqual({ contact_id: data.contacts[0]._id, payload: event.data })
+  expect(data.events.filter(event => event.type === "whatsapp.message.received")).toHaveLength(1)
+  expect(data.events.some(event => event.type === "custom:opensend:whatsapp.message.received")).toBe(false)
+  expect(event.data).toMatchObject({ contact_id: data.contacts[0]._id, contact: { id: data.contacts[0]._id }, message: { text: "Does it come in another color?" } })
   const count = await f.owner.client.query(api.contacts.list, {
     organizationId: f.owner.team,
     paginationOpts: { numItems: 10, cursor: null },

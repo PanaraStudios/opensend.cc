@@ -93,65 +93,8 @@ export type SuppressionReason = Infer<typeof suppressionReasonValue>
 export type ExportStatus = Infer<typeof exportStatusValue>
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
-export const WEBHOOK_EVENTS = [
-  "email.sent",
-  "email.delivered",
-  "email.delivery_delayed",
-  "email.opened",
-  "email.clicked",
-  "email.bounced",
-  "email.complained",
-  "email.received",
-  "email.failed",
-  "email.scheduled",
-  "email.suppressed",
-  "whatsapp.call.ivr_completed",
-  "whatsapp.call.ringing",
-  "whatsapp.call.connected",
-  "whatsapp.call.completed",
-  "whatsapp.call.failed",
-  "whatsapp.call.missed",
-  "whatsapp.call.permission_updated",
-  "whatsapp.call.recording_ready",
-  "whatsapp.call.transcription_ready",
-  "whatsapp.call.bot_completed",
-  "whatsapp.call.transferred",
-  "whatsapp.message.sent",
-  "whatsapp.message.delivered",
-  "whatsapp.message.read",
-  "whatsapp.message.played",
-  "whatsapp.message.payment_updated",
-  "whatsapp.message.failed",
-  "whatsapp.message.received",
-  "messenger.message.sent",
-  "messenger.message.delivered",
-  "messenger.message.read",
-  "messenger.message.failed",
-  "messenger.message.received",
-  "instagram.message.sent",
-  "instagram.message.read",
-  "instagram.message.failed",
-  "instagram.message.received",
-  "whatsapp.message.read_receipt_sent",
-  "whatsapp.message.read_receipt_failed",
-  "whatsapp.message.typing_failed",
-  "messenger.message.read_receipt_sent",
-  "messenger.message.read_receipt_failed",
-  "messenger.message.typing_failed",
-  "instagram.message.read_receipt_sent",
-  "instagram.message.read_receipt_failed",
-  "instagram.message.typing_failed",
-  "whatsapp.template.status_updated",
-  "whatsapp.phone_number.updated",
-  "contact.created",
-  "contact.updated",
-  "contact.deleted",
-  "domain.created",
-  "domain.updated",
-  "domain.deleted",
-  "suppression.added",
-  "suppression.removed",
-] as const
+export { SYSTEM_EVENT_NAMES as WEBHOOK_EVENTS } from "../../packages/sdk/src/events/catalog"
+import { SYSTEM_EVENT_NAMES as WEBHOOK_EVENTS } from "../../packages/sdk/src/events/catalog"
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]
 
@@ -406,7 +349,7 @@ export type AutomationStep = { key: string } & (
       met: AutomationStep[]
       notMet: AutomationStep[]
     }
-  | { type: "delay"; duration: string }
+  | { type: "delay"; duration: string; until?: string }
   | {
       type: "wait_for_event"
       eventName: string
@@ -416,6 +359,7 @@ export type AutomationStep = { key: string } & (
     }
   | {
       type: "send_email"
+      subject?: string
       templateId: string
       /** Empty keeps what the template says. */
       from: string
@@ -445,6 +389,7 @@ export type Automation = {
   status: AutomationStatus
   /** The name of the event that starts a run. */
   trigger: string
+  triggerFilters?: AutomationRule[]
   steps: AutomationStep[]
   createdAt: number
 }
@@ -475,6 +420,7 @@ export type AutomationRunStep = {
   status: AutomationRunStatus | "skipped"
   startedAt: number
   completedAt: number | null
+  inputs?: Record<string, unknown> | null
   output: Record<string, unknown> | null
   error: string | null
 }

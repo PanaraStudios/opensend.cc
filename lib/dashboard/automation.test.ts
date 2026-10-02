@@ -312,14 +312,8 @@ it("supports a WhatsApp step and known system events for triggers and reply wait
 })
 
 it("all messaging reply events are valid triggers but custom system names are refused", () => {
-  assert.deepEqual(
-    SYSTEM_EVENTS.map((event) => event.value),
-    [
-      "opensend:whatsapp.message.received",
-      "opensend:messenger.message.received",
-      "opensend:instagram.message.received",
-    ]
-  )
+  assert.ok(SYSTEM_EVENTS.some(event => event.value === "opensend:email.opened"))
+  assert.ok(SYSTEM_EVENTS.some(event => event.value === "opensend:whatsapp.call.completed"))
   for (const event of SYSTEM_EVENTS)
     assert.equal(triggerEventError(event.value), null)
   assert.match(triggerEventError("opensend:unknown")!, /reserved/)

@@ -1,6 +1,10 @@
 import { CHANNEL_SEND_STEPS, CHANNELS, channelForSendStep } from "../channels"
-import { messagingChannelValue } from "../../convex/tables/channels"
-import { channelLabel } from "./format"
+import { SYSTEM_EVENT_CATALOG } from "../event-catalog"
+import {
+  referenceValue,
+  resolveReference,
+  type ReferenceScope,
+} from "../automation-references"
 import { RESERVED_PROPERTY_KEYS } from "./contacts"
 import { pluralize } from "./format"
 import { uniqueName } from "./slug"
@@ -319,9 +323,9 @@ export function durationError(text: string): string | null {
 /* ------------------------------------------------------------ validation */
 
 export const RESERVED_EVENT_PREFIX = "opensend:"
-export const SYSTEM_EVENTS = messagingChannelValue.members.map(({ value }) => ({
-  value: `opensend:${value}.message.received`,
-  label: `${channelLabel(value)} message received`,
+export const SYSTEM_EVENTS = SYSTEM_EVENT_CATALOG.map((event) => ({
+  value: event.trigger,
+  label: event.label,
 }))
 export function triggerEventError(name: string): string | null {
   return eventNameError(name, [], { allowSystem: true })
@@ -398,7 +402,11 @@ export function ruleText(rule: AutomationRule): string {
 }
 
 export function ruleError(rule: AutomationRule): string | null {
-  if (!/^(event|contact)\.[A-Za-z0-9_.]+$/.test(rule.field.trim())) {
+  if (
+    !/^(?:(?:event|trigger|contact|steps)\.[A-Za-z0-9_.-]+|\{\{\s*(?:event|trigger|contact|steps)\.[A-Za-z0-9_.-]+\s*\}\})$/.test(
+      rule.field.trim()
+    )
+  ) {
     return "Choose a property: letters, numbers, underscores and dots"
   }
   if (operatorTakesValue(rule.operator) && !rule.value.trim()) {
@@ -438,6 +446,11 @@ export function stepTasks(
         ? ["Add a condition"]
         : []
     case "delay":
+      if (step.until)
+        return step.until.includes("{{") ||
+          !Number.isNaN(Date.parse(step.until))
+          ? []
+          : ["Enter a date or reference"]
       return step.duration.trim()
         ? [durationError(step.duration)].flatMap((error) => error ?? [])
         : ["Set a delay"]
@@ -567,40 +580,26 @@ export function stepSummary(
 
 /* ------------------------------------------------------------------ rules */
 
-type RuleScope = {
-  event: Record<string, unknown>
-  contact: Record<string, unknown>
-}
-
-function resolveField(scope: RuleScope, field: string): unknown {
-  return field
-    .trim()
-    .split(".")
-    .reduce<unknown>(
-      (value, part) =>
-        typeof value === "object" && value !== null
-          ? (value as Record<string, unknown>)[part]
-          : undefined,
-      scope
-    )
-}
-
-/** A step's value: what a reference such as `event.plan` points at, or the
-    text itself when it is not one, or points at nothing. */
+type RuleScope = ReferenceScope
 export function resolveValue(scope: RuleScope, value: string): unknown {
-  if (!/^(event|contact)\./.test(value.trim())) return value
-  return resolveField(scope, value) ?? value
+  return resolveReference(value, scope, { legacy: true })
 }
+const referencesField = (scope: RuleScope, value: string) =>
+  value.trim().startsWith("{{")
+    ? resolveReference(value, scope)
+    : referenceValue(scope, value)
 
 export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
-  const actual = resolveField(scope, rule.field)
+  const actual = referencesField(scope, rule.field)
   const missing = actual === undefined || actual === null
   if (rule.operator === "exists") return !missing
   if (rule.operator === "is_empty") return missing || actual === ""
   if (missing) return rule.operator === "neq"
 
   const text = String(actual)
-  const expected = rule.value.trim()
+  const expected = String(
+    resolveReference(rule.value.trim(), scope, { legacy: true })
+  )
   switch (rule.operator) {
     case "eq":
       return text === expected
@@ -613,8 +612,12 @@ export function evaluateRule(rule: AutomationRule, scope: RuleScope): boolean {
     case "ends_with":
       return text.endsWith(expected)
   }
-  const left = Number(actual)
-  const right = Number(expected)
+  const numeric = (value: unknown) =>
+    Number.isNaN(Number(value)) && typeof value === "string"
+      ? Date.parse(value)
+      : Number(value)
+  const left = numeric(actual)
+  const right = numeric(expected)
   if (Number.isNaN(left) || Number.isNaN(right)) return false
   switch (rule.operator) {
     case "gt":

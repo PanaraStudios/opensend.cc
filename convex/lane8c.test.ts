@@ -242,7 +242,7 @@ test("automation graph validates cycles, unknown types, unsupported options and 
     expect(["validation_error", "missing_required_field"]).toContain(error.name)
   }
   expect((await json(f.call("/automations"))).data).toEqual([])
-  expect(() =>
+  expect(
     parseAutomationGraph(
       [
         { key: "start", type: "trigger", config: { event_name: "x" } },
@@ -254,7 +254,7 @@ test("automation graph validates cycles, unknown types, unsupported options and 
       ],
       [{ from: "start", to: "a" }]
     )
-  ).toThrow("subject")
+  ).toMatchObject({ graph: expect.stringContaining("override") })
 })
 
 test("every automation id including references and run parents is isolated", async () => {

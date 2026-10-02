@@ -143,6 +143,7 @@ export function contactEventData(
     first_name: contact.firstName || null,
     last_name: contact.lastName || null,
     unsubscribed: contact.unsubscribed,
+    properties: contact.properties,
   }
 }
 export async function emitContact(

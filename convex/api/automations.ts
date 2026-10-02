@@ -140,7 +140,13 @@ export const write = internalMutation({
           row?._id ?? (await createAutomation(ctx, caller.organizationId))
         await updateAutomation(ctx, caller.organizationId, target, {
           ...(name === undefined ? {} : { name }),
-          ...(graph ? { trigger: graph.trigger, graph: graph.graph } : {}),
+          ...(graph
+            ? {
+                trigger: graph.trigger,
+                triggerFilters: graph.triggerFilters,
+                graph: graph.graph,
+              }
+            : {}),
         })
         if (graph)
           await patchRow(ctx, "automations", target, {
@@ -464,6 +470,7 @@ export function registerAutomationRoutes(http: HttpRouter) {
           started_at: apiTime(s.startedAt),
           completed_at:
             s.completedAt === undefined ? null : apiTime(s.completedAt),
+          inputs: s.inputs ?? null,
           output: s.output ?? null,
           error: s.error ? { message: s.error } : null,
           created_at: apiTime(s._creationTime),

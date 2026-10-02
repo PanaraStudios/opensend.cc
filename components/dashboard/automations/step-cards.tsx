@@ -1,4 +1,15 @@
 "use client"
+import { referenceErrors } from "@/lib/automation-references"
+import { CONTACT_SCHEMA } from "@/lib/event-catalog"
+import { FieldError } from "@/components/ui/field"
+import {
+  ReferenceInput,
+  ReferenceProvider,
+  ReferenceVariableField,
+  useEventCatalog,
+} from "./references"
+import { flattenSchema, catalogEvent } from "@/lib/event-catalog"
+import { channelIcon } from "@/components/dashboard/channels/shared"
 import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 
 import { channelForSendStep } from "@/lib/channels"
@@ -28,6 +39,7 @@ import {
   MoreMenu,
   OptionSelect,
   SuggestInput,
+  SearchableSelect,
   useDraft,
 } from "@/components/dashboard/primitives"
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
@@ -99,11 +111,15 @@ function CardSection({
 
 /** The payload fields of the trigger's event, as references. */
 function useEventReferences(trigger: string): string[] {
-  const event = useAutomationEvent(trigger)
-  return (event?.schema ?? []).map((field) => `event.${field.key}`)
+  const catalog = useEventCatalog()
+  return flattenSchema(
+    catalogEvent(catalog, trigger)?.schema ?? {
+      type: "object",
+      description: "",
+      example: {},
+    }
+  ).map((field) => `event.${field.path}`)
 }
-
-const CONTACT_REFERENCES = CONTACT_FIELDS.map((key) => `contact.${key}`)
 
 function usePropertyOptions(
   prefix: string,
@@ -140,26 +156,64 @@ function EventNameInput(props: {
   onChange: (value: string) => void
   "aria-label": string
 }) {
-  const { activeTeamId } = useWorkspace()
+  const catalog = useEventCatalog()
   const [search, setSearch] = React.useState("")
-  const options = useQuery(
-    api.automationEvents.options,
-    activeTeamId
-      ? { organizationId: activeTeamId, search, selectedName: props.value }
-      : "skip"
-  )
-  // System events (a WhatsApp message received, …) are suggested
-  // alongside the team's own events.
+  const options = catalog
+    .filter((event) =>
+      `${event.name} ${event.label} ${event.description}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    )
+    .map((event) => ({
+      value: event.trigger,
+      label: event.label,
+      group: event.group,
+      description: event.description,
+      icon: event.name.startsWith("whatsapp.")
+        ? (channelIcon("whatsapp") as typeof EventIcon)
+        : event.name.startsWith("instagram.")
+          ? (channelIcon("instagram") as typeof EventIcon)
+          : event.name.startsWith("messenger.")
+            ? (channelIcon("messenger") as typeof EventIcon)
+            : EventIcon,
+    }))
   return (
-    <SuggestInput
-      {...props}
-      options={[...(options ?? []), ...SYSTEM_EVENTS]}
-      selectedItem={SYSTEM_EVENTS.find((event) => event.value === props.value)}
-      onSearch={setSearch}
-      placeholder="Type or select an event"
-      createLabel="Create event"
-      className="font-mono"
-    />
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <SearchableSelect
+        value={props.value}
+        items={options}
+        selectedItem={options.find((item) => item.value === props.value)}
+        search={{ onChange: setSearch, placeholder: "Search events…" }}
+        contentClassName="w-96"
+        onChange={props.onChange}
+        trigger={(current) => (
+          <Button
+            variant="outline"
+            aria-label={`${props["aria-label"]} picker`}
+          >
+            {current?.label ?? (props.value || "Select event")}
+          </Button>
+        )}
+      />
+      <SuggestInput
+        {...props}
+        options={options}
+        placeholder="Type or select an event"
+        createLabel="Create event"
+      />
+      {catalogEvent(catalog, props.value) ? (
+        <div className="flex max-h-40 flex-col gap-1 overflow-auto text-caption text-muted-foreground">
+          <span>{catalogEvent(catalog, props.value)?.description}</span>
+          {flattenSchema(catalogEvent(catalog, props.value)!.schema).map(
+            ({ path, field }) => (
+              <span key={path}>
+                {path} · {field.type} · {JSON.stringify(field.example)}
+              </span>
+            )
+          )}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -171,12 +225,14 @@ export function TriggerCard({
   locked,
   onSelect,
   onChange,
+  onFiltersChange,
 }: {
   automation: Automation
   selected: boolean
   locked: boolean
   onSelect: () => void
   onChange: (trigger: string) => void
+  onFiltersChange: (rules: AutomationRule[]) => void
 }) {
   const [editingEvent, setEditingEvent] = React.useState(false)
   const event = useAutomationEvent(automation.trigger)
@@ -218,6 +274,24 @@ export function TriggerCard({
           ) : null}
         </div>
       ) : null}
+      {selected ? (
+        <ReferenceProvider automation={automation} stepKey="start">
+          <ConditionBody
+            trigger={automation.trigger}
+            step={{
+              key: "start",
+              type: "condition",
+              match: "and",
+              rules: automation.triggerFilters ?? [],
+              met: [],
+              notMet: [],
+            }}
+            onChange={(step) => {
+              if (step.type === "condition") onFiltersChange(step.rules)
+            }}
+          />
+        </ReferenceProvider>
+      ) : null}
       <EventFormDialog
         event={event ?? null}
         open={editingEvent}
@@ -246,6 +320,15 @@ export function StepCard({
   onChange: (step: AutomationStep) => void
   onRemove: () => void
 }) {
+  const catalog = useEventCatalog()
+  const errors = referenceErrors(
+    automation.trigger,
+    automation.steps,
+    catalog,
+    catalog.find((event) => event.schema.fields?.contact)?.schema.fields
+      ?.contact ?? CONTACT_SCHEMA,
+    automation.triggerFilters
+  ).filter((error) => error.startsWith(`${step.key}:`))
   const context = useStepContext(automation.steps)
   const tasks = context ? stepTasks(step, context) : []
 
@@ -270,8 +353,11 @@ export function StepCard({
         )
       }
     >
+      {errors.length ? <FieldError>{errors.join("; ")}</FieldError> : null}
       {selected ? (
-        <StepBody automation={automation} step={step} onChange={onChange} />
+        <ReferenceProvider automation={automation} stepKey={step.key}>
+          <StepBody automation={automation} step={step} onChange={onChange} />
+        </ReferenceProvider>
       ) : null}
     </WorkflowCard>
   )
@@ -289,11 +375,21 @@ function StepBody({
   switch (step.type) {
     case "delay":
       return (
-        <DurationInput
-          aria-label="Delay"
-          value={step.duration}
-          onChange={(duration) => onChange({ ...step, duration })}
-        />
+        <>
+          <DurationInput
+            aria-label="Delay"
+            value={step.duration}
+            onChange={(duration) =>
+              onChange({ ...step, duration, until: undefined })
+            }
+          />
+          <ReferenceInput
+            aria-label="Delay until"
+            placeholder="Or a date / variable"
+            value={step.until ?? ""}
+            onValueChange={(until) => onChange({ ...step, until })}
+          />
+        </>
       )
     case "condition":
       return (
@@ -314,6 +410,16 @@ function StepBody({
             config={step}
             channel={channelForSendStep(step.type)}
             allowText
+            renderTextField={(props) => (
+              <ReferenceInput
+                {...props}
+                multiline
+                onValueChange={props.onChange}
+              />
+            )}
+            renderVariableField={(props) => (
+              <ReferenceVariableField {...props} />
+            )}
             onChange={(config) =>
               onChange({
                 ...step,
@@ -640,12 +746,12 @@ function RuleForm({
           items={OPERATOR_ITEMS}
         />
         {operatorTakesValue(operator) ? (
-          <Input
+          <ReferenceInput
             aria-label="Value"
             className="min-w-0 flex-1"
             value={value}
             placeholder="Value"
-            onChange={(event) => setValue(event.target.value)}
+            onValueChange={setValue}
           />
         ) : null}
       </div>
@@ -703,7 +809,7 @@ function SendEmailBody({
     activeTeamId ? { organizationId: activeTeamId } : "skip"
   )
   const templates = (rows ?? []).map((row) => asTemplate(row))
-  const references = [...useEventReferences(trigger), ...CONTACT_REFERENCES]
+  useEventReferences(trigger)
   const withBody = useTemplate(step.templateId || undefined)
   const picked = withBody ?? undefined
   const from = useDraft(step.from, (value) =>
@@ -772,14 +878,26 @@ function SendEmailBody({
               {picked.alias}
             </Badge>
           </div>
+          <CardSection label="Subject">
+            <ReferenceInput
+              aria-label="Email subject"
+              placeholder={picked.subject}
+              value={step.subject ?? ""}
+              onValueChange={(subject) =>
+                onChange({ ...step, subject: subject || undefined })
+              }
+            />
+          </CardSection>
           <CardSection label="Sender">
-            <Input
+            <ReferenceInput
               {...from}
+              onValueChange={(value) => onChange({ ...step, from: value })}
               aria-label="From"
               placeholder={picked.from || "From"}
             />
-            <Input
+            <ReferenceInput
               {...replyTo}
+              onValueChange={(value) => onChange({ ...step, replyTo: value })}
               aria-label="Reply to"
               placeholder="Reply to (optional)"
             />
@@ -792,18 +910,16 @@ function SendEmailBody({
                     {formatVariable(name)}
                   </code>
                   <div className="w-44 shrink-0">
-                    <SuggestInput
+                    <ReferenceInput
                       aria-label={`Value for ${name}`}
                       value={step.variables[name] ?? ""}
-                      onChange={(value) =>
+                      onValueChange={(value) =>
                         onChange({
                           ...step,
                           variables: { ...step.variables, [name]: value },
                         })
                       }
-                      options={references}
-                      placeholder="Type or select a prop"
-                      createLabel="Add as string"
+                      placeholder="Text or variable"
                     />
                   </div>
                 </div>
@@ -832,7 +948,7 @@ function UpdateContactBody({
     UPDATABLE_CONTACT_FIELDS,
     step.fields.map((field) => field.property)
   )
-  const references = useEventReferences(trigger)
+  useEventReferences(trigger)
   const [property, setProperty] = React.useState("")
   const [action, setAction] =
     React.useState<AutomationContactField["action"]>("change")
@@ -896,15 +1012,11 @@ function UpdateContactBody({
             />
           </div>
           {action === "change" ? (
-            <SuggestInput
+            <ReferenceInput
               aria-label="Value"
               value={value}
-              onChange={setValue}
-              options={
-                property === "unsubscribed" ? ["true", "false"] : references
-              }
-              placeholder="Type or select a property"
-              createLabel="Add as string"
+              onValueChange={setValue}
+              placeholder="Text or variable"
             />
           ) : null}
           <Button

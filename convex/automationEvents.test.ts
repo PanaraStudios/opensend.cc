@@ -570,7 +570,7 @@ describe("the /events definitions API", () => {
   })
 })
 
-test("outbox schedules only the consumer for each event type", async () => {
+test("outbox schedules webhooks and automations from the same system event", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
     for (const [type, consumer] of [
@@ -590,8 +590,11 @@ test("outbox schedules only the consumer for each event type", async () => {
             arg.id === id
         )
       )
-      expect(jobs).toHaveLength(1)
-      expect(jobs[0].name).toBe(consumer)
+      expect(jobs.map((job) => job.name).sort()).toEqual(
+        type.startsWith("custom:")
+          ? [consumer]
+          : ["automationRuntime:consume", consumer].sort()
+      )
       expect(await ctx.db.get("events", id)).toMatchObject({
         organizationId: f.owner.team,
         type,

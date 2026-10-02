@@ -85,7 +85,15 @@ const operations = (spec: Contract) =>
     )
     .sort()
 const validateBody = (schema: AnySchema, body: unknown) => {
-  const validate = ajv.compile(schema)
+  const validate = ajv.compile({
+    ...(schema as Record<string, unknown>),
+    components: {
+      schemas: {
+        EventPayloadField: contract.components.schemas.EventPayloadField,
+        CatalogEvent: contract.components.schemas.CatalogEvent,
+      },
+    },
+  })
   expect(validate(body), JSON.stringify(validate.errors, null, 2)).toBe(true)
 }
 async function response(
@@ -123,6 +131,7 @@ beforeAll(async () => {
   // No remote references are permitted: contract tests never need the network.
   contract = (await SwaggerParser.validate(resolve("openapi/opensend.yaml"), {
     resolve: { http: false },
+    dereference: { circular: "ignore" },
   })) as unknown as Contract
 })
 beforeEach(() => {
@@ -520,9 +529,30 @@ describe("OpenAPI contract", () => {
       for (const operation of Object.values(methods)) {
         if (operation.requestBody)
           for (const media of Object.values(operation.requestBody.content))
-            ajv.compile(media.schema)
+            ajv.compile({
+              ...(media.schema as Record<string, unknown>),
+              components: {
+                schemas: {
+                  EventPayloadField:
+                    contract.components.schemas.EventPayloadField,
+                  CatalogEvent: contract.components.schemas.CatalogEvent,
+                },
+              },
+            })
         for (const result of Object.values(operation.responses))
-          ajv.compile(result.content["application/json"].schema)
+          ajv.compile({
+            ...(result.content["application/json"].schema as Record<
+              string,
+              unknown
+            >),
+            components: {
+              schemas: {
+                EventPayloadField:
+                  contract.components.schemas.EventPayloadField,
+                CatalogEvent: contract.components.schemas.CatalogEvent,
+              },
+            },
+          })
       }
   })
 
@@ -1218,7 +1248,15 @@ describe("OpenAPI contract", () => {
       contract.paths["/contacts"].post.responses["201"].content[
         "application/json"
       ].schema
-    const validate = ajv.compile(schema)
+    const validate = ajv.compile({
+      ...(schema as Record<string, unknown>),
+      components: {
+        schemas: {
+          EventPayloadField: contract.components.schemas.EventPayloadField,
+          CatalogEvent: contract.components.schemas.CatalogEvent,
+        },
+      },
+    })
     expect(validate({ object: "contact" })).toBe(false)
     expect(validate({ object: "contact", id: 123 })).toBe(false)
     expect(

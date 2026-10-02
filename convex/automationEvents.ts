@@ -1,3 +1,5 @@
+import { eventCatalog } from "../lib/event-catalog"
+import { listProperties } from "./audience"
 import { includeSelected } from "../lib/dashboard/options"
 import { selectedOption, prefixOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -367,5 +369,24 @@ export const options = query({
     return includeSelected(rows, selected, (row) => row._id).map(
       (row) => row.name
     )
+  },
+})
+
+/** All catalog definitions for this team, also used by save-time validation. */
+export async function teamEventCatalog(ctx: QueryCtx, organizationId: string) {
+  const custom = await ctx.db
+    .query("automationEvents")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId)
+    )
+    .collect()
+  return eventCatalog(custom, await listProperties(ctx, organizationId))
+}
+export const catalog = query({
+  args: { organizationId: v.string() },
+  returns: v.string(),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    return JSON.stringify(await teamEventCatalog(ctx, organizationId))
   },
 })
