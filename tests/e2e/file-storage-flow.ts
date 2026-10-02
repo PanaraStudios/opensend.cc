@@ -61,7 +61,11 @@ export function fileStorageTests(
       {
         name: "convex-image.png",
         mimeType: "image/png",
-        buffer: Buffer.from([137, 80, 78, 71]),
+        // A real 1×1 PNG, so the bubble renders and opens in the viewer.
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+          "base64"
+        ),
       },
       {
         name: "large-document.pdf",

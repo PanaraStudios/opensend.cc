@@ -84,6 +84,27 @@ export function ConversationMedia({
           {file?.error ||
             (failed ? "Media could not be loaded" : "Media is processing")}
         </span>
+        {/* The browser may not render a stored file (a corrupt or HEIC image);
+            it can still be downloaded. */}
+        {src && failed ? (
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={
+              <a
+                href={src}
+                download={item.filename}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            }
+            aria-label={`Download ${item.filename || "media"}`}
+          >
+            <DownloadIcon data-icon="inline-start" />
+            Download
+          </Button>
+        ) : null}
       </div>
     )
   if (type === "image" || type === "sticker") {
