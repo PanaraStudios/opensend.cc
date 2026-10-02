@@ -28,6 +28,6 @@
     "mailparser": "3.9.29",
     "mammoth": "^1.13.0",
     "parse5": "8.0.0",
-    "pdfjs-dist": "^6.3.289"
+    "unpdf": "^1.8.1"
   }
 }

@@ -169,13 +169,28 @@ test("PDF and pure-JS DOCX extraction work without executing document content", 
     .slice(1)
     .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
     .join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
-  assert.match(
-    await extractKnowledgeText(
-      new TextEncoder().encode(pdf),
-      "application/pdf"
-    ),
-    /Manual text/
+  // Deployment bundles omit optional native modules; text extraction must still work.
+  const nativeLoader = Object.getOwnPropertyDescriptor(
+    process,
+    "getBuiltinModule"
   )
+  Object.defineProperty(process, "getBuiltinModule", {
+    value: undefined,
+    configurable: true,
+  })
+  try {
+    assert.match(
+      await extractKnowledgeText(
+        new TextEncoder().encode(pdf),
+        "application/pdf"
+      ),
+      /Manual text/
+    )
+  } finally {
+    if (nativeLoader)
+      Object.defineProperty(process, "getBuiltinModule", nativeLoader)
+    else Reflect.deleteProperty(process, "getBuiltinModule")
+  }
   const { zipSync } = await import("fflate")
   const encode = (text: string) => new TextEncoder().encode(text)
   const docx = zipSync({

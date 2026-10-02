@@ -23,8 +23,9 @@ Convex vector search filters the combined organization/base scope, then checks
 ownership and revision again before returning titles and matching text.
 
 Limits are 2 MB per file or URL response, 200 PDF pages, 200,000 extracted characters,
-100 chunks per document and 100 documents per base. DOCX uses a pure-JS parser and an
-8 MB expanded archive cap. Scanned PDFs need OCR before upload. URL fetches pin public
+100 chunks per document and 100 documents per base. PDF text extraction uses the [serverless PDF.js bundle](https://github.com/unjs/unpdf),
+which includes its worker and browser API polyfills without requiring native canvas.
+DOCX uses a pure-JS parser and an 8 MB expanded archive cap. Scanned PDFs need OCR before upload. URL fetches pin public
 DNS addresses, cap execution at ten seconds and never follow redirects. The tiny-base
 instruction summary option is deliberately omitted; bots search attached material.
 

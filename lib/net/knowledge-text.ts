@@ -7,13 +7,9 @@ export async function extractKnowledgeText(
 ): Promise<string> {
   const mime = contentType.split(";")[0].toLowerCase().trim()
   if (mime === "application/pdf" || /\.pdf(?:$|\?)/i.test(filename)) {
-    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs")
-    // Bundle the worker explicitly: Convex actions do not retain package-relative files.
-    const { WorkerMessageHandler } =
-      // @ts-expect-error PDF.js publishes the worker without a type declaration.
-      await import("pdfjs-dist/legacy/build/pdf.worker.mjs")
-    ;(globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker =
-      { WorkerMessageHandler }
+    // The serverless PDF.js bundle includes its worker and needs no native canvas.
+    const { getResolvedPDFJS } = await import("unpdf")
+    const { getDocument } = await getResolvedPDFJS()
     const task = getDocument({
       data: bytes,
       useSystemFonts: true,
