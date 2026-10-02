@@ -1,3 +1,4 @@
+import { createNote, noteBody } from "../contactNotes"
 import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
 import { ConvexError } from "convex/values"
 import {
@@ -8,7 +9,10 @@ import { channelMessagePayload } from "../channels/payload"
 import { renderedChannelTemplate } from "../channels/templates"
 import { updateVoiceBotVoice } from "../../lib/voice-bot-defaults"
 import { own as ownedIvr } from "../ivr/definitions"
-import { resolveCallPerson } from "../channels/identity"
+import {
+  resolveCallPerson,
+  resolveOrCreateCallPerson,
+} from "../channels/identity"
 import { knownUserForPhone } from "../calling/rows"
 import { minuteUsage } from "./usage"
 import { v } from "convex/values"
@@ -306,7 +310,8 @@ async function execute(
       }
     }
     case "create_note": {
-      const person = await resolveCallPerson(ctx, call)
+      const body = noteBody(string(args.text))
+      const person = await resolveOrCreateCallPerson(ctx, call)
       if (person.contact || person.identity)
         await ctx.db.patch("calls", call._id, {
           ...(person.contact ? { contactId: person.contact._id } : {}),
@@ -320,12 +325,20 @@ async function execute(
         callId: call._id,
         eventId: crypto.randomUUID(),
         kind: "note",
-        text: string(args.text),
+        text: body,
         timestampMs: Date.now() - call.botStartedAt!,
       })
+      if (person.contact) {
+        const note = await createNote(ctx, person.contact, {
+          body,
+          author: { kind: "bot", id: call.botId!, name: call.botConfig!.name },
+          source: { callId: call._id },
+        })
+        return { noteId: note._id, storedOn: "contact" }
+      }
       return {
         storedOn: "call",
-        message: "Saved on the call record; contact notes are not available.",
+        message: "Saved on the call record; caller identity unavailable.",
       }
     }
     case "send_whatsapp_message": {

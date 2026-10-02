@@ -724,3 +724,33 @@ export const relinkCalls = internalMutation({
     return null
   },
 })
+
+/** Repair older calls through the same identity/thread path as incoming calls. */
+export async function resolveOrCreateCallPerson(
+  ctx: MutationCtx,
+  call: Doc<"calls">
+) {
+  const person = await resolveCallPerson(ctx, call)
+  if (person.contact) return person
+  const account = await ctx.db.get("channelAccounts", call.accountId)
+  if (
+    account?.organizationId !== call.organizationId ||
+    account.channel !== "whatsapp" ||
+    (!person.phone && !call.userId && !person.identity)
+  )
+    return person
+  const links = await upsertChannelThread(ctx, account, {
+    externalId: person.phone
+      ? toWaId(person.phone)
+      : (person.identity?.externalId ?? call.userId!),
+    ...(person.phone ? { phone: person.phone } : {}),
+    ...(call.userId ? { userId: call.userId } : {}),
+    profileName: person.identity?.profileName,
+    at: Date.now(),
+    direction: "outbound",
+    opensWindow: false,
+    refreshThread: false,
+    preview: "Voice call",
+  })
+  return resolveCallPerson(ctx, { ...call, ...links })
+}

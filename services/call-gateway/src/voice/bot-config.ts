@@ -31,7 +31,7 @@ export const VOICE_BOT_TOOLS = {
   },
   create_note: {
     description:
-      "Save a note on the current call (there is no contact notes model).",
+      "Save a plain text note on this caller’s contact (up to 10,000 characters), linked to this call. Falls back to the call record if caller identity is unavailable.",
     properties: { text: { type: "string" } },
     required: ["text"],
   },
@@ -332,7 +332,7 @@ export function validateTool(call: {
     if (
       !Object.hasOwn(schema.properties, key) ||
       typeof value !== "string" ||
-      value.length > 4096
+      value.length > (call.name === "create_note" ? 10000 : 4096)
     )
       throw new Error("Invalid tool arguments")
   if (
