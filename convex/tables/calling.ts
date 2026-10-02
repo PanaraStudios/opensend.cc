@@ -108,6 +108,11 @@ export const callingTables = {
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_organizationId_and_botId_and_test", [
+      "organizationId",
+      "botId",
+      "test",
+    ])
     .index("by_organizationId_and_testUserId_and_status", [
       "organizationId",
       "testUserId",

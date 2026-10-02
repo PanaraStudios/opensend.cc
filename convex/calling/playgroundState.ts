@@ -6,7 +6,7 @@ import { agentPresence, requireAvailable } from "./agentAccess"
 import { own as ownIvr } from "../ivr/definitions"
 import { v } from "convex/values"
 import { query, internalQuery, internalMutation } from "../_generated/server"
-import { authorize, ownedCall, payload } from "./rows"
+import { authorize, ownedCall, payload, defaultMode } from "./rows"
 import { callDetailValue } from "./values"
 import { audioFile } from "../ivr/definitions"
 import { fileUrl } from "../storage/urls"
@@ -20,6 +20,7 @@ export const setup = query({
         id: v.id("channelAccounts"),
         label: v.string(),
         routing: v.union(v.null(), v.string()),
+        mode: v.union(v.literal("gateway"), v.literal("api")),
       })
     ),
   }),
@@ -40,7 +41,9 @@ export const setup = query({
         !!process.env.CALL_AGENT_WSS_URL?.startsWith("wss://"),
       numbers: await Promise.all(
         accounts
-          .filter((a) => a.channel === "whatsapp")
+          .filter(
+            (a) => a.channel === "whatsapp" && a.status !== "disconnected"
+          )
           .map(async (a) => {
             const s = await ctx.db
               .query("callingSettings")
@@ -49,6 +52,7 @@ export const setup = query({
             return {
               id: a._id,
               label: a.handle || a.displayName,
+              mode: s?.mode ?? defaultMode(),
               routing:
                 s?.routing?.kind === "ivr"
                   ? `ivr:${s.routing.ivrId}`

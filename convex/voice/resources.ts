@@ -31,13 +31,14 @@ export const actor = {
 export async function authorize(
   ctx: QueryCtx,
   args: { organizationId: string; caller?: Caller },
-  write = false
+  write = false,
+  providers = false
 ) {
   if (args.caller) {
     if (args.caller.organizationId !== args.organizationId)
       throw notFound("Team")
     await requireCaller(ctx, args.caller, {
-      resource: "voice_bots",
+      resource: providers ? "voice_providers" : "voice_bots",
       access: write ? "write" : "read",
     })
   } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")
@@ -83,7 +84,7 @@ async function listResources(
     providers?: boolean
   }
 ) {
-  await authorize(ctx, args)
+  await authorize(ctx, args, false, !!args.providers)
   if (
     !Number.isInteger(args.limit) ||
     args.limit < 1 ||
@@ -110,10 +111,23 @@ async function listResources(
   return {
     object: "list",
     has_more: page.has_more,
-    data: page.data.map((row) =>
-      table === "voiceProviders"
-        ? publicProvider(row as Doc<"voiceProviders">)
-        : publicBot(row as Doc<"voiceBots">)
+    data: await Promise.all(
+      page.data.map(async (row) => {
+        if (table === "voiceProviders")
+          return publicProvider(row as Doc<"voiceProviders">)
+        const bot = row as Doc<"voiceBots">
+        const lastTest = await ctx.db
+          .query("calls")
+          .withIndex("by_organizationId_and_botId_and_test", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("botId", bot._id)
+              .eq("test", true)
+          )
+          .order("desc")
+          .first()
+        return { ...publicBot(bot), lastTestAt: lastTest?.observedAt ?? null }
+      })
     ),
   }
 }
@@ -229,7 +243,7 @@ export const credential = internalMutation({
   args: { ...actor, input: v.record(v.string(), v.any()) },
   returns: v.object({ id: v.id("voiceProviders") }),
   handler: async (ctx, args) => {
-    await authorize(ctx, args, true)
+    await authorize(ctx, args, true, true)
     const { provider, label, key } = args.input
     if (
       (provider !== "gemini" &&
@@ -270,7 +284,7 @@ export const remove = internalMutation({
   args: { ...actor, id: v.string(), providers: v.optional(v.boolean()) },
   returns: v.object({ id: v.string(), deleted: v.boolean() }),
   handler: async (ctx, args) => {
-    await authorize(ctx, args, true)
+    await authorize(ctx, args, true, !!args.providers)
     if (args.providers) {
       const id = ctx.db.normalizeId("voiceProviders", args.id),
         row = id ? await ctx.db.get("voiceProviders", id) : null
@@ -339,7 +353,7 @@ export const transcript = internalQuery({
       if (args.caller.organizationId !== args.organizationId)
         throw notFound("Call")
       await requireCaller(ctx, args.caller, {
-        resource: "whatsapp",
+        resource: "calling",
         access: "read",
       })
     } else await requireTeam(ctx, args.organizationId, "read")
@@ -422,6 +436,9 @@ export const dashboardWrite = action({
 export const dashboardTranscript = query({
   args: { organizationId: v.string(), id: v.string(), ...listArgs },
   returns: v.any(),
-  handler: (ctx, args): Promise<{ object: string; has_more: boolean; data: unknown[] }> =>
+  handler: (
+    ctx,
+    args
+  ): Promise<{ object: string; has_more: boolean; data: unknown[] }> =>
     ctx.runQuery(internal.voice.resources.transcript, args),
 })

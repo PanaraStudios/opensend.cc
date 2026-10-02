@@ -81,9 +81,11 @@ export type VoiceProviderResource = {
   provider: "gemini" | "sarvam" | "elevenlabs"
   label: string
   lastFour: string
+  createdAt: number
   updatedAt: number
 }
 export type VoiceBotResource = VoiceBotConfig & {
+  lastTestAt?: number | null
   id: string
   createdAt: number
   updatedAt: number

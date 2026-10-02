@@ -47,7 +47,7 @@ export async function authorize(
     if (args.caller.organizationId !== args.organizationId)
       throw notFound("Call")
     await requireCaller(ctx, args.caller, {
-      resource: "whatsapp",
+      resource: "calling",
       access: write ? "write" : "read",
     })
   } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")

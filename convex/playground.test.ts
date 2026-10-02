@@ -359,3 +359,71 @@ test("playground health aborts an unresponsive gateway within its two-second pro
     fetchMock.mockRestore()
   }
 })
+
+test("playground setup exposes each team's gateway-mode numbers and bot list reports the last test", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+  vi.stubEnv("CALL_AGENT_WSS_URL", "")
+  const args = { organizationId: f.owner.team }
+  expect(
+    await f.owner.client.query(api.calling.playgroundState.setup, args)
+  ).toMatchObject({
+    configured: false,
+    numbers: [{ id: f.account, mode: "api" }],
+  })
+  await f.t.mutation(internal.calling.settingsState.store, {
+    accountId: f.account,
+    mode: "gateway",
+    settings: "{}",
+  })
+  expect(
+    (await f.owner.client.query(api.calling.playgroundState.setup, args))
+      .numbers[0].mode
+  ).toBe("gateway")
+  const key = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    ...args,
+    kind: "provider",
+    body: JSON.stringify({
+      provider: "gemini",
+      label: "Browser",
+      key: "test-key-1234",
+    }),
+  })
+  const bot = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    ...args,
+    kind: "bot",
+    body: JSON.stringify({
+      name: "Browser bot",
+      provider: "gemini",
+      credentialId: key.id,
+    }),
+  })
+  const before = await f.owner.client.query(api.voice.resources.dashboardList, {
+    ...args,
+    limit: 25,
+  })
+  expect(before.data.find((b) => b.id === bot.id)).toMatchObject({
+    lastTestAt: null,
+  })
+  const call = await f.owner.client.mutation(
+    internal.calling.playgroundState.create,
+    {
+      ...f.args,
+      accountId: f.account,
+      botId: bot.id as import("./_generated/dataModel").Id<"voiceBots">,
+    }
+  )
+  const after = await f.owner.client.query(api.voice.resources.dashboardList, {
+    ...args,
+    limit: 25,
+  })
+  expect(after.data.find((b) => b.id === bot.id)).toMatchObject({
+    lastTestAt: call.observedAt,
+  })
+  const other = await f.outsider.client.query(
+    api.calling.playgroundState.setup,
+    { organizationId: f.outsider.team }
+  )
+  expect(other.numbers.some((n) => n.id === f.account)).toBe(false)
+})

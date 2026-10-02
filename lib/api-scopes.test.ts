@@ -11,11 +11,11 @@ import { parseScopes as parseOAuthScopes, oauthScopes } from "./oauth/policy"
 
 describe("API scopes", () => {
   it("has one catalog of grantable resources, excluding keys and team settings", () => {
-    assert.equal(API_RESOURCES.length, 17)
-    assert.equal(new Set(API_SCOPES).size, 34)
+    assert.equal(API_RESOURCES.length, 19)
+    assert.equal(new Set(API_SCOPES).size, 38)
     assert.deepEqual(
       [...new Set(API_RESOURCES.map((r) => r.group))],
-      ["Messaging", "Audience", "Content", "Setup"]
+      ["Calling", "Messaging", "Audience", "Content", "Setup"]
     )
     assert.ok(API_RESOURCES.some((resource) => resource.id === "ivrs"))
     assert.ok(API_RESOURCES.some((resource) => resource.id === "voice_bots"))
@@ -61,4 +61,21 @@ describe("API scopes", () => {
     assert.deepEqual(parseOAuthScopes("full_access"), ["full_access"])
     assert.throws(() => parseOAuthScopes("keys:write"))
   })
+})
+
+it("groups call setup in order and retains existing broad grants without granting messaging to Calling", () => {
+  assert.deepEqual(
+    API_RESOURCES.filter((r) => r.group === "Calling").map((r) => r.id),
+    ["calling", "ivrs", "voice_bots", "voice_providers"]
+  )
+  assert.equal(scopeAllows(["whatsapp:write"], "calling", "write"), true)
+  assert.equal(scopeAllows(["calling:write"], "whatsapp", "write"), false)
+  assert.equal(
+    scopeAllows(["voice_bots:read"], "voice_providers", "read"),
+    true
+  )
+  assert.equal(
+    scopeAllows(["voice_providers:write"], "voice_bots", "write"),
+    false
+  )
 })

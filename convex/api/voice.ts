@@ -11,7 +11,7 @@ export function registerVoiceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "GET",
       path: `/${path}`,
-      scope: read,
+      scope: providers ? { resource: "voice_providers", access: "read" } : read,
       handler: async (ctx, { caller, query }) => ({
         body: await ctx.runQuery(internal.voice.resources.list, {
           organizationId: caller.organizationId,
@@ -24,7 +24,9 @@ export function registerVoiceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "POST",
       path: `/${path}`,
-      scope: write,
+      scope: providers
+        ? { resource: "voice_providers", access: "write" }
+        : write,
       sensitiveBody: providers,
       maxBody: 24000,
       handler: async (ctx, { caller, body }) => ({
@@ -44,7 +46,9 @@ export function registerVoiceRoutes(http: HttpRouter) {
     apiRoute(http, {
       method: "DELETE",
       path: `/${path}/{id}`,
-      scope: write,
+      scope: providers
+        ? { resource: "voice_providers", access: "write" }
+        : write,
       handler: async (ctx, { caller, params }) => ({
         body: await ctx.runMutation(internal.voice.resources.remove, {
           organizationId: caller.organizationId,
@@ -84,7 +88,7 @@ export function registerVoiceRoutes(http: HttpRouter) {
   apiRoute(http, {
     method: "GET",
     path: "/whatsapp/calls/{id}/transcript",
-    scope: { resource: "whatsapp", access: "read" },
+    scope: { resource: "calling", access: "read" },
     handler: async (ctx, { caller, params, query }) => ({
       body: await ctx.runQuery(internal.voice.resources.transcript, {
         organizationId: caller.organizationId,
