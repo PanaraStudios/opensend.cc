@@ -118,6 +118,11 @@
           <action application="set" data="rtp_secure_media=mandatory"/>
           <action application="set" data="absolute_codec_string=OPUS@48000h@20i"/>
           <action application="set" data="send_silence_when_idle=400"/>
+          <!-- Callers arrive with ~5% loss and ~3% reordering before reaching us (measured
+               on the host NIC). A small buffer reorders packets and lets Opus recover
+               lost frames from in-band FEC. Keep it short and without max-drift: a
+               60:200:20 buffer caused audible skips in what we send to the caller. -->
+          <action application="set" data="jitterbuffer_msec=40:120"/>
           <action application="answer"/>
           <!-- Janus drops this leg's RTP until the authenticated /route call. -->
           <action application="park"/>
