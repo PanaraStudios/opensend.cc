@@ -17,6 +17,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { actionError } from "@/lib/action-error"
 import type { VoiceProviderResource } from "@/lib/dashboard/voice-bot-form"
+import { VOICE_PROVIDER_LABELS } from "@/lib/dashboard/voice-options"
 export function ProviderKeys() {
   const { activeTeamId } = useWorkspace()
   const keys: { data: VoiceProviderResource[] } | undefined = useTeamQuery(
@@ -64,11 +65,9 @@ export function ProviderKeys() {
             aria-label="Key provider"
             value={provider}
             onChange={setProvider}
-            items={[
-              { value: "gemini", label: "Gemini" },
-              { value: "sarvam", label: "Sarvam" },
-              { value: "elevenlabs", label: "ElevenLabs" },
-            ]}
+            items={Object.entries(VOICE_PROVIDER_LABELS).map(
+              ([value, label]) => ({ value, label })
+            )}
           />
         </Field>
         <Field>
@@ -118,7 +117,7 @@ export function ProviderKeys() {
           {keys.data.length ? (
             keys.data.map((k) => (
               <TableRow key={k.id}>
-                <TableCell>{k.provider}</TableCell>
+                <TableCell>{VOICE_PROVIDER_LABELS[k.provider]}</TableCell>
                 <TableCell>{k.label}</TableCell>
                 <TableCell>••••{k.lastFour}</TableCell>
                 <TableCell>

@@ -9,6 +9,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { AudioPlayer } from "@/components/ui/audio-player"
 import {
   OptionSelect,
+  ToneBadge,
   ResourceTable,
   Th,
   DetailSection,
@@ -23,6 +24,13 @@ import {
   type IvrBusinessHours,
 } from "@/lib/ivr"
 
+import {
+  voiceItems,
+  voiceLanguageLabel,
+  promptStatusBadge,
+} from "@/lib/dashboard/voice-options"
+import type { VoiceProvider } from "@/lib/voice-bots"
+
 export type PromptRenderInfo = {
   kind: string
   text?: string
@@ -35,6 +43,7 @@ export type PromptRenderInfo = {
 export const PromptRendersContext = createContext<{
   renders: PromptRenderInfo[]
   voice?: string
+  provider?: VoiceProvider
 }>({ renders: [] })
 export function VoiceField({
   label,
@@ -58,6 +67,87 @@ export function VoiceField({
         onChange={(e) => onChange(e.target.value)}
       />
     </Field>
+  )
+}
+export function VoiceChoiceField({
+  label,
+  value,
+  items,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  items: { value: string; label: string }[]
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
+      <OptionSelect
+        aria-label={label}
+        value={value}
+        items={
+          items.some((item) => item.value === value) || !value
+            ? items
+            : [
+                ...items,
+                {
+                  value,
+                  label: label.toLowerCase().includes("language")
+                    ? voiceLanguageLabel(value)
+                    : "Saved voice",
+                },
+              ]
+        }
+        onChange={onChange}
+        disabled={disabled}
+      />
+    </Field>
+  )
+}
+export function ProviderVoiceField({
+  label,
+  provider,
+  value,
+  onChange,
+  inherit = false,
+}: {
+  label: string
+  provider?: VoiceProvider
+  value: string
+  onChange: (voice: string) => void
+  inherit?: boolean
+}) {
+  if (provider === "elevenlabs")
+    return (
+      <VoiceField
+        label={`${label} ID${inherit ? " (optional)" : ""}`}
+        value={value}
+        onChange={onChange}
+      />
+    )
+  return (
+    <VoiceChoiceField
+      label={label}
+      value={value}
+      onChange={onChange}
+      disabled={!provider}
+      items={[
+        ...(inherit || !provider
+          ? [
+              {
+                value: "",
+                label: provider
+                  ? "Use prompt voice"
+                  : "Choose a prompt provider first",
+              },
+            ]
+          : []),
+        ...(provider ? voiceItems(provider) : []),
+      ]}
+    />
   )
 }
 function AudioPreview({ fileId }: { fileId: string }) {
@@ -112,7 +202,9 @@ export function PromptField({
               onChange={(e) => onChange({ ...value, text: e.target.value })}
             />
           </Field>
-          <VoiceField
+          <ProviderVoiceField
+            provider={context.provider}
+            inherit
             label="Voice"
             value={value.voice ?? ""}
             onChange={(voice) =>
@@ -123,10 +215,19 @@ export function PromptField({
               })
             }
           />
-          <p className="text-sm text-muted-foreground">
-            {rendered?.status ?? "pending_render"} · Save with a team provider
-            key to render audio.
-          </p>
+          <div className="flex items-center gap-2">
+            <ToneBadge
+              {...promptStatusBadge(
+                rendered?.status ?? "pending_render",
+                !!context.provider
+              )}
+            />
+            {!context.provider ? (
+              <p className="text-sm text-muted-foreground">
+                Choose a team provider key and voice, then save to render audio.
+              </p>
+            ) : null}
+          </div>
           {rendered?.audio_url ? (
             <AudioPlayer src={rendered.audio_url} label="Rendered IVR prompt" />
           ) : null}
@@ -140,9 +241,7 @@ export function PromptField({
           />
           {value.fileId ? (
             <>
-              <p className="text-sm text-muted-foreground">
-                Ready · {value.fileId}
-              </p>
+              <ToneBadge tone="success" label="Ready" />
               <AudioPreview fileId={value.fileId} />
             </>
           ) : null}

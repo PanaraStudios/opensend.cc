@@ -292,3 +292,70 @@ test("bot tests bypass production budgets and concurrency accounting, expose dia
   )
   expect(events.some((e) => e.type.startsWith("whatsapp.call."))).toBe(false)
 })
+
+test("playground health reports missing configuration and failed probes as unavailable", async () => {
+  const f = await inboundFixture()
+  const args = { organizationId: f.owner.team }
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+  expect(await f.owner.client.action(api.calling.playground.health, args)).toBe(
+    false
+  )
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "g".repeat(64))
+  const fetchMock = vi.spyOn(globalThis, "fetch")
+  try {
+    fetchMock.mockRejectedValueOnce(new TypeError("Network unavailable"))
+    expect(
+      await f.owner.client.action(api.calling.playground.health, args)
+    ).toBe(false)
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }))
+    expect(
+      await f.owner.client.action(api.calling.playground.health, args)
+    ).toBe(false)
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+    expect(
+      await f.owner.client.action(api.calling.playground.health, args)
+    ).toBe(true)
+    fetchMock.mockClear()
+    await expect(
+      f.outsider.client.action(api.calling.playground.health, args)
+    ).rejects.toBeDefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  } finally {
+    fetchMock.mockRestore()
+  }
+})
+
+test("playground health aborts an unresponsive gateway within its two-second probe deadline", async () => {
+  vi.useRealTimers()
+  const f = await inboundFixture()
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "g".repeat(64))
+  let aborted = false
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+    (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener(
+          "abort",
+          () => {
+            aborted = true
+            reject(init!.signal!.reason)
+          },
+          { once: true }
+        )
+      })
+  )
+  try {
+    const started = Date.now()
+    expect(
+      await f.owner.client.action(api.calling.playground.health, {
+        organizationId: f.owner.team,
+      })
+    ).toBe(false)
+    expect(aborted).toBe(true)
+    expect(Date.now() - started).toBeLessThan(5000)
+  } finally {
+    fetchMock.mockRestore()
+  }
+})

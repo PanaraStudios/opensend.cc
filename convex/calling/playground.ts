@@ -109,8 +109,12 @@ export const health = action({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     await agentActor(ctx, args.organizationId)
-    return gateway()
-      .healthy()
-      .catch(() => false)
+    try {
+      // The gateway client bounds this readiness probe to two seconds.
+      return await gateway().healthy()
+    } catch {
+      // Missing configuration and network failures both mean unavailable.
+      return false
+    }
   },
 })

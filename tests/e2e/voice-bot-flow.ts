@@ -98,12 +98,24 @@ export function voiceBotTests(
       .getByRole("button", { name: "Add provider key", exact: true })
       .click()
     await expect(owner.getByText("••••9876", { exact: true })).toBeVisible()
+    await expect(
+      owner
+        .getByRole("row")
+        .filter({ hasText: "Playground Gemini" })
+        .getByRole("cell", { name: "Gemini", exact: true })
+    ).toBeVisible()
     await expect(owner.getByLabel("API key", { exact: true })).toHaveValue("")
     await owner
       .getByRole("button", { name: "Create voice bot", exact: true })
       .first()
       .click()
     await owner.getByLabel("Name", { exact: true }).fill("Browser support E2E")
+    await expect(
+      owner.getByRole("combobox", { name: "Language", exact: true })
+    ).toContainText("English")
+    await expect(
+      owner.getByRole("combobox", { name: "Gemini voice", exact: true })
+    ).toContainText("Kore")
     await owner
       .getByRole("combobox", { name: "Primary provider key", exact: true })
       .click()
@@ -113,7 +125,7 @@ export function voiceBotTests(
         exact: true,
       })
       .click()
-    await owner.getByLabel("Enable lookup_contact", { exact: true }).check()
+    await owner.getByLabel("Enable Look up contact", { exact: true }).check()
     await owner.getByRole("button", { name: "Save", exact: true }).click()
     await expect(owner).toHaveURL(/\/playground\/voice-bot\/[^/]+$/)
     const id = new URL(owner.url()).pathname.split("/").at(-1)!
@@ -128,11 +140,9 @@ export function voiceBotTests(
       .fill("Updated browser greeting")
     await owner.getByRole("button", { name: "Save", exact: true }).click()
     const backend = await client(owner)
-    const routing = owner
-      .locator("section")
-      .filter({
-        has: owner.getByRole("heading", { name: "Routing", exact: true }),
-      })
+    const routing = owner.locator("section").filter({
+      has: owner.getByRole("heading", { name: "Routing", exact: true }),
+    })
     const assign = routing
       .getByRole("button", { name: "Assign", exact: true })
       .first()

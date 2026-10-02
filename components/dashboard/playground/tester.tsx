@@ -57,6 +57,10 @@ export function IvrPath({
   )
 }
 export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
+  const { activeTeamId } = useWorkspace()
+  return <TeamVoiceTester key={activeTeamId} kind={kind} id={id} />
+}
+function TeamVoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
   const setup = useTeamQuery(api.calling.playgroundState.setup)
   const contacts = useTeamQuery(api.calling.playgroundState.contacts)
   const [contactId, setContactId] = useState("none")
@@ -64,6 +68,7 @@ export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
   const { activeTeamId } = useWorkspace()
   const health = useAction(api.calling.playground.health)
   const [healthy, setHealthy] = useState<boolean | undefined>()
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let alive = true
     if (setup?.configured && activeTeamId)
@@ -77,7 +82,7 @@ export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
     return () => {
       alive = false
     }
-  }, [setup?.configured, activeTeamId, health])
+  }, [setup?.configured, activeTeamId, health, attempt])
   const [accountId, setAccountId] = useState("")
   const [callId, setCallId] = useState<Id<"calls"> | null>(null)
   const [busy, setBusy] = useState(false)
@@ -117,15 +122,20 @@ export function VoiceTester({ kind, id }: { kind: "ivr" | "bot"; id: string }) {
               variant="outline"
               onClick={() => {
                 setHealthy(undefined)
-                void health({ organizationId: activeTeamId! })
-                  .then(setHealthy)
-                  .catch(() => setHealthy(false))
+                setAttempt((value) => value + 1)
               }}
             >
               Check connection
             </Button>
           ) : null}
         </EmptyState>
+      ) : healthy === undefined ? (
+        <div role="status" className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Checking calling connection…
+          </p>
+          <Skeleton className="h-24 w-full" />
+        </div>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">

@@ -17,13 +17,17 @@ import {
   Th,
   RelativeTime,
   OptionSelect,
+  ToneBadge,
   TypeToConfirmDialog,
 } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FieldError } from "@/components/ui/field"
-import { Badge } from "@/components/ui/badge"
+import {
+  VOICE_LANGUAGE_ITEMS,
+  promptStatusBadge,
+} from "@/lib/dashboard/voice-options"
 import { toast } from "@/components/ui/toast"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
@@ -34,7 +38,12 @@ import {
   ivrFormPatch,
 } from "@/lib/dashboard/voice-playground"
 import { validateIvr, type IvrDefinition } from "@/lib/ivr"
-import { VoiceField, MenuFields, BusinessHoursFields } from "./ivr-fields"
+import {
+  VoiceChoiceField,
+  VoiceField,
+  MenuFields,
+  BusinessHoursFields,
+} from "./ivr-fields"
 import { PromptRendersContext, type PromptRenderInfo } from "./ivr-fields"
 import { IvrPromptVoiceFields } from "./prompt-voice"
 import { VoiceRouting } from "./routing"
@@ -110,7 +119,9 @@ export function IvrList() {
                     .join(", ") || "—"}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{ivr.prompt_status}</Badge>
+                  <ToneBadge
+                    {...promptStatusBadge(ivr.prompt_status, !!ivr.promptVoice)}
+                  />
                 </TableCell>
                 <TableCell>
                   <RelativeTime at={Date.parse(ivr.updated_at)} />
@@ -227,6 +238,7 @@ function IvrForm({ row }: { row?: IvrResource }) {
             ? (row?.prompt_renders ?? [])
             : [],
         voice: draft.promptVoice?.voice,
+        provider: draft.promptVoice?.provider,
       }}
     >
       <DetailHeader
@@ -276,7 +288,14 @@ function IvrForm({ row }: { row?: IvrResource }) {
       {row ? (
         <MetaStrip
           items={[
-            { label: "Prompts", value: row.prompt_status },
+            {
+              label: "Prompts",
+              value: (
+                <ToneBadge
+                  {...promptStatusBadge(row.prompt_status, !!row.promptVoice)}
+                />
+              ),
+            },
             { label: "ID", value: row.id },
           ]}
         />
@@ -296,7 +315,8 @@ function IvrForm({ row }: { row?: IvrResource }) {
               value={draft.name}
               onChange={(name) => patch({ name })}
             />
-            <VoiceField
+            <VoiceChoiceField
+              items={VOICE_LANGUAGE_ITEMS}
               label="Language"
               value={draft.language}
               onChange={(language) => patch({ language })}

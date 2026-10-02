@@ -83,6 +83,39 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
     const { owner } = state()
     await owner.goto("/playground/ivr/new")
     await owner.getByLabel("Name", { exact: true }).fill("Playground reception")
+    await expect(
+      owner.getByRole("combobox", { name: "Language", exact: true })
+    ).toContainText("English")
+    await expect(
+      owner.getByRole("combobox", { name: "Voice", exact: true })
+    ).toBeDisabled()
+    await owner
+      .getByRole("combobox", { name: "Prompt provider", exact: true })
+      .click()
+    await owner
+      .getByRole("option", { name: "Sarvam Bulbul v3", exact: true })
+      .click()
+    await expect(
+      owner.getByRole("combobox", { name: "Prompt voice", exact: true })
+    ).toContainText("Shubh")
+    await expect(
+      owner.getByRole("combobox", { name: "Prompt language", exact: true })
+    ).toContainText("English (India)")
+    await owner.getByRole("combobox", { name: "Voice", exact: true }).click()
+    await owner.getByRole("option", { name: "Ritu", exact: true }).click()
+    await expect(
+      owner.getByRole("combobox", { name: "Voice", exact: true })
+    ).toContainText("Ritu")
+    await owner.getByRole("combobox", { name: "Voice", exact: true }).click()
+    await owner
+      .getByRole("option", { name: "Use prompt voice", exact: true })
+      .click()
+    await owner
+      .getByRole("combobox", { name: "Prompt provider", exact: true })
+      .click()
+    await owner
+      .getByRole("option", { name: "No TTS provider", exact: true })
+      .click()
     await owner
       .getByLabel("Prompt text", { exact: true })
       .fill("Press one for support")
@@ -117,7 +150,7 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
     await owner.getByRole("button", { name: "Save", exact: true }).click()
     await expect(owner).toHaveURL(/\/playground\/ivr\/[^/]+$/)
     await expect(
-      owner.getByText("pending_render", { exact: true })
+      owner.getByText("Needs a voice", { exact: true }).first()
     ).toBeVisible()
     await expect(
       owner.getByRole("heading", {
@@ -125,6 +158,10 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
         exact: true,
       })
     ).toBeVisible()
+    await expect(
+      owner.getByRole("button", { name: "Test IVR", exact: true })
+    ).toHaveCount(0)
+    await expect(owner.getByText(/pending_render/)).toHaveCount(0)
     await owner.screenshot({
       path: `${process.env.OPENSEND_TEST_RESULTS}/playground-ivr-editor.png`,
       fullPage: true,

@@ -3,8 +3,12 @@ import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import { DetailSection, OptionSelect } from "@/components/dashboard/primitives"
 import type { VoiceProviderResource } from "@/lib/dashboard/voice-bot-form"
-import { SARVAM_PROMPT_VOICES, type IvrPromptVoice } from "@/lib/ivr-renderers"
-import { VoiceField } from "./ivr-fields"
+import { type IvrPromptVoice } from "@/lib/ivr-renderers"
+import { VoiceChoiceField, ProviderVoiceField } from "./ivr-fields"
+import {
+  SARVAM_PROMPT_LANGUAGE_ITEMS,
+  ttsLanguageItems,
+} from "@/lib/dashboard/voice-options"
 export function IvrPromptVoiceFields({
   value,
   onChange,
@@ -20,7 +24,8 @@ export function IvrPromptVoiceFields({
     <DetailSection title="Prompt voice">
       <p className="text-sm text-muted-foreground">
         Choose a team provider key to render typed prompts on save. Uploaded
-        audio works independently. Legacy text without a provider stays pending.
+        audio works independently. Typed prompts need a provider and voice
+        before audio can be rendered.
       </p>
       <OptionSelect
         aria-label="Prompt provider"
@@ -57,24 +62,18 @@ export function IvrPromptVoiceFields({
               }))}
             onChange={(credentialId) => onChange({ ...value, credentialId })}
           />
-          {value.provider === "sarvam" ? (
-            <OptionSelect
-              aria-label="Prompt voice"
-              value={value.voice}
-              items={SARVAM_PROMPT_VOICES.map((voice) => ({
-                value: voice,
-                label: voice,
-              }))}
-              onChange={(voice) => onChange({ ...value, voice })}
-            />
-          ) : (
-            <VoiceField
-              label="ElevenLabs voice ID"
-              value={value.voice}
-              onChange={(voice) => onChange({ ...value, voice })}
-            />
-          )}
-          <VoiceField
+          <ProviderVoiceField
+            label="Prompt voice"
+            provider={value.provider}
+            value={value.voice}
+            onChange={(voice) => onChange({ ...value, voice })}
+          />
+          <VoiceChoiceField
+            items={
+              value.provider === "sarvam"
+                ? SARVAM_PROMPT_LANGUAGE_ITEMS
+                : ttsLanguageItems("elevenlabs", "eleven_multilingual_v2")
+            }
             label="Prompt language"
             value={value.language}
             onChange={(language) => onChange({ ...value, language })}

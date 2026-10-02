@@ -43,10 +43,20 @@ import {
   type VoiceProvider,
   type VoiceStage,
 } from "@/lib/voice-bots"
-import { VoiceField } from "./ivr-fields"
+import { VoiceChoiceField, ProviderVoiceField, VoiceField } from "./ivr-fields"
 import { VoiceRouting } from "./routing"
 import { VoiceTester } from "./tester"
 import { ProviderKeys } from "./provider-keys"
+
+import {
+  voiceModelLabel,
+  VOICE_LANGUAGE_ITEMS,
+  VOICE_PROVIDER_LABELS,
+  VOICE_TOOL_LABELS,
+  voiceLanguageLabel,
+  ttsLanguageItems,
+  sttLanguageItems,
+} from "@/lib/dashboard/voice-options"
 
 export function VoiceBotList() {
   const [after, setAfter] = useState<string>(),
@@ -114,7 +124,7 @@ export function VoiceBotList() {
                     ? "Gemini Live"
                     : "Cascade: STT → LLM → TTS"}
                 </TableCell>
-                <TableCell>{bot.language}</TableCell>
+                <TableCell>{voiceLanguageLabel(bot.language)}</TableCell>
                 <TableCell>
                   {setup?.numbers
                     .filter((n) => n.routing === `bot:${bot.id}`)
@@ -188,7 +198,7 @@ function StageFields({
             value={stage.provider}
             items={Object.keys(models).map((value) => ({
               value,
-              label: value,
+              label: VOICE_PROVIDER_LABELS[value as VoiceProvider],
             }))}
             onChange={(provider) =>
               onChange({
@@ -196,6 +206,7 @@ function StageFields({
                 provider: provider as VoiceProvider,
                 model: models[provider as VoiceProvider]![0],
                 credentialId: "",
+                ...(name === "stt" ? { language: "auto" } : {}),
                 ...(name === "tts"
                   ? { voice: provider === "sarvam" ? "shubh" : "" }
                   : {}),
@@ -210,7 +221,7 @@ function StageFields({
             value={stage.model}
             items={(models[stage.provider] ?? []).map((value) => ({
               value,
-              label: value,
+              label: voiceModelLabel(value),
             }))}
             onChange={(model) => onChange({ ...stage, model })}
           />
@@ -232,13 +243,15 @@ function StageFields({
         </Field>
       </div>
       {name === "stt" ? (
-        <VoiceField
-          label="STT language (auto detects)"
+        <VoiceChoiceField
+          items={sttLanguageItems(stage.provider)}
+          label="STT language"
           value={stage.language ?? "auto"}
           onChange={(language) => onChange({ ...stage, language })}
         />
       ) : name === "tts" ? (
-        <VoiceField
+        <ProviderVoiceField
+          provider={stage.provider}
           label="TTS voice"
           value={stage.voice ?? ""}
           onChange={(voice) => onChange({ ...stage, voice })}
@@ -342,7 +355,15 @@ function BotForm({ row }: { row?: VoiceBotResource }) {
               value={draft.name}
               onChange={(name) => patch({ name })}
             />
-            <VoiceField
+            <VoiceChoiceField
+              items={
+                draft.engine === "gemini_live"
+                  ? VOICE_LANGUAGE_ITEMS
+                  : ttsLanguageItems(
+                      draft.tts!.provider as "sarvam" | "elevenlabs",
+                      draft.tts!.model
+                    )
+              }
               label="Language"
               value={draft.language}
               onChange={(language) => patch({ language })}
@@ -415,11 +436,12 @@ function BotForm({ row }: { row?: VoiceBotResource }) {
                 value={draft.model}
                 items={GEMINI_LIVE_MODELS.map((value) => ({
                   value,
-                  label: value,
+                  label: voiceModelLabel(value),
                 }))}
                 onChange={(model) => patch({ model })}
               />
-              <VoiceField
+              <ProviderVoiceField
+                provider="gemini"
                 label="Gemini voice"
                 value={draft.voice}
                 onChange={(voice) => patch({ voice })}
@@ -469,7 +491,7 @@ function BotForm({ row }: { row?: VoiceBotResource }) {
               <TableRow key={name}>
                 <TableCell>
                   <Checkbox
-                    aria-label={`Enable ${name}`}
+                    aria-label={`Enable ${VOICE_TOOL_LABELS[name as keyof typeof VOICE_TOOL_LABELS]}`}
                     checked={draft.tools.includes(
                       name as (typeof draft.tools)[number]
                     )}
@@ -485,7 +507,9 @@ function BotForm({ row }: { row?: VoiceBotResource }) {
                     }
                   />
                 </TableCell>
-                <TableCell>{name}</TableCell>
+                <TableCell>
+                  {VOICE_TOOL_LABELS[name as keyof typeof VOICE_TOOL_LABELS]}
+                </TableCell>
                 <TableCell className="whitespace-normal">
                   {tool.description}
                 </TableCell>
