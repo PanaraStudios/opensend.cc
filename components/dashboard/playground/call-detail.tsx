@@ -13,11 +13,20 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AudioPlayer } from "@/components/ui/audio-player"
 import { BotDiagnostics } from "./bot-diagnostics"
 import { IvrPath } from "./tester"
-import { ivrActionLabel } from "@/lib/dashboard/voice-playground"
+import {
+  callOutcomeLabel,
+  ivrActionLabel,
+} from "@/lib/dashboard/voice-playground"
 export function PlaygroundCallDetail({ id }: { id: string }) {
   const call = useTeamQuery(api.calling.playgroundState.detail, {
     id: id as Id<"calls">,
   })
+  const setup = useTeamQuery(api.calling.playgroundState.setup)
+  const ivr = useTeamQuery(
+    api.ivr.definitions.dashboardGet,
+    { id: call?.ivr_id ?? "" },
+    { enabled: !!call?.ivr_id }
+  )
   const state = useTeamQuery(api.calling.softphoneState.state)
   if (!call) return <Skeleton className="h-60 w-full" />
   return (
@@ -26,29 +35,38 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
         backHref="/playground/calls"
         backLabel="Calls"
         title={call.test ? "Test call" : "Voice call"}
-        description={call.id}
+        icon={PhoneIcon}
       />
       <MetaStrip
         items={[
-          { label: "Status", value: call.status },
-          ...(call.bot_id
-            ? [{ label: "Bot", value: call.bot_name ?? "Voice bot" }]
-            : []),
-          { label: "Direction", value: call.direction },
+          { label: "From", value: call.from ?? "Browser" },
+          { label: "To", value: call.to ?? call.bot_name ?? "Phone menu" },
+          {
+            label: "Number",
+            value:
+              setup?.numbers.find((n) => n.id === call.account_id)?.label ??
+              "—",
+          },
+          {
+            label: "Started",
+            value: new Date(call.observed_at).toLocaleString(),
+          },
           {
             label: "Duration",
             value: call.duration === null ? "—" : `${call.duration}s`,
           },
           {
             label: "Outcome",
-            value: call.bot_outcome ?? ivrActionLabel(call.ivr_outcome),
+            value: call.bot_outcome
+              ? callOutcomeLabel(call.bot_outcome)
+              : ivrActionLabel(call.ivr_outcome),
           },
           {
             label: "Transfer target",
             value:
               call.ivr_outcome?.kind === "agents" && call.assigned_agent
                 ? (state?.agents.find((a) => a.userId === call.assigned_agent)
-                    ?.name ?? call.assigned_agent)
+                    ?.name ?? "Team member")
                 : "—",
           },
         ]}
@@ -59,17 +77,24 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
         </p>
       ) : null}
       <DetailSection title="IVR path">
-        <IvrPath path={call.ivr_path} />
+        <IvrPath path={call.ivr_path} menus={ivr?.menus} />
       </DetailSection>
       {call.bot_id ? <BotDiagnostics call={call} /> : null}
       {call.recording?.download_url ? (
-        <AudioPlayer src={call.recording.download_url} label="Call recording" />
+        <DetailSection title="Recording">
+          <AudioPlayer
+            src={call.recording.download_url}
+            label="Call recording"
+          />
+        </DetailSection>
       ) : null}
       <DetailSection title="Events">
         <EventTrail
           steps={call.events.map((e, i) => ({
             id: String(i),
-            label: e.event,
+            label: e.event
+              .replace(/[_.]/g, " ")
+              .replace(/^./, (c) => c.toUpperCase()),
             icon: PhoneIcon,
             caption: new Date(e.at).toLocaleString(),
           }))}
