@@ -3,14 +3,18 @@ import {
   type VoiceBotConfig,
   type VoiceEngine,
 } from "../voice-bots"
+import { voiceBotDefaults } from "../voice-bot-defaults"
 export function newVoiceBot(
-  engine: VoiceEngine = "gemini_live"
+  engine: VoiceEngine = "gemini_live",
+  language = engine === "gemini_live" ? "en-US" : "en-IN"
 ): VoiceBotConfig {
   const config = validateBot({
     name: "New bot",
     engine,
     provider: engine === "gemini_live" ? "gemini" : "sarvam",
     credentialId: "unset",
+    language,
+    ...voiceBotDefaults(language),
     ...(engine === "cascade"
       ? {
           tts: {

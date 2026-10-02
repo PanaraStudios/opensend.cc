@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -46,6 +46,11 @@ import {
 import { toast } from "@/components/ui/toast"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
+import {
+  updateVoiceBotLanguage,
+  voiceBotDefaults,
+  type VoiceBotText,
+} from "@/lib/voice-bot-defaults"
 import {
   newVoiceBot,
   voiceBotFormPayload,
@@ -76,6 +81,24 @@ import { useIsMobile } from "@/hooks/use-mobile"
 
 const engineLabel = (engine: string) =>
   engine === "gemini_live" ? "Gemini Live" : "Sarvam + ElevenLabs"
+
+function notifyLanguageUpdate(
+  before: VoiceBotText,
+  after: VoiceBotText,
+  language: string
+) {
+  if (
+    before.greeting !== after.greeting ||
+    before.disclosure !== after.disclosure ||
+    before.systemPrompt !== after.systemPrompt
+  ) {
+    toast.add({
+      type: "info",
+      title: `Updated for ${voiceLanguageLabel(language)}`,
+      timeout: 2500,
+    })
+  }
+}
 export function VoiceBotList() {
   const [after, setAfter] = useState<string>(),
     [history, setHistory] = useState<(string | undefined)[]>([]),
@@ -225,6 +248,7 @@ function CreateBot({ close }: { close: () => void }) {
   const [name, setName] = useState(""),
     [engine, setEngine] = useState<VoiceBotConfig["engine"]>("gemini_live"),
     [language, setLanguage] = useState("en"),
+    [instructions, setInstructions] = useState(() => voiceBotDefaults("en")),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [adding, setAdding] = useState(false)
@@ -236,8 +260,16 @@ function CreateBot({ close }: { close: () => void }) {
     router = useRouter(),
     write = useAction(api.voice.resources.dashboardWrite)
   const provider = engine === "gemini_live" ? "gemini" : "sarvam"
+  const patchInstructions = (patch: Partial<VoiceBotText>) =>
+    setInstructions((current) => ({ ...current, ...patch }))
+  const changeLanguage = (language: string) => {
+    const next = updateVoiceBotLanguage(instructions, language)
+    setLanguage(language)
+    setInstructions(next)
+    notifyLanguageUpdate(instructions, next, language)
+  }
   return (
-    <DialogContent>
+    <DialogContent className="max-h-[90dvh] overflow-y-auto">
       <form
         onSubmit={async (e) => {
           e.preventDefault()
@@ -249,11 +281,19 @@ function CreateBot({ close }: { close: () => void }) {
           setBusy(true)
           setError("")
           try {
-            const draft = newVoiceBot(engine)
-            const eleven = keys?.data.find((k) => k.provider === "elevenlabs")
+            const draft = newVoiceBot(engine, language)
+            // The dialog offers Sarvam languages; the default ElevenLabs model
+            // supports only some of them. Keep the Sarvam voice for the others.
+            const eleven = ttsLanguageItems(
+              "elevenlabs",
+              "eleven_multilingual_v2"
+            ).some((item) => item.value === language.split("-")[0])
+              ? keys?.data.find((k) => k.provider === "elevenlabs")
+              : undefined
             const config = {
               ...draft,
               name,
+              ...instructions,
               language,
               credentialId: key.id,
               ...(engine === "cascade"
@@ -291,7 +331,7 @@ function CreateBot({ close }: { close: () => void }) {
             Choose how your bot listens and speaks.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4 py-5">
+        <FieldGroup className="py-5">
           <VoiceField label="Name" value={name} onChange={setName} />
           <Field>
             <FieldLabel>Engine</FieldLabel>
@@ -300,7 +340,7 @@ function CreateBot({ close }: { close: () => void }) {
               value={engine}
               onChange={(value) => {
                 setEngine(value)
-                setLanguage(value === "cascade" ? "en-IN" : "en")
+                changeLanguage(value === "cascade" ? "en-IN" : "en")
               }}
               options={[
                 {
@@ -325,7 +365,27 @@ function CreateBot({ close }: { close: () => void }) {
                 ? VOICE_LANGUAGE_ITEMS
                 : ttsLanguageItems("sarvam", "bulbul:v3")
             }
-            onChange={setLanguage}
+            onChange={changeLanguage}
+          />
+          <Field>
+            <FieldLabel>System prompt</FieldLabel>
+            <Textarea
+              aria-label="System prompt"
+              value={instructions.systemPrompt}
+              onChange={(e) =>
+                patchInstructions({ systemPrompt: e.target.value })
+              }
+            />
+          </Field>
+          <VoiceField
+            label="Greeting"
+            value={instructions.greeting}
+            onChange={(greeting) => patchInstructions({ greeting })}
+          />
+          <VoiceField
+            label="AI disclosure"
+            value={instructions.disclosure}
+            onChange={(disclosure) => patchInstructions({ disclosure })}
           />
           {keys && !keys.data.some((k) => k.provider === provider) ? (
             <p className="text-sm text-muted-foreground">
@@ -337,7 +397,7 @@ function CreateBot({ close }: { close: () => void }) {
               {error}
             </p>
           ) : null}
-        </div>
+        </FieldGroup>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={close}>
             Cancel
@@ -549,7 +609,11 @@ function BotForm({ row }: { row: VoiceBotResource }) {
                   draft.tts!.model
                 )
           }
-          onChange={(language) => patch({ language })}
+          onChange={(language) => {
+            const next = updateVoiceBotLanguage(draft, language)
+            setDraft(next)
+            notifyLanguageUpdate(draft, next, language)
+          }}
         />
       </RailSection>
       <RailSection title="Models">

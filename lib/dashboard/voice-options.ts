@@ -90,7 +90,12 @@ export function languageItems(values: readonly string[]) {
     .map((value) => ({ value, label: voiceLanguageLabel(value) }))
     .sort((a, b) => a.label.localeCompare(b.label))
 }
-export const VOICE_LANGUAGE_ITEMS = languageItems(GEMINI_LANGUAGE_PREFIXES)
+export const VOICE_LANGUAGE_ITEMS = languageItems([
+  ...GEMINI_LANGUAGE_PREFIXES,
+  "en-US",
+  "en-IN",
+  "en-GB",
+])
 export const SARVAM_LANGUAGE_ITEMS = languageItems(SARVAM_LANGUAGES)
 export const SARVAM_PROMPT_LANGUAGE_ITEMS = languageItems(
   SARVAM_LANGUAGES.map((value) => (value === "or-IN" ? "od-IN" : value))
