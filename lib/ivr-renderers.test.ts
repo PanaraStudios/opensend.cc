@@ -76,6 +76,22 @@ test("Sarvam explicitly requests Bulbul v3 WAV and refuses a mismatched sample r
     /24 kHz/
   )
 })
+test("ElevenLabs lower-tier credentials fall back to 24k PCM rather than failing prompt generation", async () => {
+  const urls: string[] = []
+  const renderer = new ElevenLabsPromptRenderer("secret", async (url) => {
+    urls.push(String(url))
+    return urls.length === 1
+      ? new Response("Format requires Pro", { status: 403 })
+      : new Response(new Uint8Array([1, 0, 2, 0]))
+  })
+  const result = await renderer.render("Hello", "en-US", "voice")
+  assert.ok(urls[0].endsWith("pcm_44100"))
+  assert.ok(urls[1].endsWith("pcm_24000"))
+  assert.equal(
+    new DataView(await result.audio.arrayBuffer()).getUint32(24, true),
+    24000
+  )
+})
 test("retries are bounded with backoff and provider errors never expose keys or response bodies", async () => {
   const sleeps: number[] = []
   let calls = 0

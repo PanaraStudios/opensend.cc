@@ -10,7 +10,7 @@ export interface IvrPromptVoice {
 export function promptRendererName(provider: IvrPromptVoice["provider"]) {
   return provider === "sarvam"
     ? "sarvam-bulbul-v3-pcm24k-wav16k-lufs18-v3"
-    : "elevenlabs-multilingual-v2-pcm44k-wav16k-lufs18-v3"
+    : "elevenlabs-multilingual-v2-pcm44k-or24k-wav16k-lufs18-v3"
 }
 export function pcmWav(pcm: Uint8Array, sampleRate = 16000): Blob {
   if (!pcm.length || pcm.length % 2 || pcm.length > 16 * 1024 * 1024 - 44)
@@ -83,24 +83,36 @@ export class ElevenLabsPromptRenderer implements PromptRenderer {
     private readonly request: typeof fetch = fetch
   ) {}
   async render(text: string, language: string, voice?: string) {
-    const r = await this.request(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice ?? "")}?output_format=pcm_44100`,
-      {
-        method: "POST",
-        headers: { "xi-api-key": this.key, "content-type": "application/json" },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_multilingual_v2",
-          language_code: language.split("-")[0],
-        }),
-        signal: AbortSignal.timeout(20000),
-        redirect: "error",
-      }
-    )
+    const render = (rate: number) =>
+      this.request(
+        `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice ?? "")}?output_format=pcm_${rate}`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": this.key,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            text,
+            model_id: "eleven_multilingual_v2",
+            language_code: language.split("-")[0],
+          }),
+          signal: AbortSignal.timeout(20000),
+          redirect: "error",
+        }
+      )
+    let rate = 44100
+    let r = await render(rate)
+    // 44.1k PCM is Pro-only. Keep lower-tier keys usable with uncompressed 24k.
+    if (r.status === 403) {
+      await r.body?.cancel().catch(() => undefined)
+      rate = 24000
+      r = await render(rate)
+    }
     await status(r)
     if (r.headers.get("content-type")?.includes("json"))
       throw new PromptProviderError(false)
-    return { audio: pcmWav(await bounded(r), 44100) }
+    return { audio: pcmWav(await bounded(r), rate) }
   }
 }
 export class SarvamPromptRenderer implements PromptRenderer {
