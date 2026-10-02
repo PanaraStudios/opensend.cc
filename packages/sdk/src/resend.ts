@@ -1,3 +1,4 @@
+import { Messages } from './messages';
 import { Ivrs } from './ivrs/ivrs';
 import { VoiceBots } from './voice/bots';
 import { VoiceProviders } from './voice/providers';
@@ -70,6 +71,7 @@ export class Opensend {
   readonly contactProperties = new ContactProperties(this);
   readonly contacts = new Contacts(this);
   readonly domains = new Domains(this);
+  readonly messages = new Messages(this);
   readonly emails = new Emails(this);
   readonly events = new Events(this);
   readonly logs = new Logs(this);
