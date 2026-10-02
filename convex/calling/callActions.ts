@@ -7,7 +7,7 @@ import type { ActionCtx } from "../_generated/server"
 import { actorArgs } from "./rows"
 import { graph, markTokenInvalid } from "../meta/graph"
 import { decryptSecret } from "../secrets"
-import { MetaError } from "../../lib/meta/errors"
+import { MetaError, metaErrorReason } from "../../lib/meta/errors"
 import {
   CALL_ERRORS,
   CALL_TERMINAL,
@@ -31,17 +31,31 @@ export function gateway() {
     process.env.CALL_GATEWAY_SECRET
   )
 }
-export function callingFailure(error: unknown): never {
+export function callingFailure(
+  error: unknown,
+  endpoint: "calls" | "settings" = "calls"
+): never {
   if (error instanceof MetaError) {
-    const [name, message, status] = CALL_ERRORS[error.code ?? 0] ?? [
-      "meta_call_failed",
-      error.message,
-      error.status >= 500 ? 503 : 422,
-    ]
+    const [name, message, status] =
+      endpoint === "settings" && error.code === 100
+        ? ([
+            "invalid_calling_settings",
+            "Meta refused the calling settings.",
+            422,
+          ] as const)
+        : (CALL_ERRORS[error.code ?? 0] ?? [
+            endpoint === "settings"
+              ? "meta_calling_settings_failed"
+              : "meta_call_failed",
+            endpoint === "settings"
+              ? "Meta refused the calling settings."
+              : "Meta refused the call.",
+            error.status >= 500 ? 503 : 422,
+          ])
     throw apiError(
       status,
       name,
-      `${message}${error.code ? ` (Meta ${error.code})` : ""}`
+      `${message} ${metaErrorReason(error)}${error.code ? ` (Meta ${error.code})` : ""}`
     )
   }
   if (error instanceof GatewayError)
@@ -49,8 +63,12 @@ export function callingFailure(error: unknown): never {
   if (error instanceof ConvexError) throw error
   throw apiError(
     503,
-    "calling_service_unavailable",
-    "Could not reach the calling service. Inspect the call log before retrying."
+    endpoint === "settings"
+      ? "calling_settings_unavailable"
+      : "calling_service_unavailable",
+    endpoint === "settings"
+      ? "Could not reach Meta to update calling settings. Try again."
+      : "Could not reach the calling service. Inspect the call log before retrying."
   )
 }
 export async function signal(

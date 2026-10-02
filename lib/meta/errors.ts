@@ -10,6 +10,8 @@ export type GraphErrorInfo = {
   isTransient: boolean
   message: string
   title?: string
+  userMessage?: string
+  details?: string
   fbtraceId?: string
 }
 
@@ -56,6 +58,8 @@ export class MetaError extends Error {
   readonly subcode?: number
   readonly isTransient: boolean
   readonly title?: string
+  readonly userMessage?: string
+  readonly details?: string
   readonly fbtraceId?: string
   constructor(info: GraphErrorInfo) {
     super(info.message)
@@ -65,11 +69,22 @@ export class MetaError extends Error {
     this.subcode = info.subcode
     this.isTransient = info.isTransient
     this.title = info.title
+    this.userMessage = info.userMessage
+    this.details = info.details
     this.fbtraceId = info.fbtraceId
   }
   get action() {
     return classifyGraphError(this)
   }
+}
+
+/** Only the documented reason fields, never the raw response or request. */
+export function metaErrorReason(error: MetaError): string {
+  return [
+    ...new Set([error.title, error.userMessage, error.details, error.message]),
+  ]
+    .filter(Boolean)
+    .join(" — ")
 }
 
 const numberOr = (value: unknown) =>
@@ -79,7 +94,11 @@ const stringOr = (value: unknown) =>
 
 /** Reads Graph's `{ error: { message, code, error_subcode, is_transient,
     fbtrace_id } }` body; a body that is not one still yields an error. */
-export function parseGraphError(status: number, body: string): GraphErrorInfo {
+export function parseGraphError(
+  status: number,
+  body: string,
+  secrets: readonly string[] = []
+): GraphErrorInfo {
   let error: Record<string, unknown> = {}
   try {
     const parsed: unknown = JSON.parse(body)
@@ -92,24 +111,47 @@ export function parseGraphError(status: number, body: string): GraphErrorInfo {
     )
       error = parsed.error as Record<string, unknown>
   } catch {}
-  const title = stringOr(error.error_user_title) ?? stringOr(error.title)
+  const safeString = (value: unknown) => {
+    let result = stringOr(value)
+    for (const secret of secrets) {
+      if (!secret || !result) continue
+      result = result
+        .replaceAll(secret, "[REDACTED]")
+        .replaceAll(encodeURIComponent(secret), "[REDACTED]")
+    }
+    return result
+  }
+  const title = safeString(error.error_user_title) ?? safeString(error.title)
+  const userMessage = safeString(error.error_user_msg)
+  const data = error.error_data
+  const details = safeString(
+    data && typeof data === "object" && "details" in data
+      ? data.details
+      : undefined
+  )
   return {
     status,
     code: numberOr(error.code),
     subcode: numberOr(error.error_subcode),
     isTransient: error.is_transient === true,
     message:
-      stringOr(error.message) ??
-      stringOr(error.error_user_msg) ??
+      safeString(error.message) ??
+      userMessage ??
       `Meta returned HTTP ${status}`,
     ...(title ? { title } : {}),
-    fbtraceId: stringOr(error.fbtrace_id),
+    ...(userMessage ? { userMessage } : {}),
+    ...(details ? { details } : {}),
+    fbtraceId: safeString(error.fbtrace_id),
   }
 }
 
 /** A Graph response body as JSON, or the MetaError it describes. Graph can
     answer 200 with an error body, so both the status and body count. */
-export function parseGraphResponse(status: number, body: string): unknown {
+export function parseGraphResponse(
+  status: number,
+  body: string,
+  secrets: readonly string[] = []
+): unknown {
   let parsed: unknown
   try {
     parsed = body ? JSON.parse(body) : {}
@@ -121,6 +163,6 @@ export function parseGraphResponse(status: number, body: string): unknown {
     status >= 300 ||
     parsed === undefined ||
     (!!parsed && typeof parsed === "object" && "error" in parsed)
-  if (failed) throw new MetaError(parseGraphError(status, body))
+  if (failed) throw new MetaError(parseGraphError(status, body, secrets))
   return parsed
 }

@@ -104,12 +104,135 @@ export const CALLING_SETTING_FIELDS = [
 /** Meta reads include SIP, DTLS and restriction metadata that cannot be written by this API. */
 export const writableCallingSettings = (input: Record<string, unknown>) =>
   Object.fromEntries(
-    CALLING_SETTING_FIELDS.filter((key) => input[key] !== undefined).map(
-      (key) => [key, input[key]]
+    CALLING_SETTING_FIELDS.filter(
+      (key) =>
+        input[key] != null &&
+        (key !== "callback_permission_status" ||
+          input[key] === "ENABLED" ||
+          input[key] === "DISABLED")
+    ).map((key) => [key, input[key]])
+  )
+
+/** Build the settings POST from form/API input, excluding unused optional
+ * configuration. Previous settings distinguish defaults from turning off a
+ * configured feature. Call hours are replaced whole, never merged on writes.
+ * The action supplies today's UTC date for past-holiday validation so this
+ * builder remains deterministic and does not read the clock. */
+export function buildCallingSettingsPayload(
+  input: Record<string, unknown>,
+  previous: Record<string, unknown> = {},
+  today = ""
+): { calling: Record<string, unknown> } {
+  const update = Object.fromEntries(
+    Object.entries(input).filter(
+      ([key, value]) =>
+        value != null &&
+        !(
+          ["call_icons", "audio", "call_hours", "voicemail"].includes(key) &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          Object.keys(value).length === 0
+        )
     )
   )
+  validateCallingSettings(update, today)
+  const calling: Record<string, unknown> = {}
+  for (const key of [
+    "status",
+    "call_icon_visibility",
+    "callback_permission_status",
+  ])
+    if (update[key] !== undefined) calling[key] = update[key]
+  if (
+    calling.status === "ENABLED" &&
+    calling.call_icon_visibility === undefined
+  )
+    calling.call_icon_visibility =
+      previous.call_icon_visibility === "DISABLE_ALL"
+        ? "DISABLE_ALL"
+        : "DEFAULT"
+  const countries = array(object(update.call_icons).restrict_to_user_countries)
+  if (countries.length)
+    calling.call_icons = { restrict_to_user_countries: [...countries] }
+  const codecs = array(object(update.audio).additional_codecs)
+  if (codecs.length) calling.audio = { additional_codecs: [...codecs] }
+
+  if (update.call_hours !== undefined) {
+    const hours = object(update.call_hours)
+    // Meta requires a nonempty weekly schedule even for disabled call hours.
+    // Reuse the saved schedule only to turn off previously configured hours.
+    const configured =
+      hours.status === "DISABLED" && !array(hours.weekly_operating_hours).length
+        ? object(previous.call_hours)
+        : hours
+    const weekly = array(configured.weekly_operating_hours)
+    if (weekly.length) {
+      const holidays = array(hours.holiday_schedule)
+      calling.call_hours = {
+        status: hours.status,
+        timezone_id: configured.timezone_id,
+        weekly_operating_hours: weekly.map((raw) => {
+          const h = object(raw)
+          return {
+            day_of_week: h.day_of_week,
+            open_time: h.open_time,
+            close_time: h.close_time,
+          }
+        }),
+        ...(holidays.length
+          ? {
+              holiday_schedule: holidays.map((raw) => {
+                const h = object(raw)
+                return {
+                  date: h.date,
+                  start_time: h.start_time,
+                  end_time: h.end_time,
+                }
+              }),
+            }
+          : {}),
+      }
+    }
+  }
+  if (update.voicemail !== undefined) {
+    const voicemail = object(update.voicemail),
+      saved = object(previous.voicemail),
+      audio = object(object(voicemail.audio).default)
+    if (voicemail.status === "ENABLED") {
+      calling.voicemail = {
+        status: "ENABLED",
+        triggers: [...array(voicemail.triggers)],
+        audio: {
+          default: {
+            announcement_media_id: audio.announcement_media_id,
+            ...(audio.timeout_seconds !== undefined
+              ? { timeout_seconds: audio.timeout_seconds }
+              : {}),
+          },
+        },
+      }
+    } else if (
+      saved.status === "ENABLED" ||
+      object(object(saved.audio).default).announcement_media_id ||
+      audio.announcement_media_id
+    ) {
+      calling.voicemail = { status: "DISABLED" }
+    }
+  }
+  validateCallingSettings(calling, today)
+  // This app uses Graph signaling. Only reset SIP/SDES if actually configured,
+  // keeping a simple enable independent of optional signaling configuration.
+  if (object(previous.sip).status === "ENABLED")
+    calling.sip = { status: "DISABLED" }
+  if (previous.srtp_key_exchange_protocol === "SDES")
+    calling.srtp_key_exchange_protocol = "DTLS"
+  return { calling }
+}
 /** Preserve whole call_hours writes, including the intentional deletion of omitted holidays. */
-export function validateCallingSettings(input: Record<string, unknown>) {
+export function validateCallingSettings(
+  input: Record<string, unknown>,
+  today = new Date().toISOString().slice(0, 10)
+) {
   const allowed = new Set<string>(CALLING_SETTING_FIELDS)
   for (const key of Object.keys(input))
     if (!allowed.has(key))
@@ -147,17 +270,21 @@ export function validateCallingSettings(input: Record<string, unknown>) {
     const hours = object(input.call_hours)
     if (!["ENABLED", "DISABLED"].includes(string(hours.status)))
       throw new Error("Invalid call_hours status.")
-    if (hours.status === "ENABLED") {
+    if (
+      hours.status === "ENABLED" ||
+      array(hours.weekly_operating_hours).length
+    ) {
       try {
         new Intl.DateTimeFormat("en", {
           timeZone: string(hours.timezone_id),
-        }).format()
+        }).format(0)
       } catch {
         throw new Error("Invalid call_hours timezone_id.")
       }
       if (
         !string(hours.timezone_id) ||
-        !Array.isArray(hours.weekly_operating_hours)
+        !Array.isArray(hours.weekly_operating_hours) ||
+        hours.weekly_operating_hours.length === 0
       )
         throw new Error(
           "Call hours require timezone_id and weekly_operating_hours."
@@ -195,7 +322,7 @@ export function validateCallingSettings(input: Record<string, unknown>) {
       if (
         !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
         !Number.isFinite(Date.parse(date)) ||
-        date < new Date().toISOString().slice(0, 10) ||
+        date < today ||
         !validTime(h.start_time) ||
         !validTime(h.end_time)
       )
@@ -210,13 +337,17 @@ export function validateCallingSettings(input: Record<string, unknown>) {
     if (
       voicemail.status === "ENABLED" &&
       (!Array.isArray(voicemail.triggers) ||
+        voicemail.triggers.length === 0 ||
         !array(voicemail.triggers).every(
           (t) => t === "REJECT" || t === "TIMEOUT"
         ) ||
         !String(audio.announcement_media_id ?? "").match(/^\d+$/) ||
-        typeof audio.timeout_seconds !== "number" ||
-        audio.timeout_seconds < 0 ||
-        audio.timeout_seconds > 30)
+        (array(voicemail.triggers).includes("TIMEOUT") &&
+          audio.timeout_seconds === undefined) ||
+        (audio.timeout_seconds !== undefined &&
+          (!Number.isInteger(audio.timeout_seconds) ||
+            Number(audio.timeout_seconds) < 0 ||
+            Number(audio.timeout_seconds) > 30)))
     )
       throw new Error(
         "Voicemail requires triggers, announcement_media_id and timeout_seconds (0–30)."
