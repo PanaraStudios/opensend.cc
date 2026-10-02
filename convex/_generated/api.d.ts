@@ -225,6 +225,8 @@ import type * as trackingHttp from "../trackingHttp.js";
 import type * as unsubscribe from "../unsubscribe.js";
 import type * as unsubscribeHttp from "../unsubscribeHttp.js";
 import type * as usage from "../usage.js";
+import type * as voice_elevenlabs from "../voice/elevenlabs.js";
+import type * as voice_elevenlabsState from "../voice/elevenlabsState.js";
 import type * as voice_gateway from "../voice/gateway.js";
 import type * as voice_http from "../voice/http.js";
 import type * as voice_resources from "../voice/resources.js";
@@ -460,6 +462,8 @@ declare const fullApi: ApiFromModules<{
   unsubscribe: typeof unsubscribe;
   unsubscribeHttp: typeof unsubscribeHttp;
   usage: typeof usage;
+  "voice/elevenlabs": typeof voice_elevenlabs;
+  "voice/elevenlabsState": typeof voice_elevenlabsState;
   "voice/gateway": typeof voice_gateway;
   "voice/http": typeof voice_http;
   "voice/resources": typeof voice_resources;

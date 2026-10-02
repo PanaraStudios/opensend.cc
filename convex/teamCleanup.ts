@@ -75,6 +75,7 @@ export const TEAM_TABLES = [
   "storedFiles",
   "callTranscripts",
   "voiceBots",
+  "elevenLabsVoiceCaches",
   "voiceProviders",
   "calls",
   "callEvents",

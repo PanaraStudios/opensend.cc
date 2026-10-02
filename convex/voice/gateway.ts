@@ -108,9 +108,27 @@ export const session = internalMutation({
           throw notFound("Voice credential")
         keys[name] = await decryptSecret(key.encryptedKey)
       }
+    let liveVoices:
+      { value: string; gender: "female" | "male" | "unknown" }[] | undefined
+    const tts = call.botConfig!.tts
+    if (
+      call.botConfig!.engine !== "gemini_live" &&
+      tts?.provider === "elevenlabs"
+    ) {
+      const cache = (
+        await ctx.db
+          .query("elevenLabsVoiceCaches")
+          .withIndex("by_credentialId", (q) =>
+            q.eq("credentialId", tts.credentialId)
+          )
+          .take(1)
+      )[0]
+      // No row keeps the static Sarah/Adam fallback. An empty cache is unknown.
+      if (cache) liveVoices = cache.voices
+    }
     return {
-      ...updateVoiceBotVoice(call.botConfig!),
-      voiceGender: botVoiceGender(call.botConfig!),
+      ...updateVoiceBotVoice(call.botConfig!, liveVoices),
+      voiceGender: botVoiceGender(call.botConfig!, liveVoices),
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
