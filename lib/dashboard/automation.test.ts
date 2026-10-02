@@ -315,6 +315,7 @@ it("contact notes and messaging replies are valid triggers but unknown system na
   assert.deepEqual(
     SYSTEM_EVENTS.map((event) => event.value),
     [
+      "call.data_collected",
       "contact.note_created",
       "opensend:whatsapp.message.received",
       "opensend:messenger.message.received",

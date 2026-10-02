@@ -701,7 +701,10 @@ export const dispatch = internalMutation({
         )
         .unique()
     const payload = (
-      event.type === "contact.note_created" ? data : data.payload
+      event.type === "contact.note_created" ||
+      event.type === "call.data_collected"
+        ? data
+        : data.payload
     ) as Record<string, unknown>
     if (phase === "wait") {
       if (contact) {

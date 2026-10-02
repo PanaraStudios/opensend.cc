@@ -490,6 +490,10 @@ export class VoiceRuntime {
           type: "bot_completed",
           outcome,
           summary,
+          inferred:
+            call.adapter instanceof PipecatAdapter
+              ? call.adapter.inferred
+              : undefined,
           endedAt,
           usage: {
             ...call.usage,

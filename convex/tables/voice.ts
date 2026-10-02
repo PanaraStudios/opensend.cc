@@ -1,3 +1,4 @@
+import { collectField } from "./botToolkit"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 export const voiceProvider = v.union(
@@ -39,6 +40,9 @@ export const botConfig = v.object({
   systemPrompt: v.string(),
   greeting: v.string(),
   tools: v.array(v.string()),
+  collect: v.optional(v.array(collectField)),
+  knowledgeBaseIds: v.optional(v.array(v.id("knowledgeBases"))),
+  customToolIds: v.optional(v.array(v.id("botTools"))),
   handoff: v.object({ agents: v.boolean(), ivrId: v.optional(v.string()) }),
   maxDurationSeconds: v.number(),
   silenceTimeoutSeconds: v.number(),

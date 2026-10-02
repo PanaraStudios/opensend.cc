@@ -1,3 +1,4 @@
+import { BOT_TOOLKIT_EVENTS } from "../event-catalog"
 import { CHANNEL_SEND_STEPS, type ChannelSendStepType } from "../channels"
 import type { ContactChannelIdentity } from "./contacts"
 import type { VariableSource } from "../meta/variables"
@@ -94,6 +95,7 @@ export type ExportStatus = Infer<typeof exportStatusValue>
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
 export const WEBHOOK_EVENTS = [
+  ...BOT_TOOLKIT_EVENTS.map((event) => event.value),
   "email.sent",
   "email.delivered",
   "email.delivery_delayed",

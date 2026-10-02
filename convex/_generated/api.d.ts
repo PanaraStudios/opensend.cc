@@ -10,6 +10,9 @@
 
 import type * as botTools_routes from "../botTools/routes.js";
 import type * as knowledge_routes from "../knowledge/routes.js";
+import type * as voice_toolkitState from "../voice/toolkitState.js";
+import type * as voice_toolkit from "../voice/toolkit.js";
+import type * as voice_collection from "../voice/collection.js";
 import type * as botTools_execute from "../botTools/execute.js";
 import type * as botTools_resources from "../botTools/resources.js";
 import type * as knowledge_search from "../knowledge/search.js";
@@ -258,6 +261,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   "botTools/routes": typeof botTools_routes;
   "knowledge/routes": typeof knowledge_routes;
+  "voice/toolkitState": typeof voice_toolkitState;
+  "voice/toolkit": typeof voice_toolkit;
+  "voice/collection": typeof voice_collection;
   "botTools/execute": typeof botTools_execute;
   "botTools/resources": typeof botTools_resources;
   "knowledge/search": typeof knowledge_search;

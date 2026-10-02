@@ -39,6 +39,7 @@ export class PipecatAdapter extends VoiceAdapterBase {
   private cancelled = new Set<string>()
   private received = 0
   private summary = ""
+  private inferredFields: Record<string, unknown> = {}
   private finalUsage: VoiceUsage = {}
   private ready = false
   private completion?: () => void
@@ -194,6 +195,12 @@ export class PipecatAdapter extends VoiceAdapterBase {
               typeof data.summary === "string"
                 ? data.summary.slice(0, 4000)
                 : ""
+            this.inferredFields =
+              data.inferred &&
+              typeof data.inferred === "object" &&
+              !Array.isArray(data.inferred)
+                ? (data.inferred as Record<string, unknown>)
+                : {}
             this.finalUsage = (data.usage ?? {}) as VoiceUsage
             this.completion?.()
             if (!this.finishing)
@@ -250,13 +257,16 @@ export class PipecatAdapter extends VoiceAdapterBase {
     await this.finish()
     return this.summary
   }
+  get inferred() {
+    return this.inferredFields
+  }
   get usage() {
     return this.finalUsage
   }
   private finish() {
     if (this.finishing) return this.finishing
     this.finishing = new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 6000)
+      const timer = setTimeout(resolve, 10000)
       this.completion = () => {
         clearTimeout(timer)
         resolve()

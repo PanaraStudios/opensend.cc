@@ -18,7 +18,7 @@ export async function emitEvent(
       ? internal.webhooks.deliverEvent
       : internal.automationRuntime.consume
   await ctx.scheduler.runAfter(0, consumer, { id })
-  if (type === "contact.note_created")
+  if (type === "contact.note_created" || type === "call.data_collected")
     await ctx.scheduler.runAfter(0, internal.webhooks.deliverEvent, { id })
   return id
 }

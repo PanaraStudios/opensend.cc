@@ -1,3 +1,4 @@
+import { BOT_TOOLKIT_EVENTS } from "../event-catalog"
 import { CHANNEL_SEND_STEPS, CHANNELS, channelForSendStep } from "../channels"
 import { messagingChannelValue } from "../../convex/tables/channels"
 import { channelLabel } from "./format"
@@ -320,6 +321,7 @@ export function durationError(text: string): string | null {
 
 export const RESERVED_EVENT_PREFIX = "opensend:"
 export const SYSTEM_EVENTS = [
+  ...BOT_TOOLKIT_EVENTS,
   { value: "contact.note_created", label: "Contact note created" },
   ...messagingChannelValue.members.map(({ value }) => ({
     value: `opensend:${value}.message.received`,
@@ -639,6 +641,13 @@ export function samplePayload(
     | (Pick<AutomationEvent, "schema"> & Partial<Pick<AutomationEvent, "name">>)
     | undefined
 ): Record<string, unknown> {
+  if (event?.name === "call.data_collected")
+    return {
+      call_id: "call-example",
+      contact_id: "contact-example",
+      collected: { participants: { value: 2, inferred: false } },
+      missing: [],
+    }
   if (event?.name === "contact.note_created")
     return {
       object: "contact_note",

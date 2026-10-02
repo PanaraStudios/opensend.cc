@@ -57,7 +57,7 @@ export const customEventType = (name: string) => CUSTOM_EVENT_PREFIX + name
 export const customEventName = (type: string) =>
   type.startsWith(CUSTOM_EVENT_PREFIX)
     ? type.slice(CUSTOM_EVENT_PREFIX.length)
-    : type === "contact.note_created"
+    : type === "contact.note_created" || type === "call.data_collected"
       ? type
       : null
 
