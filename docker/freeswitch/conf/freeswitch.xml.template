@@ -99,6 +99,10 @@
           <param name="disable-transcoding" value="false"/>
           <param name="rtp-timeout-sec" value="60"/>
           <param name="rtp-timer-name" value="soft"/>
+          <!-- Bridged legs run different clocks (Opus 48 kHz to Meta, L16 16 kHz to
+               the voice bot). Without this, FreeSWITCH copies the bot leg's
+               timestamps onto the WhatsApp leg and the phone plays garbled audio. -->
+          <param name="rtp-rewrite-timestamps" value="true"/>
         </settings>
       </profile></profiles>
     </configuration>

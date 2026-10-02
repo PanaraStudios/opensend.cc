@@ -89,8 +89,13 @@ export function CallsView() {
                     className="font-medium hover:underline"
                     href={`/playground/calls/${call.id}`}
                   >
-                    {call.user_id ?? call.from ?? call.to ?? "Browser"}
+                    {call.contact_name}
                   </Link>
+                  {call.contact_phone ? (
+                    <div className="text-xs text-muted-foreground">
+                      {call.contact_phone}
+                    </div>
+                  ) : null}
                   {call.test ? (
                     <Badge variant="secondary" className="ml-2">
                       Test

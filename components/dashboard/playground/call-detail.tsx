@@ -39,8 +39,15 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
       />
       <MetaStrip
         items={[
-          { label: "From", value: call.from ?? "Browser" },
-          { label: "To", value: call.to ?? call.bot_name ?? "Phone menu" },
+          { label: "Contact", value: call.contact_name },
+          { label: "Phone", value: call.contact_phone ?? "—" },
+          {
+            label: "To",
+            value:
+              call.direction === "outbound"
+                ? call.contact_name
+                : (call.to ?? call.bot_name ?? "Phone menu"),
+          },
           {
             label: "Number",
             value:

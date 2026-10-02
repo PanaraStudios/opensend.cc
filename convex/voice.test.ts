@@ -3,6 +3,8 @@ import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
 import { patchRow } from "./counts"
+import { upsertContact } from "./audience"
+import { upsertChannelThread } from "./channels/identity"
 import { signRequest } from "../services/call-gateway/src/auth"
 import type { Id } from "./_generated/dataModel"
 const secret = "a".repeat(64)
@@ -600,3 +602,79 @@ test("end_call authorization and signed gateway hangup terminate the Meta call",
   expect(lines.some((l) => l.toolName === "end_call")).toBe(true)
   expect(lines.some((l) => l.text?.includes("Ended by bot"))).toBe(true)
 })
+test.each([true, false])(
+  "voice tools resolve linked and legacy BSUID callers: linked=%s",
+  async (linked) => {
+    const f = await fixture()
+    const links = await f.t.run(async (ctx) => {
+      const account = (await ctx.db.get("channelAccounts", f.account))!
+      const contact = await upsertContact(
+        ctx,
+        f.owner.team,
+        { phone: "+919316108172", firstName: "Kamal" },
+        { properties: [], segmentIds: [], skipExisting: true }
+      )
+      const links = await upsertChannelThread(ctx, account, {
+        externalId: "919316108172",
+        phone: "+919316108172",
+        at: Date.now(),
+        direction: "inbound",
+        preview: "Prior message",
+      })
+      await ctx.db.patch("channelContacts", links.channelContactId, {
+        userId: "US.caller",
+        contactId: contact.id,
+      })
+      return { ...links, contactId: contact.id }
+    })
+    const callId = await f.createCall()
+    await f.t.run((ctx) =>
+      ctx.db.patch("calls", callId, {
+        from: "US.caller",
+        ...(linked ? links : {}),
+      })
+    )
+    await f.t.mutation(internal.voice.routing.select, { id: callId })
+    const tool = (id: string, name: string, args: Record<string, unknown>) =>
+      f.signed("tools", {
+        callId,
+        organizationId: f.owner.team,
+        toolCall: { id, name, arguments: args },
+      })
+    expect(
+      await (await tool("lookup-kamal", "lookup_contact", {})).json()
+    ).toMatchObject({ ok: true, result: { name: "Kamal" } })
+    expect(
+      await (
+        await tool("note-kamal", "create_note", { text: "Follow up tomorrow" })
+      ).json()
+    ).toMatchObject({ ok: true, result: { storedOn: "call" } })
+    expect(await f.t.run((ctx) => ctx.db.get("calls", callId))).toMatchObject(
+      links
+    )
+    const sent = await (
+      await tool("send-kamal", "send_whatsapp_message", {
+        text: "Thanks for calling",
+      })
+    ).json()
+    expect(sent).toMatchObject({ ok: true, result: { id: expect.any(String) } })
+    const message = (await f.t.run((ctx) =>
+      ctx.db.query("channelMessages").first()
+    ))!
+    expect(message).toMatchObject({
+      channelContactId: links.channelContactId,
+      conversationId: links.conversationId,
+      to: "US.caller",
+    })
+    const content = (await f.t.run((ctx) =>
+      ctx.db.query("channelMessageContents").first()
+    ))!
+    expect(JSON.parse(content.payload)).toMatchObject({
+      recipient: "US.caller",
+    })
+    expect(JSON.parse(content.payload).to).toBeUndefined()
+    expect(
+      await f.t.run((ctx) => ctx.db.query("channelContacts").collect())
+    ).toHaveLength(1)
+  }
+)

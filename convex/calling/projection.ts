@@ -5,11 +5,12 @@ import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { array, object, string } from "../../lib/meta/parse"
 import { callTime, callWireStatus, CALL_TERMINAL } from "../../lib/meta/calling"
-import { upsertChannelThread, recordWhatsAppPhone } from "../channels/identity"
+import { upsertChannelThread } from "../channels/identity"
 import { patchRow } from "../counts"
 import { emitEvent } from "../events"
 import { live, wabaByWabaId } from "../meta/connect"
 import { retirement } from "../teamLifecycle"
+import { normalizePhone, fromWaId, toWaId } from "../../lib/dashboard/phone"
 import {
   byWacid,
   callEvent,
@@ -117,15 +118,12 @@ async function lifecycle(
     ].includes(event)
   )
     return
-  if (
-    await ctx.db
-      .query("callEvents")
-      .withIndex("by_accountId_and_wacid_and_event", (q) =>
-        q.eq("accountId", account._id).eq("wacid", wacid).eq("event", event)
-      )
-      .unique()
-  )
-    return
+  const duplicate = await ctx.db
+    .query("callEvents")
+    .withIndex("by_accountId_and_wacid_and_event", (q) =>
+      q.eq("accountId", account._id).eq("wacid", wacid).eq("event", event)
+    )
+    .unique()
   const at = callTime(raw.timestamp, callTime(raw.end_time, receivedAt))
   let row = await byWacid(ctx, account._id, wacid)
   const direction =
@@ -134,14 +132,29 @@ async function lifecycle(
     event.startsWith("status:")
       ? ("outbound" as const)
       : (row?.direction ?? ("inbound" as const))
-  const phone = string(
+  const wirePhone = string(
     direction === "inbound" ? raw.from : raw.to || raw.recipient_id
   )
+  const matchingContact =
+    contacts.find(
+      (c) =>
+        c.user_id ===
+        (raw.from_user_id ||
+          raw.to_user_id ||
+          raw.recipient_user_id ||
+          row?.userId)
+    ) ??
+    contacts.find((c) => c.wa_id === wirePhone) ??
+    (contacts.length === 1 ? contacts[0] : undefined)
+  const phone =
+    normalizePhone(fromWaId(wirePhone)) ??
+    normalizePhone(fromWaId(string(matchingContact?.wa_id))) ??
+    undefined
   let userId =
     string(raw.from_user_id) ||
     string(raw.to_user_id) ||
     string(raw.recipient_user_id) ||
-    string(contacts.find((c) => c.wa_id === phone)?.user_id) ||
+    string(contacts.find((c) => c.wa_id === toWaId(phone ?? ""))?.user_id) ||
     (contacts.length === 1 ? string(contacts[0].user_id) : "") ||
     row?.userId
   if (!userId && phone) {
@@ -168,12 +181,14 @@ async function lifecycle(
       ) ?? null
     if (row) await ctx.db.patch("calls", row._id, { wacid })
   }
-  const contact = contacts.find((c) => c.user_id === userId) ?? {}
+  const contact =
+    contacts.find((c) => c.user_id === userId) ?? matchingContact ?? {}
   const links =
-    !row?.conversationId && userId
+    userId || phone
       ? await upsertChannelThread(ctx, account, {
-          externalId: userId,
-          userId,
+          externalId: phone ? toWaId(phone) : userId!,
+          ...(phone ? { phone } : {}),
+          ...(userId ? { userId } : {}),
           parentUserId:
             string(
               raw.from_parent_user_id ||
@@ -185,7 +200,8 @@ async function lifecycle(
           at,
           direction,
           preview: event === "terminate" ? "Voice call ended" : "Voice call",
-          opensWindow: direction === "inbound",
+          opensWindow: !duplicate && direction === "inbound",
+          refreshThread: !row?.conversationId && !duplicate,
         })
       : {}
   if (!row) {
@@ -205,6 +221,19 @@ async function lifecycle(
       ...(userId ? { userId } : {}),
     })
     row = (await ctx.db.get("calls", id))!
+  }
+  if (duplicate) {
+    await ctx.db.patch("calls", row._id, {
+      ...links,
+      ...(userId && !row.userId ? { userId } : {}),
+      ...(phone && direction === "inbound" && !row.from
+        ? { from: toWaId(phone) }
+        : {}),
+      ...(phone && direction === "outbound" && !row.to
+        ? { to: toWaId(phone) }
+        : {}),
+    })
+    return
   }
   await ctx.db.insert("callEvents", {
     organizationId: account.organizationId,
@@ -316,8 +345,6 @@ async function lifecycle(
   }
   await ctx.db.patch("calls", row._id, patch)
   const updated = (await ctx.db.get("calls", row._id))!
-  if (phone && updated.channelContactId)
-    await recordWhatsAppPhone(ctx, account, updated.channelContactId, phone)
   // Inbound calls always refresh the service window, even when termination arrived first.
   if (
     ((event === "connect" && direction === "inbound") ||
