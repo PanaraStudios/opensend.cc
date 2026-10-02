@@ -9,6 +9,7 @@ import {
 
 test("upload hints describe the limits for every use", () => {
   const hints: Record<StorageUse, string> = {
+    knowledge: "PDF, TXT, Markdown or DOCX, up to 2 MB",
     whatsapp:
       "Images up to 5 MB · video and audio up to 16 MB · documents up to 100 MB",
     template: "JPEG, PNG, MP4 or PDF up to 16 MB",
