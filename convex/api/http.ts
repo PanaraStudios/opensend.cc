@@ -1,3 +1,4 @@
+import { registerKnowledgeRoutes } from "../knowledge/routes"
 import { registerContactNoteRoutes } from "./contactNotes"
 import { registerIvrRoutes } from "../ivr/routes"
 import { registerVoiceRoutes } from "./voice"
@@ -25,6 +26,7 @@ import { registerLogRoutes } from "./logs"
 /** The public REST API. Each resource registers its routes with `apiRoute`
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
+  registerKnowledgeRoutes(http)
   registerIvrRoutes(http)
   registerCallingRoutes(http)
   registerVoiceRoutes(http)
