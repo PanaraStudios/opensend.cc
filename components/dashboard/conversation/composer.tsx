@@ -23,7 +23,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { toast } from "@/components/ui/toast"
 import { OptionSelect } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
@@ -318,12 +323,24 @@ function TextComposer({ detail }: { detail: ConversationDetail }) {
             use={email ? "email" : "whatsapp"}
             from={conversation.accountId}
             disabled={sending}
+            onRemoved={() => {
+              setFileId(undefined)
+              setFilename("")
+            }}
             onUploaded={(id, file) => {
               setFileId(id)
               setFilename(file.name)
-              setAttachmentsOpen(false)
             }}
           />
+          <DialogFooter>
+            <Button
+              type="button"
+              disabled={!fileId}
+              onClick={() => setAttachmentsOpen(false)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
