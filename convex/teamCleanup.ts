@@ -42,6 +42,7 @@ export const TEAM_TABLES = [
   "emailMetrics",
   "recipientMetrics",
   "suppressions",
+  "contactNotes",
   "contacts",
   "segments",
   "segmentMembers",

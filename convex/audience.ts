@@ -549,7 +549,12 @@ export async function purgeContactRows(
     .withIndex("by_contactId_and_topicId", (q) => q.eq("contactId", contactId))
     .take(limit - members.length)
   for (const row of choices) await ctx.db.delete("topicSubscriptions", row._id)
-  return members.length + choices.length < limit
+  const notes = await ctx.db
+    .query("contactNotes")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+    .take(limit - members.length - choices.length)
+  for (const row of notes) await ctx.db.delete("contactNotes", row._id)
+  return members.length + choices.length + notes.length < limit
 }
 
 /** Refuses a list that is already at its per-team limit. */

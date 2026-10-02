@@ -1,3 +1,4 @@
+import { registerContactNoteRoutes } from "./contactNotes"
 import { registerIvrRoutes } from "../ivr/routes"
 import { registerVoiceRoutes } from "./voice"
 import { registerCallingRoutes } from "./calling"
@@ -42,6 +43,7 @@ export function registerApiRoutes(http: HttpRouter) {
   registerEventRoutes(http)
   registerLogRoutes(http)
   registerAudienceRoutes(http)
+  registerContactNoteRoutes(http)
   registerTemplateRoutes(http)
   registerSuppressionRoutes(http)
   registerWebhookRoutes(http)

@@ -50,13 +50,16 @@ const ENSURE_LIMIT = 100
 /** Custom events ride the outbox under this prefix, which no system event
     type has: a custom event named `email.sent` is never taken for the real
     one, and webhooks, which subscribe only to system types, never get it.
-    Consumers read the name back with `customEventName`. */
+    Consumers read the name back with `customEventName`, which also recognizes
+    the contact note system trigger that shares the webhook outbox event. */
 export const CUSTOM_EVENT_PREFIX = "custom:"
 export const customEventType = (name: string) => CUSTOM_EVENT_PREFIX + name
 export const customEventName = (type: string) =>
   type.startsWith(CUSTOM_EVENT_PREFIX)
     ? type.slice(CUSTOM_EVENT_PREFIX.length)
-    : null
+    : type === "contact.note_created"
+      ? type
+      : null
 
 type Schema = AutomationEvent["schema"]
 

@@ -87,6 +87,8 @@ import type * as channels_rows from "../channels/rows.js";
 import type * as channels_templates from "../channels/templates.js";
 import type * as contactImports from "../contactImports.js";
 import type * as contactProperties from "../contactProperties.js";
+import type * as contactNotes from "../contactNotes.js";
+import type * as api_contactNotes from "../api/contactNotes.js";
 import type * as contacts from "../contacts.js";
 import type * as conversations from "../conversations.js";
 import type * as counts from "../counts.js";
@@ -324,6 +326,8 @@ declare const fullApi: ApiFromModules<{
   "channels/templates": typeof channels_templates;
   contactImports: typeof contactImports;
   contactProperties: typeof contactProperties;
+  contactNotes: typeof contactNotes;
+  "api/contactNotes": typeof api_contactNotes;
   contacts: typeof contacts;
   conversations: typeof conversations;
   counts: typeof counts;
