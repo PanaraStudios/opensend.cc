@@ -24,6 +24,8 @@ export const DOCS_LINKS = {
     "/playground/inbox": "/docs/dashboard/receiving/introduction",
     "/playground/calls": "/docs/self-hosting/requirements",
     "/playground/ivr": "/docs/self-hosting/requirements",
+    "/playground/knowledge": "/docs/self-hosting/requirements",
+    "/playground/tools": "/docs/self-hosting/requirements",
     "/playground/voice-bot": "/docs/self-hosting/requirements",
     "/profile": "/docs/self-hosting/security",
     "/properties": "/docs/dashboard/audience/properties",
