@@ -3,7 +3,7 @@ import { samplePayload } from "../lib/dashboard/automation"
 import { callingRoutingSchema } from "../services/call-gateway/src/voice/routing"
 import { resolve } from "node:path"
 import SwaggerParser from "@apidevtools/swagger-parser"
-import Ajv2020, { type AnySchema } from "ajv/dist/2020"
+import Ajv2020, { type AnySchema, type ValidateFunction } from "ajv/dist/2020"
 import {
   afterEach,
   beforeAll,
@@ -85,16 +85,23 @@ const operations = (spec: Contract) =>
       Object.keys(methods).map((method) => `${method.toUpperCase()} ${path}`)
     )
     .sort()
+// Fixtures reuse the same large schemas for many variants. Compile once per
+// schema so testing every variant does not repeatedly rebuild the validator.
+const validators = new Map<AnySchema, ValidateFunction>()
 const validateBody = (schema: AnySchema, body: unknown) => {
-  const validate = ajv.compile({
-    ...(schema as Record<string, unknown>),
-    components: {
-      schemas: {
-        EventPayloadField: contract.components.schemas.EventPayloadField,
-        CatalogEvent: contract.components.schemas.CatalogEvent,
+  let validate = validators.get(schema)
+  if (!validate) {
+    validate = ajv.compile({
+      ...(schema as Record<string, unknown>),
+      components: {
+        schemas: {
+          EventPayloadField: contract.components.schemas.EventPayloadField,
+          CatalogEvent: contract.components.schemas.CatalogEvent,
+        },
       },
-    },
-  })
+    })
+    validators.set(schema, validate)
+  }
   expect(validate(body), JSON.stringify(validate.errors, null, 2)).toBe(true)
 }
 async function response(

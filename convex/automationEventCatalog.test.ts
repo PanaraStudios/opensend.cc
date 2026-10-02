@@ -2,7 +2,18 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { emitEvent } from "./events"
-import { upsertContact } from "./audience"
+import { upsertContact, contactEventData } from "./audience"
+import { createNote } from "./contactNotes"
+import { startRun } from "./automationRuntime"
+import { emailEventData } from "./emails"
+import { emitDomain } from "./domains"
+import { suppressionData, upsertSuppression } from "./suppressions"
+import { payload as callPayload } from "./calling/rows"
+import { channelMessagePayload } from "./channels/payload"
+import { upsertChannelThread } from "./channels/identity"
+import { insertRow } from "./counts"
+import { whatsappInboundExamples } from "../lib/meta/whatsapp-fixtures"
+import { schemaField, type EventField } from "../lib/event-catalog"
 import { SYSTEM_EVENT_CATALOG, type CatalogEvent } from "../lib/event-catalog"
 import type { AutomationStep } from "../lib/dashboard/types"
 
@@ -67,10 +78,13 @@ for (const name of [
   "messenger.message.received",
   "email.opened",
   "whatsapp.call.completed",
+  "contact.note_created",
 ] as const) {
   test(`${name} dispatch is tenant scoped, filterable and deduplicates the shared outbox`, async () => {
     const f = await setup()
-    const trigger = `opensend:${name}`
+    const trigger = SYSTEM_EVENT_CATALOG.find(
+      (event) => event.name === name
+    )!.trigger
     const path = name === "email.opened" ? "subject" : "id"
     const id = await f.define(
       trigger,
@@ -298,4 +312,421 @@ test("catalog API and save errors include team schemas and reject unknown, futur
     expect(response.status).toBe(422)
     expect(await response.json()).toMatchObject({ name: "validation_error" })
   }
+})
+
+/** Validate present fields recursively so a new payload property must be
+ * exposed in the catalog; provider extension objects accept arbitrary JSON. */
+function payloadContract(
+  schema: EventField,
+  value: unknown,
+  path = "payload"
+): string[] {
+  if (value === null) return schema.nullable ? [] : [`${path}: unexpected null`]
+  const type = Array.isArray(value) ? "array" : typeof value
+  if (
+    !schema.dynamic &&
+    !(schema.valueTypes ?? [schema.type]).some(
+      (expected) =>
+        expected === type ||
+        (["enum", "date"].includes(expected) && type === "string")
+    )
+  )
+    return [`${path}: ${type} does not match ${schema.type}`]
+  if (
+    schema.type === "enum" &&
+    typeof value === "string" &&
+    !schema.values?.includes(value)
+  )
+    return [`${path}: unknown enum ${value}`]
+  if (
+    schema.type === "date" &&
+    typeof value === "string" &&
+    Number.isNaN(Date.parse(value))
+  )
+    return [`${path}: invalid date`]
+  if (Array.isArray(value))
+    return schema.items
+      ? value.flatMap((item, index) =>
+          payloadContract(schema.items!, item, `${path}.${index}`)
+        )
+      : schema.dynamic
+        ? []
+        : [`${path}: missing array item schema`]
+  if (value && typeof value === "object")
+    return Object.entries(value).flatMap(([key, item]) => {
+      const child = schemaField(schema, key)
+      return child
+        ? payloadContract(child, item, `${path}.${key}`)
+        : [`${path}.${key}: missing catalog field`]
+    })
+  return []
+}
+
+test("every event contract covers payload builders, including all WhatsApp content variants and note author/source fields", async () => {
+  const f = await setup()
+  await f.t.run(async (ctx) => {
+    const contact = (await ctx.db.get("contacts", f.contactId))!
+    const connectionId = await ctx.db.insert("metaConnections", {
+      organizationId: f.owner.team,
+      businessId: "catalog-business",
+      businessName: "Catalog",
+      method: "manual_token",
+      encryptedToken: "fixture-ciphertext",
+      tokenLast4: "text",
+      scopes: [],
+      status: "active",
+    })
+    const account = await insertRow(
+      ctx,
+      "channelAccounts",
+      {
+        organizationId: f.owner.team,
+        channel: "whatsapp",
+        externalId: "catalog-account",
+        connectionId,
+        displayName: "Catalog",
+        handle: "+15550008061",
+        status: "active",
+        throughputMps: 80,
+      },
+      true
+    )
+    const thread = await upsertChannelThread(ctx, account, {
+      externalId: "15550008062",
+      phone: "+15550008062",
+      at: Date.now(),
+      direction: "inbound",
+      opensWindow: true,
+      preview: "price",
+    })
+    const message = await insertRow(
+      ctx,
+      "channelMessages",
+      {
+        organizationId: f.owner.team,
+        channel: "whatsapp",
+        accountId: account._id,
+        conversationId: thread.conversationId,
+        channelContactId: thread.channelContactId,
+        direction: "inbound",
+        from: "15550008062",
+        to: "15550008061",
+        type: "text",
+        status: "received",
+        preview: "price",
+        generation: 1,
+        attempts: 0,
+      },
+      true
+    )
+    const emailId = await ctx.db.insert("emails", {
+      organizationId: f.owner.team,
+      domainId: f.domain,
+      from: "support@mail.example.test",
+      to: [contact.email!],
+      subject: "Price",
+      status: "sent",
+      source: "api",
+      generation: 1,
+      attempts: 0,
+      search: "price",
+      messageId: "provider-message",
+      broadcastId: "broadcast-example",
+    })
+    const email = emailEventData((await ctx.db.get("emails", emailId))!)
+    const callId = await ctx.db.insert("calls", {
+      organizationId: f.owner.team,
+      accountId: account._id,
+      contactId: contact._id,
+      direction: "inbound",
+      status: "completed",
+      mode: "api",
+      observedAt: Date.now(),
+      botUsage: {
+        inputTokens: 5,
+        outputTokens: 2,
+        audioSeconds: 20,
+        ttsCharacters: 40,
+      },
+      remoteSession: { sdp: "session", sdp_type: "offer" },
+    })
+    const call = await callPayload(ctx, (await ctx.db.get("calls", callId))!)
+    const suppressionId = await upsertSuppression(
+      ctx,
+      f.owner.team,
+      "suppressed@example.test",
+      "manual"
+    )
+    const suppression = suppressionData(
+      (await ctx.db.get("suppressions", suppressionId))!
+    )
+    const note = await createNote(ctx, contact, {
+      body: "Follow up",
+      author: { kind: "bot", id: "bot-example", name: "Support" },
+      source: {
+        callId,
+        conversationId: thread.conversationId,
+        messageId: message._id,
+      },
+    })
+    const noteEvent = await ctx.db
+      .query("events")
+      .withIndex("by_organizationId_and_type", (q) =>
+        q.eq("organizationId", f.owner.team).eq("type", "contact.note_created")
+      )
+      .order("desc")
+      .first()
+    expect(noteEvent?.data).toMatchObject({
+      id: note._id,
+      contact: { first_name: "Ada" },
+    })
+    const tested = new Set<string>()
+    const violations: string[] = []
+    for (const event of SYSTEM_EVENT_CATALOG) {
+      if (event.name.startsWith("domain.")) {
+        await emitDomain(ctx, f.domain, event.name as "domain.created")
+        const row = await ctx.db
+          .query("events")
+          .withIndex("by_organizationId_and_type", (q) =>
+            q.eq("organizationId", f.owner.team).eq("type", event.name)
+          )
+          .order("desc")
+          .first()
+        expect(payloadContract(event.schema, row!.data), event.name).toEqual([])
+      } else if (event.name === "contact.note_created") {
+        violations.push(
+          ...payloadContract(event.schema, noteEvent!.data, event.name)
+        )
+      } else if (
+        event.name.includes(".message.") &&
+        !/read_receipt|typing_failed/.test(event.name)
+      ) {
+        for (const [variant, raw] of Object.entries(
+          event.name.startsWith("whatsapp.")
+            ? whatsappInboundExamples
+            : { text: { message: { text: "price" } } }
+        )) {
+          const wire = channelMessagePayload(
+            {
+              ...message,
+              channel: event.name.split(".")[0] as typeof message.channel,
+              type: (raw.type ?? "text") as typeof message.type,
+            },
+            raw
+          )
+          violations.push(
+            ...payloadContract(event.schema, wire, `${event.name}: ${variant}`)
+          )
+        }
+      } else {
+        const data = event.name.startsWith("email.")
+          ? {
+              ...email,
+              ...(event.name === "email.received"
+                ? {
+                    received_for: ["support@mail.example.test"],
+                    attachments: [
+                      {
+                        id: "attachment",
+                        filename: "quote.pdf",
+                        content_type: "application/pdf",
+                        content_disposition: "attachment",
+                        content_id: null,
+                      },
+                    ],
+                  }
+                : {}),
+            }
+          : event.name.endsWith("permission_updated")
+            ? {
+                account_id: account._id,
+                user_id: "caller",
+                permission: {
+                  status: "temporary",
+                  expiration_time: 1790000000,
+                },
+                response_source: null,
+                context_id: null,
+              }
+            : event.name.endsWith("ivr_completed")
+              ? {
+                  id: callId,
+                  account_id: account._id,
+                  ivr_id: "ivr-example",
+                  path: [
+                    {
+                      menuId: "main",
+                      digits: "1",
+                      at: Date.now(),
+                      action: { kind: "hangup" },
+                    },
+                  ],
+                  final_action: { kind: "hangup" },
+                }
+              : event.name.includes(".call.")
+                ? call
+                : event.name.startsWith("contact.")
+                  ? contactEventData(contact, [])
+                  : event.name.startsWith("suppression.")
+                    ? suppression
+                    : /read_receipt|typing_failed/.test(event.name)
+                      ? {
+                          id: message._id,
+                          conversation_id: message.conversationId,
+                          ...(event.name.endsWith("sent")
+                            ? { read_receipt_sent_at: new Date().toISOString() }
+                            : { error: "Provider unavailable" }),
+                        }
+                      : event.name.includes("template.")
+                        ? {
+                            account_id: account._id,
+                            waba_id: "business",
+                            field: "message_template_status_update",
+                            event: "APPROVED",
+                            message_template_id: 123,
+                            message_template_name: "greeting",
+                            message_template_language: "en",
+                          }
+                        : {
+                            id: account._id,
+                            account_id: account._id,
+                            channel: "whatsapp",
+                            field: "account_settings_update",
+                            calling: { status: "ENABLED" },
+                            handling_mode: "api",
+                          }
+        violations.push(...payloadContract(event.schema, data, event.name))
+      }
+      tested.add(event.name)
+    }
+    expect(tested.size).toBe(SYSTEM_EVENT_CATALOG.length)
+    expect(violations).toEqual([])
+  })
+})
+
+test("contactless event waits resume once and expose the received payload to later steps", async () => {
+  const f = await setup()
+  const id = await f.define("opensend:domain.updated", [
+    {
+      key: "wait",
+      type: "wait_for_event",
+      eventName: "opensend:domain.deleted",
+      timeout: "1h",
+      received: [
+        {
+          key: "check",
+          type: "condition",
+          match: "and",
+          rules: [
+            {
+              field: "steps.wait.name",
+              operator: "eq",
+              value: "mail.example.test",
+            },
+          ],
+          met: [],
+          notMet: [],
+        },
+      ],
+      timedOut: [],
+    },
+  ])
+  const event = await f.t.run((ctx) =>
+    emitEvent(ctx, f.owner.team, "domain.updated", {
+      id: f.domain,
+      name: "mail.example.test",
+    })
+  )
+  await f.t.mutation(internal.automationRuntime.dispatch, {
+    id: event,
+    phase: "start",
+    cursor: null,
+  })
+  const run = (await f.t.run((ctx) =>
+    ctx.db
+      .query("automationRuns")
+      .withIndex("by_organizationId_and_automationId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("automationId", id)
+      )
+      .first()
+  ))!
+  await f.t.mutation(internal.automationRuntime.perform, {
+    id: run._id,
+    key: "wait",
+  })
+  const received = await f.t.run((ctx) =>
+    emitEvent(ctx, f.owner.team, "domain.deleted", {
+      id: f.domain,
+      name: "mail.example.test",
+    })
+  )
+  for (let attempt = 0; attempt < 2; attempt++)
+    await f.t.mutation(internal.automationRuntime.dispatch, {
+      id: received,
+      phase: "wait",
+      cursor: null,
+    })
+  const resumed = await f.t.run((ctx) => ctx.db.get("automationRuns", run._id))
+  expect(resumed?.waitingName).toBeUndefined()
+  expect(resumed?.lastSignalEventId).toBe(received)
+  await f.t.mutation(internal.automationRuntime.finishWait, {
+    id: run._id,
+    key: "wait",
+    received: true,
+    payload: { id: f.domain, name: "mail.example.test" },
+  })
+  expect(
+    await f.t.mutation(internal.automationRuntime.perform, {
+      id: run._id,
+      key: "check",
+    })
+  ).toMatchObject({ met: true })
+})
+test("skipped step outputs remain available to conditions", async () => {
+  const f = await setup()
+  const id = await f.owner.client.mutation(api.automations.create, {
+    organizationId: f.owner.team,
+  })
+  await f.owner.client.mutation(api.automations.update, {
+    organizationId: f.owner.team,
+    id,
+    trigger: "opensend:domain.updated",
+    graph: JSON.stringify([
+      {
+        key: "send",
+        type: "send_email",
+        templateId: "",
+        from: "",
+        replyTo: "",
+        variables: {},
+      },
+      {
+        key: "check",
+        type: "condition",
+        match: "and",
+        rules: [
+          { field: "steps.send.status", operator: "eq", value: "skipped" },
+        ],
+        met: [],
+        notMet: [],
+      },
+    ]),
+  })
+  const run = await f.t.run(async (ctx) =>
+    startRun(ctx, (await ctx.db.get("automations", id))!, null, {
+      id: f.domain,
+    })
+  )
+  expect(
+    await f.t.mutation(internal.automationRuntime.perform, {
+      id: run,
+      key: "send",
+    })
+  ).toEqual({ stopped: false })
+  expect(
+    await f.t.mutation(internal.automationRuntime.perform, {
+      id: run,
+      key: "check",
+    })
+  ).toMatchObject({ met: true })
 })
