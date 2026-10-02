@@ -16,6 +16,7 @@ import {
 } from "./testHelpers/meta.fixture"
 import { createChannelMessage, acceptChannelMessage } from "./channels/messages"
 import { mediaDownloadLink } from "./channels/downloads"
+import { upsertChannelThread } from "./channels/identity"
 import { signedFileLink } from "./fileDownloads"
 import { limitedBody, BodyTooLarge } from "./ses/web"
 
@@ -914,3 +915,126 @@ test("carousel media combines retained files, Meta uploads and links without ref
     }),
   })
 })
+
+test.each([false, true])(
+  "later phone-bearing messages reconcile a BSUID-only call identity: existing phone identity=%s",
+  async (existingPhone) => {
+    const f = await inboundFixture()
+    const bsuid = "IN.1045497258431781"
+    let phoneLinks: Awaited<ReturnType<typeof upsertChannelThread>> | undefined
+    if (existingPhone)
+      phoneLinks = await f.t.run(async (ctx) => {
+        const account = (await ctx.db.get("channelAccounts", f.account))!
+        return upsertChannelThread(ctx, account, {
+          externalId: SENDER,
+          phone: `+${SENDER}`,
+          profileName: "Kamal",
+          direction: "inbound",
+          at: Date.now(),
+          preview: "Existing phone history",
+        })
+      })
+    const callEvent = await f.t.run((ctx) =>
+      ctx.db.insert("metaWebhookEvents", {
+        object: "whatsapp_business_account",
+        bodyHash: "call-bsuid",
+        receivedAt: Date.now(),
+        body: JSON.stringify(
+          envelope(
+            {
+              metadata: { phone_number_id: PHONE_ID },
+              calls: [
+                { id: "wacid.merge", event: "connect", from_user_id: bsuid },
+              ],
+              contacts: [{ user_id: bsuid, profile: { name: "Caller" } }],
+            },
+            "calls"
+          )
+        ),
+      })
+    )
+    await f.t.mutation(internal.calling.projection.project, { id: callEvent })
+    const original = (await f.t.run((ctx) => ctx.db.query("calls").first()))!
+    const sourceId = original.channelContactId!
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch("channelContacts", sourceId, { marketingOptOut: true })
+      // Keep real message history on the call-created identity as well.
+      await insertRow(
+        ctx,
+        "channelMessages",
+        {
+          organizationId: f.owner.team,
+          channel: "whatsapp",
+          accountId: f.account,
+          channelContactId: sourceId,
+          conversationId: original.conversationId!,
+          direction: "inbound",
+          from: bsuid,
+          to: PHONE_ID,
+          type: "text",
+          status: "received",
+          preview: "BSUID history",
+          generation: 1,
+          attempts: 0,
+        },
+        true
+      )
+    })
+    await project(
+      f,
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        contacts: [
+          { wa_id: SENDER, user_id: bsuid, profile: { name: "Kamal" } },
+        ],
+        messages: [
+          {
+            id: "wamid.merge-phone",
+            from: SENDER,
+            from_user_id: bsuid,
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "text",
+            text: { body: "Now with a phone" },
+          },
+        ],
+      })
+    )
+    // Drive only merge jobs; other scheduled webhook/automation work is unrelated.
+    if (existingPhone) {
+      for (
+        let i = 0;
+        i < 5 &&
+        (await f.t.run((ctx) => ctx.db.get("channelContacts", sourceId)));
+        i++
+      ) {
+        await f.t.mutation(internal.channels.identity.finishMerge, {
+          sourceId,
+          targetId: phoneLinks!.channelContactId,
+        })
+      }
+    }
+    const data = await rows(f)
+    expect(data.identities).toHaveLength(1)
+    expect(data.identities[0]).toMatchObject({
+      externalId: SENDER,
+      phone: `+${SENDER}`,
+      userId: bsuid,
+      marketingOptOut: true,
+    })
+    const canonical = data.identities[0]
+    expect(data.conversations).toHaveLength(1)
+    expect(data.messages).toHaveLength(2)
+    for (const message of data.messages)
+      expect(message).toMatchObject({
+        channelContactId: canonical._id,
+        conversationId: data.conversations[0]._id,
+      })
+    const call = (await f.t.run((ctx) => ctx.db.get("calls", original._id)))!
+    expect(call.channelContactId).toBe(canonical._id)
+    expect(call.conversationId).toBe(data.conversations[0]._id)
+    if (existingPhone) expect(call.contactId).toBe(phoneLinks!.contactId)
+    expect(
+      await f.t.run((ctx) => ctx.db.get("contacts", original.contactId!))
+    ).not.toBeNull()
+  }
+)

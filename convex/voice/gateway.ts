@@ -1,5 +1,6 @@
 import { own as ownedIvr } from "../ivr/definitions"
-import { normalizePhone } from "../../lib/dashboard/phone"
+import { resolveCallPerson } from "../channels/identity"
+import { knownUserForPhone } from "../calling/rows"
 import { minuteUsage } from "./usage"
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
@@ -187,37 +188,14 @@ async function execute(
 ) {
   switch (name) {
     case "lookup_contact": {
-      const identity = call.channelContactId
-        ? await ctx.db.get("channelContacts", call.channelContactId)
-        : null
-      const id =
-        call.contactId ??
-        (identity?.organizationId === call.organizationId
-          ? identity.contactId
-          : undefined)
-      const phone =
-        call.from && /^\+?\d{7,15}$/.test(call.from)
-          ? normalizePhone(
-              call.from.startsWith("+") ? call.from : `+${call.from}`
-            )
-          : null
-      const contact = id
-        ? await ctx.db.get("contacts", id)
-        : phone
-          ? await ctx.db
-              .query("contacts")
-              .withIndex("by_organizationId_and_phone", (q) =>
-                q.eq("organizationId", call.organizationId).eq("phone", phone)
-              )
-              .unique()
-          : null
+      const { contact, conversationId } = await resolveCallPerson(ctx, call)
       if (!contact || contact.organizationId !== call.organizationId)
         return { contact: null }
-      const messages = call.conversationId
+      const messages = conversationId
         ? await ctx.db
             .query("channelMessages")
             .withIndex("by_conversationId", (q) =>
-              q.eq("conversationId", call.conversationId!)
+              q.eq("conversationId", conversationId!)
             )
             .order("desc")
             .take(5)
@@ -234,6 +212,15 @@ async function execute(
       }
     }
     case "create_note": {
+      const person = await resolveCallPerson(ctx, call)
+      if (person.contact || person.identity)
+        await ctx.db.patch("calls", call._id, {
+          ...(person.contact ? { contactId: person.contact._id } : {}),
+          ...(person.identity ? { channelContactId: person.identity._id } : {}),
+          ...(person.conversationId
+            ? { conversationId: person.conversationId }
+            : {}),
+        })
       await ctx.db.insert("callTranscripts", {
         organizationId: call.organizationId,
         callId: call._id,
@@ -255,7 +242,14 @@ async function execute(
           preview: args,
           message: "Test preview; no message sent",
         }
-      if (!call.userId && !call.from)
+      const person = await resolveCallPerson(ctx, call)
+      const account = await ctx.db.get("channelAccounts", call.accountId)
+      const userId =
+        call.userId ??
+        (account && person.phone
+          ? await knownUserForPhone(ctx, account, person.phone)
+          : undefined)
+      if (!userId && !person.phone)
         throw new Error("Caller identity unavailable")
       const body = args.template
         ? { template: object(JSON.parse(string(args.template))) }
@@ -266,9 +260,9 @@ async function execute(
           {
             channel: "whatsapp",
             from: call.accountId,
-            to: call.userId ? undefined : call.from,
+            to: userId ? undefined : (person.phone ?? undefined),
             body: {
-              ...(call.userId ? { recipient: call.userId } : {}),
+              ...(userId ? { recipient: userId } : {}),
               ...body,
             },
           },

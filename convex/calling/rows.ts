@@ -23,7 +23,11 @@ import {
 } from "../api/caller"
 import { channelAccountAccess } from "../channels/messages"
 import { findMetaApp } from "../meta/app"
-import { upsertChannelThread, findWhatsAppIdentity } from "../channels/identity"
+import {
+  upsertChannelThread,
+  findWhatsAppIdentity,
+  resolveCallPerson,
+} from "../channels/identity"
 import { idempotent } from "../api/idempotency"
 import { fileUrl } from "../storage/urls"
 import { emitEvent } from "../events"
@@ -80,7 +84,22 @@ export async function payload(
   row: Doc<"calls">,
   includeSession = true
 ) {
+  const person = await resolveCallPerson(ctx, row)
+  const name = [person.contact?.firstName, person.contact?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+  const profileName = person.identity?.profileName?.trim()
+  const readable = (value?: string) =>
+    value && value !== row.userId && !/^[A-Z]{2}\.\d+$/.test(value)
+      ? value
+      : undefined
   return {
+    contact_name:
+      readable(name) ||
+      readable(profileName) ||
+      (row.test ? "Browser" : "WhatsApp user"),
+    contact_phone: person.phone ?? null,
     object: "whatsapp_call" as const,
     id: row._id,
     test: row.test ?? false,
@@ -92,7 +111,7 @@ export async function payload(
     user_id: row.userId ?? null,
     from: row.from ?? null,
     to: row.to ?? null,
-    contact_id: row.contactId ?? null,
+    contact_id: person.contact?._id ?? null,
     conversation_id: row.conversationId ?? null,
     created_at: new Date(row._creationTime).toISOString(),
     observed_at: row.observedAt,
@@ -392,7 +411,8 @@ export const create = internalMutation({
         "The calling gateway is not configured."
       )
     const links = await upsertChannelThread(ctx, account, {
-      externalId: userId,
+      externalId: phone ? toWaId(phone) : userId,
+      ...(phone ? { phone } : {}),
       userId,
       at: now,
       direction: "outbound",

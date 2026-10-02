@@ -15,6 +15,8 @@ import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
 import { CallGatewayClient } from "../services/call-gateway/src/client"
 import { createHash } from "node:crypto"
 import { patchRow } from "./counts"
+import { upsertContact, insertContact } from "./audience"
+import { upsertChannelThread, recordWhatsAppUser } from "./channels/identity"
 import { writableCallingSettings } from "../lib/meta/calling"
 import { actionError } from "../lib/action-error"
 import { MetaError, parseGraphError } from "../lib/meta/errors"
@@ -1144,5 +1146,130 @@ test("a call committed before an interrupted Graph action is durably expired ins
   expect(await f.t.run((ctx) => ctx.db.get("calls", id))).toMatchObject({
     status: "failed",
     error: "Call setup timed out before Meta assigned a call id.",
+  })
+})
+
+test.each([false, true])(
+  "BSUID-only calls resolve a legacy phone identity and backfill later webhook links: earlier duplicate=%s",
+  async (earlierDuplicate) => {
+    const f = await setup()
+    const links = await f.t.run(async (ctx) => {
+      const account = (await ctx.db.get("channelAccounts", f.account))!
+      const contact = await upsertContact(
+        ctx,
+        f.owner.team,
+        { phone: "+919316108172", firstName: "Kamal" },
+        { properties: [], segmentIds: [], skipExisting: true }
+      )
+      const links = await upsertChannelThread(ctx, account, {
+        externalId: "919316108172",
+        phone: "+919316108172",
+        profileName: "Kamal",
+        at: Date.now(),
+        direction: "inbound",
+        preview: "Hello",
+      })
+      // Reproduce the older message identity: userId exists, but no alias or business scope.
+      await ctx.db.patch("channelContacts", links.channelContactId, {
+        userId: BSUID,
+        contactId: contact.id,
+      })
+      if (earlierDuplicate) {
+        const connection = (await ctx.db.get(
+          "metaConnections",
+          account.connectionId
+        ))!
+        const orphanContact = await insertContact(ctx, f.owner.team, {
+          firstName: "Caller",
+          lastName: "",
+        })
+        const orphan = await ctx.db.insert("channelContacts", {
+          organizationId: f.owner.team,
+          channel: "whatsapp",
+          scopeId: `whatsapp:${connection.businessId}`,
+          externalId: BSUID,
+          userId: BSUID,
+          contactId: orphanContact,
+          marketingOptOut: false,
+        })
+        await recordWhatsAppUser(ctx, account, orphan, BSUID)
+      }
+      return { ...links, contactId: contact.id }
+    })
+    const connect = {
+      id: "wacid.kamal",
+      event: "connect",
+      direction: "USER_INITIATED",
+      from_user_id: BSUID,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+    }
+    await f.project(f.webhook([connect]))
+    let call = (await f.t.run((ctx) => ctx.db.query("calls").first()))!
+    expect(call).toMatchObject(links)
+    const identities = await f.t.run((ctx) =>
+      ctx.db.query("channelContacts").collect()
+    )
+    expect(
+      identities.filter((identity) => !identity.mergedIntoId)
+    ).toHaveLength(1)
+    const list = await f.owner.client.query(api.calling.rows.dashboardList, {
+      organizationId: f.owner.team,
+      limit: 25,
+    })
+    expect(list.data[0]).toMatchObject({
+      contact_name: "Kamal",
+      contact_phone: "+919316108172",
+      contact_id: links.contactId,
+    })
+    const detail = await f.t.query(internal.calling.rows.get, {
+      organizationId: f.owner.team,
+      caller: f.caller,
+      id: call._id,
+    })
+    expect(detail).toMatchObject({
+      contact_name: "Kamal",
+      contact_phone: "+919316108172",
+    })
+    await f.t.run((ctx) =>
+      ctx.db.patch("calls", call._id, {
+        contactId: undefined,
+        channelContactId: undefined,
+      })
+    )
+    await f.project(
+      f.webhook([{ ...connect, event: "terminate", status: "COMPLETED" }])
+    )
+    call = (await f.t.run((ctx) => ctx.db.get("calls", call._id)))!
+    expect(call).toMatchObject(links)
+    // An enriched replay repairs old rows without duplicating the lifecycle event.
+    await f.t.run((ctx) =>
+      ctx.db.patch("calls", call._id, {
+        contactId: undefined,
+        channelContactId: undefined,
+      })
+    )
+    await f.project(f.webhook([{ ...connect, from: "919316108172" }]))
+    expect(await f.t.run((ctx) => ctx.db.get("calls", call._id))).toMatchObject(
+      links
+    )
+    expect(
+      await f.t.run((ctx) => ctx.db.query("callEvents").collect())
+    ).toHaveLength(2)
+  }
+)
+
+test("unknown BSUID callers use profile names or a readable WhatsApp fallback", async () => {
+  const f = await setup()
+  await f.project({
+    metadata: { phone_number_id: PHONE_ID },
+    calls: [{ id: "wacid.unknown", event: "connect", from_user_id: BSUID }],
+  })
+  const list = await f.owner.client.query(api.calling.rows.dashboardList, {
+    organizationId: f.owner.team,
+    limit: 25,
+  })
+  expect(list.data[0]).toMatchObject({
+    contact_name: "WhatsApp user",
+    contact_phone: null,
   })
 })

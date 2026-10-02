@@ -163,6 +163,7 @@ export const channelTables = {
     userId: v.optional(v.string()),
     parentUserId: v.optional(v.string()),
     userScopeId: v.optional(v.string()),
+    mergedIntoId: v.optional(v.id("channelContacts")),
     identityKeyHash: v.optional(v.string()),
     /** WhatsApp error 131050: the person stopped marketing messages. */
     marketingOptOut: v.boolean(),
@@ -175,6 +176,11 @@ export const channelTables = {
       "channel",
       "scopeId",
       "externalId",
+    ])
+    .index("by_organizationId_and_channel_and_userId", [
+      "organizationId",
+      "channel",
+      "userId",
     ])
     .index("by_contactId", ["contactId"]),
   /** BSUIDs are business-scoped aliases of the stable channel identity. */
@@ -317,6 +323,10 @@ export const channelTables = {
       "direction",
     ])
     .index("by_conversationId", ["conversationId"])
+    .index("by_conversationId_and_channelContactId", [
+      "conversationId",
+      "channelContactId",
+    ])
     .index("by_conversationId_and_direction", ["conversationId", "direction"])
     .index("by_channel_and_externalId", ["channel", "externalId"])
     .index("by_accountId_and_reactionTargetExternalId", [
