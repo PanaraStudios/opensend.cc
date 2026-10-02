@@ -93,12 +93,16 @@ export async function normalizePrompt(audio: Buffer): Promise<Buffer> {
         })
         child.stdin.end(audio)
       })
-    // Measure the actual 16k mono signal, after anti-alias filtering. Linear
-    // second-pass gain preserves dynamics; loudnorm limits peaks if gain cannot.
+    // Measure the actual 16k mono signal, after anti-alias filtering, then apply
+    // one static gain. Never loudnorm's second pass: it silently switches to
+    // dynamic mode when speech LRA exceeds its target, lifting breaths and room
+    // noise (audible as hiss on calls).
     const resample =
       "aformat=channel_layouts=mono,aresample=16000:filter_size=64:cutoff=0.97"
-    const target = "loudnorm=I=-18:TP=-2:LRA=11"
-    const analysis = await run(`${resample},${target}:print_format=json`, true)
+    const analysis = await run(
+      `${resample},loudnorm=I=-18:TP=-2:LRA=11:print_format=json`,
+      true
+    )
     const match = analysis.diagnostics.match(/\{[^{}]*"input_i"[^{}]*\}/)
     if (!match)
       throw new GatewayError(
@@ -106,20 +110,14 @@ export async function normalizePrompt(audio: Buffer): Promise<Buffer> {
         "Unable to measure prompt loudness"
       )
     const measured = JSON.parse(match[0]) as Record<string, string>
-    const parameters = [
-      "input_i",
-      "input_tp",
-      "input_lra",
-      "input_thresh",
-      "target_offset",
-    ]
-    const finite = parameters.every((key) =>
-      Number.isFinite(Number(measured[key]))
-    )
+    const loudness = Number(measured.input_i),
+      peak = Number(measured.input_tp)
     // Silence has -inf loudness: preserve it without attempting infinite gain.
-    const filter = finite
-      ? `${resample},${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true,aresample=16000:filter_size=64:cutoff=0.97`
-      : resample
+    // Otherwise aim for -18 LUFS, but never let true peak exceed -2 dBTP.
+    const filter =
+      Number.isFinite(loudness) && Number.isFinite(peak)
+        ? `${resample},volume=${Math.min(-18 - loudness, -2 - peak).toFixed(2)}dB`
+        : resample
     const { pcm } = await run(filter)
     const wav = Buffer.alloc(44 + pcm.length)
     wav.write("RIFF")
