@@ -1,3 +1,4 @@
+import { hydratedChannelMessage } from "./payload"
 import { RateLimiter } from "@convex-dev/rate-limiter"
 import { ConvexError, v } from "convex/values"
 import { channelStrategies } from "../../lib/meta/payloads"
@@ -193,7 +194,12 @@ export async function logControlFailure(
     ctx,
     message.organizationId,
     `${message.channel}.message.${read ? "read_receipt_failed" : "typing_failed"}`,
-    { id: messageId, conversation_id: message.conversationId, error }
+    {
+      ...(await hydratedChannelMessage(ctx, message, Date.now())),
+      id: messageId,
+      conversation_id: message.conversationId,
+      error,
+    }
   )
   await ctx.db.insert("channelMessageEvents", {
     messageId,
@@ -231,6 +237,7 @@ export const record = internalMutation({
         message.organizationId,
         `${message.channel}.message.read_receipt_sent`,
         {
+          ...(await hydratedChannelMessage(ctx, message, at)),
           id: messageId,
           conversation_id: message.conversationId,
           read_receipt_sent_at: new Date(at).toISOString(),
