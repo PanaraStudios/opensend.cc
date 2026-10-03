@@ -5,6 +5,8 @@ import { env } from "../_generated/server"
 import { findInstallation } from "../access"
 import { signedFileLinkForOrigin } from "../fileDownloads"
 import { object, array, string } from "../../lib/meta/parse"
+import { messageBase } from "../messageShape"
+import { renderedChannelTemplate } from "./templates"
 import type { Doc } from "../_generated/dataModel"
 
 /** The same message contract is used by senders and webhook projections. */
@@ -41,6 +43,14 @@ export function channelMessagePayload(
         }
       : {}),
     ...(message.channel === "whatsapp" ? { raw: payload } : {}),
+    ...messageBase(
+      message,
+      message.channel,
+      message.direction,
+      message.status,
+      message.preview,
+      null
+    ),
     id: message._id,
     channel: message.channel,
     account_id: message.accountId,
@@ -266,9 +276,14 @@ export async function hydratedChannelMessage(
           m.conversationId === message.conversationId
       )?._id ?? null
   }
+  const rendered =
+    content?.rendered ??
+    (await renderedChannelTemplate(ctx, message, content, account))
   return {
     ...channelMessagePayload(message, payload, identity),
-    ...(content?.rendered ? { rendered: content.rendered } : {}),
+    preview: rendered?.body ?? message.preview,
+    contact_id: contact?.contactId ?? null,
+    ...(rendered ? { rendered } : {}),
     ...(content?.sendResponse
       ? { send_response: JSON.parse(content.sendResponse) }
       : {}),

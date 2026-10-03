@@ -80,6 +80,7 @@ export const begin = internalMutation({
       })
     ),
     scope: requiredScopeValue,
+    alternativeScopes: v.optional(v.array(requiredScopeValue)),
     emailSending: v.optional(v.boolean()),
     smtp: v.optional(v.boolean()),
     idempotency: v.optional(
@@ -118,6 +119,13 @@ export const begin = internalMutation({
         name: "OAuth application",
       }
     }
+    const required =
+      args.alternativeScopes?.find(
+        (scope) => !lacksPermission(caller, scope)
+      ) ??
+      args.alternativeScopes?.[0] ??
+      args.scope
+    caller.scope = required
     if (await retirement(ctx, caller.organizationId))
       return { kind: "refused" as const, error: invalidKey }
     const limit = await limiter.limit(ctx, "api", {
@@ -149,11 +157,11 @@ export const begin = internalMutation({
         `Too many requests. You can only make ${API_RATE} requests per second. See rate limit response headers for more information.`,
         Math.max(1, Math.ceil(limit.retryAfter / 1000))
       )
-    if (lacksPermission(caller, args.scope))
+    if (lacksPermission(caller, required))
       return fail(
         403,
         "restricted_api_key",
-        `This API key needs the \`${scopeName(args.scope)}\` scope.`
+        `This API key needs the \`${scopeName(required)}\` scope.`
       )
     if (
       usesSendingDomain(caller) &&

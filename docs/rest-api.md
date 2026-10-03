@@ -872,3 +872,5 @@ resolvable identity keep the call-record fallback.
 The SDK exposes `opensend.contacts.notes.create/list/update/remove`, using
 `contactId` and `noteId` options. MCP exposes `create-contact-note`,
 `list-contact-notes`, `update-contact-note`, and `remove-contact-note`.
+
+See [Unified Messages API](messages-api.md) for sending and reading across email, WhatsApp, Messenger and Instagram.

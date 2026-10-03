@@ -433,7 +433,10 @@ test("every event contract covers payload builders, including all WhatsApp conte
       messageId: "provider-message",
       broadcastId: "broadcast-example",
     })
-    const email = emailEventData((await ctx.db.get("emails", emailId))!)
+    const email = await emailEventData(
+      ctx,
+      (await ctx.db.get("emails", emailId))!
+    )
     const callId = await ctx.db.insert("calls", {
       organizationId: f.owner.team,
       accountId: account._id,

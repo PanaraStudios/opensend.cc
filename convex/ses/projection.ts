@@ -228,7 +228,7 @@ export async function projectEvent(ctx: MutationCtx, event: Doc<"sesEvents">) {
         : [current.to]
       for (const to of destinations)
         await emitEvent(ctx, current.organizationId, `email.${status}`, {
-          ...emailEventData(current),
+          ...(await emailEventData(ctx, current)),
           to,
           ...extra,
         })
@@ -291,7 +291,7 @@ export async function projectEngagement(
   )
   if (email.source !== "system")
     await emitEvent(ctx, email.organizationId, `email.${status}`, {
-      ...emailEventData(email),
+      ...(await emailEventData(ctx, email)),
       ...(status === "clicked"
         ? { click: { ...detail, timestamp: new Date(at).toISOString() } }
         : {}),

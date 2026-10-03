@@ -96,6 +96,9 @@ describe("WhatsApp catalog SDK contract", () => {
       created_at: "2026-10-01T00:00:00Z",
       data: {
         id: "id",
+        object: "message",
+        preview: "Voice message",
+        contact_id: null,
         channel: "whatsapp",
         account_id: "account",
         conversation_id: "thread",

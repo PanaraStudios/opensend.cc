@@ -72,3 +72,5 @@ export type {
   SystemTriggerName,
 } from "./events/catalog"
 export type * from "./contacts/notes/interfaces"
+
+export * from './messages';

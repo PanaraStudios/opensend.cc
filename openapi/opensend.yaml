@@ -25,6 +25,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Messages
   - name: IVRs
   - name: API Keys
   - name: Broadcasts
@@ -48,6 +49,138 @@ tags:
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
+  /messages:
+    post:
+      operationId: messages/send
+      tags: [Messages]
+      summary: Send a message across channels
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: channel:write
+      description: >-
+        Uses emails:write for email or whatsapp:write, messenger:write, instagram:write for the
+        selected channel. Full access also works; full_access in x-opensend-scope is the static
+        fallback, not a requirement. Legacy Sending access may send email only. This adapter uses
+        the existing email and Meta senders, sharing validation, window rules and errors. Returns
+        the queued id. Idempotency-Key replays the response for 24 hours. Email media uses the
+        existing attachments contract (id, path or base64 content and filename); Meta media is
+        one item with type and exactly one id or url. Meta reply_to is a message id; email
+        reply_to is an address or array of addresses.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessage'
+      responses:
+        '200':
+          description: Queued message
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                additionalProperties: false
+                properties:
+                  id: {type: string}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '404': {$ref: '#/components/responses/Error404'}
+        '409': {$ref: '#/components/responses/Error409'}
+        '422': {$ref: '#/components/responses/Error422'}
+        '429': {$ref: '#/components/responses/Error429'}
+    get:
+      operationId: messages/list
+      tags: [Messages]
+      summary: List messages across readable channels
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: readable-channels
+      description: >-
+        Returns only channels granted read access by lib/api-scopes.ts; write implies read.
+        An explicit channel filter requires that channel's read scope. At least one readable
+        channel is required. Full access reads every channel. Merges sent and received email
+        and Meta messages newest first by creation time and id. Use next_cursor with identical
+        filters and readable channels; the cursor is opaque, and changes to filters/scopes are
+        rejected. Bounded scans may return a short or empty page with has_more=true. New messages
+        before the cursor do not shift later pages. Email contact_id identifies the primary
+        recipient's CRM contact (or the sender for inbound email); it is null if unlinked.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: channel
+          in: query
+          schema: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        - name: direction
+          in: query
+          schema: {type: string, enum: [inbound, outbound]}
+        - name: status
+          in: query
+          schema: {type: string}
+        - name: contact_id
+          in: query
+          schema: {type: string}
+        - name: from
+          in: query
+          description: Exact sender address or channel identifier.
+          schema: {type: string}
+        - name: to
+          in: query
+          description: Exact recipient; for email matches any to address.
+          schema: {type: string}
+        - name: created_after
+          in: query
+          description: Inclusive lower creation timestamp (ISO 8601).
+          schema: {type: string, format: date-time}
+        - name: created_before
+          in: query
+          description: Inclusive upper creation timestamp (ISO 8601).
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Message page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data, has_more, next_cursor]
+                additionalProperties: false
+                properties:
+                  object: {const: list, type: string}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Message'}
+                  has_more: {type: boolean}
+                  next_cursor: {type: [string, 'null']}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '422': {$ref: '#/components/responses/Error422'}
+        '429': {$ref: '#/components/responses/Error429'}
+  /messages/{id}:
+    get:
+      operationId: messages/get
+      tags: [Messages]
+      summary: Get a message in any channel
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: message-channel:read
+      description: Requires emails:read or the stored message channel's read scope. Write implies read. Tenant isolation and permissions are rechecked when reading the message. Returns 403 for an unreadable channel, 404 for an unknown or other team's id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Message
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Message'}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '404': {$ref: '#/components/responses/Error404'}
+        '429': {$ref: '#/components/responses/Error429'}
   /contacts/{id}/notes:
     get:
       operationId: contacts/notes/list
@@ -13898,6 +14031,113 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    SendMessage:
+      type: object
+      required: [channel, to]
+      properties:
+        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        from: {type: string}
+        text: {type: string}
+        subject: {type: string}
+        html: {type: string}
+        reply_to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        template:
+          type: object
+          oneOf:
+            - required: [id]
+              not: {required: [alias]}
+            - required: [alias]
+              not: {required: [id]}
+          properties:
+            id: {type: string, minLength: 1}
+            alias: {type: string, minLength: 1}
+            variables:
+              type: object
+              additionalProperties: {type: [string, number]}
+        media:
+          type: array
+          items:
+            type: object
+            properties:
+              type: {type: string, enum: [image, video, audio, file]}
+              id: {type: string}
+              url: {type: string, format: uri}
+              path: {type: string, format: uri}
+              content: {type: string, contentEncoding: base64}
+              filename: {type: string}
+              content_type: {type: string}
+        tags:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: {type: string}
+              value: {type: string}
+      allOf:
+        - if:
+            properties:
+              channel: {enum: [whatsapp, messenger, instagram]}
+          then:
+            properties:
+              to: {type: string}
+              reply_to: {type: string}
+              subject: false
+              html: false
+              media: {maxItems: 1}
+            oneOf:
+              - required: [text]
+                not: {anyOf: [{required: [template]}, {required: [media]}]}
+              - required: [template]
+                not: {anyOf: [{required: [text]}, {required: [media]}]}
+              - required: [media]
+                properties:
+                  media: {minItems: 1}
+                not: {anyOf: [{required: [text]}, {required: [template]}]}
+    MessageBase:
+      type: object
+      required: [id, object, channel, direction, from, to, status, preview, created_at, contact_id]
+      properties:
+        id: {type: string}
+        object: {type: string, const: message}
+        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        direction: {type: string, enum: [inbound, outbound]}
+        from: {type: string}
+        to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        status: {type: string}
+        preview: {type: string, description: Rendered template body where available, otherwise text, HTML or a channel preview.}
+        created_at: {type: string, format: date-time}
+        contact_id: {type: [string, 'null']}
+        conversation_id: {type: string}
+    Message:
+      allOf:
+        - $ref: '#/components/schemas/MessageBase'
+        - oneOf:
+            - type: object
+              required: [subject, html, text]
+              properties:
+                channel: {const: email}
+                to: {type: array, items: {type: string}}
+                subject: {type: string}
+                html: {type: [string, 'null']}
+                text: {type: [string, 'null']}
+            - type: object
+              required: [type, conversation_id]
+              properties:
+                channel: {enum: [whatsapp, messenger, instagram]}
+                to: {type: string}
+                type: {type: string}
+      description: Email and channel message events add MessageBase fields while retaining their existing email_id, message_id, tags and other event-specific fields.
     ContactNoteAuthor:
       type: object
       required: [kind]
@@ -29000,6 +29240,66 @@ components:
         schema:
           $ref: '#/components/schemas/EventPayloadField'
 webhooks:
+  message:
+    post:
+      operationId: webhooks/message
+      summary: Shared message fields across email and Meta events
+      description: >-
+        Email events and Meta message events retain their existing names and payload fields,
+        adding the common MessageBase contract. The outer created_at is the event timestamp;
+        data.created_at is the message timestamp. Email keeps email_id, message_id, subject,
+        tags as a map and delivery details; Meta keeps normalized content, tags as pairs and
+        conversation_id. Subscribe using the existing shared event catalog. Events are signed
+        with Standard Webhooks. Delivery order is not guaranteed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, created_at, data]
+              properties:
+                type:
+                  type: string
+                  pattern: '^(email\.[a-z_]+|(whatsapp|messenger|instagram)\.message\.[a-z_]+)$'
+                created_at: {type: string, format: date-time}
+                data:
+                  allOf:
+                    - $ref: '#/components/schemas/MessageBase'
+                    - type: object
+                      properties:
+                        email_id: {type: string}
+                        message_id: {type: string}
+                        subject: {type: string}
+                        tags:
+                          oneOf:
+                            - {type: object, additionalProperties: {type: string}}
+                            - type: array
+                              items:
+                                type: object
+                                required: [name, value]
+                                properties:
+                                  name: {type: string}
+                                  value: {type: string}
+            example:
+              type: email.sent
+              created_at: '2026-10-01T00:00:01.000Z'
+              data:
+                id: message-id
+                object: message
+                channel: email
+                direction: outbound
+                from: support@example.com
+                to: [customer@example.com]
+                status: sent
+                preview: Your order has shipped.
+                created_at: '2026-10-01T00:00:00.000Z'
+                contact_id: null
+                email_id: message-id
+                subject: Your order
+                tags: {order: '42'}
+      responses:
+        '200': {description: Event accepted}
   contactNoteCreated:
     post:
       operationId: webhooks/contact/note-created
