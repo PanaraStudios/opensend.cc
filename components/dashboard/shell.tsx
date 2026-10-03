@@ -47,7 +47,7 @@ import {
   useDebouncedValue,
 } from "@/components/dashboard/primitives"
 import { useContactSearch } from "@/lib/audience/use-audience"
-import { useEmailSearch } from "@/lib/emails/use-emails"
+import { useMessageSearch } from "@/lib/messages/use-messages"
 import { TeamSwitcher } from "@/components/dashboard/team-switcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Kbd } from "@/components/ui/kbd"
@@ -91,6 +91,7 @@ import {
 import { Toaster } from "@/components/ui/toast"
 import {
   DASHBOARD_NAV,
+  CHANNEL_PAGES,
   PLAYGROUND_TABS,
   SETTINGS_NAV,
   INSTANCE_PAGES,
@@ -98,7 +99,7 @@ import {
   navItemActive,
 } from "@/lib/dashboard/nav"
 import { initials } from "@/lib/dashboard/format"
-import { useDomainOptions } from "@/lib/domains/use-domains"
+import { useTeamQuery } from "@/components/auth/workspace"
 
 const APPEARANCE_OPTIONS = [
   { theme: "light", label: "Light", Icon: SunIcon },
@@ -169,8 +170,12 @@ function CommandMenu({
   const [search, setSearch] = React.useState("")
   const settled = useDebouncedValue(search)
   const contacts = useContactSearch(settled, open)
-  const emails = useEmailSearch(settled, open)
-  const domains = useDomainOptions({ search: settled }, open)
+  const messages = useMessageSearch(settled, open)
+  const senders = useTeamQuery(
+    api.channels.senders.list,
+    { search: settled, paginationOpts: { cursor: null, numItems: 8 } },
+    { enabled: open }
+  )
 
   function setOpen(next: boolean) {
     if (!next) setSearch("")
@@ -190,7 +195,7 @@ function CommandMenu({
     >
       <Command>
         <CommandInput
-          placeholder="Search pages, emails, contacts…"
+          placeholder="Search pages, messages, senders, contacts…"
           value={search}
           onValueChange={setSearch}
         />
@@ -206,6 +211,17 @@ function CommandMenu({
               Keyboard shortcuts <Kbd className="ml-auto">?</Kbd>
             </CommandItem>
             {DASHBOARD_NAV.map((item) => (
+              <CommandItem
+                key={item.href}
+                value={item.title}
+                keywords={item.keywords}
+                onSelect={() => go(item.href)}
+              >
+                {item.title}
+                <NavigationKeys href={item.href} />
+              </CommandItem>
+            ))}
+            {CHANNEL_PAGES.map((item) => (
               <CommandItem
                 key={item.href}
                 value={item.title}
@@ -258,29 +274,40 @@ function CommandMenu({
           <CommandSeparator />
           {open ? (
             <>
-              <CommandGroup heading="Emails">
-                {emails.map((email) => (
+              <CommandGroup heading="Messages">
+                {messages.map((message) => (
                   <CommandItem
-                    key={email.id}
+                    key={message.id}
                     serverResult
-                    value={`email ${email.subject} ${email.to}`}
-                    onSelect={() => go(`/emails/${email.id}`)}
+                    value={`message ${message.summary} ${message.party}`}
+                    onSelect={() => go(message.href)}
                   >
-                    {email.subject}
+                    <span className="truncate">
+                      {message.summary || "Message"}
+                    </span>
                   </CommandItem>
                 ))}
               </CommandGroup>
-              <CommandGroup heading="Domains">
-                {domains.map((domain) => (
-                  <CommandItem
-                    key={domain.id}
-                    serverResult
-                    value={`domain ${domain.name}`}
-                    onSelect={() => go(`/domains/${domain.id}`)}
-                  >
-                    {domain.name}
-                  </CommandItem>
-                ))}
+              <CommandGroup heading="Senders">
+                {senders?.page.map((row) => {
+                  const domain = row.kind === "domain"
+                  const id = domain ? row.domain._id : row.account._id
+                  const name = domain
+                    ? row.domain.name
+                    : row.account.displayName || row.account.handle
+                  return (
+                    <CommandItem
+                      key={id}
+                      serverResult
+                      value={`sender ${name}`}
+                      onSelect={() =>
+                        go(domain ? `/domains/${id}` : `/channels/${id}`)
+                      }
+                    >
+                      {name}
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
               <CommandGroup heading="Contacts">
                 {contacts.map((contact) => (

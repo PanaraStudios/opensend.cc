@@ -61,7 +61,11 @@ export const DASHBOARD_NAV: NavItem[] = [
     title: "Channels",
     icon: RadioTowerIcon,
     match: ["/channels", "/domains"],
-    keywords: ["Domains", ...CHANNEL_IDS.map((id) => CHANNELS[id].label)],
+    keywords: [
+      "Domains",
+      "sender",
+      ...CHANNEL_IDS.map((id) => CHANNELS[id].label),
+    ],
   },
   { href: "/logs", title: "Logs", icon: ScrollTextIcon },
   { href: "/api-keys", title: "API keys", icon: KeyRoundIcon },
@@ -74,6 +78,13 @@ export const DASHBOARD_NAV: NavItem[] = [
     match: ["/settings"],
   },
 ]
+
+/** Channel destinations share one registry and remain available through ⌘K. */
+export const CHANNEL_PAGES = CHANNEL_IDS.map((channel) => ({
+  href: `/channels?type=${channel}`,
+  title: `${CHANNELS[channel].label} channels`,
+  keywords: ["channel", "sender", CHANNELS[channel].accountNoun],
+}))
 
 export type SectionTab = { href: string; title: string }
 export type SectionTabs = readonly [SectionTab, ...SectionTab[]]

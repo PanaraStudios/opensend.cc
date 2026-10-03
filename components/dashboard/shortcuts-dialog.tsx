@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Kbd } from "@/components/ui/kbd"
-import { DASHBOARD_NAV } from "@/lib/dashboard/nav"
+import { DASHBOARD_NAV, CHANNEL_PAGES } from "@/lib/dashboard/nav"
 import { NAVIGATION_SHORTCUTS } from "@/lib/dashboard/shortcuts"
 import { useShortcutModifier } from "@/lib/dashboard/use-shortcut"
 
@@ -44,7 +44,7 @@ export function ShortcutsDialog({
     },
     {
       title: "Navigation",
-      items: DASHBOARD_NAV.map(
+      items: [...DASHBOARD_NAV, ...CHANNEL_PAGES].map(
         (item) =>
           [
             item.title,
@@ -79,9 +79,9 @@ export function ShortcutsDialog({
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Press G, then a letter to navigate. Shortcuts pause while typing or
-            using a menu or dialog, except that dialog’s confirmation shortcut.
-            Editors keep their own shortcuts.
+            Press G, then a letter or number to navigate. Shortcuts pause while
+            typing or using a menu or dialog, except that dialog’s confirmation
+            shortcut. Editors keep their own shortcuts.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 sm:grid-cols-2">

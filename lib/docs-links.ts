@@ -13,6 +13,7 @@ export const DOCS_LINKS = {
     "/channels": "/docs/self-hosting/requirements",
     "/contacts": "/docs/dashboard/audience/contacts",
     "/domains": "/docs/dashboard/domains/manage",
+    "/emails/messages": "/docs/self-hosting/requirements",
     "/emails": "/docs/dashboard/emails/sending",
     "/emails/receiving": "/docs/dashboard/receiving/introduction",
     "/emails/suppressions": "/docs/dashboard/emails/suppressions",

@@ -60,7 +60,7 @@ test("every dashboard navigation destination has an explicit docs mapping", () =
 test("tabs and nested detail pages resolve to the most specific guide", () => {
   for (const [route, path] of [
     ["/emails/message-id", "/dashboard/emails/sending"],
-    ["/emails/messages/message-id", "/dashboard/emails/sending"],
+    ["/emails/messages/message-id", "/self-hosting/requirements"],
     ["/playground", "/dashboard/receiving/introduction"],
     ["/playground/calls", "/self-hosting/requirements"],
     ["/playground/ivr", "/self-hosting/requirements"],

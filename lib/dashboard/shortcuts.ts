@@ -65,6 +65,9 @@ export const NAVIGATION_SHORTCUTS: Record<string, string> = {
   "/channels": "h",
   // Domains' old key opens their channel.
   [EMAIL_CHANNELS_HREF]: "d",
+  "/channels?type=whatsapp": "1",
+  "/channels?type=messenger": "2",
+  "/channels?type=instagram": "3",
   "/logs": "l",
   "/api-keys": "k",
   "/webhooks": "w",
