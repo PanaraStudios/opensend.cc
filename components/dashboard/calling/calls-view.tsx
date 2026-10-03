@@ -116,12 +116,19 @@ export function CallsView() {
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">
-                    {call.bot_outcome
-                      ? callOutcomeLabel(call.bot_outcome)
-                      : call.ivr_outcome
-                        ? ivrActionLabel(call.ivr_outcome)
-                        : callOutcomeLabel(call.status)}
+                    {call.direction === "outbound" && call.outcome
+                      ? call.outcome.replaceAll("_", " ")
+                      : call.bot_outcome
+                        ? callOutcomeLabel(call.bot_outcome)
+                        : call.ivr_outcome
+                          ? ivrActionLabel(call.ivr_outcome)
+                          : callOutcomeLabel(call.status)}
                   </Badge>
+                  {call.error ? (
+                    <p className="mt-1 max-w-xs text-xs text-destructive">
+                      {call.error}
+                    </p>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   {call.duration === null ? "—" : `${call.duration}s`}

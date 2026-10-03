@@ -1,3 +1,10 @@
+import { ownedBot } from "./voice/resources"
+import { own as ownedIvr } from "./ivr/definitions"
+import {
+  outboundRoute,
+  callContext,
+  outboundInstructions,
+} from "../lib/calling/outbound"
 import { referenceErrors } from "../lib/automation-references"
 import { catalogContactSchema } from "../lib/event-catalog"
 import { teamEventCatalog } from "./automationEvents"
@@ -260,6 +267,7 @@ export async function setAutomationStatus(
     for (const step of flattenSteps(steps)) {
       if (
         "accountId" in step &&
+        step.type !== "place_call" &&
         isChannelSendStep(step.type) &&
         step.accountId
       ) {
@@ -301,6 +309,22 @@ export async function setAutomationStatus(
           )
             throw new ConvexError("Map every template variable before sending")
         }
+      }
+      if (step.type === "place_call" && step.accountId && step.route) {
+        await resolveChannelAccount(
+          ctx,
+          organizationId,
+          step.accountId,
+          "whatsapp"
+        )
+        const route = outboundRoute(step.route)
+        callContext({ context: step.purpose, variables: step.variables })
+        if (route?.kind === "bot") {
+          const bot = await ownedBot(ctx, organizationId, route.botId)
+          outboundInstructions(bot.systemPrompt, step.purpose, step.variables)
+        } else if (route?.kind === "ivr")
+          await ownedIvr(ctx, organizationId, route.ivrId)
+        else throw new ConvexError("Select a bot or IVR")
       }
       if (step.type === "send_email") {
         const template = await publishedTemplate(

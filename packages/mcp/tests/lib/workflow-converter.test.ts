@@ -505,3 +505,37 @@ for (const type of ["send_messenger", "send_instagram"] as const) {
     })
   }
 }
+
+it("restores place_call REST config to SDK fields for editable workflows", () => {
+  const workflow = sdkResponseToWorkflow(
+    [
+      {
+        key: "trigger",
+        type: "trigger",
+        config: { event_name: "seminar.signup" },
+      },
+      {
+        key: "call",
+        type: "place_call",
+        config: {
+          account_id: "number",
+          route: "bot:coach",
+          context: "Follow up",
+          variables: { name: { var: "contact.first_name" } },
+          request_permission: true,
+        },
+      },
+    ],
+    [{ from: "trigger", to: "call", type: "default" }]
+  )
+  expect(workflow.steps[1].config).toEqual({
+    accountId: "number",
+    route: "bot:coach",
+    context: "Follow up",
+    variables: { name: { var: "contact.first_name" } },
+    requestPermission: true,
+  })
+  expect(workflowToSdkOptions(workflow).steps[1].config).toEqual(
+    workflow.steps[1].config
+  )
+})

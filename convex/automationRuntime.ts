@@ -132,7 +132,21 @@ export const execute = workflow.define({
           { id, key: node.key }
         )
         if (result.stopped) return false
-        if (node.type === "delay") {
+        if (node.type === "place_call") {
+          const output = await step.runAction(
+            internal.calling.outbound.automationPlace,
+            { id, key: node.key },
+            { retry: false }
+          )
+          if (
+            !(await step.runMutation(internal.automationRuntime.finishCall, {
+              id,
+              key: node.key,
+              output,
+            }))
+          )
+            return false
+        } else if (node.type === "delay") {
           await step.sleep(result.sleepMs ?? parseDuration(node.duration)!, {
             name: node.key,
           })
@@ -367,6 +381,8 @@ export const effect = internalMutation({
     node = { ...node, ...inputs } as AutomationStep
     const output: Record<string, unknown> = {}
     switch (node.type) {
+      case "place_call":
+        return { output, waiting: true }
       case "delay": {
         const sleepMs = node.until
           ? Date.parse(String(node.until)) - Date.now()
@@ -667,6 +683,22 @@ export const effect = internalMutation({
       }
     }
     return { output }
+  },
+})
+export const finishCall = internalMutation({
+  args: { id: v.id("automationRuns"), key: v.string(), output: payloadValue },
+  returns: v.boolean(),
+  handler: async (ctx, { id, key, output }) => {
+    const run = await active(ctx, id)
+    if (!run) return false
+    const record = await stepRow(ctx, run, key)
+    if (record?.status === "running")
+      await patchRow(ctx, "automationRunSteps", record._id, {
+        status: output.status === "skipped" ? "skipped" : "completed",
+        completedAt: Date.now(),
+        output,
+      })
+    return true
   },
 })
 export const finishWait = internalMutation({

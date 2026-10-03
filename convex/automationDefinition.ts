@@ -76,6 +76,21 @@ export function readGraph(graph: string): AutomationStep[] {
             step.variables = {}
           if (variableSourcesError(step.variables)) invalid()
           break
+        case "place_call":
+          strings(step, "accountId", "route", "purpose")
+          if (
+            typeof step.requestPermission !== "boolean" ||
+            Object.values(object(step.variables)).some(
+              (value) => typeof value !== "string"
+            )
+          )
+            invalid()
+          if (
+            (step.purpose as string).length > 4000 ||
+            Object.keys(object(step.variables)).length > 50
+          )
+            invalid()
+          break
         case "send_email":
           strings(step, "templateId", "from", "replyTo")
           if (step.subject !== undefined) strings(step, "subject")

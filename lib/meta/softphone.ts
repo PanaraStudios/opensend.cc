@@ -61,20 +61,51 @@ export function permissionAllows(
   action: "start_call" | "send_call_permission_request",
   now = Date.now()
 ) {
+  const permission = data.permission as
+    | {
+        status?: string
+        expiration_time?: number | string
+        expiration?: number | string
+      }
+    | undefined
+  if (action === "start_call") {
+    if (
+      !permission ||
+      !["granted", "temporary", "permanent"].includes(permission.status ?? "")
+    )
+      return false
+    const expires = permission.expiration_time ?? permission.expiration
+    if (
+      permission.status !== "permanent" &&
+      expires != null &&
+      (!Number.isFinite(Number(expires)) || Number(expires) * 1000 <= now)
+    )
+      return false
+  }
   const actions = Array.isArray(data.actions) ? data.actions : []
   const explicit = actions.find(
     (a) => a && typeof a === "object" && a.action_name === action
   )
-  if (explicit) return explicit.can_perform_action === true
-  if (action !== "start_call") return false
-  const permission = data.permission as
-    { status?: string; expiration_time?: number | string } | undefined
-  return (
-    !!permission &&
-    ["granted", "temporary", "permanent"].includes(permission.status ?? "") &&
-    (!permission.expiration_time ||
-      Number(permission.expiration_time) * 1000 > now)
-  )
+  if (explicit) {
+    const limits: Record<string, unknown>[] = Array.isArray(explicit.limits)
+      ? explicit.limits
+      : []
+    if (
+      limits.some(
+        (limit) =>
+          limit &&
+          typeof limit === "object" &&
+          typeof limit.max_allowed === "number" &&
+          typeof limit.current_usage === "number" &&
+          limit.current_usage >= limit.max_allowed &&
+          (limit.limit_expiration_time == null ||
+            Number(limit.limit_expiration_time) * 1000 > now)
+      )
+    )
+      return false
+    return explicit.can_perform_action === true
+  }
+  return action === "start_call"
 }
 export function isDtmf(value: string) {
   return /^[0-9*#]$/.test(value)

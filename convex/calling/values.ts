@@ -41,6 +41,16 @@ export const callPayloadFields = {
   session: v.union(v.null(), callSession),
   recording: media,
   transcription: media,
+  outcome: v.union(
+    v.literal("answered"),
+    v.literal("no_answer"),
+    v.literal("rejected"),
+    v.literal("failed"),
+    v.null()
+  ),
+  attempt: v.number(),
+  purpose: nullableString,
+  route: nullableString,
   error: nullableString,
   error_code: nullableNumber,
   assigned_agent: nullableString,

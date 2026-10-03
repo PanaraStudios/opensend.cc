@@ -7,6 +7,8 @@ import type {
 import type { WhatsAppMessage } from "../../whatsapp/interfaces"
 export type WhatsAppCallEventType =
   `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready" | "bot_completed" | "transferred"}`
+export type OutboundCallEventType =
+  `call.outbound_${"queued" | "ringing" | "connected" | "completed" | "missed" | "rejected" | "failed"}`
 export type WebhookEvent = import("../../events/catalog").SystemEventName
 
 interface BaseEmailEventData extends MessageEventBase {
@@ -254,14 +256,18 @@ export interface MessageControlEvent {
   }
 }
 export interface WhatsAppCallEvent {
-  type: WhatsAppCallEventType
+  type: WhatsAppCallEventType | OutboundCallEventType
   created_at: string
   data: WhatsAppCall
 }
 export interface WhatsAppCallPermissionEvent {
-  type: "whatsapp.call.permission_updated"
+  type:
+    | "whatsapp.call.permission_updated"
+    | "call.permission_granted"
+    | "call.permission_denied"
   created_at: string
   data: Pick<CallPermission, "account_id" | "user_id" | "permission"> & {
+    contact_id?: string | null
     response_source: string | null
     context_id: string | null
   }

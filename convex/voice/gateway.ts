@@ -1,3 +1,4 @@
+import { outboundInstructions } from "../../lib/calling/outbound"
 import {
   saveCollectedField,
   completeCollection,
@@ -161,7 +162,13 @@ export const session = internalMutation({
     }
     return {
       ...updateVoiceBotVoice(call.botConfig!, liveVoices),
+      systemPrompt: outboundInstructions(
+        call.botConfig!.systemPrompt,
+        call.callPurpose,
+        call.callVariables
+      ),
       voiceGender: botVoiceGender(call.botConfig!, liveVoices),
+      callDirection: call.direction,
       botId: call.botId,
       keys,
       toolCatalog: [

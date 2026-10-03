@@ -2,7 +2,7 @@
 import { v } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
-import { actorArgs } from "./rows"
+import { actorArgs } from "./actor"
 import { callingRouting, handlingMode } from "../tables/calling"
 import { graph } from "../meta/graph"
 import { decryptSecret } from "../secrets"
@@ -29,6 +29,7 @@ async function settings(
   ctx: ActionCtx,
   args: {
     organizationId: string
+    automationRunId?: Id<"automationRuns">
     caller?: typeof actorArgs.caller.type
     from: string
     calling?: Record<string, unknown>
@@ -249,6 +250,7 @@ export async function checkPermission(
     ...actor
   }: {
     organizationId: string
+    automationRunId?: Id<"automationRuns">
     caller?: import("../api/caller").Caller
     from?: string
     identity: string
@@ -256,20 +258,25 @@ export async function checkPermission(
   }
 ): Promise<Record<string, unknown>> {
   const target = await ctx.runQuery(internal.calling.rows.target, actor)
-  const userId = await ctx.runQuery(internal.calling.rows.permissionIdentity, {
-    ...actor,
-    identity,
-    bsuid,
-  })
+  const resolved = await ctx.runQuery(
+    internal.calling.rows.permissionIdentity,
+    {
+      ...actor,
+      identity,
+      bsuid,
+    }
+  )
   try {
-    const observedAt = Date.now()
+    const observedAt = Math.floor(Date.now() / 1000) * 1000
     const data = object(
       await graph({
         token: await decryptSecret(target.encryptedToken),
         version: target.version,
         method: "GET",
         path: `${target.account.externalId}/call_permissions`,
-        query: { recipient: userId },
+        query: resolved.bsuid
+          ? { recipient: resolved.identity }
+          : { user_wa_id: resolved.identity },
       })
     )
     const permission = object(data.permission)
@@ -286,12 +293,17 @@ export async function checkPermission(
     await ctx.runMutation(internal.calling.settingsState.permission, {
       organizationId: actor.organizationId,
       caller: actor.caller,
+      automationRunId: actor.automationRunId,
       accountId: target.account._id,
-      identity: userId,
+      identity: resolved.identity,
       data: JSON.stringify(data),
       observedAt,
     })
-    return { account_id: target.account._id, user_id: userId, ...data }
+    return {
+      account_id: target.account._id,
+      user_id: resolved.identity,
+      ...data,
+    }
   } catch (error) {
     callingFailure(error)
   }

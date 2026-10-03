@@ -2,8 +2,8 @@
 
 Convex owns Graph signaling and the `calls` webhook projection. Calls have a stable
 Opensend `id`; Meta's `wacid` is separate and appears in call reads. Identities and
-permission caches use the user's BSUID. Supply `recipient`, or a `to` phone whose
-BSUID has already been learned for this business. Phone numbers are optional in
+permission caches use the business-scoped BSUID when known, or the phone identity
+for new CRM leads. Supply `recipient`, a `to` phone/contact ID, or `contact_id`. Phone numbers are optional in
 inbound calling webhooks.
 
 Set `CALL_GATEWAY_URL` and `CALL_GATEWAY_SECRET` on the Convex backend to use the
@@ -27,7 +27,7 @@ the integrator's complete answer. Integrators must meet Meta's ICE-full controll
 DTLS client/ECDSA, complete SDP, Opus/20ms, single-track, single-SSRC and media-first
 requirements. No trickle ICE, renegotiation, ICE restart or PSTN legs are supported.
 
-REST resources use the `whatsapp:read` / `whatsapp:write` scopes:
+REST resources use the `calling:read` / `calling:write` scopes:
 
 - `GET /whatsapp/calls` (limit/after/before; optional `phone_number_id`) and `GET /whatsapp/calls/{id}`.
 - `POST /whatsapp/calls`, with `recipient` and either `route: "gateway"` or `session: {sdp_type: "offer", sdp}`. Supplying an SDP selects API mode unless route is explicit.
@@ -38,8 +38,8 @@ REST resources use the `whatsapp:read` / `whatsapp:write` scopes:
 
 POSTs support `Idempotency-Key`. Connect commits its call ID with the reservation
 before external setup; a retry cannot create another call, including after a lost
-Graph response. If signaling fails, inspect the returned/replayed call ID for its
-failure state before deciding to start a new call with a new key. Meta owns
+Graph response. A signaling failure replays the same API error; the call log retains
+the failed attempt and Meta reason. Meta owns
 permission/request limits; the permission response exposes its actions and limits.
 
 `call_hours` writes replace the whole schedule; omitting holidays removes them.
@@ -91,3 +91,59 @@ Wave 8d-3 adds the [IVR API and runtime](ivr.md). A gateway number with
 `routing: {kind: "ivr", ivrId}` automatically accepts inbound calls through Graph
 and routes into its configured menu tree. Call reads include the IVR path/outcome;
 `whatsapp.call.ivr_completed` reports the final menu action or handoff.
+
+## Outbound bot and IVR calls
+
+`POST /whatsapp/calls` accepts `{from, contact_id, route, context?, variables?, request_permission?}`.
+`from` is a connected WhatsApp number/account ID and `route` is `bot:<id>` or
+`ivr:<id>`. `to` can replace `contact_id` with a phone or contact ID. No SDP is
+needed: the existing gateway prepares a Janus offer, Graph receives
+`action: connect`, and the accepted answer reaches the gateway before bot/IVR routing.
+The per-call route overrides the number's default routing. Softphone and API calls
+share the permission gate.
+
+The response status is `ringing`, `permission_required`, `permission_requested`, or
+`calling_limited`. `permission_requested` includes a queued message ID, and **does
+not schedule a later call**. Place the call after approval, or trigger an automation
+on `call.permission_granted`. `GET|POST /contacts/{id}/call-permission` reads live
+permission/limits or queues a permission request; GET accepts `from` as a query
+parameter and POST accepts `from`, `text` or an approved `template`. A free-form
+interactive request needs an open service window. Managed calls can also pass
+`permission_text` or `permission_template` alongside `request_permission: true`.
+
+The gateway uses the existing bot/IVR session, tools and tenant boundaries. The bot
+starts with its configured greeting, followed by disclosure, and receives the call
+purpose and string variables as a structured context block in its instructions.
+The existing `lookup_contact` tool can fetch the lead's CRM context. Purpose and
+variables must fit within the bot prompt limit before any message or media allocation.
+
+Call reads expose `direction`, `outcome` (`answered`, `no_answer`, `rejected`,
+`failed`, or null while pending), `attempt`, `route`, and `purpose`. REST failures
+retain Meta's code and reason on the call. Idempotency retries replay the actual
+success or failure; they never allocate a second outbound leg. An interrupted setup
+may replay `queued` with the committed call ID, which can be polled.
+
+`call.permission_granted`, `call.permission_denied`, and
+`call.outbound_queued|ringing|connected|completed|missed|rejected|failed` are registered
+webhook and automation events. Permission events include the linked `contact_id`
+when known. The automation **Place call** step selects the WhatsApp number and bot/IVR,
+with purpose and variables that may reference `event.*` or `contact.*`. It records
+the result, skips deleted/unsubscribed leads, and does not retry a dial automatically.
+The contact's **Call with bot** dialog and Playground Calls log use the same primitive.
+
+Meta is authoritative for quotas: temporary permission lasts seven days; permanent
+permission is revocable. Requests are limited to one per 24 hours and two per seven
+days; connected calls reset request limits, and a user/business pair permits at most
+100 connected calls per 24 hours. The live permission action and counters are checked
+before dialing/requesting. A transactional local request limiter also prevents two
+queued requests racing before Meta observes them. Meta's country restrictions still
+apply: the US test number returns **138013**, surfaced with its readable reason.
+See the official [business-initiated flow](https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/business-initiated-calls)
+and [permission rules](https://developers.facebook.com/documentation/business-messaging/whatsapp/calling/user-call-permissions).
+
+`pnpm test:calling-harness outbound-bot outbound-ivr` accepts BIC offers with the fake
+Meta peer and verifies real Janus/FreeSWITCH bot audio, IVR prompts/DTMF, recordings
+and completion. The script holds `/private/tmp/opensend-calling-harness.lock`, uses
+only `opensend-calling-test`, and includes these cases in its default full run.
+FreeSWITCH offers an 8 kHz codec capability to obtain DTMF/8000; the gateway removes
+that speech codec before publishing the Opus-only Meta offer.

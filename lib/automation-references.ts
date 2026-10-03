@@ -162,6 +162,28 @@ export function stepOutputSchema(
       return object({
         until: field("date", "Resume time", "2026-10-02T12:00:00.000Z"),
       })
+    case "place_call":
+      return object({
+        status: field("enum", "Call request status", "ringing", {
+          values: [
+            "ringing",
+            "permission_required",
+            "permission_requested",
+            "calling_limited",
+            "skipped",
+          ],
+        }),
+        id: field("string", "Call id", "call_123", { optional: true }),
+        permission_request_id: field(
+          "string",
+          "Permission request message id",
+          "msg_123",
+          { optional: true }
+        ),
+        reason: field("string", "Skip reason", "unsubscribed", {
+          optional: true,
+        }),
+      })
   }
 }
 export function previousSteps(

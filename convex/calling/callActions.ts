@@ -4,7 +4,7 @@ import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
-import { actorArgs } from "./rows"
+import { actorArgs } from "./actor"
 import { graph, markTokenInvalid } from "../meta/graph"
 import { decryptSecret } from "../secrets"
 import { MetaError, metaErrorReason } from "../../lib/meta/errors"
@@ -17,6 +17,9 @@ import {
 import { object, string, array } from "../../lib/meta/parse"
 import { apiError, invalid } from "../api/caller"
 import { CallGatewayClient } from "../../services/call-gateway/src/client"
+import { checkPermission } from "./settings"
+import { permissionAllows } from "../../lib/meta/softphone"
+import { outboundRoute, callContext } from "../../lib/calling/outbound"
 import { GatewayError } from "../../services/call-gateway/src/errors"
 
 export function gateway() {
@@ -52,11 +55,12 @@ export function callingFailure(
               : "Meta refused the call.",
             error.status >= 500 ? 503 : 422,
           ])
-    throw apiError(
-      status,
+    throw new ConvexError({
+      statusCode: status,
       name,
-      `${message} ${metaErrorReason(error)}${error.code ? ` (Meta ${error.code})` : ""}`
-    )
+      message: `${message} ${metaErrorReason(error)}${error.code ? ` (Meta ${error.code})` : ""}`,
+      ...(error.code ? { metaCode: error.code } : {}),
+    })
   }
   if (error instanceof GatewayError)
     throw apiError(error.status, error.code.toLowerCase(), error.message)
@@ -147,13 +151,22 @@ export async function connectCall(
     ...actor
   }: {
     organizationId: string
+    automationRunId?: Id<"automationRuns">
     caller?: import("../api/caller").Caller
     agentPresenceId?: Id<"callAgents">
     agentLeaseId?: string
     input: Record<string, unknown>
   }
 ): Promise<{ id: Id<"calls"> }> {
+  let routing, context
+  try {
+    routing = outboundRoute(input.route)
+    context = callContext(input)
+  } catch (error) {
+    throw invalid((error as Error).message)
+  }
   if (
+    !routing &&
     input.route !== undefined &&
     input.route !== "gateway" &&
     input.route !== "api"
@@ -166,13 +179,35 @@ export async function connectCall(
     write: true,
   })
   const mode =
-    (input.route as "gateway" | "api" | undefined) ??
+    (routing ? "gateway" : (input.route as "gateway" | "api" | undefined)) ??
     (input.session
       ? "api"
       : (target.settings?.mode ??
         (process.env.CALL_GATEWAY_URL && process.env.CALL_GATEWAY_SECRET
           ? "gateway"
           : "api")))
+  const route = routing
+    ? await ctx.runQuery(internal.voice.routing.validate, {
+        ...actor,
+        input: routing,
+        purpose: context.purpose,
+        variables: context.variables,
+        mode: "gateway",
+      })
+    : undefined
+  const data = await checkPermission(ctx, {
+    ...actor,
+    from: typeof input.from === "string" ? input.from : undefined,
+    identity:
+      typeof input.recipient === "string" ? input.recipient : string(input.to),
+    bsuid: typeof input.recipient === "string",
+  })
+  if (!permissionAllows(data, "start_call"))
+    throw apiError(
+      422,
+      "call_permission_required",
+      "The recipient has not granted calling permission, it has expired, or Meta's calling limit has been reached."
+    )
   const session = object(input.session)
   if (mode === "api" && session.sdp_type !== "offer")
     throw invalid("API calls require session.sdp_type=offer.")
@@ -186,6 +221,9 @@ export async function connectCall(
     recipient:
       typeof input.recipient === "string" ? input.recipient : undefined,
     mode,
+    outboundRoute: route,
+    callPurpose: context.purpose,
+    callVariables: context.variables,
     opaque: extra.biz_opaque_callback_data as string | undefined,
     agentPresenceId,
     agentLeaseId,
@@ -207,8 +245,9 @@ export async function connectCall(
         },
         {
           action: "connect",
-          recipient: signaling.call.userId,
-          ...(signaling.call.to ? { to: signaling.call.to } : {}),
+          ...(signaling.call.userId
+            ? { recipient: signaling.call.userId }
+            : { to: signaling.call.to }),
           session: { sdp_type: "offer", sdp: offerSdp },
           ...extra,
         }
@@ -235,6 +274,11 @@ export async function connectCall(
         internal.calling.callActions.gatewayConnect,
         { id }
       )
+    await ctx.runMutation(internal.calling.rows.settleConnect, {
+      id,
+      status: 200,
+      body: JSON.stringify(routing ? { id, status: "ringing" } : { id }),
+    })
     return { id }
   } catch (error) {
     await ctx.runMutation(internal.calling.rows.finish, {
@@ -249,11 +293,34 @@ export async function connectCall(
           : error instanceof Error
             ? error.message
             : "Call failed",
-      errorCode: error instanceof MetaError ? error.code : undefined,
+      errorCode:
+        error instanceof MetaError
+          ? error.code
+          : error instanceof ConvexError &&
+              typeof error.data === "object" &&
+              error.data !== null &&
+              "metaCode" in error.data
+            ? Number(error.data.metaCode)
+            : undefined,
       operation,
     })
-    if (mode === "gateway") await cleanupCall(ctx, id)
-    callingFailure(error)
+    if (mode === "gateway") await cleanupCall(ctx, id).catch(() => undefined)
+    try {
+      callingFailure(error)
+    } catch (failure) {
+      if (
+        failure instanceof ConvexError &&
+        typeof failure.data === "object" &&
+        failure.data !== null &&
+        "statusCode" in failure.data
+      )
+        await ctx.runMutation(internal.calling.rows.settleConnect, {
+          id,
+          status: Number(failure.data.statusCode),
+          body: JSON.stringify(failure.data),
+        })
+      throw failure
+    }
   }
 }
 
@@ -283,6 +350,7 @@ export async function performCall(
     ...actor
   }: {
     organizationId: string
+    automationRunId?: Id<"automationRuns">
     caller?: import("../api/caller").Caller
     id: string
     expectedAgentLeaseId?: string
@@ -463,14 +531,10 @@ export const gatewayConnect = internalAction({
           await cleanupCall(ctx, id)
           return null
         }
-        await gateway().route({
-          callId: id,
-          target: row.agentExtension ? "agent" : "ivr",
-          extension: row.agentExtension,
-          ...(row.connectedAt !== undefined
-            ? { answeredAt: row.connectedAt }
-            : {}),
+        const route = await ctx.runMutation(internal.voice.routing.select, {
+          id,
         })
+        await gateway().route(route)
         await ctx.runMutation(internal.calling.rows.finish, {
           id,
           routed: true,

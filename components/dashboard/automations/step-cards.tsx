@@ -1,4 +1,5 @@
 "use client"
+import { PlaceCallFields } from "@/components/dashboard/calling/place-call-fields"
 import { readablePath, referenceErrors } from "@/lib/automation-references"
 import { catalogContactSchema } from "@/lib/event-catalog"
 import { FieldError } from "@/components/ui/field"
@@ -403,6 +404,13 @@ function StepBody({
       return <ConditionBody step={step} onChange={onChange} />
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
+    case "place_call":
+      return (
+        <PlaceCallFields
+          config={step}
+          onChange={(config) => onChange({ ...step, ...config })}
+        />
+      )
     case "send_messenger":
     case "send_instagram":
     case "send_whatsapp":

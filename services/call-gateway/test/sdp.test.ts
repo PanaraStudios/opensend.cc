@@ -114,3 +114,16 @@ test("accepts Meta's live offer, whose ice-pwd carries base64 padding", () => {
   ].join("\r\n")
   assert.match(metaSdp(live, "offer"), /a=ice-pwd:\+219v9nKr3xSQIn8s\+Fy8g==/)
 })
+
+test("outbound FreeSWITCH offers retain 8k DTMF alongside Opus, without L16 or 48k DTMF", () => {
+  const mixed =
+    answer.replace("SAVPF 111", "SAVPF 111 100 101 102") +
+    "a=rtpmap:100 L16/8000\r\na=rtpmap:101 telephone-event/48000\r\na=rtpmap:102 telephone-event/8000\r\na=fmtp:102 0-16\r\n"
+  const normalized = gatewaySdp(
+    mixed.replace("setup:active", "setup:actpass"),
+    "offer"
+  )
+  assert.match(normalized, /SAVPF 111 102\r\n/)
+  assert.match(normalized, /telephone-event\/8000/)
+  assert.doesNotMatch(normalized, /L16|telephone-event\/48000/)
+})

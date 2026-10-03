@@ -22,12 +22,15 @@ import { CallGatewayClient } from "../src/client.js"
 import type { GatewayCallback } from "../src/contracts.js"
 import { metaSdp, validateIceRuntime, validateSdp } from "../src/sdp.js"
 
+const outboundBot = process.argv.includes("outbound-bot")
+const outboundIvr = process.argv.includes("outbound-ivr")
 const endCallFlow = process.argv.includes("bot-end-call")
 const metaTerminations: string[] = []
 const returnFlow = process.argv.includes("bot-ivr")
 const combinedFlow = process.argv.includes("ivr-bot-agent")
 const playgroundBot = process.argv.includes("playground-bot")
 const pipecatEngine =
+  outboundBot ||
   endCallFlow ||
   playgroundBot ||
   process.argv.includes("bot-engine") ||
@@ -217,7 +220,11 @@ const receiver = createServer(async (request, response) => {
       assert.equal(session.organizationId, "harness-team")
       assert.ok(
         session.callId.startsWith(
-          playgroundBot ? "playground-" : "harness-inbound-"
+          playgroundBot
+            ? "playground-"
+            : outboundBot
+              ? "harness-outbound-"
+              : "harness-inbound-"
         )
       )
       response
@@ -250,6 +257,13 @@ const receiver = createServer(async (request, response) => {
               },
               maxDurationSeconds: returnFlow || endCallFlow ? 30 : 6,
             }),
+            callDirection: outboundBot ? "outbound" : "inbound",
+            systemPrompt: outboundBot
+              ? "Follow up on the seminar. Call purpose: Book a coaching session. Variables: seminar=Saturday."
+              : "You are a helpful assistant.",
+            greeting: outboundBot
+              ? "Hello, this is your seminar follow-up."
+              : "Hello, how can I help you?",
             botId: "harness-bot",
             keys: { live: "fake-key" },
             toolCatalog: toolDeclarations(
@@ -277,7 +291,11 @@ const receiver = createServer(async (request, response) => {
       assert.equal(tool.organizationId, "harness-team")
       assert.ok(
         tool.callId.startsWith(
-          playgroundBot ? "playground-" : "harness-inbound-"
+          playgroundBot
+            ? "playground-"
+            : outboundBot
+              ? "harness-outbound-"
+              : "harness-inbound-"
         )
       )
       assert.ok(
@@ -1307,6 +1325,19 @@ try {
       await gateway.hangup(callId).catch(() => undefined)
       await agent.close()
     }
+  } else if (outboundBot || outboundIvr) {
+    await run("outbound", undefined, outboundBot ? "L16" : "ivr-engine")
+    if (outboundBot)
+      assert.ok(
+        voiceEvents.some(
+          (event) =>
+            event.type === "bot_completed" &&
+            event.callId.startsWith("harness-outbound-")
+        )
+      )
+    console.log(
+      `PASS business-initiated ${outboundBot ? "bot" : "IVR"}: fake Meta accepted the Janus offer, answer applied before routing, bidirectional media and completion`
+    )
   } else if (returnFlow || combinedFlow) {
     const agent = await browserAgent()
     try {

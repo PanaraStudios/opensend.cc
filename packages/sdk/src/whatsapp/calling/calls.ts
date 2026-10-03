@@ -7,6 +7,8 @@ import type {
 } from "../../channels/interfaces"
 import type {
   ConnectWhatsAppCall,
+  PlaceWhatsAppCall,
+  PlaceWhatsAppCallResult,
   AcceptWhatsAppCall,
   WhatsAppCall,
   WhatsAppCallDetail,
@@ -37,6 +39,13 @@ export class WhatsAppCalls {
   get(id: string) {
     return this.resend.get<WhatsAppCallDetail>(
       `/whatsapp/calls/${encodeURIComponent(id)}`
+    )
+  }
+  place(input: PlaceWhatsAppCall, options?: ChannelRequestOptions) {
+    return this.resend.post<PlaceWhatsAppCallResult>(
+      "/whatsapp/calls",
+      input,
+      options
     )
   }
   connect(input: ConnectWhatsAppCall, options?: ChannelRequestOptions) {

@@ -3,8 +3,21 @@ import {
   whatsappReceiveContentSchemas,
   type WhatsAppSchema,
 } from "../whatsapp/schema"
+/** Outbound call lifecycle and calling-permission events. */
+export const CALL_EVENT_NAMES = [
+  "call.permission_granted",
+  "call.permission_denied",
+  "call.outbound_queued",
+  "call.outbound_ringing",
+  "call.outbound_connected",
+  "call.outbound_completed",
+  "call.outbound_missed",
+  "call.outbound_rejected",
+  "call.outbound_failed",
+] as const
 export const SYSTEM_EVENT_NAMES = [
   "call.data_collected",
+  ...CALL_EVENT_NAMES,
   "email.sent",
   "email.delivered",
   "email.delivery_delayed",
@@ -67,11 +80,10 @@ export const SYSTEM_EVENT_NAMES = [
 
 export type SystemEventName = (typeof SYSTEM_EVENT_NAMES)[number]
 /** Events whose automation trigger is their own name, without the `opensend:` prefix. */
-const UNPREFIXED_TRIGGERS = [
-  "contact.note_created",
-  "call.data_collected",
-] as const
-type UnprefixedTrigger = (typeof UNPREFIXED_TRIGGERS)[number]
+type UnprefixedTrigger =
+  "contact.note_created" | Extract<SystemEventName, `call.${string}`>
+const unprefixedTrigger = (name: string) =>
+  name === "contact.note_created" || name.startsWith("call.")
 export type SystemTriggerName =
   `opensend:${Exclude<SystemEventName, UnprefixedTrigger>}` | UnprefixedTrigger
 export type CallDataCollected = {
@@ -448,6 +460,13 @@ const collected = field(
 )
 const call = object({
   collected,
+  outcome: field("enum", "Outbound call outcome", "answered", {
+    values: ["answered", "no_answer", "rejected", "failed"],
+    optional: true,
+    nullable: true,
+  }),
+  attempt: num("attempt"),
+  ...strings("purpose", "route"),
   ...strings(
     "object",
     "id",
@@ -541,15 +560,24 @@ function schemaFor(name: SystemEventName): EventField {
       path: call.fields!.ivr_path,
       final_action: dynamic("Final IVR action"),
     })
-  if (name.endsWith("permission_updated"))
+  if (
+    name.endsWith("permission_updated") ||
+    name.startsWith("call.permission_")
+  )
     return object({
-      ...strings("account_id", "user_id", "response_source", "context_id"),
+      ...strings(
+        "account_id",
+        "user_id",
+        "contact_id",
+        "response_source",
+        "context_id"
+      ),
       permission: object({
         ...strings("status"),
         expiration_time: num("expiration_time"),
       }),
     })
-  if (name.includes(".call.")) return call
+  if (name.includes(".call.") || name.startsWith("call.outbound_")) return call
   if (/read_receipt|typing_failed/.test(name))
     return object({
       ...strings("id", "conversation_id", "error"),
@@ -637,9 +665,7 @@ function schemaFor(name: SystemEventName): EventField {
 export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
   SYSTEM_EVENT_NAMES.map((name) => ({
     name,
-    trigger: (UNPREFIXED_TRIGGERS as readonly string[]).includes(name)
-      ? name
-      : `opensend:${name}`,
+    trigger: unprefixedTrigger(name) ? name : `opensend:${name}`,
     group:
       name.startsWith("whatsapp.call.") || name.startsWith("call.")
         ? "WhatsApp calls"

@@ -97,6 +97,17 @@ export interface AddToSegmentStepConfig {
 
 export type AutomationStep =
   | { key: string; type: "trigger"; config: TriggerStepConfig }
+  | {
+      key: string
+      type: "place_call"
+      config: {
+        accountId: string
+        route: `bot:${string}` | `ivr:${string}`
+        context?: string
+        variables?: Record<string, string | { var: string }>
+        requestPermission?: boolean
+      }
+    }
   | { key: string; type: "delay"; config: DelayStepConfig }
   | { key: string; type: "send_email"; config: SendEmailStepConfig }
   | {

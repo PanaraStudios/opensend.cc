@@ -1,3 +1,4 @@
+import { permissionLimiter, permissionLimitKey } from "./outboundState"
 import { completeOnHangup } from "../ivr/runtime"
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
@@ -5,7 +6,12 @@ import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { array, object, string } from "../../lib/meta/parse"
 import { callTime, callWireStatus, CALL_TERMINAL } from "../../lib/meta/calling"
-import { upsertChannelThread } from "../channels/identity"
+import {
+  upsertChannelThread,
+  recordWhatsAppUser,
+  findWhatsAppUserIdentity,
+  findWhatsAppIdentity,
+} from "../channels/identity"
 import { patchRow } from "../counts"
 import { emitEvent } from "../events"
 import { live, wabaByWabaId } from "../meta/connect"
@@ -30,7 +36,8 @@ async function permission(
   if (!["accept", "reject"].includes(string(reply.response))) return
   const identity =
     string(raw.from_user_id) ||
-    string(contacts.find((c) => c.wa_id === raw.from)?.user_id)
+    string(contacts.find((c) => c.wa_id === raw.from)?.user_id) ||
+    string(raw.from)
   if (!identity || !string(raw.id)) return
   const at = callTime(raw.timestamp, receivedAt)
   const event = `permission:${string(raw.id)}`
@@ -67,7 +74,7 @@ async function permission(
   const data = {
     permission: {
       status,
-      ...(reply.expiration_timestamp
+      ...(status === "temporary" && reply.expiration_timestamp
         ? { expiration_time: Number(reply.expiration_timestamp) }
         : {}),
     },
@@ -80,18 +87,42 @@ async function permission(
     identity,
     status,
     observedAt: at,
-    expiresAt: reply.expiration_timestamp
-      ? callTime(reply.expiration_timestamp, at)
-      : undefined,
+    expiresAt:
+      status === "temporary" && reply.expiration_timestamp
+        ? callTime(reply.expiration_timestamp, at)
+        : undefined,
     data: JSON.stringify(data),
   }
   if (previous) await ctx.db.patch("callPermissions", previous._id, fields)
   else await ctx.db.insert("callPermissions", fields)
+  const person =
+    (await findWhatsAppUserIdentity(ctx, account, identity)) ??
+    (string(raw.from)
+      ? await findWhatsAppIdentity(
+          ctx,
+          account.organizationId,
+          string(raw.from)
+        )
+      : null)
+  if (person && identity !== string(raw.from))
+    await recordWhatsAppUser(ctx, account, person._id, identity)
+  const payload = {
+    account_id: account._id,
+    user_id: identity,
+    contact_id: person?.contactId ?? null,
+    ...data,
+  }
   await emitEvent(
     ctx,
     account.organizationId,
     "whatsapp.call.permission_updated",
-    { account_id: account._id, user_id: identity, ...data }
+    payload
+  )
+  await emitEvent(
+    ctx,
+    account.organizationId,
+    status === "denied" ? "call.permission_denied" : "call.permission_granted",
+    payload
   )
 }
 async function lifecycle(
@@ -164,14 +195,36 @@ async function lifecycle(
       `+${phone.replace(/^\+/, "")}`
     )
   }
-  if (!row && direction === "outbound" && userId) {
-    const pending = await ctx.db
-      .query("calls")
-      .withIndex("by_accountId_and_userId", (q) =>
-        q.eq("accountId", account._id).eq("userId", userId)
-      )
+  if (!row && direction === "outbound" && (userId || phone)) {
+    const pending = await (
+      userId
+        ? ctx.db
+            .query("calls")
+            .withIndex("by_accountId_and_userId", (q) =>
+              q.eq("accountId", account._id).eq("userId", userId)
+            )
+        : ctx.db
+            .query("calls")
+            .withIndex("by_accountId_and_to_and_direction", (q) =>
+              q.eq("accountId", account._id).eq("to", toWaId(phone!))
+            )
+    )
       .order("desc")
       .take(20)
+    if (
+      userId &&
+      phone &&
+      !pending.some((call) => !call.wacid && call.status === "queued")
+    )
+      pending.push(
+        ...(await ctx.db
+          .query("calls")
+          .withIndex("by_accountId_and_to_and_direction", (q) =>
+            q.eq("accountId", account._id).eq("to", toWaId(phone))
+          )
+          .order("desc")
+          .take(20))
+      )
     row =
       pending.find(
         (call) =>
@@ -377,6 +430,16 @@ async function lifecycle(
       updated.duration !== row.duration)
   )
     await callEvent(ctx, updated, updated.status)
+  if (!row.connectedAt && updated.connectedAt) {
+    for (const identity of new Set(
+      [updated.userId, updated.to, updated.from].filter(
+        (value): value is string => !!value
+      )
+    ))
+      await permissionLimiter.reset(ctx, "callPermissionRequest", {
+        key: permissionLimitKey(account._id, identity),
+      })
+  }
   const settings = await numberSettings(ctx, account._id)
   const policy = JSON.parse(settings?.settings ?? "{}") as Record<
     string,

@@ -8,6 +8,10 @@ export function parseApiStepConfig(step: {
 }): Record<string, unknown> {
   const fields: Partial<Record<AutomationStepType, Record<string, string>>> = {
     trigger: { event_name: "eventName" },
+    place_call: {
+      account_id: "accountId",
+      request_permission: "requestPermission",
+    },
     send_email: { reply_to: "replyTo" },
     wait_for_event: { event_name: "eventName", filter_rule: "filterRule" },
     contact_update: { first_name: "firstName", last_name: "lastName" },

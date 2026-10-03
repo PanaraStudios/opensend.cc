@@ -1,3 +1,5 @@
+import { actorArgs } from "../calling/actor"
+import { outboundInstructions } from "../../lib/calling/outbound"
 import { own as ownedIvr } from "../ivr/definitions"
 import { emitEvent } from "../events"
 import { validateRouting } from "../../lib/voice-bots"
@@ -10,7 +12,7 @@ import {
 } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { callingRouting, handlingMode } from "../tables/calling"
-import { actorArgs, authorize, numberSettings } from "../calling/rows"
+import { authorize, numberSettings } from "../calling/rows"
 import { ownedBot } from "./resources"
 import { requireAvailable } from "../calling/agentAccess"
 import { invalid, notFound } from "../api/caller"
@@ -22,6 +24,8 @@ export const validate = internalQuery({
     ...actorArgs,
     input: v.record(v.string(), v.any()),
     mode: handlingMode,
+    purpose: v.optional(v.string()),
+    variables: v.optional(v.record(v.string(), v.string())),
   },
   returns: callingRouting,
   handler: async (ctx, args) => {
@@ -34,11 +38,15 @@ export const validate = internalQuery({
     }
     if (routing.kind !== "api" && args.mode !== "gateway")
       throw invalid("Agents and bots require gateway handling mode")
-    if (routing.kind === "bot")
-      return {
-        kind: "bot" as const,
-        botId: (await ownedBot(ctx, args.organizationId, routing.botId))._id,
+    if (routing.kind === "bot") {
+      const bot = await ownedBot(ctx, args.organizationId, routing.botId)
+      try {
+        outboundInstructions(bot.systemPrompt, args.purpose, args.variables)
+      } catch (error) {
+        throw invalid((error as Error).message)
       }
+      return { kind: "bot" as const, botId: bot._id }
+    }
     if (routing.kind === "ivr")
       return {
         kind: "ivr" as const,
@@ -130,7 +138,7 @@ export const select = internalMutation({
       throw notFound("Gateway call")
     await requireActiveTeam(ctx, call.organizationId)
     const settings = await numberSettings(ctx, call.accountId),
-      route = settings?.routing
+      route = call.outboundRoute ?? settings?.routing
     if (call.botActive && call.botId && call.botConfig)
       return {
         callId: id,
@@ -142,7 +150,7 @@ export const select = internalMutation({
         maxDurationSeconds: call.botConfig.maxDurationSeconds,
         ...answerStamp(call),
       }
-    if (!route || call.direction !== "inbound")
+    if (!route || (call.direction !== "inbound" && !call.outboundRoute))
       return {
         callId: id,
         target: call.agentExtension ? ("agent" as const) : ("ivr" as const),

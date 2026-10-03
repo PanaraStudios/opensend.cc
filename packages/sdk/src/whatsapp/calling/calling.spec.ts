@@ -76,3 +76,39 @@ it("exposes every calling operation, escapes IDs and preserves bodies and idempo
     text: "May we call?",
   })
 })
+
+it("places managed bot calls and gets/requests contact permissions without dropping prompt context", async () => {
+  const fetcher = vi.fn(async (_url: string, _init: RequestInit) =>
+    Response.json({
+      status: "permission_requested",
+      permission_request_id: "message",
+    })
+  )
+  vi.stubGlobal("fetch", fetcher)
+  const input = {
+    from: "number",
+    contact_id: "lead",
+    route: "bot:coach" as const,
+    context: "Seminar follow-up",
+    variables: { seminar: "Saturday" },
+    request_permission: true,
+  }
+  await client.whatsapp.calls.place(input, { idempotencyKey: "coach-followup" })
+  expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toEqual(input)
+  expect(
+    new Headers(fetcher.mock.calls[0][1].headers).get("idempotency-key")
+  ).toBe("coach-followup")
+  await client.whatsapp.callPermissions.getForContact("lead/1", {
+    from: "number",
+  })
+  await client.whatsapp.callPermissions.requestForContact("lead/1", {
+    from: "number",
+    text: "May the coach call?",
+  })
+  expect(fetcher.mock.calls[1][0]).toBe(
+    "https://api.example.test/contacts/lead%2F1/call-permission?from=number"
+  )
+  expect(fetcher.mock.calls[2][0]).toBe(
+    "https://api.example.test/contacts/lead%2F1/call-permission"
+  )
+})

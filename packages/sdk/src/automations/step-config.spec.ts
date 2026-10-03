@@ -104,3 +104,31 @@ for (const type of ["send_messenger", "send_instagram"] as const) {
     }
   })
 }
+
+it("round trips a Place call step with purpose, prompt variable references and permission request behavior", () => {
+  const step: AutomationStep = {
+    key: "coach",
+    type: "place_call",
+    config: {
+      accountId: "number",
+      route: "bot:coach",
+      context: "Seminar follow-up",
+      variables: { seminar: { var: "event.seminar" } },
+      requestPermission: true,
+    },
+  }
+  const wire = parseStepConfig(step)
+  expect(wire.config).toEqual({
+    account_id: "number",
+    route: "bot:coach",
+    context: "Seminar follow-up",
+    variables: { seminar: { var: "event.seminar" } },
+    request_permission: true,
+  })
+  expect(
+    parseApiStepConfig({
+      type: "place_call",
+      config: wire.config as Record<string, unknown>,
+    })
+  ).toEqual(step.config)
+})

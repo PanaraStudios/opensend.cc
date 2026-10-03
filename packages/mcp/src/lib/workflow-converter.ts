@@ -131,9 +131,10 @@ export function sdkResponseToWorkflow(
   for (const step of responseSteps) {
     const conns = connectionsByFrom.get(step.key)
     // GET definitions use REST field names; workflows feed camelCase SDK options.
-    const config = isChannelSendStep(step.type)
-      ? parseApiStepConfig(step)
-      : { ...step.config }
+    const config =
+      isChannelSendStep(step.type) || step.type === "place_call"
+        ? parseApiStepConfig(step)
+        : { ...step.config }
     const branchTypes =
       BRANCHING_STEP_TYPES[step.type as keyof typeof BRANCHING_STEP_TYPES]
 

@@ -1,3 +1,4 @@
+import { CALLING_EVENTS } from "./types"
 import { SYSTEM_EVENTS, triggerEventError } from "./automation"
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
@@ -328,6 +329,11 @@ it("all messaging reply events are valid triggers but custom system names are re
       (event) => event.value === "opensend:whatsapp.call.completed"
     )
   )
+  assert.ok(
+    SYSTEM_EVENTS.some((event) => event.value === "call.data_collected")
+  )
+  for (const name of CALLING_EVENTS)
+    assert.ok(SYSTEM_EVENTS.some((event) => event.value === name))
   assert.ok(
     SYSTEM_EVENTS.some((event) => event.value === "call.data_collected")
   )

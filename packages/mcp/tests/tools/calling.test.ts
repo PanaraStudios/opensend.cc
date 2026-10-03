@@ -73,3 +73,65 @@ it("calling tools use the real SDK, expose settings and preserve request idempot
     await f.close()
   }
 })
+
+it("managed calling tools preserve bot context and use contact permission endpoints", async () => {
+  const f = await connectClient()
+  try {
+    const fetcher = vi.fn(async () =>
+      Response.json({ status: "ringing", id: "call" })
+    )
+    vi.stubGlobal("fetch", fetcher)
+    const args = {
+      from: "number",
+      contact_id: "lead",
+      route: "bot:coach",
+      context: "Seminar follow-up",
+      variables: { seminar: "Saturday" },
+      request_permission: true,
+      idempotencyKey: "followup-once",
+    }
+    expect(
+      (
+        await f.client.callTool({
+          name: "place-whatsapp-call",
+          arguments: args,
+        })
+      ).isError
+    ).not.toBe(true)
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      from: "number",
+      contact_id: "lead",
+      route: "bot:coach",
+      context: "Seminar follow-up",
+      variables: { seminar: "Saturday" },
+      request_permission: true,
+    })
+    expect(new Headers(init.headers).get("idempotency-key")).toBe(
+      "followup-once"
+    )
+    expect(
+      (
+        await f.client.callTool({
+          name: "get-contact-call-permission",
+          arguments: { id: "lead/1", from: "number" },
+        })
+      ).isError
+    ).not.toBe(true)
+    expect((fetcher.mock.calls.at(-1) as unknown as [string])[0]).toContain(
+      "/contacts/lead%2F1/call-permission"
+    )
+    const before = fetcher.mock.calls.length
+    expect(
+      (
+        await f.client.callTool({
+          name: "place-whatsapp-call",
+          arguments: { from: "number", route: "bot:coach" },
+        })
+      ).isError
+    ).toBe(true)
+    expect(fetcher.mock.calls).toHaveLength(before)
+  } finally {
+    await f.close()
+  }
+})

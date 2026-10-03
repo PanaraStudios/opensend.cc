@@ -95,6 +95,7 @@ export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
 export { SYSTEM_EVENT_NAMES as WEBHOOK_EVENTS } from "../../packages/sdk/src/events/catalog"
 import { SYSTEM_EVENT_NAMES as WEBHOOK_EVENTS } from "../../packages/sdk/src/events/catalog"
+export { CALL_EVENT_NAMES as CALLING_EVENTS } from "../../packages/sdk/src/events/catalog"
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]
 
@@ -332,6 +333,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
+  "place_call",
   ...CHANNEL_SEND_STEPS,
   "contact_update",
   "contact_delete",
@@ -348,6 +350,14 @@ export type AutomationStep = { key: string } & (
       rules: AutomationRule[]
       met: AutomationStep[]
       notMet: AutomationStep[]
+    }
+  | {
+      type: "place_call"
+      accountId: string
+      route: string
+      purpose: string
+      variables: Record<string, string>
+      requestPermission: boolean
     }
   | { type: "delay"; duration: string; until?: string }
   | {

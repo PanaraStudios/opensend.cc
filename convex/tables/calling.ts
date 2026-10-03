@@ -57,6 +57,11 @@ export const callingTables = {
     testUserId: v.optional(v.string()),
     wacid: v.optional(v.string()),
     direction: v.union(v.literal("inbound"), v.literal("outbound")),
+    outboundRoute: v.optional(callingRouting),
+    callPurpose: v.optional(v.string()),
+    callVariables: v.optional(v.record(v.string(), v.string())),
+    attempt: v.optional(v.number()),
+    apiIdempotencyId: v.optional(v.id("apiIdempotency")),
     status: callStatus,
     mode: handlingMode,
     userId: v.optional(v.string()),
@@ -147,6 +152,16 @@ export const callingTables = {
       "channelContactId",
     ])
     .index("by_accountId_and_userId", ["accountId", "userId"])
+    .index("by_accountId_and_to_and_direction", [
+      "accountId",
+      "to",
+      "direction",
+    ])
+    .index("by_accountId_and_userId_and_direction", [
+      "accountId",
+      "userId",
+      "direction",
+    ])
     .index("by_organizationId", ["organizationId"])
     .index("by_accountId_and_wacid", ["accountId", "wacid"])
     .index("by_organizationId_and_accountId", ["organizationId", "accountId"]),

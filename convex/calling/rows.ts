@@ -14,7 +14,6 @@ import type { Doc, Id } from "../_generated/dataModel"
 import schema from "../schema"
 import { requireTeam } from "../access"
 import {
-  callerValue,
   requireCaller,
   notFound,
   invalid,
@@ -32,19 +31,26 @@ import { idempotent } from "../api/idempotency"
 import { fileUrl } from "../storage/urls"
 import { emitEvent } from "../events"
 import { internal } from "../_generated/api"
-import { callSession, callStatus, handlingMode } from "../tables/calling"
+import {
+  callSession,
+  callStatus,
+  handlingMode,
+  callingRouting,
+} from "../tables/calling"
 import { listArgs, cursorPage } from "../api/paging"
 import { CALL_TERMINAL } from "../../lib/meta/calling"
 import { normalizePhone, toWaId } from "../../lib/dashboard/phone"
 import { retirement } from "../teamLifecycle"
 
-export const actorArgs = {
-  organizationId: v.string(),
-  caller: v.optional(callerValue),
-}
+import { actorArgs } from "./actor"
+export { actorArgs } from "./actor"
 export async function authorize(
   ctx: QueryCtx,
-  args: { organizationId: string; caller?: Caller },
+  args: {
+    organizationId: string
+    caller?: Caller
+    automationRunId?: Id<"automationRuns">
+  },
   write = false
 ) {
   if (args.caller) {
@@ -54,6 +60,18 @@ export async function authorize(
       resource: "calling",
       access: write ? "write" : "read",
     })
+  } else if (args.automationRunId) {
+    const run = await ctx.db.get("automationRuns", args.automationRunId)
+    const automation = run
+      ? await ctx.db.get("automations", run.automationId)
+      : null
+    if (
+      run?.organizationId !== args.organizationId ||
+      run.status !== "running" ||
+      !automation ||
+      automation.deleted
+    )
+      throw notFound("Automation run")
   } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")
   if (await retirement(ctx, args.organizationId)) throw notFound("Team")
 }
@@ -132,6 +150,23 @@ export async function payload(
           download_url: await fileUrl(ctx, row.transcription),
         }
       : null,
+    outcome: row.connectedAt
+      ? ("answered" as const)
+      : row.status === "missed"
+        ? ("no_answer" as const)
+        : row.status === "rejected"
+          ? ("rejected" as const)
+          : row.status === "failed"
+            ? ("failed" as const)
+            : null,
+    attempt: row.attempt ?? 1,
+    purpose: row.callPurpose ?? null,
+    route:
+      row.outboundRoute?.kind === "bot"
+        ? `bot:${row.outboundRoute.botId}`
+        : row.outboundRoute?.kind === "ivr"
+          ? `ivr:${row.outboundRoute.ivrId}`
+          : null,
     error: row.error ?? null,
     error_code: row.errorCode ?? null,
     assigned_agent: row.assignedAgent ?? null,
@@ -154,12 +189,15 @@ export async function callEvent(
   status: string
 ) {
   if (row.test) return
+  const data = await payload(ctx, row)
   await emitEvent(
     ctx,
     row.organizationId,
     `whatsapp.call.${status === "rejected" ? "missed" : status}`,
-    await payload(ctx, row)
+    data
   )
+  if (row.direction === "outbound")
+    await emitEvent(ctx, row.organizationId, `call.outbound_${status}`, data)
 }
 export const byWacid = (
   ctx: QueryCtx,
@@ -215,7 +253,10 @@ export async function resolveIdentity(
   if (!userId && phone) {
     userId = await knownUserForPhone(ctx, account, phone)
   }
-  if (!userId || !/^[A-Za-z0-9._:-]{1,256}$/.test(userId))
+  if (
+    (!userId && !phone) ||
+    (userId && !/^[A-Za-z0-9._:-]{1,256}$/.test(userId))
+  )
     throw invalid(
       "Supply recipient (BSUID), or a phone number with a known BSUID."
     )
@@ -228,7 +269,7 @@ export const permissionIdentity = internalQuery({
     identity: v.string(),
     bsuid: v.optional(v.boolean()),
   },
-  returns: v.string(),
+  returns: v.object({ identity: v.string(), bsuid: v.boolean() }),
   handler: async (ctx, { identity, bsuid, ...args }) => {
     await authorize(ctx, args)
     const { account } = await channelAccountAccess(
@@ -238,14 +279,16 @@ export const permissionIdentity = internalQuery({
       "whatsapp"
     )
     const phone = !bsuid && /^\+?\d+$/.test(identity)
-    return (
-      await resolveIdentity(
-        ctx,
-        account,
-        phone ? identity : undefined,
-        phone ? undefined : identity
-      )
-    ).userId
+    const resolved = await resolveIdentity(
+      ctx,
+      account,
+      phone ? identity : undefined,
+      phone ? undefined : identity
+    )
+    return {
+      identity: resolved.userId ?? toWaId(resolved.phone!),
+      bsuid: !!resolved.userId,
+    }
   },
 })
 
@@ -383,6 +426,9 @@ export const create = internalMutation({
     to: v.optional(v.string()),
     recipient: v.optional(v.string()),
     mode: v.optional(handlingMode),
+    outboundRoute: v.optional(callingRouting),
+    callPurpose: v.optional(v.string()),
+    callVariables: v.optional(v.record(v.string(), v.string())),
     opaque: v.optional(v.string()),
     agentPresenceId: v.optional(v.id("callAgents")),
     agentLeaseId: v.optional(v.string()),
@@ -402,6 +448,16 @@ export const create = internalMutation({
       args.to,
       args.recipient
     )
+    if (args.outboundRoute)
+      await ctx.runQuery(internal.voice.routing.validate, {
+        organizationId: args.organizationId,
+        caller: args.caller,
+        automationRunId: args.automationRunId,
+        input: args.outboundRoute,
+        mode: "gateway",
+        purpose: args.callPurpose,
+        variables: args.callVariables,
+      })
     const now = Date.now(),
       settings = await numberSettings(ctx, account._id)
     const mode = args.mode ?? settings?.mode ?? defaultMode()
@@ -412,7 +468,7 @@ export const create = internalMutation({
         "The calling gateway is not configured."
       )
     const links = await upsertChannelThread(ctx, account, {
-      externalId: phone ? toWaId(phone) : userId,
+      externalId: phone ? toWaId(phone) : userId!,
       ...(phone ? { phone } : {}),
       userId,
       at: now,
@@ -431,11 +487,41 @@ export const create = internalMutation({
         throw notFound("Agent")
       await requireAvailable(ctx, agent)
     }
+    const previous = userId
+      ? await ctx.db
+          .query("calls")
+          .withIndex("by_accountId_and_userId_and_direction", (q) =>
+            q
+              .eq("accountId", account._id)
+              .eq("userId", userId)
+              .eq("direction", "outbound")
+          )
+          .order("desc")
+          .first()
+      : await ctx.db
+          .query("calls")
+          .withIndex("by_accountId_and_to_and_direction", (q) =>
+            q
+              .eq("accountId", account._id)
+              .eq("to", toWaId(phone!))
+              .eq("direction", "outbound")
+          )
+          .order("desc")
+          .first()
     const insert = async (): Promise<Id<"calls">> => {
       const id = await ctx.db.insert("calls", {
         organizationId: args.organizationId,
         accountId: account._id,
         direction: "outbound",
+        ...(args.outboundRoute ? { outboundRoute: args.outboundRoute } : {}),
+        ...(args.callPurpose !== undefined
+          ? { callPurpose: args.callPurpose }
+          : {}),
+        ...(args.callVariables ? { callVariables: args.callVariables } : {}),
+        attempt: (previous?.attempt ?? 0) + 1,
+        ...(args.caller?.idempotencyId
+          ? { apiIdempotencyId: args.caller.idempotencyId }
+          : {}),
         ...(agent
           ? {
               assignedAgent: agent.userId,
@@ -454,6 +540,12 @@ export const create = internalMutation({
           ? { bizOpaqueCallbackData: args.opaque }
           : {}),
       })
+      await emitEvent(
+        ctx,
+        args.organizationId,
+        "call.outbound_queued",
+        await payload(ctx, (await ctx.db.get("calls", id))!)
+      )
       await ctx.scheduler.runAfter(
         60000,
         internal.calling.callActions.timeout,
@@ -462,7 +554,9 @@ export const create = internalMutation({
       return id
     }
     return args.caller
-      ? idempotent(ctx, args.caller, insert, (id) => ({ body: { id } }))
+      ? idempotent(ctx, args.caller, insert, (id) => ({
+          body: args.outboundRoute ? { id, status: "queued" } : { id },
+        }))
       : insert()
   },
 })
@@ -616,4 +710,20 @@ export const cleanupContext = internalQuery({
   args: { id: v.id("calls") },
   returns: v.union(v.null(), schema.doc("calls")),
   handler: (ctx, { id }) => ctx.db.get("calls", id),
+})
+
+export const settleConnect = internalMutation({
+  args: { id: v.id("calls"), status: v.number(), body: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { id, status, body }) => {
+    const call = await ctx.db.get("calls", id)
+    const reservation = call?.apiIdempotencyId
+      ? await ctx.db.get("apiIdempotency", call.apiIdempotencyId)
+      : null
+    if (reservation && reservation.organizationId === call!.organizationId)
+      await ctx.db.patch("apiIdempotency", reservation._id, {
+        response: { status, body },
+      })
+    return null
+  },
 })

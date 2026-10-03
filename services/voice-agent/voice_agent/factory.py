@@ -68,6 +68,11 @@ class Services:
     realtime: bool = False
 
 
+def opening_text(config: dict) -> str:
+    if config.get("callDirection") == "outbound":
+        return (config["greeting"] + " " + config["disclosure"]).strip()
+    return (config["disclosure"] + " " + config["greeting"]).strip()
+
 
 def system_instruction(config: dict) -> str:
     instruction = (

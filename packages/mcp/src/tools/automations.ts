@@ -36,6 +36,11 @@ config: { "template": { "id": "<template_id>", "variables": { "<key>": "<value>"
 The template supplies subject and body; subject can be overridden in the step. Text fields accept {{trigger.path}}, {{steps.stepKey.path}}, and {{contact.path}} tokens. Use list-event-catalog to discover typed fields. Trigger config accepts filters as a list of condition rules. "from" can override the template sender; "replyTo" is optional. Use list-domains to find verified sender domains.
 Uses "next".
 
+### place_call — have a bot or IVR call the contact
+Config: { accountId, route: "bot:<id>" | "ivr:<id>", context?, variables?, requestPermission? }.
+Variables can be strings or { var: "event.field" }. Calling permission is required; requestPermission optionally sends a request inside the messaging window. It returns permission_requested or permission_required without calling. Use call.permission_granted to trigger a separate Place call step after approval. Calling events call.outbound_connected/completed/missed/rejected/failed can trigger or resume automations.
+Uses "next".
+
 ### delay — pause the workflow
 config: { "duration": "<human-readable>" }
 Examples: "30 minutes", "1 hour", "2 days", "1 week". Max 30 days.
@@ -115,7 +120,7 @@ const workflowSchema = z
           type: z
             .string()
             .describe(
-              "Step type: trigger, send_email, send_whatsapp, send_messenger, send_instagram, delay, condition, wait_for_event, contact_update, contact_delete, add_to_segment."
+              "Step type: trigger, send_email, place_call, send_whatsapp, send_messenger, send_instagram, delay, condition, wait_for_event, contact_update, contact_delete, add_to_segment."
             ),
           config: z
             .record(z.string(), z.unknown())

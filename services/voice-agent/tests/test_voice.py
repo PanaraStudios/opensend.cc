@@ -367,6 +367,19 @@ async def test_output_playback_observer_marks_completion_and_next_speech_epoch()
     assert emit.await_args.args[0]["turnId"] != turn
 
 
+def test_outbound_opening_starts_with_the_configured_greeting():
+    from voice_agent.factory import opening_text
+    config = {
+        "greeting": "Hello Ada, this is your seminar follow-up.",
+        "disclosure": "I am an automated assistant.",
+        "callDirection": "outbound",
+    }
+    assert opening_text(config).startswith(config["greeting"])
+    assert opening_text(config).endswith(config["disclosure"])
+    config["callDirection"] = "inbound"
+    assert opening_text(config).startswith(config["disclosure"])
+
+
 def toolkit_config():
     value = config()
     value["collect"] = [{"key": "guests", "label": "Guests", "description": "Ask how many guests", "type": "number", "required": True}]
