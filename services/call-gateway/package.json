@@ -15,7 +15,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
-    "test": "tsx --test --test-concurrency=2 test/*.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "harness": "tsx scripts/meta-peer.ts"
   },
