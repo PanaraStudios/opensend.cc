@@ -441,10 +441,6 @@ async function enqueue(
 const iso = (ms: number) => new Date(ms).toISOString()
 /** Resend's webhook `data` for an email event. */
 export async function emailEventData(ctx: QueryCtx, email: Doc<"emails">) {
-  const content = await ctx.db
-    .query("emailContents")
-    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
-    .unique()
   return {
     ...messageBase(
       email,

@@ -55,11 +55,16 @@ export function useTeamQuery<
         options?: { enabled?: boolean },
       ]
 ) {
-  const { activeTeamId } = useWorkspace()
+  const { activeTeamId, teams } = useWorkspace()
+  // A team that still needs SSO for this session rejects every team query;
+  // pages allowed before SSO (profile, instance settings) must not crash on it.
+  const available =
+    !!activeTeamId &&
+    !teams.find((team) => team.id === activeTeamId)?.ssoRequired
   return useQuery(
     fn,
     ...([
-      activeTeamId && (options?.enabled ?? true)
+      available && (options?.enabled ?? true)
         ? { ...args, organizationId: activeTeamId }
         : "skip",
     ] as OptionalRestArgsOrSkip<Q>)
