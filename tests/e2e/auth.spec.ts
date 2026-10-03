@@ -1,3 +1,4 @@
+import { messengerBroadcastTests } from "./messenger-broadcasts-flow"
 import { messagesTests } from "./messages-flow"
 import { automationEventsTests } from "./automation-events-flow"
 import { ivrTests } from "./ivr-flow"
@@ -1272,6 +1273,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   whatsappCampaignsTests(() => ({ owner, organizationId }))
   automationEventsTests(() => ({ owner, organizationId }))
   messengerInstagramTests(() => ({ owner, organizationId }))
+  messengerBroadcastTests(() => ({ owner, organizationId }))
   inboxTests(() => ({ owner, organizationId, sendingDomainId }))
   fileStorageTests(() => ({ owner, organizationId }))
 
