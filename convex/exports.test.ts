@@ -43,7 +43,8 @@ const headers = {
     "id,created_at,name,dkim_status,spf_status,spf_domain,nameserver,disable_content_storage,open_track,click_track,region",
   "api-keys": "id,created_at,name,token,permission,domain,creator",
   logs: "id,created_at,api_key_id,oauth_grant_id,user_agent,method,endpoint,response_status",
-  contacts: "id,created_at,email,phone,first_name,last_name,unsubscribed",
+  contacts:
+    "id,created_at,email,phone,first_name,last_name,unsubscribed,channel_identities",
   segments: "id,created_at,name,contacts",
 }
 test.each(Object.entries(headers))(
@@ -255,6 +256,7 @@ test("contacts export honors search, subscription, date and segment with custom 
     "Ada",
     "Lovelace",
     "false",
+    "[]",
     "ACME",
   ])
   expect(parseCsv(await csv(f, emptyId)).rows).toHaveLength(0)
@@ -489,4 +491,110 @@ test("domain exports honor the visible filters and map DNS fields", async () => 
     domain.region,
   ])
   expect(parseCsv(await csv(f, excluded)).rows).toEqual([])
+})
+
+test("contact CSV retains phone and all scoped channel identities, excluding other teams and merged identities", async () => {
+  const f = await setup()
+  const { createdIds } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.owner.team,
+    segmentIds: [],
+    contacts: [{ phone: "+15551234567", firstName: "Ada" }],
+  })
+  const id = createdIds[0]
+  const channelOnlyId = await f.t.run(async (ctx) => {
+    for (const channel of ["whatsapp", "messenger", "instagram"] as const)
+      await ctx.db.insert("channelContacts", {
+        organizationId: f.owner.team,
+        contactId: id,
+        channel,
+        scopeId: `${channel}-sender`,
+        externalId: `${channel}-recipient`,
+        marketingOptOut: false,
+        username: "ada",
+        profileName: "Ada",
+      })
+    const canonical = await ctx.db
+      .query("channelContacts")
+      .withIndex("by_contactId", (q) => q.eq("contactId", id))
+      .first()
+    await ctx.db.insert("channelContacts", {
+      organizationId: f.owner.team,
+      contactId: id,
+      channel: "messenger",
+      scopeId: "old",
+      externalId: "merged-private",
+      mergedIntoId: canonical!._id,
+      marketingOptOut: false,
+    })
+    const channelOnlyId = await insertRow(ctx, "contacts", {
+      organizationId: f.owner.team,
+      firstName: "",
+      lastName: "",
+      search: "Grace",
+      updatedAt: Date.now(),
+      unsubscribed: false,
+      properties: {},
+    })
+    await ctx.db.insert("channelContacts", {
+      organizationId: f.owner.team,
+      contactId: channelOnlyId,
+      channel: "instagram",
+      scopeId: "instagram-sender",
+      externalId: "channel-only",
+      profileName: "Grace",
+      marketingOptOut: false,
+    })
+    await ctx.db.insert("channelContacts", {
+      organizationId: f.outsider.team,
+      contactId: id,
+      channel: "instagram",
+      scopeId: "foreign",
+      externalId: "private",
+      marketingOptOut: false,
+    })
+    return channelOnlyId
+  })
+  const exportId = await start(f, "contacts")
+  await drain(f)
+  const table = parseCsv(await csv(f, exportId))
+  const row = table.rows.find((row) => row[0] === id)!
+  expect(row[table.headers.indexOf("phone")]).toBe("'+15551234567")
+  const identities = JSON.parse(
+    row[table.headers.indexOf("channel_identities")]
+  )
+  expect(
+    identities.map((identity: { channel: string }) => identity.channel)
+  ).toEqual(["whatsapp", "messenger", "instagram"])
+  expect(identities).toContainEqual({
+    channel: "instagram",
+    scope_id: "instagram-sender",
+    external_id: "instagram-recipient",
+    username: "ada",
+    profile_name: "Ada",
+  })
+  expect(JSON.stringify(identities)).not.toContain("private")
+  const channelOnlyRow = table.rows.find((row) => row[0] === channelOnlyId)!
+  expect(channelOnlyRow[table.headers.indexOf("email")]).toBe("")
+  expect(channelOnlyRow[table.headers.indexOf("phone")]).toBe("")
+  expect(
+    JSON.parse(channelOnlyRow[table.headers.indexOf("channel_identities")])[0]
+  ).toMatchObject({ channel: "instagram", profile_name: "Grace" })
+  const segmentId = await f.owner.client.mutation(api.segments.create, {
+    organizationId: f.owner.team,
+    name: "Phone customers",
+  })
+  await f.owner.client.mutation(api.contacts.addToSegments, {
+    organizationId: f.owner.team,
+    ids: [id, channelOnlyId],
+    segmentIds: [segmentId],
+  })
+  expect(
+    (
+      await f.owner.client.query(api.contacts.list, {
+        organizationId: f.owner.team,
+        segmentId,
+        paginationOpts: page,
+      })
+    ).page.map((contact) => contact._id)
+  ).toEqual(expect.arrayContaining([id, channelOnlyId]))
 })

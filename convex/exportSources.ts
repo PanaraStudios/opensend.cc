@@ -351,6 +351,7 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
       "first_name",
       "last_name",
       "unsubscribed",
+      "channel_identities",
     ],
     extraColumns: async (ctx, organizationId) =>
       (await listProperties(ctx, organizationId)).map(
@@ -374,16 +375,43 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
       })
       return {
         ...result,
-        rows: result.page.map((contact) => [
-          contact._id,
-          csvTime(contact._creationTime),
-          contact.email ?? "",
-          contact.phone ?? "",
-          contact.firstName,
-          contact.lastName,
-          String(contact.unsubscribed),
-          ...extra.map((key) => contact.properties[key] ?? ""),
-        ]),
+        rows: await Promise.all(
+          result.page.map(async (contact) => {
+            const identities = []
+            for await (const identity of ctx.db
+              .query("channelContacts")
+              .withIndex("by_contactId", (q) =>
+                q.eq("contactId", contact._id)
+              )) {
+              if (
+                identity.organizationId !== organizationId ||
+                identity.mergedIntoId
+              )
+                continue
+              identities.push({
+                channel: identity.channel,
+                scope_id: identity.scopeId,
+                external_id: identity.externalId,
+                ...(identity.phone ? { phone: identity.phone } : {}),
+                ...(identity.profileName
+                  ? { profile_name: identity.profileName }
+                  : {}),
+                ...(identity.username ? { username: identity.username } : {}),
+              })
+            }
+            return [
+              contact._id,
+              csvTime(contact._creationTime),
+              contact.email ?? "",
+              contact.phone ?? "",
+              contact.firstName,
+              contact.lastName,
+              String(contact.unsubscribed),
+              JSON.stringify(identities),
+              ...extra.map((key) => contact.properties[key] ?? ""),
+            ]
+          })
+        ),
       }
     },
   },
