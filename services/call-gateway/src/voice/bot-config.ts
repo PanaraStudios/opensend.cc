@@ -1,3 +1,4 @@
+import { validateCollect, stringList, type CollectField } from "./toolkit.ts"
 export const VOICE_STAGE_MODELS = {
   stt: {
     sarvam: ["saaras:v4", "saaras:v3-realtime"],
@@ -88,6 +89,9 @@ export interface VoiceBotConfig {
   systemPrompt: string
   greeting: string
   tools: VoiceToolName[]
+  collect?: CollectField[]
+  knowledgeBaseIds?: string[]
+  customToolIds?: string[]
   handoff: { agents: boolean; ivrId?: string }
   maxDurationSeconds: number
   silenceTimeoutSeconds: number
@@ -347,6 +351,9 @@ export function validateTool(call: {
 }
 export function validateBot(input: Record<string, unknown>): VoiceBotConfig {
   const allowed = [
+    "collect",
+    "knowledgeBaseIds",
+    "customToolIds",
     "name",
     "provider",
     "engine",
@@ -705,5 +712,9 @@ export function validateBot(input: Record<string, unknown>): VoiceBotConfig {
       value.monthlyMinuteBudget > 1e7)
   )
     throw new Error("Invalid monthly minute budget")
+  if (input.collect !== undefined)
+    value.collect = validateCollect(input.collect)
+  for (const key of ["knowledgeBaseIds", "customToolIds"] as const)
+    if (input[key] !== undefined) value[key] = stringList(input[key], 16)
   return value
 }

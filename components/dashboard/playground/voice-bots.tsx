@@ -1,4 +1,5 @@
 "use client"
+import { BotAttachments, CollectFields } from "./bot-tool-fields"
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -722,6 +723,18 @@ function BotForm({ row }: { row: VoiceBotResource }) {
             />
           ))
         )}
+      </RailSection>
+      <RailSection title="Knowledge">
+        <BotAttachments kind="knowledge" config={draft} onChange={patch} />
+      </RailSection>
+      <RailSection title="Collect data">
+        <CollectFields
+          fields={draft.collect ?? []}
+          onChange={(collect) => patch({ collect })}
+        />
+      </RailSection>
+      <RailSection title="Webhook tools">
+        <BotAttachments kind="tools" config={draft} onChange={patch} />
       </RailSection>
       <RailSection title="Tools">
         <Field>

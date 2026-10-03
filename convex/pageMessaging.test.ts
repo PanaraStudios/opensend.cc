@@ -302,7 +302,7 @@ test("inbound Page/IG messages create scoped identities, contacts and windows; p
   const events = await f.t.run((ctx) => ctx.db.query("events").collect())
   for (const channel of ["messenger", "instagram"])
     expect(events.map((e) => e.type)).toContain(
-      `custom:opensend:${channel}.message.received`
+      `${channel}.message.received`
     )
   await project(
     f,

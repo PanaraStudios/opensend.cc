@@ -209,6 +209,7 @@ function CommandMenu({
               <CommandItem
                 key={item.href}
                 value={item.title}
+                keywords={item.keywords}
                 onSelect={() => go(item.href)}
               >
                 {item.title}
@@ -370,7 +371,7 @@ function DashboardSidebar({
                 </SidebarMenuItem>
               )}
               {DASHBOARD_NAV.filter(
-                (item) => !setupPending || item.href === "/domains"
+                (item) => !setupPending || item.href === "/channels"
               ).map((item) => {
                 const Icon = item.icon
                 const active = navItemActive(pathname, item)

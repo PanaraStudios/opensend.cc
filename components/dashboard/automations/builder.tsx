@@ -221,13 +221,19 @@ function BuilderScreen({
   deleteAndLeave: (remove: () => void) => void
 }) {
   const { updateAutomation, deleteAutomation } = useAutomationCommands()
-  const saved = JSON.stringify({ trigger: stored.trigger, steps: stored.steps })
+  const saved = JSON.stringify({
+    trigger: stored.trigger,
+    steps: stored.steps,
+    triggerFilters: stored.triggerFilters ?? [],
+  })
   const autosave = useAutosaveDraft(saved, (next) =>
     updateAutomation(stored.id, JSON.parse(next))
   )
   const automation: Automation = { ...stored, ...JSON.parse(autosave.draft) }
   const change = (
-    patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
+    patch: Partial<
+      Pick<Automation, "name" | "trigger" | "triggerFilters" | "steps">
+    >
   ) =>
     autosave.setDraft(
       JSON.stringify({ ...JSON.parse(autosave.draft), ...patch })
@@ -360,9 +366,11 @@ function BuilderScreen({
                   selected={selected === TRIGGER_KEY}
                   locked={enabled}
                   onSelect={() => select(TRIGGER_KEY)}
+                  onFiltersChange={(triggerFilters) =>
+                    change({ triggerFilters })
+                  }
                   onChange={(trigger) => {
                     change({ trigger })
-                    setSelected(null)
                   }}
                 />
               }

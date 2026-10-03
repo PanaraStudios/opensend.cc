@@ -1,3 +1,4 @@
+import { collected } from "./botToolkit"
 import { pathEntry, action as ivrAction } from "../ivr/validators"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
@@ -97,6 +98,8 @@ export const callingTables = {
     botConfig: v.optional(botConfig),
     botOutcome: v.optional(botOutcome),
     botSummary: v.optional(v.string()),
+    collected: v.optional(collected),
+    dataCollectedAt: v.optional(v.number()),
     botFallbackReason: v.optional(v.string()),
     botStartedAt: v.optional(v.number()),
     botSessionStartedAt: v.optional(v.number()),

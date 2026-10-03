@@ -9,7 +9,7 @@ import {
 } from "./public-host"
 
 export type PublicFetchOptions = {
-  method?: "GET" | "POST" | "DELETE"
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   headers?: Record<string, string>
   /** Text, or bytes such as a multipart media upload. */
   body?: string | Uint8Array

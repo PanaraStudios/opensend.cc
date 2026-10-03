@@ -1,3 +1,4 @@
+import { collectSchema } from "./botToolkit.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
@@ -7,6 +8,9 @@ import {
   channelPageCheck,
 } from "./channelMessaging.js"
 const fields = {
+  collect: z.array(collectSchema).max(32).optional(),
+  knowledgeBaseIds: z.array(z.string()).max(16).optional(),
+  customToolIds: z.array(z.string()).max(16).optional(),
   name: z.string().min(1).max(2000),
   provider: z.enum(["gemini", "sarvam", "elevenlabs"]),
   credentialId: z.string(),

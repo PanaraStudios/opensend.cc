@@ -1,3 +1,4 @@
+import { ownedToolkit } from "../botToolkitAccess"
 import { internal } from "../_generated/api"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
@@ -176,6 +177,27 @@ export const save = internalMutation({
     } catch {
       throw invalid("Invalid voice bot configuration")
     }
+    for (const id of config.knowledgeBaseIds ?? [])
+      await ownedToolkit(ctx, "knowledgeBases", args.organizationId, id)
+    for (const id of config.customToolIds ?? [])
+      await ownedToolkit(ctx, "botTools", args.organizationId, id)
+    for (const field of config.collect ?? []) {
+      if (!field.contactProperty) continue
+      const property = await ctx.db
+        .query("contactProperties")
+        .withIndex("by_organizationId_and_key", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("key", field.contactProperty!)
+        )
+        .unique()
+      if (
+        !property ||
+        property.deleting ||
+        (property.type === "number" && field.type !== "number")
+      )
+        throw invalid("Map fields to an existing compatible contact property")
+    }
     const credentialId = ctx.db.normalizeId(
         "voiceProviders",
         config.credentialId
@@ -206,6 +228,9 @@ export const save = internalMutation({
       const now = Date.now(),
         fields = {
           ...config,
+          knowledgeBaseIds: config.knowledgeBaseIds as
+            Id<"knowledgeBases">[] | undefined,
+          customToolIds: config.customToolIds as Id<"botTools">[] | undefined,
           stt: config.stt
             ? {
                 ...config.stt,

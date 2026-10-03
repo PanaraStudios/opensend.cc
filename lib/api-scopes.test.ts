@@ -11,8 +11,8 @@ import { parseScopes as parseOAuthScopes, oauthScopes } from "./oauth/policy"
 
 describe("API scopes", () => {
   it("has one catalog of grantable resources, excluding keys and team settings", () => {
-    assert.equal(API_RESOURCES.length, 19)
-    assert.equal(new Set(API_SCOPES).size, 38)
+    assert.equal(API_RESOURCES.length, 21)
+    assert.equal(new Set(API_SCOPES).size, 42)
     assert.deepEqual(
       [...new Set(API_RESOURCES.map((r) => r.group))],
       ["Calling", "Messaging", "Audience", "Content", "Setup"]
@@ -66,7 +66,14 @@ describe("API scopes", () => {
 it("groups call setup in order and retains existing broad grants without granting messaging to Calling", () => {
   assert.deepEqual(
     API_RESOURCES.filter((r) => r.group === "Calling").map((r) => r.id),
-    ["calling", "ivrs", "voice_bots", "voice_providers"]
+    [
+      "knowledge",
+      "bot_tools",
+      "calling",
+      "ivrs",
+      "voice_bots",
+      "voice_providers",
+    ]
   )
   assert.equal(scopeAllows(["whatsapp:write"], "calling", "write"), true)
   assert.equal(scopeAllows(["calling:write"], "whatsapp", "write"), false)

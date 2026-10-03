@@ -8,6 +8,18 @@
  * @module
  */
 
+import type * as botTools_routes from "../botTools/routes.js";
+import type * as knowledge_routes from "../knowledge/routes.js";
+import type * as voice_toolkitState from "../voice/toolkitState.js";
+import type * as voice_toolkit from "../voice/toolkit.js";
+import type * as voice_collection from "../voice/collection.js";
+import type * as botTools_execute from "../botTools/execute.js";
+import type * as botTools_resources from "../botTools/resources.js";
+import type * as knowledge_search from "../knowledge/search.js";
+import type * as knowledge_ingest from "../knowledge/ingest.js";
+import type * as knowledge_state from "../knowledge/state.js";
+import type * as knowledge_resources from "../knowledge/resources.js";
+import type * as botToolkitAccess from "../botToolkitAccess.js";
 import type * as access from "../access.js";
 import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
@@ -26,6 +38,7 @@ import type * as api_idempotency from "../api/idempotency.js";
 import type * as api_imports from "../api/imports.js";
 import type * as api_keys from "../api/keys.js";
 import type * as api_logs from "../api/logs.js";
+import type * as api_messages from "../api/messages.js";
 import type * as api_media from "../api/media.js";
 import type * as api_metrics from "../api/metrics.js";
 import type * as api_oauth from "../api/oauth.js";
@@ -84,6 +97,7 @@ import type * as channels_mediaUploads from "../channels/mediaUploads.js";
 import type * as channels_messages from "../channels/messages.js";
 import type * as channels_payload from "../channels/payload.js";
 import type * as channels_rows from "../channels/rows.js";
+import type * as channels_senders from "../channels/senders.js";
 import type * as channels_templates from "../channels/templates.js";
 import type * as contactImports from "../contactImports.js";
 import type * as contactProperties from "../contactProperties.js";
@@ -247,6 +261,18 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "botTools/routes": typeof botTools_routes;
+  "knowledge/routes": typeof knowledge_routes;
+  "voice/toolkitState": typeof voice_toolkitState;
+  "voice/toolkit": typeof voice_toolkit;
+  "voice/collection": typeof voice_collection;
+  "botTools/execute": typeof botTools_execute;
+  "botTools/resources": typeof botTools_resources;
+  "knowledge/search": typeof knowledge_search;
+  "knowledge/ingest": typeof knowledge_ingest;
+  "knowledge/state": typeof knowledge_state;
+  "knowledge/resources": typeof knowledge_resources;
+  "botToolkitAccess": typeof botToolkitAccess;
   access: typeof access;
   accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;
@@ -265,6 +291,7 @@ declare const fullApi: ApiFromModules<{
   "api/imports": typeof api_imports;
   "api/keys": typeof api_keys;
   "api/logs": typeof api_logs;
+  "api/messages": typeof api_messages;
   "api/media": typeof api_media;
   "api/metrics": typeof api_metrics;
   "api/oauth": typeof api_oauth;
@@ -323,6 +350,7 @@ declare const fullApi: ApiFromModules<{
   "channels/messages": typeof channels_messages;
   "channels/payload": typeof channels_payload;
   "channels/rows": typeof channels_rows;
+  "channels/senders": typeof channels_senders;
   "channels/templates": typeof channels_templates;
   contactImports: typeof contactImports;
   contactProperties: typeof contactProperties;

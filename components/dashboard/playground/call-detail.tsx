@@ -86,6 +86,36 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
       <DetailSection title="IVR path">
         <IvrPath path={call.ivr_path} menus={ivr?.menus} />
       </DetailSection>
+      {call.collected ? (
+        <DetailSection title="Collected data">
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {Object.entries(call.collected).map(([key, entry]) => (
+              <div key={key}>
+                <dt className="text-sm text-muted-foreground">
+                  {key.replace(/_/g, " ")}
+                </dt>
+                <dd className="text-sm font-medium">
+                  {typeof entry.value === "boolean"
+                    ? entry.value
+                      ? "Yes"
+                      : "No"
+                    : String(entry.value)}
+                  {entry.inferred ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Inferred from conversation
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {!Object.keys(call.collected).length ? (
+            <p className="text-sm text-muted-foreground">
+              No fields were collected.
+            </p>
+          ) : null}
+        </DetailSection>
+      ) : null}
       {call.bot_id ? <BotDiagnostics call={call} /> : null}
       {call.recording?.download_url ? (
         <DetailSection title="Recording">

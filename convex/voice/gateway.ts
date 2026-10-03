@@ -1,3 +1,9 @@
+import {
+  saveCollectedField,
+  completeCollection,
+  inferCollectedFields,
+} from "./collection"
+import { toolkitDeclarations } from "../../lib/bot-toolkit"
 import { createNote, noteBody } from "../contactNotes"
 import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
 import { ConvexError } from "convex/values"
@@ -32,12 +38,12 @@ import { createChannelMessage } from "../channels/messages"
 import { availableAgent } from "./routing"
 import { emitEvent } from "../events"
 import { payload } from "../calling/rows"
-const envelope = {
+export const envelope = {
   nonce: v.string(),
   expiresAt: v.number(),
   data: v.record(v.string(), v.any()),
 }
-async function nonce(
+export async function nonce(
   ctx: MutationCtx,
   value: { nonce: string; expiresAt: number }
 ) {
@@ -58,7 +64,7 @@ async function nonce(
     { id }
   )
 }
-async function gatewayCall(
+export async function gatewayCall(
   ctx: MutationCtx,
   data: Record<string, unknown>,
   active = true,
@@ -143,12 +149,26 @@ export const session = internalMutation({
       // No row keeps the static Sarah/Adam fallback. An empty cache is unknown.
       if (cache) liveVoices = cache.voices
     }
+    const customTools = []
+    for (const id of call.botConfig!.customToolIds ?? []) {
+      const tool = await ctx.db.get("botTools", id)
+      if (tool?.organizationId === call.organizationId)
+        customTools.push({
+          name: tool.name,
+          description: tool.description,
+          parameters: JSON.parse(tool.parameters),
+        })
+    }
     return {
       ...updateVoiceBotVoice(call.botConfig!, liveVoices),
       voiceGender: botVoiceGender(call.botConfig!, liveVoices),
       botId: call.botId,
       keys,
-      toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
+      toolCatalog: [
+        ...toolDeclarations(call.botConfig!.tools as VoiceToolName[]),
+        ...toolkitDeclarations(call.botConfig!),
+        ...customTools,
+      ],
       ...(callerContextBlock ? { callerContextBlock } : {}),
     }
   },
@@ -167,11 +187,23 @@ export const tool = internalMutation({
       arguments: arguments_,
     }
     try {
-      validateTool(toolCall)
+      if (toolCall.name === "save_field") {
+        if (
+          !/^[a-zA-Z0-9._:-]{1,128}$/.test(toolCall.id) ||
+          Object.keys(arguments_).length !== 2 ||
+          typeof arguments_.key !== "string" ||
+          !Object.hasOwn(arguments_, "value")
+        )
+          throw new Error("Invalid field arguments")
+      } else validateTool(toolCall)
     } catch {
       return { ok: false, error: "Invalid tool arguments" }
     }
-    if (!call.botConfig!.tools.includes(toolCall.name))
+    if (
+      toolCall.name === "save_field"
+        ? !call.botConfig!.collect?.length
+        : !call.botConfig!.tools.includes(toolCall.name)
+    )
       return { ok: false, error: "Tool is not enabled for this bot" }
     const previous = await ctx.db
       .query("callTranscripts")
@@ -199,12 +231,20 @@ export const tool = internalMutation({
     try {
       result = {
         ok: true,
-        result: await execute(
-          ctx,
-          call,
-          toolCall.name as VoiceToolName,
-          arguments_
-        ),
+        result:
+          toolCall.name === "save_field"
+            ? await saveCollectedField(
+                ctx,
+                call,
+                String(arguments_.key),
+                arguments_.value
+              )
+            : await execute(
+                ctx,
+                call,
+                toolCall.name as VoiceToolName,
+                arguments_
+              ),
       }
     } catch (error) {
       result = {
@@ -407,7 +447,9 @@ export const event = internalMutation({
         botUsage: totalUsage,
         botSessionUsage: finalUsage,
       })
+      await inferCollectedFields(ctx, call, data.inferred)
       const updated = (await ctx.db.get("calls", call._id))!
+      await completeCollection(ctx, updated)
       if (!call.test) await minuteUsage.replaceOrInsert(ctx, call, updated)
       if (!call.test)
         await emitEvent(

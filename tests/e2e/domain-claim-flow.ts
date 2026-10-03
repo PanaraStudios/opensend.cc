@@ -62,10 +62,13 @@ export function domainClaimTests(
     await backend.mutation(api.teams.switchTeam, {
       organizationId: claimingTeam,
     })
-    await owner.goto("/domains")
+    await owner.goto("/channels")
     await owner
-      .getByRole("button", { name: "Add domain", exact: true })
+      .getByRole("button", { name: "Add channel", exact: true })
       .first()
+      .click()
+    await owner
+      .getByRole("menuitem", { name: "Email domain", exact: true })
       .click()
     const dialog = owner.getByRole("dialog", { name: "Add domain" })
     await dialog.getByLabel("Name", { exact: true }).fill(name)
@@ -210,6 +213,6 @@ export function domainClaimTests(
       leave: false,
     })
     await seedCallbackOrigin(owner, process.env.OPENSEND_CALLBACK_ORIGIN!)
-    await owner.goto("/domains")
+    await owner.goto("/channels")
   })
 }

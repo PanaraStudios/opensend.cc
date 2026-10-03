@@ -88,13 +88,16 @@ test("navigation has every requested destination and no duplicate keys", () => {
   assert.equal(NAVIGATION_SHORTCUTS["/playground"], "p")
   assert.equal(NAVIGATION_SHORTCUTS["/contacts"], "c")
   assert.equal(NAVIGATION_SHORTCUTS["/channels"], "h")
+  // Domains' old key lands on their channel.
+  assert.equal(NAVIGATION_SHORTCUTS["/channels?type=email"], "d")
+  assert.equal(NAVIGATION_SHORTCUTS["/domains"], undefined)
   assert.equal(NAVIGATION_SHORTCUTS["/settings/team"], "s")
 })
 
 test("shared action scopes bind only existing actions", () => {
   for (const label of [
     "Create API key",
-    "Add domain",
+    "Add channel",
     "Add Contacts",
     "Create broadcast",
     "Create automation",

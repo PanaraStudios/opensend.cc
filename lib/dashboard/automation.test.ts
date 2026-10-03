@@ -148,6 +148,11 @@ describe("durations and names", () => {
   it("reserves the system prefix and refuses duplicates", () => {
     assert.equal(eventNameError("user.created"), null)
     assert.match(eventNameError("opensend:ping") ?? "", /reserved/)
+    assert.match(eventNameError("contact.note_created") ?? "", /reserved/)
+    assert.equal(
+      eventNameError("contact.note_created", [], { allowSystem: true }),
+      null
+    )
     assert.match(eventNameError("a", ["a"]) ?? "", /already exists/)
     assert.match(eventNameError("  ") ?? "", /Enter/)
   })
@@ -311,15 +316,20 @@ it("supports a WhatsApp step and known system events for triggers and reply wait
   )
 })
 
-it("contact notes and messaging replies are valid triggers but unknown system names are refused", () => {
-  assert.deepEqual(
-    SYSTEM_EVENTS.map((event) => event.value),
-    [
-      "contact.note_created",
-      "opensend:whatsapp.message.received",
-      "opensend:messenger.message.received",
-      "opensend:instagram.message.received",
-    ]
+it("all messaging reply events are valid triggers but custom system names are refused", () => {
+  assert.ok(
+    SYSTEM_EVENTS.some((event) => event.value === "contact.note_created")
+  )
+  assert.ok(
+    SYSTEM_EVENTS.some((event) => event.value === "opensend:email.opened")
+  )
+  assert.ok(
+    SYSTEM_EVENTS.some(
+      (event) => event.value === "opensend:whatsapp.call.completed"
+    )
+  )
+  assert.ok(
+    SYSTEM_EVENTS.some((event) => event.value === "call.data_collected")
   )
   for (const event of SYSTEM_EVENTS)
     assert.equal(triggerEventError(event.value), null)

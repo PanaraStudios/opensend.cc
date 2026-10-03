@@ -8,7 +8,6 @@ import { insertRow, patchRow } from "../counts"
 import { upsertChannelThread, recordWhatsAppUser } from "../channels/identity"
 import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
-import { customEventType } from "../automationEvents"
 import { retirement } from "../teamLifecycle"
 import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
@@ -235,13 +234,6 @@ async function receive(
     account.organizationId,
     `${account.channel}.message.received`,
     payload
-  )
-  // Existing custom-event dispatch accepts reserved system names internally.
-  await emitEvent(
-    ctx,
-    account.organizationId,
-    customEventType(`opensend:${account.channel}.message.received`),
-    { contact_id: contactId, payload }
   )
 }
 

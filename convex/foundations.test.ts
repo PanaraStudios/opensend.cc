@@ -23,6 +23,8 @@ describe("event outbox", () => {
       type: "domain.created",
       data: { domain_id: "dom" },
     })
+    // Drain both outbox consumers before another test creates its Convex context.
+    await t.finishAllScheduledFunctions(() => {})
   })
 })
 
