@@ -586,7 +586,7 @@ test("inbound system event starts phone-only run, sends a template, and next rep
   const run = (await f.t.run((ctx) => ctx.db.get("automationRuns", first._id)))!
   expect(run.status).toBe("completed")
   expect(
-    (await f.t.run((ctx) => ctx.db.get("contacts", first.contactId)))?.lastName
+    (await f.t.run((ctx) => ctx.db.get("contacts", first.contactId!)))?.lastName
   ).toBe("Replied")
 })
 

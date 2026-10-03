@@ -65,7 +65,9 @@ function sdkRequests() {
       found.add(`GET ${accountPath}/{}`)
     }
     const assignments: { at: number; name: string; literal: string }[] = []
-    for (const match of text.matchAll(/const (url|path) =([\s\S]*?);/g)) {
+    for (const match of text.matchAll(
+      /const (url|path) =([\s\S]*?)(?:;|\n\s*(?:return|const)\s)/g
+    )) {
       const literal = firstLiteral(match[2])
       if (literal)
         assignments.push({ at: match.index, name: match[1], literal })
