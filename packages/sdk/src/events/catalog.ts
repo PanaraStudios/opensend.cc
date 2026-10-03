@@ -306,11 +306,16 @@ const whatsappFields = Object.fromEntries(
 const normalizedFields =
   fromWireSchema(whatsappNormalizedSchema, "Normalized WhatsApp message")
     .fields ?? {}
+/** The base shape every message event shares across channels (the unified /messages object). */
+const messageBase = {
+  ...strings("id", "object", "contact_id", "channel", "status", "preview"),
+  direction: field("enum", "Message direction", "inbound", {
+    values: ["inbound", "outbound"],
+  }),
+}
 const message = object({
+  ...messageBase,
   ...strings(
-    "id",
-    "contact_id",
-    "channel",
     "account_id",
     "conversation_id",
     "from",
@@ -332,9 +337,6 @@ const message = object({
       "received",
     ],
     optional: true,
-  }),
-  direction: field("enum", "Message direction", "inbound", {
-    values: ["inbound", "outbound"],
   }),
   ...dates("created_at", "read_receipt_sent_at", "revoked_at"),
   content: {
@@ -481,6 +483,7 @@ const call = object({
   },
 })
 const email = object({
+  ...messageBase,
   ...strings(
     "email_id",
     "broadcast_id",
