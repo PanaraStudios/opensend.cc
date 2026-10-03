@@ -144,6 +144,48 @@ export function softphoneTests(
       owner.getByText("Calls waiting: 0", { exact: true })
     ).toBeVisible()
     await owner.keyboard.press("Escape")
+    // The open panel in both themes, on desktop and at phone width.
+    const originalTheme = await owner.evaluate(() =>
+      localStorage.getItem("theme")
+    )
+    const viewport = owner.viewportSize()
+    for (const [theme, width] of [
+      ["light", 1280],
+      ["dark", 1280],
+      ["dark", 390],
+    ] as const) {
+      await owner.evaluate(
+        (value) => localStorage.setItem("theme", value),
+        theme
+      )
+      await owner.setViewportSize({ width, height: 844 })
+      await owner.goto(`/contacts/${contactId}`)
+      if (width < 768)
+        await owner
+          .getByRole("button", { name: "Toggle Sidebar", exact: true })
+          .first()
+          .click()
+      await owner
+        .getByRole("button", { name: "Open softphone", exact: true })
+        .last()
+        .click()
+      await expect(
+        owner.getByRole("switch", { name: "Online", exact: true })
+      ).toBeVisible()
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/softphone-panel-${theme}-${width}.png`,
+      })
+      await owner.keyboard.press("Escape")
+    }
+    await owner.evaluate(
+      (value) =>
+        value === null
+          ? localStorage.removeItem("theme")
+          : localStorage.setItem("theme", value),
+      originalTheme
+    )
+    if (viewport) await owner.setViewportSize(viewport)
+    await owner.goto(`/contacts/${contactId}`)
     testBackend("calling/settingsState:store", {
       accountId,
       mode: "api",
