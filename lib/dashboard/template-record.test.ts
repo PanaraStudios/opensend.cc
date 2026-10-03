@@ -25,6 +25,15 @@ test("template adapter preserves page channels and customer-facing content", () 
     assert.equal(item.channel, channel)
     assert.deepEqual(item.localContent, content)
     assert.equal(item.content, undefined)
+    const incomplete = {
+      text: "Hi",
+      quick_replies: [{ title: "", payload: "" }],
+    }
+    assert.deepEqual(
+      asTemplate({ ...row, channel }, { html: "", content: incomplete })
+        .localContent,
+      incomplete
+    )
   }
 })
 test("email markup and WhatsApp components keep their established shapes", () => {

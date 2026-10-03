@@ -33,6 +33,7 @@ import {
 } from "./shared"
 import { TemplateTestAction } from "./test-send"
 import { localTemplateVariables } from "@/lib/meta/local-templates"
+import { pageMessageTextLimit } from "@/lib/meta/payloads"
 
 /** Local Meta templates share the email/WhatsApp editor's naming and actions. */
 export function PageTemplateEditorScreen({
@@ -60,11 +61,14 @@ export function PageTemplateEditorScreen({
       }
     }
   )
-  const content = localTemplate(JSON.parse(autosave.draft))
+  const content = localTemplate(JSON.parse(autosave.draft), true)
   const label = templatePublishLabel(item)
+  const textLimit = pageMessageTextLimit(
+    item.channel === "instagram" ? "instagram" : "messenger"
+  )
   function change(next: typeof content) {
     try {
-      const value = localTemplate(next)
+      const value = localTemplate(next, true)
       autosave.setDraft(JSON.stringify(value))
       setSave("saving")
       setError(null)
@@ -124,7 +128,7 @@ export function PageTemplateEditorScreen({
                 <Textarea
                   id="local-template-text"
                   rows={6}
-                  maxLength={2000}
+                  maxLength={textLimit}
                   value={content.text}
                   placeholder="Hi {{{first_name}}}, your order is on its way."
                   onChange={(event) =>
@@ -133,7 +137,7 @@ export function PageTemplateEditorScreen({
                 />
                 <FieldDescription>
                   Use named variables such as {"{{{first_name}}}"}.{" "}
-                  {content.text.length}/2000
+                  {content.text.length}/{textLimit}
                 </FieldDescription>
               </Field>
             </FieldGroup>

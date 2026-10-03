@@ -518,6 +518,41 @@ test.each([551, 10, 2018278, 190, 4])(
     )
   }
 )
+test.each(["messenger", "instagram"] as const)(
+  "%s template drafts persist cleared quick replies and reject publishing until complete",
+  async (channel) => {
+    const f = await setup()
+    const response = await f.call("/templates", "POST", {
+      channel,
+      name: "Draft replies",
+      text: "Hello",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    })
+    expect(response.status).toBe(201)
+    const { id } = await response.json()
+    const quick_replies = [{ title: "", payload: "" }]
+    expect(
+      (await f.call(`/templates/${id}`, "PATCH", { quick_replies })).status
+    ).toBe(200)
+    expect(await (await f.call(`/templates/${id}`)).json()).toMatchObject({
+      quick_replies,
+    })
+    expect((await f.call(`/templates/${id}/publish`, "POST", {})).status).toBe(
+      422
+    )
+    expect(
+      (
+        await f.call(`/templates/${id}`, "PATCH", {
+          quick_replies: [{ title: "Yes", payload: "YES" }],
+        })
+      ).status
+    ).toBe(200)
+    expect((await f.call(`/templates/${id}/publish`, "POST", {})).status).toBe(
+      200
+    )
+  }
+)
+
 test("local templates publish without Meta, substitute variables by alias/id and preserve the published copy", async () => {
   const f = await setup()
   for (const channel of ["messenger", "instagram"] as const) {

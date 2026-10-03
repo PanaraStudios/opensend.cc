@@ -192,17 +192,21 @@ export function pageMessagingType(
     throw new Error("The 7-day HUMAN_AGENT messaging window is closed.")
   return "MESSAGE_TAG" as const
 }
-export function quickReplies(value: unknown) {
+export function quickReplies(value: unknown, draft = false) {
   if (!Array.isArray(value) || value.length > 13)
     throw new Error("quick_replies must be an array of at most 13 replies.")
   return value.map((raw) => {
     const reply = object(raw, "quick reply")
     return {
-      title: text(reply.title, "title", 20),
-      payload: text(reply.payload, "payload", 1000),
+      title: text(reply.title, "title", 20, draft),
+      payload: text(reply.payload, "payload", 1000, draft),
     }
   })
 }
+
+/** Editor and send validation use the same provider text limit. */
+export const pageMessageTextLimit = (channel: PageChannel) =>
+  channel === "instagram" ? 1000 : 2000
 
 /** Page-backed Send API. Stored text templates are resolved before this adapter.
  * https://developers.facebook.com/documentation/business-messaging/messenger-platform/send-messages
@@ -224,11 +228,7 @@ export function pageMessageContent(
     quick_replies?: { content_type: string; title: string; payload: string }[]
   } = {}
   if (input.text !== undefined)
-    message.text = text(
-      input.text,
-      "text",
-      channel === "instagram" ? 1000 : 2000
-    )
+    message.text = text(input.text, "text", pageMessageTextLimit(channel))
   else {
     const source = object(input.attachment, "attachment")
     if (!["image", "video", "audio", "file"].includes(String(source.type)))

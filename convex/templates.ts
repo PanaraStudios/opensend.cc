@@ -258,7 +258,7 @@ export async function insertTemplate(
     from: optionalText(draft.from),
     replyTo: optionalText(draft.replyTo),
     variables: page
-      ? localTemplateVariables(localTemplate(draft.content))
+      ? localTemplateVariables(localTemplate(draft.content, true))
       : draftVariables(draft),
     variableDefinitions: draft.variableDefinitions,
     replyToAddresses: draft.replyToAddresses,
@@ -957,7 +957,7 @@ export async function updateTemplate(
     from: next.from,
     replyTo: next.replyTo,
     variables: page
-      ? localTemplateVariables(localTemplate(next.content))
+      ? localTemplateVariables(localTemplate(next.content, true))
       : draftVariables(next),
     variableDefinitions: next.variableDefinitions,
     replyToAddresses: next.replyToAddresses,
@@ -1129,7 +1129,7 @@ export function resolvedVariables(
   const inferred = templateVariableDefaults({
     subject: template.subject,
     preview: template.preview,
-    html: `${draft.html} ${draft.text ?? ""} ${draft.content && typeof draft.content === "object" && "quick_replies" in draft.content ? localTemplateSource(localTemplate(draft.content)) : ""}`,
+    html: `${draft.html} ${draft.text ?? ""} ${draft.content && typeof draft.content === "object" && "quick_replies" in draft.content ? localTemplateSource(localTemplate(draft.content, true)) : ""}`,
   })
   const definitions = new Map(
     inferred.map((variable) => [

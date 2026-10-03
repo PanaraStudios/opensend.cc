@@ -6,7 +6,8 @@ export type LocalTemplate = {
   text: string
   quick_replies: { title: string; payload: string }[]
 }
-export function localTemplate(value: unknown): LocalTemplate {
+/** Drafts permit incomplete replies; publishing and sending remain strict. */
+export function localTemplate(value: unknown, draft = false): LocalTemplate {
   const data = object(value)
   if (data.text !== undefined && typeof data.text !== "string")
     throw new Error("Template text must be a string.")
@@ -16,7 +17,9 @@ export function localTemplate(value: unknown): LocalTemplate {
   return {
     text,
     quick_replies:
-      data.quick_replies === undefined ? [] : quickReplies(data.quick_replies),
+      data.quick_replies === undefined
+        ? []
+        : quickReplies(data.quick_replies, draft),
   }
 }
 export const localTemplateSource = (content: LocalTemplate) =>

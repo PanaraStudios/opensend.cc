@@ -59,3 +59,25 @@ test("local messaging templates infer and substitute text/quick-reply variables 
   assert.throws(() => localTemplate({ text: 123 }))
   assert.throws(() => localTemplate({ text: "x".repeat(2001) }))
 })
+
+test("quick replies allow incomplete drafts while publish/send parsing stays strict", () => {
+  const content = { text: "Hello", quick_replies: [{ title: "", payload: "" }] }
+  assert.deepEqual(localTemplate(content, true), content)
+  assert.throws(() => localTemplate(content), /nonempty/)
+  assert.throws(
+    () =>
+      localTemplate(
+        { ...content, quick_replies: [{ title: "x".repeat(21), payload: "" }] },
+        true
+      ),
+    /at most 20/
+  )
+  assert.throws(
+    () =>
+      localTemplate(
+        { ...content, quick_replies: [{ title: "", payload: 123 }] },
+        true
+      ),
+    /string/
+  )
+})

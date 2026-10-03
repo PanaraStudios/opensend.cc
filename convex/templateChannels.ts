@@ -55,11 +55,12 @@ function normalizeLocal(input: Input, current?: unknown): Input {
     current === undefined
       ? (input.content ?? { text: input.text ?? "" })
       : {
-          ...localTemplate(current),
+          ...localTemplate(current, true),
           ...(input.content !== undefined
             ? object(input.content)
             : { text: input.text }),
-        }
+        },
+    true
   )
   return { ...input, content, text: content.text }
 }

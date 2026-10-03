@@ -19,7 +19,7 @@ export function asTemplate(
   return {
     ...(row.channel ? { channel: row.channel } : {}),
     ...(isPageChannel(row.channel ?? "email")
-      ? { localContent: localTemplate(body?.content) }
+      ? { localContent: localTemplate(body?.content, true) }
       : {}),
     id: row._id,
     name: row.name,
