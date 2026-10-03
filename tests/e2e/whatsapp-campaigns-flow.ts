@@ -254,10 +254,17 @@ export function whatsappCampaignsTests(
     await owner.waitForURL(/\/automations\/[^/]+$/)
     const automationId = new URL(owner.url()).pathname.split("/")[2]
     await owner.getByTestId("workflow-node-start").click()
-    // System events are suggested in the trigger's event box.
-    await owner.getByPlaceholder("Type or select an event").click()
+    // System events are listed in the trigger's event picker.
     await owner
-      .getByRole("option", { name: "WhatsApp message received", exact: true })
+      .getByRole("combobox", { name: "Event picker", exact: true })
+      .click()
+    await owner
+      .getByPlaceholder("Search events…")
+      .fill("WhatsApp message received")
+    // Options show the event's description under its label.
+    await owner
+      .getByRole("option", { name: /^WhatsApp message received/ })
+      .first()
       .click()
     await owner.getByTestId("workflow-add-step").last().click()
     await owner
