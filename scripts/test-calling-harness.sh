@@ -8,7 +8,7 @@ set -eu
     for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET VOICE_AGENT_SECRET; do
       printf '%s=%s\n' "$name" "$(openssl rand -hex 32)"
     done > .env.calling-test
-  elif ! rg -q '^VOICE_AGENT_SECRET=.' .env.calling-test; then
+  elif ! grep -q '^VOICE_AGENT_SECRET=.' .env.calling-test; then
     printf 'VOICE_AGENT_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env.calling-test
   fi
   until mkdir /private/tmp/opensend-calling-harness.lock 2>/dev/null; do sleep 30; done
@@ -25,11 +25,11 @@ set -eu
   c build janus freeswitch drachtio voice-agent call-gateway meta-peer
   c up -d janus freeswitch drachtio voice-agent call-gateway
   if [ "$#" -eq 0 ]; then
-    set -- playground playground-bot baseline agent voice bot-engine bot-end-call ivr-engine ivr-bot-agent bot-ivr
+    set -- playground playground-bot baseline agent voice bot-engine bot-end-call ivr-engine ivr-bot-agent bot-ivr outbound-bot outbound-ivr
   fi
   for harness_mode in "$@"; do
     case "$harness_mode" in
-      playground|playground-bot|baseline|agent|voice|bot-engine|bot-end-call|ivr-engine|ivr-bot-agent|bot-ivr) ;;
+      playground|playground-bot|baseline|agent|voice|bot-engine|bot-end-call|ivr-engine|ivr-bot-agent|bot-ivr|outbound-bot|outbound-ivr) ;;
       *) echo "Unknown calling harness mode: $harness_mode" >&2; exit 2 ;;
     esac
     c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts "$harness_mode"

@@ -26,7 +26,7 @@ from .auth import SessionTokens
 from .backend import VoiceBackend
 from .serializer import VoiceSerializer
 from .tools import ToolRouter
-from .factory import create_services, summarize, tool_schema
+from .factory import create_services, opening_text, summarize, tool_schema
 from .telemetry import Telemetry
 from .fake import FakePipeline
 from .playback import PlaybackObserver
@@ -177,14 +177,14 @@ async def session(websocket: WebSocket):
         async def connected(transport, client):
             await emit({"type": "ready"})
             if not fake:
-                disclosure = config["disclosure"] + " " + config["greeting"]
+                disclosure = opening_text(config)
                 if services.tts:
                     await worker.queue_frame(TTSSpeakFrame(disclosure))
                 else:
                     context.add_message(
                         {
                             "role": "user",
-                            "content": "First say exactly this disclosure, then the greeting: "
+                            "content": "First say exactly this opening, before listening for a reply: "
                             + disclosure,
                         }
                     )

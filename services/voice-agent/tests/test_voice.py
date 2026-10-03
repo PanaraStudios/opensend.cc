@@ -337,3 +337,16 @@ async def test_output_playback_observer_marks_completion_and_next_speech_epoch()
     await serializer.serialize(OutputAudioRawFrame(bytes(640), 16000, 1))
     assert emit.await_args.args[0]["type"] == "mark"
     assert emit.await_args.args[0]["turnId"] != turn
+
+
+def test_outbound_opening_starts_with_the_configured_greeting():
+    from voice_agent.factory import opening_text
+    config = {
+        "greeting": "Hello Ada, this is your seminar follow-up.",
+        "disclosure": "I am an automated assistant.",
+        "callDirection": "outbound",
+    }
+    assert opening_text(config).startswith(config["greeting"])
+    assert opening_text(config).endswith(config["disclosure"])
+    config["callDirection"] = "inbound"
+    assert opening_text(config).startswith(config["disclosure"])

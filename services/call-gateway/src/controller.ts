@@ -326,8 +326,11 @@ export class CallController implements GatewayApi {
             event.plugindata?.data.result?.event === "incomingcall" &&
             event.jsep?.type === "offer"
         ),
+        // Include an 8k clock so FreeSWITCH offers telephone-event/8000.
+        // gatewaySdp strips L16, keeping only Opus speech and 8k DTMF.
+        // The alternate separator survives user/ dial-string expansion.
         this.fs.bgapi(
-          `originate {origination_uuid=${call.uuid},opensend_call_id=${call.id},absolute_codec_string=OPUS@48000h@20i,rtp_secure_media=mandatory,originate_timeout=45}user/${call.extension}@${this.options.fsHost} &park()`
+          `originate {origination_uuid=${call.uuid},opensend_call_id=${call.id},absolute_codec_string=^^:OPUS@48000h@20i:L16@8000h@20i,rtp_secure_media=mandatory,originate_timeout=45}user/${call.extension}@${this.options.fsHost} &park()`
         ),
       ])
       call.localSdp = gatewaySdp(event.jsep!.sdp, "offer")
