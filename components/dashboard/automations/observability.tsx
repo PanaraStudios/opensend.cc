@@ -112,6 +112,18 @@ function StepFacts({
               : formatElapsed(record.completedAt - record.startedAt)}
           </CardFact>
         </div>
+        {(["inputs", "output"] as const).map((name) =>
+          record[name] ? (
+            <CardFact
+              key={name}
+              label={name === "inputs" ? "Resolved inputs" : "Output"}
+            >
+              <pre className="max-h-48 overflow-auto text-caption whitespace-pre-wrap">
+                {JSON.stringify(record[name], null, 2)}
+              </pre>
+            </CardFact>
+          ) : null
+        )}
         {record.error ? (
           <p className="text-sm text-destructive">{record.error}</p>
         ) : null}

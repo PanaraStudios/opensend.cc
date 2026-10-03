@@ -1,3 +1,5 @@
+import { messagesTests } from "./messages-flow"
+import { automationEventsTests } from "./automation-events-flow"
 import { ivrTests } from "./ivr-flow"
 import { voiceBotTests } from "./voice-bot-flow"
 import { softphoneTests } from "./softphone-flow"
@@ -1260,6 +1262,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   channelsTests(() => ({ owner, member }))
   metaInboundTests(() => ({ owner, organizationId }))
   whatsappSendTests(() => ({ owner, organizationId }))
+  messagesTests(() => ({ owner, organizationId, sendingDomainId }))
   callingTests(() => ({ owner, organizationId }))
   ivrTests(() => ({ owner, organizationId }))
   voiceBotTests(() => ({ owner, organizationId }))
@@ -1267,6 +1270,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
   apiKeyScopesTests(() => ({ owner, organizationId }))
   whatsappTemplatesTests(() => ({ owner, organizationId }))
   whatsappCampaignsTests(() => ({ owner, organizationId }))
+  automationEventsTests(() => ({ owner, organizationId }))
   messengerInstagramTests(() => ({ owner, organizationId }))
   inboxTests(() => ({ owner, organizationId, sendingDomainId }))
   fileStorageTests(() => ({ owner, organizationId }))

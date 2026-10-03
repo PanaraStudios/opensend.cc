@@ -107,6 +107,8 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
+  ComboboxGroup,
+  ComboboxLabel,
 } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import {
@@ -1874,7 +1876,9 @@ export function RadioCards<Value extends string>({
 export type SelectOption = {
   value: string
   label: string
+  group?: string
   description?: string
+  icon?: LucideIcon
   dotClassName?: string
 }
 
@@ -2001,26 +2005,36 @@ export function SearchableSelect({
         />
         <ComboboxEmpty>{emptyLabel ?? "No results found."}</ComboboxEmpty>
         <ComboboxList>
-          {(item: SelectOption) => (
-            <ComboboxItem key={item.value} value={item}>
-              {item.dotClassName ? (
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    item.dotClassName
-                  )}
-                />
-              ) : null}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{item.label}</span>
-                {item.description ? (
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {item.description}
-                  </span>
-                ) : null}
-              </span>
-            </ComboboxItem>
+          {Array.from(new Set(choices.map((item) => item.group ?? ""))).map(
+            (group) => (
+              <ComboboxGroup key={group}>
+                {group ? <ComboboxLabel>{group}</ComboboxLabel> : null}
+                {choices
+                  .filter((item) => (item.group ?? "") === group)
+                  .map((item) => (
+                    <ComboboxItem key={item.value} value={item}>
+                      {item.icon ? <item.icon className="shrink-0" /> : null}
+                      {item.dotClassName ? (
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "size-1.5 shrink-0 rounded-full",
+                            item.dotClassName
+                          )}
+                        />
+                      ) : null}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{item.label}</span>
+                        {item.description ? (
+                          <span className="text-caption text-muted-foreground">
+                            {item.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    </ComboboxItem>
+                  ))}
+              </ComboboxGroup>
+            )
           )}
         </ComboboxList>
       </ComboboxContent>

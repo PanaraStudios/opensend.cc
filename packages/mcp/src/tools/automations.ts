@@ -33,7 +33,7 @@ Uses "next".
 
 ### send_email — send an email using a published template
 config: { "template": { "id": "<template_id>", "variables": { "<key>": "<value>" } }, "from": "Name <sender@example.com>", "replyTo": "<address>" }
-The published template must supply the subject. Opensend does not accept step-level subject overrides or structured template variables. "from" can override the template sender; "replyTo" is optional. Use list-domains to find verified sender domains.
+The template supplies subject and body; subject can be overridden in the step. Text fields accept {{trigger.path}}, {{steps.stepKey.path}}, and {{contact.path}} tokens. Use list-event-catalog to discover typed fields. Trigger config accepts filters as a list of condition rules. "from" can override the template sender; "replyTo" is optional. Use list-domains to find verified sender domains.
 Uses "next".
 
 ### delay — pause the workflow

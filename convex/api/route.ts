@@ -32,6 +32,10 @@ export type ApiRouteOptions = {
   path: string
   /** Every REST operation declares its required resource access. */
   scope: RequiredScope
+  /** Dynamic resource authorization; begin selects a permitted alternative. */
+  resolveScopes?: (
+    request: Pick<ApiRequest, "body" | "query">
+  ) => RequiredScope[]
   /** Largest accepted request body, in bytes. Default 1 MB. */
   maxBody?: number
   bodyFormat?: "multipart" | "multipart-binary"
@@ -322,11 +326,27 @@ function dispatch(patterns: Pattern[]) {
         message:
           "Idempotency keys, if present, must have between 1 and 256 characters.",
       }
+    let alternativeScopes: RequiredScope[] | undefined
+    if (options.resolveScopes && !problem) {
+      try {
+        alternativeScopes = options.resolveScopes({
+          body,
+          query: url.searchParams,
+        })
+      } catch (error) {
+        problem = failure(error)
+      }
+    }
     const begun = await ctx.runMutation(internal.api.state.begin, {
       credential: auth.credential,
       scope: options.scope,
+      alternativeScopes,
       emailSending:
-        options.method === "POST" && EMAIL_SEND_PATHS.has(options.path),
+        options.method === "POST" &&
+        (EMAIL_SEND_PATHS.has(options.path) ||
+          (options.path === "/messages" &&
+            alternativeScopes?.[0] !== "full_access" &&
+            alternativeScopes?.[0]?.resource === "emails")),
       smtp: options.source === "smtp",
       idempotency:
         idempotencyKey && !problem

@@ -1,3 +1,5 @@
+import { eventCatalog } from "../lib/event-catalog"
+import { listProperties } from "./audience"
 import { includeSelected } from "../lib/dashboard/options"
 import { selectedOption, prefixOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
@@ -50,16 +52,13 @@ const ENSURE_LIMIT = 100
 /** Custom events ride the outbox under this prefix, which no system event
     type has: a custom event named `email.sent` is never taken for the real
     one, and webhooks, which subscribe only to system types, never get it.
-    Consumers read the name back with `customEventName`, which also recognizes
-    the contact note system trigger that shares the webhook outbox event. */
+    Consumers read the name back with `customEventName`. */
 export const CUSTOM_EVENT_PREFIX = "custom:"
 export const customEventType = (name: string) => CUSTOM_EVENT_PREFIX + name
 export const customEventName = (type: string) =>
   type.startsWith(CUSTOM_EVENT_PREFIX)
     ? type.slice(CUSTOM_EVENT_PREFIX.length)
-    : type === "contact.note_created" || type === "call.data_collected"
-      ? type
-      : null
+    : null
 
 type Schema = AutomationEvent["schema"]
 
@@ -370,5 +369,24 @@ export const options = query({
     return includeSelected(rows, selected, (row) => row._id).map(
       (row) => row.name
     )
+  },
+})
+
+/** All catalog definitions for this team, also used by save-time validation. */
+export async function teamEventCatalog(ctx: QueryCtx, organizationId: string) {
+  const custom = await ctx.db
+    .query("automationEvents")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId)
+    )
+    .collect()
+  return eventCatalog(custom, await listProperties(ctx, organizationId))
+}
+export const catalog = query({
+  args: { organizationId: v.string() },
+  returns: v.array(v.any()),
+  handler: async (ctx, { organizationId }) => {
+    await requireTeam(ctx, organizationId)
+    return teamEventCatalog(ctx, organizationId)
   },
 })

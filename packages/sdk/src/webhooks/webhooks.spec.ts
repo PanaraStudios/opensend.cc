@@ -310,6 +310,13 @@ describe('Webhooks', () => {
           type: 'email.sent',
           created_at: '2026-08-22T15:28:00.000Z',
           data: {
+            id: 'abc',
+            object: 'message',
+            channel: 'email',
+            direction: 'outbound',
+            status: 'sent',
+            preview: 'Hello World',
+            contact_id: null,
             created_at: '2026-08-22T15:28:00.000Z',
             email_id: 'abc',
             message_id: '<abc@resend.dev>',

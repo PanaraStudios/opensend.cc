@@ -1,3 +1,4 @@
+import { messageBase, emailContact } from "./messageShape"
 import { deleteFile } from "./storage/files"
 import { v, type Infer } from "convex/values"
 import {
@@ -231,6 +232,14 @@ export const complete = internalMutation({
       notification: "",
     })
     await emitEvent(ctx, inbound.organizationId, "email.received", {
+      ...messageBase(
+        (await ctx.db.get("receivedEmails", id))!,
+        "email",
+        "inbound",
+        "received",
+        args.content.text || args.content.html || args.metadata.subject,
+        await emailContact(ctx, (await ctx.db.get("receivedEmails", id))!)
+      ),
       email_id: id,
       created_at: new Date(inbound._creationTime).toISOString(),
       from: args.metadata.from,

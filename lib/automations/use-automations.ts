@@ -45,6 +45,7 @@ export function asAutomation(row: Doc<"automations">): Automation {
     name: row.name,
     status: row.status,
     trigger: row.trigger,
+    triggerFilters: row.triggerFilters,
     steps: JSON.parse(row.graph),
     createdAt: row._creationTime,
   }
@@ -71,6 +72,7 @@ export function asRunStep(row: Doc<"automationRunSteps">): AutomationRunStep {
     status: row.status,
     startedAt: row.startedAt,
     completedAt: row.completedAt ?? null,
+    inputs: row.inputs ?? null,
     output: row.output ?? null,
     error: row.error ?? null,
   }
@@ -98,7 +100,9 @@ export function useAutomationCommands() {
     addAutomation: async () => ({ id: await create({ organizationId }) }),
     updateAutomation: (
       id: string,
-      patch: Partial<Pick<Automation, "name" | "trigger" | "steps">>
+      patch: Partial<
+        Pick<Automation, "name" | "trigger" | "triggerFilters" | "steps">
+      >
     ) => {
       const { steps, ...fields } = patch
       return update({

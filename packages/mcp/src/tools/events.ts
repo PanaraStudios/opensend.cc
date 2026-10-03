@@ -98,6 +98,30 @@ Events define named triggers that your application sends to start automations. E
 
 export function addEventTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
+    "list-event-catalog",
+    {
+      title: "List event catalog",
+      description:
+        "List all system and team custom automation triggers with nested typed fields, descriptions and examples. Use before creating event filters or {{trigger.path}} references.",
+      inputSchema: {
+        event: z
+          .string()
+          .optional()
+          .describe("Optional event name or trigger name to show its fields"),
+      },
+    },
+    async ({ event }) => {
+      const response = await opensend.events.catalog()
+      if (response.error) throw new Error(JSON.stringify(response.error))
+      const events = response.data.data.filter(
+        (item) => !event || item.name === event || item.trigger === event
+      )
+      return {
+        content: [{ type: "text", text: JSON.stringify(events, null, 2) }],
+      }
+    }
+  )
+  server.registerTool(
     "send-event",
     SEND_EVENT_TOOL,
     async ({ event, contactId, email, payload }) => {

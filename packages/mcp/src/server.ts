@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend } from "@opensendcc/sdk"
 import packageJson from "../package.json" with { type: "json" }
 import {
+  addMessageTools,
   addIvrTools,
   addVoiceTools,
   addMediaTools,
@@ -49,6 +50,7 @@ export function createMcpServer(
     }
   )
 
+  addMessageTools(server, opensend)
   addIvrTools(server, opensend)
   addMediaTools(server, opensend)
   addApiKeyTools(server, opensend)

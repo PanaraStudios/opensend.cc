@@ -38,6 +38,7 @@ import type * as api_idempotency from "../api/idempotency.js";
 import type * as api_imports from "../api/imports.js";
 import type * as api_keys from "../api/keys.js";
 import type * as api_logs from "../api/logs.js";
+import type * as api_messages from "../api/messages.js";
 import type * as api_media from "../api/media.js";
 import type * as api_metrics from "../api/metrics.js";
 import type * as api_oauth from "../api/oauth.js";
@@ -290,6 +291,7 @@ declare const fullApi: ApiFromModules<{
   "api/imports": typeof api_imports;
   "api/keys": typeof api_keys;
   "api/logs": typeof api_logs;
+  "api/messages": typeof api_messages;
   "api/media": typeof api_media;
   "api/metrics": typeof api_metrics;
   "api/oauth": typeof api_oauth;
