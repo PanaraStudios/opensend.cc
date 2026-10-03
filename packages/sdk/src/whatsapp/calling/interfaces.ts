@@ -84,7 +84,7 @@ export interface WhatsAppCall {
   bot_name?: string | null
   bot_id: string | null
   bot_outcome: BotOutcome | null
-  collected?: import("../../voice/toolkit").CollectedData | null
+  collected?: import("../../voice/toolkit-types").CollectedData | null
   bot_summary: string | null
   bot_duration: number | null
   bot_usage: VoiceUsage | null

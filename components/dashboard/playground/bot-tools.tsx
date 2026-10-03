@@ -4,7 +4,7 @@ import { useAction } from "convex/react"
 import { WrenchIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
-import type { BotTool } from "@/packages/sdk/src/voice/toolkit"
+import type { BotTool } from "@/packages/sdk/src/voice/toolkit-types"
 import {
   SectionChrome,
   ResourceTable,
