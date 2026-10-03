@@ -85,11 +85,7 @@ export function whatsappCampaignsTests(
     const broadcastId = new URL(owner.url()).pathname.split("/")[2]
     await owner.getByTestId("editor-name").fill("WhatsApp campaigns E2E")
     await owner.getByTestId("editor-name").press("Tab")
-    await choose(
-      owner,
-      "Sending number",
-      `${account.displayName} (${account.handle})`
-    )
+    await choose(owner, "Sender", `${account.displayName} (${account.handle})`)
     await choose(owner, "Approved template", TEMPLATE)
     await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")
@@ -270,11 +266,7 @@ export function whatsappCampaignsTests(
     await owner
       .getByRole("menuitem", { name: "Send WhatsApp", exact: true })
       .click()
-    await choose(
-      owner,
-      "Sending number",
-      `${account.displayName} (${account.handle})`
-    )
+    await choose(owner, "Sender", `${account.displayName} (${account.handle})`)
     await choose(owner, "Approved template", TEMPLATE)
     await choose(owner, "Source for {{1}}", "Contact field")
     await choose(owner, "Contact field for {{1}}", "First name")

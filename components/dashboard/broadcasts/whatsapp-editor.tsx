@@ -4,6 +4,8 @@ import {
   broadcastTopicItems,
 } from "@/lib/dashboard/broadcast"
 
+import { TemplateTestAction } from "@/components/dashboard/templates/test-send"
+import { resolveVariables } from "@/lib/meta/variables"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
@@ -128,6 +130,14 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
         }
         badge={<BroadcastStatusBadge status={item.status} />}
       >
+        <TemplateTestAction
+          templateId={config.templateId}
+          accountId={config.accountId}
+          variables={resolveVariables(
+            config.variables,
+            sample ?? { properties: {} }
+          )}
+        />
         <Button
           variant="outline"
           disabled={busy}
