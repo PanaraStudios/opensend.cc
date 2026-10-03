@@ -13,6 +13,7 @@ import {
 } from "./testHelpers/meta.fixture"
 import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
 import { CallGatewayClient } from "../services/call-gateway/src/client"
+import workpoolTest from "@convex-dev/workpool/test"
 import { createHash } from "node:crypto"
 import { patchRow } from "./counts"
 import { upsertContact, insertContact } from "./audience"
@@ -63,7 +64,8 @@ async function setup() {
     path: string,
     method = "GET",
     body?: unknown,
-    token = key.token
+    token = key.token,
+    idempotencyKey?: string
   ) => {
     vi.setSystemTime(Date.now() + 1100)
     return f.t.fetch(path, {
@@ -71,6 +73,7 @@ async function setup() {
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     })
@@ -99,7 +102,7 @@ async function setup() {
     calls,
     statuses,
   })
-  return { ...f, caller, request, project, webhook }
+  return { ...f, caller, token: key.token, request, project, webhook }
 }
 test("BSUID-only connect/terminate/status fixtures are durable, idempotent and cannot resurrect terminated calls", async () => {
   const f = await setup(),
@@ -188,6 +191,18 @@ test("BIC statuses and API connect answer advance monotonically, and accept/reje
   const f = await setup(),
     now = Math.floor(Date.now() / 1000)
   const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "permanent" },
+        actions: [
+          {
+            action_name: "send_call_permission_request",
+            can_perform_action: true,
+          },
+        ],
+      }),
+    },
     {
       path: `/${PHONE_ID}/calls`,
       respond: (call) =>
@@ -478,6 +493,10 @@ test("calling settings replace call hours whole, omit unused signaling defaults,
       path: `/${PHONE_ID}/settings`,
       method: "POST",
       respond: () => ({ success: true }),
+    },
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({ permission: { status: "permanent" } }),
     },
     {
       path: `/${PHONE_ID}/calls`,
@@ -934,6 +953,18 @@ test("permission requests use the shared message pipeline for both free-form and
     now = Math.floor(Date.now() / 1000)
   const g = fakeGraph([
     {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "no_permission" },
+        actions: [
+          {
+            action_name: "send_call_permission_request",
+            can_perform_action: true,
+          },
+        ],
+      }),
+    },
+    {
       path: `/${PHONE_ID}/messages`,
       respond: () => ({ messages: [{ id: crypto.randomUUID() }] }),
     },
@@ -969,8 +1000,9 @@ test("permission requests use the shared message pipeline for both free-form and
       body: { text: "May we call?" },
     },
   })
+  // Meta's request limits reset after a connected call; use a fresh recipient to test the template shape.
   const template = await f.request("/whatsapp/call-permissions", "POST", {
-    recipient: BSUID,
+    recipient: "US.43",
     template: {
       name: "permission_request",
       language: "en_US",
@@ -1003,6 +1035,18 @@ test("gateway BIC passes the answer before routing, missed calls emit events and
     })
   )
   fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "permanent" },
+        actions: [
+          {
+            action_name: "send_call_permission_request",
+            can_perform_action: true,
+          },
+        ],
+      }),
+    },
     {
       path: `/${PHONE_ID}/calls`,
       respond: (call) =>
@@ -1272,4 +1316,570 @@ test("unknown BSUID callers use profile names or a readable WhatsApp fallback", 
     contact_name: "WhatsApp user",
     contact_phone: null,
   })
+})
+
+async function botRouteFixture() {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Fixture",
+      key: "fixture credential",
+    })
+  ).json()
+  const response = await f.request("/voice-bots", "POST", {
+    name: "Coach",
+    provider: "gemini",
+    engine: "gemini_live",
+    credentialId: credential.id,
+    systemPrompt: "Coach instructions",
+    greeting: "Hello Ada",
+    tools: ["lookup_contact"],
+  })
+  expect(response.status).toBe(200)
+  const bot = await response.json()
+  const contactId = await f.t.run(
+    async (ctx) =>
+      (
+        await upsertContact(
+          ctx,
+          f.owner.team,
+          { phone: "+919999000011", firstName: "Ada" },
+          { properties: [], segmentIds: [], skipExisting: false }
+        )
+      ).id
+  )
+  const paths: string[] = [],
+    routes: Record<string, unknown>[] = []
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const path = new URL(input).pathname
+      paths.push(path)
+      if (path === "/route") routes.push(JSON.parse(String(init?.body)))
+      return Response.json({ offerSdp: SDP, ok: true })
+    })
+  )
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "permanent" },
+        actions: [{ action_name: "start_call", can_perform_action: true }],
+      }),
+    },
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (call) =>
+        (call.body as { action: string }).action === "connect"
+          ? { calls: [{ id: "wacid.bot-outbound" }] }
+          : { success: true },
+    },
+  ])
+  return { ...f, botId: bot.id, contactId, graph, paths, routes }
+}
+test("CRM bot calls generate an offer, apply Meta's answer, route once and include purpose and variables in the signed bot session", async () => {
+  const f = await botRouteFixture()
+  const result = await f.request("/whatsapp/calls", "POST", {
+    from: f.account,
+    contact_id: f.contactId,
+    route: `bot:${f.botId}`,
+    context: "Follow up after the seminar",
+    variables: { seminar: "Saturday" },
+  })
+  expect(result.status).toBe(200)
+  const body = await result.json()
+  expect(body.status).toBe("ringing")
+  expect(f.graph.to(`/${PHONE_ID}/call_permissions`)[0].query).toEqual({
+    user_wa_id: "919999000011",
+  })
+  expect(f.graph.to(`/${PHONE_ID}/calls`)[0].body).toEqual({
+    messaging_product: "whatsapp",
+    action: "connect",
+    to: "919999000011",
+    session: { sdp_type: "offer", sdp: SDP },
+  })
+  await f.project({
+    metadata: { phone_number_id: PHONE_ID },
+    contacts: [{ wa_id: "919999000011", user_id: BSUID }],
+    calls: [
+      {
+        id: "wacid.bot-outbound",
+        event: "connect",
+        direction: "BUSINESS_INITIATED",
+        to: "919999000011",
+        to_user_id: BSUID,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        session: { sdp_type: "answer", sdp: SDP },
+      },
+    ],
+  })
+  await f.t.action(internal.calling.callActions.gatewayConnect, { id: body.id })
+  await f.t.action(internal.calling.callActions.gatewayConnect, { id: body.id })
+  expect(f.paths).toEqual(["/outbound", "/remoteAnswer", "/route"])
+  expect(f.routes[0]).toMatchObject({ target: "bot", botId: f.botId })
+  const requestBody = JSON.stringify({
+    version: 1,
+    callId: body.id,
+    organizationId: f.owner.team,
+  })
+  const session = await f.t.fetch("/calling/gateway/voice/session", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...signRequest(
+        secret,
+        "POST",
+        "/calling/gateway/voice/session",
+        requestBody
+      ),
+    },
+    body: requestBody,
+  })
+  expect(session.status).toBe(200)
+  expect(await session.json()).toMatchObject({
+    greeting: "Hello Ada",
+    callDirection: "outbound",
+    systemPrompt: expect.stringContaining('"seminar":"Saturday"'),
+  })
+  const call = await (await f.request(`/whatsapp/calls/${body.id}`)).json()
+  expect(call).toMatchObject({
+    contact_id: f.contactId,
+    direction: "outbound",
+    outcome: "answered",
+    attempt: 1,
+    purpose: "Follow up after the seminar",
+  })
+  const events = await f.t.run((ctx) => ctx.db.query("events").collect())
+  expect(events.map((event) => event.type)).toContain("call.outbound_connected")
+})
+test("missing, denied and expired permissions never allocate gateway media; optional requests obey Meta and queued request limits", async () => {
+  const f = await botRouteFixture()
+  const input = {
+    from: f.account,
+    contact_id: f.contactId,
+    route: `bot:${f.botId}`,
+  }
+  for (const permission of [
+    { status: "denied" },
+    { status: "temporary", expiration_time: Math.floor(Date.now() / 1000) - 1 },
+  ]) {
+    f.graph.use({
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission,
+        actions: [{ action_name: "start_call", can_perform_action: true }],
+      }),
+    })
+    const response = await f.request("/whatsapp/calls", "POST", input)
+    expect(await response.json()).toMatchObject({
+      status: "permission_required",
+    })
+  }
+  f.graph.use({
+    path: `/${PHONE_ID}/call_permissions`,
+    respond: () => ({
+      permission: { status: "permanent" },
+      actions: [{ action_name: "start_call", can_perform_action: false }],
+    }),
+  })
+  expect(
+    await (await f.request("/whatsapp/calls", "POST", input)).json()
+  ).toMatchObject({ status: "calling_limited" })
+  expect(f.paths).toEqual([])
+  const identity = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    return upsertChannelThread(ctx, account, {
+      externalId: "919999000011",
+      phone: "+919999000011",
+      at: Date.now(),
+      direction: "inbound",
+      preview: "Seminar signup",
+      opensWindow: true,
+    })
+  })
+  expect(identity.contactId).toBe(f.contactId)
+  f.graph.use({
+    path: `/${PHONE_ID}/call_permissions`,
+    respond: () => ({
+      permission: { status: "no_permission" },
+      actions: [
+        {
+          action_name: "send_call_permission_request",
+          can_perform_action: true,
+        },
+      ],
+    }),
+  })
+  const queued = await f.request("/whatsapp/calls", "POST", {
+    ...input,
+    request_permission: true,
+  })
+  expect(queued.status).toBe(200)
+  expect(await queued.json()).toMatchObject({
+    status: "permission_requested",
+    permission_request_id: expect.any(String),
+  })
+  const second = await f.request(
+    `/contacts/${f.contactId}/call-permission`,
+    "POST",
+    { from: f.account }
+  )
+  expect(second.status).toBe(429)
+  expect(f.paths).toEqual([])
+  const read = await f.request(
+    `/contacts/${f.contactId}/call-permission?from=${f.account}`
+  )
+  expect(read.status).toBe(200)
+  expect(await read.json()).toMatchObject({
+    permission: { status: "no_permission" },
+  })
+})
+test("Meta 138013 is readable, persists the failure code, cleans up the gateway, and idempotent retries never redial", async () => {
+  const f = await botRouteFixture()
+  f.graph.use({
+    path: `/${PHONE_ID}/calls`,
+    respond: () =>
+      graphError(
+        "Business-initiated calling is unavailable for this US test number",
+        138013
+      ),
+  })
+  const payload = {
+    from: f.account,
+    contact_id: f.contactId,
+    route: `bot:${f.botId}`,
+  }
+  const response = await f.request(
+    "/whatsapp/calls",
+    "POST",
+    payload,
+    f.token,
+    "country-failure"
+  )
+  expect(response.status).toBe(422)
+  const error = await response.json()
+  expect(error).toMatchObject({
+    name: "calling_country_unavailable",
+    message: expect.stringContaining("US test number"),
+  })
+  const retry = await f.request(
+    "/whatsapp/calls",
+    "POST",
+    payload,
+    f.token,
+    "country-failure"
+  )
+  expect(retry.status).toBe(422)
+  expect(await retry.json()).toEqual(error)
+  expect(f.graph.to(`/${PHONE_ID}/calls`)).toHaveLength(1)
+  const calls = await f.t.run((ctx) => ctx.db.query("calls").collect())
+  expect(calls).toHaveLength(1)
+  expect(calls[0]).toMatchObject({
+    status: "failed",
+    errorCode: 138013,
+    error: expect.stringContaining("US test number"),
+  })
+  expect(f.paths).toEqual(["/outbound", "/hangup"])
+  expect(
+    await (await f.request(`/whatsapp/calls/${calls[0]._id}`)).json()
+  ).toMatchObject({ outcome: "failed", error_code: 138013 })
+})
+
+async function automationFixture() {
+  const f = await botRouteFixture()
+  workpoolTest.register(f.t, "webhookPool")
+  await f.t.run(async (ctx) => {
+    for (const job of await ctx.db.system
+      .query("_scheduled_functions")
+      .take(1000))
+      if (job.state.kind === "pending") await ctx.scheduler.cancel(job._id)
+  })
+  const create = async (trigger: string, graph: unknown[]) => {
+    const id = await f.owner.client.mutation(api.automations.create, {
+      organizationId: f.owner.team,
+    })
+    await f.owner.client.mutation(api.automations.update, {
+      organizationId: f.owner.team,
+      id,
+      trigger,
+      graph: JSON.stringify(graph),
+    })
+    expect(
+      await f.owner.client.mutation(api.automations.setStatus, {
+        organizationId: f.owner.team,
+        id,
+        status: "enabled",
+      })
+    ).toEqual([])
+    return id
+  }
+  const tick = async (ms = 5000) => {
+    for (let i = 0; i < ms / 100; i++) {
+      vi.advanceTimersByTime(100)
+      await f.t.finishInProgressScheduledFunctions()
+    }
+  }
+  return { ...f, create, tick }
+}
+test("lead automation waits then places one bot call with resolved lead variables; unsubscribed leads are skipped", async () => {
+  const f = await automationFixture()
+  const id = await f.create("seminar.signup", [
+    { key: "wait", type: "delay", duration: "1 minute" },
+    {
+      key: "call",
+      type: "place_call",
+      accountId: f.account,
+      route: `bot:${f.botId}`,
+      purpose: "event.purpose",
+      variables: { name: "contact.first_name", seminar: "event.seminar" },
+      requestPermission: false,
+    },
+  ])
+  const run = async () =>
+    f.owner.client.mutation(api.automations.test, {
+      organizationId: f.owner.team,
+      id,
+      contactId: f.contactId,
+      payload: { purpose: "Follow up on signup", seminar: "Saturday" },
+    })
+  const runId = await run()
+  await f.tick()
+  expect(f.paths).toEqual([])
+  await f.tick(61000)
+  expect(
+    await f.t.run((ctx) => ctx.db.get("automationRuns", runId))
+  ).toMatchObject({ status: "completed" })
+  const calls = await f.t.run((ctx) => ctx.db.query("calls").collect())
+  expect(calls).toHaveLength(1)
+  expect(calls[0]).toMatchObject({
+    outboundRoute: { kind: "bot", botId: f.botId },
+    callPurpose: "Follow up on signup",
+    callVariables: { name: "Ada", seminar: "Saturday" },
+  })
+  expect(
+    await f.owner.client.query(api.automations.runSteps, {
+      organizationId: f.owner.team,
+      runId,
+    })
+  ).toContainEqual(
+    expect.objectContaining({
+      key: "call",
+      status: "completed",
+      output: expect.objectContaining({ status: "ringing", id: calls[0]._id }),
+    })
+  )
+  const second = await run()
+  await f.tick()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "contacts", f.contactId, { unsubscribed: true })
+  )
+  await f.tick(61000)
+  expect(
+    await f.owner.client.query(api.automations.runSteps, {
+      organizationId: f.owner.team,
+      runId: second,
+    })
+  ).toContainEqual(
+    expect.objectContaining({
+      key: "call",
+      status: "skipped",
+      output: { status: "skipped", reason: "unsubscribed" },
+    })
+  )
+  expect(await f.t.run((ctx) => ctx.db.query("calls").collect())).toHaveLength(
+    1
+  )
+})
+test("permission replies update the contact identity, ignore replay/stale denial and trigger subscribed automations and webhooks", async () => {
+  const f = await automationFixture()
+  await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    await upsertChannelThread(ctx, account, {
+      externalId: "919999000011",
+      phone: "+919999000011",
+      at: Date.now(),
+      direction: "inbound",
+      preview: "Signup",
+      opensWindow: true,
+    })
+  })
+  await f.create("call.permission_granted", [
+    {
+      key: "update",
+      type: "contact_update",
+      fields: [
+        {
+          property: "last_name",
+          action: "change",
+          value: "Permission granted",
+        },
+      ],
+    },
+  ])
+  await f.owner.client.action(api.webhooks.create, {
+    organizationId: f.owner.team,
+    endpoint: "https://example.com/calling",
+    events: ["call.permission_granted", "call.permission_denied"],
+  })
+  const now = Math.floor(Date.now() / 1000)
+  const reply = (id: string, timestamp: number, response: string) => ({
+    metadata: { phone_number_id: PHONE_ID },
+    messages: [
+      {
+        id,
+        from: "919999000011",
+        from_user_id: BSUID,
+        timestamp: String(timestamp),
+        type: "interactive",
+        interactive: {
+          type: "call_permission_reply",
+          call_permission_reply: {
+            response,
+            is_permanent: false,
+            expiration_timestamp: String(now + 604800),
+          },
+        },
+      },
+    ],
+  })
+  await f.project(reply("wamid.accept", now, "accept"), "messages")
+  await f.project(reply("wamid.accept", now, "accept"), "messages")
+  await f.project(reply("wamid.stale-denial", now - 1, "reject"), "messages")
+  const events = await f.t.run((ctx) => ctx.db.query("events").collect())
+  expect(
+    events.filter((e) => e.type === "call.permission_granted")
+  ).toHaveLength(1)
+  expect(
+    events.filter((e) => e.type === "call.permission_denied")
+  ).toHaveLength(0)
+  const event = events.find((e) => e.type === "call.permission_granted")!
+  expect(event.data.contact_id).toBe(f.contactId)
+  await f.t.mutation(internal.automationRuntime.dispatch, {
+    id: event._id,
+    phase: "start",
+    cursor: null,
+  })
+  await f.t.mutation(internal.webhooks.deliverEvent, { id: event._id })
+  await f.tick()
+  expect(
+    await f.t.run((ctx) => ctx.db.get("contacts", f.contactId))
+  ).toMatchObject({ lastName: "Permission granted" })
+  expect(
+    await f.t.run((ctx) => ctx.db.query("webhookDeliveries").collect())
+  ).toContainEqual(
+    expect.objectContaining({
+      event: "call.permission_granted",
+      payload: expect.objectContaining({
+        data: expect.objectContaining({ contact_id: f.contactId }),
+      }),
+    })
+  )
+  const cached = () =>
+    f.owner.client.query(api.calling.outboundState.cachedPermission, {
+      organizationId: f.owner.team,
+      from: f.account,
+      contactId: f.contactId,
+      now: Date.now(),
+    })
+  expect(await cached()).toMatchObject({ status: "temporary", can_call: true })
+  await f.project(
+    reply("wamid.denial", Math.floor(Date.now() / 1000) + 1, "reject"),
+    "messages"
+  )
+  expect(await cached()).toMatchObject({ status: "denied", can_call: false })
+})
+
+test("managed IVR calls preserve their route override, record successive attempts and report rejection/no answer", async () => {
+  const f = await botRouteFixture()
+  const ivr = await (
+    await f.request("/ivrs", "POST", {
+      name: "Lead follow-up",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "tts", text: "Press one to book" },
+          options: { "1": { kind: "hangup" } },
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+        },
+      ],
+    })
+  ).json()
+  let attempt = 0
+  f.graph.use({
+    path: `/${PHONE_ID}/calls`,
+    respond: (call) =>
+      (call.body as { action: string }).action === "connect"
+        ? { calls: [{ id: `wacid.ivr-${++attempt}` }] }
+        : { success: true },
+  })
+  const input = { from: f.account, to: f.contactId, route: `ivr:${ivr.id}` }
+  const first = await (await f.request("/whatsapp/calls", "POST", input)).json()
+  await f.project({
+    metadata: { phone_number_id: PHONE_ID },
+    calls: [
+      {
+        id: "wacid.ivr-1",
+        direction: "BUSINESS_INITIATED",
+        to: "919999000011",
+        event: "terminate",
+        status: "FAILED",
+        duration: 0,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+      },
+    ],
+  })
+  expect(
+    await (await f.request(`/whatsapp/calls/${first.id}`)).json()
+  ).toMatchObject({ outcome: "no_answer", attempt: 1 })
+  const second = await (
+    await f.request("/whatsapp/calls", "POST", input)
+  ).json()
+  await f.project({
+    metadata: { phone_number_id: PHONE_ID },
+    calls: [
+      {
+        id: "wacid.ivr-2",
+        direction: "BUSINESS_INITIATED",
+        to: "919999000011",
+        event: "connect",
+        session: { sdp_type: "answer", sdp: SDP },
+        timestamp: String(Math.floor(Date.now() / 1000)),
+      },
+    ],
+  })
+  await f.t.action(internal.calling.callActions.gatewayConnect, {
+    id: second.id,
+  })
+  expect(f.routes.at(-1)).toMatchObject({ target: "ivr", ivrId: ivr.id })
+  expect(
+    await (await f.request(`/whatsapp/calls/${second.id}`)).json()
+  ).toMatchObject({ outcome: "answered", attempt: 2, route: `ivr:${ivr.id}` })
+  const third = await (await f.request("/whatsapp/calls", "POST", input)).json()
+  await f.project({
+    metadata: { phone_number_id: PHONE_ID },
+    statuses: [
+      {
+        id: "wacid.ivr-3",
+        type: "call",
+        direction: "BUSINESS_INITIATED",
+        to: "919999000011",
+        status: "REJECTED",
+        timestamp: String(Math.floor(Date.now() / 1000)),
+      },
+    ],
+  })
+
+  expect(
+    await (await f.request(`/whatsapp/calls/${third.id}`)).json()
+  ).toMatchObject({ outcome: "rejected", attempt: 3 })
+  const events = await f.t.run((ctx) => ctx.db.query("events").collect())
+  expect(events.map((e) => e.type)).toContain("call.outbound_missed")
+  expect(events.map((e) => e.type)).toContain("call.outbound_rejected")
 })

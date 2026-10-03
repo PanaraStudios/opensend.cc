@@ -1,3 +1,4 @@
+import { CALLING_EVENTS } from "./types"
 import { SYSTEM_EVENTS, triggerEventError } from "./automation"
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
@@ -316,6 +317,7 @@ it("contact notes and messaging replies are valid triggers but unknown system na
     SYSTEM_EVENTS.map((event) => event.value),
     [
       "contact.note_created",
+      ...CALLING_EVENTS,
       "opensend:whatsapp.message.received",
       "opensend:messenger.message.received",
       "opensend:instagram.message.received",

@@ -20,6 +20,7 @@ import type { ApiRouteOptions } from "./api/route"
 import { api, components, internal } from "./_generated/api"
 import { WEBHOOK_EVENTS } from "../lib/dashboard/types"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
+import { upsertChannelThread } from "./channels/identity"
 import { insertRow, patchRow } from "./counts"
 import {
   inboundFixture,
@@ -1575,6 +1576,131 @@ test("calling REST settings, permissions, lifecycle and idempotent connect valid
     "POST",
     await call(`/whatsapp/calls/${created.id}/terminate`, "POST", {})
   )
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "c".repeat(64))
+  const ivr = await response(
+    "/ivrs",
+    "POST",
+    await call("/ivrs", "POST", {
+      name: "Follow up",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "tts", text: "Press one" },
+          options: { "1": { kind: "hangup" } },
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+        },
+      ],
+    }),
+    201
+  )
+  const contact = await f.t.run(async (ctx) =>
+    upsertChannelThread(
+      ctx,
+      (await ctx.db.get("channelAccounts", f.account))!,
+      {
+        externalId: "919999000022",
+        phone: "+919999000022",
+        at: Date.now(),
+        direction: "inbound",
+        preview: "Signup",
+        opensWindow: true,
+      }
+    )
+  )
+  graph.use({
+    path: `/${PHONE_ID}/call_permissions`,
+    respond: () => ({
+      permission: { status: "no_permission" },
+      actions: [
+        { action_name: "start_call", can_perform_action: false },
+        {
+          action_name: "send_call_permission_request",
+          can_perform_action: true,
+        },
+      ],
+    }),
+  })
+  const managedInput = {
+    from: f.account,
+    contact_id: contact.contactId,
+    route: `ivr:${ivr.id}`,
+    context: "Seminar follow-up",
+    variables: { seminar: "Saturday" },
+  }
+  validateBody(contract.components.schemas.ConnectWhatsAppCall, managedInput)
+  expect(
+    await response(
+      "/whatsapp/calls",
+      "POST",
+      await call("/whatsapp/calls", "POST", managedInput)
+    )
+  ).toMatchObject({ status: "permission_required" })
+  const queued = await response(
+    "/whatsapp/calls",
+    "POST",
+    await call(
+      "/whatsapp/calls",
+      "POST",
+      { ...managedInput, request_permission: true },
+      "permission-contract"
+    )
+  )
+  expect(queued).toMatchObject({
+    status: "permission_requested",
+    permission_request_id: expect.any(String),
+  })
+  expect(
+    await response(
+      "/whatsapp/calls",
+      "POST",
+      await call(
+        "/whatsapp/calls",
+        "POST",
+        { ...managedInput, request_permission: true },
+        "permission-contract"
+      )
+    )
+  ).toEqual(queued)
+  await response(
+    "/contacts/{id}/call-permission",
+    "GET",
+    await call(
+      `/contacts/${contact.contactId}/call-permission?from=${f.account}`
+    )
+  )
+  const second = await f.t.run(async (ctx) =>
+    upsertChannelThread(
+      ctx,
+      (await ctx.db.get("channelAccounts", f.account))!,
+      {
+        externalId: "919999000033",
+        phone: "+919999000033",
+        at: Date.now(),
+        direction: "inbound",
+        preview: "Signup",
+        opensWindow: true,
+      }
+    )
+  )
+  await response(
+    "/contacts/{id}/call-permission",
+    "POST",
+    await call(`/contacts/${second.contactId}/call-permission`, "POST", {
+      from: f.account,
+      text: "May we call?",
+    })
+  )
+  validateBody(contract.components.schemas.PlaceCallStepConfig, {
+    account_id: f.account,
+    route: `ivr:${ivr.id}`,
+    variables: { seminar: { var: "event.seminar" } },
+    request_permission: true,
+  })
 })
 
 test("IVR definitions, dry-run validation and customer completion sample validate against the public schemas", async () => {
