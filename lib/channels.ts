@@ -144,3 +144,30 @@ export function channelForSendStep(
 export function logChannel(value: string): Channel | undefined {
   return CHANNEL_IDS.find((channel) => channel === value)
 }
+
+/** Broadcast content and window rules shared by backend and dashboard. */
+export const BROADCAST_CAPABILITIES = {
+  email: { configKey: null, windowRequired: false, contentLabel: "Email" },
+  whatsapp: {
+    configKey: "whatsapp",
+    windowRequired: false,
+    contentLabel: "Approved template",
+  },
+  messenger: {
+    configKey: "messaging",
+    windowRequired: true,
+    contentLabel: "Published template",
+  },
+  instagram: {
+    configKey: "messaging",
+    windowRequired: true,
+    contentLabel: "Published template",
+  },
+} as const satisfies Record<
+  Channel,
+  {
+    configKey: "whatsapp" | "messaging" | null
+    windowRequired: boolean
+    contentLabel: string
+  }
+>

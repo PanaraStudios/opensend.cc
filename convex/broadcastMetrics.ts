@@ -118,7 +118,14 @@ export const channelStats = query({
   args: { organizationId: v.string(), id: v.id("broadcasts") },
   returns: v.union(
     v.object({ channel: v.literal("email"), stats: broadcastStatsValue }),
-    v.object({ channel: v.literal("whatsapp"), stats: whatsappStatsValue })
+    v.object({
+      channel: v.union(
+        v.literal("whatsapp"),
+        v.literal("messenger"),
+        v.literal("instagram")
+      ),
+      stats: whatsappStatsValue,
+    })
   ),
   handler: async (ctx, { organizationId, id }) => {
     await requireTeam(ctx, organizationId)
@@ -302,6 +309,15 @@ export async function broadcastMessageMetric(
     .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
     .unique()
   if (!recipient || recipient.organizationId !== message.organizationId) return
+  if (message.broadcastSkipReason && !recipient.settled) {
+    await patchRow(ctx, "broadcastRecipients", recipient._id, {
+      skipReason: message.broadcastSkipReason,
+      settled: true,
+      failed: false,
+    })
+    await finishBroadcast(ctx, recipient.broadcastId)
+    return
+  }
   const terminal = ["delivered", "read", "played", "failed"].includes(
     message.status
   )
@@ -333,7 +349,7 @@ export async function scheduleBroadcastSettle(
   const row = await ctx.db.get("broadcasts", id)
   if (
     !row ||
-    row.channel !== "whatsapp" ||
+    rowChannel(row) === "email" ||
     !row.audienceDone ||
     row.settleJob ||
     !row.lastMessageSentAt
@@ -421,7 +437,7 @@ export const whatsappStats = query({
     if (
       !row ||
       row.organizationId !== organizationId ||
-      row.channel !== "whatsapp"
+      rowChannel(row) === "email"
     )
       return emptyWhatsAppStats()
     return row.retainedWhatsAppStats ?? readWhatsAppStats(ctx, id)

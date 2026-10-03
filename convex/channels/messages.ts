@@ -278,6 +278,12 @@ export async function createChannelMessage(
     )
   }
   const { payload, to: recipient } = prepared
+  if (
+    opts.source === "broadcast" &&
+    isPageChannel(channel) &&
+    payload.tag !== undefined
+  )
+    throw invalid("Broadcasts never use message tags.")
   const preview = rendered ? rendered.body.slice(0, 1000) : prepared.preview
   const type = templateId ? "template" : prepared.type
   if (JSON.stringify(payload).length > 200_000)
@@ -699,10 +705,20 @@ export const claim = internalMutation({
         Date.now()
       )
     } catch (error) {
+      const current =
+        message.broadcastId && isPageChannel(message.channel)
+          ? await patchRow(ctx, "channelMessages", message._id, {
+              broadcastSkipReason: "window_closed",
+            })
+          : message
       await fail(
         ctx,
-        message,
-        error instanceof Error ? error.message : "Messaging window closed",
+        current,
+        current.broadcastSkipReason
+          ? "Messaging window closed"
+          : error instanceof Error
+            ? error.message
+            : "Messaging window closed",
         channelStrategies[message.channel].windowErrorCode
       )
       return null

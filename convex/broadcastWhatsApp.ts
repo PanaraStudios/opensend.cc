@@ -1,3 +1,12 @@
+import {
+  isPageChannel,
+  rowChannel,
+  BROADCAST_CAPABILITIES,
+} from "../lib/channels"
+import {
+  resolvePageBroadcast,
+  pageBroadcastRecipient,
+} from "./broadcastMessaging"
 import { primaryContactIdentity } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
 import { ConvexError, v, type Infer } from "convex/values"
@@ -127,11 +136,12 @@ export async function recipientSkipReason(
   contact: Doc<"contacts"> | null,
   topic: Doc<"topics"> | null,
   template?: Infer<typeof resolvedTemplateValue>,
-  variables: Record<string, VariableSource> = {}
+  variables: Record<string, VariableSource> = {},
+  requirePhone = true
 ): Promise<Infer<typeof skipReasonValue> | null> {
   if (!contact || contact.organizationId !== row.organizationId)
     return "contact_deleted"
-  if (!contact.phone) return "no_phone"
+  if (requirePhone && !contact.phone) return "no_phone"
   if (contact.unsubscribed) return "unsubscribed"
   if (
     topic &&
@@ -145,7 +155,7 @@ export async function recipientSkipReason(
     const identity = await findWhatsAppIdentity(
       ctx,
       row.organizationId,
-      contact.phone
+      contact.phone!
     )
     if (identity?.marketingOptOut) return "marketing_opt_out"
   }
@@ -165,7 +175,9 @@ export async function sendWhatsAppRecipient(
   row: Doc<"broadcasts">,
   contact: Doc<"contacts">,
   topic: Doc<"topics"> | null,
-  target: NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+  target:
+    | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+    | Awaited<ReturnType<typeof resolvePageBroadcast>>
 ) {
   const previous = await ctx.db
     .query("broadcastRecipients")
@@ -174,26 +186,41 @@ export async function sendWhatsAppRecipient(
     )
     .unique()
   if (previous) return
-  const reason = await recipientSkipReason(
+  const channel = rowChannel(row)
+  const configKey = BROADCAST_CAPABILITIES[channel].configKey!
+  const config = row[configKey]!
+  let reason = await recipientSkipReason(
     ctx,
     row,
     contact,
     topic,
-    target.template,
-    row.whatsapp!.variables
+    "template" in target ? target.template : undefined,
+    config.variables,
+    !isPageChannel(channel)
   )
-  const variables = resolveVariables(row.whatsapp!.variables, contact)
+  const pageRecipient =
+    !reason && isPageChannel(channel)
+      ? await pageBroadcastRecipient(
+          ctx,
+          row,
+          contact,
+          target.account,
+          Date.now()
+        )
+      : null
+  reason = reason ?? pageRecipient?.reason ?? null
+  const variables = resolveVariables(config.variables, contact)
   const messageId = reason
     ? undefined
     : await createChannelMessage(
         ctx,
         {
-          channel: "whatsapp",
+          channel: target.account.channel,
           from: target.account._id,
-          to: contact.phone!,
+          to: pageRecipient?.to ?? contact.phone!,
           body: {
             type: "template",
-            template: { id: row.whatsapp!.templateId, variables },
+            template: { id: config.templateId, variables },
           },
         },
         {
@@ -223,7 +250,7 @@ const estimateValue = v.object({
 const reviewContextValue = v.object({
   row: schema.doc("broadcasts"),
   topic: v.union(schema.doc("topics"), v.null()),
-  template: resolvedTemplateValue,
+  template: v.optional(resolvedTemplateValue),
 })
 export const reviewContext = internalQuery({
   args: scope,
@@ -235,9 +262,14 @@ export const reviewContext = internalQuery({
       !row ||
       row.organizationId !== organizationId ||
       row._id !== id ||
-      row.channel !== "whatsapp"
+      rowChannel(row) === "email"
     )
       throw new ConvexError("Broadcast not found")
+    const channel = rowChannel(row)
+    if (isPageChannel(channel)) {
+      await resolvePageBroadcast(ctx, organizationId, channel, row.messaging)
+      return { row, topic: await audience(ctx, row) }
+    }
     const target = (await resolveWhatsAppSend(
       ctx,
       organizationId,
@@ -253,21 +285,30 @@ export const reviewPage = internalQuery({
     ...scope,
     cursor: v.union(v.string(), v.null()),
     context: v.optional(reviewContextValue),
+    now: v.optional(v.number()),
   },
   returns: estimateValue.extend({ done: v.boolean(), cursor: v.string() }),
-  handler: async (ctx, { organizationId, id, cursor, context }) => {
+  handler: async (ctx, { organizationId, id, cursor, context, now }) => {
     await requireTeam(ctx, organizationId)
     const row = context?.row ?? (await ctx.db.get("broadcasts", id))
     if (
       !row ||
       row.organizationId !== organizationId ||
       row._id !== id ||
-      row.channel !== "whatsapp"
+      rowChannel(row) === "email"
     )
       throw new ConvexError("Broadcast not found")
-    const template =
-      context?.template ??
-      (await resolveWhatsAppSend(ctx, organizationId, row.whatsapp))!.template
+    const channel = rowChannel(row)
+    const pageTarget = isPageChannel(channel)
+      ? await resolvePageBroadcast(ctx, organizationId, channel, row.messaging)
+      : null
+    if (pageTarget && now === undefined)
+      throw new ConvexError("Supply the review time")
+    const template = pageTarget
+      ? undefined
+      : (context?.template ??
+        (await resolveWhatsAppSend(ctx, organizationId, row.whatsapp))!
+          .template)
     const topic = context ? context.topic : await audience(ctx, row)
     const page = await recipientPage(
       ctx,
@@ -281,15 +322,27 @@ export const reviewPage = internalQuery({
     let recipients = 0,
       skipped = 0,
       noPhone = 0
+    const config = row[BROADCAST_CAPABILITIES[channel].configKey!]!
     for (const contact of page.page) {
-      const reason = await recipientSkipReason(
+      let reason = await recipientSkipReason(
         ctx,
         row,
         contact,
         topic,
         template,
-        row.whatsapp!.variables
+        config.variables,
+        !pageTarget
       )
+      if (!reason && pageTarget)
+        reason = (
+          await pageBroadcastRecipient(
+            ctx,
+            row,
+            contact,
+            pageTarget.account,
+            now!
+          )
+        ).reason
       if (reason) {
         skipped++
         if (reason === "no_phone") noPhone++
@@ -315,6 +368,7 @@ export const review = action({
       internal.broadcastWhatsApp.reviewContext,
       args
     )
+    const now = Date.now()
     const result = { recipients: 0, skipped: 0, noPhone: 0 }
     let cursor: string | null = null
     for (;;) {
@@ -328,6 +382,7 @@ export const review = action({
         ...args,
         cursor,
         context,
+        now,
       })
       result.recipients += page.recipients
       result.skipped += page.skipped
@@ -484,6 +539,10 @@ export const sampleContact = query({
       undefined,
       10
     )
-    return page.page.find((contact) => contact.phone) ?? null
+    return (
+      page.page.find(
+        (contact) => rowChannel(row) !== "whatsapp" || contact.phone
+      ) ?? null
+    )
   },
 })
