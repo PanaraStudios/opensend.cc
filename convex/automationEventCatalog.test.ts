@@ -540,64 +540,74 @@ test("every event contract covers payload builders, including all WhatsApp conte
                   }
                 : {}),
             }
-          : event.name.endsWith("permission_updated")
+          : event.name === "call.data_collected"
             ? {
-                account_id: account._id,
-                user_id: "caller",
-                permission: {
-                  status: "temporary",
-                  expiration_time: 1790000000,
-                },
-                response_source: null,
-                context_id: null,
+                call_id: callId,
+                contact_id: contact._id,
+                collected: { participants: { value: 2, inferred: false } },
+                missing: ["date"],
               }
-            : event.name.endsWith("ivr_completed")
+            : event.name.endsWith("permission_updated")
               ? {
-                  id: callId,
                   account_id: account._id,
-                  ivr_id: "ivr-example",
-                  path: [
-                    {
-                      menuId: "main",
-                      digits: "1",
-                      at: Date.now(),
-                      action: { kind: "hangup" },
-                    },
-                  ],
-                  final_action: { kind: "hangup" },
+                  user_id: "caller",
+                  permission: {
+                    status: "temporary",
+                    expiration_time: 1790000000,
+                  },
+                  response_source: null,
+                  context_id: null,
                 }
-              : event.name.includes(".call.")
-                ? call
-                : event.name.startsWith("contact.")
-                  ? contactEventData(contact, [])
-                  : event.name.startsWith("suppression.")
-                    ? suppression
-                    : /read_receipt|typing_failed/.test(event.name)
-                      ? {
-                          id: message._id,
-                          conversation_id: message.conversationId,
-                          ...(event.name.endsWith("sent")
-                            ? { read_receipt_sent_at: new Date().toISOString() }
-                            : { error: "Provider unavailable" }),
-                        }
-                      : event.name.includes("template.")
+              : event.name.endsWith("ivr_completed")
+                ? {
+                    id: callId,
+                    account_id: account._id,
+                    ivr_id: "ivr-example",
+                    path: [
+                      {
+                        menuId: "main",
+                        digits: "1",
+                        at: Date.now(),
+                        action: { kind: "hangup" },
+                      },
+                    ],
+                    final_action: { kind: "hangup" },
+                  }
+                : event.name.includes(".call.")
+                  ? call
+                  : event.name.startsWith("contact.")
+                    ? contactEventData(contact, [])
+                    : event.name.startsWith("suppression.")
+                      ? suppression
+                      : /read_receipt|typing_failed/.test(event.name)
                         ? {
-                            account_id: account._id,
-                            waba_id: "business",
-                            field: "message_template_status_update",
-                            event: "APPROVED",
-                            message_template_id: 123,
-                            message_template_name: "greeting",
-                            message_template_language: "en",
+                            id: message._id,
+                            conversation_id: message.conversationId,
+                            ...(event.name.endsWith("sent")
+                              ? {
+                                  read_receipt_sent_at:
+                                    new Date().toISOString(),
+                                }
+                              : { error: "Provider unavailable" }),
                           }
-                        : {
-                            id: account._id,
-                            account_id: account._id,
-                            channel: "whatsapp",
-                            field: "account_settings_update",
-                            calling: { status: "ENABLED" },
-                            handling_mode: "api",
-                          }
+                        : event.name.includes("template.")
+                          ? {
+                              account_id: account._id,
+                              waba_id: "business",
+                              field: "message_template_status_update",
+                              event: "APPROVED",
+                              message_template_id: 123,
+                              message_template_name: "greeting",
+                              message_template_language: "en",
+                            }
+                          : {
+                              id: account._id,
+                              account_id: account._id,
+                              channel: "whatsapp",
+                              field: "account_settings_update",
+                              calling: { status: "ENABLED" },
+                              handling_mode: "api",
+                            }
         violations.push(...payloadContract(event.schema, data, event.name))
       }
       tested.add(event.name)

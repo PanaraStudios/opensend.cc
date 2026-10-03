@@ -67,11 +67,13 @@ export const SYSTEM_EVENT_NAMES = [
 
 export type SystemEventName = (typeof SYSTEM_EVENT_NAMES)[number]
 /** Events whose automation trigger is their own name, without the `opensend:` prefix. */
-const UNPREFIXED_TRIGGERS = ["contact.note_created", "call.data_collected"] as const
+const UNPREFIXED_TRIGGERS = [
+  "contact.note_created",
+  "call.data_collected",
+] as const
 type UnprefixedTrigger = (typeof UNPREFIXED_TRIGGERS)[number]
 export type SystemTriggerName =
-  | `opensend:${Exclude<SystemEventName, UnprefixedTrigger>}`
-  | UnprefixedTrigger
+  `opensend:${Exclude<SystemEventName, UnprefixedTrigger>}` | UnprefixedTrigger
 export type CallDataCollected = {
   call_id: string
   contact_id: string | null
@@ -425,7 +427,27 @@ const message = object({
     ].map((key) => [key, dynamic(label(key))])
   ),
 })
+/** What the voice bot collected during a call, by field key. */
+const collected = field(
+  "object",
+  "Collected fields by key",
+  {},
+  {
+    optional: true,
+    nullable: true,
+    additionalProperties: object(
+      {
+        value: field("string", "Collected value", "example", {
+          valueTypes: ["string", "number", "boolean"],
+        }),
+        inferred: field("boolean", "Whether the bot inferred the value", false),
+      },
+      "Collected field"
+    ),
+  }
+)
 const call = object({
+  collected,
   ...strings(
     "object",
     "id",
@@ -546,18 +568,7 @@ function schemaFor(name: SystemEventName): EventField {
   if (name === "call.data_collected")
     return object({
       ...strings("call_id", "contact_id"),
-      collected: field("object", "Collected fields by key", {}, {
-        optional: true,
-        additionalProperties: object(
-          {
-            value: field("string", "Collected value", "example", {
-              valueTypes: ["string", "number", "boolean"],
-            }),
-            inferred: field("boolean", "Whether the bot inferred the value", false),
-          },
-          "Collected field"
-        ),
-      }),
+      collected,
       missing: arr(str("key"), "Required fields the caller did not provide"),
     })
   if (name === "contact.note_created")
@@ -632,17 +643,17 @@ export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
     group:
       name.startsWith("whatsapp.call.") || name.startsWith("call.")
         ? "WhatsApp calls"
-      : (
-          {
-            email: "Email",
-            whatsapp: "WhatsApp messages",
-            messenger: "Messenger",
-            instagram: "Instagram",
-            contact: "Contacts",
-            domain: "Domains",
-            suppression: "Suppressions",
-          } as Record<string, string>
-        )[name.split(".")[0]],
+        : (
+            {
+              email: "Email",
+              whatsapp: "WhatsApp messages",
+              messenger: "Messenger",
+              instagram: "Instagram",
+              contact: "Contacts",
+              domain: "Domains",
+              suppression: "Suppressions",
+            } as Record<string, string>
+          )[name.split(".")[0]],
     label: `${({ email: "Email", whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram", contact: "Contact", call: "Call", domain: "Domain", suppression: "Suppression" } as Record<string, string>)[name.split(".")[0]]} ${label(name.split(".").slice(1).join(" "))}`,
     description: `Emitted when ${label(name.replace(/\./g, " "))}.`,
     schema: object({
