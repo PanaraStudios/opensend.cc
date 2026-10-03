@@ -1,6 +1,18 @@
 /** Shared REST, OAuth and dashboard permission catalog. Write includes read. */
 export const API_RESOURCES = [
   {
+    id: "knowledge",
+    label: "Knowledge",
+    group: "Calling",
+    description: "Manage and search reusable knowledge bases.",
+  },
+  {
+    id: "bot_tools",
+    label: "Bot tools",
+    group: "Calling",
+    description: "Manage signed webhook tools.",
+  },
+  {
     id: "calling",
     label: "Calling",
     group: "Calling",

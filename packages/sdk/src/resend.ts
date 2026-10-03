@@ -1,3 +1,4 @@
+import { KnowledgeBases, BotTools } from './voice/toolkit';
 import { Messages } from './messages';
 import { Ivrs } from './ivrs/ivrs';
 import { VoiceBots } from './voice/bots';
@@ -83,6 +84,8 @@ export class Opensend {
   readonly webhooks = new Webhooks(this);
   readonly messenger = new Messenger(this);
   readonly instagram = new Instagram(this);
+  readonly knowledgeBases = new KnowledgeBases(this);
+  readonly botTools = new BotTools(this);
   readonly voiceBots = new VoiceBots(this);
   readonly voiceProviders = new VoiceProviders(this);
   readonly whatsapp = new WhatsApp(this);

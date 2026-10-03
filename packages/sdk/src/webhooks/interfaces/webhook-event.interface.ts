@@ -266,7 +266,13 @@ export interface WhatsAppCallPermissionEvent {
     context_id: string | null
   }
 }
+export interface CallDataCollectedEvent {
+  type: "call.data_collected"
+  created_at: string
+  data: import("../../events/catalog").CallDataCollected
+}
 export type WebhookEventPayload =
+  | CallDataCollectedEvent
   | MessageControlEvent
   | WhatsAppCallEvent
   | WhatsAppCallPermissionEvent

@@ -1,3 +1,4 @@
+import type { CollectField } from "./toolkit"
 export type VoiceProvider = "gemini" | "sarvam" | "elevenlabs"
 export type VoiceBotTool =
   | "lookup_contact"
@@ -29,6 +30,9 @@ export interface VoiceBotInput {
   language?: string
   systemPrompt?: string
   greeting?: string
+  collect?: CollectField[]
+  knowledgeBaseIds?: string[]
+  customToolIds?: string[]
   tools?: VoiceBotTool[]
   handoff?: { agents: boolean; ivrId?: string }
   maxDurationSeconds?: number
@@ -41,10 +45,20 @@ export interface VoiceBotInput {
 export interface VoiceBot extends Required<
   Omit<
     VoiceBotInput,
-    "stt" | "llm" | "tts" | "monthlyMinuteBudget" | "maxConcurrentCalls"
+    | "stt"
+    | "llm"
+    | "tts"
+    | "monthlyMinuteBudget"
+    | "maxConcurrentCalls"
+    | "collect"
+    | "knowledgeBaseIds"
+    | "customToolIds"
   >
 > {
   id: string
+  collect?: CollectField[]
+  knowledgeBaseIds?: string[]
+  customToolIds?: string[]
   stt?: VoiceBotInput["stt"]
   llm?: VoiceBotInput["llm"]
   tts?: VoiceBotInput["tts"]

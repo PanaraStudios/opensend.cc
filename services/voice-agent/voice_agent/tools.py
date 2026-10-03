@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import time
 
 CONTROL_TOOLS = {"transfer_to_agent", "transfer_to_ivr", "end_call"}
@@ -50,9 +51,17 @@ class ToolRouter:
         schema = tool["parameters"]
         if any(key not in schema["properties"] for key in arguments):
             return {"ok": False, "error": "Invalid tool arguments"}
-        if any(not isinstance(value, str) or len(value) > 4096 for value in arguments.values()):
+        def valid(value, specification):
+            if "anyOf" in specification:
+                return any(valid(value, choice) for choice in specification["anyOf"])
+            expected = specification.get("type")
+            matches = ((expected == "string" and isinstance(value, str) and len(value) <= 4096)
+                       or (expected == "number" and type(value) in (int, float) and math.isfinite(value))
+                       or (expected == "boolean" and type(value) is bool))
+            return matches and ("enum" not in specification or value in specification["enum"])
+        if any(not valid(value, schema["properties"][key]) for key, value in arguments.items()):
             return {"ok": False, "error": "Invalid tool arguments"}
-        if any(not arguments.get(key) for key in schema.get("required", [])):
+        if any(key not in arguments for key in schema.get("required", [])):
             return {"ok": False, "error": "Missing tool argument"}
         self.count += 1
         call = {"id": identifier, "name": name, "arguments": arguments}

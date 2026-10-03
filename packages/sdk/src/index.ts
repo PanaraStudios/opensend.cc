@@ -66,6 +66,7 @@ export {
 
 export { SYSTEM_EVENT_NAMES, SYSTEM_EVENT_CATALOG } from "./events/catalog"
 export type {
+  CallDataCollected,
   CatalogEvent,
   EventField,
   SystemEventName,
@@ -73,4 +74,5 @@ export type {
 } from "./events/catalog"
 export type * from "./contacts/notes/interfaces"
 
+export type * from "./voice/toolkit"
 export * from './messages';

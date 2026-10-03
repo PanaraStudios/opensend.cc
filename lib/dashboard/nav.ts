@@ -90,6 +90,8 @@ export const PLAYGROUND_TABS: SectionTabs = [
   { href: "/playground/calls", title: "Calls" },
   { href: "/playground/ivr", title: "IVR" },
   { href: "/playground/voice-bot", title: "Voice bot" },
+  { href: "/playground/knowledge", title: "Knowledge" },
+  { href: "/playground/tools", title: "Tools" },
 ]
 
 export const AUTOMATION_TABS: SectionTabs = [

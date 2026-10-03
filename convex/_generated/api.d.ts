@@ -8,6 +8,18 @@
  * @module
  */
 
+import type * as botTools_routes from "../botTools/routes.js";
+import type * as knowledge_routes from "../knowledge/routes.js";
+import type * as voice_toolkitState from "../voice/toolkitState.js";
+import type * as voice_toolkit from "../voice/toolkit.js";
+import type * as voice_collection from "../voice/collection.js";
+import type * as botTools_execute from "../botTools/execute.js";
+import type * as botTools_resources from "../botTools/resources.js";
+import type * as knowledge_search from "../knowledge/search.js";
+import type * as knowledge_ingest from "../knowledge/ingest.js";
+import type * as knowledge_state from "../knowledge/state.js";
+import type * as knowledge_resources from "../knowledge/resources.js";
+import type * as botToolkitAccess from "../botToolkitAccess.js";
 import type * as access from "../access.js";
 import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
@@ -249,6 +261,18 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "botTools/routes": typeof botTools_routes;
+  "knowledge/routes": typeof knowledge_routes;
+  "voice/toolkitState": typeof voice_toolkitState;
+  "voice/toolkit": typeof voice_toolkit;
+  "voice/collection": typeof voice_collection;
+  "botTools/execute": typeof botTools_execute;
+  "botTools/resources": typeof botTools_resources;
+  "knowledge/search": typeof knowledge_search;
+  "knowledge/ingest": typeof knowledge_ingest;
+  "knowledge/state": typeof knowledge_state;
+  "knowledge/resources": typeof knowledge_resources;
+  "botToolkitAccess": typeof botToolkitAccess;
   access: typeof access;
   accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;

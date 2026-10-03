@@ -15,7 +15,7 @@ class VoiceBackend:
         self.origin = origin.rstrip("/")
         self.secret = secret.encode()
         self.session = session
-        self.client = httpx.AsyncClient(timeout=5, trust_env=False)
+        self.client = httpx.AsyncClient(timeout=12, trust_env=False)
 
     async def post(self, path: str, data: dict):
         body = json.dumps({"version": 1, **data}, separators=(",", ":")).encode()

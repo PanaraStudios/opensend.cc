@@ -328,6 +328,9 @@ it("all messaging reply events are valid triggers but custom system names are re
       (event) => event.value === "opensend:whatsapp.call.completed"
     )
   )
+  assert.ok(
+    SYSTEM_EVENTS.some((event) => event.value === "call.data_collected")
+  )
   for (const event of SYSTEM_EVENTS)
     assert.equal(triggerEventError(event.value), null)
   assert.match(triggerEventError("opensend:unknown")!, /reserved/)

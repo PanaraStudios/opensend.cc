@@ -27,6 +27,7 @@ export type VoiceEvent =
         | "caller_hangup"
         | "failed"
       summary: string
+      inferred?: Record<string, unknown>
       endedAt?: number
       usage: import("./voice/base.js").VoiceUsage
     }

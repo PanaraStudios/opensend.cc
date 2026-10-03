@@ -11,7 +11,14 @@ export function addMediaTools(server: McpServer, client: Opensend) {
       description:
         "Create a direct upload. POST the file to the Convex upload_url, then complete it with storage_id from the upload response. Use the returned id in WhatsApp media or email attachments.",
       inputSchema: z.object({
-        use: z.enum(["ivr", "whatsapp", "template", "email", "import"]),
+        use: z.enum([
+          "knowledge",
+          "ivr",
+          "whatsapp",
+          "template",
+          "email",
+          "import",
+        ]),
         filename: z.string(),
         content_type: z.string(),
         size: z.number().int().positive(),

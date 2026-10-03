@@ -28,6 +28,9 @@ caps and the stable call record continue to belong to FreeSWITCH and Convex.
 | Outputs/API         | DONE: bot id/outcome/summary/duration/usage, paginated child transcripts/tool records, completion/transfer webhooks, REST/OpenAPI, SDK and MCP.                                                                                              |
 | Testing             | Python/adapter/Convex/REST/SDK/MCP tests and the locked Docker harness; results are recorded in `docs/calling-gateway.md`. The dashboard API flow is wired for the lead's integration e2e run.                                               |
 
+Reusable knowledge bases, collection fields and signed custom webhook tools are
+covered in [Voice bot toolkit](voice-bot-toolkit.md).
+
 ## Configure a bot through REST
 
 Use an API key with `voice_bots:write` for bot/credential operations and

@@ -526,7 +526,11 @@ describe("OpenAPI contract", () => {
       ).toBe(scopeName(scope))
       if (scope !== "full_access")
         expect(scope.access).toBe(
-          method === "GET" || path === "/ivrs/{id}/validate" ? "read" : "write"
+          method === "GET" ||
+            path === "/ivrs/{id}/validate" ||
+            path === "/knowledge-bases/{id}/search"
+            ? "read"
+            : "write"
         )
     }
     const ids = Object.values(contract.paths).flatMap((ops) =>

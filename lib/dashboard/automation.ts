@@ -649,6 +649,13 @@ export function samplePayload(
     | (Pick<AutomationEvent, "schema"> & Partial<Pick<AutomationEvent, "name">>)
     | undefined
 ): Record<string, unknown> {
+  if (event?.name === "call.data_collected")
+    return {
+      call_id: "call-example",
+      contact_id: "contact-example",
+      collected: { participants: { value: 2, inferred: false } },
+      missing: [],
+    }
   if (event?.name === "contact.note_created")
     return {
       object: "contact_note",

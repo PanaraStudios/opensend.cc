@@ -26,7 +26,7 @@ from .auth import SessionTokens
 from .backend import VoiceBackend
 from .serializer import VoiceSerializer
 from .tools import ToolRouter
-from .factory import create_services, summarize, tool_schema
+from .factory import create_services, summarize, tool_schema, infer_collection
 from .telemetry import Telemetry
 from .fake import FakePipeline
 from .playback import PlaybackObserver
@@ -147,8 +147,10 @@ async def session(websocket: WebSocket):
                 await worker.end()
 
             async def finalize():
+                summary = await summarize(services.summarizer, telemetry.transcript)
                 return {
-                    "summary": await summarize(services.summarizer, telemetry.transcript),
+                    "summary": summary,
+                    "inferred": await infer_collection(services.summarizer, telemetry.transcript, summary, config.get("collect", [])),
                     "usage": telemetry.usage,
                 }
 

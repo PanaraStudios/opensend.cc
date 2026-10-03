@@ -20,6 +20,8 @@ test("Messages has delivery logs and Playground has the engine testers", () => {
     { href: "/playground/calls", title: "Calls" },
     { href: "/playground/ivr", title: "IVR" },
     { href: "/playground/voice-bot", title: "Voice bot" },
+    { href: "/playground/knowledge", title: "Knowledge" },
+    { href: "/playground/tools", title: "Tools" },
   ])
 })
 

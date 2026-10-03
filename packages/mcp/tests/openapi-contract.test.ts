@@ -63,6 +63,12 @@ const workflow = {
   ],
 }
 const overrides: Record<string, Record<string, unknown>> = {
+  "create-bot-tool": {
+    name: "book_appointment",
+    parameters: { type: "object", properties: {} },
+  },
+  "create-knowledge-document": { source: "text", text: "Material" },
+
   send_message: { channel: "email", from: "sender@example.test", to: "person@example.test", subject: "Hello", text: "Hello" },
   "batch-remove-suppressions": { ids: ["test-id"] },
   "connect-whatsapp-call": { route: "gateway", recipient: "US.123" },

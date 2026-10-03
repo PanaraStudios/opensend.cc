@@ -39,6 +39,9 @@ export function newVoiceBot(
 export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
   const {
     name,
+    collect,
+    knowledgeBaseIds,
+    customToolIds,
     engine,
     provider,
     credentialId,
@@ -60,6 +63,9 @@ export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
     tts,
   } = value
   return validateBot({
+    ...(collect !== undefined ? { collect } : {}),
+    ...(knowledgeBaseIds !== undefined ? { knowledgeBaseIds } : {}),
+    ...(customToolIds !== undefined ? { customToolIds } : {}),
     name,
     engine,
     provider,
