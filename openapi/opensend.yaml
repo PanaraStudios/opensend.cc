@@ -23563,6 +23563,15 @@ components:
       type: string
       enum:
         - call.data_collected
+        - call.permission_granted
+        - call.permission_denied
+        - call.outbound_queued
+        - call.outbound_ringing
+        - call.outbound_connected
+        - call.outbound_completed
+        - call.outbound_missed
+        - call.outbound_rejected
+        - call.outbound_failed
         - email.sent
         - email.delivered
         - email.delivery_delayed
@@ -23574,15 +23583,6 @@ components:
         - email.failed
         - email.scheduled
         - email.suppressed
-        - call.permission_granted
-        - call.permission_denied
-        - call.outbound_queued
-        - call.outbound_ringing
-        - call.outbound_connected
-        - call.outbound_completed
-        - call.outbound_missed
-        - call.outbound_rejected
-        - call.outbound_failed
         - whatsapp.call.ivr_completed
         - whatsapp.call.ringing
         - whatsapp.call.connected

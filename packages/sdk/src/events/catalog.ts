@@ -460,6 +460,13 @@ const collected = field(
 )
 const call = object({
   collected,
+  outcome: field("enum", "Outbound call outcome", "answered", {
+    values: ["answered", "no_answer", "rejected", "failed"],
+    optional: true,
+    nullable: true,
+  }),
+  attempt: num("attempt"),
+  ...strings("purpose", "route"),
   ...strings(
     "object",
     "id",

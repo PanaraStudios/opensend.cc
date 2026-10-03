@@ -547,7 +547,8 @@ test("every event contract covers payload builders, including all WhatsApp conte
                 collected: { participants: { value: 2, inferred: false } },
                 missing: ["date"],
               }
-            : event.name.endsWith("permission_updated")
+            : event.name.endsWith("permission_updated") ||
+                event.name.startsWith("call.permission_")
               ? {
                   account_id: account._id,
                   user_id: "caller",
@@ -573,7 +574,8 @@ test("every event contract covers payload builders, including all WhatsApp conte
                     ],
                     final_action: { kind: "hangup" },
                   }
-                : event.name.includes(".call.")
+                : event.name.includes(".call.") ||
+                    event.name.startsWith("call.outbound_")
                   ? call
                   : event.name.startsWith("contact.")
                     ? contactEventData(contact, [])
