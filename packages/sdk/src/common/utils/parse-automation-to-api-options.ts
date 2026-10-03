@@ -42,6 +42,18 @@ export function parseStepConfig(
         type: step.type,
         config: { event_name: step.config.eventName },
       };
+    case 'place_call':
+      return {
+        key: step.key,
+        type: step.type,
+        config: {
+          account_id: step.config.accountId,
+          route: step.config.route,
+          context: step.config.context ?? '',
+          variables: step.config.variables ?? {},
+          request_permission: step.config.requestPermission ?? false,
+        },
+      };
     case 'delay':
       return { key: step.key, type: step.type, config: step.config };
     case 'send_messenger':

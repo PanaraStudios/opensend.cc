@@ -71,6 +71,10 @@ export interface WhatsAppCall {
   session: CallSession | null
   recording: CallFile | null
   transcription: CallFile | null
+  outcome?: "answered" | "no_answer" | "rejected" | "failed" | null
+  attempt?: number
+  purpose?: string | null
+  route?: string | null
   error: string | null
   error_code: number | null
   assigned_agent: string | null
@@ -176,3 +180,28 @@ export type RequestCallPermission = CallPermissionQuery &
     | { text: string; template?: never }
     | { template: WhatsAppTemplate; text?: never }
   )
+
+export type PlaceWhatsAppCall = {
+  from: string
+  route: `bot:${string}` | `ivr:${string}`
+  context?: string
+  variables?: Record<string, string>
+  request_permission?: boolean
+  permission_text?: string
+  permission_template?: WhatsAppTemplate
+} & (
+  | { to: string; recipient?: string; contact_id?: string }
+  | { contact_id: string; to?: string; recipient?: string }
+  | { recipient: string; to?: string; contact_id?: string }
+)
+export interface PlaceWhatsAppCallResult {
+  status:
+    | "queued"
+    | "ringing"
+    | "permission_required"
+    | "permission_requested"
+    | "calling_limited"
+  id?: string
+  permission_request_id?: string
+  permission?: CallPermission
+}

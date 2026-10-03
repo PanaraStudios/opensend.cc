@@ -12491,6 +12491,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WhatsAppMetaError"
+  /contacts/{id}/call-permission:
+    get:
+      operationId: whatsapp/calling/getContactCallPermission
+      tags: [WhatsApp]
+      summary: Get contact calling permission
+      description: Refresh permission and Meta action limits for the contact and sending number.
+      x-opensend-scope: calling:read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: from
+          schema: {type: string}
+      responses:
+        "200":
+          description: Current permission and limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallPermission"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+    post:
+      operationId: whatsapp/calling/requestContactCallPermission
+      tags: [WhatsApp]
+      summary: Request contact calling permission
+      description: Queue a permission request after checking Meta limits. Free-form requests need an
+        open messaging window; use an approved permission template outside the window.
+      x-opensend-scope: calling:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from: {type: string}
+                text: {type: string, maxLength: 1024}
+                template: {type: object, additionalProperties: true}
+              additionalProperties: false
+      responses:
+        "200":
+          description: Queued permission request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                required: [id]
+                additionalProperties: false
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
   /whatsapp/calls:
     get:
       operationId: whatsapp/calling/listCalls
@@ -12545,8 +12622,11 @@ paths:
       tags:
         - WhatsApp
       summary: connect Call
-      description: Start a call using gateway media or your complete SDP offer. recipient is a BSUID; to
-        must resolve to a known BSUID. Meta enforces permissions and country restrictions.
+      description: Start a business-initiated call. Use bot:<id> or ivr:<id> for a managed call with
+        context and variables, gateway for default media, or api with an SDP offer. to accepts a
+        phone number or contact ID; contact_id accepts a CRM contact. Managed calls return an
+        explicit permission status when a call cannot be placed. Meta enforces expiry, request
+        and call quotas and country restrictions; error 138013 includes Meta's reason.
       x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -12562,13 +12642,14 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                required:
-                  - id
-                additionalProperties: false
+                oneOf:
+                  - type: object
+                    properties:
+                      id:
+                        type: string
+                    required: [id]
+                    additionalProperties: false
+                  - $ref: "#/components/schemas/PlaceWhatsAppCallResult"
         "400":
           $ref: "#/components/responses/Error400"
         "401":
@@ -21961,6 +22042,15 @@ components:
         - email.failed
         - email.scheduled
         - email.suppressed
+        - call.permission_granted
+        - call.permission_denied
+        - call.outbound_queued
+        - call.outbound_ringing
+        - call.outbound_connected
+        - call.outbound_completed
+        - call.outbound_missed
+        - call.outbound_rejected
+        - call.outbound_failed
         - whatsapp.call.ivr_completed
         - whatsapp.call.ringing
         - whatsapp.call.connected
@@ -22976,6 +23066,14 @@ components:
         - if:
             properties:
               type:
+                const: place_call
+          then:
+            properties:
+              config:
+                $ref: '#/components/schemas/PlaceCallStepConfig'
+        - if:
+            properties:
+              type:
                 const: send_whatsapp
           then:
             properties:
@@ -22998,6 +23096,7 @@ components:
           enum:
             - trigger
             - send_email
+            - place_call
             - send_whatsapp
             - send_messenger
             - send_instagram
@@ -23169,6 +23268,7 @@ components:
           enum:
             - trigger
             - send_email
+            - place_call
             - send_whatsapp
             - send_messenger
             - send_instagram
@@ -23402,6 +23502,7 @@ components:
           enum:
             - trigger
             - send_email
+            - place_call
             - send_whatsapp
             - send_messenger
             - send_instagram
@@ -27124,6 +27225,38 @@ components:
       required:
         - status
       additionalProperties: false
+    PlaceWhatsAppCallResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [queued, ringing, permission_required, permission_requested, calling_limited]
+        id: {type: string}
+        permission_request_id: {type: string}
+        permission:
+          $ref: "#/components/schemas/CallPermission"
+      additionalProperties: false
+    PlaceCallStepConfig:
+      type: object
+      required: [account_id, route]
+      properties:
+        account_id: {type: string, minLength: 1}
+        route: {type: string, pattern: '^(bot|ivr):.+$'}
+        context: {type: string, maxLength: 4000}
+        variables:
+          type: object
+          maxProperties: 50
+          additionalProperties:
+            oneOf:
+              - {type: string}
+              - type: object
+                required: [var]
+                properties:
+                  var: {type: string, pattern: '^(event|contact)\.'}
+                additionalProperties: false
+        request_permission: {type: boolean}
+      additionalProperties: false
     ConnectWhatsAppCall:
       type: object
       properties:
@@ -27133,11 +27266,18 @@ components:
           type: string
         recipient:
           type: string
+        contact_id: {type: string}
+        context: {type: string, maxLength: 4000}
+        variables:
+          type: object
+          maxProperties: 50
+          additionalProperties: {type: string, maxLength: 2000}
+        request_permission: {type: boolean, default: false}
+        permission_text: {type: string, maxLength: 1024}
+        permission_template: {type: object, additionalProperties: true}
         route:
           type: string
-          enum:
-            - api
-            - gateway
+          pattern: '^(api|gateway|bot:[A-Za-z0-9._:-]{1,256}|ivr:[A-Za-z0-9._:-]{1,256})$'
         session:
           $ref: "#/components/schemas/CallSession"
         recording:
@@ -27153,6 +27293,7 @@ components:
             - recipient
         - required:
             - to
+        - required: [contact_id]
       allOf:
         - if:
             properties:
@@ -27317,6 +27458,12 @@ components:
           anyOf:
             - $ref: "#/components/schemas/CallFile"
             - type: "null"
+        outcome:
+          type: [string, "null"]
+          enum: [answered, no_answer, rejected, failed, null]
+        attempt: {type: integer, minimum: 1}
+        purpose: {type: [string, "null"]}
+        route: {type: [string, "null"]}
         error:
           type:
             - string
@@ -27508,6 +27655,12 @@ components:
           anyOf:
             - $ref: "#/components/schemas/CallFile"
             - type: "null"
+        outcome:
+          type: [string, "null"]
+          enum: [answered, no_answer, rejected, failed, null]
+        attempt: {type: integer, minimum: 1}
+        purpose: {type: [string, "null"]}
+        route: {type: [string, "null"]}
         error:
           type:
             - string
@@ -28917,6 +29070,15 @@ webhooks:
                     - whatsapp.call.completed
                     - whatsapp.call.failed
                     - whatsapp.call.missed
+                    - call.permission_granted
+                    - call.permission_denied
+                    - call.outbound_queued
+                    - call.outbound_ringing
+                    - call.outbound_connected
+                    - call.outbound_completed
+                    - call.outbound_missed
+                    - call.outbound_rejected
+                    - call.outbound_failed
                     - whatsapp.call.permission_updated
                     - whatsapp.call.recording_ready
                     - whatsapp.call.transcription_ready

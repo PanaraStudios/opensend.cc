@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/server"
 import type {
   Opensend,
   ConnectWhatsAppCall,
+  PlaceWhatsAppCall,
   UpdateCallingSettings,
   RequestCallPermission,
 } from "@opensendcc/sdk"
@@ -22,6 +23,11 @@ const callingRouting = z.union(
     })
   )
 ) as z.ZodType<CallingRouting>
+const permissionTemplate = z.object({
+  name: z.string(),
+  language: z.string(),
+  components: z.array(z.record(z.string(), z.unknown())).optional(),
+}) as z.ZodType<NonNullable<RequestCallPermission["template"]>>
 const session = z.object({
   sdp_type: z.enum(["offer", "answer"]),
   sdp: z.string().max(98304),
@@ -129,6 +135,73 @@ export function addCallingTools(server: McpServer, opensend: Opensend) {
       inputSchema: { id: z.string() },
     },
     async ({ id }) => output(await opensend.whatsapp.calls.get(id))
+  )
+  server.registerTool(
+    "place-whatsapp-call",
+    {
+      title: "Place WhatsApp Bot or IVR Call",
+      description:
+        "Call a CRM contact or phone using a voice bot or IVR. The bot starts with its greeting and receives context and variables. Missing permission returns a status; optionally queue a request and call after approval. Meta enforces expiry, quotas and country restrictions. Scope: calling:write.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        from: z.string(),
+        to: z.string().optional(),
+        contact_id: z.string().optional(),
+        recipient: z.string().optional(),
+        route: z.string().regex(/^(bot|ivr):.+$/),
+        context: z.string().max(4000).optional(),
+        variables: z.record(z.string(), z.string()).optional(),
+        request_permission: z.boolean().optional(),
+        permission_text: z.string().optional(),
+        permission_template: permissionTemplate.optional(),
+        idempotencyKey: z.string().optional(),
+      },
+    },
+    async ({ idempotencyKey, ...input }) => {
+      if (!input.to && !input.contact_id && !input.recipient)
+        throw new Error("Supply to, contact_id or recipient.")
+      return output(
+        await opensend.whatsapp.calls.place(input as PlaceWhatsAppCall, {
+          idempotencyKey,
+        })
+      )
+    }
+  )
+  server.registerTool(
+    "get-contact-call-permission",
+    {
+      title: "Get Contact Calling Permission",
+      description:
+        "Read current permission and Meta's limits for this contact and WhatsApp number.",
+      annotations: { readOnlyHint: true },
+      inputSchema: { id: z.string(), from: z.string().optional() },
+    },
+    async ({ id, from }) =>
+      output(
+        await opensend.whatsapp.callPermissions.getForContact(id, { from })
+      )
+  )
+  server.registerTool(
+    "request-contact-call-permission",
+    {
+      title: "Request Contact Calling Permission",
+      description:
+        "Queue a calling permission request inside the messaging window. Meta's limits are checked before queuing. Scope: calling:write.",
+      annotations: { readOnlyHint: false },
+      inputSchema: {
+        id: z.string(),
+        from: z.string().optional(),
+        text: z.string().optional(),
+        template: permissionTemplate.optional(),
+        idempotencyKey: z.string().optional(),
+      },
+    },
+    async ({ id, idempotencyKey, ...input }) =>
+      output(
+        await opensend.whatsapp.callPermissions.requestForContact(id, input, {
+          idempotencyKey,
+        })
+      )
   )
   server.registerTool(
     "connect-whatsapp-call",
@@ -270,13 +343,7 @@ export function addCallingTools(server: McpServer, opensend: Opensend) {
         to: z.string().optional(),
         recipient: z.string().optional(),
         text: z.string().optional(),
-        template: z
-          .object({
-            name: z.string(),
-            language: z.string(),
-            components: z.array(z.record(z.string(), z.unknown())).optional(),
-          })
-          .optional(),
+        template: permissionTemplate.optional(),
         idempotencyKey: z.string().optional(),
       },
     },
