@@ -658,15 +658,15 @@ function TeamSoftphone({
           <>
             <Field orientation="horizontal">
               <div className="flex-1">
-                <FieldLabel>{online ? "Online" : "Away"}</FieldLabel>
+                <FieldLabel htmlFor="softphone-online">Online</FieldLabel>
                 <p className="text-xs text-muted-foreground">
                   {online
                     ? "Ready to receive calls"
-                    : "New calls won’t ring here"}
+                    : "Away: new calls won’t ring here"}
                 </p>
               </div>
               <Switch
-                aria-label="Online"
+                id="softphone-online"
                 checked={online}
                 disabled={working || phase === "connecting"}
                 onCheckedChange={(next) => {

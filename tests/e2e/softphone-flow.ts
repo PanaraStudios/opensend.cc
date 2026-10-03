@@ -174,6 +174,7 @@ export function softphoneTests(
       ).toBeVisible()
       await owner.screenshot({
         path: `${process.env.OPENSEND_TEST_RESULTS}/softphone-panel-${theme}-${width}.png`,
+        animations: "disabled",
       })
       await owner.keyboard.press("Escape")
     }
