@@ -262,6 +262,11 @@ export type BroadcastChannel = Infer<typeof broadcastChannel>
 export type SkipReason = Infer<typeof skipReasonValue>
 export type Broadcast = EmailDraft & {
   channel?: BroadcastChannel
+  messaging?: {
+    accountId: string
+    templateId: string
+    variables: Record<string, VariableSource>
+  }
   whatsapp?: {
     accountId: string
     templateId: string

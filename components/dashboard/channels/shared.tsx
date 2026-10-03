@@ -107,7 +107,7 @@ export function ChannelCell({ channel }: { channel?: Channel }) {
   const value = rowChannel({ channel })
   return <IconCell icon={channelIcon(value)}>{channelLabel(value)}</IconCell>
 }
-/** The existing Email/WhatsApp creation menu used by messaging resources. */
+/** Creation choices follow the shared channel registry. */
 export function ChannelCreateMenu({
   noun,
   onCreate,
@@ -130,32 +130,24 @@ export function ChannelCreateMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          {MESSAGE_CHANNEL_ITEMS.filter(
-            (item) =>
-              item.value !== "all" &&
-              (noun === "template" ||
-                item.value === "email" ||
-                item.value === "whatsapp")
-          ).map((item) => {
-            const value = item.value as Channel
-            const Icon = channelIcon(value)
-            return (
-              <DropdownMenuItem
-                key={value}
-                disabled={!channels?.[value === "email" ? "email" : "meta"]}
-                onClick={() => {
-                  if (noun === "template") onCreate(value)
-                  else if (value === "email" || value === "whatsapp")
-                    onCreate(value)
-                }}
-              >
-                <Icon />
-                {channelLabel(value)}
-                {!channels?.[value === "email" ? "email" : "meta"] &&
-                  " — not set up"}
-              </DropdownMenuItem>
-            )
-          })}
+          {MESSAGE_CHANNEL_ITEMS.filter((item) => item.value !== "all").map(
+            (item) => {
+              const value = item.value as Channel
+              const Icon = channelIcon(value)
+              return (
+                <DropdownMenuItem
+                  key={value}
+                  disabled={!channels?.[value === "email" ? "email" : "meta"]}
+                  onClick={() => onCreate(value)}
+                >
+                  <Icon />
+                  {channelLabel(value)}
+                  {!channels?.[value === "email" ? "email" : "meta"] &&
+                    " — not set up"}
+                </DropdownMenuItem>
+              )
+            }
+          )}
         </DropdownMenuGroup>
         {channels && (
           <DropdownMenuGroup>

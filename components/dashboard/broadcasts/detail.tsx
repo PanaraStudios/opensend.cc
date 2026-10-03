@@ -380,7 +380,7 @@ export function BroadcastDetail() {
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  disabled={broadcast.channel === "whatsapp"}
+                  disabled={(broadcast.channel ?? "email") !== "email"}
                   onClick={cloneAsTemplate}
                 >
                   <LayoutTemplateIcon />
@@ -399,7 +399,7 @@ export function BroadcastDetail() {
         }
       />
 
-      {broadcast.channel === "whatsapp" ? (
+      {(broadcast.channel ?? "email") !== "email" ? (
         <WhatsAppBroadcastReport item={broadcast} />
       ) : (
         <BroadcastReport item={broadcast} />
@@ -446,7 +446,10 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
     skipped: 0,
   }
   return (
-    <div className="flex flex-col gap-6" data-testid="whatsapp-broadcast-stats">
+    <div
+      className="flex flex-col gap-6"
+      data-testid={`${item.channel}-broadcast-stats`}
+    >
       {item.status === "queued" ? (
         <Alert>
           <AlertDescription>
@@ -459,7 +462,7 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
         rows={(["sent", "delivered", "read", "failed", "skipped"] as const).map(
           (key) => [sentenceCase(key), key]
         )}
-        testIdPrefix="whatsapp-stat"
+        testIdPrefix={`${item.channel}-stat`}
       />
       <ResourceTable
         headers={
