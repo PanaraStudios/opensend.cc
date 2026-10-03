@@ -609,3 +609,30 @@ test("received email merges with sent channels, links its sender contact and add
     JSON.stringify(events.find((event) => event.type === "email.received"))
   ).not.toContain("Inbound body")
 })
+
+test("legacy channel endpoints share validation, missing-resource and scope error codes", async () => {
+  const f = await setup()
+  const restricted = await f.key(["contacts:read"])
+  for (const channel of [
+    "email",
+    "whatsapp",
+    "messenger",
+    "instagram",
+  ] as const) {
+    const path = channel === "email" ? "/emails" : `/${channel}/messages`
+    const body = channel === "email" ? f.email : bodies[channel]
+    expect(
+      await (await f.call(path, "POST", { ...body, to: 42 })).json()
+    ).toMatchObject({
+      name: "validation_error",
+      statusCode: 422,
+      message: expect.any(String),
+    })
+    expect(
+      await (await f.call(`${path}/missing-message`)).json()
+    ).toMatchObject({ name: "not_found", statusCode: 404 })
+    expect(
+      await (await f.call(path, "GET", undefined, restricted.token)).json()
+    ).toMatchObject({ name: "restricted_api_key", statusCode: 403 })
+  }
+})

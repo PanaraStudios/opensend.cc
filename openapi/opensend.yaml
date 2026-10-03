@@ -26,6 +26,8 @@ security:
   - bearerAuth: []
 tags:
   - name: Messages
+  - name: Media
+  - name: Automations
   - name: IVRs
   - name: API Keys
   - name: Broadcasts
@@ -45,9 +47,24 @@ tags:
   - name: Usage
   - name: Suppressions
   - name: WhatsApp
+  - name: Messenger
+  - name: Instagram
   - name: Knowledge
   - name: Bot Tools
   - name: Voice Bots
+x-tagGroups:
+  - name: Multichannel
+    tags: [Messages, Events, Templates, Broadcasts, Automations, Webhooks, Media]
+  - name: Email
+    tags: [Emails, Receiving Emails, Domains, SMTP, Suppressions]
+  - name: WhatsApp
+    tags: [WhatsApp]
+  - name: Messenger
+    tags: [Messenger]
+  - name: Instagram
+    tags: [Instagram]
+  - name: Workspace
+    tags: [API Keys, Contacts, Contact Properties, Segments, Topics, Logs, OAuth, Usage, Knowledge, Bot Tools, Voice Bots, IVRs]
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
