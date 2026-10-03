@@ -4,6 +4,7 @@ import { channelLabel } from "./format"
 import { RESERVED_PROPERTY_KEYS } from "./contacts"
 import { pluralize } from "./format"
 import { uniqueName } from "./slug"
+import { CALLING_EVENTS } from "./types"
 import type {
   Automation,
   AutomationEvent,
@@ -26,6 +27,7 @@ export const STEP_LABELS: Record<AutomationStepType, string> = {
   delay: "Delay",
   wait_for_event: "Wait for event",
   send_email: "Send email",
+  place_call: "Place call",
   send_whatsapp: "Send WhatsApp",
   send_messenger: "Send Messenger message",
   send_instagram: "Send Instagram message",
@@ -39,7 +41,10 @@ export const STEP_GROUPS: readonly {
   label: string
   types: readonly AutomationStepType[]
 }[] = [
-  { label: "Messages", types: ["send_email", ...CHANNEL_SEND_STEPS] },
+  {
+    label: "Messages",
+    types: ["send_email", ...CHANNEL_SEND_STEPS, "place_call"],
+  },
   { label: "Flow control", types: ["condition", "delay", "wait_for_event"] },
   {
     label: "Audience",
@@ -212,6 +217,16 @@ export function newStep(
         met: [],
         notMet: [],
       }
+    case "place_call":
+      return {
+        key,
+        type,
+        accountId: "",
+        route: "",
+        purpose: "",
+        variables: {},
+        requestPermission: false,
+      }
     case "delay":
       return { key, type, duration: "" }
     case "wait_for_event":
@@ -321,6 +336,10 @@ export function durationError(text: string): string | null {
 export const RESERVED_EVENT_PREFIX = "opensend:"
 export const SYSTEM_EVENTS = [
   { value: "contact.note_created", label: "Contact note created" },
+  ...CALLING_EVENTS.map((value) => ({
+    value,
+    label: value.replace("call.", "Call ").replaceAll("_", " "),
+  })),
   ...messagingChannelValue.members.map(({ value }) => ({
     value: `opensend:${value}.message.received`,
     label: `${channelLabel(value)} message received`,
@@ -436,6 +455,11 @@ export function stepTasks(
   context: StepContext
 ): string[] {
   switch (step.type) {
+    case "place_call":
+      return [
+        !step.accountId ? "Select a calling number" : null,
+        !/^(bot|ivr):.+$/.test(step.route) ? "Select a bot or IVR" : null,
+      ].flatMap((task) => task ?? [])
     case "condition":
       return step.rules.length === 0 || step.rules.some(ruleError)
         ? ["Add a condition"]

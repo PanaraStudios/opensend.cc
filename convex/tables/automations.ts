@@ -19,6 +19,7 @@ export const stepType = v.union(
   v.literal("delay"),
   v.literal("wait_for_event"),
   v.literal("send_email"),
+  v.literal("place_call"),
   ...CHANNEL_SEND_STEPS.map((type) => v.literal(type)),
   v.literal("contact_update"),
   v.literal("contact_delete"),

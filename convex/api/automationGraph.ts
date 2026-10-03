@@ -82,6 +82,7 @@ export function parseAutomationGraph(
         "condition",
         "wait_for_event",
         "send_email",
+        "place_call",
         ...CHANNEL_SEND_STEPS,
         "contact_update",
         "contact_delete",
@@ -153,6 +154,29 @@ export function parseAutomationGraph(
     const next = outgoing.get(key)
     let node: AutomationStep
     switch (s.type) {
+      case "place_call": {
+        const variables = objectBody(c.variables ?? {})
+        if (
+          c.request_permission !== undefined &&
+          typeof c.request_permission !== "boolean"
+        )
+          throw invalid("request_permission must be a boolean.")
+        node = {
+          key,
+          type: "place_call",
+          accountId: text(c, "account_id"),
+          route: text(c, "route"),
+          purpose: stringField(c, "context") ?? "",
+          variables: Object.fromEntries(
+            Object.entries(variables).map(([key, value]) => [
+              key,
+              valueText(value),
+            ])
+          ),
+          requestPermission: c.request_permission === true,
+        }
+        break
+      }
       case "delay":
         node = { key, type: s.type, duration: text(c, "duration") }
         break
@@ -297,6 +321,15 @@ export function automationGraph(row: {
       for (const edge of pending) connections.push({ ...edge, to: node.key })
       let config: Record<string, unknown>
       switch (node.type) {
+        case "place_call":
+          config = {
+            account_id: node.accountId,
+            route: node.route,
+            context: node.purpose,
+            variables: node.variables,
+            request_permission: node.requestPermission,
+          }
+          break
         case "delay":
           config = { duration: node.duration }
           break

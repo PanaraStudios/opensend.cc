@@ -1,3 +1,4 @@
+import { actorArgs } from "./actor"
 import { ownedBot } from "../voice/resources"
 import { routing } from "../ivr/validators"
 import { own as ownIvr } from "../ivr/definitions"
@@ -5,7 +6,7 @@ import { emitEvent } from "../events"
 import { v } from "convex/values"
 import { internalQuery, internalMutation, query } from "../_generated/server"
 import schema from "../schema"
-import { actorArgs, authorize, numberSettings, defaultMode } from "./rows"
+import { authorize, numberSettings, defaultMode } from "./rows"
 import { handlingMode } from "../tables/calling"
 import { findMetaApp } from "../meta/app"
 import { retirement } from "../teamLifecycle"
@@ -144,15 +145,21 @@ export const permission = internalMutation({
       status: data.permission.status,
       observedAt: args.observedAt,
       data: args.data,
-      ...(typeof expiration === "number"
-        ? { expiresAt: expiration * 1000 }
+      ...(expiration != null &&
+      Number.isFinite(Number(expiration)) &&
+      data.permission.status !== "permanent"
+        ? { expiresAt: Number(expiration) * 1000 }
         : {}),
     }
     if (previous)
       await ctx.db.patch("callPermissions", previous._id, {
         ...fields,
         expiresAt:
-          typeof expiration === "number" ? expiration * 1000 : undefined,
+          expiration != null &&
+          Number.isFinite(Number(expiration)) &&
+          data.permission.status !== "permanent"
+            ? Number(expiration) * 1000
+            : undefined,
       })
     else await ctx.db.insert("callPermissions", fields)
     return null

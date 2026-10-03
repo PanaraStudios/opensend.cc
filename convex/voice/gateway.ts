@@ -1,3 +1,4 @@
+import { outboundInstructions } from "../../lib/calling/outbound"
 import { createNote, noteBody } from "../contactNotes"
 import { botVoiceGender } from "../../services/call-gateway/src/voice/voices"
 import { ConvexError } from "convex/values"
@@ -132,7 +133,13 @@ export const session = internalMutation({
     }
     return {
       ...updateVoiceBotVoice(call.botConfig!, liveVoices),
+      systemPrompt: outboundInstructions(
+        call.botConfig!.systemPrompt,
+        call.callPurpose,
+        call.callVariables
+      ),
       voiceGender: botVoiceGender(call.botConfig!, liveVoices),
+      callDirection: call.direction,
       botId: call.botId,
       keys,
       toolCatalog: toolDeclarations(call.botConfig!.tools as VoiceToolName[]),

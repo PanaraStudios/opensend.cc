@@ -9,7 +9,6 @@ import {
   enumField,
 } from "./route"
 import { invalid } from "./caller"
-import { channelSendInput } from "./channelMessages"
 
 export function registerCallingRoutes(http: HttpRouter) {
   const read = { resource: "calling", access: "read" } as const,
@@ -56,14 +55,19 @@ export function registerCallingRoutes(http: HttpRouter) {
     handler: async (ctx, { caller, body }) => {
       const input = objectBody(body)
       for (const key of ["from", "to", "recipient"]) stringField(input, key)
-      if (!input.to && !input.recipient)
-        throw invalid("Supply to or recipient (BSUID).")
+      if (!input.to && !input.recipient && !input.contact_id)
+        throw invalid("Supply to, contact_id or recipient (BSUID).")
       return {
-        body: await ctx.runAction(internal.calling.callActions.connect, {
-          organizationId: caller.organizationId,
-          caller,
-          input,
-        }),
+        body: await ctx.runAction(
+          typeof input.route === "string" && /^(bot|ivr):/.test(input.route)
+            ? internal.calling.outbound.place
+            : internal.calling.callActions.connect,
+          {
+            organizationId: caller.organizationId,
+            caller,
+            input,
+          }
+        ),
       }
     },
   })
@@ -136,31 +140,50 @@ export function registerCallingRoutes(http: HttpRouter) {
     method: "POST",
     path: "/whatsapp/call-permissions",
     scope: write,
-    handler: async (ctx, { caller, body }) => {
-      const input = objectBody(body),
-        template = objectField(input, "template"),
-        text = stringField(input, "text")
-      if (Number(template !== undefined) + Number(text !== undefined) !== 1)
-        throw invalid(
-          "Supply text for a free-form request, or a call-permission template."
-        )
-      const request = template
-        ? { ...input, template }
-        : {
-            from: stringField(input, "from"),
-            to: stringField(input, "to"),
-            recipient: stringField(input, "recipient"),
-            interactive: {
-              type: "call_permission_request",
-              action: { name: "call_permission_request" },
-              body: { text },
-            },
-          }
-      const id = await ctx.runMutation(internal.api.channelMessages.send, {
+    handler: async (ctx, { caller, body }) => ({
+      body: await ctx.runAction(internal.calling.outbound.request, {
+        organizationId: caller.organizationId,
         caller,
-        input: channelSendInput(request, "whatsapp"),
-      })
-      return { body: { id } }
-    },
+        input: objectBody(body),
+      }),
+    }),
   })
+  for (const method of ["GET", "POST"] as const)
+    apiRoute(http, {
+      method,
+      path: "/contacts/{id}/call-permission",
+      scope: method === "GET" ? read : write,
+      handler: async (ctx, { caller, params, query, body }) => {
+        const input =
+          method === "POST"
+            ? objectBody(body)
+            : { from: query.get("from") ?? undefined }
+        if (method === "POST")
+          return {
+            body: await ctx.runAction(internal.calling.outbound.request, {
+              organizationId: caller.organizationId,
+              caller,
+              input: { ...input, contact_id: params.id },
+            }),
+          }
+        const target = await ctx.runQuery(
+          internal.calling.outboundState.resolve,
+          {
+            organizationId: caller.organizationId,
+            caller,
+            from: stringField(input, "from"),
+            contactId: params.id,
+          }
+        )
+        return {
+          body: await ctx.runAction(internal.calling.settings.permissions, {
+            organizationId: caller.organizationId,
+            caller,
+            from: target.from,
+            identity: target.recipient ?? target.to!,
+            bsuid: !!target.recipient,
+          }),
+        }
+      },
+    })
 }

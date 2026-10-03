@@ -93,6 +93,18 @@ export type SuppressionReason = Infer<typeof suppressionReasonValue>
 export type ExportStatus = Infer<typeof exportStatusValue>
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
 
+export const CALLING_EVENTS = [
+  "call.permission_granted",
+  "call.permission_denied",
+  "call.outbound_queued",
+  "call.outbound_ringing",
+  "call.outbound_connected",
+  "call.outbound_completed",
+  "call.outbound_missed",
+  "call.outbound_rejected",
+  "call.outbound_failed",
+] as const
+
 export const WEBHOOK_EVENTS = [
   "email.sent",
   "email.delivered",
@@ -105,6 +117,7 @@ export const WEBHOOK_EVENTS = [
   "email.failed",
   "email.scheduled",
   "email.suppressed",
+  ...CALLING_EVENTS,
   "whatsapp.call.ivr_completed",
   "whatsapp.call.ringing",
   "whatsapp.call.connected",
@@ -390,6 +403,7 @@ export const AUTOMATION_STEP_TYPES = [
   "delay",
   "wait_for_event",
   "send_email",
+  "place_call",
   ...CHANNEL_SEND_STEPS,
   "contact_update",
   "contact_delete",
@@ -406,6 +420,14 @@ export type AutomationStep = { key: string } & (
       rules: AutomationRule[]
       met: AutomationStep[]
       notMet: AutomationStep[]
+    }
+  | {
+      type: "place_call"
+      accountId: string
+      route: string
+      purpose: string
+      variables: Record<string, string>
+      requestPermission: boolean
     }
   | { type: "delay"; duration: string }
   | {

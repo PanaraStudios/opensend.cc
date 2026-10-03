@@ -30,6 +30,7 @@ import {
   schemaError,
 } from "../lib/dashboard/automation"
 import { filteredPage, matchesSearch } from "./lists"
+import { CALLING_EVENTS } from "../lib/dashboard/types"
 import type { AutomationEvent } from "../lib/dashboard/types"
 
 /** A flat payload rarely has more than a few dozen fields, and every send
@@ -57,7 +58,8 @@ export const customEventType = (name: string) => CUSTOM_EVENT_PREFIX + name
 export const customEventName = (type: string) =>
   type.startsWith(CUSTOM_EVENT_PREFIX)
     ? type.slice(CUSTOM_EVENT_PREFIX.length)
-    : type === "contact.note_created"
+    : type === "contact.note_created" ||
+        CALLING_EVENTS.some((event) => event === type)
       ? type
       : null
 

@@ -10,6 +10,7 @@ import {
   performCall,
   connectCall,
 } from "./callActions"
+import { requestPermission as requestCallingPermission } from "./outbound"
 import { checkPermission } from "./settings"
 import { agentQueues } from "../../services/call-gateway/src/queues"
 import { permissionAllows } from "../../lib/meta/softphone"
@@ -189,20 +190,12 @@ export const requestPermission = action({
   returns: v.id("channelMessages"),
   handler: async (ctx, args): Promise<Id<"channelMessages">> => {
     await agentActor(ctx, args.organizationId)
-    const data: Record<string, unknown> = await checkPermission(ctx, {
-      organizationId: args.organizationId,
-      from: args.accountId,
-      identity: args.recipient,
-      bsuid: true,
-    })
-    if (!permissionAllows(data, "send_call_permission_request"))
-      throw new ConvexError(
-        "Meta does not currently allow another permission request"
-      )
-    return ctx.runMutation(
-      internal.calling.softphoneState.requestPermission,
-      args
+    const result = await requestCallingPermission(
+      ctx,
+      { organizationId: args.organizationId },
+      { from: args.accountId, recipient: args.recipient }
     )
+    return result.id
   },
 })
 export const control = action({
