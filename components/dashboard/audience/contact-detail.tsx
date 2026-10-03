@@ -1,6 +1,10 @@
 "use client"
 import { ContactNotes } from "./contact-notes"
 import { SendMessageAction } from "../conversation/send-message-action"
+import {
+  CallWithBot,
+  CallPermissionStatus,
+} from "@/components/dashboard/calling/call-with-bot"
 import { CallButton } from "@/components/dashboard/calling/call-button"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
@@ -271,6 +275,7 @@ function ContactPage({
         actions={
           <>
             <SendMessageAction contact={contact} />
+            <CallWithBot contactId={contact.id} />
             <Button variant="outline" onClick={() => setPendingDelete(true)}>
               Delete
             </Button>
@@ -631,10 +636,16 @@ function ContactChannels({ contactId }: { contactId: string }) {
                       <div key={account.id} className="flex items-center gap-2">
                         <span>{account.name}</span>
                         {identity.channel === "whatsapp" ? (
-                          <CallButton
-                            accountId={account.id}
-                            recipient={identity.userId ?? identity.externalId}
-                          />
+                          <>
+                            <CallButton
+                              accountId={account.id}
+                              recipient={identity.userId ?? identity.externalId}
+                            />
+                            <CallPermissionStatus
+                              contactId={contactId}
+                              accountId={account.id}
+                            />
+                          </>
                         ) : null}
                       </div>
                     ))}

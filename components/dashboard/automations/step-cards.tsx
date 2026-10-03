@@ -1,4 +1,5 @@
 "use client"
+import { PlaceCallFields } from "@/components/dashboard/calling/place-call-fields"
 import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 
 import { channelForSendStep } from "@/lib/channels"
@@ -305,6 +306,13 @@ function StepBody({
       )
     case "wait_for_event":
       return <WaitBody step={step} onChange={onChange} />
+    case "place_call":
+      return (
+        <PlaceCallFields
+          config={step}
+          onChange={(config) => onChange({ ...step, ...config })}
+        />
+      )
     case "send_messenger":
     case "send_instagram":
     case "send_whatsapp":
