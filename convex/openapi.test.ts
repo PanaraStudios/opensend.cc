@@ -503,6 +503,8 @@ describe("OpenAPI contract", () => {
       "GET /meta/webhook",
       "POST /meta/webhook",
       "POST /calling/gateway/events",
+      // Browser disconnect capability, outside the key-authenticated REST API.
+      "POST /calling/softphone/leave",
       "POST /calling/gateway/ivr/start",
       "POST /calling/gateway/ivr/next",
       "GET /calling/ivr/audio/*",

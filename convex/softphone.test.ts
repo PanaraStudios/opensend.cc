@@ -524,3 +524,183 @@ test("outbound reserves one call per agent atomically and routes its remote answ
     extension: "2000",
   })
 })
+
+test("presence switches Away and Online, and only the owning tab can toggle it", async () => {
+  const f = await setup()
+  await f.owner.client.mutation(api.calling.softphoneState.presence, {
+    ...f.ownerArgs,
+    status: "away",
+  })
+  const read = () =>
+    f.owner.client.query(api.calling.softphoneState.state, {
+      organizationId: f.owner.team,
+    })
+  expect((await read()).me?.status).toBe("away")
+  await expect(
+    f.owner.client.mutation(api.calling.softphoneState.presence, {
+      ...f.ownerArgs,
+      browserId: "other-tab",
+      status: "online",
+    })
+  ).rejects.toThrow("does not own")
+  await f.owner.client.mutation(api.calling.softphoneState.presence, {
+    ...f.ownerArgs,
+    status: "online",
+  })
+  expect((await read()).me?.status).toBe("online")
+})
+
+test("disconnect rejects stale leases and makes the last owning tab unavailable", async () => {
+  const f = await setup()
+  const row = await f.t.run((ctx) =>
+    ctx.db
+      .query("callAgents")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("userId", f.owner.user._id)
+      )
+      .unique()
+  )
+  const args = {
+    id: row!._id,
+    browserId: row!.browserId,
+    leaseId: row!.leaseId,
+  }
+  await f.t.mutation(internal.calling.softphoneState.disconnect, {
+    ...args,
+    leaseId: "stale",
+  })
+  await f.t.mutation(internal.calling.softphoneState.disconnect, {
+    ...args,
+    browserId: "other-tab",
+  })
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("online")
+  await f.t.mutation(internal.calling.softphoneState.disconnect, args)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("away")
+  await expect(
+    f.owner.client.mutation(api.calling.softphoneState.claim, {
+      ...f.ownerArgs,
+      id: f.call,
+    })
+  ).rejects.toThrow("Go online")
+  // A fresh tab can immediately take over; the old tab's beacon cannot revoke it.
+  const next = await f.owner.client.mutation(
+    internal.calling.softphoneState.begin,
+    { ...f.ownerArgs, browserId: "next-tab" }
+  )
+  await f.t.mutation(internal.calling.softphoneState.disconnect, args)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", next._id)))?.leaseId
+  ).toBe(next.leaseId)
+})
+
+test("heartbeat expiry materializes Away; an earlier timer cannot expire a renewed lease", async () => {
+  const f = await setup()
+  const row = await f.t.run((ctx) =>
+    ctx.db
+      .query("callAgents")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("userId", f.owner.user._id)
+      )
+      .unique()
+  )
+  const args = {
+    id: row!._id,
+    leaseId: row!.leaseId,
+    updatedAt: row!.updatedAt,
+  }
+  vi.setSystemTime(Date.now() + 30000)
+  await f.owner.client.mutation(api.calling.softphoneState.presence, {
+    ...f.ownerArgs,
+    status: "online",
+  })
+  vi.setSystemTime(Date.now() + 45000)
+  await f.t.mutation(internal.calling.softphoneState.expire, args)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("online")
+  vi.setSystemTime(Date.now() + 30000)
+  await f.t.mutation(internal.calling.softphoneState.expire, {
+    ...args,
+    updatedAt: args.updatedAt + 30000,
+  })
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("away")
+})
+
+test("Decline claims the call before rejecting it through the existing call API", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "g".repeat(64))
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  const actions: string[] = []
+  fakeGraph([
+    {
+      path: `/${PHONE_ID}/calls`,
+      respond: (request) => {
+        actions.push((request.body as { action: string }).action)
+        return { success: true }
+      },
+    },
+  ])
+  const cleanup = vi
+    .spyOn(CallGatewayClient.prototype, "hangup")
+    .mockResolvedValue()
+  await f.owner.client.mutation(api.calling.softphoneState.claim, {
+    ...f.ownerArgs,
+    id: f.call,
+  })
+  await f.owner.client.action(api.calling.softphone.hangup, {
+    ...f.ownerArgs,
+    id: f.call,
+  })
+  expect(actions).toEqual(["reject", "terminate"])
+  expect(cleanup).toHaveBeenCalledWith(f.call)
+  expect((await f.t.run((ctx) => ctx.db.get("calls", f.call)))?.status).toBe(
+    "rejected"
+  )
+})
+
+test("tab-close HTTP capability validates input and can only disconnect its exact lease", async () => {
+  const f = await setup()
+  const row = await f.t.run((ctx) =>
+    ctx.db
+      .query("callAgents")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("userId", f.owner.user._id)
+      )
+      .unique()
+  )
+  const args = {
+    id: row!._id,
+    browserId: row!.browserId,
+    leaseId: row!.leaseId,
+  }
+  const send = (body: string) =>
+    f.t.fetch("/calling/softphone/leave", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body,
+    })
+  expect((await send("{}")).status).toBe(400)
+  expect((await send(JSON.stringify({ ...args, leaseId: "bad" }))).status).toBe(
+    400
+  )
+  expect(
+    (await send(JSON.stringify({ ...args, leaseId: crypto.randomUUID() })))
+      .status
+  ).toBe(204)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("online")
+  expect((await send(JSON.stringify(args))).status).toBe(204)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", args.id)))?.status
+  ).toBe("away")
+})
