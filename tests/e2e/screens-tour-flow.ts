@@ -61,8 +61,36 @@ export function screensTourTests(
     const bots = backendRows<Doc<"voiceBots">>("voiceBots").filter(
       (r) => r.organizationId === organizationId
     )
-    const bot = bots[0]!
-    expect(bot, "Seeded voice bot").toBeTruthy()
+    let botId: string = bots[0]?._id ?? ""
+    if (!botId) {
+      const provider = (await backend.action(
+        api.voice.resources.dashboardWrite,
+        {
+          organizationId,
+          kind: "provider",
+          body: JSON.stringify({
+            provider: "gemini",
+            label: "QA Gemini",
+            key: "qa-fixture-not-a-live-provider-key",
+          }),
+        }
+      )) as { id: string }
+      const created = (await backend.action(
+        api.voice.resources.dashboardWrite,
+        {
+          organizationId,
+          kind: "bot",
+          body: JSON.stringify({
+            name: "QA support",
+            engine: "gemini_live",
+            provider: "gemini",
+            credentialId: provider.id,
+            tools: ["lookup_contact", "create_note", "end_call"],
+          }),
+        }
+      )) as { id: string }
+      botId = created.id
+    }
     const knowledge = (await backend.action(
       api.knowledge.resources.dashboardWrite,
       {
@@ -85,7 +113,7 @@ export function screensTourTests(
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
-    await backend.action(api.botTools.resources.dashboardWrite, {
+    const tool = await backend.action(api.botTools.resources.dashboardWrite, {
       organizationId,
       body: JSON.stringify({
         name: "check_order",
@@ -101,6 +129,42 @@ export function screensTourTests(
         url: "https://example.test/orders/status",
       }),
     })
+    // Attach representative toolkit configuration without making provider requests.
+    await backend.action(api.voice.resources.dashboardWrite, {
+      organizationId,
+      kind: "bot",
+      id: botId,
+      body: JSON.stringify({
+        knowledgeBaseIds: [knowledge.id],
+        customToolIds: [(tool as { id: string }).id],
+        collect: [
+          {
+            key: "order_number",
+            label: "Order number",
+            description: "The customer's order reference",
+            type: "text",
+            required: true,
+          },
+        ],
+      }),
+    })
+    const bases = backendRows<Doc<"knowledgeBases">>("knowledgeBases")
+    importFixture(
+      "knowledgeBases",
+      bases.map((r) =>
+        r._id === knowledge.id ? { ...r, documentCount: 1 } : r
+      ),
+      true
+    )
+    const knowledgeDocument = backendRows<Doc<"knowledgeDocuments">>(
+      "knowledgeDocuments"
+    ).find((r) => r.knowledgeBaseId === knowledge.id)!
+    importFixture("knowledgeDocumentTexts", {
+      organizationId,
+      documentId: knowledgeDocument._id,
+      text: "Support is available Monday to Friday, 9am to 5pm.",
+    })
+
     importFixture("calls", {
       organizationId,
       accountId: whatsapp._id,
@@ -112,14 +176,14 @@ export function screensTourTests(
       to: whatsapp.handle,
       observedAt: Date.now() - 60_000,
       duration: 45,
-      botId: bot._id,
+      botId: botId,
       botOutcome: "completed",
       botSummary:
         "The caller asked about support hours and received an answer.",
       collected: { order_number: { value: "ORD-123", inferred: false } },
     })
     const call = backendRows<Doc<"calls">>("calls").find(
-      (r) => r.botId === bot._id && r.botSummary?.startsWith("The caller asked")
+      (r) => r.botId === botId && r.botSummary?.startsWith("The caller asked")
     )!
     expect(call).toBeTruthy()
     importFixture("callTranscripts", [
@@ -163,6 +227,29 @@ export function screensTourTests(
     const ivrs = backendRows<Doc<"ivrs">>("ivrs").filter(
       (r) => r.organizationId === organizationId
     )
+    let ivrId: string = ivrs[0]?._id ?? ""
+    if (!ivrId) {
+      const created = await backend.action(api.ivr.definitions.dashboardWrite, {
+        organizationId,
+        kind: "create",
+        body: JSON.stringify({
+          name: "QA reception",
+          language: "en",
+          entryMenuId: "main",
+          menus: [
+            {
+              id: "main",
+              name: "Main",
+              prompt: { kind: "tts", text: "Press one for support" },
+              options: { "1": { kind: "voicemail" } },
+              noInputAction: { kind: "hangup" },
+              failureAction: { kind: "hangup" },
+            },
+          ],
+        }),
+      })
+      ivrId = String(created.id)
+    }
     const messages = backendRows<Doc<"channelMessages">>(
       "channelMessages",
       1000
@@ -410,9 +497,8 @@ export function screensTourTests(
         )
       }
     )
-    expect(ivrs.length).toBeGreaterThan(0)
-    route("playground-ivr-editor", `/playground/ivr/${ivrs[0]._id}`)
-    route("playground-voice-bot-detail", `/playground/voice-bot/${bot._id}`)
+    route("playground-ivr-editor", `/playground/ivr/${ivrId}`)
+    route("playground-voice-bot-detail", `/playground/voice-bot/${botId}`)
     route(
       "playground-knowledge-detail",
       `/playground/knowledge/${knowledge.id}`
