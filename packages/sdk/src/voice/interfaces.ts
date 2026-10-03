@@ -1,4 +1,4 @@
-import type { CollectField } from "./toolkit"
+import type { CollectField } from "./toolkit-types"
 export type VoiceProvider = "gemini" | "sarvam" | "elevenlabs"
 export type VoiceBotTool =
   | "lookup_contact"

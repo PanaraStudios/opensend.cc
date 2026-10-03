@@ -10,7 +10,7 @@ import type {
   KnowledgeBase,
   KnowledgeDocument,
   KnowledgeMatch,
-} from "@/packages/sdk/src/voice/toolkit"
+} from "@/packages/sdk/src/voice/toolkit-types"
 import {
   SectionChrome,
   DetailHeader,

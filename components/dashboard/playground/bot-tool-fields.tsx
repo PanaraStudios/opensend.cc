@@ -17,7 +17,7 @@ import {
 import { VoiceField, VoiceChoiceField } from "./ivr-fields"
 import { validateCollect, type CollectField } from "@/lib/bot-toolkit"
 import type { VoiceBotConfig } from "@/lib/voice-bots"
-import type { KnowledgeBase, BotTool } from "@/packages/sdk/src/voice/toolkit"
+import type { KnowledgeBase, BotTool } from "@/packages/sdk/src/voice/toolkit-types"
 import { actionError } from "@/lib/action-error"
 const TYPES = [
   { value: "text", label: "Text" },
