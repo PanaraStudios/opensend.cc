@@ -88,10 +88,11 @@ export function softphoneTests(
     await expect(
       owner.getByRole("button", { name: "Open softphone", exact: true })
     ).toHaveCount(0)
-    // A gateway-mode number enables the entry even when the gateway is offline.
+    // Only gateway numbers routed to agents enable the softphone entry.
     testBackend("calling/settingsState:store", {
       accountId,
       mode: "gateway",
+      routing: { kind: "agents" },
       settings: "{}",
     })
     await expect(
@@ -112,9 +113,9 @@ export function softphoneTests(
     ).toBeVisible()
     await owner.getByRole("button", { name: "Softphone", exact: true }).click()
     await expect(
-      owner.getByText("Go online to receive and make calls", { exact: true })
+      owner.getByText("Calls waiting: 0", { exact: true })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Close", exact: true }).click()
+    await owner.keyboard.press("Escape")
     await owner.screenshot({
       path: `${process.env.OPENSEND_TEST_RESULTS}/softphone-calls.png`,
       fullPage: true,
@@ -134,12 +135,15 @@ export function softphoneTests(
       owner.getByRole("combobox", { name: "Softphone microphone", exact: true })
     ).toContainText("Default microphone")
     await expect(
-      owner.getByRole("link", { name: "View calls", exact: true })
+      owner.getByRole("meter", { name: "Microphone level" })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Playground › Calls", exact: true })
     ).toHaveAttribute("href", "/playground/calls")
     await expect(
-      owner.getByText("Go online to receive and make calls", { exact: true })
+      owner.getByText("Calls waiting: 0", { exact: true })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Close", exact: true }).click()
+    await owner.keyboard.press("Escape")
     testBackend("calling/settingsState:store", {
       accountId,
       mode: "api",
