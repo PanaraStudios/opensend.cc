@@ -23,7 +23,7 @@ import {
   TypeToConfirmDialog,
   MoreMenu,
 } from "@/components/dashboard/primitives"
-import { WorkflowCard } from "@/components/dashboard/automations/workflow"
+import { WorkflowCard } from "@/components/dashboard/flows/workflow"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"

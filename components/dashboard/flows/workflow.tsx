@@ -6,8 +6,7 @@ import { MinusIcon, PlusIcon, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
-import { stepBranches, type StepSlot } from "@/lib/dashboard/automation"
-import type { AutomationStep } from "@/lib/dashboard/types"
+import type { FlowBranch, FlowSlot } from "./catalog"
 import { cn } from "@/lib/utils"
 
 /* The workflow, drawn top to bottom on a dotted canvas: the trigger, then each
@@ -17,7 +16,7 @@ import { cn } from "@/lib/utils"
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25] as const
 
-function Connector({ className }: { className?: string }) {
+export function Connector({ className }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
@@ -26,30 +25,41 @@ function Connector({ className }: { className?: string }) {
   )
 }
 
-type GraphProps = {
-  renderStep: (step: AutomationStep) => React.ReactNode
+type GraphProps<Node extends { key: string }> = {
+  branches: (node: Node) => readonly FlowBranch<Node>[]
+  terminal?: (node: Node) => boolean
+  stacked?: boolean
+  startAtFirst?: boolean
+  renderStep: (step: Node) => React.ReactNode
   /** The "add step" control for a place in the graph. Without it the graph
       is read-only and the places are plain lines. */
-  renderAdd?: (slot: StepSlot) => React.ReactNode
+  renderAdd?: (slot: FlowSlot) => React.ReactNode
 }
 
-function StepList({
+export function StepList<Node extends { key: string }>({
   steps,
   parent,
   ...props
-}: GraphProps & {
-  steps: readonly AutomationStep[]
-  parent: StepSlot["parent"]
+}: GraphProps<Node> & {
+  steps: readonly Node[]
+  parent: FlowSlot["parent"]
 }) {
   const { renderStep, renderAdd } = props
   const last = steps.at(-1)
   return (
-    <div className="flex flex-col items-center">
+    <div
+      className={cn(
+        "flex flex-col items-center",
+        props.stacked && "w-full min-w-0"
+      )}
+    >
       {steps.map((step, index) => {
-        const branches = stepBranches(step)
+        const branches = props.branches(step)
         return (
           <React.Fragment key={step.key}>
-            <Connector />
+            {props.startAtFirst && !parent && index === 0 ? null : (
+              <Connector />
+            )}
             {renderAdd ? (
               <>
                 <div className="pointer-events-auto">
@@ -62,11 +72,19 @@ function StepList({
             {branches.length > 0 ? (
               <>
                 <Connector />
-                <div className="flex items-start">
+                <div
+                  className={cn(
+                    "flex items-start",
+                    props.stacked && "w-full flex-col gap-4"
+                  )}
+                >
                   {branches.map((branch, at) => (
                     <div
                       key={branch.id}
-                      className="relative flex min-w-64 flex-col items-center px-4"
+                      className={cn(
+                        "relative flex min-w-64 flex-col items-center px-4",
+                        props.stacked && "w-full min-w-0 px-0"
+                      )}
                     >
                       {/* The crossbar, from the first path's centre to the
                           last's. Set by position: paths nest, so a variant
@@ -76,7 +94,8 @@ function StepList({
                         className={cn(
                           "absolute inset-x-0 top-0 h-px bg-border-strong",
                           at === 0 && "left-1/2",
-                          at === branches.length - 1 && "right-1/2"
+                          at === branches.length - 1 && "right-1/2",
+                          props.stacked && "hidden"
                         )}
                       />
                       <Connector className="h-4" />
@@ -96,7 +115,9 @@ function StepList({
       })}
       {/* Nothing follows a step that branches: what comes next belongs to
           one path or the other. */}
-      {!renderAdd || (last && stepBranches(last).length > 0) ? null : (
+      {!renderAdd ||
+      (last &&
+        (props.branches(last).length > 0 || props.terminal?.(last))) ? null : (
         <>
           <Connector />
           <div className="pointer-events-auto">
@@ -108,14 +129,14 @@ function StepList({
   )
 }
 
-export function WorkflowCanvas({
+export function WorkflowCanvas<Node extends { key: string }>({
   trigger,
   steps,
   ...props
-}: GraphProps & {
+}: GraphProps<Node> & {
   /** The first card. */
   trigger: React.ReactNode
-  steps: readonly AutomationStep[]
+  steps: readonly Node[]
 }) {
   const [zoom, setZoom] = React.useState(2)
   const canvas = React.useRef<HTMLDivElement>(null)
@@ -146,7 +167,10 @@ export function WorkflowCanvas({
         /* The graph is always larger than the frame (see below), so the
            canvas always scrolls: dragging and the wheel move it, and its
            scrollbars stay hidden. */
-        className="min-h-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+        className={cn(
+          "min-h-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
+          props.stacked && "touch-auto"
+        )}
         onPointerDown={(event) => {
           if (event.button !== 0 || event.target !== event.currentTarget) return
           drag.current = { x: event.clientX, y: event.clientY }
@@ -164,8 +188,11 @@ export function WorkflowCanvas({
         <div
           /* Larger than the frame even when the graph is small, so there is
              always canvas to drag around. */
-          className="pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10"
-          style={{ zoom: ZOOM_STEPS[zoom] }}
+          className={cn(
+            "pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10",
+            props.stacked && "min-h-full w-full min-w-0 p-4"
+          )}
+          style={{ zoom: props.stacked ? 1 : ZOOM_STEPS[zoom] }}
         >
           {trigger}
           <StepList {...props} steps={steps} parent={null} />
@@ -173,7 +200,7 @@ export function WorkflowCanvas({
       </div>
       <ButtonGroup
         orientation="vertical"
-        className="absolute top-3 right-5 z-10"
+        className={cn("absolute top-3 right-5 z-10", props.stacked && "hidden")}
       >
         <Button
           variant="outline"
@@ -207,6 +234,7 @@ export function WorkflowCard({
   summary,
   actions,
   tone,
+  selected,
   onSelect,
   children,
   "data-testid": testId,
@@ -216,6 +244,7 @@ export function WorkflowCard({
   summary?: string | null
   actions?: React.ReactNode
   /** A card with work left reads as a warning. */
+  selected?: boolean
   tone?: "warning"
   onSelect?: () => void
   children?: React.ReactNode
@@ -241,7 +270,8 @@ export function WorkflowCard({
       data-testid={testId}
       className={cn(
         "pointer-events-auto flex w-96 max-w-full cursor-auto flex-col gap-3 rounded-xl border bg-card p-3 shadow-card",
-        tone === "warning" ? "border-warning" : "border-border"
+        tone === "warning" ? "border-warning" : "border-border",
+        selected && "ring-2 ring-ring"
       )}
     >
       <div className="flex items-center gap-1">

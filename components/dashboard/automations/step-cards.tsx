@@ -35,7 +35,7 @@ import {
   EventIcon,
   STEP_ICONS,
 } from "@/components/dashboard/automations/shared"
-import { WorkflowCard } from "@/components/dashboard/automations/workflow"
+import { WorkflowCard } from "@/components/dashboard/flows/workflow"
 import {
   CopyButton,
   MoreMenu,
@@ -321,6 +321,7 @@ export function StepCard({
   onSelect,
   onChange,
   onRemove,
+  editor,
 }: {
   automation: Automation
   step: AutomationStep
@@ -329,6 +330,7 @@ export function StepCard({
   onSelect: () => void
   onChange: (step: AutomationStep) => void
   onRemove: () => void
+  editor?: React.ReactNode
 }) {
   const catalog = useEventCatalog()
   const errors = referenceErrors(
@@ -365,14 +367,16 @@ export function StepCard({
       {errors.length ? <FieldError>{errors.join("; ")}</FieldError> : null}
       {selected ? (
         <ReferenceProvider automation={automation} stepKey={step.key}>
-          <StepBody automation={automation} step={step} onChange={onChange} />
+          {editor ?? (
+            <StepBody automation={automation} step={step} onChange={onChange} />
+          )}
         </ReferenceProvider>
       ) : null}
     </WorkflowCard>
   )
 }
 
-function StepBody({
+export function StepBody({
   automation,
   step,
   onChange,
