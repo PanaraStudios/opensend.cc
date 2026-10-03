@@ -7,7 +7,7 @@ export function docsLinksTests(state: () => { owner: Page }) {
       ["/emails", "/dashboard/emails/sending", 2],
       ["/emails/receiving", "/dashboard/receiving/introduction", 1],
       ["/emails/suppressions", "/dashboard/emails/suppressions", 1],
-      ["/domains", "/dashboard/domains/manage", 2],
+      ["/channels", "/self-hosting/requirements", 2],
       ["/properties", "/dashboard/audience/properties", 2],
       ["/api-keys", "/create-an-api-key", 2],
       ["/webhooks", "/webhooks/introduction", 2],

@@ -1,3 +1,5 @@
+import { registerKnowledgeRoutes } from "../knowledge/routes"
+import { registerBotToolRoutes } from "../botTools/routes"
 import { registerContactNoteRoutes } from "./contactNotes"
 import { registerIvrRoutes } from "../ivr/routes"
 import { registerVoiceRoutes } from "./voice"
@@ -17,6 +19,7 @@ import type { HttpRouter } from "convex/server"
 import { registerAudienceRoutes } from "./audience"
 import { registerTemplateRoutes } from "./templates"
 import { registerDomainRoutes } from "./domains"
+import { registerMessageRoutes } from "./messages"
 import { registerEmailRoutes } from "./emails"
 import { registerEventRoutes } from "./events"
 import { registerApiKeyRoutes } from "./keys"
@@ -25,6 +28,8 @@ import { registerLogRoutes } from "./logs"
 /** The public REST API. Each resource registers its routes with `apiRoute`
     (./route.ts); add yours here. */
 export function registerApiRoutes(http: HttpRouter) {
+  registerKnowledgeRoutes(http)
+  registerBotToolRoutes(http)
   registerIvrRoutes(http)
   registerCallingRoutes(http)
   registerVoiceRoutes(http)
@@ -39,6 +44,7 @@ export function registerApiRoutes(http: HttpRouter) {
   registerApiKeyRoutes(http)
   registerDomainRoutes(http)
   registerEmailRoutes(http)
+  registerMessageRoutes(http)
   registerReceivedRoutes(http)
   registerEventRoutes(http)
   registerLogRoutes(http)

@@ -177,6 +177,7 @@ export async function payload(
     bot_name: row.botConfig?.name ?? null,
     bot_outcome: row.botOutcome ?? null,
     bot_summary: row.botSummary ?? null,
+    collected: row.collected ?? null,
     bot_duration: row.botDuration ?? null,
     bot_usage: row.botUsage ?? null,
     bot_fallback_reason: row.botFallbackReason ?? null,

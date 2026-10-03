@@ -2,63 +2,66 @@ import type {
   AutomationConnection,
   AutomationConnectionType,
   AutomationStep,
-} from '../../automations/interfaces/automation-step.interface';
-import type { CreateAutomationOptions } from '../../automations/interfaces/create-automation-options.interface';
-import type { SendEventOptions } from '../../events/interfaces/send-event.interface';
+} from "../../automations/interfaces/automation-step.interface"
+import type { CreateAutomationOptions } from "../../automations/interfaces/create-automation-options.interface"
+import type { SendEventOptions } from "../../events/interfaces/send-event.interface"
 
 interface AutomationStepApiOptions {
-  key: string;
-  type: string;
-  config: unknown;
+  key: string
+  type: string
+  config: unknown
 }
 
 interface AutomationConnectionApiOptions {
-  from: string;
-  to: string;
-  type?: AutomationConnectionType;
+  from: string
+  to: string
+  type?: AutomationConnectionType
 }
 
 interface AutomationApiOptions {
-  name: string;
-  status?: 'enabled' | 'disabled';
-  steps?: AutomationStepApiOptions[];
-  connections?: AutomationConnectionApiOptions[];
+  name: string
+  status?: "enabled" | "disabled"
+  steps?: AutomationStepApiOptions[]
+  connections?: AutomationConnectionApiOptions[]
 }
 
 interface EventApiOptions {
-  event: string;
-  contact_id?: string;
-  email?: string;
-  payload?: Record<string, unknown>;
+  event: string
+  contact_id?: string
+  email?: string
+  payload?: Record<string, unknown>
 }
 
 export function parseStepConfig(
   step: AutomationStep
 ): AutomationStepApiOptions {
   switch (step.type) {
-    case 'trigger':
+    case "trigger":
       return {
         key: step.key,
         type: step.type,
-        config: { event_name: step.config.eventName },
-      };
-    case 'place_call':
+        config: {
+          event_name: step.config.eventName,
+          ...(step.config.filters ? { filters: step.config.filters } : {}),
+        },
+      }
+    case "place_call":
       return {
         key: step.key,
         type: step.type,
         config: {
           account_id: step.config.accountId,
           route: step.config.route,
-          context: step.config.context ?? '',
+          context: step.config.context ?? "",
           variables: step.config.variables ?? {},
           request_permission: step.config.requestPermission ?? false,
         },
-      };
-    case 'delay':
-      return { key: step.key, type: step.type, config: step.config };
-    case 'send_messenger':
-    case 'send_instagram':
-    case 'send_whatsapp':
+      }
+    case "delay":
+      return { key: step.key, type: step.type, config: step.config }
+    case "send_messenger":
+    case "send_instagram":
+    case "send_whatsapp":
       return {
         key: step.key,
         type: step.type,
@@ -66,12 +69,12 @@ export function parseStepConfig(
           account_id: step.config.accountId,
           mode: step.config.mode,
           variables: step.config.variables ?? {},
-          ...(step.config.mode === 'template'
+          ...(step.config.mode === "template"
             ? { template_id: step.config.templateId }
             : { text: step.config.text }),
         },
-      };
-    case 'send_email':
+      }
+    case "send_email":
       return {
         key: step.key,
         type: step.type,
@@ -81,8 +84,8 @@ export function parseStepConfig(
           from: step.config.from,
           reply_to: step.config.replyTo,
         },
-      };
-    case 'wait_for_event':
+      }
+    case "wait_for_event":
       return {
         key: step.key,
         type: step.type,
@@ -91,10 +94,10 @@ export function parseStepConfig(
           timeout: step.config.timeout,
           filter_rule: step.config.filterRule,
         },
-      };
-    case 'condition':
-      return { key: step.key, type: step.type, config: step.config };
-    case 'contact_update':
+      }
+    case "condition":
+      return { key: step.key, type: step.type, config: step.config }
+    case "contact_update":
       return {
         key: step.key,
         type: step.type,
@@ -104,15 +107,15 @@ export function parseStepConfig(
           unsubscribed: step.config.unsubscribed,
           properties: step.config.properties,
         },
-      };
-    case 'contact_delete':
-      return { key: step.key, type: step.type, config: step.config };
-    case 'add_to_segment':
+      }
+    case "contact_delete":
+      return { key: step.key, type: step.type, config: step.config }
+    case "add_to_segment":
       return {
         key: step.key,
         type: step.type,
         config: { segment_id: step.config.segmentId },
-      };
+      }
   }
 }
 
@@ -123,7 +126,7 @@ export function parseConnection(
     from: connection.from,
     to: connection.to,
     type: connection.type,
-  };
+  }
 }
 
 export function parseAutomationToApiOptions(
@@ -134,7 +137,7 @@ export function parseAutomationToApiOptions(
     status: automation.status,
     steps: automation.steps.map(parseStepConfig),
     connections: automation.connections.map(parseConnection),
-  };
+  }
 }
 
 export function parseEventToApiOptions(
@@ -145,5 +148,5 @@ export function parseEventToApiOptions(
     contact_id: event.contactId,
     email: event.email,
     payload: event.payload,
-  };
+  }
 }

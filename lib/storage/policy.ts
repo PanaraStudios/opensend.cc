@@ -4,6 +4,7 @@ import { whatsappMediaLimit } from "../meta/media"
 export const HTTP_MULTIPART_LIMIT = 20 * 1024 * 1024
 export const UPLOAD_TTL = 15 * 60_000
 export const STORAGE_USES = [
+  "knowledge",
   "ivr",
   "whatsapp",
   "template",
@@ -18,6 +19,7 @@ export const normalizeContentType = (value: string) =>
 const KB = 1024
 const MB = KB * KB
 const LIMITS = {
+  knowledge: 2 * MB,
   email: 30 * MB,
   ivr: 16 * MB,
   template: 16 * MB,
@@ -25,6 +27,13 @@ const LIMITS = {
   asset: MB,
 } as const
 const TYPES = {
+  knowledge: [
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/x-markdown",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
   ivr: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg"],
   template: ["image/jpeg", "image/png", "video/mp4", "application/pdf"],
   import: ["text/csv", "text/plain", "application/vnd.ms-excel"],
@@ -45,6 +54,8 @@ export function uploadHint(use: StorageUse) {
       return `JPEG, PNG, MP4 or PDF up to ${formatUploadSize(LIMITS.template)}`
     case "email":
       return `Up to ${formatUploadSize(LIMITS.email)}`
+    case "knowledge":
+      return "PDF, TXT, Markdown or DOCX, up to 2 MB"
     case "ivr":
       return `WAV, MP3 or OGG, up to ${formatUploadSize(LIMITS.ivr)}`
     case "import":
@@ -80,6 +91,7 @@ export function validateUpload(input: {
     !(TYPES[use] as readonly string[]).includes(mime)
   ) {
     const messages = {
+      knowledge: "Upload a PDF, TXT, Markdown or DOCX document.",
       ivr: "Upload a WAV, MP3 or OGG IVR prompt.",
       template: "Use a JPEG, PNG, MP4 or PDF template sample.",
       import: "Upload a CSV file.",
@@ -114,11 +126,13 @@ export function validateUpload(input: {
         ? `Template ${kind}`
         : use === "email"
           ? "Email attachments"
-          : use === "ivr"
-            ? "IVR audio files"
-            : use === "import"
-              ? "CSV files"
-              : "Asset images"
+          : use === "knowledge"
+            ? "Knowledge documents"
+            : use === "ivr"
+              ? "IVR audio files"
+              : use === "import"
+                ? "CSV files"
+                : "Asset images"
   if (!Number.isSafeInteger(size) || size < 1)
     throw new Error(`Choose a non-empty file for ${description.toLowerCase()}.`)
   if (size > limit)

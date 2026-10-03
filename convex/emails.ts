@@ -12,6 +12,7 @@ import {
   readTeamRow,
   searchOptions,
 } from "./lists"
+import { messageBase, emailContact } from "./messageShape"
 import { stream } from "convex-helpers/server/stream"
 import { EMAIL_STATUSES } from "./tables/emails"
 import { v, ConvexError, type Infer } from "convex/values"
@@ -439,8 +440,20 @@ async function enqueue(
 
 const iso = (ms: number) => new Date(ms).toISOString()
 /** Resend's webhook `data` for an email event. */
-export function emailEventData(email: Doc<"emails">) {
+export async function emailEventData(ctx: QueryCtx, email: Doc<"emails">) {
+  const content = await ctx.db
+    .query("emailContents")
+    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+    .unique()
   return {
+    ...messageBase(
+      email,
+      "email",
+      "outbound",
+      email.status,
+      content?.text ?? content?.html ?? email.subject,
+      await emailContact(ctx, email)
+    ),
     ...(email.broadcastId ? { broadcast_id: email.broadcastId } : {}),
     created_at: iso(email._creationTime),
     email_id: email._id,
@@ -464,7 +477,7 @@ async function emitEmail(
   const email = (await ctx.db.get("emails", id))!
   if (email.organizationId === SYSTEM_SCOPE) return
   await emitEvent(ctx, email.organizationId, type, {
-    ...emailEventData(email),
+    ...(await emailEventData(ctx, email)),
     ...extra,
   })
 }

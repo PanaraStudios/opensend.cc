@@ -1,3 +1,4 @@
+import type { MessageEventBase, Message } from "../../messages"
 import type { ContactNote } from "../../contacts/notes/interfaces"
 import type {
   WhatsAppCall,
@@ -8,50 +9,10 @@ export type WhatsAppCallEventType =
   `whatsapp.call.${"ringing" | "connected" | "completed" | "failed" | "missed" | "recording_ready" | "transcription_ready" | "bot_completed" | "transferred"}`
 export type OutboundCallEventType =
   `call.outbound_${"queued" | "ringing" | "connected" | "completed" | "missed" | "rejected" | "failed"}`
-export type WebhookEvent =
-  | "whatsapp.message.read_receipt_sent"
-  | "whatsapp.message.read_receipt_failed"
-  | "whatsapp.message.typing_failed"
-  | "messenger.message.read_receipt_sent"
-  | "messenger.message.read_receipt_failed"
-  | "messenger.message.typing_failed"
-  | "instagram.message.read_receipt_sent"
-  | "instagram.message.read_receipt_failed"
-  | "instagram.message.typing_failed"
-  | OutboundCallEventType
-  | "call.permission_granted"
-  | "call.permission_denied"
-  | WhatsAppCallEventType
-  | "whatsapp.call.permission_updated"
-  | "whatsapp.message.sent"
-  | "whatsapp.message.delivered"
-  | "whatsapp.message.read"
-  | "whatsapp.message.played"
-  | "whatsapp.message.payment_updated"
-  | "whatsapp.message.failed"
-  | "whatsapp.message.received"
-  | "email.sent"
-  | "email.scheduled"
-  | "email.delivered"
-  | "email.delivery_delayed"
-  | "email.complained"
-  | "email.bounced"
-  | "email.opened"
-  | "email.clicked"
-  | "email.received"
-  | "email.failed"
-  | "email.suppressed"
-  | "contact.created"
-  | "contact.note_created"
-  | "contact.updated"
-  | "contact.deleted"
-  | "domain.created"
-  | "domain.updated"
-  | "domain.deleted"
-  | "suppression.added"
-  | "suppression.removed"
+export type WebhookEvent = import("../../events/catalog").SystemEventName
 
-interface BaseEmailEventData {
+interface BaseEmailEventData extends MessageEventBase {
+  channel: "email"
   broadcast_id?: string
   created_at: string
   email_id: string
@@ -93,7 +54,8 @@ interface ReceivedEmailAttachment {
   content_id: string | null
 }
 
-interface ReceivedEmailEventData {
+interface ReceivedEmailEventData extends MessageEventBase {
+  channel: "email"
   email_id: string
   created_at: string
   from: string
@@ -270,16 +232,23 @@ export interface SuppressionRemovedEvent {
 export interface WhatsAppMessageEvent {
   type: `whatsapp.message.${"sent" | "delivered" | "read" | "played" | "failed" | "received" | "payment_updated"}`
   created_at: string
-  data: WhatsAppMessage & {
-    status_raw?: Record<string, unknown>
-    biz_opaque_callback_data?: string
-  }
+  data: WhatsAppMessage &
+    MessageEventBase & {
+      status_raw?: Record<string, unknown>
+      biz_opaque_callback_data?: string
+    }
+}
+
+export interface PageMessageEvent {
+  type: `${"messenger" | "instagram"}.message.${"sent" | "delivered" | "read" | "failed" | "received"}`
+  created_at: string
+  data: Extract<Message, { channel: "messenger" | "instagram" }>
 }
 
 export interface MessageControlEvent {
   type: `${"whatsapp" | "messenger" | "instagram"}.message.${"read_receipt_sent" | "read_receipt_failed" | "typing_failed"}`
   created_at: string
-  data: {
+  data: MessageEventBase & {
     id: string
     conversation_id: string
     read_receipt_sent_at?: string
@@ -303,10 +272,17 @@ export interface WhatsAppCallPermissionEvent {
     context_id: string | null
   }
 }
+export interface CallDataCollectedEvent {
+  type: "call.data_collected"
+  created_at: string
+  data: import("../../events/catalog").CallDataCollected
+}
 export type WebhookEventPayload =
+  | CallDataCollectedEvent
   | MessageControlEvent
   | WhatsAppCallEvent
   | WhatsAppCallPermissionEvent
+  | PageMessageEvent
   | WhatsAppMessageEvent
   | EmailSentEvent
   | EmailScheduledEvent

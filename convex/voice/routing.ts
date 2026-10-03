@@ -126,6 +126,9 @@ export async function availableAgent(ctx: MutationCtx, call: Doc<"calls">) {
   }
   return null
 }
+function answerStamp(call: Doc<"calls">) {
+  return call.connectedAt !== undefined ? { answeredAt: call.connectedAt } : {}
+}
 export const select = internalMutation({
   args: { id: v.id("calls") },
   returns: v.any(),
@@ -145,12 +148,14 @@ export const select = internalMutation({
         record: call.botConfig.recording,
         silenceTimeoutSeconds: call.botConfig.silenceTimeoutSeconds,
         maxDurationSeconds: call.botConfig.maxDurationSeconds,
+        ...answerStamp(call),
       }
     if (!route || (call.direction !== "inbound" && !call.outboundRoute))
       return {
         callId: id,
         target: call.agentExtension ? ("agent" as const) : ("ivr" as const),
         ...(call.agentExtension ? { extension: call.agentExtension } : {}),
+        ...answerStamp(call),
       }
     if (route.kind === "api")
       throw invalid(
@@ -158,14 +163,29 @@ export const select = internalMutation({
       )
     if (route.kind === "ivr") {
       const ivr = await ownedIvr(ctx, call.organizationId, route.ivrId)
-      return { callId: id, target: "ivr" as const, ivrId: ivr._id }
+      return {
+        callId: id,
+        target: "ivr" as const,
+        ivrId: ivr._id,
+        ...answerStamp(call),
+      }
     }
     if (route.kind === "bot") return selectBot(ctx, call, route.botId)
 
     const agent = await availableAgent(ctx, call)
     return agent
-      ? { callId: id, target: "agent" as const, extension: agent.extension }
-      : { callId: id, target: "voicemail" as const, maxDurationSeconds: 60 }
+      ? {
+          callId: id,
+          target: "agent" as const,
+          extension: agent.extension,
+          ...answerStamp(call),
+        }
+      : {
+          callId: id,
+          target: "voicemail" as const,
+          maxDurationSeconds: 60,
+          ...answerStamp(call),
+        }
   },
 })
 
@@ -261,6 +281,7 @@ export async function selectBot(
       record: bot.recording,
       silenceTimeoutSeconds: bot.silenceTimeoutSeconds,
       maxDurationSeconds: bot.maxDurationSeconds,
+      ...answerStamp(call),
     }
   }
   await ctx.db.patch("calls", call._id, {
@@ -270,8 +291,18 @@ export async function selectBot(
   })
   const agent = await availableAgent(ctx, call)
   return agent
-    ? { callId: call._id, target: "agent" as const, extension: agent.extension }
-    : { callId: call._id, target: "voicemail" as const, maxDurationSeconds: 60 }
+    ? {
+        callId: call._id,
+        target: "agent" as const,
+        extension: agent.extension,
+        ...answerStamp(call),
+      }
+    : {
+        callId: call._id,
+        target: "voicemail" as const,
+        maxDurationSeconds: 60,
+        ...answerStamp(call),
+      }
 }
 export const expire = internalMutation({
   args: { id: v.id("calls"), startedAt: v.optional(v.number()) },

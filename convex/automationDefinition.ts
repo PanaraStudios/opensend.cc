@@ -63,6 +63,7 @@ export function readGraph(graph: string): AutomationStep[] {
           break
         case "delay":
           strings(step, "duration")
+          if (step.until !== undefined) strings(step, "until")
           break
         case "send_messenger":
         case "send_instagram":
@@ -92,6 +93,7 @@ export function readGraph(graph: string): AutomationStep[] {
           break
         case "send_email":
           strings(step, "templateId", "from", "replyTo")
+          if (step.subject !== undefined) strings(step, "subject")
           if (
             Object.values(object(step.variables)).some(
               (v) => typeof v !== "string"

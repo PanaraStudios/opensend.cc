@@ -299,6 +299,34 @@ def test_cascade_invocation_contains_same_tool_declarations(provider):
     assert "create_note" in serialized and "end_call" in serialized
 
 
+def test_caller_context_is_injected_for_both_engines_and_capped():
+    from voice_agent.factory import system_instruction
+
+    block = "Caller context (from the CRM; do not read it out unless relevant): name: Ada"
+    live = config()
+    live.update(
+        engine="gemini_live",
+        model="gemini-3.8-live",
+        voice="Kore",
+        keys={"live": "fake"},
+        callerContextBlock=block,
+    )
+    cascade = config()
+    cascade["callerContextBlock"] = block
+    for value in (live, cascade):
+        text = create_services(value).llm._settings.system_instruction
+        assert isinstance(text, str)
+        assert text.startswith(value["systemPrompt"])
+        assert block in text
+    bare = config()
+    assert "Caller context" not in system_instruction(bare)
+    bare["callerContextBlock"] = {"name": "Ada"}
+    assert "Ada" not in system_instruction(bare)
+    huge = config()
+    huge["callerContextBlock"] = "¤" * 5000
+    assert system_instruction(huge).count("¤") == 2000
+
+
 @pytest.mark.parametrize("gender, word", [("female", "feminine"), ("male", "masculine")])
 def test_voice_gender_is_in_runtime_prompt(gender, word):
     from voice_agent.factory import system_instruction
@@ -350,3 +378,57 @@ def test_outbound_opening_starts_with_the_configured_greeting():
     assert opening_text(config).endswith(config["disclosure"])
     config["callDirection"] = "inbound"
     assert opening_text(config).startswith(config["disclosure"])
+
+
+def toolkit_config():
+    value = config()
+    value["collect"] = [{"key": "guests", "label": "Guests", "description": "Ask how many guests", "type": "number", "required": True}]
+    value["knowledgeBaseIds"] = ["knowledge-base"]
+    value["customToolIds"] = ["custom-tool"]
+    value["toolCatalog"] = [
+        {"name": "search_knowledge", "description": "Search material", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+        {"name": "save_field", "description": "Save caller data", "parameters": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}}, "required": ["key", "value"]}},
+        {"name": "book_appointment", "description": "Call a system", "parameters": {"type": "object", "properties": {"guests": {"type": "number"}, "confirmed": {"type": "boolean"}}, "required": ["guests"]}},
+    ]
+    return value
+
+
+@pytest.mark.asyncio
+async def test_live_declares_knowledge_collection_and_custom_tools():
+    from voice_agent.fake_live import capture_live_setup, setup_tool_names
+    value = toolkit_config()
+    value.update(engine="gemini_live", model="gemini-3.8-live", voice="Kore", keys={"live": "sk_fixture_not_a_real_key"})
+    setup = await capture_live_setup(value)
+    assert setup_tool_names(setup) == ["search_knowledge", "save_field", "book_appointment"]
+    parameters = setup["tools"][0]["functionDeclarations"][1]["parameters"]["properties"]["value"]
+    assert len(parameters.get("anyOf", parameters.get("any_of", []))) == 3, parameters
+
+
+@pytest.mark.parametrize("provider", ["sarvam", "gemini"])
+def test_cascade_declares_toolkit_and_collection_instructions(provider):
+    from voice_agent.factory import tool_schema, system_instruction
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    value = toolkit_config()
+    value["llm"].update(provider=provider, model="gemini-3.8-flash" if provider == "gemini" else "sarvam-105b-conversations")
+    schema = tool_schema(value)
+    services = create_services(value, schema)
+    context = LLMContext(messages=[], tools=schema)
+    params = services.llm.get_llm_adapter().get_llm_invocation_params(context, **({"convert_developer_to_user": False} if provider == "sarvam" else {}))
+    serialized = json.dumps(params, default=str)
+    for name in ["search_knowledge", "save_field", "book_appointment"]:
+        assert name in serialized
+    instruction = system_instruction(value)
+    assert "say you do not know" in instruction
+    assert "Ask how many guests" in instruction
+
+
+@pytest.mark.asyncio
+async def test_tool_router_accepts_zero_false_and_typed_collection_rejects_invalid_scalars():
+    backend = AsyncMock()
+    backend.tool.return_value = {"ok": True, "result": "saved"}
+    router = ToolRouter(backend, AsyncMock(), toolkit_config()["toolCatalog"])
+    assert (await router.run("zero", "save_field", {"key": "guests", "value": 0}))["ok"]
+    assert (await router.run("false", "book_appointment", {"guests": 0, "confirmed": False}))["ok"]
+    assert not (await router.run("invalid", "book_appointment", {"guests": "zero"}))["ok"]
+    assert not (await router.run("nan", "book_appointment", {"guests": float("nan")}))["ok"]
+    assert backend.tool.call_count == 2

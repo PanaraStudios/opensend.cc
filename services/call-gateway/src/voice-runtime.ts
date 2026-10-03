@@ -8,6 +8,7 @@ import { OutboundEslServer, type OutboundCall } from "./outbound-esl.js"
 import { FakeEchoAdapter } from "./voice-adapter.js"
 import { VoiceBackend, VoiceTools, type VoiceEvent } from "./voice-backend.js"
 import { VoiceMediaEndpoint } from "./voice-media.js"
+import { recordTranscript, sessionOffsetMs } from "./voice/timeline.js"
 
 interface ControlledCall {
   callId: string
@@ -22,6 +23,10 @@ interface ControlledCall {
   abort: AbortController
   transfer?: (extension: string) => Promise<void>
   record?: () => Promise<void>
+  /** Epoch ms when the call was answered. Bot session clocks add this. */
+  answeredAt?: number
+  /** Ms from answer to the start of the current bot media session. */
+  sessionOffsetMs?: number
   adapter?: VoiceAgentAdapter & {
     summarize?: (text: string) => Promise<string>
   }
@@ -103,7 +108,8 @@ export class VoiceRuntime {
     machine: CallStateMachine,
     end: ControlledCall["end"],
     transfer?: ControlledCall["transfer"],
-    record?: ControlledCall["record"]
+    record?: ControlledCall["record"],
+    answeredAt?: number
   ) {
     let commit!: () => void
     const ready = new Promise<void>((resolve) => {
@@ -118,6 +124,7 @@ export class VoiceRuntime {
       abort: new AbortController(),
       transfer,
       record,
+      answeredAt,
       stopped: false,
       ready,
       commit,
@@ -213,6 +220,9 @@ export class VoiceRuntime {
       await socket.execute("park", "", 3600000)
     } else if (target === "bot") {
       const botRoute = call.route
+      // The voice-agent clock restarts at 0 for every bot session. Anchor it
+      // to answer time before any transcript from this session can arrive.
+      call.sessionOffsetMs = sessionOffsetMs(call.answeredAt ?? Date.now())
       const fake = call.route.adapter === "fake-echo"
       if (fake && !this.options.fakeEnabled)
         throw new Error("Fake adapter disabled")
@@ -349,14 +359,12 @@ export class VoiceRuntime {
           })
       })
       adapter.onTranscript((transcript) => {
-        if (!call.stopped) {
-          call.lastActivity = Date.now()
-          if (transcript.final)
-            call.transcript = (
-              call.transcript + `\n${transcript.role}: ${transcript.text}`
-            ).slice(-24000)
-          this.event(call, { type: "transcript", transcript })
-        }
+        // Hangup and transfer set stopped before the session flushes. Those
+        // lines still belong on this session's call-relative clock.
+        this.event(call, {
+          type: "transcript",
+          transcript: recordTranscript(call, transcript),
+        })
       })
       const reserved = this.media.reserve({
         adapter,
@@ -490,6 +498,10 @@ export class VoiceRuntime {
           type: "bot_completed",
           outcome,
           summary,
+          inferred:
+            call.adapter instanceof PipecatAdapter
+              ? call.adapter.inferred
+              : undefined,
           endedAt,
           usage: {
             ...call.usage,

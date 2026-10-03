@@ -68,6 +68,7 @@ const location = obj(
     longitude: num(-180, 180),
     name: str(),
     address: str(),
+    url,
   },
   ["latitude", "longitude"]
 )
@@ -179,6 +180,8 @@ const contact = obj(
     org: obj({ company: str(), department: str(), title: str() }, []),
     urls: arr(obj({ url: str(), type: str() }, [])),
     birthday: { ...str(), pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    origin: str(),
+    vcard: str(),
   },
   ["name"]
 )
@@ -628,7 +631,7 @@ export const whatsappReceiveContentSchemas: Record<string, WhatsAppSchema> = {
     ["body", "type"]
   ),
   unsupported: obj({ type: str() }),
-  edit: freeObject,
+  edit: obj({ original_message_id: str(), text: obj({ body: str() }) }, []),
   revoke: obj({ original_message_id: str() }),
 }
 export const whatsappNormalizedSchema: WhatsAppSchema = {

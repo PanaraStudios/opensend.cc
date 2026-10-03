@@ -26,13 +26,14 @@ const valueText = (value: unknown): string => {
     return String(value)
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const ref = (value as Record<string, unknown>).var
-    if (typeof ref === "string" && /^(event|contact)\./.test(ref)) return ref
+    if (typeof ref === "string" && /^(event|trigger|contact|steps)\./.test(ref))
+      return /^(event|contact)\./.test(ref) ? ref : `{{${ref}}}`
   }
   throw invalid(
     "Unsupported automation value; use a scalar or an event/contact variable."
   )
 }
-function rule(value: unknown): AutomationRule {
+export function rule(value: unknown): AutomationRule {
   const r = objectBody(value)
   if (r.type !== "rule")
     throw invalid(
@@ -43,12 +44,20 @@ function rule(value: unknown): AutomationRule {
     throw invalid(`Unsupported condition operator: ${operator}.`)
   if (
     ["gt", "gte", "lt", "lte"].includes(operator) &&
-    (typeof r.value !== "number" || !Number.isFinite(r.value))
+    (typeof r.value !== "number" || !Number.isFinite(r.value)) &&
+    !(
+      typeof r.value === "string" &&
+      (r.value.includes("{{") || !Number.isNaN(Date.parse(r.value)))
+    ) &&
+    !(r.value && typeof r.value === "object" && "var" in r.value)
   )
-    throw invalid("Numeric condition operators require a numeric value.")
+    throw invalid(
+      "Ordered condition operators require a number, date or reference."
+    )
   if (
     ["contains", "starts_with", "ends_with"].includes(operator) &&
-    typeof r.value !== "string"
+    typeof r.value !== "string" &&
+    !(r.value && typeof r.value === "object" && "var" in r.value)
   )
     throw invalid("Text condition operators require a string value.")
   return {
@@ -178,7 +187,12 @@ export function parseAutomationGraph(
         break
       }
       case "delay":
-        node = { key, type: s.type, duration: text(c, "duration") }
+        node = {
+          key,
+          type: s.type,
+          duration: stringField(c, "duration") ?? "",
+          ...(c.until !== undefined ? { until: text(c, "until") } : {}),
+        }
         break
       case "contact_delete":
         node = { key, type: s.type }
@@ -210,8 +224,6 @@ export function parseAutomationGraph(
         break
       }
       case "send_email": {
-        if (c.subject !== undefined)
-          throw invalid("Unsupported send_email step option: subject override.")
         const template = objectBody(c.template)
         const variables = Object.fromEntries(
           Object.entries(objectBody(template.variables)).map(([k, value]) => [
@@ -223,6 +235,7 @@ export function parseAutomationGraph(
           key,
           type: s.type,
           templateId: text(template, "id"),
+          ...(c.subject !== undefined ? { subject: text(c, "subject") } : {}),
           variables,
           from: stringField(c, "from") ?? "",
           replyTo: stringField(c, "reply_to") ?? "",
@@ -297,6 +310,13 @@ export function parseAutomationGraph(
     throw invalid("Automation definitions support at most 64 KiB.")
   return {
     trigger: text(trigger.config, "event_name"),
+    triggerFilters: Array.isArray(trigger.config.filters)
+      ? trigger.config.filters.map(rule)
+      : trigger.config.filters === undefined
+        ? []
+        : (() => {
+            throw invalid("Trigger filters must be a list of rules.")
+          })(),
     graph,
     apiDefinition: JSON.stringify({ steps, connections }),
   }
@@ -304,12 +324,22 @@ export function parseAutomationGraph(
 
 export function automationGraph(row: {
   trigger: string
+  triggerFilters?: AutomationRule[]
   graph: string
   apiDefinition?: string
 }): { steps: WireStep[]; connections: Connection[] } {
   if (row.apiDefinition) return JSON.parse(row.apiDefinition)
   const steps: WireStep[] = [
-    { key: "start", type: "trigger", config: { event_name: row.trigger } },
+    {
+      key: "start",
+      type: "trigger",
+      config: {
+        event_name: row.trigger,
+        ...(row.triggerFilters?.length
+          ? { filters: row.triggerFilters.map((r) => ({ type: "rule", ...r })) }
+          : {}),
+      },
+    },
   ]
   const connections: Connection[] = []
   const walk = (
@@ -331,7 +361,10 @@ export function automationGraph(row: {
           }
           break
         case "delay":
-          config = { duration: node.duration }
+          config = {
+            duration: node.duration,
+            ...(node.until ? { until: node.until } : {}),
+          }
           break
         case "send_messenger":
         case "send_instagram":
@@ -358,6 +391,7 @@ export function automationGraph(row: {
                 ])
               ),
             },
+            ...(node.subject !== undefined ? { subject: node.subject } : {}),
             ...(node.from ? { from: node.from } : {}),
             ...(node.replyTo ? { reply_to: node.replyTo } : {}),
           }
@@ -406,7 +440,7 @@ export function automationGraph(row: {
                 ? null
                 : /^(event|contact)\./.test(f.value)
                   ? { var: f.value }
-                  : f.property === "unsubscribed"
+                  : f.property === "unsubscribed" && !f.value.includes("{{")
                     ? f.value === "true"
                     : f.value
           }

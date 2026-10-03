@@ -39,6 +39,9 @@ export function newVoiceBot(
 export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
   const {
     name,
+    collect,
+    knowledgeBaseIds,
+    customToolIds,
     engine,
     provider,
     credentialId,
@@ -53,6 +56,7 @@ export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
     maxDurationSeconds,
     silenceTimeoutSeconds,
     recording,
+    callerContext,
     monthlyMinuteBudget,
     maxConcurrentCalls,
     stt,
@@ -60,6 +64,9 @@ export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
     tts,
   } = value
   return validateBot({
+    ...(collect !== undefined ? { collect } : {}),
+    ...(knowledgeBaseIds !== undefined ? { knowledgeBaseIds } : {}),
+    ...(customToolIds !== undefined ? { customToolIds } : {}),
     name,
     engine,
     provider,
@@ -75,6 +82,7 @@ export function voiceBotFormPayload(value: VoiceBotConfig): VoiceBotConfig {
     maxDurationSeconds,
     silenceTimeoutSeconds,
     recording,
+    callerContext: callerContext !== false,
     ...(monthlyMinuteBudget !== undefined ? { monthlyMinuteBudget } : {}),
     ...(maxConcurrentCalls !== undefined ? { maxConcurrentCalls } : {}),
     ...(engine === "cascade" ? { stt, llm, tts } : {}),
@@ -95,6 +103,23 @@ export type VoiceBotResource = VoiceBotConfig & {
   updatedAt: number
 }
 
+/**
+ * Call-relative rows sort by milliseconds since answer, then creation time.
+ * A page that still contains pre-fix rows (no `timeline: "call"`) keeps the
+ * order it was loaded, which is creation order.
+ */
+export function orderCallTranscript<
+  T extends { timestampMs: number; timeline?: string; createdAt?: number },
+>(lines: T[]): T[] {
+  if (lines.some((line) => line.timeline !== "call")) return lines.slice()
+  return lines
+    .slice()
+    .sort(
+      (a, b) =>
+        a.timestampMs - b.timestampMs ||
+        (a.createdAt ?? 0) - (b.createdAt ?? 0)
+    )
+}
 export function voiceDiagnostic(line: { kind: string; text?: string }) {
   if (line.kind !== "media" || !line.text) return null
   try {

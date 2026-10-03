@@ -1,3 +1,4 @@
+import type { CollectField } from "./toolkit"
 export type VoiceProvider = "gemini" | "sarvam" | "elevenlabs"
 export type VoiceBotTool =
   | "lookup_contact"
@@ -29,11 +30,16 @@ export interface VoiceBotInput {
   language?: string
   systemPrompt?: string
   greeting?: string
+  collect?: CollectField[]
+  knowledgeBaseIds?: string[]
+  customToolIds?: string[]
   tools?: VoiceBotTool[]
   handoff?: { agents: boolean; ivrId?: string }
   maxDurationSeconds?: number
   silenceTimeoutSeconds?: number
   recording?: boolean
+  /** Look up the caller at the start of each session. Defaults to true when omitted. */
+  callerContext?: boolean
   disclosure?: string
   monthlyMinuteBudget?: number
   maxConcurrentCalls?: number
@@ -41,10 +47,20 @@ export interface VoiceBotInput {
 export interface VoiceBot extends Required<
   Omit<
     VoiceBotInput,
-    "stt" | "llm" | "tts" | "monthlyMinuteBudget" | "maxConcurrentCalls"
+    | "stt"
+    | "llm"
+    | "tts"
+    | "monthlyMinuteBudget"
+    | "maxConcurrentCalls"
+    | "collect"
+    | "knowledgeBaseIds"
+    | "customToolIds"
   >
 > {
   id: string
+  collect?: CollectField[]
+  knowledgeBaseIds?: string[]
+  customToolIds?: string[]
   stt?: VoiceBotInput["stt"]
   llm?: VoiceBotInput["llm"]
   tts?: VoiceBotInput["tts"]
@@ -113,7 +129,12 @@ export interface CallTranscriptLine {
   role?: "caller" | "agent"
   text?: string
   final?: boolean
+  /** Milliseconds since the call was answered. */
   timestampMs: number
+  /** Present when timestampMs uses the call-relative clock. */
+  timeline?: "call"
+  /** Creation time. Tie-break for equal timestampMs. */
+  createdAt?: number
   toolId?: string
   toolName?: string
   arguments?: string

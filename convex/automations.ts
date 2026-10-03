@@ -5,6 +5,10 @@ import {
   callContext,
   outboundInstructions,
 } from "../lib/calling/outbound"
+import { referenceErrors } from "../lib/automation-references"
+import { catalogContactSchema } from "../lib/event-catalog"
+import { teamEventCatalog } from "./automationEvents"
+import { triggerFiltersValue } from "./tables/automations"
 import { pageChannelValue } from "./tables/channels"
 import { isChannelSendStep, channelForSendStep } from "../lib/channels"
 import { localTemplateDefinition } from "./channels/templates"
@@ -172,12 +176,19 @@ export async function updateAutomation(
   ctx: MutationCtx,
   organizationId: string,
   id: Id<"automations">,
-  patch: { name?: string; trigger?: string; graph?: string }
+  patch: {
+    name?: string
+    trigger?: string
+    graph?: string
+    triggerFilters?: import("../lib/dashboard/types").AutomationRule[]
+  }
 ) {
   const row = await ownedAutomation(ctx, organizationId, id)
   if (
     row.status === "enabled" &&
-    (patch.graph !== undefined || patch.trigger !== undefined)
+    (patch.graph !== undefined ||
+      patch.trigger !== undefined ||
+      patch.triggerFilters !== undefined)
   )
     throw new ConvexError("An enabled automation cannot be edited")
   if (patch.graph !== undefined) readGraph(patch.graph)
@@ -191,6 +202,16 @@ export async function updateAutomation(
     const error = patch.trigger && triggerEventError(patch.trigger)
     if (error) throw new ConvexError(error)
   }
+  const catalog = await teamEventCatalog(ctx, organizationId)
+  const contactSchema = catalogContactSchema(catalog)
+  const problems = referenceErrors(
+    patch.trigger ?? row.trigger,
+    readGraph(patch.graph ?? row.graph),
+    catalog,
+    contactSchema,
+    patch.triggerFilters ?? row.triggerFilters ?? []
+  )
+  if (problems.length) throw new ConvexError(problems.join("; "))
   await ensureNames(
     ctx,
     organizationId,
@@ -212,6 +233,7 @@ export const update = mutation({
     ...scope,
     name: v.optional(v.string()),
     trigger: v.optional(v.string()),
+    triggerFilters: v.optional(triggerFiltersValue),
     graph: v.optional(v.string()),
   },
   returns: v.null(),
@@ -228,6 +250,17 @@ export async function setAutomationStatus(
 ) {
   const row = await ownedAutomation(ctx, organizationId, id)
   if (status === "enabled") {
+    const catalog = await teamEventCatalog(ctx, organizationId)
+    const contactSchema = catalogContactSchema(catalog)
+    const referenceProblems = referenceErrors(
+      row.trigger,
+      readGraph(row.graph),
+      catalog,
+      contactSchema,
+      row.triggerFilters ?? []
+    )
+    if (referenceProblems.length)
+      throw new ConvexError(referenceProblems.join("; "))
     const steps = readGraph(row.graph)
     const templates = []
     const segments = []

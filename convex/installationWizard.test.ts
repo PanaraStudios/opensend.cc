@@ -156,7 +156,7 @@ vi.mock("@/components/ui/item", () => ({
   ItemMedia: () => null,
   ItemGroup: () => null,
 }))
-vi.mock("@/components/dashboard/domains/list", () => ({
+vi.mock("@/components/dashboard/domains/add-domain", () => ({
   AddDomainDialog: () => null,
 }))
 vi.mock("../components/onboarding/team-ses-status", () => ({

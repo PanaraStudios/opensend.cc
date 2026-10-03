@@ -1,7 +1,9 @@
+import { addBotToolkitTools } from "./tools/botToolkit.js"
 import { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend } from "@opensendcc/sdk"
 import packageJson from "../package.json" with { type: "json" }
 import {
+  addMessageTools,
   addIvrTools,
   addVoiceTools,
   addMediaTools,
@@ -48,6 +50,7 @@ export function createMcpServer(
     }
   )
 
+  addMessageTools(server, opensend)
   addIvrTools(server, opensend)
   addMediaTools(server, opensend)
   addApiKeyTools(server, opensend)
@@ -73,6 +76,7 @@ export function createMcpServer(
   addWebhookTools(server, opensend)
   addChannelControlTools(server, opensend)
   addCallingTools(server, opensend)
+  addBotToolkitTools(server, opensend)
   addVoiceTools(server, opensend)
   for (const options of Object.values(channelToolOptions))
     addChannelTools(server, opensend, options)

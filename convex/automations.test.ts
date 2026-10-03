@@ -287,7 +287,8 @@ describe("automations", () => {
       ["update", "completed"],
     ])
     expect(
-      (await f.t.run((ctx) => ctx.db.get("contacts", row.contactId)))?.firstName
+      (await f.t.run((ctx) => ctx.db.get("contacts", row.contactId!)))
+        ?.firstName
     ).toBe("Grace")
     await f.t.mutation(internal.automationRuntime.consume, { id: row.eventId! })
     await tick(f)

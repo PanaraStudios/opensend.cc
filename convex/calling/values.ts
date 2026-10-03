@@ -1,3 +1,4 @@
+import { collected } from "../tables/botToolkit"
 import { pathEntry, action as ivrAction } from "../ivr/validators"
 import { botOutcome, voiceUsage } from "../tables/voice"
 import { v } from "convex/values"
@@ -60,6 +61,7 @@ export const callPayloadFields = {
   bot_id: v.union(v.id("voiceBots"), v.null()),
   bot_outcome: v.union(botOutcome, v.null()),
   bot_summary: nullableString,
+  collected: v.union(collected, v.null()),
   bot_duration: nullableNumber,
   bot_usage: v.union(voiceUsage, v.null()),
   bot_fallback_reason: nullableString,

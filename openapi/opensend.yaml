@@ -25,6 +25,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Messages
   - name: IVRs
   - name: API Keys
   - name: Broadcasts
@@ -44,10 +45,961 @@ tags:
   - name: Usage
   - name: Suppressions
   - name: WhatsApp
+  - name: Knowledge
+  - name: Bot Tools
   - name: Voice Bots
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
+  /knowledge-bases:
+    get:
+      operationId: toolkit/get/knowledge-bases
+      tags:
+        - Knowledge
+      summary: List KnowledgeBases
+      x-opensend-scope: knowledge:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBasePage"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: toolkit/post/knowledge-bases
+      tags:
+        - Knowledge
+      summary: Create KnowledgeBase
+      x-opensend-scope: knowledge:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeBaseInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /knowledge-bases/{id}:
+    get:
+      operationId: toolkit/get/knowledge-bases-id
+      tags:
+        - Knowledge
+      summary: Get KnowledgeBase
+      x-opensend-scope: knowledge:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBase"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: toolkit/patch/knowledge-bases-id
+      tags:
+        - Knowledge
+      summary: Update KnowledgeBase
+      x-opensend-scope: knowledge:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                description:
+                  type: string
+                  maxLength: 2000
+              required: []
+              additionalProperties: false
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    delete:
+      operationId: toolkit/delete/knowledge-bases-id
+      tags:
+        - Knowledge
+      summary: Delete KnowledgeBase
+      x-opensend-scope: knowledge:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /knowledge-bases/{knowledgeBaseId}/documents:
+    get:
+      operationId: toolkit/get/knowledge-bases-knowledgeBaseId-documents
+      tags:
+        - Knowledge
+      summary: List KnowledgeDocuments
+      x-opensend-scope: knowledge:read
+      parameters:
+        - name: knowledgeBaseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeDocumentPage"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: toolkit/post/knowledge-bases-knowledgeBaseId-documents
+      tags:
+        - Knowledge
+      summary: Create KnowledgeDocument
+      x-opensend-scope: knowledge:write
+      parameters:
+        - name: knowledgeBaseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeDocumentInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /knowledge-bases/{knowledgeBaseId}/documents/{id}:
+    get:
+      operationId: toolkit/get/knowledge-bases-knowledgeBaseId-documents-id
+      tags:
+        - Knowledge
+      summary: Get KnowledgeDocument
+      x-opensend-scope: knowledge:read
+      parameters:
+        - name: knowledgeBaseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeDocument"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: toolkit/patch/knowledge-bases-knowledgeBaseId-documents-id
+      tags:
+        - Knowledge
+      summary: Update KnowledgeDocument
+      x-opensend-scope: knowledge:write
+      parameters:
+        - name: knowledgeBaseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                source:
+                  enum:
+                    - upload
+                    - url
+                    - text
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 200000
+                url:
+                  type: string
+                  format: uri
+                fileId:
+                  type: string
+              required: []
+              additionalProperties: false
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    delete:
+      operationId: toolkit/delete/knowledge-bases-knowledgeBaseId-documents-id
+      tags:
+        - Knowledge
+      summary: Delete KnowledgeDocument
+      x-opensend-scope: knowledge:write
+      parameters:
+        - name: knowledgeBaseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /bot-tools:
+    get:
+      operationId: toolkit/get/bot-tools
+      tags:
+        - Bot Tools
+      summary: List BotTools
+      x-opensend-scope: bot_tools:read
+      parameters:
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationAfter"
+        - $ref: "#/components/parameters/PaginationBefore"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotToolPage"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    post:
+      operationId: toolkit/post/bot-tools
+      tags:
+        - Bot Tools
+      summary: Create BotTool
+      x-opensend-scope: bot_tools:write
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotToolInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /bot-tools/{id}:
+    get:
+      operationId: toolkit/get/bot-tools-id
+      tags:
+        - Bot Tools
+      summary: Get BotTool
+      x-opensend-scope: bot_tools:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotTool"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    patch:
+      operationId: toolkit/patch/bot-tools-id
+      tags:
+        - Bot Tools
+      summary: Update BotTool
+      x-opensend-scope: bot_tools:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  pattern: ^[a-z][a-z0-9_]{0,63}$
+                description:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                parameters:
+                  $ref: "#/components/schemas/BotToolParameters"
+                method:
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                url:
+                  type: string
+                  format: uri
+                headers:
+                  type: object
+                  maxProperties: 16
+                  additionalProperties:
+                    type: string
+                    maxLength: 4096
+                  writeOnly: true
+                signingSecret:
+                  type: string
+                  minLength: 32
+                  maxLength: 256
+                  writeOnly: true
+                timeoutMs:
+                  type: integer
+                  minimum: 100
+                  maximum: 10000
+                resultFields:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 32
+              required: []
+              additionalProperties: false
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                required:
+                  - id
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+    delete:
+      operationId: toolkit/delete/bot-tools-id
+      tags:
+        - Bot Tools
+      summary: Delete BotTool
+      x-opensend-scope: bot_tools:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /knowledge-bases/{id}/search:
+    post:
+      operationId: toolkit/post/knowledge-bases-id-search
+      tags:
+        - Knowledge
+      summary: Search knowledge with the team Gemini key
+      x-opensend-scope: knowledge:read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+              required:
+                - query
+              additionalProperties: false
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KnowledgeMatch"
+                required:
+                  - data
+                additionalProperties: false
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /bot-tools/{id}/test:
+    post:
+      operationId: toolkit/post/bot-tools-id-test
+      tags:
+        - Bot Tools
+      summary: Send a signed test request (may cause endpoint side effects)
+      x-opensend-scope: bot_tools:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type:
+                  - string
+                  - number
+                  - boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotToolResult"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error400"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
+        "500":
+          $ref: "#/components/responses/Error500"
+  /messages:
+    post:
+      operationId: messages/send
+      tags: [Messages]
+      summary: Send a message across channels
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: channel:write
+      description: >-
+        Uses emails:write for email or whatsapp:write, messenger:write, instagram:write for the
+        selected channel. Full access also works; full_access in x-opensend-scope is the static
+        fallback, not a requirement. Legacy Sending access may send email only. This adapter uses
+        the existing email and Meta senders, sharing validation, window rules and errors. Returns
+        the queued id. Idempotency-Key replays the response for 24 hours. Email media uses the
+        existing attachments contract (id, path or base64 content and filename); Meta media is
+        one item with type and exactly one id or url. Meta reply_to is a message id; email
+        reply_to is an address or array of addresses.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessage'
+      responses:
+        '200':
+          description: Queued message
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                additionalProperties: false
+                properties:
+                  id: {type: string}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '404': {$ref: '#/components/responses/Error404'}
+        '409': {$ref: '#/components/responses/Error409'}
+        '422': {$ref: '#/components/responses/Error422'}
+        '429': {$ref: '#/components/responses/Error429'}
+    get:
+      operationId: messages/list
+      tags: [Messages]
+      summary: List messages across readable channels
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: readable-channels
+      description: >-
+        Returns only channels granted read access by lib/api-scopes.ts; write implies read.
+        An explicit channel filter requires that channel's read scope. At least one readable
+        channel is required. Full access reads every channel. Merges sent and received email
+        and Meta messages newest first by creation time and id. Use next_cursor with identical
+        filters and readable channels; the cursor is opaque, and changes to filters/scopes are
+        rejected. Bounded scans may return a short or empty page with has_more=true. New messages
+        before the cursor do not shift later pages. Email contact_id identifies the primary
+        recipient's CRM contact (or the sender for inbound email); it is null if unlinked.
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: channel
+          in: query
+          schema: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        - name: direction
+          in: query
+          schema: {type: string, enum: [inbound, outbound]}
+        - name: status
+          in: query
+          schema: {type: string}
+        - name: contact_id
+          in: query
+          schema: {type: string}
+        - name: from
+          in: query
+          description: Exact sender address or channel identifier.
+          schema: {type: string}
+        - name: to
+          in: query
+          description: Exact recipient; for email matches any to address.
+          schema: {type: string}
+        - name: created_after
+          in: query
+          description: Inclusive lower creation timestamp (ISO 8601).
+          schema: {type: string, format: date-time}
+        - name: created_before
+          in: query
+          description: Inclusive upper creation timestamp (ISO 8601).
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Message page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data, has_more, next_cursor]
+                additionalProperties: false
+                properties:
+                  object: {const: list, type: string}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Message'}
+                  has_more: {type: boolean}
+                  next_cursor: {type: [string, 'null']}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '422': {$ref: '#/components/responses/Error422'}
+        '429': {$ref: '#/components/responses/Error429'}
+  /messages/{id}:
+    get:
+      operationId: messages/get
+      tags: [Messages]
+      summary: Get a message in any channel
+      x-opensend-scope: full_access
+      x-opensend-dynamic-scope: message-channel:read
+      description: Requires emails:read or the stored message channel's read scope. Write implies read. Tenant isolation and permissions are rechecked when reading the message. Returns 403 for an unreadable channel, 404 for an unknown or other team's id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Message
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Message'}
+        '401': {$ref: '#/components/responses/Error401'}
+        '403': {$ref: '#/components/responses/Error403'}
+        '404': {$ref: '#/components/responses/Error404'}
+        '429': {$ref: '#/components/responses/Error429'}
   /contacts/{id}/notes:
     get:
       operationId: contacts/notes/list
@@ -11107,11 +12059,13 @@ paths:
   /media/uploads:
     post:
       operationId: media/uploads/create
-      tags: [ Media ]
+      tags:
+        - Media
       summary: Create a direct file upload
-      description: Requires media:write. POST the file to the Convex upload_url with Content-Type, then
-        complete using storage_id from its JSON response. Complete within 15 minutes. Upload POSTs
-        have a 2 minute timeout; per-kind size limits apply.
+      description: Requires media:write. POST the file to the Convex upload_url with
+        Content-Type, then complete using storage_id from its JSON response. Complete
+        within 15 minutes. Upload POSTs have a 2 minute timeout; per-kind size limits
+        apply.
       x-opensend-scope: media:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -11121,14 +12075,37 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ use, filename, content_type, size ]
+              required:
+                - use
+                - filename
+                - content_type
+                - size
               properties:
-                use: { type: string, enum: [ ivr, whatsapp, template, email, import ] }
-                filename: { type: string, maxLength: 1024 }
-                content_type: { type: string, maxLength: 256 }
-                size: { type: integer, minimum: 1, maximum: 104857600 }
-                from: { type: string, description: WhatsApp account or phone number id }
-                animated: { type: boolean, description: Whether a WebP sticker is animated }
+                use:
+                  type: string
+                  enum:
+                    - knowledge
+                    - ivr
+                    - whatsapp
+                    - template
+                    - email
+                    - import
+                filename:
+                  type: string
+                  maxLength: 1024
+                content_type:
+                  type: string
+                  maxLength: 256
+                size:
+                  type: integer
+                  minimum: 1
+                  maximum: 104857600
+                from:
+                  type: string
+                  description: WhatsApp account or phone number id
+                animated:
+                  type: boolean
+                  description: Whether a WebP sticker is animated
       responses:
         "200":
           description: Pending upload
@@ -11136,16 +12113,32 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ id, upload_url, expires_at, provider ]
+                required:
+                  - id
+                  - upload_url
+                  - expires_at
+                  - provider
                 properties:
-                  id: { type: string }
-                  upload_url: { type: string, format: uri }
-                  expires_at: { type: string, format: date-time }
-                  provider: { type: string, enum: [ convex ] }
-        "401": { $ref: "#/components/responses/Error401" }
-        "403": { $ref: "#/components/responses/Error403" }
-        "422": { $ref: "#/components/responses/Error422" }
-        "429": { $ref: "#/components/responses/Error429" }
+                  id:
+                    type: string
+                  upload_url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    format: date-time
+                  provider:
+                    type: string
+                    enum:
+                      - convex
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
   /media/uploads/{id}/complete:
     post:
       operationId: media/uploads/complete
@@ -13752,6 +14745,38 @@ paths:
           $ref: "#/components/responses/Error429"
         "500":
           $ref: "#/components/responses/Error500"
+  /events/catalog:
+    get:
+      operationId: events/catalog
+      tags:
+        - Events
+      summary: List automation event catalog
+      description: All system events and this team's custom events, with typed nested payload fields and contact properties. System trigger names use the opensend colon prefix.
+      x-opensend-scope: events:read
+      responses:
+        '200':
+          description: The team's event catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - object
+                  - data
+                properties:
+                  object:
+                    type: string
+                    const: event_catalog
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogEvent'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '429':
+          $ref: '#/components/responses/Error429'
 components:
   headers:
     ratelimit_limit:
@@ -13947,6 +14972,506 @@ components:
           schema:
             $ref: '#/components/schemas/Error500'
   schemas:
+    CollectField:
+      type: object
+      properties:
+        key:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        label:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        type:
+          enum:
+            - text
+            - number
+            - boolean
+            - email
+            - phone
+            - date
+            - enum
+        options:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        required:
+          type: boolean
+        contactProperty:
+          type: string
+      required:
+        - key
+        - label
+        - description
+        - type
+        - required
+      additionalProperties: false
+    CollectedData:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          value:
+            type:
+              - string
+              - number
+              - boolean
+          inferred:
+            type: boolean
+        required:
+          - value
+          - inferred
+        additionalProperties: false
+    KnowledgeBaseInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 2000
+      required:
+        - name
+      additionalProperties: false
+    KnowledgeBase:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          enum:
+            - processing
+            - ready
+            - failed
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - name
+        - description
+        - status
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    KnowledgeDocumentInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+        source:
+          enum:
+            - upload
+            - url
+            - text
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200000
+        url:
+          type: string
+          format: uri
+        fileId:
+          type: string
+      required:
+        - title
+        - source
+      additionalProperties: false
+    KnowledgeDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        knowledgeBaseId:
+          type: string
+        title:
+          type: string
+        source:
+          enum:
+            - upload
+            - url
+            - text
+        text:
+          type: string
+        url:
+          type: string
+        fileId:
+          type: string
+        storageId:
+          type: string
+        status:
+          enum:
+            - processing
+            - ready
+            - failed
+        error:
+          type: string
+        byteSize:
+          type: number
+        revision:
+          type: string
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - knowledgeBaseId
+        - title
+        - source
+        - status
+        - byteSize
+        - revision
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    KnowledgeMatch:
+      type: object
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        knowledgeBaseId:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+        position:
+          type: number
+        score:
+          type: number
+      required:
+        - id
+        - documentId
+        - knowledgeBaseId
+        - title
+        - text
+        - position
+        - score
+      additionalProperties: false
+    BotToolParameters:
+      type: object
+      properties:
+        type:
+          const: object
+        properties:
+          type: object
+          maxProperties: 32
+          additionalProperties:
+            type: object
+            properties:
+              type:
+                enum:
+                  - string
+                  - number
+                  - boolean
+              description:
+                type: string
+                maxLength: 1000
+              enum:
+                type: array
+                items:
+                  type:
+                    - string
+                    - number
+                    - boolean
+                maxItems: 50
+            required:
+              - type
+            additionalProperties: false
+        required:
+          type: array
+          items:
+            type: string
+          maxItems: 32
+        additionalProperties:
+          const: false
+      required:
+        - type
+        - properties
+      additionalProperties: false
+    BotToolInput:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        parameters:
+          $ref: "#/components/schemas/BotToolParameters"
+        method:
+          enum:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+        url:
+          type: string
+          format: uri
+        headers:
+          type: object
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            maxLength: 4096
+          writeOnly: true
+        signingSecret:
+          type: string
+          minLength: 32
+          maxLength: 256
+          writeOnly: true
+        timeoutMs:
+          type: integer
+          minimum: 100
+          maximum: 10000
+        resultFields:
+          type: array
+          items:
+            type: string
+          maxItems: 32
+      required:
+        - name
+        - description
+        - parameters
+        - url
+      additionalProperties: false
+    BotToolResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        result: {}
+        error:
+          type: string
+        latencyMs:
+          type: number
+      required:
+        - ok
+        - latencyMs
+      additionalProperties: false
+    BotTool:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        parameters:
+          $ref: "#/components/schemas/BotToolParameters"
+        method:
+          enum:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+        url:
+          type: string
+          format: uri
+        timeoutMs:
+          type: integer
+          minimum: 100
+          maximum: 10000
+        resultFields:
+          type: array
+          items:
+            type: string
+          maxItems: 32
+        id:
+          type: string
+        createdAt:
+          type: number
+        updatedAt:
+          type: number
+      required:
+        - id
+        - name
+        - description
+        - parameters
+        - method
+        - url
+        - timeoutMs
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+    KnowledgeBasePage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeBase"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    KnowledgeDocumentPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeDocument"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    BotToolPage:
+      type: object
+      properties:
+        object:
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BotTool"
+      required:
+        - object
+        - has_more
+        - data
+      additionalProperties: false
+    SendMessage:
+      type: object
+      required: [channel, to]
+      properties:
+        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        from: {type: string}
+        text: {type: string}
+        subject: {type: string}
+        html: {type: string}
+        reply_to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        template:
+          type: object
+          oneOf:
+            - required: [id]
+              not: {required: [alias]}
+            - required: [alias]
+              not: {required: [id]}
+          properties:
+            id: {type: string, minLength: 1}
+            alias: {type: string, minLength: 1}
+            variables:
+              type: object
+              additionalProperties: {type: [string, number]}
+        media:
+          type: array
+          items:
+            type: object
+            properties:
+              type: {type: string, enum: [image, video, audio, file]}
+              id: {type: string}
+              url: {type: string, format: uri}
+              path: {type: string, format: uri}
+              content: {type: string, contentEncoding: base64}
+              filename: {type: string}
+              content_type: {type: string}
+        tags:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: {type: string}
+              value: {type: string}
+      allOf:
+        - if:
+            properties:
+              channel: {enum: [whatsapp, messenger, instagram]}
+          then:
+            properties:
+              to: {type: string}
+              reply_to: {type: string}
+              subject: false
+              html: false
+              media: {maxItems: 1}
+            oneOf:
+              - required: [text]
+                not: {anyOf: [{required: [template]}, {required: [media]}]}
+              - required: [template]
+                not: {anyOf: [{required: [text]}, {required: [media]}]}
+              - required: [media]
+                properties:
+                  media: {minItems: 1}
+                not: {anyOf: [{required: [text]}, {required: [template]}]}
+    MessageBase:
+      type: object
+      required: [id, object, channel, direction, from, to, status, preview, created_at, contact_id]
+      properties:
+        id: {type: string}
+        object: {type: string, const: message}
+        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        direction: {type: string, enum: [inbound, outbound]}
+        from: {type: string}
+        to:
+          oneOf:
+            - {type: string}
+            - {type: array, items: {type: string}}
+        status: {type: string}
+        preview: {type: string, description: Rendered template body where available, otherwise text, HTML or a channel preview.}
+        created_at: {type: string, format: date-time}
+        contact_id: {type: [string, 'null']}
+        conversation_id: {type: string}
+    Message:
+      allOf:
+        - $ref: '#/components/schemas/MessageBase'
+        - oneOf:
+            - type: object
+              required: [subject, html, text]
+              properties:
+                channel: {const: email}
+                to: {type: array, items: {type: string}}
+                subject: {type: string}
+                html: {type: [string, 'null']}
+                text: {type: [string, 'null']}
+            - type: object
+              required: [type, conversation_id]
+              properties:
+                channel: {enum: [whatsapp, messenger, instagram]}
+                to: {type: string}
+                type: {type: string}
+      description: Email and channel message events add MessageBase fields while retaining their existing email_id, message_id, tags and other event-specific fields.
     ContactNoteAuthor:
       type: object
       required: [kind]
@@ -13991,6 +15516,8 @@ components:
             - type: 'null'
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+        contact:
+          $ref: '#/components/schemas/EventContact'
     MessageControlResponse:
       type: object
       properties:
@@ -18996,6 +20523,10 @@ components:
     ApiScope:
       type: string
       enum:
+        - knowledge:read
+        - knowledge:write
+        - bot_tools:read
+        - bot_tools:write
         - calling:read
         - calling:write
         - ivrs:read
@@ -22031,6 +23562,7 @@ components:
     WebhookEventType:
       type: string
       enum:
+        - call.data_collected
         - email.sent
         - email.delivered
         - email.delivery_delayed
@@ -23112,16 +24644,7 @@ components:
             contact_delete, or add_to_segment.
         config:
           type: object
-          description: >-
-            Step-specific settings such as event_name, template, duration, condition rules, contact
-            fields, or segment_id. send_whatsapp, send_messenger and send_instagram require
-            account_id and mode (template with template_id or text with text); variables map to
-            strings or contact/property/value sources with optional fallback. The
-            opensend:whatsapp.message.received, opensend:messenger.message.received and
-            opensend:instagram.message.received system events are supported for triggers and waits.
-            Subject overrides, structured template variables, mixed nested conditions, null
-            comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30
-            days to activate.
+          description: Step-specific settings such as event_name and optional filters (an AND list of condition rules), template, duration or until, condition rules, contact fields, or segment_id. send_whatsapp, send_messenger and send_instagram require account_id and mode (template with template_id or text with text); variables map to strings or contact/property/value sources with optional fallback. The opensend:whatsapp.message.received, opensend:messenger.message.received and opensend:instagram.message.received system events are supported for triggers and waits. Subject overrides, structured template variables, mixed nested conditions, null comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30 days to activate.
     AutomationConnection:
       type: object
       description: A connection between two steps in the automation graph.
@@ -23281,9 +24804,7 @@ components:
           description: The type of automation step.
         config:
           type: object
-          description: >-
-            Step settings, including human-readable duration for delays and event_name with a
-            human-readable timeout for waits.
+          description: Step settings support {{trigger.path}}, {{steps.stepKey.path}}, and {{contact.path}} references. Delay accepts duration or until. Trigger accepts filters. Send email accepts a subject override. Event_name with a human-readable timeout for waits.
       required:
         - key
         - type
@@ -23542,6 +25063,11 @@ components:
           type: string
           description: The date and time the step record was created.
           example: '2023-10-06 23:47:56.678+00'
+        inputs:
+          type:
+            - object
+            - 'null'
+          description: The resolved step inputs, including condition operands.
       required:
         - key
         - type
@@ -27477,7 +29003,9 @@ components:
             - string
             - "null"
         bot_name:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
@@ -27509,6 +29037,10 @@ components:
           type:
             - string
             - "null"
+        collected:
+          anyOf:
+            - $ref: "#/components/schemas/CollectedData"
+            - type: "null"
       required:
         - object
         - id
@@ -27692,7 +29224,9 @@ components:
               - details
             additionalProperties: false
         bot_name:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           description: Voice bot name from the call configuration snapshot.
         bot_id:
           type:
@@ -27724,6 +29258,10 @@ components:
           type:
             - string
             - "null"
+        collected:
+          anyOf:
+            - $ref: "#/components/schemas/CollectedData"
+            - type: "null"
       required:
         - object
         - id
@@ -28508,6 +30046,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28521,6 +30063,23 @@ components:
           type: integer
           minimum: 1
           maximum: 100
+        collect:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CollectField"
+        knowledgeBaseIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
+        customToolIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
       required:
         - name
         - provider
@@ -28640,6 +30199,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28653,6 +30216,23 @@ components:
           type: integer
           minimum: 1
           maximum: 100
+        collect:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CollectField"
+        knowledgeBaseIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
+        customToolIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
       required: []
       additionalProperties: false
     VoiceBot:
@@ -28771,6 +30351,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -28788,6 +30372,23 @@ components:
           type: number
         updatedAt:
           type: number
+        collect:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CollectField"
+        knowledgeBaseIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
+        customToolIds:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
       required:
         - id
         - name
@@ -28804,6 +30405,7 @@ components:
         - maxDurationSeconds
         - silenceTimeoutSeconds
         - recording
+        - callerContext
         - disclosure
         - createdAt
         - updatedAt
@@ -28951,6 +30553,15 @@ components:
           type: boolean
         timestampMs:
           type: number
+          description: Milliseconds since the call was answered.
+        timeline:
+          type: string
+          enum:
+            - call
+          description: Present when timestampMs is milliseconds since the call was answered. Older rows omit it.
+        createdAt:
+          type: number
+          description: Row creation time. Stable tie-break when timestampMs matches.
         toolId:
           type: string
         toolName:
@@ -29014,7 +30625,177 @@ components:
         - has_more
         - data
       additionalProperties: false
+    EventContact:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type:
+            - string
+            - 'null'
+        phone:
+          type:
+            - string
+            - 'null'
+        first_name:
+          type:
+            - string
+            - 'null'
+        last_name:
+          type:
+            - string
+            - 'null'
+        unsubscribed:
+          type: boolean
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+        segment_ids:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    EventPayloadField:
+      type: object
+      required:
+        - type
+        - description
+        - example
+      properties:
+        type:
+          type: string
+          enum:
+            - string
+            - number
+            - boolean
+            - date
+            - enum
+            - object
+            - array
+        description:
+          type: string
+        example: {}
+        dynamic:
+          type: boolean
+          description: Provider-defined JSON value with arbitrary nested fields.
+        valueTypes:
+          type: array
+          items:
+            type: string
+            enum:
+              - string
+              - number
+              - boolean
+              - date
+              - enum
+              - object
+              - array
+        nullable:
+          type: boolean
+        optional:
+          type: boolean
+        values:
+          type: array
+          items:
+            type: string
+        fields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/EventPayloadField'
+        items:
+          $ref: '#/components/schemas/EventPayloadField'
+        additionalProperties:
+          $ref: '#/components/schemas/EventPayloadField'
+    CatalogEvent:
+      type: object
+      required:
+        - name
+        - trigger
+        - label
+        - group
+        - description
+        - schema
+      properties:
+        name:
+          type: string
+        trigger:
+          type: string
+        label:
+          type: string
+        group:
+          type: string
+        description:
+          type: string
+        schema:
+          $ref: '#/components/schemas/EventPayloadField'
 webhooks:
+  message:
+    post:
+      operationId: webhooks/message
+      summary: Shared message fields across email and Meta events
+      description: >-
+        Email events and Meta message events retain their existing names and payload fields,
+        adding the common MessageBase contract. The outer created_at is the event timestamp;
+        data.created_at is the message timestamp. Email keeps email_id, message_id, subject,
+        tags as a map and delivery details; Meta keeps normalized content, tags as pairs and
+        conversation_id. Subscribe using the existing shared event catalog. Events are signed
+        with Standard Webhooks. Delivery order is not guaranteed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, created_at, data]
+              properties:
+                type:
+                  type: string
+                  pattern: '^(email\.[a-z_]+|(whatsapp|messenger|instagram)\.message\.[a-z_]+)$'
+                created_at: {type: string, format: date-time}
+                data:
+                  allOf:
+                    - $ref: '#/components/schemas/MessageBase'
+                    - type: object
+                      properties:
+                        email_id: {type: string}
+                        message_id: {type: string}
+                        subject: {type: string}
+                        tags:
+                          oneOf:
+                            - {type: object, additionalProperties: {type: string}}
+                            - type: array
+                              items:
+                                type: object
+                                required: [name, value]
+                                properties:
+                                  name: {type: string}
+                                  value: {type: string}
+            example:
+              type: email.sent
+              created_at: '2026-10-01T00:00:01.000Z'
+              data:
+                id: message-id
+                object: message
+                channel: email
+                direction: outbound
+                from: support@example.com
+                to: [customer@example.com]
+                status: sent
+                preview: Your order has shipped.
+                created_at: '2026-10-01T00:00:00.000Z'
+                contact_id: null
+                email_id: message-id
+                subject: Your order
+                tags: {order: '42'}
+      responses:
+        '200': {description: Event accepted}
   contactNoteCreated:
     post:
       operationId: webhooks/contact/note-created

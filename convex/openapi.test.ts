@@ -3,7 +3,7 @@ import { samplePayload } from "../lib/dashboard/automation"
 import { callingRoutingSchema } from "../services/call-gateway/src/voice/routing"
 import { resolve } from "node:path"
 import SwaggerParser from "@apidevtools/swagger-parser"
-import Ajv2020, { type AnySchema } from "ajv/dist/2020"
+import Ajv2020, { type AnySchema, type ValidateFunction } from "ajv/dist/2020"
 import {
   afterEach,
   beforeAll,
@@ -44,15 +44,16 @@ import {
 import type { Id } from "./_generated/dataModel"
 
 const registrations = vi.hoisted(
-  () => [] as Pick<ApiRouteOptions, "method" | "path" | "scope">[]
+  () =>
+    [] as Pick<ApiRouteOptions, "method" | "path" | "scope" | "resolveScopes">[]
 )
 vi.mock("./api/route", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/route")>()
   return {
     ...actual,
     apiRoute: (...args: Parameters<typeof actual.apiRoute>) => {
-      const { method, path, scope } = args[1]
-      registrations.push({ method, path, scope })
+      const { method, path, scope, resolveScopes } = args[1]
+      registrations.push({ method, path, scope, resolveScopes })
       return actual.apiRoute(...args)
     },
   }
@@ -86,8 +87,23 @@ const operations = (spec: Contract) =>
       Object.keys(methods).map((method) => `${method.toUpperCase()} ${path}`)
     )
     .sort()
+// Fixtures reuse the same large schemas for many variants. Compile once per
+// schema so testing every variant does not repeatedly rebuild the validator.
+const validators = new Map<AnySchema, ValidateFunction>()
 const validateBody = (schema: AnySchema, body: unknown) => {
-  const validate = ajv.compile(schema)
+  let validate = validators.get(schema)
+  if (!validate) {
+    validate = ajv.compile({
+      ...(schema as Record<string, unknown>),
+      components: {
+        schemas: {
+          EventPayloadField: contract.components.schemas.EventPayloadField,
+          CatalogEvent: contract.components.schemas.CatalogEvent,
+        },
+      },
+    })
+    validators.set(schema, validate)
+  }
   expect(validate(body), JSON.stringify(validate.errors, null, 2)).toBe(true)
 }
 async function response(
@@ -125,6 +141,7 @@ beforeAll(async () => {
   // No remote references are permitted: contract tests never need the network.
   contract = (await SwaggerParser.validate(resolve("openapi/opensend.yaml"), {
     resolve: { http: false },
+    dereference: { circular: "ignore" },
   })) as unknown as Contract
 })
 beforeEach(() => {
@@ -284,6 +301,21 @@ describe("OpenAPI contract", () => {
       to: SENDER,
       template: { name: "hello", language: "en", variables: { "1": "Ada" } },
     })
+    const unified = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel: "whatsapp",
+        to: SENDER,
+        text: "Unified contract",
+      })
+    )
+    await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${unified.id}`)
+    )
+    await response("/messages", "GET", await call("/messages?channel=whatsapp"))
     const sent = await response(
       "/whatsapp/messages",
       "POST",
@@ -495,7 +527,11 @@ describe("OpenAPI contract", () => {
       ).toBe(scopeName(scope))
       if (scope !== "full_access")
         expect(scope.access).toBe(
-          method === "GET" || path === "/ivrs/{id}/validate" ? "read" : "write"
+          method === "GET" ||
+            path === "/ivrs/{id}/validate" ||
+            path === "/knowledge-bases/{id}/search"
+            ? "read"
+            : "write"
         )
     }
     const ids = Object.values(contract.paths).flatMap((ops) =>
@@ -522,9 +558,30 @@ describe("OpenAPI contract", () => {
       for (const operation of Object.values(methods)) {
         if (operation.requestBody)
           for (const media of Object.values(operation.requestBody.content))
-            ajv.compile(media.schema)
+            ajv.compile({
+              ...(media.schema as Record<string, unknown>),
+              components: {
+                schemas: {
+                  EventPayloadField:
+                    contract.components.schemas.EventPayloadField,
+                  CatalogEvent: contract.components.schemas.CatalogEvent,
+                },
+              },
+            })
         for (const result of Object.values(operation.responses))
-          ajv.compile(result.content["application/json"].schema)
+          ajv.compile({
+            ...(result.content["application/json"].schema as Record<
+              string,
+              unknown
+            >),
+            components: {
+              schemas: {
+                EventPayloadField:
+                  contract.components.schemas.EventPayloadField,
+                CatalogEvent: contract.components.schemas.CatalogEvent,
+              },
+            },
+          })
       }
   })
 
@@ -1220,7 +1277,15 @@ describe("OpenAPI contract", () => {
       contract.paths["/contacts"].post.responses["201"].content[
         "application/json"
       ].schema
-    const validate = ajv.compile(schema)
+    const validate = ajv.compile({
+      ...(schema as Record<string, unknown>),
+      components: {
+        schemas: {
+          EventPayloadField: contract.components.schemas.EventPayloadField,
+          CatalogEvent: contract.components.schemas.CatalogEvent,
+        },
+      },
+    })
     expect(validate({ object: "contact" })).toBe(false)
     expect(validate({ object: "contact", id: 123 })).toBe(false)
     expect(
@@ -1332,6 +1397,25 @@ test("Messenger and Instagram send, read routes and local templates validate rea
     const to = channel === "messenger" ? PSID : IGSID,
       resource = channel === "messenger" ? "pages" : "accounts",
       externalId = channel === "messenger" ? PAGE_ID : IG_ID
+    const unified = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel,
+        to,
+        text: "Unified page contract",
+      })
+    )
+    await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${unified.id}`)
+    )
+    await response(
+      "/messages",
+      "GET",
+      await call(`/messages?channel=${channel}`)
+    )
     const request = {
       to,
       text: "Reply",
@@ -1413,6 +1497,21 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       "POST",
       await call(`/templates/${template.id}/publish`, "POST", {})
     )
+    const rendered = await response(
+      "/messages",
+      "POST",
+      await call("/messages", "POST", {
+        channel,
+        to,
+        template: { id: template.id, variables: { name: "Ada" } },
+      })
+    )
+    const renderedMessage = await response(
+      "/messages/{id}",
+      "GET",
+      await call(`/messages/${rendered.id}`)
+    )
+    expect(renderedMessage.preview).toBe("Hello Ada")
   }
 })
 
@@ -2033,4 +2132,75 @@ test("contact note CRUD, cursors, idempotency and webhook sample match the publi
     contract.components.schemas.ContactNote,
     samplePayload({ name: "contact.note_created", schema: [] })
   )
+})
+
+test("unified messages validate actual email responses and document dynamic channel authorization", async () => {
+  const f = await setup()
+  const created = await response(
+    "/messages",
+    "POST",
+    await f.call("/messages", "POST", {
+      channel: "email",
+      from: "sender@mail.example.test",
+      to: "person@example.test",
+      subject: "Unified contract",
+      text: "Unified body",
+    })
+  )
+  const message = await response(
+    "/messages/{id}",
+    "GET",
+    await f.call(`/messages/${created.id}`)
+  )
+  expect(message).toMatchObject({
+    object: "message",
+    channel: "email",
+    direction: "outbound",
+    preview: "Unified body",
+    contact_id: null,
+  })
+  await response(
+    "/messages",
+    "GET",
+    await f.call("/messages?channel=email&direction=outbound")
+  )
+  const post = registrations.find(
+    (r) => r.path === "/messages" && r.method === "POST"
+  )!
+  for (const channel of ["email", "whatsapp", "messenger", "instagram"]) {
+    expect(
+      post.resolveScopes!({ body: { channel }, query: new URLSearchParams() })
+    ).toEqual([
+      { resource: channel === "email" ? "emails" : channel, access: "write" },
+    ])
+    validateBody(contract.components.schemas.SendMessage, {
+      channel,
+      to: "recipient",
+      text: "Hello",
+    })
+  }
+  expect(
+    (contract.paths["/messages"].post as unknown as Record<string, unknown>)[
+      "x-opensend-dynamic-scope"
+    ]
+  ).toBe("channel:write")
+})
+
+test("shared webhook schema documents additive message fields and legacy email fields", () => {
+  const hook = (
+    contract as unknown as {
+      webhooks: {
+        message: {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": { schema: AnySchema; example: unknown }
+              }
+            }
+          }
+        }
+      }
+    }
+  ).webhooks.message.post.requestBody.content["application/json"]
+  validateBody(hook.schema, hook.example)
 })

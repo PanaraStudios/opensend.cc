@@ -261,6 +261,14 @@ export function createGatewayServer(
                 "INVALID_DURATION",
                 "Duration must be a number"
               )
+            if (
+              body.answeredAt !== undefined &&
+              typeof body.answeredAt !== "number"
+            )
+              throw new GatewayError(
+                "INVALID_REQUEST",
+                "answeredAt must be a number"
+              )
             await api.route({
               callId,
               target: textField(body, "target") as RouteRequest["target"],
@@ -292,6 +300,9 @@ export function createGatewayServer(
                 : {}),
               ...(body.record !== undefined
                 ? { record: body.record as boolean }
+                : {}),
+              ...(body.answeredAt !== undefined
+                ? { answeredAt: body.answeredAt as number }
                 : {}),
             })
             return { ok: true }

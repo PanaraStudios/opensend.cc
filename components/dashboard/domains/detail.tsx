@@ -14,7 +14,6 @@ import {
   DownloadIcon,
   InfoIcon,
   ListChecksIcon,
-  RefreshCwIcon,
   Trash2Icon,
   type LucideIcon,
 } from "lucide-react"
@@ -32,7 +31,6 @@ import {
 import {
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
@@ -45,7 +43,6 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import {
   Tooltip,
@@ -53,10 +50,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import {
-  ConfirmDialog,
-  DetailHeader,
   DetailSection,
-  DocsButton,
   EventTrail,
   MetaStrip,
   MonoValue,
@@ -71,6 +65,7 @@ import {
   type EventTrailStep,
 } from "@/components/dashboard/primitives"
 import {
+  DeleteDomainDialog,
   DnsRecordsTable,
   DomainIcon,
   DomainSection,
@@ -97,6 +92,11 @@ import {
   type DomainEventStep,
 } from "@/lib/dashboard/domains"
 import { formatDateTime } from "@/lib/dashboard/format"
+import { CHANNELS } from "@/lib/channels"
+import {
+  ChannelDetailHeader,
+  channelIcon,
+} from "@/components/dashboard/channels/shared"
 import {
   asDomain,
   useDomainCheck,
@@ -382,7 +382,6 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
   const records = domainRecords(domain)
   const sections = domainRecordSections(domain, records)
   const locked = !canWrite || busy || pending
-  const checking = domain.checking
   const auto = domain.autoConfigure
   const blockedReason = auto
     ? ""
@@ -427,18 +426,6 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
     }
   }
 
-  async function runVerification() {
-    if (locked || checking) return
-    setPending(true)
-    try {
-      await check(domain.id)
-    } catch (error) {
-      toast.add({ type: "error", title: actionError(error) })
-    } finally {
-      setPending(false)
-    }
-  }
-
   const autoConfigureButton = (
     <Button
       variant="outline"
@@ -465,24 +452,6 @@ function DomainRecords({ domain, busy }: { domain: Domain; busy: boolean }) {
           ) : (
             autoConfigureButton
           )}
-          <Button
-            variant="outline"
-            disabled={locked || checking}
-            aria-busy={checking}
-            onClick={() => void runVerification()}
-          >
-            {checking ? (
-              <>
-                <Spinner data-icon="inline-start" />
-                Checking DNS records
-              </>
-            ) : (
-              <>
-                <RefreshCwIcon data-icon="inline-start" />
-                Check DNS records
-              </>
-            )}
-          </Button>
           <MoreMenu>
             <DropdownMenuGroup>
               <DropdownMenuItem
@@ -657,16 +626,20 @@ export function DomainDetail() {
   const installation = useQuery(api.installation.status)
   const complete = useMutation(api.installation.complete)
   const inspectProvider = useAction(api.ses.dnsProvider.inspect)
-  const { deleteDomain, canWrite } = useDomainCommands()
-  const { leaving, deleteAndLeave } = useDeleteRecord("/domains")
+  const { canWrite } = useDomainCommands()
+  const { leaving, deleteAndLeave } = useDeleteRecord("/channels")
   const [tab, setTab] = React.useState("records")
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] = React.useState(false)
+  const [checkStarting, setCheckStarting] = React.useState(false)
   const [providerLookupFailed, setProviderLookupFailed] = React.useState(false)
   const stored = result?.domain
   const domain = React.useMemo(
     () => (stored ? asDomain(stored) : undefined),
     [stored]
+  )
+  const check = useDomainCheck(
+    React.useMemo(() => (domain ? [domain] : []), [domain])
   )
   const providerDomainId = stored?._id
   const providerCheckedAt = stored?.dnsProviderCheckedAt
@@ -700,7 +673,14 @@ export function DomainDetail() {
   if (result === undefined) return <Skeleton className="h-64 w-full" />
   if (!result || !domain) {
     if (leaving) return null
-    return <NotFoundState icon={DomainIcon} noun="domain" backHref="/domains" />
+    return (
+      <NotFoundState
+        icon={DomainIcon}
+        noun="domain"
+        backHref="/channels"
+        backLabel="Back to channels"
+      />
+    )
   }
   if (stored?.claimId) return <DomainClaim domain={stored} />
   const busy = result.domain.phase === "running"
@@ -711,48 +691,54 @@ export function DomainDetail() {
     result.domain.phase === "failed" &&
     result.domain.operation === "provision" &&
     (!!result.domain.adoption || !!result.domain.needsAdoptionReview)
+  async function runVerification() {
+    setCheckStarting(true)
+    try {
+      await check(domain!.id)
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      setCheckStarting(false)
+    }
+  }
   return (
     <div className="flex flex-col gap-6">
-      <DetailHeader
-        backHref="/domains"
-        backLabel="Domains"
+      <ChannelDetailHeader
         title={domain.name}
-        icon={DomainIcon}
-        actions={
+        icon={channelIcon("email")}
+        refresh={{
+          label: "Check DNS records",
+          pendingLabel: "Checking DNS records",
+          pending: domain.checking || checkStarting,
+          disabled: !canWrite || busy,
+          onClick: () => void runVerification(),
+        }}
+        menu={
           <>
-            <DocsButton />
-            <MoreMenu>
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={() => void copyToClipboard(domain.name, "Domain")}
-                >
-                  <CopyIcon />
-                  Copy domain
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadZoneFile(domain)}>
-                  <DownloadIcon />
-                  Download zone file
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={!canWrite || busy}
-                  onClick={() => setPendingDelete(true)}
-                >
-                  <Trash2Icon />
-                  Delete domain
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </MoreMenu>
+            <DropdownMenuItem
+              onClick={() => void copyToClipboard(domain.name, "Domain")}
+            >
+              <CopyIcon />
+              Copy domain
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => downloadZoneFile(domain)}>
+              <DownloadIcon />
+              Download zone file
+            </DropdownMenuItem>
           </>
         }
+        remove={{
+          label: "Delete domain",
+          icon: Trash2Icon,
+          disabled: !canWrite || busy,
+          onClick: () => setPendingDelete(true),
+        }}
       />
       <MetaStrip
         items={[
-          { label: "Created", value: <RelativeTime at={domain.createdAt} /> },
+          { label: "Channel", value: CHANNELS.email.label },
           { label: "Status", value: <StatusBadge status={domain.status} /> },
+          { label: "Created", value: <RelativeTime at={domain.createdAt} /> },
           {
             label: "Provider",
             value: result.domain.dnsProviderCheckedAt ? (
@@ -788,16 +774,10 @@ export function DomainDetail() {
         open={reviewOpen}
         onOpenChange={setReviewOpen}
       />
-      <ConfirmDialog
-        open={pendingDelete}
+      <DeleteDomainDialog
+        domain={pendingDelete ? domain : null}
         onOpenChange={setPendingDelete}
-        title={`Delete ${domain.name}?`}
-        description="Sending from this domain will stop. DNS records can stay at your registrar."
-        onConfirm={async () => {
-          await deleteDomain(domain.id)
-          deleteAndLeave(() => {})
-          toast.add({ type: "success", title: "Domain removal queued" })
-        }}
+        onDeleted={() => deleteAndLeave(() => {})}
       />
     </div>
   )

@@ -278,11 +278,17 @@ export const automationInput = internalQuery({
     )
     const step = findStep(readGraph(run.graph), key)
     if (step?.type !== "place_call") throw invalid("Place call step not found.")
-    const contact = await ctx.db.get("contacts", run.contactId)
+    const contact = run.contactId
+      ? await ctx.db.get("contacts", run.contactId)
+      : null
     if (!contact || contact.unsubscribed)
       return {
         skipped: true,
-        reason: contact ? "unsubscribed" : "contact_deleted",
+        reason: contact
+          ? "unsubscribed"
+          : run.contactId
+            ? "contact_deleted"
+            : "no_contact",
       }
     const scope = {
       event: run.payload,

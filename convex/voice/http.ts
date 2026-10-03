@@ -106,10 +106,23 @@ function handler(kind: "session" | "tool" | "event") {
         )
           return new Response(null, { status: 400 })
       }
-      const result = await ctx.runMutation(internal.voice.gateway[kind], {
-        ...auth,
-        data,
-      })
+      const name = string(object(data.toolCall).name)
+      const builtin = [
+        "lookup_contact",
+        "create_note",
+        "send_whatsapp_message",
+        "transfer_to_agent",
+        "transfer_to_ivr",
+        "end_call",
+        "save_field",
+      ].includes(name)
+      const result =
+        kind === "tool" && !builtin
+          ? await ctx.runAction(internal.voice.toolkit.run, { ...auth, data })
+          : await ctx.runMutation(internal.voice.gateway[kind], {
+              ...auth,
+              data,
+            })
       return Response.json(kind === "event" ? { ok: true } : result, {
         headers: { "Cache-Control": "no-store" },
       })

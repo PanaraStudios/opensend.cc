@@ -1,3 +1,5 @@
+import { EMAIL_CHANNELS_HREF } from "./nav"
+
 export type ShortcutKey = Pick<
   KeyboardEvent,
   | "key"
@@ -60,8 +62,9 @@ export const NAVIGATION_SHORTCUTS: Record<string, string> = {
   "/templates": "t",
   "/contacts": "c",
   "/metrics": "m",
-  "/domains": "d",
   "/channels": "h",
+  // Domains' old key opens their channel.
+  [EMAIL_CHANNELS_HREF]: "d",
   "/logs": "l",
   "/api-keys": "k",
   "/webhooks": "w",

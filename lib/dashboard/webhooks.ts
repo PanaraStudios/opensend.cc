@@ -11,7 +11,7 @@ const GROUP_LABELS = {
   contact: "Contact",
   domain: "Domain",
   whatsapp: "WhatsApp",
-  call: "Calling",
+  call: "Calls",
   messenger: "Messenger",
   instagram: "Instagram",
 }

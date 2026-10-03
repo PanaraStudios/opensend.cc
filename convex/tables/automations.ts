@@ -25,6 +25,29 @@ export const stepType = v.union(
   v.literal("contact_delete"),
   v.literal("add_to_segment")
 )
+export const triggerFiltersValue = v.array(
+  v.object({
+    field: v.string(),
+    operator: v.union(
+      ...(
+        [
+          "eq",
+          "neq",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "contains",
+          "starts_with",
+          "ends_with",
+          "exists",
+          "is_empty",
+        ] as const
+      ).map((value) => v.literal(value))
+    ),
+    value: v.string(),
+  })
+)
 export const payloadValue = v.record(v.string(), v.any())
 
 export const automationTables = {
@@ -44,6 +67,7 @@ export const automationTables = {
     name: v.string(),
     status: automationStatus,
     trigger: v.string(),
+    triggerFilters: v.optional(triggerFiltersValue),
     graph: v.string(),
     apiDefinition: v.optional(v.string()),
     deleted: v.boolean(),
@@ -65,7 +89,7 @@ export const automationTables = {
   automationRuns: defineTable({
     organizationId: v.string(),
     automationId: v.id("automations"),
-    contactId: v.id("contacts"),
+    contactId: v.optional(v.id("contacts")),
     contactEmail: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
     lastSignalEventId: v.optional(v.id("events")),
@@ -112,6 +136,7 @@ export const automationTables = {
     startedAt: v.number(),
     runStartedAt: v.number(),
     completedAt: v.optional(v.number()),
+    inputs: v.optional(payloadValue),
     output: v.optional(payloadValue),
     error: v.optional(v.string()),
   })
