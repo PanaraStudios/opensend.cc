@@ -5,8 +5,23 @@ import { EMAIL_HTML_RULES } from "../lib/email-html-rules.js"
 
 const CREATE_BROADCAST_TOOL_BASE = {
   title: "Create Broadcast",
-  description: `Create a broadcast draft in Opensend with HTML/text, a sender and segment. Use send-broadcast to send it.`,
+  description: `Create an email, WhatsApp, Messenger or Instagram broadcast draft. Messaging uses a template and connected sender. Messenger/Instagram sends only within the 24-hour window, without message tags. Use send-broadcast to send it.`,
 } as const
+
+const source = z.union([
+  z.string(),
+  z.object({ value: z.string(), fallback: z.string().optional() }),
+  z.object({
+    contact: z.enum(["firstName", "lastName", "email", "phone"]),
+    fallback: z.string().optional(),
+  }),
+  z.object({ property: z.string(), fallback: z.string().optional() }),
+])
+const configuration = z.object({
+  accountId: z.string().nonempty(),
+  templateId: z.string().nonempty(),
+  variables: z.record(z.string(), source),
+})
 
 let cachedCreateBroadcastSchemaKey: string | undefined
 let cachedCreateBroadcastInputSchema: ReturnType<
@@ -18,6 +33,13 @@ function buildCreateBroadcastInputSchema(
   replierEmailAddresses: string[]
 ) {
   return {
+    channel: z.enum(["email", "whatsapp", "messenger", "instagram"]).optional(),
+    whatsapp: configuration.optional(),
+    messaging: configuration
+      .optional()
+      .describe(
+        "Published Messenger/Instagram template and connected account. Sends only inside the 24-hour window; never uses message tags."
+      ),
     name: z
       .string()
       .nonempty()
@@ -25,7 +47,11 @@ function buildCreateBroadcastInputSchema(
         "Name for the broadcast. If the user does not provide a name, go ahead and create a descriptive name for them, based on the email subject/content and the context of your conversation."
       ),
     segmentId: z.string().nonempty().describe("Segment ID to send to"),
-    subject: z.string().nonempty().describe("Email subject"),
+    subject: z
+      .string()
+      .nonempty()
+      .optional()
+      .describe("Email subject (required for email)"),
     text: z
       .string()
       .optional()
@@ -44,6 +70,7 @@ function buildCreateBroadcastInputSchema(
           from: z
             .string()
             .nonempty()
+            .optional()
             .describe(
               'From email address (e.g. "sender@example.com" or "Opensend <sender@example.com>")'
             ),
@@ -161,6 +188,9 @@ const UPDATE_BROADCAST_TOOL = {
   description:
     "Update broadcast HTML/text and metadata in Opensend. Draft and canceled broadcasts accept content changes; other states allow name changes only.",
   inputSchema: {
+    channel: z.enum(["email", "whatsapp", "messenger", "instagram"]).optional(),
+    whatsapp: configuration.optional(),
+    messaging: configuration.optional(),
     broadcastId: z.string().nonempty().describe("Broadcast ID"),
     name: z.string().optional().describe("Name for the broadcast"),
     segmentId: z.string().optional().describe("Segment ID to send to"),
@@ -302,6 +332,9 @@ export function addBroadcastTools(
       ),
     },
     async ({
+      channel,
+      whatsapp,
+      messaging,
       name,
       segmentId,
       subject,
@@ -316,7 +349,10 @@ export function addBroadcastTools(
 
       // Type check on from, since "from" is optionally included in the arguments schema
       // This should never happen.
-      if (typeof fromEmailAddress !== "string") {
+      if (
+        (!channel || channel === "email") &&
+        typeof fromEmailAddress !== "string"
+      ) {
         throw new Error("from argument must be provided.")
       }
 
@@ -328,9 +364,32 @@ export function addBroadcastTools(
         throw new Error("replyTo argument must be provided.")
       }
 
-      var options: CreateBroadcastOptions
-
-      if (html) {
+      let options: CreateBroadcastOptions
+      if (channel && channel !== "email") {
+        if (
+          from !== undefined ||
+          subject !== undefined ||
+          html !== undefined ||
+          text !== undefined ||
+          replyTo !== undefined
+        )
+          throw new Error(
+            "Messaging broadcasts use a template and sender account."
+          )
+        if (channel === "whatsapp") {
+          if (!whatsapp || messaging)
+            throw new Error("Provide whatsapp configuration.")
+          options = { channel, whatsapp, name, segmentId }
+        } else {
+          if (!messaging || whatsapp)
+            throw new Error("Provide messaging configuration.")
+          options = { channel, messaging, name, segmentId }
+        }
+      } else if (typeof fromEmailAddress !== "string") {
+        throw new Error("from argument must be provided.")
+      } else if (!subject) {
+        throw new Error("subject argument must be provided.")
+      } else if (html) {
         options = {
           name,
           segmentId,
@@ -578,6 +637,9 @@ export function addBroadcastTools(
     UPDATE_BROADCAST_TOOL,
     async ({
       broadcastId: rawBroadcastId,
+      channel,
+      whatsapp,
+      messaging,
       name,
       segmentId,
       from,
@@ -600,10 +662,18 @@ export function addBroadcastTools(
       }
 
       const missingFields: string[] = []
-      if (!current.data.from && !from) {
+      if (
+        (current.data.channel ?? "email") === "email" &&
+        !current.data.from &&
+        !from
+      ) {
         missingFields.push("from")
       }
-      if (!current.data.audience_id && !segmentId) {
+      if (
+        (current.data.channel ?? "email") === "email" &&
+        !current.data.audience_id &&
+        !segmentId
+      ) {
         missingFields.push("segmentId")
       }
 
@@ -629,6 +699,9 @@ export function addBroadcastTools(
       }
 
       const response = await opensend.broadcasts.update(broadcastId, {
+        channel,
+        whatsapp,
+        messaging,
         name,
         segmentId,
         from,
