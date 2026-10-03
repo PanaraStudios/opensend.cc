@@ -191,12 +191,16 @@ export function messengerInstagramTests(
         "/"
       )[2] as Id<"automations">
       await owner.getByTestId("workflow-node-start").click()
-      await owner.getByPlaceholder("Type or select an event").click()
       await owner
-        .getByRole("option", {
-          name: "Messenger message received",
-          exact: true,
-        })
+        .getByRole("combobox", { name: "Event picker", exact: true })
+        .click()
+      await owner
+        .getByPlaceholder("Search events…")
+        .fill("Messenger message received")
+      // Options show the event's description under its label.
+      await owner
+        .getByRole("option", { name: /^Messenger message received/ })
+        .first()
         .click()
       await owner.getByTestId("workflow-add-step").last().click()
       await owner

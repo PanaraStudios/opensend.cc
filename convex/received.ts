@@ -237,7 +237,8 @@ export const complete = internalMutation({
         "email",
         "inbound",
         "received",
-        args.content.text || args.content.html || args.metadata.subject,
+        // Webhooks carry email metadata only, never body text.
+        args.metadata.subject,
         await emailContact(ctx, (await ctx.db.get("receivedEmails", id))!)
       ),
       email_id: id,

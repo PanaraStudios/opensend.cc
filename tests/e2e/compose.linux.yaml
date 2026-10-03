@@ -1,0 +1,19 @@
+# Linux-only additions for the throwaway e2e stack (scripts/test-e2e.mjs).
+# Docker Desktop lets containers reach the host's loopback-published ports via
+# host.docker.internal; Linux Docker does not. Publish the ports the backend and
+# app call through host.docker.internal on the host gateway too, and map the name
+# in every container that uses it.
+services:
+  convex:
+    ports:
+      - "${E2E_HOST_GATEWAY}:${CONVEX_PORT}:3210"
+      - "${E2E_HOST_GATEWAY}:${CONVEX_SITE_PORT}:3211"
+  migrate:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  app:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  oidc:
+    ports:
+      - "${E2E_HOST_GATEWAY}:${OIDC_PORT}:8080"
