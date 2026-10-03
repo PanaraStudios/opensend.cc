@@ -82,7 +82,7 @@ export const CHANNELS = {
     idLabel: "Page ID",
     resource: "pages",
     idParam: "page_id",
-    supports: { logs: false, registration: false, delivered: true },
+    supports: { logs: true, registration: false, delivered: true },
     accountFields: {
       channel: "channel",
       external_id: "externalId",
@@ -100,7 +100,7 @@ export const CHANNELS = {
     idLabel: "Account ID",
     resource: "accounts",
     idParam: "account_id",
-    supports: { logs: false, registration: false, delivered: false },
+    supports: { logs: true, registration: false, delivered: false },
     accountFields: {
       channel: "channel",
       external_id: "externalId",
@@ -138,4 +138,9 @@ export function channelForSendStep(
   return MESSAGING_CHANNELS.find(
     (channel) => CHANNELS[channel].sendStep === type
   )!
+}
+
+/** An unrecognized list filter (including “all”) means every channel. */
+export function logChannel(value: string): Channel | undefined {
+  return CHANNEL_IDS.find((channel) => channel === value)
 }

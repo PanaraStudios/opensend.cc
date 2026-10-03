@@ -1,6 +1,10 @@
 "use client"
 import { object } from "@/lib/meta/parse"
-import { fromWaId } from "@/lib/dashboard/phone"
+import {
+  detailThreadMessage,
+  messageEnvelope,
+  messageParty,
+} from "@/lib/dashboard/message-detail"
 
 import * as React from "react"
 import Link from "next/link"
@@ -81,7 +85,7 @@ import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/prev
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 import { useChannelMessage } from "@/lib/messages/use-messages"
 import { threadHref } from "@/lib/messages/links"
-import { ConversationThread } from "@/components/dashboard/conversation/conversation-thread"
+import { NormalizedMessageContent } from "@/components/dashboard/conversation/message-content"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
@@ -140,9 +144,7 @@ function emailMeta(email: {
   id: string
 }) {
   return [
-    { label: "From", value: email.from },
-    { label: "Subject", value: email.subject },
-    { label: "To", value: email.to },
+    ...messageEnvelope({ channel: "email", ...email }),
     {
       label: "Id",
       value: (
@@ -320,7 +322,7 @@ export function EmailDetail() {
     return (
       <NotFoundState
         icon={MailIcon}
-        noun="email"
+        noun="message"
         backHref="/emails"
         description="It may have been pruned from this workspace."
       />
@@ -373,7 +375,7 @@ export function EmailDetail() {
                   onClick={share.open}
                 >
                   <ShareIcon />
-                  Share email
+                  Share message
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   render={<Link href={`/logs?email=${email.id}`} />}
@@ -420,6 +422,10 @@ export function EmailDetail() {
         emailId={email.id}
         showInsights
       />
+      <JsonSection
+        title="Payload"
+        value={{ channel: "email", direction: "outbound", ...email }}
+      />
     </div>
   )
 }
@@ -435,7 +441,7 @@ export function ReceivedDetail() {
     return (
       <NotFoundState
         icon={InboxIcon}
-        noun="email"
+        noun="message"
         backHref="/emails/receiving"
         description="Inbound mail may have been removed from this workspace."
       />
@@ -454,7 +460,7 @@ export function ReceivedDetail() {
             <DropdownMenuGroup>
               <DropdownMenuItem disabled={!share.canWrite} onClick={share.open}>
                 <ShareIcon />
-                Share email
+                Share message
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </MoreMenu>
@@ -477,6 +483,10 @@ export function ReceivedDetail() {
         subject={email.subject}
         html={email.html}
         text={email.text}
+      />
+      <JsonSection
+        title="Payload"
+        value={{ channel: "email", direction: "inbound", ...email }}
       />
     </div>
   )
@@ -502,13 +512,15 @@ export function ChannelMessageDetail() {
 
   const { message, account, events } = found
   const inbound = message.direction === "inbound"
-  const number = account?.handle ?? message.from
-  const person =
-    message.channel === "whatsapp"
-      ? fromWaId(inbound ? message.from : message.to)
-      : inbound
-        ? message.from
-        : message.to
+  const number =
+    (message.channel === "whatsapp"
+      ? account?.handle
+      : account?.displayName || account?.handle) ?? message.from
+  const person = messageParty({
+    channel: message.channel,
+    address: inbound ? message.from : message.to,
+    ...found.party,
+  })
   const payload: unknown = JSON.parse(found.payload)
   const template =
     message.type === "template" &&
@@ -540,8 +552,11 @@ export function ChannelMessageDetail() {
       />
       <MetaStrip
         items={[
-          { label: "From", value: inbound ? person : number },
-          { label: "To", value: inbound ? number : person },
+          ...messageEnvelope({
+            channel: message.channel,
+            from: inbound ? person : number,
+            to: inbound ? number : person,
+          }),
           {
             label: template ? "Template" : "Type",
             value: template ?? sentenceCase(message.type),
@@ -570,7 +585,6 @@ export function ChannelMessageDetail() {
           <CircleAlertIcon />
           <AlertTitle>
             {message.errorTitle ?? "Meta refused the message"}
-            {message.errorCode ? ` (${message.errorCode})` : ""}
           </AlertTitle>
           <AlertDescription>{message.error}</AlertDescription>
         </Alert>
@@ -592,14 +606,15 @@ export function ChannelMessageDetail() {
             : {}),
         }))}
       />
-      <div className="frame h-[calc(100svh-14rem)] min-h-0">
-        <div className="panel h-full min-h-0 overflow-hidden p-0">
-          <ConversationThread
-            key={message.conversationId}
-            id={message.conversationId}
-          />
-        </div>
-      </div>
+      <PanelTabs
+        value="preview"
+        onValueChange={() => undefined}
+        tabs={[{ value: "preview", label: "Preview" }]}
+      >
+        <TabsContent value="preview" className="p-5">
+          <NormalizedMessageContent message={detailThreadMessage(found)} />
+        </TabsContent>
+      </PanelTabs>
       {found.media.length ? (
         <MessageFiles messageId={message._id} media={found.media} />
       ) : null}

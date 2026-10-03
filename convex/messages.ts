@@ -1,5 +1,5 @@
 import { CHANNELS, CHANNEL_IDS, type LogChannel } from "../lib/channels"
-import { renderedChannelTemplate } from "./channels/templates"
+import { hydratedChannelMessage } from "./channels/payload"
 import { channelRows } from "./channels/rows"
 import { ConvexError, v } from "convex/values"
 import {
@@ -13,6 +13,7 @@ import {
 } from "convex-helpers/server/stream"
 import {
   action,
+  mutation,
   query,
   internalQuery,
   type QueryCtx,
@@ -32,6 +33,13 @@ import {
   literals,
   renderedTemplateValue,
 } from "./tables/channels"
+import { createChannelMessage } from "./channels/messages"
+import {
+  templateTestReady,
+  templateTestRecipient,
+  templateTestVariables,
+} from "../lib/dashboard/template-test"
+import { findPublished } from "./templates"
 import { mediaDownloadLink } from "./channels/downloads"
 
 /* The Messages section's Sending and Receiving logs: email and channel
@@ -319,10 +327,17 @@ const sum = (totals: (number | null)[]) =>
 /** A WhatsApp (or later Messenger, Instagram) message with its body and
     timeline, for its detail page. */
 export const get = query({
-  args: { id: v.string() },
+  args: { id: v.string(), now: v.optional(v.number()) },
   returns: v.union(
     v.null(),
     v.object({
+      party: v.optional(
+        v.object({
+          profileName: v.optional(v.string()),
+          username: v.optional(v.string()),
+        })
+      ),
+      normalized: v.record(v.string(), v.any()),
       message: schema.doc("channelMessages"),
       payload: v.string(),
       rendered: v.optional(renderedTemplateValue),
@@ -343,7 +358,7 @@ export const get = query({
       ),
     })
   ),
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { id, now }) => {
     const message = await readTeamRow(ctx, "channelMessages", id)
     if (!message) return null
     const content = await ctx.db
@@ -351,13 +366,21 @@ export const get = query({
       .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
       .unique()
     const account = await ctx.db.get("channelAccounts", message.accountId)
-    const rendered = await renderedChannelTemplate(
+    const party = await ctx.db.get("channelContacts", message.channelContactId)
+    const normalized = await hydratedChannelMessage(
       ctx,
       message,
-      content,
-      account
+      now ?? message._creationTime,
+      content
     )
+    const rendered = normalized.rendered
     return {
+      ...(party
+        ? {
+            party: { profileName: party.profileName, username: party.username },
+          }
+        : {}),
+      normalized,
       message,
       ...(rendered ? { rendered } : {}),
       payload: content?.payload ?? "{}",
@@ -422,5 +445,79 @@ export const mediaMessage = internalQuery({
   handler: async (ctx, { id }) => {
     const message = await readTeamRow(ctx, "channelMessages", id)
     return message ? { message } : null
+  },
+})
+
+/** Dashboard test sends use the production validation, queue and event path. */
+export const sendTest = mutation({
+  args: {
+    organizationId: v.string(),
+    templateId: v.id("templates"),
+    from: v.string(),
+    to: v.string(),
+    variables: v.record(v.string(), v.string()),
+  },
+  returns: v.id("channelMessages"),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId, "write")
+    const template = await ctx.db.get("templates", args.templateId)
+    if (!template || template.organizationId !== args.organizationId)
+      throw new ConvexError("Template not found")
+    if (!template.channel || template.channel === "email")
+      throw new ConvexError("Choose a Meta channel template")
+    if (!templateTestReady(template))
+      throw new ConvexError(
+        template.channel === "whatsapp"
+          ? "Use a template approved by Meta"
+          : "Publish this template before sending it"
+      )
+    let to: string
+    try {
+      to = templateTestRecipient(template.channel, args.to)
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof Error ? error.message : "Enter a recipient"
+      )
+    }
+    return createChannelMessage(
+      ctx,
+      {
+        channel: template.channel,
+        from: args.from,
+        to,
+        body: { template: { id: template._id, variables: args.variables } },
+      },
+      { organizationId: args.organizationId, source: "dashboard" }
+    )
+  },
+})
+
+/** Test input fields come from the published copy, never unsent draft edits. */
+export const testDefinition = query({
+  args: { organizationId: v.string(), templateId: v.id("templates") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      variables: v.array(v.object({ key: v.string(), label: v.string() })),
+    })
+  ),
+  handler: async (ctx, { organizationId, templateId }) => {
+    await requireTeam(ctx, organizationId, "read")
+    const template = await ctx.db.get("templates", templateId)
+    if (
+      !template ||
+      template.organizationId !== organizationId ||
+      !templateTestReady(template)
+    )
+      return null
+    const live = await findPublished(ctx, templateId)
+    if (!live) return null
+    return {
+      variables: templateTestVariables({
+        channel: template.channel,
+        components: live.components,
+        variables: live.variables.map((variable) => variable.key),
+      }),
+    }
   },
 })

@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   CHANNELS,
+  logChannel,
   CHANNEL_IDS,
   PAGE_CHANNELS,
   isPageChannel,
@@ -29,7 +30,7 @@ test("every channel has a stable label, resource and account identifier", () => 
   )
   assert.deepEqual(
     CHANNEL_IDS.filter((channel) => CHANNELS[channel].supports.logs),
-    ["email", "whatsapp"]
+    [...CHANNEL_IDS]
   )
   assert.deepEqual(CHANNEL_IDS.filter(isPageChannel), [...PAGE_CHANNELS])
   assert.equal(isPageChannel("unknown"), false)
@@ -50,4 +51,10 @@ test("the registry maps each messaging automation step to its own channel", () =
     assert.equal(isChannelSendStep(step), true)
   assert.equal(isChannelSendStep("send_email"), false)
   assert.equal(isChannelSendStep("send_unknown"), false)
+})
+
+test("message log filters accept every channel and ignore unknown filters", () => {
+  for (const channel of CHANNEL_IDS) assert.equal(logChannel(channel), channel)
+  assert.equal(logChannel("all"), undefined)
+  assert.equal(logChannel("unknown"), undefined)
 })

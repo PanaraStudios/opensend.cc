@@ -937,6 +937,38 @@ for (const channel of ["messenger", "instagram"] as const) {
       to: channel === "messenger" ? PSID : IGSID,
       status: "queued",
     })
+    const log = await f.member.client.query(api.messages.sending, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: page,
+    })
+    expect(
+      log.page.map((row) => row.kind === "channel" && row.message._id)
+    ).toEqual([sent])
+    expect(
+      await f.member.client.query(api.messages.sendingCount, {
+        organizationId: f.owner.team,
+        channel,
+      })
+    ).toEqual({ total: 1 })
+    expect(
+      (
+        await f.member.client.query(api.messages.receiving, {
+          organizationId: f.owner.team,
+          channel,
+          paginationOpts: page,
+        })
+      ).page
+    ).toHaveLength(1)
+    const detail = await f.member.client.query(api.messages.get, {
+      id: sent,
+      now: Date.now(),
+    })
+    expect(detail!.normalized).toMatchObject({
+      channel,
+      type: "text",
+      content: { body: "On its way!" },
+    })
     const claim = await f.t.mutation(internal.channels.messages.claim, {
       id: sent,
       generation: 0,

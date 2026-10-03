@@ -1,6 +1,7 @@
 "use client"
 import { SendMessageAction } from "../conversation/send-message-action"
 
+export { logChannel } from "@/lib/channels"
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -105,11 +106,6 @@ export function sendingStatus(
     (CHANNEL_STATUSES as string[]).includes(value)
     ? (value as EmailStatus | ChannelMessageStatus)
     : undefined
-}
-
-/** A channel filter value as the logs take it; "all" is no filter. */
-export function logChannel(value: string): "email" | "whatsapp" | undefined {
-  return value === "email" || value === "whatsapp" ? value : undefined
 }
 
 const SUPPRESSION_REASONS: SuppressionReason[] = [

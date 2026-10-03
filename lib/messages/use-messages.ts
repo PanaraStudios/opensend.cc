@@ -97,8 +97,21 @@ function asReceivedRow(item: ReceivedItem): LogRow {
   }
 }
 
+/** Bounded search across inbound/outbound messages on every channel. */
+export function useMessageSearch(search: string, enabled: boolean) {
+  const args = { search, paginationOpts: { cursor: null, numItems: 8 } }
+  const sent = useTeamQuery(api.messages.sending, args, { enabled })
+  const received = useTeamQuery(api.messages.receiving, args, { enabled })
+  return [
+    ...(sent?.page.map(asSentRow) ?? []),
+    ...(received?.page.map(asReceivedRow) ?? []),
+  ]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 8)
+}
+
 type LogFilters = {
-  channel?: "email" | "whatsapp"
+  channel?: Channel
   search?: string
   from?: number
   to?: number
@@ -130,7 +143,8 @@ export function useReceivingLog(filters: LogFilters) {
 /** A channel message with its body and timeline; undefined while loading,
     null when there is no such message. */
 export function useChannelMessage(id: string | undefined) {
-  return useQuery(api.messages.get, id ? { id } : "skip")
+  const [now] = React.useState(() => Date.now())
+  return useQuery(api.messages.get, id ? { id, now } : "skip")
 }
 
 /** Opens a signed download link for one of a message's files. */
