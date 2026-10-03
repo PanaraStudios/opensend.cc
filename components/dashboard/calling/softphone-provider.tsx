@@ -712,10 +712,9 @@ function TeamSoftphone({
         busy: !!currentId || working || phase === "connecting",
         available:
           !!organizationId &&
-          (!!currentId ||
-            !!setup?.numbers.some(
-              (n) => n.mode === "gateway" && n.routing === "agents"
-            )),
+          !!setup?.numbers.some(
+            (n) => n.mode === "gateway" && n.routing === "agents"
+          ),
         connecting: phase === "connecting",
         working,
         callLabel: incoming
