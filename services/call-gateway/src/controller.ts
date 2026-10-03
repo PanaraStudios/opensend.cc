@@ -28,6 +28,8 @@ interface Call {
   remoteSdp?: string
   routed?: RouteRequest
   answered: boolean
+  /** Epoch ms when the call was answered. Session clocks add this offset. */
+  answeredAt?: number
   mediaReported: boolean
   ending: boolean
   created: number
@@ -93,6 +95,13 @@ export function validateRoute(request: RouteRequest): void {
       request.silenceTimeoutSeconds > 300)
   )
     throw new GatewayError("INVALID_DURATION", "Invalid silence timeout")
+  if (
+    request.answeredAt !== undefined &&
+    (!Number.isFinite(request.answeredAt) ||
+      request.answeredAt < 1_000_000_000_000 ||
+      request.answeredAt > Date.now() + 120_000)
+  )
+    throw new GatewayError("INVALID_ROUTE", "Invalid answer time")
   if (request.record !== undefined && typeof request.record !== "boolean")
     throw new GatewayError("INVALID_RECORD", "record must be boolean")
 }
@@ -398,6 +407,7 @@ export class CallController implements GatewayApi {
       ])
       await this.parked(call)
       call.answered = true
+      call.answeredAt ??= Date.now()
     } catch (error) {
       await this.finish(call, "Remote answer failed")
       throw error
@@ -501,6 +511,12 @@ export class CallController implements GatewayApi {
         }
       }
       if (controlled) {
+        if (request.answeredAt !== undefined)
+          call.answeredAt = Math.min(
+            call.answeredAt ?? request.answeredAt,
+            request.answeredAt
+          )
+        else call.answeredAt ??= Date.now()
         await this.fs.api(
           `sched_hangup +${request.maxDurationSeconds ?? 300} ${call.uuid} ALLOTTED_TIMEOUT`
         )
@@ -512,7 +528,8 @@ export class CallController implements GatewayApi {
           (reason) => this.finish(call, reason),
           (extension) =>
             this.control({ callId: call.id, operation: "transfer", extension }),
-          () => this.startRecording(call)
+          () => this.startRecording(call),
+          call.answeredAt
         )
       }
       // The authenticated route invocation is Convex's confirmation that Graph accept returned 200.

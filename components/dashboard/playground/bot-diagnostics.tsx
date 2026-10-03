@@ -7,15 +7,18 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Doc } from "@/convex/_generated/dataModel"
-import { voiceDiagnostic } from "@/lib/dashboard/voice-bot-form"
+import {
+  orderCallTranscript,
+  voiceDiagnostic,
+} from "@/lib/dashboard/voice-bot-form"
 import { VOICE_TOOL_LABELS } from "@/lib/dashboard/voice-options"
 import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
 type TranscriptRow = Omit<
   Doc<"callTranscripts">,
   "_id" | "_creationTime" | "organizationId"
-> & { id: string }
+> & { id: string; createdAt?: number }
 export function Transcript({ lines }: { lines: TranscriptRow[] }) {
-  const ordered = lines.slice().sort((a, b) => a.timestampMs - b.timestampMs)
+  const ordered = orderCallTranscript(lines)
   return (
     <div aria-label="Transcript" className="flex flex-col gap-4">
       {ordered.map((line, i) => {

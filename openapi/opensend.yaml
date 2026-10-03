@@ -29893,6 +29893,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30042,6 +30046,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30190,6 +30198,10 @@ components:
         recording:
           type: boolean
           default: false
+        callerContext:
+          type: boolean
+          default: true
+          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30240,6 +30252,7 @@ components:
         - maxDurationSeconds
         - silenceTimeoutSeconds
         - recording
+        - callerContext
         - disclosure
         - createdAt
         - updatedAt
@@ -30387,6 +30400,15 @@ components:
           type: boolean
         timestampMs:
           type: number
+          description: Milliseconds since the call was answered.
+        timeline:
+          type: string
+          enum:
+            - call
+          description: Present when timestampMs is milliseconds since the call was answered. Older rows omit it.
+        createdAt:
+          type: number
+          description: Row creation time. Stable tie-break when timestampMs matches.
         toolId:
           type: string
         toolName:

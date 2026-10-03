@@ -38,6 +38,8 @@ export interface VoiceBotInput {
   maxDurationSeconds?: number
   silenceTimeoutSeconds?: number
   recording?: boolean
+  /** Look up the caller at the start of each session. Defaults to true when omitted. */
+  callerContext?: boolean
   disclosure?: string
   monthlyMinuteBudget?: number
   maxConcurrentCalls?: number
@@ -127,7 +129,12 @@ export interface CallTranscriptLine {
   role?: "caller" | "agent"
   text?: string
   final?: boolean
+  /** Milliseconds since the call was answered. */
   timestampMs: number
+  /** Present when timestampMs uses the call-relative clock. */
+  timeline?: "call"
+  /** Creation time. Tie-break for equal timestampMs. */
+  createdAt?: number
   toolId?: string
   toolName?: string
   arguments?: string

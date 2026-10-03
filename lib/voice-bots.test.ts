@@ -24,6 +24,11 @@ test("shared voice catalog applies defaults, limits languages and maps Odia per 
   assert.equal(bot.stt?.model, "saaras:v4")
   assert.equal(bot.tts?.model, "bulbul:v3")
   assert.equal(bot.maxDurationSeconds, 600)
+  assert.equal(bot.callerContext, true)
+  assert.equal(
+    validateBot({ ...input, callerContext: false }).callerContext,
+    false
+  )
   assert.equal(validateBot({ ...input, language: "od-IN" }).language, "or-IN")
   assert.equal(sarvamLanguage("or-IN", "tts"), "od-IN")
   for (const patch of [
@@ -32,6 +37,7 @@ test("shared voice catalog applies defaults, limits languages and maps Odia per 
     { monthlyMinuteBudget: NaN },
     { tools: ["create_task"] },
     { handoff: { agents: true, extension: "evil" } },
+    { callerContext: "yes" },
   ])
     assert.throws(() => validateBot({ ...input, ...patch }))
   assert.equal(

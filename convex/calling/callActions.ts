@@ -467,6 +467,9 @@ export const gatewayConnect = internalAction({
           callId: id,
           target: row.agentExtension ? "agent" : "ivr",
           extension: row.agentExtension,
+          ...(row.connectedAt !== undefined
+            ? { answeredAt: row.connectedAt }
+            : {}),
         })
         await ctx.runMutation(internal.calling.rows.finish, {
           id,

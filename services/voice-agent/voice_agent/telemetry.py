@@ -10,8 +10,17 @@ from pipecat.frames.frames import (
     ErrorFrame,
     UserSpeakingFrame,
     UserStartedSpeakingFrame,
+    InterruptionFrame,
+    TTSTextFrame,
+    TTSStartedFrame,
+    TTSStoppedFrame,
+    LLMFullResponseStartFrame,
+    LLMFullResponseEndFrame,
+    EndFrame,
+    CancelFrame,
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
+from .transcript import TurnTranscripts
 
 
 class Telemetry(FrameProcessor):
@@ -26,24 +35,71 @@ class Telemetry(FrameProcessor):
         self.usage: dict[str, float] = {}
         self.transcript = ""
         self.last_activity = 0
+        self.turns = TurnTranscripts()
 
     def now(self):
         return round((time.monotonic() - self.origin) * 1000)
 
-    async def line(self, role: str, text: str, interrupted=False):
+    async def line(self, role: str, text: str, interrupted=False, timestamp_ms=None):
         text = text[:16000]
         if interrupted:
             text += " [interrupted]"
         self.transcript = (self.transcript + f"\n{role}: {text}")[-24000:]
+        stamp = self.now() if timestamp_ms is None else max(0, int(timestamp_ms))
         await self.emit(
             {
                 "type": "transcript",
                 "role": role,
                 "text": text,
                 "final": True,
-                "timestampMs": self.now(),
+                "timestampMs": stamp,
             }
         )
+
+    async def _emit_caller(self):
+        flushed = self.turns.caller.flush()
+        if flushed:
+            text, timestamp_ms = flushed
+            await self.line("caller", text, timestamp_ms=timestamp_ms)
+
+    async def _emit_agent(self, interrupted: bool):
+        flushed = self.turns.agent.seal(interrupted)
+        if flushed:
+            text, timestamp_ms, was_interrupted = flushed
+            await self.line("agent", text, was_interrupted, timestamp_ms=timestamp_ms)
+
+    async def _note(self, frame: Frame):
+        now = self.now()
+        if isinstance(frame, (TTSStartedFrame, LLMFullResponseStartFrame)):
+            self.turns.agent.begin()
+        elif isinstance(frame, TTSTextFrame):
+            self.turns.agent.add_text(
+                frame.text,
+                now,
+                spaced=bool(getattr(frame, "includes_inter_frame_spaces", False)),
+            )
+        elif isinstance(frame, (InterruptionFrame, UserStartedSpeakingFrame)):
+            # The Gemini service has already appended any unsent input tail.
+            # Transcription frames still queued behind this system frame are
+            # the next utterance, so they stay open until the following flush.
+            await self._emit_caller()
+            if isinstance(frame, InterruptionFrame):
+                await self._emit_agent(True)
+        elif isinstance(frame, InputTransportMessageFrame):
+            message = frame.message
+            if message.get("type") == "played_ms" and self.turns.agent.parts:
+                await self._emit_agent(True)
+        elif isinstance(frame, (TTSStoppedFrame, LLMFullResponseEndFrame)):
+            # Do not commit the caller here. Gemini may still be holding the
+            # tail of the utterance in its input-transcription buffer.
+            if not self.turns.agent.dropping:
+                await self._emit_agent(False)
+        elif isinstance(frame, EndFrame):
+            await self._emit_caller()
+            await self._emit_agent(False)
+        elif isinstance(frame, CancelFrame):
+            await self._emit_caller()
+            await self._emit_agent(True)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -93,4 +149,5 @@ class Telemetry(FrameProcessor):
         elif isinstance(frame, ErrorFrame):
             # Provider exception text can contain request headers. Emit only a fixed code.
             await self.emit({"type": "end", "reason": "Voice provider failed"})
+        await self._note(frame)
         await self.push_frame(frame, direction)

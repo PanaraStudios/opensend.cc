@@ -47,6 +47,8 @@ export const botConfig = v.object({
   maxDurationSeconds: v.number(),
   silenceTimeoutSeconds: v.number(),
   recording: v.boolean(),
+  // Absent on bots and call snapshots saved before this field: lookup stays on.
+  callerContext: v.optional(v.boolean()),
   disclosure: v.string(),
   monthlyMinuteBudget: v.optional(v.number()),
   maxConcurrentCalls: v.optional(v.number()),
@@ -120,7 +122,10 @@ export const voiceTables = {
     role: v.optional(v.union(v.literal("caller"), v.literal("agent"))),
     text: v.optional(v.string()),
     final: v.optional(v.boolean()),
+    // Milliseconds since the call was answered. Rows written before that
+    // clock omit `timeline` and the call view keeps creation order.
     timestampMs: v.number(),
+    timeline: v.optional(v.literal("call")),
     toolId: v.optional(v.string()),
     toolName: v.optional(v.string()),
     arguments: v.optional(v.string()),

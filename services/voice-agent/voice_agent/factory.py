@@ -5,6 +5,14 @@ from google.genai.types import HttpOptions
 from dataclasses import dataclass
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.frames.frames import (
+    CancelFrame,
+    EndFrame,
+    Frame,
+    InterruptionFrame,
+    UserStartedSpeakingFrame,
+)
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService, GeminiVADParams
 from pipecat.services.google.llm import GoogleLLMService
 from pipecat.services.sarvam.stt import SarvamRealtimeSTTService
@@ -13,10 +21,27 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService, CommitStrategy
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.elevenlabs.dialogue.tts import ElevenLabsDialogueTTSService
+from .transcript import take_gemini_user_buffer
 
 
 class ResumableGeminiLive(GeminiLiveLLMService):
     """1.12.0 resumes on disconnect but ignores GoAway; trigger its existing reconnect."""
+
+    def attach_transcripts(self, turns, now) -> None:
+        self._call_transcripts = turns
+        self._call_transcript_now = now
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        # Take the unsent input-transcription tail before Pipecat cancels its
+        # 0.5s flush. EndFrame may be deferred while the bot is still talking;
+        # the tail still belongs to the caller turn already in progress.
+        if isinstance(frame, (EndFrame, CancelFrame, InterruptionFrame, UserStartedSpeakingFrame)):
+            await take_gemini_user_buffer(
+                self,
+                getattr(self, "_call_transcripts", None),
+                getattr(self, "_call_transcript_now", lambda: 0),
+            )
+        await super().process_frame(frame, direction)
 
     async def _handle_server_message(self, message):
         await super()._handle_server_message(message)
@@ -76,6 +101,10 @@ def system_instruction(config: dict) -> str:
                         f"{'feminine' if gender == 'female' else 'masculine'} grammatical gender "
                         "for first-person verbs, adjectives and self-references. "
                         "Do not change the caller's gender. You are still an AI assistant.")
+    block = config.get("callerContextBlock")
+    # Convex already caps the block. Slice again so a large value cannot enter the prompt.
+    if isinstance(block, str) and block.strip():
+        instruction += "\n" + block[:2000]
     return instruction
 
 

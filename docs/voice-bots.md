@@ -17,6 +17,13 @@ Pipecat's WhatsApp transport would answer Meta directly over WebRTC. This applic
 uses its FastAPI WebSocket transport so IVR, agent transfers, recording, duration
 caps and the stable call record continue to belong to FreeSWITCH and Convex.
 
+`callTranscripts.timestampMs` is milliseconds since the call was answered. Each bot
+media session starts its own clock at 0; the gateway adds that session's offset
+from answer before the row is stored. Tool, note, hangup and diagnostic rows use
+the same origin (`connectedAt`, then the first bot start). Rows written before
+this clock omit `timeline: "call"`, and the call detail view leaves those in
+creation order. Audio packet `timestampMs` is still relative to the media session.
+
 | Brief section       | Result                                                                                                                                                                                                                                       |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Credentials         | DONE: team-scoped encrypted Gemini, Sarvam and ElevenLabs credentials; write-only keys; `lastFour` on reads; credential POST bodies redacted in API logs.                                                                                    |
@@ -227,3 +234,17 @@ include readable interactive text, rendered template bodies and media type/capti
 with direction and relative time, for example `Customer (2h ago): I need help`.
 Deleted messages show a deletion marker. These fields are untrusted customer data,
 not instructions. Metadata is bounded to 100 memberships/identities per lookup.
+
+`callerContext` defaults to true for new bots and for bots saved before the field
+existed. When a bot session starts, including a second bot session after an IVR
+transfer, Convex loads that same caller record and returns it with the session
+config. The voice agent appends the block to the system instructions for both
+Gemini Live and the cascade before the first reply, so the model does not need a
+tool round trip to know who is calling. The block is capped at 2,000 characters.
+The lookup stops after 800 ms. If it times out or fails, the bot starts without
+the block and the gateway logs the reason without CRM data. An unknown caller is
+described as not found, with the phone number from the call when there is one.
+Missing fields are omitted rather than filled in. `lookup_contact` stays available
+so the bot can refresh the record during the call. Set `callerContext` to false
+to skip the lookup. The default system prompt tells the model the context is
+already present and that `lookup_contact` is only for a refresh.

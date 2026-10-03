@@ -12,6 +12,8 @@ export interface RouteRequest {
   codec?: "L16" | "PCMU"
   silenceTimeoutSeconds?: number
   maxDurationSeconds?: number
+  /** Epoch ms when the call was answered. Convex sends `connectedAt`. */
+  answeredAt?: number
 }
 export interface GatewayApi {
   inbound(offerSdp: string, callId: string): Promise<{ answerSdp: string }>

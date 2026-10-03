@@ -55,7 +55,11 @@ const publicBot = (row: Doc<"voiceBots">) => {
   const { _id, _creationTime, organizationId, ...config } = row
   void _creationTime
   void organizationId
-  return { id: _id, ...config }
+  return {
+    id: _id,
+    ...config,
+    callerContext: row.callerContext !== false,
+  }
 }
 const publicProvider = (row: Doc<"voiceProviders">) => ({
   id: row._id,
@@ -417,9 +421,8 @@ export const transcript = internalQuery({
       object: "list",
       has_more: page.has_more,
       data: page.data.map(({ _id, _creationTime, organizationId, ...line }) => {
-        void _creationTime
         void organizationId
-        return { id: _id, ...line }
+        return { id: _id, createdAt: _creationTime, ...line }
       }),
     }
   },
