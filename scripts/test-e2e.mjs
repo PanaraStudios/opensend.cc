@@ -7,7 +7,8 @@ import {
   openSync,
   closeSync,
 } from "node:fs"
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
+import { lookup } from "node:dns/promises"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 import { startFakeGraph } from "../tests/e2e/fake-graph.mjs"
@@ -25,10 +26,35 @@ realm.clients[0].redirectUris = [
 realm.clients[0].webOrigins = [`http://localhost:${appPort}`]
 const realmFile = resolve(resultDir, "oidc-realm.json")
 writeFileSync(realmFile, JSON.stringify(realm), { mode: 0o600 })
+// Linux Docker has no host.docker.internal bridge to the host's loopback ports.
+const linux = process.platform === "linux"
+const composeFiles = linux
+  ? ["compose.yaml", "tests/e2e/compose.linux.yaml"]
+  : ["compose.yaml"]
+let hostGateway
+if (linux) {
+  hostGateway = spawnSync(
+    "docker",
+    [
+      "network",
+      "inspect",
+      "bridge",
+      "-f",
+      "{{(index .IPAM.Config 0).Gateway}}",
+    ],
+    { encoding: "utf8" }
+  ).stdout.trim()
+  if (!hostGateway) throw new Error("Could not find the Docker host gateway")
+  // The browser and test runner open host.docker.internal URLs (OIDC) too.
+  const { address } = await lookup("host.docker.internal").catch(() => ({}))
+  if (address !== "127.0.0.1")
+    throw new Error(
+      "Add `127.0.0.1 host.docker.internal` to /etc/hosts to run e2e on Linux"
+    )
+}
 const compose = [
   "compose",
-  "-f",
-  "compose.yaml",
+  ...composeFiles.flatMap((file) => ["-f", file]),
   "--env-file",
   filename,
   "-p",
@@ -64,6 +90,7 @@ const values = {
   META_GRAPH_ORIGIN: `http://host.docker.internal:${graphPort}`,
   // The suite reads invitation, verification and reset links from the logs.
   LOG_AUTH_LINKS: "true",
+  ...(hostGateway ? { E2E_HOST_GATEWAY: hostGateway } : {}),
   ...(process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE
     ? { CONVEX_IMAGE: process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE }
     : {}),
@@ -79,7 +106,7 @@ const env = {
   ...process.env,
   OPENSEND_ENV_FILE: filename,
   COMPOSE_PROJECT_NAME: project,
-  COMPOSE_FILE: "compose.yaml",
+  COMPOSE_FILE: composeFiles.join(":"),
   OPENSEND_BASE_URL: values.SITE_URL,
   OPENSEND_CONVEX_URL: values.CONVEX_PUBLIC_URL,
   OPENSEND_CALLBACK_ORIGIN: values.CONVEX_PUBLIC_SITE_URL,
