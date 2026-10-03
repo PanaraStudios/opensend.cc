@@ -44,20 +44,26 @@ export function channelsTests(state: () => State) {
   test("the owner connects a WhatsApp number manually, registers, syncs and disconnects it", async () => {
     const { owner } = state()
     await owner.request.post(`${fakeGraph()}/__reset`)
-    await owner.goto("/channels")
+    // Earlier specs add email domains, so filter Channels to WhatsApp.
+    await owner.goto("/channels?type=whatsapp")
     await expect(
       owner.getByRole("heading", { name: "Channels", level: 1 })
     ).toBeVisible()
-    await expect(owner.getByText("No channels", { exact: true })).toBeVisible()
     await expect(
-      owner.getByRole("button", { name: "Connect with Meta" }).first()
+      owner.getByText("No channels found", { exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("button", { name: "Add channel", exact: true })
     ).toBeVisible()
     await screenshot(owner, "empty")
 
     // Connect manually with a WABA ID and a system-user token.
     await owner
-      .getByRole("button", { name: "Connect manually", exact: true })
+      .getByRole("button", { name: "Add channel", exact: true })
       .first()
+      .click()
+    await owner
+      .getByRole("menuitem", { name: "Use an access token", exact: true })
       .click()
     const manual = owner.getByRole("dialog", { name: "Connect manually" })
     await manual
@@ -80,8 +86,8 @@ export function channelsTests(state: () => State) {
 
     const row = owner.getByRole("row").filter({ hasText: HANDLE })
     await expect(row).toContainText("Opensend E2E")
+    await expect(row).toContainText("WhatsApp")
     await expect(row).toContainText("Pending")
-    await expect(row).toContainText("Green")
     await expect(row.locator("svg path").first()).toHaveAttribute(
       "d",
       WHATSAPP_MARK
@@ -190,7 +196,7 @@ export function channelsTests(state: () => State) {
 
     // Disconnecting the business removes its number from the list.
     await owner.request.post(`${fakeGraph()}/__reset`)
-    await owner.goto("/channels")
+    await owner.goto("/channels?type=whatsapp")
     await row.getByRole("button", { name: "More options" }).click()
     await owner.getByRole("menuitem", { name: "Disconnect business" }).click()
     const confirm = owner.getByRole("alertdialog")
@@ -198,7 +204,9 @@ export function channelsTests(state: () => State) {
     await screenshot(owner, "disconnect")
     await confirm.getByRole("button", { name: /^Disconnect/ }).click()
     await expect(row).toHaveCount(0)
-    await expect(owner.getByText("No channels", { exact: true })).toBeVisible()
+    await expect(
+      owner.getByText("No channels found", { exact: true })
+    ).toBeVisible()
     await expect
       .poll(
         async () =>
@@ -207,7 +215,7 @@ export function channelsTests(state: () => State) {
       .toBe(1)
   })
 
-  test("Connect with Meta waits for the administrator's Embedded Signup setup", async () => {
+  test("a channel without its Meta login config connects with an access token", async () => {
     const { owner, member } = state()
     const backend = await client(owner)
     const status = await backend.query(api.meta.app.status, {})
@@ -219,51 +227,33 @@ export function channelsTests(state: () => State) {
       })
     await save(undefined)
     try {
-      await owner.goto("/channels")
-      await expect(
-        owner
-          .getByRole("alert")
-          .filter({
-            hasText:
-              "Connect with Meta needs configuration IDs. You can still connect manually with an access token.",
-          })
-      ).toBeVisible()
-      await expect(
-        owner.getByRole("button", { name: "Connect with Meta" }).first()
-      ).toBeDisabled()
-      await owner
-        .getByRole("button", { name: "Connect channel", exact: true })
-        .first()
-        .click()
-      await expect(
-        owner.getByRole("menuitem", {
-          name: "Facebook Page & Instagram",
-          exact: true,
-        })
-      ).toBeDisabled()
-      await screenshot(owner, "connect-menu")
-      await owner.keyboard.press("Escape")
-      // The administrator gets a way to fix it; a member does not.
-      await expect(
-        owner.getByRole("link", { name: "Set up the Meta app" }).first()
-      ).toHaveAttribute("href", "/instance/meta")
-      await screenshot(owner, "no-signup-config")
-      await member.goto("/channels")
-      await expect(
-        member
-          .getByRole("alert")
-          .filter({
-            hasText:
-              "Connect with Meta needs configuration IDs. You can still connect manually with an access token.",
-          })
-      ).toBeVisible()
-      await expect(
-        member.getByText("Ask your instance admin", { exact: false })
-      ).toBeVisible()
-      await expect(
-        member.getByRole("link", { name: "Set up the Meta app" })
-      ).toHaveCount(0)
-      await screenshot(member, "member")
+      // Members connect channels too, as they add domains.
+      for (const [page, name] of [
+        [owner, "manual-fallback"],
+        [member, "member"],
+      ] as const) {
+        await page.goto("/channels")
+        const manual = page.getByRole("dialog", { name: "Connect manually" })
+        for (const [channel, label] of [
+          ["WhatsApp", "WhatsApp Business Account ID"],
+          ["Messenger", "Page ID"],
+        ] as const) {
+          await page
+            .getByRole("button", { name: "Add channel", exact: true })
+            .first()
+            .click()
+          if (channel === "WhatsApp") await screenshot(page, `${name}-menu`)
+          await page
+            .getByRole("menuitem", { name: channel, exact: true })
+            .click()
+          await expect(manual.getByLabel(label, { exact: true })).toBeVisible()
+          await screenshot(page, `${name}-${channel.toLowerCase()}`)
+          await manual
+            .getByRole("button", { name: "Cancel", exact: true })
+            .click()
+          await expect(manual).toHaveCount(0)
+        }
+      }
     } finally {
       await backend.action(api.meta.app.save, {
         appId: status.appId!,

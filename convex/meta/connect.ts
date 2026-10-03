@@ -60,7 +60,7 @@ type PhoneNumber = typeof phoneNumberValue.type
 
 /** Connections and accounts as the dashboard sees them: never a token. */
 const connectionValue = schema.doc("metaConnections").omit("encryptedToken")
-const accountValue = schema
+export const accountValue = schema
   .doc("channelAccounts")
   .omit("encryptedToken")
   .extend({ businessName: v.string() })
@@ -71,7 +71,7 @@ function publicConnection(connection: Doc<"metaConnections">) {
   return rest
 }
 
-async function publicAccount(
+export async function publicAccount(
   ctx: QueryCtx,
   account: Doc<"channelAccounts">,
   existing?: Doc<"metaConnections">

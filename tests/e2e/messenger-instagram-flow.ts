@@ -374,7 +374,7 @@ export function messengerInstagramTests(
         fullPage: true,
       })
       await owner.goto("/channels")
-      // The Instagram row names the same Page as its business.
+      // The Messenger row shows the Page's name; the Instagram row its handle.
       const messenger = owner
         .getByRole("row")
         .filter({ hasText: "Opensend Messenger E2E" })

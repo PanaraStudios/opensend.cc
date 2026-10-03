@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
-  metaConfigurationNotice,
+  manualConnectUnavailable,
+  metaConnectRoute,
   metaConnectUnavailable,
   type MetaConnectConfig,
 } from "./connect-availability"
@@ -13,22 +14,6 @@ const config: MetaConnectConfig = {
   graphVersion: "v25.0",
   configIds: { whatsapp: "wa", facebookLogin: "fb" },
 }
-
-test("one notice covers every combination of missing configuration IDs", () => {
-  assert.equal(metaConfigurationNotice(config.configIds), null)
-  assert.equal(
-    metaConfigurationNotice({}),
-    "Connect with Meta needs configuration IDs. You can still connect manually with an access token."
-  )
-  assert.match(
-    metaConfigurationNotice({ whatsapp: "wa" })!,
-    /Facebook Login for Business is unavailable/
-  )
-  assert.match(
-    metaConfigurationNotice({ facebookLogin: "fb" })!,
-    /WhatsApp Embedded Signup is unavailable/
-  )
-})
 
 test("each login flow uses its own config ID for the disabled state and tooltip", () => {
   for (const flow of ["whatsapp", "facebookLogin"] as const) {
@@ -72,4 +57,39 @@ test("each login flow uses its own config ID for the disabled state and tooltip"
       /connection to finish/
     )
   }
+})
+
+test("a channel without its config ID connects with an access token instead", () => {
+  for (const flow of ["whatsapp", "facebookLogin"] as const) {
+    assert.deepEqual(metaConnectRoute(config, flow, ready), {
+      manual: false,
+      reason: null,
+    })
+    const missing = {
+      ...config,
+      configIds: { ...config.configIds, [flow]: undefined },
+    }
+    assert.deepEqual(metaConnectRoute(missing, flow, ready), {
+      manual: true,
+      reason: null,
+    })
+    assert.deepEqual(
+      metaConnectRoute(missing, flow, { ...ready, sdkReady: false }),
+      { manual: true, reason: null }
+    )
+    assert.match(
+      metaConnectRoute(config, flow, { ...ready, pending: true }).reason!,
+      /connection to finish/
+    )
+    for (const blocked of [
+      metaConnectRoute(undefined, flow, ready),
+      metaConnectRoute(missing, flow, { ...ready, canWrite: false }),
+    ]) {
+      assert.equal(blocked.manual, false)
+      assert.ok(blocked.reason)
+    }
+  }
+  assert.equal(manualConnectUnavailable(config, true), null)
+  assert.match(manualConnectUnavailable(config, false)!, /Create or join/)
+  assert.match(manualConnectUnavailable(undefined, true)!, /add the Meta app/)
 })

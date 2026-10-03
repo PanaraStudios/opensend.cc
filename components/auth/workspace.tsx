@@ -224,7 +224,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       !(
         installation.admin &&
         installation.installation?.setupStep === "domain" &&
-        (path === "/domains" || path.startsWith("/domains/"))
+        (path === "/channels" || path.startsWith("/domains/"))
       ) ? (
         <AuthPageFrame wide>
           {installation.admin ? (

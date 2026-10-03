@@ -96,6 +96,7 @@ import type * as channels_mediaUploads from "../channels/mediaUploads.js";
 import type * as channels_messages from "../channels/messages.js";
 import type * as channels_payload from "../channels/payload.js";
 import type * as channels_rows from "../channels/rows.js";
+import type * as channels_senders from "../channels/senders.js";
 import type * as channels_templates from "../channels/templates.js";
 import type * as contactImports from "../contactImports.js";
 import type * as contactProperties from "../contactProperties.js";
@@ -347,6 +348,7 @@ declare const fullApi: ApiFromModules<{
   "channels/messages": typeof channels_messages;
   "channels/payload": typeof channels_payload;
   "channels/rows": typeof channels_rows;
+  "channels/senders": typeof channels_senders;
   "channels/templates": typeof channels_templates;
   contactImports: typeof contactImports;
   contactProperties: typeof contactProperties;

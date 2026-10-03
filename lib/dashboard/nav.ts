@@ -3,7 +3,6 @@ import {
   CloudIcon,
   FileCodeIcon,
   FlaskConicalIcon,
-  GlobeIcon,
   KeyRoundIcon,
   MailsIcon,
   MegaphoneIcon,
@@ -17,6 +16,8 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { CHANNELS, CHANNEL_IDS } from "../channels"
+
 /** Where Settings opens. */
 export const SETTINGS_NAV_INDEX = "/settings/team"
 
@@ -25,7 +26,13 @@ export type NavItem = {
   title: string
   icon: LucideIcon
   match?: readonly string[]
+  /** What else finds the page in the command menu. */
+  keywords?: string[]
 }
+
+/** Email domains are a channel: the old Domains list opens Channels on
+    email, and /domains/[id] stays the domain's page. */
+export const EMAIL_CHANNELS_HREF = "/channels?type=email"
 
 /** Installation-wide pages only the installation admin opens, from the
     account menu and ⌘K. Amazon SES comes first. */
@@ -49,8 +56,13 @@ export const DASHBOARD_NAV: NavItem[] = [
     match: ["/contacts", "/properties", "/segments", "/topics"],
   },
   { href: "/metrics", title: "Metrics", icon: ChartColumnIcon },
-  { href: "/domains", title: "Domains", icon: GlobeIcon },
-  { href: "/channels", title: "Channels", icon: RadioTowerIcon },
+  {
+    href: "/channels",
+    title: "Channels",
+    icon: RadioTowerIcon,
+    match: ["/channels", "/domains"],
+    keywords: ["Domains", ...CHANNEL_IDS.map((id) => CHANNELS[id].label)],
+  },
   { href: "/logs", title: "Logs", icon: ScrollTextIcon },
   { href: "/api-keys", title: "API keys", icon: KeyRoundIcon },
   { href: "/webhooks", title: "Webhooks", icon: WebhookIcon },

@@ -15,7 +15,8 @@ import {
   Surface,
   useDeleteRecord,
 } from "@/components/dashboard/primitives"
-import { DnsRecordsTable, DomainIcon, DomainSection } from "./shared"
+import { DnsRecordsTable, DomainSection } from "./shared"
+import { channelIcon } from "@/components/dashboard/channels/shared"
 import { useDomainCommands } from "@/lib/domains/use-domains"
 import { actionError } from "@/lib/action-error"
 import { formatDateTime } from "@/lib/dashboard/format"
@@ -28,7 +29,7 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
   const verify = useMutation(api.domainClaims.verify)
   const create = useMutation(api.domainClaims.create)
   const { deleteDomain, canWrite } = useDomainCommands()
-  const { deleteAndLeave } = useDeleteRecord("/domains")
+  const { deleteAndLeave } = useDeleteRecord("/channels")
   const [pending, setPending] = React.useState(false)
   const [cancel, setCancel] = React.useState(false)
   async function check() {
@@ -65,10 +66,10 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
   return (
     <div className="flex flex-col gap-6">
       <DetailHeader
-        backHref="/domains"
-        backLabel="Domains"
+        backHref="/channels"
+        backLabel="Channels"
         title={domain.name}
-        icon={DomainIcon}
+        icon={channelIcon("email")}
         badge={
           <Badge variant="secondary" className="capitalize">
             {claim?.status ?? "Unavailable"}
@@ -105,8 +106,7 @@ export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
                         {domain.name}
                       </strong>{" "}
                       is in use by another team. Verifying ownership will
-                      transfer the domain to your team and revoke their
-                      access.
+                      transfer the domain to your team and revoke their access.
                     </>
                   ))}
               </AlertDescription>
