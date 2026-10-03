@@ -451,7 +451,8 @@ export async function emailEventData(ctx: QueryCtx, email: Doc<"emails">) {
       "email",
       "outbound",
       email.status,
-      content?.text ?? content?.html ?? email.subject,
+      // Webhooks carry email metadata only, never body text.
+      email.subject,
       await emailContact(ctx, email)
     ),
     ...(email.broadcastId ? { broadcast_id: email.broadcastId } : {}),

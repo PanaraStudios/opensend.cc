@@ -123,9 +123,7 @@ export function broadcastReceivedTests(state: () => State) {
     const read = () => backend.query(api.broadcasts.get, { organizationId, id })
     // The header pickers are searchable menus: their items are options.
     await owner.getByTestId("header-from").click()
-    await owner
-      .getByRole("option", { name: sender, exact: true })
-      .click()
+    await owner.getByRole("option", { name: sender, exact: true }).click()
     await owner.getByTestId("header-audience").click()
     await owner
       .getByRole("option", { name: "Lane 6B readers", exact: true })
@@ -591,29 +589,39 @@ export function broadcastReceivedTests(state: () => State) {
       await expect.poll(async () => (await deliveries()).page.length).toBe(1)
       const delivery = (await deliveries()).page[0]
       expect(delivery.messageId).toMatch(/^msg_/)
+      // Metadata only: the body never reaches a received-mail webhook.
+      expect(JSON.stringify(delivery.payload)).not.toContain(fixture.text)
+      const metadata = {
+        id,
+        object: "message",
+        channel: "email",
+        direction: "inbound",
+        status: "received",
+        preview: fixture.subject,
+        contact_id: null,
+        email_id: id,
+        created_at: expect.any(String),
+        from: fixture.from,
+        to: [fixture.to],
+        cc: [],
+        bcc: [],
+        received_for: [fixture.to],
+        message_id: "<lane-6b@example.test>",
+        subject: fixture.subject,
+        attachments: [
+          {
+            id: attachmentId,
+            filename: fixture.filename,
+            content_type: "text/plain",
+            content_disposition: "attachment",
+            content_id: null,
+          },
+        ],
+      }
       expect(delivery.payload).toEqual({
         type: "email.received",
         created_at: expect.any(String),
-        data: {
-          email_id: id,
-          created_at: expect.any(String),
-          from: fixture.from,
-          to: [fixture.to],
-          cc: [],
-          bcc: [],
-          received_for: [fixture.to],
-          message_id: "<lane-6b@example.test>",
-          subject: fixture.subject,
-          attachments: [
-            {
-              id: attachmentId,
-              filename: fixture.filename,
-              content_type: "text/plain",
-              content_disposition: "attachment",
-              content_id: null,
-            },
-          ],
-        },
+        data: { ...metadata, message: metadata },
       })
       expect(
         (

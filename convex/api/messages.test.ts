@@ -489,7 +489,7 @@ test("inbound Meta webhook payloads retain their content and add every common me
   }
 })
 
-test("email template aliases render the preview and share webhook fields", async () => {
+test("email template aliases render the preview; webhooks share fields without the body", async () => {
   const f = await setup()
   const template = await f.owner.client.mutation(api.templates.create, {
     organizationId: f.owner.team,
@@ -525,7 +525,8 @@ test("email template aliases render the preview and share webhook fields", async
     from: f.email.from,
     to: [f.email.to],
     status: "queued",
-    preview: message.preview,
+    // Webhooks carry email metadata only: the subject, never body text.
+    preview: "Hello Ada",
     contact_id: null,
     email_id: id,
     tags: { flow: "welcome" },
@@ -601,7 +602,10 @@ test("received email merges with sent channels, links its sender contact and add
     channel: "email",
     direction: "inbound",
     status: "received",
-    preview: "Inbound body",
+    preview: "Inbound",
     contact_id: contact.id,
   })
+  expect(
+    JSON.stringify(events.find((event) => event.type === "email.received"))
+  ).not.toContain("Inbound body")
 })
