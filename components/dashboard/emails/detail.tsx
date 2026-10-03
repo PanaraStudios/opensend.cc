@@ -375,7 +375,7 @@ export function EmailDetail() {
                   onClick={share.open}
                 >
                   <ShareIcon />
-                  Share message
+                  Share email
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   render={<Link href={`/logs?email=${email.id}`} />}
@@ -460,7 +460,7 @@ export function ReceivedDetail() {
             <DropdownMenuGroup>
               <DropdownMenuItem disabled={!share.canWrite} onClick={share.open}>
                 <ShareIcon />
-                Share message
+                Share email
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </MoreMenu>
