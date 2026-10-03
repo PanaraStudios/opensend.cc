@@ -11,6 +11,7 @@ import {
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import {
+  teamEventCatalog,
   changeEvent,
   defineEvent,
   findEvent,
@@ -53,6 +54,14 @@ function own(ctx: QueryCtx, caller: Caller, idOrName: string) {
   })
 }
 
+export const catalog = internalQuery({
+  args: { caller: callerValue },
+  returns: v.array(v.any()),
+  handler: async (ctx, { caller }) => {
+    await requireCaller(ctx, caller, { resource: "events", access: "read" })
+    return teamEventCatalog(ctx, caller.organizationId)
+  },
+})
 export const list = internalQuery({
   args: { caller: callerValue, ...listArgs },
   returns: v.object({
@@ -214,6 +223,17 @@ function sendPayload(input: Record<string, unknown>) {
     to send one for a contact. Ids are Convex ids; `{id}` also takes the
     event's name. */
 export function registerEventRoutes(http: HttpRouter) {
+  apiRoute(http, {
+    method: "GET",
+    path: "/events/catalog",
+    scope: { resource: "events", access: "read" },
+    handler: async (ctx, { caller }) => ({
+      body: {
+        object: "event_catalog",
+        data: await ctx.runQuery(internal.api.events.catalog, { caller }),
+      },
+    }),
+  })
   const changed = (id: Id<"automationEvents"> | null) => {
     if (!id) throw notFound("Event")
     return { object: "event", id }

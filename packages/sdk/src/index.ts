@@ -58,8 +58,19 @@ export type * from "./whatsapp/calling/interfaces"
 export type * from "./ivrs/interfaces"
 export type * from "./voice/interfaces"
 
-export { callingRoutingMembers, callingRoutingSchema, parseCallingRouting } from "./whatsapp/calling/routing"
+export {
+  callingRoutingMembers,
+  callingRoutingSchema,
+  parseCallingRouting,
+} from "./whatsapp/calling/routing"
 
+export { SYSTEM_EVENT_NAMES, SYSTEM_EVENT_CATALOG } from "./events/catalog"
+export type {
+  CatalogEvent,
+  EventField,
+  SystemEventName,
+  SystemTriggerName,
+} from "./events/catalog"
 export type * from "./contacts/notes/interfaces"
 
 export * from './messages';

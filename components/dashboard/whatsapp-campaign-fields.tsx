@@ -49,7 +49,13 @@ function VariableMapping({
   name,
   value,
   onChange,
+  renderValueField,
 }: {
+  renderValueField?: (props: {
+    name: string
+    value: VariableSource
+    onChange: (value: VariableSource) => void
+  }) => React.ReactNode
   name: string
   value: VariableSource
   onChange: (source: VariableSource) => void
@@ -115,6 +121,8 @@ function VariableMapping({
               onChange({ property, fallback: source.fallback })
             }
           />
+        ) : renderValueField ? (
+          renderValueField({ name, value: source, onChange })
         ) : (
           <Input
             aria-label={`Value for {{${name}}}`}
@@ -145,12 +153,24 @@ export function WhatsAppCampaignFields({
   sample,
   allowText = false,
   channel = "whatsapp",
+  renderTextField,
+  renderVariableField,
 }: {
   config: WhatsAppCampaignConfig
   onChange: (config: WhatsAppCampaignConfig) => void
   sample?: VariableContact | null
   allowText?: boolean
   channel?: MessagingChannel
+  renderTextField?: (props: {
+    value: string
+    onChange: (value: string) => void
+    "aria-label": string
+  }) => React.ReactNode
+  renderVariableField?: (props: {
+    name: string
+    value: VariableSource
+    onChange: (value: VariableSource) => void
+  }) => React.ReactNode
 }) {
   const [accountSearch, setAccountSearch] = React.useState("")
   const [templateSearch, setTemplateSearch] = React.useState("")
@@ -230,13 +250,21 @@ export function WhatsAppCampaignFields({
       {config.mode === "text" ? (
         <Field>
           <FieldLabel>Message</FieldLabel>
-          <Textarea
-            aria-label={`${CHANNELS[channel].label} message`}
-            value={config.text ?? ""}
-            onChange={(event) =>
-              onChange({ ...config, text: event.target.value })
-            }
-          />
+          {renderTextField ? (
+            renderTextField({
+              value: config.text ?? "",
+              onChange: (text) => onChange({ ...config, text }),
+              "aria-label": `${CHANNELS[channel].label} message`,
+            })
+          ) : (
+            <Textarea
+              aria-label={`${CHANNELS[channel].label} message`}
+              value={config.text ?? ""}
+              onChange={(event) =>
+                onChange({ ...config, text: event.target.value })
+              }
+            />
+          )}
           <FieldDescription>
             Text is skipped when the 24-hour service window is closed.
           </FieldDescription>
@@ -302,6 +330,7 @@ export function WhatsAppCampaignFields({
                 key={name}
                 name={name}
                 value={config.variables[name] ?? { value: "" }}
+                renderValueField={renderVariableField}
                 onChange={(source) =>
                   onChange({
                     ...config,
