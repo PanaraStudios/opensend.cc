@@ -1,0 +1,607 @@
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
+import { api } from "../../convex/_generated/api"
+import type { Doc, Id } from "../../convex/_generated/dataModel"
+import { backendRows, client, importFixture } from "./ses-fixtures"
+import { beginOAuth, selectOAuthTeam } from "./oauth-flow"
+
+type Screen = { name: string; open: (page: Page) => Promise<void> }
+type Finding = {
+  screen: string
+  theme: string
+  width: number
+  kind: string
+  detail: unknown
+  screenshot: string
+}
+const channels = ["All channels", "Email", "WhatsApp", "Messenger", "Instagram"]
+
+async function choose(page: Page, label: string, option: string) {
+  await page.getByRole("combobox", { name: label, exact: true }).click()
+  await page.getByRole("option", { name: option, exact: true }).click()
+}
+
+/** Runs last: the disposable instance already has messages, identities and runs.
+ * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
+export function screensTourTests(
+  state: () => {
+    owner: Page
+    organizationId: string
+    sendingDomainId: Id<"domains">
+  }
+) {
+  test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
+    test.setTimeout(20 * 60_000)
+    const { owner, organizationId, sendingDomainId } = state()
+    // A separate page keeps the tour's console collection and viewport isolated.
+    const page = await owner.context().newPage()
+    page.setDefaultTimeout(10_000)
+    const dir = join(process.env.OPENSEND_TEST_RESULTS!, "tour")
+    mkdirSync(dir, { recursive: true })
+    const findings: Finding[] = []
+    const visited: string[] = []
+    const backend = await client(owner)
+    const accounts = backendRows<Doc<"channelAccounts">>(
+      "channelAccounts"
+    ).filter((r) => r.organizationId === organizationId)
+    const whatsapp = accounts.find((r) => r.channel === "whatsapp")!
+    expect(whatsapp, "Seeded WhatsApp channel").toBeTruthy()
+    const contacts = backendRows<Doc<"contacts">>("contacts", 1000).filter(
+      (r) => r.organizationId === organizationId
+    )
+    const contact =
+      contacts.find((r) => r.phone && r.firstName === "Ada") ??
+      contacts.find((r) => r.phone)!
+    expect(contact, "Seeded contact").toBeTruthy()
+    await backend.mutation(api.contactNotes.create, {
+      contactId: contact._id,
+      body: "QA tour: caller asked about support hours. Follow up tomorrow.",
+    })
+    const bots = backendRows<Doc<"voiceBots">>("voiceBots").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const bot = bots[0]!
+    expect(bot, "Seeded voice bot").toBeTruthy()
+    const knowledge = (await backend.action(
+      api.knowledge.resources.dashboardWrite,
+      {
+        organizationId,
+        body: JSON.stringify({
+          name: "Support handbook",
+          description: "Reference material for the support team.",
+        }),
+      }
+    )) as { id: string }
+    // No live AI credentials: seed an already indexed document for visual QA.
+    importFixture("knowledgeDocuments", {
+      organizationId,
+      knowledgeBaseId: knowledge.id,
+      title: "Support hours",
+      source: "text",
+      byteSize: 52,
+      status: "ready",
+      revision: "qa-tour",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    await backend.action(api.botTools.resources.dashboardWrite, {
+      organizationId,
+      body: JSON.stringify({
+        name: "check_order",
+        description: "Check the delivery status of a customer's order.",
+        parameters: {
+          type: "object",
+          properties: {
+            order_number: { type: "string", description: "Order number" },
+          },
+          required: ["order_number"],
+        },
+        method: "POST",
+        url: "https://example.test/orders/status",
+      }),
+    })
+    importFixture("calls", {
+      organizationId,
+      accountId: whatsapp._id,
+      contactId: contact._id,
+      direction: "inbound",
+      status: "completed",
+      mode: "gateway",
+      from: contact.phone,
+      to: whatsapp.handle,
+      observedAt: Date.now() - 60_000,
+      duration: 45,
+      botId: bot._id,
+      botOutcome: "completed",
+      botSummary:
+        "The caller asked about support hours and received an answer.",
+      collected: { order_number: { value: "ORD-123", inferred: false } },
+    })
+    const call = backendRows<Doc<"calls">>("calls").find(
+      (r) => r.botId === bot._id && r.botSummary?.startsWith("The caller asked")
+    )!
+    expect(call).toBeTruthy()
+    importFixture("callTranscripts", [
+      {
+        organizationId,
+        callId: call._id,
+        eventId: "qa-answer",
+        kind: "transcript",
+        role: "agent",
+        text: "Our support team is available Monday to Friday, 9am to 5pm.",
+        final: true,
+        timestampMs: 2200,
+        timeline: "call",
+      },
+      {
+        organizationId,
+        callId: call._id,
+        eventId: "qa-question",
+        kind: "transcript",
+        role: "caller",
+        text: "When is your support team available?",
+        final: true,
+        timestampMs: 1000,
+        timeline: "call",
+      },
+    ])
+    const draftId = await backend.mutation(api.broadcasts.create, {
+      organizationId,
+      name: "Support newsletter",
+      subject: "Your support update",
+      from: "Support <hello@onboarding.example.test>",
+      html: "<p>Here is this month's support update.</p>",
+    })
+    const automations = backendRows<Doc<"automations">>("automations").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const automation = automations.find(
+      (r) => r.trigger === "opensend:whatsapp.message.received"
+    )!
+    expect(automation, "Seeded automation and observability run").toBeTruthy()
+    const ivrs = backendRows<Doc<"ivrs">>("ivrs").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const messages = backendRows<Doc<"channelMessages">>(
+      "channelMessages",
+      1000
+    ).filter((r) => r.organizationId === organizationId)
+    const emails = backendRows<Doc<"emails">>("emails", 1000).filter(
+      (r) => r.organizationId === organizationId
+    )
+    const received = backendRows<Doc<"receivedEmails">>(
+      "receivedEmails",
+      1000
+    ).filter((r) => r.organizationId === organizationId)
+    const broadcasts = backendRows<Doc<"broadcasts">>("broadcasts").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const keys = backendRows<Doc<"apiKeys">>("apiKeys").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const logs = backendRows<Doc<"apiLogs">>("apiLogs").filter(
+      (r) => r.organizationId === organizationId
+    )
+    const webhookId = await backend.action(api.webhooks.create, {
+      organizationId,
+      endpoint: "https://example.test/qa-events",
+      events: ["email.sent", "whatsapp.message.received"],
+    })
+    // Email and Meta template lists/editors, using retained fixtures where possible.
+    const templates = backendRows<Doc<"templates">>("templates", 1000).filter(
+      (r) => r.organizationId === organizationId
+    )
+    for (const channel of ["email", "messenger", "instagram"] as const) {
+      if (!templates.some((r) => (r.channel ?? "email") === channel)) {
+        const id = await backend.mutation(api.templates.create, {
+          organizationId,
+          channel,
+          name: `${channel} support reply`,
+          subject: "Support update",
+          html: "<p>Thanks for contacting support.</p>",
+          text: "Thanks for contacting support.",
+        })
+        templates.push({ _id: id, channel } as Doc<"templates">)
+      }
+    }
+    const screens: Screen[] = []
+    const route = (name: string, path: string, after?: Screen["open"]) =>
+      screens.push({
+        name,
+        open: async (p) => {
+          await p.goto(path)
+          if (after) await after(p)
+        },
+      })
+    for (const [name, path] of [
+      ["sending", "/emails"],
+      ["receiving", "/emails/receiving"],
+    ]) {
+      for (const channel of channels)
+        route(
+          `messages-${name}-${channel.toLowerCase().replaceAll(" ", "-")}`,
+          path,
+          (p) => choose(p, "Filter by channel", channel)
+        )
+    }
+    expect(emails.length).toBeGreaterThan(0)
+    route("message-email-detail", `/emails/${emails[0]._id}`)
+    expect(received.length).toBeGreaterThan(0)
+    route(
+      "message-email-received-detail",
+      `/emails/receiving/${received[0]._id}`
+    )
+    for (const channel of ["whatsapp", "messenger", "instagram"]) {
+      const message = messages.find((r) => r.channel === channel)
+      expect(message, `${channel} seeded message`).toBeTruthy()
+      route(`message-${channel}-detail`, `/emails/messages/${message!._id}`)
+    }
+    route("channels", "/channels")
+    route("channels-add-menu", "/channels", async (p) => {
+      await p
+        .getByRole("button", { name: "Add channel", exact: true })
+        .first()
+        .click()
+      await expect(p.getByRole("menu")).toBeVisible()
+    })
+    route("channel-domain-detail", `/domains/${sendingDomainId}`)
+    for (const account of accounts)
+      route(
+        `channel-${account.channel}-detail-${accounts.indexOf(account)}`,
+        `/channels/${account._id}`
+      )
+    route("settings-calling", `/channels/${whatsapp._id}`, async (p) => {
+      await p
+        .getByRole("button", { name: "Refresh settings", exact: true })
+        .click()
+      await expect(
+        p.getByLabel("Calling status", { exact: true })
+      ).toBeVisible()
+    })
+    for (const channel of channels)
+      route(
+        `templates-${channel.toLowerCase().replaceAll(" ", "-")}`,
+        "/templates",
+        (p) => choose(p, "Filter by channel", channel)
+      )
+    for (const channel of ["email", "whatsapp", "messenger", "instagram"]) {
+      const template = templates.find((r) => (r.channel ?? "email") === channel)
+      expect(template, `${channel} seeded template`).toBeTruthy()
+      route(`template-${channel}-editor`, `/templates/${template!._id}`)
+    }
+    route("broadcasts", "/broadcasts")
+    route("broadcast-editor", `/broadcasts/${draftId}/edit`)
+    route("broadcast-review", `/broadcasts/${draftId}/edit`, async (p) => {
+      await p.getByRole("button", { name: "Review", exact: true }).click()
+      await expect(
+        p.getByText("Subject line added", { exact: true })
+      ).toBeVisible()
+    })
+    const report = broadcasts.find((r) => r.status !== "draft")!
+    expect(report, "Seeded broadcast report").toBeTruthy()
+    route("broadcast-report", `/broadcasts/${report._id}`)
+    route("automations", "/automations")
+    route("automation-events", "/automations/events")
+    route("automation-builder", `/automations/${automation._id}`)
+    route(
+      "automation-trigger-picker",
+      `/automations/${automation._id}`,
+      async (p) => {
+        await p
+          .getByTestId("workflow-node-start")
+          .getByRole("button", {
+            name: "WhatsApp message received",
+            exact: true,
+          })
+          .click()
+        await p
+          .getByRole("combobox", { name: "Event picker", exact: true })
+          .click()
+        await expect(p.getByPlaceholder("Search events…")).toBeVisible()
+      }
+    )
+    route(
+      "automation-observability",
+      `/automations/${automation._id}`,
+      async (p) => {
+        await p.getByTestId("view-toggle-observability").click()
+        await p.getByTestId("run-row").first().click()
+        await expect(p.getByTestId("workflow")).toContainText("Resolved inputs")
+      }
+    )
+    for (const [name, path] of [
+      ["contacts", "/contacts"],
+      ["properties", "/properties"],
+      ["segments", "/segments"],
+      ["topics", "/topics"],
+    ])
+      route(`audience-${name}`, path)
+    for (const tab of ["Details", "History"])
+      route(
+        `contact-${tab.toLowerCase()}`,
+        `/contacts/${contact._id}`,
+        async (p) => {
+          await p.getByRole("tab", { name: tab, exact: true }).click()
+        }
+      )
+    route("contact-channels", `/contacts/${contact._id}`, async (p) => {
+      await p
+        .getByRole("region", { name: "Contact channels", exact: true })
+        .scrollIntoViewIfNeeded()
+    })
+    route("contact-notes", `/contacts/${contact._id}`, async (p) => {
+      await p
+        .getByRole("heading", { name: "Notes", exact: true })
+        .scrollIntoViewIfNeeded()
+    })
+    route("call-with-bot-dialog", `/contacts/${contact._id}`, async (p) => {
+      await p
+        .getByRole("button", { name: "Call with bot", exact: true })
+        .click()
+      await expect(
+        p.getByRole("dialog", { name: "Call with bot", exact: true })
+      ).toBeVisible()
+    })
+    for (const channel of channels)
+      route(
+        `metrics-${channel.toLowerCase().replaceAll(" ", "-")}`,
+        "/metrics",
+        (p) => choose(p, "Channel", channel)
+      )
+    route("api-keys", "/api-keys")
+    expect(keys.length).toBeGreaterThan(0)
+    route("api-key-detail", `/api-keys/${keys[0]._id}`)
+    route("api-key-custom-dialog", "/api-keys", async (p) => {
+      await p
+        .getByRole("button", { name: "Create API key", exact: true })
+        .first()
+        .click()
+      await choose(p, "Permission", "Custom")
+      await expect(
+        p.getByText("Resource scopes", { exact: true })
+      ).toBeVisible()
+    })
+    route("webhooks", "/webhooks")
+    route("webhook-detail", `/webhooks/${webhookId}`)
+    route("webhook-event-picker", "/webhooks", async (p) => {
+      await p
+        .getByRole("button", { name: "Add webhook", exact: true })
+        .first()
+        .click()
+      await expect(p.getByRole("dialog")).toBeVisible()
+    })
+    route("logs", "/logs")
+    expect(logs.length).toBeGreaterThan(0)
+    route("log-detail", `/logs/${logs[0]._id}`)
+    for (const [name, path] of [
+      ["team", "/settings/team"],
+      ["meta", "/instance/meta"],
+      ["ses", "/instance/ses"],
+      ["sso", "/settings/sso"],
+      ["smtp", "/settings/smtp"],
+      ["unsubscribe", "/settings/unsubscribe"],
+      ["usage", "/settings/usage"],
+      ["ai-providers", "/settings/ai-providers"],
+      ["exports", "/settings/exports"],
+    ])
+      route(`settings-${name}`, path)
+    for (const [name, path] of [
+      ["calls", "/playground/calls"],
+      ["inbox", "/playground/inbox"],
+      ["ivrs", "/playground/ivr"],
+      ["voice-bots", "/playground/voice-bot"],
+      ["knowledge", "/playground/knowledge"],
+      ["tools", "/playground/tools"],
+    ])
+      route(`playground-${name}`, path)
+    route(
+      "playground-call-transcript",
+      `/playground/calls/${call._id}`,
+      async (p) => {
+        await expect(p.getByLabel("Transcript", { exact: true })).toContainText(
+          "When is your support team available?"
+        )
+        const text = await p
+          .getByLabel("Transcript", { exact: true })
+          .innerText()
+        expect(text.indexOf("When is")).toBeLessThan(
+          text.indexOf("Our support")
+        )
+      }
+    )
+    expect(ivrs.length).toBeGreaterThan(0)
+    route("playground-ivr-editor", `/playground/ivr/${ivrs[0]._id}`)
+    route("playground-voice-bot-detail", `/playground/voice-bot/${bot._id}`)
+    route(
+      "playground-knowledge-detail",
+      `/playground/knowledge/${knowledge.id}`
+    )
+    route("playground-tool-edit", "/playground/tools", async (p) => {
+      await p.getByRole("button", { name: "Edit", exact: true }).first().click()
+      await expect(p.getByRole("dialog")).toBeVisible()
+    })
+    route("profile", "/profile")
+    screens.push({
+      name: "oauth-consent",
+      open: async (p) => {
+        await beginOAuth(p)
+        await selectOAuthTeam(p, organizationId)
+        await expect(
+          p.getByRole("button", { name: "Authorize", exact: true })
+        ).toBeEnabled()
+      },
+    })
+
+    let runtime: string[] = []
+    const onConsole = (message: ConsoleMessage) => {
+      if (message.type() === "error") runtime.push(`console: ${message.text()}`)
+    }
+    const onError = (error: Error) =>
+      runtime.push(`pageerror: ${error.message}`)
+    page.on("console", onConsole)
+    page.on("pageerror", onError)
+    try {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 960 })
+        for (const theme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme: theme })
+          // next-themes reads storage on navigation; force an actual persisted theme.
+          await page.goto("/profile")
+          await page.evaluate(
+            (value) => localStorage.setItem("theme", value),
+            theme
+          )
+          for (const screen of screens) {
+            const screenshot = `${screen.name}-${theme}-${width}.png`
+            runtime = []
+            let openingError: string | undefined
+            try {
+              await screen.open(page)
+              await expect(page.locator("html")).toHaveClass(
+                new RegExp(`\\b${theme}\\b`)
+              )
+              // Wait for reactive lists/details to load, not just server markup.
+              await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(
+                0,
+                { timeout: 15_000 }
+              )
+              await page.evaluate(() => document.fonts.ready)
+              await page.screenshot({
+                path: join(dir, screenshot),
+                animations: "disabled",
+                fullPage: true,
+              })
+            } catch (error) {
+              openingError = String(error)
+              await page
+                .screenshot({
+                  path: join(dir, screenshot),
+                  animations: "disabled",
+                  fullPage: true,
+                })
+                .catch(() => {})
+            }
+            if (openingError)
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "screen-error",
+                detail: openingError,
+                screenshot,
+              })
+            const evidence = await page.evaluate(() => {
+              const overflow =
+                (document.scrollingElement?.scrollWidth ?? 0) > innerWidth
+              const offenders = overflow
+                ? [...document.querySelectorAll("body *")]
+                    .filter((el) => {
+                      const r = el.getBoundingClientRect()
+                      return (
+                        r.width && (r.right > innerWidth + 1 || r.left < -1)
+                      )
+                    })
+                    .slice(0, 30)
+                    .map((el) => ({
+                      tag: el.tagName,
+                      class: el.className,
+                      text: el.textContent?.slice(0, 100),
+                    }))
+                : []
+              const raw = new Set<string>()
+              const walker = document.createTreeWalker(
+                document.body,
+                NodeFilter.SHOW_TEXT
+              )
+              while (walker.nextNode()) {
+                const node = walker.currentNode,
+                  el = node.parentElement
+                if (
+                  !el ||
+                  el.closest(
+                    'input, textarea, pre, code, script, style, [hidden], [aria-hidden="true"], [data-slot="json-viewer"], [data-testid*="payload"]'
+                  ) ||
+                  !el.checkVisibility({
+                    checkOpacity: true,
+                    checkVisibilityCSS: true,
+                  })
+                )
+                  continue
+                const text = node.textContent ?? ""
+                for (const token of text.match(
+                  /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z][a-z_]*(?:\.[a-z_]+)+\b/g
+                ) ?? []) {
+                  // Domain names and URLs are readable addresses, not machine labels.
+                  if (
+                    /\.(test|com|cc|dev|net|org|io)$/.test(token) ||
+                    text.includes("https://") ||
+                    text.includes("http://") ||
+                    text.includes("@")
+                  )
+                    continue
+                  raw.add(token)
+                }
+              }
+              return {
+                overflow,
+                offenders,
+                raw: [...raw],
+                crashed: document.body.innerText.includes(
+                  "Something went wrong"
+                ),
+              }
+            })
+            if (width === 390 && evidence.overflow)
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "overflow",
+                detail: evidence.offenders,
+                screenshot,
+              })
+            if (evidence.crashed)
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "error-boundary",
+                detail: "Something went wrong",
+                screenshot,
+              })
+            if (runtime.length)
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "runtime-error",
+                detail: [...runtime],
+                screenshot,
+              })
+            if (evidence.raw.length)
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "raw-code",
+                detail: evidence.raw,
+                screenshot,
+              })
+            visited.push(screenshot)
+            writeFileSync(
+              join(dir, "findings.json"),
+              JSON.stringify({ visited, findings }, null, 2)
+            )
+          }
+        }
+      }
+    } finally {
+      page.off("console", onConsole)
+      page.off("pageerror", onError)
+      await page.close()
+    }
+    const failures = findings.filter((f) => f.kind !== "raw-code")
+    expect(failures, `See ${join(dir, "findings.json")}`).toEqual([])
+  })
+}

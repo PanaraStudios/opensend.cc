@@ -1,3 +1,4 @@
+import { screensTourTests } from "./screens-tour-flow"
 import { messagesTests } from "./messages-flow"
 import { automationEventsTests } from "./automation-events-flow"
 import { ivrTests } from "./ivr-flow"
@@ -1733,4 +1734,6 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(member).toHaveURL(/\/login/)
     expect(await stale.query(api.teams.snapshot)).toBeNull()
   })
+
+  screensTourTests(() => ({ owner, organizationId, sendingDomainId }))
 })
