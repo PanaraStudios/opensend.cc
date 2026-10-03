@@ -44,7 +44,9 @@ export function screensTourTests(
     const backend = await client(owner)
     const accounts = backendRows<Doc<"channelAccounts">>(
       "channelAccounts"
-    ).filter((r) => r.organizationId === organizationId)
+    ).filter(
+      (r) => r.organizationId === organizationId && r.status !== "disconnected"
+    )
     const whatsapp = accounts.find((r) => r.channel === "whatsapp")!
     expect(whatsapp, "Seeded WhatsApp channel").toBeTruthy()
     const contacts = backendRows<Doc<"contacts">>("contacts", 1000).filter(
