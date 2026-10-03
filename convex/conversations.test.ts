@@ -828,6 +828,9 @@ test("Sending and Receiving merge email and WhatsApp by time, and filter by chan
     )
   expect(ids(await sending())).toEqual([email, whatsapp])
   expect(ids(await sending({ channel: "whatsapp" }))).toEqual([whatsapp])
+  expect((await sending({ channel: "whatsapp" })).page[0]).toMatchObject({
+    partyLabel: `+${SENDER}`,
+  })
   expect(ids(await sending({ channel: "email" }))).toEqual([email])
   expect(ids(await sending({ status: "queued" }))).toEqual([email, whatsapp])
   expect(ids(await sending({ status: "opened" }))).toEqual([])
@@ -945,6 +948,23 @@ for (const channel of ["messenger", "instagram"] as const) {
     expect(
       log.page.map((row) => row.kind === "channel" && row.message._id)
     ).toEqual([sent])
+    expect(log.page[0]).toMatchObject({ partyLabel: "Contact" })
+    await f.t.run((ctx) =>
+      ctx.db.patch("channelContacts", message!.channelContactId, {
+        profileName: "Ada",
+        ...(channel === "instagram" ? { username: "ada" } : {}),
+      })
+    )
+    const partyLabel = channel === "instagram" ? "@ada" : "Ada"
+    expect(
+      (
+        await f.member.client.query(api.messages.sending, {
+          organizationId: f.owner.team,
+          channel,
+          paginationOpts: page,
+        })
+      ).page[0]
+    ).toMatchObject({ partyLabel })
     expect(
       await f.member.client.query(api.messages.sendingCount, {
         organizationId: f.owner.team,
@@ -960,6 +980,15 @@ for (const channel of ["messenger", "instagram"] as const) {
         })
       ).page
     ).toHaveLength(1)
+    expect(
+      (
+        await f.member.client.query(api.messages.receiving, {
+          organizationId: f.owner.team,
+          channel,
+          paginationOpts: page,
+        })
+      ).page[0]
+    ).toMatchObject({ partyLabel })
     const detail = await f.member.client.query(api.messages.get, {
       id: sent,
       now: Date.now(),

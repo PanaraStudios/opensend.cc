@@ -41,6 +41,7 @@ import {
 } from "../lib/dashboard/template-test"
 import { findPublished } from "./templates"
 import { mediaDownloadLink } from "./channels/downloads"
+import { messageParty } from "../lib/dashboard/message-detail"
 
 /* The Messages section's Sending and Receiving logs: email and channel
    messages in one list, newest first. Without a channel filter the
@@ -106,6 +107,18 @@ const isChannelMessage = (
 
 const emptyPage = { page: [], isDone: true, continueCursor: "" }
 
+async function logParty(ctx: QueryCtx, message: Doc<"channelMessages">) {
+  const contact = await ctx.db.get("channelContacts", message.channelContactId)
+  const profile =
+    contact?.organizationId === message.organizationId ? contact : null
+  return messageParty({
+    channel: message.channel,
+    address: message.direction === "outbound" ? message.to : message.from,
+    profileName: profile?.profileName,
+    username: profile?.username,
+  })
+}
+
 export const sending = query({
   args: { ...sendingFilters.fields, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
@@ -114,6 +127,7 @@ export const sending = query({
       v.object({
         kind: v.literal("channel"),
         message: schema.doc("channelMessages"),
+        partyLabel: v.string(),
       })
     )
   ),
@@ -158,10 +172,16 @@ export const sending = query({
     )
     return {
       ...result,
-      page: result.page.map((row) =>
-        isChannelMessage(row)
-          ? { kind: "channel" as const, message: row }
-          : { kind: "email" as const, email: row }
+      page: await Promise.all(
+        result.page.map(async (row) =>
+          isChannelMessage(row)
+            ? {
+                kind: "channel" as const,
+                message: row,
+                partyLabel: await logParty(ctx, row),
+              }
+            : { kind: "email" as const, email: row }
+        )
       ),
     }
   },
@@ -216,6 +236,7 @@ export const receiving = query({
         message: schema.doc("channelMessages"),
         /** The number (Page, account) it arrived on. */
         account: v.string(),
+        partyLabel: v.string(),
       })
     )
   ),
@@ -266,6 +287,7 @@ export const receiving = query({
         kind: "channel" as const,
         message: row,
         account: handles.get(row.accountId)!,
+        partyLabel: await logParty(ctx, row),
       })
     }
     return { ...result, page }

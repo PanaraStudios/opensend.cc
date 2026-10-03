@@ -1,6 +1,5 @@
 "use client"
 import * as React from "react"
-import { fromWaId } from "../dashboard/phone"
 import { messageHref } from "./links"
 import {
   useAction,
@@ -44,18 +43,16 @@ export type LogRow = {
   createdAt: number
 }
 
-function channelRow(message: Doc<"channelMessages">, to = ""): LogRow {
-  const outbound = message.direction === "outbound"
+function channelRow(
+  message: Doc<"channelMessages">,
+  party: string,
+  to = ""
+): LogRow {
   return {
     id: message._id,
     channel: message.channel,
     href: messageHref("channel", message._id),
-    party:
-      message.channel === "whatsapp"
-        ? fromWaId(outbound ? message.to : message.from)
-        : outbound
-          ? message.to
-          : message.from,
+    party,
     summary: message.preview,
     to,
     status: { kind: "channel", value: message.status },
@@ -65,7 +62,7 @@ function channelRow(message: Doc<"channelMessages">, to = ""): LogRow {
 
 type SentItem = FunctionReturnType<typeof api.messages.sending>["page"][number]
 function asSentRow(item: SentItem): LogRow {
-  if (item.kind === "channel") return channelRow(item.message)
+  if (item.kind === "channel") return channelRow(item.message, item.partyLabel)
   const email = asEmail(item.email)
   return {
     id: email.id,
@@ -83,7 +80,8 @@ type ReceivedItem = FunctionReturnType<
   typeof api.messages.receiving
 >["page"][number]
 function asReceivedRow(item: ReceivedItem): LogRow {
-  if (item.kind === "channel") return channelRow(item.message, item.account)
+  if (item.kind === "channel")
+    return channelRow(item.message, item.partyLabel, item.account)
   const email = asReceived(item.email)
   return {
     id: email.id,
