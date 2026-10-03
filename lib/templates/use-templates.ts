@@ -2,7 +2,7 @@
 import * as React from "react"
 import { useAction, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@/convex/_generated/dataModel"
 import {
   useWorkspace,
   requireTeamId,
@@ -30,38 +30,8 @@ export type TemplatePatch = Partial<
   Omit<EmailDraft, "id"> & Pick<EmailTemplate, "alias">
 >
 
-/** A template row, with its draft body where the caller has one. A
-    WhatsApp draft's body is Meta's components. */
-export function asTemplate(
-  row: Doc<"templates">,
-  body?: { html: string; content?: unknown; components?: unknown }
-): EmailTemplate {
-  if (row.channel === "whatsapp")
-    return {
-      ...asTemplate({ ...row, channel: undefined }, { html: "" }),
-      channel: "whatsapp",
-      ...(row.whatsapp ? { whatsapp: row.whatsapp } : {}),
-      components: body?.components ?? [],
-    }
-  return {
-    id: row._id,
-    name: row.name,
-    alias: row.alias,
-    subject: row.subject,
-    preview: row.preview,
-    html: body?.html ?? "",
-    ...(body?.content
-      ? { content: body.content as EmailTemplate["content"] }
-      : {}),
-    ...(row.from ? { from: row.from } : {}),
-    ...(row.replyTo ? { replyTo: row.replyTo } : {}),
-    status: row.status,
-    variables: row.variables,
-    createdAt: row._creationTime,
-    updatedAt: row.updatedAt,
-    publishedAt: row.publishedAt ?? null,
-  }
-}
+export { asTemplate } from "../dashboard/template-record"
+import { asTemplate } from "../dashboard/template-record"
 
 /* Convex drops undefined fields, so a field being cleared travels as null
    (the editor document) or empty text (the envelope). */
@@ -108,6 +78,15 @@ export function useTemplateCommands() {
         name: DEFAULT_TEMPLATE_NAME,
         channel: "whatsapp",
       }),
+    addPageTemplate: (channel: "messenger" | "instagram") =>
+      create({
+        organizationId: requireTeamId(activeTeamId),
+        channel,
+        name: "Untitled Template",
+        content: { text: "", quick_replies: [] },
+      }),
+    updatePageTemplate: (id: string, content: unknown) =>
+      update({ ...ref(id), content }),
     updateTemplate: (id: string, patch: TemplatePatch) =>
       update({ ...ref(id), ...wire(patch) }),
     /** A WhatsApp draft's settings or components. */

@@ -22,7 +22,6 @@ import {
   copyToClipboard,
 } from "@/components/dashboard/primitives"
 import { channelLabel } from "@/lib/dashboard/format"
-import type { BroadcastChannel } from "@/lib/dashboard/types"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,8 +59,11 @@ import {
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
-import { CHANNEL_LABELS } from "@/lib/dashboard/format"
-import type { Channel, MessagingChannel } from "@/lib/dashboard/types"
+import type {
+  BroadcastChannel,
+  Channel,
+  MessagingChannel,
+} from "@/lib/dashboard/types"
 import { useChannelCommands } from "@/lib/channels/use-channels"
 
 export const ChannelsIcon = RadioTowerIcon
@@ -95,11 +97,10 @@ export function CopyChannelHandleItem({
 export const channelIcon = (channel: Channel) =>
   channel === "email" ? MailIcon : CHANNEL_ICONS[channel]
 
-/** Email and the channels it shares Templates and Messages with. */
+/** Every channel uses the same message and template filters. */
 export const MESSAGE_CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
+  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
 ]
 
 export function ChannelCell({ channel }: { channel?: Channel }) {
@@ -110,10 +111,15 @@ export function ChannelCell({ channel }: { channel?: Channel }) {
 export function ChannelCreateMenu({
   noun,
   onCreate,
-}: {
-  noun: "broadcast" | "template"
-  onCreate: (channel: BroadcastChannel) => void
-}) {
+}:
+  | {
+      noun: "template"
+      onCreate: (channel: Channel) => void
+    }
+  | {
+      noun: "broadcast"
+      onCreate: (channel: BroadcastChannel) => void
+    }) {
   const channels = useInstanceChannels()
   return (
     <DropdownMenu>
@@ -124,24 +130,32 @@ export function ChannelCreateMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          {MESSAGE_CHANNEL_ITEMS.filter((item) => item.value !== "all").map(
-            (item) => {
-              const value = item.value as BroadcastChannel
-              const Icon = channelIcon(value)
-              return (
-                <DropdownMenuItem
-                  key={value}
-                  disabled={!channels?.[value === "email" ? "email" : "meta"]}
-                  onClick={() => onCreate(value)}
-                >
-                  <Icon />
-                  {channelLabel(value)}
-                  {!channels?.[value === "email" ? "email" : "meta"] &&
-                    " — not set up"}
-                </DropdownMenuItem>
-              )
-            }
-          )}
+          {MESSAGE_CHANNEL_ITEMS.filter(
+            (item) =>
+              item.value !== "all" &&
+              (noun === "template" ||
+                item.value === "email" ||
+                item.value === "whatsapp")
+          ).map((item) => {
+            const value = item.value as Channel
+            const Icon = channelIcon(value)
+            return (
+              <DropdownMenuItem
+                key={value}
+                disabled={!channels?.[value === "email" ? "email" : "meta"]}
+                onClick={() => {
+                  if (noun === "template") onCreate(value)
+                  else if (value === "email" || value === "whatsapp")
+                    onCreate(value)
+                }}
+              >
+                <Icon />
+                {channelLabel(value)}
+                {!channels?.[value === "email" ? "email" : "meta"] &&
+                  " — not set up"}
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuGroup>
         {channels && (
           <DropdownMenuGroup>

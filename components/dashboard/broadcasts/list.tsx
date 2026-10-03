@@ -155,7 +155,9 @@ export function BroadcastsView() {
           {
             value: channel,
             onChange: setChannel,
-            items: MESSAGE_CHANNEL_ITEMS,
+            items: MESSAGE_CHANNEL_ITEMS.filter((item) =>
+              ["all", "email", "whatsapp"].includes(item.value)
+            ),
             "aria-label": "Filter by channel",
           },
           {
