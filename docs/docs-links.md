@@ -17,34 +17,34 @@ or onboarding documentation links to repoint in this base.
 All destinations below are relative to `https://opensend.cc/docs`. Nested
 detail/editor routes inherit the most specific matching entry.
 
-| Dashboard route | Docs path |
-| --- | --- |
-| `/api-keys` | `/create-an-api-key` |
-| `/automations` | `/dashboard/automations/introduction` |
-| `/automations/events` | `/dashboard/automations/trigger` |
-| `/broadcasts` | `/dashboard/broadcasts` |
-| `/channels` | `/self-hosting/requirements` (until a channels page exists) |
-| `/contacts` | `/dashboard/audience/contacts` |
-| `/domains` | `/dashboard/domains/manage` |
-| `/emails` | `/dashboard/emails/sending` |
-| `/emails/receiving` | `/dashboard/receiving/introduction` |
-| `/emails/suppressions` | `/dashboard/emails/suppressions` |
-| `/instance/meta` | `/self-hosting/requirements` (until a Meta page exists) |
-| `/instance/ses`, `/settings/ses` | `/self-hosting/aws-ses` |
-| `/logs` | `/dashboard/logs` |
-| `/metrics` | `/dashboard/emails/metrics` |
-| `/profile` | `/self-hosting/security` |
-| `/properties` | `/dashboard/audience/properties` |
-| `/segments` | `/dashboard/audience/segments` |
-| `/settings`, `/settings/team` | `/dashboard/team/roles` |
-| `/settings/exports` | `/dashboard/exports` |
-| `/settings/smtp` | `/self-hosting/smtp-gateway` |
-| `/settings/sso` | `/dashboard/team/sso` |
-| `/settings/unsubscribe` | `/dashboard/audience/unsubscribe-page` |
-| `/settings/usage` | `/self-hosting/ses-tenancy` |
-| `/templates` | `/dashboard/templates/editor` |
-| `/topics` | `/dashboard/audience/topics` |
-| `/webhooks` | `/webhooks/introduction` |
+| Dashboard route                  | Docs path                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/api-keys`                      | `/create-an-api-key`                                                                        |
+| `/automations`                   | `/dashboard/automations/introduction`                                                       |
+| `/automations/events`            | `/dashboard/automations/trigger`                                                            |
+| `/broadcasts`                    | `/dashboard/broadcasts`                                                                     |
+| `/channels`                      | `/self-hosting/requirements` (until a channels guide exists)                                |
+| `/contacts`                      | `/dashboard/audience/contacts`                                                              |
+| `/domains`                       | `/dashboard/domains/manage` (a domain's page; the list redirects to `/channels?type=email`) |
+| `/emails`                        | `/dashboard/emails/sending`                                                                 |
+| `/emails/receiving`              | `/dashboard/receiving/introduction`                                                         |
+| `/emails/suppressions`           | `/dashboard/emails/suppressions`                                                            |
+| `/instance/meta`                 | `/self-hosting/requirements` (until a Meta page exists)                                     |
+| `/instance/ses`, `/settings/ses` | `/self-hosting/aws-ses`                                                                     |
+| `/logs`                          | `/dashboard/logs`                                                                           |
+| `/metrics`                       | `/dashboard/emails/metrics`                                                                 |
+| `/profile`                       | `/self-hosting/security`                                                                    |
+| `/properties`                    | `/dashboard/audience/properties`                                                            |
+| `/segments`                      | `/dashboard/audience/segments`                                                              |
+| `/settings`, `/settings/team`    | `/dashboard/team/roles`                                                                     |
+| `/settings/exports`              | `/dashboard/exports`                                                                        |
+| `/settings/smtp`                 | `/self-hosting/smtp-gateway`                                                                |
+| `/settings/sso`                  | `/dashboard/team/sso`                                                                       |
+| `/settings/unsubscribe`          | `/dashboard/audience/unsubscribe-page`                                                      |
+| `/settings/usage`                | `/self-hosting/ses-tenancy`                                                                 |
+| `/templates`                     | `/dashboard/templates/editor`                                                               |
+| `/topics`                        | `/dashboard/audience/topics`                                                                |
+| `/webhooks`                      | `/webhooks/introduction`                                                                    |
 
 The site has no dedicated usage or profile guide as of 2026-09-29. Usage links
 to SES tenancy, which explains shared account quotas and team isolation;

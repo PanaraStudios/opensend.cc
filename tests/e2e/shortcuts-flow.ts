@@ -37,14 +37,15 @@ export function shortcutTests(state: () => State) {
     await owner.keyboard.press("Escape")
     await owner.keyboard.press("g")
     await owner.keyboard.press("d")
-    await expect(owner).toHaveURL(/\/domains$/)
+    // Domains' old key opens Channels on email.
+    await expect(owner).toHaveURL(/\/channels\?type=email$/)
     await owner.keyboard.press("/")
-    const search = owner.getByPlaceholder("Search domain prefix…")
+    const search = owner.getByPlaceholder("Search channels…")
     await expect(search).toBeFocused()
     await owner.keyboard.type("gc?/")
     await expect(search).toHaveValue("gc?/")
     await expect(owner.getByRole("dialog")).toHaveCount(0)
-    await expect(owner).toHaveURL(/\/domains$/)
+    await expect(owner).toHaveURL(/\/channels\?type=email$/)
     await search.fill("")
     await unfocus(owner)
     const rows = owner.locator("tbody tr")
@@ -69,11 +70,15 @@ export function shortcutTests(state: () => State) {
     await expect(owner).toHaveURL(new RegExp(`${href}$`))
     // The detail page registers Esc once its header renders.
     await expect(
-      owner.getByRole("button", { name: "Domains", exact: true })
+      owner.getByRole("button", { name: "Channels", exact: true })
     ).toHaveAttribute("aria-keyshortcuts", "Escape")
     await owner.keyboard.press("Escape")
-    await expect(owner).toHaveURL(/\/domains$/)
+    await expect(owner).toHaveURL(/\/channels$/)
+    // C opens Add channel; its first item is the add-domain dialog.
     await owner.keyboard.press("c")
+    await owner
+      .getByRole("menuitem", { name: "Email domain", exact: true })
+      .click()
     const add = owner.getByRole("dialog", { name: "Add domain", exact: true })
     await expect(add).toBeVisible()
     await owner.keyboard.press("Escape")

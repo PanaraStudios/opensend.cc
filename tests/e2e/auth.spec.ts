@@ -561,11 +561,11 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await csv.saveAs(csvPath)
     expect(readFileSync(csvPath, "utf8")).toContain("fixture.dkim.test")
     await owner
-      .getByRole("link", { name: "Domains", exact: true })
+      .getByRole("link", { name: "Channels", exact: true })
       .last()
       .click()
     await expect(
-      owner.getByRole("heading", { name: "Domains", exact: true })
+      owner.getByRole("heading", { name: "Channels", exact: true })
     ).toBeVisible()
     await owner
       .getByRole("link", { name: "onboarding.example.test", exact: true })
@@ -627,23 +627,31 @@ test.describe.serial("Docker self-hosted authentication", () => {
       (await c.query(api.installation.status)).installation?.completedAt
     ).toBeTruthy()
     organizationId = (await c.query(api.teams.snapshot))!.activeTeamId!
-    const domainCreatedAt = (await c.query(api.domains.get, {
+    // The Channels list shows a domain's last activity: its newest check.
+    const listed = (await c.query(api.domains.get, {
       id: sendingDomainId,
-    }))!.domain._creationTime
+    }))!.domain
+    const lastActivity = Math.max(
+      listed._creationTime,
+      listed.checkedAt ?? 0,
+      listed.verifiedAt ?? 0
+    )
     const clockContext = await ownerContext.browser()!.newContext({
       baseURL: base,
       storageState: await ownerContext.storageState(),
     })
     const clockPage = await clockContext.newPage()
-    await clockPage.clock.install({ time: new Date(domainCreatedAt + 125_000) })
+    await clockPage.clock.install({ time: new Date(lastActivity + 125_000) })
+    // The old Domains list opens Channels on email.
     await clockPage.goto("/domains")
-    const createdTime = clockPage
+    await expect(clockPage).toHaveURL(/\/channels\?type=email$/)
+    const activityTime = clockPage
       .getByRole("row")
       .filter({ hasText: "onboarding.example.test" })
       .locator("time")
-    await expect(createdTime).toHaveText("2m ago")
+    await expect(activityTime).toHaveText("2m ago")
     await clockPage.clock.fastForward(60_000)
-    await expect(createdTime).toHaveText("3m ago")
+    await expect(activityTime).toHaveText("3m ago")
     await clockContext.close()
     await owner.goto("/settings/ses")
     await expect(owner).toHaveURL(/\/instance\/ses$/)
@@ -882,7 +890,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
       "/topics",
       "/properties",
       "/metrics",
-      "/domains",
+      "/channels",
       "/logs",
       "/api-keys",
       "/webhooks",

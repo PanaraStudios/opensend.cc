@@ -17,6 +17,8 @@ describe("teamSafePath", () => {
 
   it("drops record ids to the parent list", () => {
     assert.equal(teamSafePath("/emails/em_welcome_ada"), "/emails")
+    assert.equal(teamSafePath("/channels/acc_1"), "/channels")
+    // The old Domains list redirects to Channels on email.
     assert.equal(teamSafePath("/domains/dom_1"), "/domains")
     assert.equal(teamSafePath("/emails/receiving/rcv_1"), "/emails/receiving")
     assert.equal(teamSafePath("/emails/messages/msg_1"), "/emails")

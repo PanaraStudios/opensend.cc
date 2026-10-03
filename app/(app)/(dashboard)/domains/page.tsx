@@ -1,11 +1,8 @@
-import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 
-import { DomainsView } from "@/components/dashboard/domains/list"
+import { EMAIL_CHANNELS_HREF } from "@/lib/dashboard/nav"
 
-export const metadata: Metadata = {
-  title: "Domains",
-}
-
-export default function DomainsPage() {
-  return <DomainsView />
+/** Domains are listed on the Channels page now. */
+export default function LegacyDomainsPage() {
+  redirect(EMAIL_CHANNELS_HREF)
 }

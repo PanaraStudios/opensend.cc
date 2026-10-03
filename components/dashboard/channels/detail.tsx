@@ -8,30 +8,21 @@ import {
   CircleAlertIcon,
   KeyRoundIcon,
   PlugIcon,
-  RefreshCwIcon,
   ShieldCheckIcon,
   UnplugIcon,
 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   ChannelAccountStatusBadge,
   ChannelQualityBadge,
   DetailField,
-  DetailHeader,
   DetailSection,
-  DocsButton,
   EventTrail,
   MetaStrip,
   MonoValue,
-  MoreMenu,
   NotFoundState,
   RelativeTime,
   Surface,
@@ -41,6 +32,7 @@ import {
 import {
   CopyChannelHandleItem,
   CHANNEL_ICONS,
+  ChannelDetailHeader,
   ChannelsIcon,
   DisconnectBusinessDialog,
   RegisterNumberDialog,
@@ -110,54 +102,40 @@ export function ChannelDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <DetailHeader
-        backHref="/channels"
-        backLabel="Channels"
+      <ChannelDetailHeader
         title={account.displayName}
         description={channelHandle(account.channel, account.handle)}
         icon={CHANNEL_ICONS[account.channel]}
         actions={
-          <>
-            <DocsButton />
-            {!whatsapp || registered ? null : (
-              <Button
-                variant="outline"
-                disabled={!canWrite}
-                onClick={() => setRegistering(true)}
-              >
-                <KeyRoundIcon data-icon="inline-start" />
-                Register number
-              </Button>
-            )}
+          !whatsapp || registered ? null : (
             <Button
               variant="outline"
-              disabled={!canWrite || !!syncing}
-              onClick={() => void syncAccount(account)}
+              disabled={!canWrite}
+              onClick={() => setRegistering(true)}
             >
-              <RefreshCwIcon data-icon="inline-start" />
-              {syncing ? "Syncing…" : "Sync"}
+              <KeyRoundIcon data-icon="inline-start" />
+              Register number
             </Button>
-            <MoreMenu>
-              <DropdownMenuGroup>
-                <CopyChannelHandleItem account={account} />
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={!canWrite}
-                  onClick={() => setDisconnecting(true)}
-                >
-                  <UnplugIcon />
-                  Disconnect business
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </MoreMenu>
-          </>
+          )
         }
+        refresh={{
+          label: "Sync",
+          pendingLabel: "Syncing…",
+          pending: !!syncing,
+          disabled: !canWrite,
+          onClick: () => void syncAccount(account),
+        }}
+        menu={<CopyChannelHandleItem account={account} />}
+        remove={{
+          label: "Disconnect business",
+          icon: UnplugIcon,
+          disabled: !canWrite,
+          onClick: () => setDisconnecting(true),
+        }}
       />
       <MetaStrip
         items={[
+          { label: "Channel", value: CHANNELS[account.channel].label },
           {
             label: "Status",
             value: <ChannelAccountStatusBadge status={account.status} />,
