@@ -18,6 +18,7 @@ import {
   ResourceTable,
   Th,
   EmptyState,
+  NotFoundState,
 } from "@/components/dashboard/primitives"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -198,7 +199,7 @@ function BaseDialog({
 }
 export function KnowledgeDetail({ id }: { id: string }) {
   const base = useTeamQuery(api.knowledge.resources.dashboardGet, { id }) as
-    KnowledgeBase | undefined
+    KnowledgeBase | null | undefined
   const list = useTeamQuery(api.knowledge.resources.dashboardList, {
     knowledgeBaseId: id,
     limit: 100,
@@ -214,6 +215,14 @@ export function KnowledgeDetail({ id }: { id: string }) {
     [matches, setMatches] = useState<KnowledgeMatch[]>(),
     [error, setError] = useState(""),
     [deleting, setDeleting] = useState<string>()
+  if (base === null)
+    return (
+      <NotFoundState
+        icon={BookOpenIcon}
+        noun="knowledge base"
+        backHref="/playground/knowledge"
+      />
+    )
   if (!base || !list) return <Skeleton className="h-60 w-full" />
   return (
     <div className="flex flex-col gap-5">

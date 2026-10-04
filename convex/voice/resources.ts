@@ -15,6 +15,7 @@ import {
   requireCaller,
   invalid,
   notFound,
+  orNullIfNotFound,
   apiError,
   type Caller,
 } from "../api/caller"
@@ -433,7 +434,10 @@ export const dashboardGet = query({
   returns: v.any(),
   handler: async (ctx, args) => {
     await authorize(ctx, args)
-    return publicBot(await ownedBot(ctx, args.organizationId, args.id))
+    const row = await orNullIfNotFound(
+      ownedBot(ctx, args.organizationId, args.id)
+    )
+    return row && publicBot(row)
   },
 })
 export const dashboardWrite = action({
