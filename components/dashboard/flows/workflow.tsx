@@ -162,7 +162,7 @@ export function WorkflowCanvas<Node extends { key: string }>({
 
   return (
     /* The zoom control sits on the frame, not in what scrolls. */
-    <div className="relative flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       <div
         ref={canvas}
         data-testid="workflow"
@@ -170,7 +170,7 @@ export function WorkflowCanvas<Node extends { key: string }>({
            canvas always scrolls: dragging and the wheel move it, and its
            scrollbars stay hidden. */
         className={cn(
-          "min-h-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
+          "min-h-0 min-w-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
           props.stacked && "touch-auto"
         )}
         onPointerDown={(event) => {
