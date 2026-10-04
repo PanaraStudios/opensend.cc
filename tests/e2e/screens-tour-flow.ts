@@ -436,8 +436,8 @@ export function screensTourTests(state: TourState) {
         release = resolve
       })
       const holdAudience = async (route: Route) => {
-        const body = route.request().postDataJSON() as { path?: string }
-        if (body.path === "broadcasts:review") await pending
+        const body = route.request().postDataJSON() as { path?: string } | null
+        if (body?.path === "broadcasts:review") await pending
         await route.continue()
       }
       await p.route("**/api/action", holdAudience)
