@@ -115,7 +115,7 @@ export function FlowEditor<
   nodeActions,
   nodeBody,
   problems,
-  stacked = false,
+  stacked,
 }: {
   catalog: FlowCatalog<Node, Context, Kind>
   context: Context

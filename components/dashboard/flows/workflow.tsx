@@ -1,4 +1,5 @@
 "use client"
+import { DEFAULT_ZOOM, ZOOM_STEPS, fitZoom } from "@/lib/dashboard/flow-zoom"
 
 import * as React from "react"
 import { MinusIcon, PlusIcon, type LucideIcon } from "lucide-react"
@@ -8,13 +9,12 @@ import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
 import type { FlowBranch, FlowSlot } from "./catalog"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 /* The workflow, drawn top to bottom on a dotted canvas: the trigger, then each
    step, with the paths of a branching step side by side beneath it. The
    editor and the observability view draw the same graph with different
    cards, so the cards come in as render props. */
-
-const ZOOM_STEPS = [0.5, 0.75, 1, 1.25] as const
 
 export function Connector({ className }: { className?: string }) {
   return (
@@ -134,22 +134,57 @@ export function StepList<Node extends { key: string }>({
 export function WorkflowCanvas<Node extends { key: string }>({
   trigger,
   steps,
+  stacked: requestedStacked,
   ...props
 }: GraphProps<Node> & {
   /** The first card. */
   trigger: React.ReactNode
   steps: readonly Node[]
 }) {
-  const [zoom, setZoom] = React.useState(2)
+  const mobile = useIsMobile()
+  const stacked = requestedStacked ?? mobile
+  const [zoom, setZoom] = React.useState(DEFAULT_ZOOM)
+  const [fitted, setFitted] = React.useState(0)
   const canvas = React.useRef<HTMLDivElement>(null)
-  /* A graph wider than the canvas opens on its middle, where the trigger is,
-     rather than on its left edge. Once: after that the view is the user's. */
+  const graph = React.useRef<HTMLDivElement>(null)
+  /* Open the desktop graph zoomed to fit its width (never above 100%), and the
+     mobile stack at the left edge. Only when switching layouts; otherwise keep
+     the reader's zoom and pan. */
   React.useLayoutEffect(() => {
     const element = canvas.current
-    if (element) {
-      element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+    if (!element) return
+    if (stacked) {
+      element.scrollLeft = 0
+      return
     }
-  }, [])
+    const natural =
+      Math.max(
+        0,
+        ...Array.from(graph.current?.children ?? []).map(
+          (child) => child.getBoundingClientRect().width
+        )
+      ) / ZOOM_STEPS[DEFAULT_ZOOM]
+    setZoom(fitZoom(natural, element.clientWidth))
+    setFitted((count) => count + 1)
+  }, [stacked])
+  /* Once the fitted zoom has rendered, centre the first card (the trigger or
+     IVR entry menu): wide graphs branch unevenly, so the middle of the canvas
+     isn't where a flow starts. */
+  React.useLayoutEffect(() => {
+    const element = canvas.current
+    /* Cards render parent-first, so the first one is where the flow starts. */
+    const first =
+      graph.current?.querySelector("[data-flow-card]") ??
+      graph.current?.firstElementChild
+    if (!element || !fitted) return
+    element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+    if (first) {
+      const card = first.getBoundingClientRect(),
+        frame = element.getBoundingClientRect()
+      element.scrollLeft +=
+        card.left + card.width / 2 - (frame.left + frame.width / 2)
+    }
+  }, [fitted])
 
   /* Dragging the background moves the canvas. The graph lets presses through
      everywhere but its cards and controls, so a press reaches the canvas only
@@ -171,11 +206,11 @@ export function WorkflowCanvas<Node extends { key: string }>({
            scrollbars stay hidden. */
         className={cn(
           "min-h-0 min-w-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
-          props.stacked && "touch-auto"
+          stacked && "touch-auto"
         )}
         onPointerDown={(event) => {
           if (
-            props.stacked ||
+            stacked ||
             event.button !== 0 ||
             event.target !== event.currentTarget
           )
@@ -197,17 +232,18 @@ export function WorkflowCanvas<Node extends { key: string }>({
              always canvas to drag around. */
           className={cn(
             "pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10",
-            props.stacked && "min-h-full w-full min-w-0 p-4"
+            stacked && "min-h-full w-full min-w-0 p-4"
           )}
-          style={{ zoom: props.stacked ? 1 : ZOOM_STEPS[zoom] }}
+          ref={graph}
+          style={{ zoom: stacked ? 1 : ZOOM_STEPS[zoom] }}
         >
           {trigger}
-          <StepList {...props} steps={steps} parent={null} />
+          <StepList {...props} stacked={stacked} steps={steps} parent={null} />
         </div>
       </div>
       <ButtonGroup
         orientation="vertical"
-        className={cn("absolute top-3 right-5 z-10", props.stacked && "hidden")}
+        className={cn("absolute top-3 right-5 z-10", stacked && "hidden")}
       >
         <Button
           variant="outline"
@@ -275,6 +311,7 @@ export function WorkflowCard({
   return (
     <div
       data-testid={testId}
+      data-flow-card=""
       className={cn(
         "pointer-events-auto flex w-96 max-w-full cursor-auto flex-col gap-3 rounded-xl border bg-card p-3 shadow-card",
         tone === "warning" ? "border-warning" : "border-border",

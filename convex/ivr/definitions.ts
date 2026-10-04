@@ -13,6 +13,7 @@ import {
   callerValue,
   requireCaller,
   notFound,
+  orNullIfNotFound,
   invalid,
   type Caller,
 } from "../api/caller"
@@ -360,7 +361,7 @@ export const get = internalQuery({
 export const dashboardGet = query({
   args: { organizationId: v.string(), id: v.string() },
   returns: v.any(),
-  handler: getDefinition,
+  handler: (ctx, args) => orNullIfNotFound(getDefinition(ctx, args)),
 })
 async function listDefinitions(
   ctx: QueryCtx,

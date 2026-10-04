@@ -11,6 +11,7 @@ import {
   DetailHeader,
   DetailSection,
   EmptyState,
+  NotFoundState,
   ResourceTable,
   Th,
   RelativeTime,
@@ -302,8 +303,16 @@ export function IvrEditor({ id }: { id?: string }) {
     api.ivr.definitions.dashboardGet,
     { id: id ?? "" },
     { enabled: !!id }
-  ) as IvrResource | undefined
+  ) as IvrResource | null | undefined
   if (!id) return <IvrList />
+  if (row === null)
+    return (
+      <NotFoundState
+        icon={WorkflowIcon}
+        noun="IVR"
+        backHref="/playground/ivr"
+      />
+    )
   if (!row) return <Skeleton className="h-60 w-full" />
   return <IvrForm key={id} row={row} />
 }
@@ -379,7 +388,7 @@ function IvrForm({ row }: { row: IvrResource }) {
     select(ivrMenuKey(menu.id))
   }
   const graph = ivrGraph(draft)
-  const problemNodes = ivrProblemNodes(draft, problems ?? [])
+  const problemNodes = ivrProblemNodes(draft, problems ?? [], graph.unreachable)
   const selectedNode = [...graph.nodes, ...ivrEditableNodes(draft)].find(
     (node) => node.key === selected
   )
@@ -732,14 +741,14 @@ function IvrForm({ row }: { row: IvrResource }) {
                 }}
               />
             </div>
-            {graph.unreachable.length ? (
+            {graph.otherMenus.length ? (
               <Alert variant="warning">
                 <AlertTitle>Menus outside the entry flow</AlertTitle>
                 <AlertDescription>
                   Connect these menus from a digit option or business hours.
                   Select a menu to edit or remove it.
                   <div className="flex flex-wrap gap-2">
-                    {graph.unreachable.map((menu) => (
+                    {graph.otherMenus.map((menu) => (
                       <Button
                         key={menu.id}
                         variant="link"

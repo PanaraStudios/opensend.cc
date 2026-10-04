@@ -96,10 +96,11 @@ test("IVR lists disconnected cycles and menus reachable only during closed hours
   }
   const graph = ivrGraph(definition)
   assert.deepEqual(
-    graph.unreachable.map((menu) => menu.id),
+    graph.otherMenus.map((menu) => menu.id),
     ["one", "two"]
   )
-  assert.equal(graph.nodes.filter((node) => node.kind === "menu").length, 2)
+  assert.deepEqual(graph.unreachable, [])
+  assert.equal(graph.nodes.filter((node) => node.kind === "menu").length, 4)
 })
 test("IVR self-loops and missing targets terminate as selectable links", () => {
   const definition = fixture()

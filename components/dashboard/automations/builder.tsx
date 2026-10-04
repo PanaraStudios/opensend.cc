@@ -1,5 +1,6 @@
 "use client"
 import { contactIdentity } from "@/lib/dashboard/contacts"
+import { eventLabel } from "@/lib/event-catalog"
 
 import * as React from "react"
 import Link from "next/link"
@@ -515,7 +516,8 @@ function TestEventForm({
         <DialogHeader>
           <DialogTitle>Test event</DialogTitle>
           <DialogDescription>
-            Sends {automation.trigger} for one contact and starts a run.
+            Sends {eventLabel(automation.trigger)} for one contact and starts a
+            run.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-4">

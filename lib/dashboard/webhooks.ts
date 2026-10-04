@@ -1,4 +1,8 @@
-import { SYSTEM_EVENT_CATALOG, type EventField } from "../event-catalog"
+import {
+  eventLabel,
+  SYSTEM_EVENT_CATALOG,
+  type EventField,
+} from "../event-catalog"
 import { isPublicHostname } from "../net/public-host"
 import { isHttpsUrl, pluralize } from "./format"
 import {
@@ -24,9 +28,7 @@ export const WEBHOOK_EVENT_GROUPS = [
 }))
 
 export function webhookEventLabel(name: WebhookEvent): string {
-  return (
-    SYSTEM_EVENT_CATALOG.find((event) => event.name === name)?.label ?? name
-  )
+  return eventLabel(name, "name")
 }
 
 /** Generate a complete example including nested message/contact schemas. */
