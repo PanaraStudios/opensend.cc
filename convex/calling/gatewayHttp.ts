@@ -61,7 +61,38 @@ export const events = httpAction(async (ctx, request) => {
     return new Response(null, { status })
   }
 })
+export const leave = httpAction(async (ctx, request) => {
+  try {
+    const raw = await limitedBody(request, 2048, { raw: true })
+    const data: unknown = JSON.parse(new TextDecoder().decode(raw))
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("id" in data) ||
+      !("browserId" in data) ||
+      !("leaseId" in data) ||
+      typeof data.id !== "string" ||
+      typeof data.browserId !== "string" ||
+      typeof data.leaseId !== "string" ||
+      !/^[a-f0-9-]{36}$/i.test(data.leaseId)
+    )
+      return new Response(null, { status: 400 })
+    await ctx.runMutation(internal.calling.softphoneState.disconnect, {
+      id: data.id as import("../_generated/dataModel").Id<"callAgents">,
+      browserId: data.browserId,
+      leaseId: data.leaseId,
+    })
+    return new Response(null, { status: 204 })
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+})
 export function registerCallingGatewayRoutes(http: HttpRouter) {
+  http.route({
+    path: "/calling/softphone/leave",
+    method: "POST",
+    handler: leave,
+  })
   http.route({
     path: "/calling/gateway/events",
     method: "POST",

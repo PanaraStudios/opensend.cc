@@ -1,6 +1,6 @@
 "use node"
 import { ConvexError, v } from "convex/values"
-import { action } from "../_generated/server"
+import { action, internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { agentActor } from "./agentAccess"
@@ -23,6 +23,7 @@ const recipientArgs = {
 export const session = action({
   args: browserArgs,
   returns: v.object({
+    agentId: v.id("callAgents"),
     extension: v.string(),
     password: v.string(),
     expiresAt: v.number(),
@@ -35,6 +36,7 @@ export const session = action({
     args
   ): Promise<
     import("../../services/call-gateway/src/agents").AgentCredential & {
+      agentId: Id<"callAgents">
       wssUrl: string
       leaseId: string
       queues: string[]
@@ -68,6 +70,7 @@ export const session = action({
       })
       return {
         ...credential,
+        agentId: row._id,
         wssUrl,
         leaseId: row.leaseId,
         queues: agentQueues(process.env.CALL_AGENT_QUEUES, args.organizationId),
@@ -268,5 +271,15 @@ export const control = action({
           targetId: target._id,
         })
     }
+  },
+})
+
+/** Disconnect capabilities can only revoke their own lease, never create one. */
+export const revokeLease = internalAction({
+  args: { leaseId: v.string() },
+  returns: v.null(),
+  handler: async (_ctx, { leaseId }) => {
+    await gateway().revokeAgent(leaseId)
+    return null
   },
 })

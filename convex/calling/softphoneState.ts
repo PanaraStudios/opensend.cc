@@ -5,7 +5,7 @@ import {
   mutation,
   query,
 } from "../_generated/server"
-import { components } from "../_generated/api"
+import { components, internal } from "../_generated/api"
 import { createChannelMessage } from "../channels/messages"
 import schema from "../schema"
 import {
@@ -90,10 +90,21 @@ export const presence = mutation({
       (!row.extension || row.expiresAt <= Date.now())
     )
       throw new ConvexError("Register the softphone first")
+    const updatedAt = Date.now()
     await ctx.db.patch("callAgents", row._id, {
       status: args.status,
-      updatedAt: Date.now(),
+      updatedAt,
     })
+    if (args.status === "online")
+      await ctx.scheduler.runAfter(
+        PRESENCE_TTL,
+        internal.calling.softphoneState.expire,
+        {
+          id: row._id,
+          leaseId: row.leaseId,
+          updatedAt,
+        }
+      )
     return null
   },
 })
@@ -210,12 +221,7 @@ export const state = query({
             ? Math.min(r.updatedAt + PRESENCE_TTL, r.expiresAt)
             : 0,
           extension: r?.extension ?? null,
-          status:
-            r &&
-            r.updatedAt + PRESENCE_TTL > Date.now() &&
-            r.expiresAt > Date.now()
-              ? r.status
-              : ("away" as const),
+          status: r && r.extension ? r.status : ("away" as const),
         }
       }),
       calls: calls
@@ -365,6 +371,53 @@ export const releaseTransfer = internalMutation({
         reservedCallId: undefined,
         reservationUntil: undefined,
       })
+    return null
+  },
+})
+
+export const expire = internalMutation({
+  args: { id: v.id("callAgents"), leaseId: v.string(), updatedAt: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("callAgents", args.id)
+    if (
+      row?.leaseId === args.leaseId &&
+      row.updatedAt === args.updatedAt &&
+      row.status === "online" &&
+      row.updatedAt + PRESENCE_TTL <= Date.now()
+    ) {
+      await ctx.db.patch("callAgents", row._id, {
+        status: "away",
+        expiresAt: 0,
+      })
+      await ctx.scheduler.runAfter(0, internal.calling.softphone.revokeLease, {
+        leaseId: row.leaseId,
+      })
+    }
+    return null
+  },
+})
+
+/** The random lease is a capability to go Away only. Stale beacons are harmless. */
+export const disconnect = internalMutation({
+  args: { id: v.id("callAgents"), browserId: v.string(), leaseId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("callAgents", args.id)
+    if (
+      row?.browserId === args.browserId &&
+      row.leaseId === args.leaseId &&
+      row.expiresAt > 0
+    ) {
+      await ctx.db.patch("callAgents", row._id, {
+        status: "away",
+        expiresAt: 0,
+        updatedAt: Date.now(),
+      })
+      await ctx.scheduler.runAfter(0, internal.calling.softphone.revokeLease, {
+        leaseId: row.leaseId,
+      })
+    }
     return null
   },
 })
