@@ -47,6 +47,7 @@ import {
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
   webhookFormError,
+  webhookEventLabel,
 } from "@/lib/dashboard/webhooks"
 import { useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 import { cn } from "@/lib/utils"
@@ -202,8 +203,8 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
                           {/* The group row's line height, so every row is
                               the same whole-pixel height and its box sits
                               where the group's does. */}
-                          <span className="font-mono text-[12px] leading-5">
-                            {event}
+                          <span className="text-sm leading-5" title={event}>
+                            {webhookEventLabel(event)}
                           </span>
                         </label>
                       ))}

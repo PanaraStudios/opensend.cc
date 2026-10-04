@@ -90,7 +90,7 @@ export function shortcutTests(state: () => State) {
     ).toBeVisible()
     const palette = owner.getByRole("dialog", { name: "Search", exact: true })
     await palette
-      .getByPlaceholder("Search pages, emails, contacts…")
+      .getByPlaceholder("Search pages, messages, senders, contacts…")
       .fill("Playground Inbox")
     await palette
       .getByRole("option", { name: "Playground · Inbox", exact: true })

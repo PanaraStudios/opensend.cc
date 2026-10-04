@@ -168,3 +168,27 @@ describe("OpenAPI and wave 5 binding contract", () => {
     expect([...NOT_EXPOSED].filter((op) => !contract.has(op))).toEqual([])
   })
 })
+
+test("OpenAPI declares and groups every channel tag without changing operations", () => {
+  const contract = parse(
+    readFileSync(join(root, "../../openapi/opensend.yaml"), "utf8")
+  ) as {
+    tags: { name: string }[]
+    "x-tagGroups": { name: string; tags: string[] }[]
+    paths: Record<string, Record<string, { tags?: string[] }>>
+  }
+  const tags = new Set(contract.tags.map((tag) => tag.name))
+  for (const channel of ["WhatsApp", "Messenger", "Instagram"])
+    expect(
+      contract["x-tagGroups"].find((group) => group.name === channel)?.tags
+    ).toContain(channel)
+  expect(
+    contract["x-tagGroups"].find((group) => group.name === "Email")?.tags
+  ).toContain("Emails")
+  for (const path of Object.values(contract.paths))
+    for (const operation of Object.values(path))
+      for (const tag of operation.tags ?? [])
+        expect(tags.has(tag), tag).toBe(true)
+  for (const group of contract["x-tagGroups"])
+    for (const tag of group.tags) expect(tags.has(tag), tag).toBe(true)
+})

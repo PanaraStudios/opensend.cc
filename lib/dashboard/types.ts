@@ -293,6 +293,8 @@ export type EmailTemplate = EmailDraft & {
   channel?: Infer<typeof channelValue>
   /** A WhatsApp template's Meta settings and review state. */
   whatsapp?: WhatsAppTemplateInfo
+  /** Messenger and Instagram message text and quick replies. */
+  localContent?: import("../meta/local-templates").LocalTemplate
   /** A WhatsApp draft's components, in Meta's creation format. */
   components?: unknown
 }

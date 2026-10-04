@@ -194,10 +194,7 @@ export function WhatsAppCampaignFields({
     { enabled: channel !== "whatsapp" }
   )
   const options = channel === "whatsapp" ? whatsappOptions : pageOptions
-  const accountLabel =
-    channel === "whatsapp"
-      ? "Sending number"
-      : `Sending ${CHANNELS[channel].accountNoun.toLowerCase()}`
+  const accountLabel = "Sender"
   const templateLabel =
     channel === "whatsapp" ? "Approved template" : "Published template"
   const selected = options?.selected

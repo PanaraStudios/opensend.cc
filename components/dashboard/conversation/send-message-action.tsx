@@ -56,7 +56,7 @@ export function SendMessageAction({ contact }: { contact?: Contact }) {
           <DialogHeader>
             <DialogTitle>Send message</DialogTitle>
             <DialogDescription>
-              Choose the contact and account, then compose your message.
+              Choose the contact and sender, then compose your message.
             </DialogDescription>
           </DialogHeader>
           {open ? (
@@ -170,13 +170,13 @@ function StartConversationForm({
         </Field>
         {channel !== "email" ? (
           <Field>
-            <FieldLabel htmlFor="send-account">Sending account</FieldLabel>
+            <FieldLabel htmlFor="send-account">Sender</FieldLabel>
             <OptionSelect
               id="send-account"
               value={accountId}
               items={items}
               onChange={setAccountId}
-              placeholder="Choose an account"
+              placeholder="Choose a sender"
             />
             <ListPagination {...accounts.pagination} embedded noun="account" />
             <FieldDescription>

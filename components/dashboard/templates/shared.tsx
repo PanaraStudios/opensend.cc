@@ -1,5 +1,8 @@
 "use client"
 
+import { FormattedText } from "@/components/dashboard/conversation/formatted-text"
+import { AttachedButtons } from "@/components/dashboard/conversation/business-card"
+import type { LocalTemplate } from "@/lib/meta/local-templates"
 import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 import * as React from "react"
 import Link from "next/link"
@@ -46,7 +49,10 @@ import { useTemplateCommands } from "@/lib/templates/use-templates"
 export function TemplateThumbnail({
   item,
 }: {
-  item: Pick<EmailTemplate, "name" | "html" | "channel" | "components">
+  item: Pick<
+    EmailTemplate,
+    "name" | "html" | "channel" | "components" | "localContent"
+  >
 }) {
   if (item.channel === "whatsapp")
     return (
@@ -59,6 +65,15 @@ export function TemplateThumbnail({
             formFromComponents(storedComponents(item.components)).form
           )}
         />
+      </div>
+    )
+  if (item.localContent)
+    return (
+      <div
+        inert
+        className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted p-4"
+      >
+        <LocalTemplatePreview content={item.localContent} />
       </div>
     )
   return (
@@ -230,7 +245,7 @@ export function TemplateMenu({
         description={
           item.whatsapp?.metaTemplateId
             ? "The template is deleted at Meta too. Messages already sent stay. After an approved template is deleted, Meta keeps its name for 30 days."
-            : "Emails already sent keep their rendered copy. New API calls cannot use this template."
+            : "Messages already sent keep their rendered copy. New API calls cannot use this template."
         }
         onConfirm={async () => {
           if (onDelete) onDelete()
@@ -239,5 +254,22 @@ export function TemplateMenu({
         }}
       />
     </>
+  )
+}
+
+/** The same text formatting and quick replies customers see in the Inbox. */
+export function LocalTemplatePreview({ content }: { content: LocalTemplate }) {
+  return (
+    <div className="flex flex-col gap-3" data-testid="local-template-preview">
+      <FormattedText text={content.text || "Your message"} />
+      {content.quick_replies.length ? (
+        <AttachedButtons
+          buttons={content.quick_replies.map((reply) => ({
+            type: "QUICK_REPLY",
+            text: reply.title,
+          }))}
+        />
+      ) : null}
+    </div>
   )
 }

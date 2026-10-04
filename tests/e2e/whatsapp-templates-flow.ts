@@ -80,7 +80,12 @@ export function whatsappTemplatesTests(
 
     // New → WhatsApp opens the WhatsApp editor.
     await createTemplate(owner, "WhatsApp")
-    await expect(owner.getByTestId("whatsapp-preview")).toBeVisible()
+    // The editor also renders a phone-only preview above the form (hidden here).
+    await expect(
+      owner
+        .getByRole("complementary", { name: "Preview" })
+        .getByTestId("whatsapp-preview")
+    ).toBeVisible()
     await expect(owner.getByTestId("editor-name")).toHaveValue(
       /^untitled_template/
     )
@@ -98,7 +103,9 @@ export function whatsappTemplatesTests(
     await owner.getByTestId("add-button").click()
     await owner.getByRole("menuitem", { name: "Quick reply" }).click()
     await owner.getByLabel("Button label", { exact: true }).fill("Thanks")
-    const preview = owner.getByTestId("whatsapp-preview")
+    const preview = owner
+      .getByRole("complementary", { name: "Preview" })
+      .getByTestId("whatsapp-preview")
     await expect(preview).toContainText("Hi Pablo, your order is ready.")
     await expect(preview).toContainText("Thanks")
     await expect(owner.getByTestId("save-indicator")).toHaveText("Saved")

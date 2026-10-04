@@ -101,8 +101,13 @@ function TemplateCard({ item }: { item: EmailTemplate }) {
 
 export function TemplatesView() {
   const router = useRouter()
-  const { organizationId, addTemplate, addWhatsAppTemplate, syncFromMeta } =
-    useTemplateCommands()
+  const {
+    organizationId,
+    addTemplate,
+    addWhatsAppTemplate,
+    addPageTemplate,
+    syncFromMeta,
+  } = useTemplateCommands()
   const accounts = useWhatsAppAccounts()
   const { query, setQuery, search } = useListSearch()
   const [status, setStatus] = React.useState("all")
@@ -144,7 +149,9 @@ export function TemplatesView() {
       const id =
         kind === "whatsapp"
           ? await addWhatsAppTemplate()
-          : await addTemplate({ name: UNTITLED_TEMPLATE, subject: "" })
+          : kind === "messenger" || kind === "instagram"
+            ? await addPageTemplate(kind)
+            : await addTemplate({ name: UNTITLED_TEMPLATE, subject: "" })
       toast.add({ type: "success", title: "Draft created" })
       router.push(`/templates/${id}`)
     } catch (error) {
@@ -241,7 +248,7 @@ export function TemplatesView() {
           <EmptyState
             icon={FileCodeIcon}
             title="No templates yet"
-            description="Create a new template to reuse in your emails."
+            description="Create a template to reuse across your messaging channels."
           >
             {createButton}
           </EmptyState>
@@ -256,7 +263,7 @@ export function TemplatesView() {
             {layout === "grid" ? (
               <ul
                 data-testid="templates-grid"
-                className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-x-6 gap-y-8"
+                className="grid grid-cols-[repeat(auto-fill,minmax(min(19rem,100%),1fr))] gap-x-6 gap-y-8"
               >
                 {pageRows.map((item) => (
                   <TemplateCard key={item.id} item={item} />

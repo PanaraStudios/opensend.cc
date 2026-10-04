@@ -287,7 +287,10 @@ export function registerTemplateRoutes(http: HttpRouter) {
           html: draft?.html ?? "",
           text: draft?.text ?? toPlainText(draft?.html ?? ""),
           ...(row.channel === "messenger" || row.channel === "instagram"
-            ? { quick_replies: localTemplate(draft?.content).quick_replies }
+            ? {
+                quick_replies: localTemplate(draft?.content, true)
+                  .quick_replies,
+              }
             : {}),
           variables: resolvedVariables(row, draft ?? { html: "" }).map(
             (variable) => {

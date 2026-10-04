@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   DASHBOARD_NAV,
+  CHANNEL_PAGES,
   EMAIL_CHANNELS_HREF,
   EMAIL_TABS,
   PLAYGROUND_TABS,
@@ -51,10 +52,24 @@ test("Channels replaces Domains and stays active on a domain's page", () => {
   assert.equal(navItemActive("/domains-other", channels), false)
   assert.deepEqual(channels.keywords, [
     "Domains",
+    "sender",
     "Email",
     "WhatsApp",
     "Messenger",
     "Instagram",
   ])
   assert.equal(EMAIL_CHANNELS_HREF, "/channels?type=email")
+})
+
+test("command channel destinations cover every registered sender type", () => {
+  assert.deepEqual(
+    CHANNEL_PAGES.map((page) => page.href),
+    [
+      "/channels?type=email",
+      "/channels?type=whatsapp",
+      "/channels?type=messenger",
+      "/channels?type=instagram",
+    ]
+  )
+  assert.ok(CHANNEL_PAGES.every((page) => page.keywords.includes("sender")))
 })

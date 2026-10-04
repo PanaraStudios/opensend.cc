@@ -161,7 +161,7 @@ function EditorScreen({
             data-testid="editor-test-email"
             onClick={() => setTestOpen(true)}
           >
-            Test email
+            Send test
           </Button>
           {actions(editor)}
         </EditorTopBar>

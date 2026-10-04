@@ -95,3 +95,31 @@ it("list/get tools preserve filters, cursors and errors and have read annotation
     await f.close()
   }
 })
+
+it("tool descriptions share message, sender and pagination vocabulary across channels", async () => {
+  const f = await connectClient("fixture-credential")
+  try {
+    const tools = (await f.client.listTools()).tools
+    expect(
+      tools.find((tool) => tool.name === "list_messages")?.description
+    ).toMatch(/List messages/)
+    for (const channel of ["whatsapp", "messenger", "instagram"]) {
+      expect(
+        tools.find((tool) => tool.name === `send-${channel}-message`)
+          ?.description
+      ).toMatch(/sender/)
+      expect(
+        tools.find((tool) => tool.name === `send-${channel}-message`)
+          ?.description
+      ).toMatch(/send_message/)
+      const description = tools.find(
+        (tool) => tool.name === `list-${channel}-messages`
+      )?.description
+      expect(description).toMatch(/after or before/)
+      expect(description).toMatch(/data and has_more/)
+      expect(description).toMatch(/list_messages/)
+    }
+  } finally {
+    await f.close()
+  }
+})

@@ -769,3 +769,76 @@ describe("the /templates REST API with channels", () => {
     })
   })
 })
+
+test("dashboard template tests require approval and enqueue a rendered WhatsApp message to a chosen number", async () => {
+  const f = await setup()
+  const id = await f.create()
+  const args = {
+    organizationId: f.team,
+    templateId: id,
+    from: f.account,
+    to: "+1 (555) 123-4567",
+    variables: { "1": "Ada", "2": "42" },
+  }
+  await expect(f.owner.mutation(api.messages.sendTest, args)).rejects.toThrow(
+    "approved"
+  )
+  await f.owner.action(api.whatsapp.templateActions.publish, { id })
+  await expect(f.owner.mutation(api.messages.sendTest, args)).rejects.toThrow(
+    "approved"
+  )
+  await f.approve()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  await expect(
+    f.outsider.client.mutation(api.messages.sendTest, args)
+  ).rejects.toBeDefined()
+  await expect(
+    f.owner.mutation(api.messages.sendTest, { ...args, to: "5551234567" })
+  ).rejects.toThrow("country code")
+  await expect(
+    f.owner.mutation(api.messages.sendTest, { ...args, variables: {} })
+  ).rejects.toThrow("variable")
+  expect(
+    await f.owner.query(api.messages.testDefinition, {
+      organizationId: f.team,
+      templateId: id,
+    })
+  ).toMatchObject({ variables: [{ key: "1" }, { key: "2" }] })
+  expect(
+    await f.outsider.client.query(api.messages.testDefinition, {
+      organizationId: f.outsider.team,
+      templateId: id,
+    })
+  ).toBeNull()
+  const sent = await f.owner.mutation(api.messages.sendTest, args)
+  const detail = await f.owner.query(api.messages.get, {
+    id: sent,
+    now: Date.now(),
+  })
+  expect(detail).toMatchObject({
+    message: {
+      channel: "whatsapp",
+      to: "15551234567",
+      source: "dashboard",
+      status: "queued",
+    },
+    rendered: { body: "Hi Ada, your order 42 has shipped." },
+    events: [expect.objectContaining({ type: "queued" })],
+  })
+  expect(JSON.parse(detail!.payload)).toMatchObject({
+    template: {
+      name: "order_shipped",
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: "Ada" },
+            { type: "text", text: "42" },
+          ],
+        },
+      ],
+    },
+  })
+})

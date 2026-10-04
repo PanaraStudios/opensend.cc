@@ -43,3 +43,5 @@ Implementation is shared: `ShortcutProvider` and `useShortcut` own key dispatch;
 `SelectionBar`, `ConfirmDialog`, `TypeToConfirmDialog` and `EditorTopBar` provide
 their contextual actions. Dashboard and full-screen editor shells each mount one
 provider. No backend or AWS permissions change.
+
+Channel navigation uses **g h** for all Channels, **g d** for email senders, **g 1** for WhatsApp, **g 2** for Messenger, and **g 3** for Instagram. In ⌘K (Ctrl+K on Windows/Linux), search the channel name, “message”, or “sender” to open channels and find inbound/outbound messages and connected senders across all channels.

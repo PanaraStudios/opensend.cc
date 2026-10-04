@@ -1,4 +1,5 @@
 "use client"
+import { TemplateTestAction } from "./test-send"
 import { FileUploadField } from "../file-upload"
 
 import * as React from "react"
@@ -233,6 +234,10 @@ export function WhatsAppTemplateEditorScreen({
         badge={<TemplateBadge item={item} />}
       >
         <SaveIndicator save={save} />
+        <TemplateTestAction
+          templateId={item.id}
+          save={() => autosave.flush()}
+        />
         <TemplateMenu
           item={item}
           inEditor
@@ -253,6 +258,11 @@ export function WhatsAppTemplateEditorScreen({
       <div className="flex min-h-0 flex-1">
         <main className="min-w-0 flex-1 overflow-auto">
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+            <div className="lg:hidden" aria-label="Preview">
+              <WhatsAppTemplatePreview
+                rendered={renderedTemplateFromForm(form)}
+              />
+            </div>
             {whatsapp?.metaStatus === "REJECTED" ? (
               <Alert variant="destructive" data-testid="template-rejected">
                 <CircleAlertIcon />
