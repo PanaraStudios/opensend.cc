@@ -167,7 +167,7 @@ export function EmailsView() {
               {pageRows.map((row) => (
                 <TableRow key={row.id}>
                   {/* Takes the free width; max-w-0 lets the preview truncate. */}
-                  <TableCell className="w-full max-w-0">
+                  <TableCell className="w-full max-w-0 min-w-52">
                     <LogCell row={row} />
                   </TableCell>
                   <TableCell>
@@ -299,7 +299,7 @@ export function ReceivingView() {
               {pageRows.map((row) => (
                 <TableRow key={row.id}>
                   {/* Takes the free width; max-w-0 lets the preview truncate. */}
-                  <TableCell className="w-full max-w-0">
+                  <TableCell className="w-full max-w-0 min-w-52">
                     <LogCell row={row} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">

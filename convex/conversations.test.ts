@@ -619,6 +619,18 @@ test("old template rows render from the published copy, including paused templat
   expect(
     await f.member.client.query(api.messages.get, { id: sent })
   ).toMatchObject({ rendered: renderedOrder("Pablo") })
+  expect(
+    (
+      await f.member.client.query(api.messages.sending, {
+        organizationId: f.team,
+        channel: "whatsapp",
+        paginationOpts: page,
+      })
+    ).page[0]
+  ).toMatchObject({
+    message: { preview: renderedOrder("Pablo").body },
+  })
+
   await f.t.run(async (ctx) => {
     const content = (await ctx.db
       .query("channelMessageContents")

@@ -1,4 +1,8 @@
 import { CHANNELS, CHANNEL_IDS, type LogChannel } from "../lib/channels"
+import {
+  renderedChannelTemplate,
+  type TemplatePageCache,
+} from "./channels/templates"
 import { hydratedChannelMessage } from "./channels/payload"
 import { channelRows } from "./channels/rows"
 import { ConvexError, v } from "convex/values"
@@ -119,6 +123,30 @@ async function logParty(ctx: QueryCtx, message: Doc<"channelMessages">) {
   })
 }
 
+/** Historical templates need the same rendered body as Inbox and details. */
+async function logMessage(
+  ctx: QueryCtx,
+  message: Doc<"channelMessages">,
+  cache: TemplatePageCache
+) {
+  if (message.type !== "template") return message
+  const [content, account] = await Promise.all([
+    ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+      .unique(),
+    ctx.db.get("channelAccounts", message.accountId),
+  ])
+  const rendered = await renderedChannelTemplate(
+    ctx,
+    message,
+    content,
+    account,
+    cache
+  )
+  return rendered ? { ...message, preview: rendered.body } : message
+}
+
 export const sending = query({
   args: { ...sendingFilters.fields, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
@@ -170,6 +198,7 @@ export const sending = query({
       EMAIL_SEARCH_BUDGET,
       search
     )
+    const templateCache: TemplatePageCache = new Map()
     return {
       ...result,
       page: await Promise.all(
@@ -177,7 +206,7 @@ export const sending = query({
           isChannelMessage(row)
             ? {
                 kind: "channel" as const,
-                message: row,
+                message: await logMessage(ctx, row, templateCache),
                 partyLabel: await logParty(ctx, row),
               }
             : { kind: "email" as const, email: row }
@@ -273,6 +302,7 @@ export const receiving = query({
     )
     const handles = new Map<Id<"channelAccounts">, string>()
     const page = []
+    const templateCache: TemplatePageCache = new Map()
     for (const row of result.page) {
       if (!isChannelMessage(row)) {
         page.push({ kind: "email" as const, email: row })
@@ -285,7 +315,7 @@ export const receiving = query({
         )
       page.push({
         kind: "channel" as const,
-        message: row,
+        message: await logMessage(ctx, row, templateCache),
         account: handles.get(row.accountId)!,
         partyLabel: await logParty(ctx, row),
       })
