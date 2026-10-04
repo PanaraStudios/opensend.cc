@@ -1,8 +1,28 @@
 import { afterEach, expect, it, vi } from "vitest"
 import { Resend } from "../resend"
-import { SYSTEM_EVENT_CATALOG, SYSTEM_EVENT_NAMES } from "./catalog"
+import {
+  SYSTEM_EVENT_CATALOG,
+  SYSTEM_EVENT_DESCRIPTIONS,
+  SYSTEM_EVENT_NAMES,
+} from "./catalog"
 
 afterEach(() => vi.unstubAllGlobals())
+it.each(SYSTEM_EVENT_NAMES)(
+  "provides a readable description for %s",
+  (name) => {
+    expect(Object.hasOwn(SYSTEM_EVENT_DESCRIPTIONS, name)).toBe(true)
+    const description = SYSTEM_EVENT_DESCRIPTIONS[name]
+    expect(description).toMatch(/^[A-Z].+\.$/)
+    expect(description).not.toMatch(
+      /Emitted when|_|\b(?:whatsapp|messenger|instagram)\b/
+    )
+    expect(description).not.toContain(name)
+    expect(
+      SYSTEM_EVENT_CATALOG.find((event) => event.name === name)?.description
+    ).toBe(description)
+  }
+)
+
 it("fetches the typed catalog and preserves nested schemas and note triggers", async () => {
   const body = { object: "event_catalog", data: SYSTEM_EVENT_CATALOG }
   const fetcher = vi.fn<typeof fetch>(async () => Response.json(body))
