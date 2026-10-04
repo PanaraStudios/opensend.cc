@@ -14,6 +14,8 @@ import {
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
@@ -52,6 +54,7 @@ import {
   ChannelCreateMenu,
 } from "@/components/dashboard/channels/shared"
 import { CHANNEL_IDS, CHANNELS } from "@/lib/channels"
+import { localTemplate } from "@/lib/meta/local-templates"
 import {
   asTemplate,
   useTemplateCommands,
@@ -63,7 +66,14 @@ type TemplatesLayout = "grid" | "table"
 /** List rows carry their draft markup for the thumbnails. */
 const asListedTemplate = (
   row: FunctionReturnType<typeof api.templates.list>["page"][number]
-) => ({ ...asTemplate(row, row), channel: row.channel ?? "email" })
+) => ({
+  ...asTemplate(row, row),
+  channel: row.channel ?? "email",
+  localPreview:
+    row.channel === "messenger" || row.channel === "instagram"
+      ? localTemplate(row.components)
+      : null,
+})
 
 const TEMPLATE_CHANNEL_ITEMS = [
   { value: "all", label: "All channels" },
@@ -75,13 +85,33 @@ const LAYOUT_ITEMS = [
   { value: "table" as const, label: "Table view", icon: Rows3Icon },
 ]
 
-function TemplateCard({ item }: { item: EmailTemplate }) {
+function TemplateCard({ item }: { item: ReturnType<typeof asListedTemplate> }) {
   return (
     <li
       data-testid="template-card"
       className="group relative flex min-w-0 flex-col gap-3 rounded-xl outline-none focus-within:ring-2 focus-within:ring-ring/50"
     >
-      <TemplateThumbnail item={item} />
+      {item.localPreview ? (
+        <div
+          inert
+          className="relative aspect-[16/10] overflow-hidden rounded-xl bg-muted p-4"
+        >
+          <Bubble>
+            <BubbleContent className="whitespace-pre-wrap">
+              {item.localPreview.text || "Your message"}
+            </BubbleContent>
+          </Bubble>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {item.localPreview.quick_replies.map((reply) => (
+              <Badge key={reply.payload} variant="outline">
+                {reply.title}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <TemplateThumbnail item={item} />
+      )}
       <div className="flex items-start gap-2 px-1">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           {/* Stretched over the card, so all of it opens the template. */}

@@ -339,7 +339,7 @@ export async function insertWhatsAppTemplate(
 
 const listItem = schema.doc("templates").extend({
   html: v.string(),
-  /** A WhatsApp draft's components, for its card. */
+  /** A Meta draft's components, for its card. */
   components: v.optional(v.any()),
 })
 
@@ -414,7 +414,9 @@ export const list = query({
           return {
             ...row,
             html: draft?.html ?? "",
-            ...(isWhatsApp(row) ? { components: draft?.content ?? [] } : {}),
+            ...(row.channel && row.channel !== "email"
+              ? { components: draft?.content ?? [] }
+              : {}),
           }
         })
       ),
