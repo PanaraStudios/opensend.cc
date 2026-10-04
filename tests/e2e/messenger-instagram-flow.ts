@@ -215,7 +215,7 @@ export function messengerInstagramTests(
       const account = accountDetail!.account
       await choose(
         owner,
-        "Sending page",
+        "Sender",
         `${account.displayName} (${account.handle})`
       )
       await choose(owner, "Message type", "Text")
