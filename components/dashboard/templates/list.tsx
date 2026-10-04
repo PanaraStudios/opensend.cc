@@ -102,8 +102,8 @@ function TemplateCard({ item }: { item: ReturnType<typeof asListedTemplate> }) {
             </BubbleContent>
           </Bubble>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {item.localPreview.quick_replies.map((reply) => (
-              <Badge key={reply.payload} variant="outline">
+            {item.localPreview.quick_replies.map((reply, index) => (
+              <Badge key={index} variant="outline">
                 {reply.title}
               </Badge>
             ))}
