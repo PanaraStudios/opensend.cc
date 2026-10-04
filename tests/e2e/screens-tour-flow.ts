@@ -361,8 +361,9 @@ export function screensTourTests(state: TourState) {
             const name = identity.username
               ? `@${identity.username.replace(/^@/, "")}`
               : identity.profileName!
+            // The page title, not the thread header that repeats the name.
             await expect(
-              p.getByRole("heading", { name, exact: true })
+              p.getByRole("heading", { level: 1, name, exact: true })
             ).toBeVisible()
           }
         }
