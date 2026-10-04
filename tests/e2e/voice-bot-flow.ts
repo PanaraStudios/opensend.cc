@@ -162,7 +162,7 @@ export function voiceBotTests(
               organizationId,
               id,
             })
-          ).greeting
+          )?.greeting
       )
       .toBe("Updated browser greeting")
     const number = (

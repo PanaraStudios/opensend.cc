@@ -17,6 +17,7 @@ import {
   TypeToConfirmDialog,
   MoreMenu,
   RadioCards,
+  NotFoundState,
 } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -448,8 +449,16 @@ export function VoiceBotEditor({ id }: { id?: string }) {
     api.voice.resources.dashboardGet,
     { id: id ?? "" },
     { enabled: !!id }
-  ) as VoiceBotResource | undefined
+  ) as VoiceBotResource | null | undefined
   if (!id) return <VoiceBotList />
+  if (row === null)
+    return (
+      <NotFoundState
+        icon={BotIcon}
+        noun="voice bot"
+        backHref="/playground/voice-bot"
+      />
+    )
   if (!row) return <Skeleton className="h-60 w-full" />
   return <BotForm key={id} row={row} />
 }

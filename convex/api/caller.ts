@@ -48,6 +48,21 @@ export const apiError = (statusCode: number, name: string, message: string) =>
 export const notFound = (noun: string) =>
   apiError(404, "not_found", `${noun} not found`)
 
+/** A dashboard read of one record: a missing (e.g. just deleted) record is
+    null, so its page shows "not found" instead of crashing. Other errors throw. */
+export async function orNullIfNotFound<T>(read: Promise<T>): Promise<T | null> {
+  try {
+    return await read
+  } catch (error) {
+    if (
+      error instanceof ConvexError &&
+      (error.data as { statusCode?: number } | undefined)?.statusCode === 404
+    )
+      return null
+    throw error
+  }
+}
+
 export const invalid = (message: string) =>
   apiError(422, "validation_error", message)
 export const missing = (field: string) =>

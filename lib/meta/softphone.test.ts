@@ -31,6 +31,7 @@ test("registration, claim, connect, hold, resume and hangup obey the softphone l
 test("stale UI events cannot answer twice or revive a hung-up call", () => {
   assert.equal(step("active", "answer"), "active")
   assert.equal(step("ending", "connected"), "ending")
+  assert.equal(step("ending", "hangupFailed"), "active")
   assert.equal(step("away", "incoming"), "away")
   assert.equal(step("idle", "hold"), "idle")
   assert.equal(step("idle", "connected"), "active") // transferred browser leg
