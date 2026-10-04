@@ -873,12 +873,15 @@ export const dispatch = internalMutation({
     const contactId =
       typeof data.contact_id === "string"
         ? ctx.db.normalizeId("contacts", data.contact_id)
-        : null
+        : event.type.startsWith("contact.") && typeof data.id === "string"
+          ? ctx.db.normalizeId("contacts", data.id)
+          : null
     let contact = contactId ? await ctx.db.get("contacts", contactId) : null
     if (contact && contact.organizationId !== event.organizationId) return null
-    // A deleted contact id is never resurrected under the same address.
+    // A known contact id remains authoritative after deletion. System events
+    // can still run without a contact; neither lookup nor upsert may replace it.
     if (contactId && !contact && custom !== null) return null
-    if (!contact && typeof data.email === "string")
+    if (!contactId && !contact && typeof data.email === "string")
       contact = await ctx.db
         .query("contacts")
         .withIndex("by_organizationId_and_email", (q) =>
@@ -940,7 +943,7 @@ export const dispatch = internalMutation({
         (automation.enabledAt ?? automation._creationTime) > event._creationTime
       )
         continue
-      if (!contact && typeof data.email === "string") {
+      if (!contactId && !contact && typeof data.email === "string") {
         const made = await upsertContact(
           ctx,
           event.organizationId,
