@@ -173,7 +173,7 @@ function TeamOverview({ team }: { team: Team }) {
               ref={file}
               type="file"
               accept={AVATAR_TYPES.join(",")}
-              className="sr-only"
+              className="hidden"
               aria-label="Team avatar"
               tabIndex={-1}
               onChange={async (event) => {
@@ -253,20 +253,20 @@ function TeamMembers({ team }: { team: Team }) {
       <SettingsCard
         flush
         heading={
-          <Tabs value={tab} onValueChange={(next) => next && setTab(next)}>
-            <TabsList>
-              {MEMBER_TABS.map((item) => (
-                <TabsTrigger key={item.value} value={item.value}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        }
-        actions={
-          admin && tab === "members" ? (
-            <Button onClick={() => setInviting(true)}>Invite</Button>
-          ) : null
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <Tabs value={tab} onValueChange={(next) => next && setTab(next)}>
+              <TabsList>
+                {MEMBER_TABS.map((item) => (
+                  <TabsTrigger key={item.value} value={item.value}>
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            {admin && tab === "members" ? (
+              <Button onClick={() => setInviting(true)}>Invite</Button>
+            ) : null}
+          </div>
         }
       >
         {tab === "members" ? (

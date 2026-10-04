@@ -211,7 +211,9 @@ function SeriesChart({
             }}
           />
         ) : null}
-        {series ? <ChartLegend content={<ChartLegendContent />} /> : null}
+        {series ? (
+          <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
+        ) : null}
         {entries.map((entry) => (
           <Area
             key={entry.dataKey}

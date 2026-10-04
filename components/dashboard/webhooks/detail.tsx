@@ -232,7 +232,7 @@ export function WebhookDetail() {
                 <TableRow key={delivery.id}>
                   <TableCell>
                     <MonoLink href={`/webhooks/${webhook.id}/${delivery.id}`}>
-                      {delivery.event}
+                      {webhookEventLabel(delivery.event)}
                     </MonoLink>
                   </TableCell>
                   <TableCell>

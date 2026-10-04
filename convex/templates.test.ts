@@ -12,6 +12,35 @@ afterEach(() => vi.useRealTimers())
    published" is a matter of order, as it is for people. */
 const later = () => vi.setSystemTime(Date.now() + 1000)
 
+test.each(["messenger", "instagram"] as const)(
+  "%s template list carries the saved message for its preview",
+  async (channel) => {
+    const f = await fixture()
+    const id = await f.owner.client.mutation(api.templates.create, {
+      organizationId: f.owner.team,
+      name: "Support reply",
+      channel,
+      content: { text: "Our support team is available Monday to Friday." },
+    })
+    const result = await f.owner.client.query(api.templates.list, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: { numItems: 20, cursor: null },
+    })
+    expect(result.page).toEqual([
+      expect.objectContaining({
+        _id: id,
+        channel,
+        html: "",
+        content: {
+          text: "Our support team is available Monday to Friday.",
+          quick_replies: [],
+        },
+      }),
+    ])
+  }
+)
+
 async function templates() {
   const f = await fixture()
   const owner = f.owner.client

@@ -23,7 +23,7 @@ import {
 import { WebhookIcon } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
 import { actionError } from "@/lib/action-error"
-import { deliveryResult } from "@/lib/dashboard/webhooks"
+import { deliveryResult, webhookEventLabel } from "@/lib/dashboard/webhooks"
 import {
   asWebhook,
   asWebhookDelivery,
@@ -58,7 +58,7 @@ export function WebhookDeliveryDetail() {
       <DetailHeader
         backHref={`/webhooks/${webhook.id}`}
         backLabel="Webhook"
-        title={delivery.event}
+        title={webhookEventLabel(delivery.event)}
         icon={WebhookIcon}
         badge={<HttpStatusBadge status={delivery.status} />}
         actions={
