@@ -7,12 +7,7 @@ import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 import { isChannelSendStep } from "@/lib/channels"
 import type { Id } from "@/convex/_generated/dataModel"
 import { useParams } from "next/navigation"
-import {
-  ChartLineIcon,
-  FlaskConicalIcon,
-  PencilIcon,
-  PlusIcon,
-} from "lucide-react"
+import { ChartLineIcon, FlaskConicalIcon, PencilIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -25,12 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
@@ -49,16 +40,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { Observability } from "@/components/dashboard/automations/observability"
 import {
+  STEP_ICONS,
   AutomationIcon,
   AutomationMenu,
-  STEP_ICONS,
   useToggleAutomation,
 } from "@/components/dashboard/automations/shared"
+import { TriggerCard } from "@/components/dashboard/automations/step-cards"
 import {
-  StepCard,
-  TriggerCard,
-} from "@/components/dashboard/automations/step-cards"
-import { WorkflowCanvas } from "@/components/dashboard/automations/workflow"
+  FlowAdd,
+  FlowEditor,
+  useFlowSelection,
+} from "@/components/dashboard/flows/editor"
+import { automationCatalog } from "./catalog"
+import { useStepContext } from "@/lib/automations/use-automations"
 import { EditorNotFound } from "@/components/dashboard/broadcasts/editor/screen"
 import { EditorRail, EditorTopBar } from "@/components/dashboard/editor-chrome"
 import {
@@ -76,7 +70,6 @@ import {
   replaceStep,
   samplePayload,
   STEP_GROUPS,
-  STEP_LABELS,
   stepBranches,
   TRIGGER_KEY,
   type AutomationTask,
@@ -114,77 +107,52 @@ type BuilderView = (typeof VIEW_ITEMS)[number]["value"]
 function AddStep({ onAdd }: { onAdd: (type: AutomationStepType) => void }) {
   const channels = useInstanceChannels()
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            size="icon-sm"
-            className="rounded-full bg-card"
-            aria-label="Add step"
-            data-testid="workflow-add-step"
-          />
-        }
-      >
-        <PlusIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="min-w-56">
-        {STEP_GROUPS.map((group) => (
-          <DropdownMenuGroup key={group.label}>
-            <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-            {group.types.map((type) => {
-              const Icon = STEP_ICONS[type]
-              const provider =
-                type === "send_email"
-                  ? "email"
-                  : isChannelSendStep(type)
-                    ? "meta"
-                    : null
-              const unavailable = provider && !channels?.[provider]
-              return (
+    <FlowAdd
+      catalog={automationCatalog}
+      groups={STEP_GROUPS}
+      onAdd={onAdd}
+      disabled={(type) => {
+        const provider =
+          type === "send_email"
+            ? "email"
+            : isChannelSendStep(type)
+              ? "meta"
+              : null
+        return !!(provider && !channels?.[provider])
+      }}
+      footer={
+        <>
+          {channels && (!channels.email || !channels.meta) && (
+            <DropdownMenuGroup>
+              {!channels.email && (
                 <DropdownMenuItem
-                  key={type}
-                  disabled={!!unavailable}
-                  onClick={() => onAdd(type)}
+                  disabled={!channels.admin}
+                  render={
+                    channels.admin ? <Link href="/instance/ses" /> : undefined
+                  }
                 >
-                  <Icon />
-                  {STEP_LABELS[type]}
-                  {unavailable && " — not set up"}
+                  {channels.admin
+                    ? "Set up email"
+                    : "Email: ask your instance admin"}
                 </DropdownMenuItem>
-              )
-            })}
-          </DropdownMenuGroup>
-        ))}
-        {channels && (!channels.email || !channels.meta) && (
-          <DropdownMenuGroup>
-            {!channels.email && (
-              <DropdownMenuItem
-                disabled={!channels.admin}
-                render={
-                  channels.admin ? <Link href="/instance/ses" /> : undefined
-                }
-              >
-                {channels.admin
-                  ? "Set up email"
-                  : "Email: ask your instance admin"}
-              </DropdownMenuItem>
-            )}
-            {!channels.meta && (
-              <DropdownMenuItem
-                disabled={!channels.admin}
-                render={
-                  channels.admin ? <Link href="/instance/meta" /> : undefined
-                }
-              >
-                {channels.admin
-                  ? "Set up the Meta app"
-                  : "Meta: ask your instance admin"}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+              )}
+              {!channels.meta && (
+                <DropdownMenuItem
+                  disabled={!channels.admin}
+                  render={
+                    channels.admin ? <Link href="/instance/meta" /> : undefined
+                  }
+                >
+                  {channels.admin
+                    ? "Set up the Meta app"
+                    : "Meta: ask your instance admin"}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
+          )}
+        </>
+      }
+    />
   )
 }
 
@@ -242,7 +210,7 @@ function BuilderScreen({
   const [view, setView] = React.useState<BuilderView>("editor")
   /* The card showing its settings: the trigger, or a step by key. A blank
      automation opens on its trigger. */
-  const [selected, setSelected] = React.useState<string | null>(
+  const { selected, setSelected, select } = useFlowSelection(
     automation.trigger ? null : TRIGGER_KEY
   )
   const [tasks, setTasks] = React.useState<AutomationTask[] | null>(null)
@@ -252,8 +220,7 @@ function BuilderScreen({
 
   const enabled = automation.status === "enabled"
   const setSteps = (steps: AutomationStep[]) => change({ steps })
-  const select = (key: string) =>
-    setSelected((current) => (current === key ? null : key))
+  const stepContext = useStepContext(automation.steps)
 
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-background">
@@ -358,7 +325,18 @@ function BuilderScreen({
           {view === "observability" ? (
             <Observability automation={automation} />
           ) : (
-            <WorkflowCanvas
+            <FlowEditor
+              catalog={automationCatalog}
+              context={{
+                automation,
+                locked: enabled,
+                stepContext,
+                onChange: (next) =>
+                  setSteps(replaceStep(automation.steps, next)),
+                onRemove: setRemoving,
+              }}
+              selected={selected}
+              onSelect={select}
               steps={automation.steps}
               trigger={
                 <TriggerCard
@@ -390,19 +368,6 @@ function BuilderScreen({
                       />
                     )
               }
-              renderStep={(step) => (
-                <StepCard
-                  automation={automation}
-                  step={step}
-                  selected={selected === step.key}
-                  locked={enabled}
-                  onSelect={() => select(step.key)}
-                  onChange={(next) =>
-                    setSteps(replaceStep(automation.steps, next))
-                  }
-                  onRemove={() => setRemoving(step)}
-                />
-              )}
             />
           )}
         </main>

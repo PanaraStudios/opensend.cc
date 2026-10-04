@@ -1,4 +1,5 @@
 "use client"
+import { stepBranches } from "@/lib/dashboard/automation"
 
 import * as React from "react"
 import type { DateRange } from "react-day-picker"
@@ -16,7 +17,7 @@ import {
 import {
   WorkflowCanvas,
   WorkflowCard,
-} from "@/components/dashboard/automations/workflow"
+} from "@/components/dashboard/flows/workflow"
 import { Stat } from "@/components/dashboard/metrics"
 import {
   AutomationRunStatusBadge,
@@ -322,6 +323,7 @@ export function Observability({ automation }: { automation: Automation }) {
           </Button>
         ) : null}
         <WorkflowCanvas
+          branches={stepBranches}
           steps={automation.steps}
           trigger={
             <WorkflowCard

@@ -20,6 +20,7 @@ import {
 import { mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
+import type { AutomationStep } from "../lib/dashboard/types"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import { counters, countValue, insertRow, patchRow } from "./counts"
@@ -155,12 +156,7 @@ async function ensureNames(
     .take(101)
   for (const link of existing)
     await ctx.db.delete("automationEventLinks", link._id)
-  const names = new Set([
-    trigger,
-    ...flattenSteps(readGraph(graph)).flatMap((step) =>
-      step.type === "wait_for_event" ? [step.eventName] : []
-    ),
-  ])
+  const names = graphEventNames(trigger, readGraph(graph))
   for (const name of names) {
     if (eventNameError(name)) continue
     await ctx.db.insert("automationEventLinks", {
@@ -171,6 +167,16 @@ async function ensureNames(
     if (!(await findEvent(ctx, organizationId, name)))
       await defineEvent(ctx, organizationId, { name, schema: [] })
   }
+}
+function graphEventNames(trigger: string, steps: AutomationStep[]) {
+  return [
+    ...new Set([
+      trigger,
+      ...flattenSteps(steps).flatMap((step) =>
+        step.type === "wait_for_event" ? [step.eventName] : []
+      ),
+    ]),
+  ]
 }
 export async function updateAutomation(
   ctx: MutationCtx,
@@ -202,11 +208,16 @@ export async function updateAutomation(
     const error = patch.trigger && triggerEventError(patch.trigger)
     if (error) throw new ConvexError(error)
   }
-  const catalog = await teamEventCatalog(ctx, organizationId)
+  const steps = readGraph(patch.graph ?? row.graph)
+  const catalog = await teamEventCatalog(
+    ctx,
+    organizationId,
+    graphEventNames(patch.trigger ?? row.trigger, steps)
+  )
   const contactSchema = catalogContactSchema(catalog)
   const problems = referenceErrors(
     patch.trigger ?? row.trigger,
-    readGraph(patch.graph ?? row.graph),
+    steps,
     catalog,
     contactSchema,
     patch.triggerFilters ?? row.triggerFilters ?? []
@@ -250,18 +261,22 @@ export async function setAutomationStatus(
 ) {
   const row = await ownedAutomation(ctx, organizationId, id)
   if (status === "enabled") {
-    const catalog = await teamEventCatalog(ctx, organizationId)
+    const steps = readGraph(row.graph)
+    const catalog = await teamEventCatalog(
+      ctx,
+      organizationId,
+      graphEventNames(row.trigger, steps)
+    )
     const contactSchema = catalogContactSchema(catalog)
     const referenceProblems = referenceErrors(
       row.trigger,
-      readGraph(row.graph),
+      steps,
       catalog,
       contactSchema,
       row.triggerFilters ?? []
     )
     if (referenceProblems.length)
       throw new ConvexError(referenceProblems.join("; "))
-    const steps = readGraph(row.graph)
     const templates = []
     const segments = []
     for (const step of flattenSteps(steps)) {

@@ -4,7 +4,9 @@ import { paginationOptsValidator } from "convex/server"
 import {
   mergedStream,
   stream,
-  type QueryStream,
+  QueryStream,
+  type IndexBounds,
+  type IndexKey,
 } from "convex-helpers/server/stream"
 import { internalQuery, type QueryCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -88,6 +90,43 @@ const shape = (ctx: QueryCtx, row: Row, now: number) =>
   "channel" in row
     ? hydratedChannelMessage(ctx, row, now)
     : emailMessageShape(ctx, row)
+
+/** Keep the original cursor keys while charging hydration to the page budget. */
+class HydratedMessages extends QueryStream<Record<string, unknown>> {
+  constructor(
+    private rows: QueryStream<Row>,
+    private ctx: QueryCtx,
+    private now: number
+  ) {
+    super()
+  }
+  async *iterWithKeys(
+    trackBandwidth = false
+  ): AsyncGenerator<[Record<string, unknown> | null, IndexKey, number]> {
+    for await (const [row, key, bytes] of this.rows.iterWithKeys(
+      trackBandwidth
+    )) {
+      const message = row ? await shape(this.ctx, row, this.now) : null
+      const hydratedBytes =
+        message && trackBandwidth
+          ? new TextEncoder().encode(JSON.stringify(message)).length
+          : 0
+      yield [message, key, bytes + hydratedBytes]
+    }
+  }
+  narrow(bounds: IndexBounds) {
+    return new HydratedMessages(this.rows.narrow(bounds), this.ctx, this.now)
+  }
+  getOrder() {
+    return this.rows.getOrder()
+  }
+  getIndexFields() {
+    return this.rows.getIndexFields()
+  }
+  getEqualityIndexFilter() {
+    return this.rows.getEqualityIndexFilter()
+  }
+}
 
 export const get = internalQuery({
   args: { caller: callerValue, id: v.string(), now: v.number() },
@@ -202,34 +241,34 @@ export const list = internalQuery({
         ? streams[0]
         : mergedStream(streams, ["_creationTime"])
     const opts: PaginationOptions = { ...paginationOpts, cursor }
-    const result = await rows
-      .filterWith(async (row) => {
-        if (args.from && row.from !== args.from) return false
-        if (
-          args.to &&
-          (typeof row.to === "string"
-            ? row.to !== args.to
-            : !row.to.includes(args.to))
-        )
-          return false
-        if (
-          args.contact_id &&
-          ("channel" in row
-            ? ((await ctx.db.get("channelContacts", row.channelContactId))
-                ?.contactId ?? null)
-            : await emailContact(ctx, row)) !== args.contact_id
-        )
-          return false
-        return true
-      })
-      .paginate({
-        ...opts,
-        maximumRowsRead: 200,
-        maximumBytesRead: 2 * 1024 * 1024,
-      })
+    const filtered = rows.filterWith(async (row) => {
+      if (args.from && row.from !== args.from) return false
+      if (
+        args.to &&
+        (typeof row.to === "string"
+          ? row.to !== args.to
+          : !row.to.includes(args.to))
+      )
+        return false
+      if (
+        args.contact_id &&
+        ("channel" in row
+          ? ((await ctx.db.get("channelContacts", row.channelContactId))
+              ?.contactId ?? null)
+          : await emailContact(ctx, row)) !== args.contact_id
+      )
+        return false
+      return true
+    })
+    // Lightweight index rows alone don't bound reads of separate body documents.
+    const result = await new HydratedMessages(filtered, ctx, now).paginate({
+      ...opts,
+      maximumRowsRead: 200,
+      maximumBytesRead: 2 * 1024 * 1024,
+    })
     return {
       object: "list" as const,
-      data: await Promise.all(result.page.map((row) => shape(ctx, row, now))),
+      data: result.page,
       has_more: !result.isDone,
       next_cursor: result.isDone
         ? null

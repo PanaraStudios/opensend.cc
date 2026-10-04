@@ -9,6 +9,7 @@ import {
   type OptionalRestArgsOrSkip,
   type RequestForQueries,
 } from "convex/react"
+import { makeUseQueryWithStatus } from "convex-helpers/react"
 import type {
   FunctionReturnType,
   FunctionArgs,
@@ -37,6 +38,14 @@ export function useWorkspace() {
   if (!value) throw new Error("Account data is not available")
   return value
 }
+type TeamQueryOptions = {
+  enabled?: boolean
+  /** For optional chrome mounted on every page (the softphone): a failed read
+      counts as not loaded instead of crashing the page, and recovers on its own
+      when the query succeeds, e.g. once a just-created team's membership lands. */
+  optional?: boolean
+}
+const useQueryWithStatus = makeUseQueryWithStatus(useQueries)
 /** A query scoped to the active team, skipped until that team is available. */
 export function useTeamQuery<
   Q extends FunctionReference<"query", "public", { organizationId: string }>,
@@ -48,27 +57,34 @@ export function useTeamQuery<
   >
     ? [
         args?: Omit<FunctionArgs<Q>, "organizationId">,
-        options?: { enabled?: boolean },
+        options?: TeamQueryOptions,
       ]
     : [
         args: Omit<FunctionArgs<Q>, "organizationId">,
-        options?: { enabled?: boolean },
+        options?: TeamQueryOptions,
       ]
-) {
+): FunctionReturnType<Q> | undefined {
   const { activeTeamId, teams } = useWorkspace()
   // A team that still needs SSO for this session rejects every team query;
   // pages allowed before SSO (profile, instance settings) must not crash on it.
   const available =
     !!activeTeamId &&
     !teams.find((team) => team.id === activeTeamId)?.ssoRequired
-  return useQuery(
+  const teamArgs =
+    available && (options?.enabled ?? true)
+      ? { ...args, organizationId: activeTeamId }
+      : "skip"
+  const optional = !!options?.optional
+  const strict = useQuery(
     fn,
-    ...([
-      available && (options?.enabled ?? true)
-        ? { ...args, organizationId: activeTeamId }
-        : "skip",
-    ] as OptionalRestArgsOrSkip<Q>)
+    ...([optional ? "skip" : teamArgs] as OptionalRestArgsOrSkip<Q>)
   )
+  const soft = useQueryWithStatus(
+    fn,
+    ...([optional ? teamArgs : "skip"] as OptionalRestArgsOrSkip<Q>)
+  )
+  if (!optional) return strict
+  return soft.status === "success" ? soft.data : undefined
 }
 
 /** Resolve the team when a command runs, preserving its missing-team error. */
