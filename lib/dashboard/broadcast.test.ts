@@ -131,3 +131,23 @@ it("broadcast review states current reachability including skipped recipients", 
   assert.equal(broadcastReachabilityLabel(1, 2), "1 of 3 can be reached now")
   assert.equal(broadcastReachabilityLabel(0, 2), "0 of 2 can be reached now")
 })
+
+it("recipient review distinguishes loading, failed, empty and populated audiences (F19)", async () => {
+  const { broadcastRecipientCheck } = await import("./broadcast")
+  assert.deepEqual(broadcastRecipientCheck(null), {
+    id: "recipients",
+    level: "loading",
+    label: "Loading contacts…",
+  })
+  assert.equal(broadcastRecipientCheck(null, true).level, "error")
+  assert.match(
+    broadcastRecipientCheck(null, true).label,
+    /Could not load contacts/
+  )
+  assert.equal(broadcastRecipientCheck(0).label, "No contacts in this segment")
+  assert.equal(
+    broadcastRecipientCheck(2).label,
+    "2 contacts will get this email"
+  )
+  assert.equal(broadcastRecipientCheck(2).level, "ok")
+})
