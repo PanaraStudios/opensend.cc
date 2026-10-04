@@ -16,6 +16,11 @@ type Finding = {
   screenshot: string
 }
 const channels = ["All channels", "Email", "WhatsApp", "Messenger", "Instagram"]
+type TourState = () => {
+  owner: Page
+  organizationId: string
+  sendingDomainId: Id<"domains">
+}
 
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label, exact: true }).click()
@@ -24,18 +29,27 @@ async function choose(page: Page, label: string, option: string) {
 
 /** Runs last: the disposable instance already has messages, identities and runs.
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
-export function screensTourTests(
-  state: () => {
-    owner: Page
-    organizationId: string
-    sendingDomainId: Id<"domains">
-  }
-) {
+export function screensTourTests(state: TourState) {
+  test.describe("screens tour", () => {
+    // Playwright's trace snapshot script produces console errors in sandboxed
+    // srcdoc frames, even with benign HTML. Screenshots remain the evidence;
+    // console/page errors are still collected without an allowlist.
+    test.use({ trace: "off" })
+    registerTour(state)
+  })
+}
+
+function registerTour(state: TourState) {
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
     test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
-    // A separate page keeps the tour's console collection and viewport isolated.
-    const page = await owner.context().newPage()
+    // Copy the real owner's session into a fresh context, without trace scripts
+    // left by earlier tests, and isolate the tour's theme/viewport changes.
+    const context = await owner.context().browser()!.newContext({
+      storageState: await owner.context().storageState(),
+      baseURL: process.env.OPENSEND_BASE_URL,
+    })
+    const page = await context.newPage()
     page.setDefaultTimeout(10_000)
     const dir = join(process.env.OPENSEND_TEST_RESULTS!, "tour")
     mkdirSync(dir, { recursive: true })
@@ -696,7 +710,7 @@ export function screensTourTests(
     } finally {
       page.off("console", onConsole)
       page.off("pageerror", onError)
-      await page.close()
+      await context.close()
     }
     const failures = findings.filter((f) => f.kind !== "raw-code")
     expect(failures, `See ${join(dir, "findings.json")}`).toEqual([])
