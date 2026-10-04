@@ -212,11 +212,15 @@ export function screensTourTests(
         timeline: "call",
       },
     ])
+    const sendingDomain = await backend.query(api.domains.get, {
+      id: sendingDomainId,
+    })
+    expect(sendingDomain, "Seeded sending domain").not.toBeNull()
     const draftId = await backend.mutation(api.broadcasts.create, {
       organizationId,
       name: "Support newsletter",
       subject: "Your support update",
-      from: "Support <hello@onboarding.example.test>",
+      from: `Support <hello@${sendingDomain!.domain.name}>`,
       html: "<p>Here is this month's support update.</p>",
     })
     const automations = backendRows<Doc<"automations">>("automations").filter(
