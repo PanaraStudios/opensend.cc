@@ -10,7 +10,7 @@ import {
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { actor, authorizeToolkit, ownedToolkit } from "../botToolkitAccess"
-import { invalid, type Caller } from "../api/caller"
+import { invalid, orNullIfNotFound, type Caller } from "../api/caller"
 import { idempotent } from "../api/idempotency"
 import { listArgs, cursorPage } from "../api/paging"
 import { stream } from "convex-helpers/server/stream"
@@ -106,7 +106,12 @@ export const dashboardList = query({
     ...listArgs,
   },
   returns: v.any(),
-  handler: listRows,
+  // A just-deleted knowledge base lists no documents instead of crashing its page.
+  handler: async (ctx, args) =>
+    (await orNullIfNotFound(listRows(ctx, args))) ?? {
+      has_more: false,
+      data: [],
+    },
 })
 const getArgs = {
   ...actor,
@@ -154,7 +159,7 @@ export const get = internalQuery({
 export const dashboardGet = query({
   args: { organizationId: v.string(), id: v.string() },
   returns: v.any(),
-  handler: getRow,
+  handler: (ctx, args) => orNullIfNotFound(getRow(ctx, args)),
 })
 export async function refreshStatus(
   ctx: MutationCtx,
