@@ -28,8 +28,8 @@ export const setup = query({
     await authorize(ctx, args)
     const accounts = await ctx.db
       .query("channelAccounts")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId)
+      .withIndex("by_organizationId_and_channel", (q) =>
+        q.eq("organizationId", args.organizationId).eq("channel", "whatsapp")
       )
       .take(100)
     return {

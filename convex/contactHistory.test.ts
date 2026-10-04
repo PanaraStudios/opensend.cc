@@ -322,3 +322,62 @@ test("contact broadcast history pages WhatsApp and email recipients by contact, 
     })
   ).rejects.toMatchObject({ data: "Contact not found" })
 })
+
+test("broadcast history returns a bounded indexed contact page among unrelated recipients (F20)", async () => {
+  const f = await fixture()
+  const contactId = await f.t.run((ctx) =>
+    insertContact(ctx, f.owner.team, { email: "bounded@example.com" })
+  )
+  await f.t.run(async (ctx) => {
+    const otherContactId = await insertContact(ctx, f.owner.team, {
+      email: "other@example.com",
+    })
+    const broadcastId = await insertRow(ctx, "broadcasts", {
+      organizationId: f.owner.team,
+      name: "History",
+      subject: "Hi",
+      preview: "",
+      segmentId: null,
+      topicId: null,
+      status: "sent",
+      updatedAt: Date.now(),
+      generation: 1,
+      audienceDone: true,
+    })
+    for (let i = 0; i < 180; i++) {
+      await insertRow(ctx, "broadcastRecipients", {
+        organizationId: f.owner.team,
+        broadcastId,
+        ...(i < 40
+          ? { contactId, email: "bounded@example.com" }
+          : { contactId: otherContactId, email: "other@example.com" }),
+        failed: false,
+        sent: true,
+        settled: true,
+      })
+    }
+  })
+  const args = { organizationId: f.owner.team, contactId }
+  const first = await f.owner.client.query(api.broadcasts.history, {
+    ...args,
+    paginationOpts: { cursor: null, numItems: 5, maximumRowsRead: 5 },
+  })
+  expect(first.page).toHaveLength(5)
+  expect(first.isDone).toBe(false)
+  expect(first.page.every((row) => row.recipient.contactId === contactId)).toBe(
+    true
+  )
+  const second = await f.owner.client.query(api.broadcasts.history, {
+    ...args,
+    paginationOpts: {
+      cursor: first.continueCursor,
+      numItems: 5,
+      maximumRowsRead: 5,
+    },
+  })
+  expect(second.page).toHaveLength(5)
+  expect(
+    new Set([...first.page, ...second.page].map((row) => row.recipient._id))
+      .size
+  ).toBe(10)
+})
