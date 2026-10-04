@@ -35,10 +35,13 @@ export function screensTourTests(state: TourState) {
     const { owner, organizationId, sendingDomainId } = state()
     // Copy the real owner's session into a fresh context, without trace scripts
     // left by earlier tests, and isolate the tour's theme/viewport changes.
-    const context = await owner.context().browser()!.newContext({
-      storageState: await owner.context().storageState(),
-      baseURL: process.env.OPENSEND_BASE_URL,
-    })
+    const context = await owner
+      .context()
+      .browser()!
+      .newContext({
+        storageState: await owner.context().storageState(),
+        baseURL: process.env.OPENSEND_BASE_URL,
+      })
     const page = await context.newPage()
     page.setDefaultTimeout(10_000)
     const dir = join(process.env.OPENSEND_TEST_RESULTS!, "tour")
@@ -365,10 +368,28 @@ export function screensTourTests(state: TourState) {
     for (const channel of ["email", "whatsapp", "messenger", "instagram"]) {
       const template = templates.find((r) => (r.channel ?? "email") === channel)
       expect(template, `${channel} seeded template`).toBeTruthy()
-      route(`template-${channel}-editor`, `/templates/${template!._id}`)
+      route(
+        `template-${channel}-editor`,
+        `/templates/${template!._id}`,
+        async (p) => {
+          await expect(
+            p.getByRole("button", {
+              name: channel === "whatsapp" ? "Published" : "Test email",
+              exact: true,
+            })
+          ).toBeVisible()
+        }
+      )
     }
     route("broadcasts", "/broadcasts")
-    route("broadcast-editor", `/broadcasts/${draftId}/edit`)
+    route("broadcast-editor", `/broadcasts/${draftId}/edit`, async (p) => {
+      await expect(
+        p.getByRole("button", { name: "Review", exact: true })
+      ).toBeVisible()
+      await expect(
+        p.getByText("HTML code editor", { exact: true })
+      ).toBeVisible()
+    })
     route("broadcast-review", `/broadcasts/${draftId}/edit`, async (p) => {
       await p.getByRole("button", { name: "Review", exact: true }).click()
       await expect(
@@ -562,6 +583,7 @@ export function screensTourTests(state: TourState) {
                 "Loading your account",
                 { timeout: 20_000 }
               )
+              await expect(page.locator("body")).toContainText(/\S/)
               // Wait for reactive lists/details to load, not just server markup.
               await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(
                 0,
@@ -646,6 +668,8 @@ export function screensTourTests(state: TourState) {
               }
               return {
                 overflow,
+                scrollWidth: document.scrollingElement?.scrollWidth ?? 0,
+                viewportWidth: innerWidth,
                 offenders,
                 raw: [...raw],
                 crashed: document.body.innerText.includes(
@@ -659,7 +683,11 @@ export function screensTourTests(state: TourState) {
                 theme,
                 width,
                 kind: "overflow",
-                detail: evidence.offenders,
+                detail: {
+                  scrollWidth: evidence.scrollWidth,
+                  viewportWidth: evidence.viewportWidth,
+                  offenders: evidence.offenders,
+                },
                 screenshot,
               })
             if (evidence.crashed)
