@@ -1,14 +1,9 @@
 "use client"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
-import {
-  WorkflowIcon,
-  PhoneIcon,
-  ClockIcon,
-  CornerDownRightIcon,
-} from "lucide-react"
+import { WorkflowIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import {
@@ -23,7 +18,27 @@ import {
   TypeToConfirmDialog,
   MoreMenu,
 } from "@/components/dashboard/primitives"
-import { WorkflowCard } from "@/components/dashboard/automations/workflow"
+import {
+  FlowEditor,
+  FlowAdd,
+  FlowNodeEditor,
+  useFlowSelection,
+} from "@/components/dashboard/flows/editor"
+import { FlowPanel } from "@/components/dashboard/flows/panel"
+import { ivrCatalog, newIvrAction, type IvrFlowContext } from "./ivr-catalog"
+import {
+  ivrGraph,
+  ivrMenuKey,
+  ivrActionKey,
+  ivrEditableNodes,
+  ivrProblemNodes,
+  ivrProblemLabel,
+  ivrMenuReferences,
+  removeIvrMenu,
+  setIvrBranch,
+  nextIvrDigit,
+  type IvrBranchAddress,
+} from "./ivr-graph"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -60,16 +75,12 @@ import {
   newIvrMenu,
   ivrFormPayload,
   ivrFormPatch,
-  ivrActionLabel,
-  renameIvrMenu,
 } from "@/lib/dashboard/voice-playground"
-import type { IvrDefinition, IvrAction, IvrMenu } from "@/lib/ivr"
+import type { IvrDefinition, IvrMenu } from "@/lib/ivr"
 import {
   VoiceChoiceField,
   VoiceField,
-  MenuFields,
   BusinessHoursFields,
-  ActionField,
   PromptRendersContext,
   type PromptRenderInfo,
 } from "./ivr-fields"
@@ -86,7 +97,7 @@ type IvrResource = IvrDefinition & {
   prompt_status: string
   updated_at: string
 }
-type Selection = { menu: string; branch?: string } | { settings: true }
+const SETTINGS_KEY = "ivr-settings"
 export function IvrList() {
   const [after, setAfter] = useState<string>(),
     [history, setHistory] = useState<(string | undefined)[]>([]),
@@ -300,7 +311,6 @@ function IvrForm({ row }: { row: IvrResource }) {
   const router = useRouter(),
     { activeTeamId } = useWorkspace(),
     mobile = useIsMobile()
-  const editorPanel = useRef<HTMLElement>(null)
   const initial = {
     name: row.name,
     language: row.language,
@@ -311,16 +321,16 @@ function IvrForm({ row }: { row: IvrResource }) {
   }
   const [draft, setDraft] = useState<IvrDefinition>(initial),
     [saved, setSaved] = useState(JSON.stringify(initial)),
-    [selection, setSelection] = useState<Selection>({ menu: row.entryMenuId }),
     [editing, setEditing] = useState(false),
     [testing, setTesting] = useState(false)
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [problems, setProblems] = useState<string[] | null>(null),
     [deleting, setDeleting] = useState(false)
-  useEffect(() => {
-    editorPanel.current?.scrollTo({ top: 0 })
-  }, [selection])
+  const { selected, setSelected } = useFlowSelection(
+    ivrMenuKey(row.entryMenuId)
+  )
+  const [removingMenu, setRemovingMenu] = useState<IvrMenu | null>(null)
   const write = useAction(api.ivr.definitions.dashboardWrite),
     render = useAction(api.ivr.rendering.dashboardRender),
     validate = useAction(api.ivr.definitions.dashboardValidate)
@@ -328,41 +338,67 @@ function IvrForm({ row }: { row: IvrResource }) {
   useEffect(() => {
     document.title = `${row.name} · opensend.cc`
   }, [row.name])
-  const patch = (v: Partial<IvrDefinition>) => setDraft((d) => ({ ...d, ...v }))
-  function select(next: Selection) {
-    setSelection(next)
+  const patch = (v: Partial<IvrDefinition>) => {
+    setDraft((d) => ({ ...d, ...v }))
+    setProblems(null)
+    setError("")
+  }
+  function select(key: string) {
+    setSelected(key)
     setEditing(true)
   }
-  const menu =
-    "menu" in selection
-      ? draft.menus.find((m) => m.id === selection.menu)
-      : undefined
   function updateMenu(next: IvrMenu) {
-    const old = draft.menus.find((m) => m.id === next.id)
-    const changed = {
-      ...draft,
-      menus: draft.menus.map((m) => (m.id === next.id ? next : m)),
-    }
-    if (
-      old &&
-      old.name !== next.name &&
-      !row.menus.some((m) => m.id === next.id)
-    ) {
-      const renamed = renameIvrMenu(changed, next.id, next.name)
-      const updated = renamed.menus[draft.menus.indexOf(old)]
-      setDraft(renamed)
-      setSelection({ menu: updated.id })
-    } else setDraft(changed)
+    patch({
+      menus: draft.menus.map((menu) => (menu.id === next.id ? next : menu)),
+    })
   }
-  function addOption(m: IvrMenu) {
-    const digit = "1234567890*#".split("").find((d) => !m.options[d])
-    if (digit) {
-      updateMenu({
-        ...m,
-        options: { ...m.options, [digit]: { kind: "hangup" } },
-      })
-      select({ menu: m.id })
-    }
+  function createMenu(address: IvrBranchAddress) {
+    if (draft.menus.length >= 50) return
+    const parent = draft.menus.find((menu) => menu.id === address.menuId)
+    if (!parent) return
+    const menu = newIvrMenu(
+      uniqueSlug(
+        "New menu",
+        draft.menus.map((m) => m.id),
+        "menu"
+      )
+    )
+    patch({
+      menus: [
+        ...draft.menus.map((m) =>
+          m.id === parent.id
+            ? setIvrBranch(m, address.branch, {
+                kind: "submenu",
+                menuId: menu.id,
+              })
+            : m
+        ),
+        menu,
+      ],
+    })
+    select(ivrMenuKey(menu.id))
+  }
+  const graph = ivrGraph(draft)
+  const problemNodes = ivrProblemNodes(draft, problems ?? [])
+  const selectedNode = [...graph.nodes, ...ivrEditableNodes(draft)].find(
+    (node) => node.key === selected
+  )
+  const context: IvrFlowContext = {
+    definition: draft,
+    bots: (bots?.data ?? []).flatMap((bot) =>
+      "name" in bot ? [{ id: bot.id, name: bot.name }] : []
+    ),
+    updateMenu,
+    select,
+    createMenu,
+    removeMenu: (menu) => {
+      if (ivrMenuReferences(draft, menu.id).length) setRemovingMenu(menu)
+      else {
+        setDraft(removeIvrMenu(draft, menu.id))
+        setProblems(null)
+        select(ivrMenuKey(draft.entryMenuId))
+      }
+    },
   }
   async function save() {
     setBusy(true)
@@ -376,119 +412,16 @@ function IvrForm({ row }: { row: IvrResource }) {
       })
       setSaved(JSON.stringify(draft))
     } catch (e) {
-      setError(actionError(e))
+      const message = actionError(e)
+      setError(message)
+      setProblems([message])
     } finally {
       setBusy(false)
     }
   }
-  function branch(m: IvrMenu, key: string) {
-    return key === "No input"
-      ? m.noInputAction
-      : key === "Invalid"
-        ? m.failureAction
-        : m.options[key]
-  }
-  function actionName(action: IvrAction) {
-    if (action.kind === "submenu")
-      return (
-        draft.menus.find((m) => m.id === action.menuId)?.name ??
-        "Choose submenu"
-      )
-    if (action.kind === "bot")
-      return `Voice bot ${bots?.data.flatMap((b) => ("name" in b && b.id === action.botId ? [b.name] : []))[0] ?? ""}`
-    return ivrActionLabel(action)
-  }
-  function drawMenu(m: IvrMenu, seen: string[]): React.ReactNode {
-    const rendered = row.prompt_renders?.find((r) =>
-      m.prompt.kind === "tts"
-        ? r.text === m.prompt.text &&
-          r.voice === (m.prompt.voice ?? draft.promptVoice?.voice ?? null)
-        : r.fileId === m.prompt.fileId
-    )
-    return (
-      <div key={m.id} className="flex min-w-0 flex-col gap-3">
-        <div
-          className={
-            "menu" in selection && selection.menu === m.id && !selection.branch
-              ? "rounded-xl ring-2 ring-ring"
-              : ""
-          }
-        >
-          <WorkflowCard
-            icon={WorkflowIcon}
-            title={m.name}
-            summary={
-              m.prompt.kind === "tts" ? `“${m.prompt.text}”` : "Audio prompt"
-            }
-            onSelect={() => select({ menu: m.id })}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <ToneBadge
-                {...promptStatusBadge(
-                  rendered?.status ?? "pending_render",
-                  !!draft.promptVoice
-                )}
-              />
-              <Button size="sm" variant="ghost" onClick={() => addOption(m)}>
-                + Add option
-              </Button>
-            </div>
-            {rendered?.audio_url ? (
-              <AudioPlayer
-                src={rendered.audio_url}
-                label={`${m.name} prompt`}
-              />
-            ) : null}
-          </WorkflowCard>
-        </div>
-        <div className="ml-4 flex min-w-0 flex-col gap-4 border-l border-border-strong pl-4">
-          {[
-            ...Object.entries(m.options),
-            ["No input", m.noInputAction],
-            ["Invalid", m.failureAction],
-          ].map(([key, action]) => {
-            const a = action as IvrAction
-            return (
-              <div key={key as string} className="flex min-w-0 flex-col gap-2">
-                <Badge variant="secondary" className="w-fit">
-                  {key as string}
-                </Badge>
-                {a.kind === "submenu" &&
-                !seen.includes(a.menuId) &&
-                draft.menus.some((n) => n.id === a.menuId) ? (
-                  drawMenu(
-                    draft.menus.find((n) => n.id === a.menuId)!,
-                    [...seen, a.menuId]
-                  )
-                ) : (
-                  <div
-                    className={
-                      "menu" in selection &&
-                      selection.menu === m.id &&
-                      selection.branch === key
-                        ? "rounded-xl ring-2 ring-ring"
-                        : ""
-                    }
-                  >
-                    <WorkflowCard
-                      icon={CornerDownRightIcon}
-                      title={actionName(a)}
-                      onSelect={() =>
-                        select({ menu: m.id, branch: key as string })
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
   const editor = (
     <div className="flex min-w-0 flex-col gap-5 p-5">
-      {"settings" in selection ? (
+      {selected === SETTINGS_KEY ? (
         <>
           <DetailSection title="IVR settings">
             <VoiceField
@@ -522,52 +455,21 @@ function IvrForm({ row }: { row: IvrResource }) {
             <VoiceRouting kind="ivr" id={row.id} />
           </DetailSection>
         </>
-      ) : menu ? (
-        selection.branch ? (
-          <DetailSection title={`${menu.name} · ${selection.branch}`}>
-            <ActionField
-              label="Destination action"
-              menus={draft.menus}
-              value={branch(menu, selection.branch)}
-              onChange={(a) =>
-                updateMenu({
-                  ...menu,
-                  ...(selection.branch === "No input"
-                    ? { noInputAction: a }
-                    : selection.branch === "Invalid"
-                      ? { failureAction: a }
-                      : {
-                          options: { ...menu.options, [selection.branch!]: a },
-                        }),
-                })
-              }
-            />
-          </DetailSection>
-        ) : (
-          <>
-            <h2 className="text-base font-medium">{menu.name}</h2>
-            <MenuFields menu={menu} menus={draft.menus} onChange={updateMenu} />
-            <Button
-              variant="ghost"
-              disabled={draft.menus.length === 1}
-              onClick={() => {
-                patch({ menus: draft.menus.filter((m) => m.id !== menu.id) })
-                select({ settings: true })
-              }}
-            >
-              Remove menu
-            </Button>
-          </>
-        )
-      ) : null}
+      ) : selectedNode ? (
+        <FlowNodeEditor
+          catalog={ivrCatalog}
+          node={selectedNode}
+          context={context}
+          problems={(problemNodes.get(selectedNode.key) ?? []).map((problem) =>
+            ivrProblemLabel(draft, problem)
+          )}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Select a menu or destination to edit it.
+        </p>
+      )}
     </div>
-  )
-  const referenced = new Set(
-    draft.menus.flatMap((m) =>
-      [...Object.values(m.options), m.noInputAction, m.failureAction].flatMap(
-        (a) => (a.kind === "submenu" ? [a.menuId] : [])
-      )
-    )
   )
   return (
     <PromptRendersContext.Provider
@@ -599,10 +501,7 @@ function IvrForm({ row }: { row: IvrResource }) {
                   Changes not saved
                 </span>
               ) : null}
-              <Button
-                variant="outline"
-                onClick={() => select({ settings: true })}
-              >
+              <Button variant="outline" onClick={() => select(SETTINGS_KEY)}>
                 Settings
               </Button>
               <Button variant="outline" onClick={() => setTesting(true)}>
@@ -613,11 +512,16 @@ function IvrForm({ row }: { row: IvrResource }) {
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true)
+                  setError("")
                   try {
                     const result = await validate({
                       organizationId: activeTeamId!,
                       id: row.id,
-                      body: JSON.stringify(ivrFormPatch(draft)),
+                      body: JSON.stringify({
+                        ...draft,
+                        promptVoice: draft.promptVoice ?? null,
+                        businessHours: draft.businessHours ?? null,
+                      }),
                     })
                     setProblems(result.errors)
                   } catch (e) {
@@ -704,16 +608,13 @@ function IvrForm({ row }: { row: IvrResource }) {
                         variant="link"
                         className="h-auto text-left whitespace-normal"
                         onClick={() => {
-                          const m = draft.menus.find((m) =>
-                            problem.includes(m.id)
-                          )
-                          select(m ? { menu: m.id } : { settings: true })
+                          const key = [...problemNodes].find(([, errors]) =>
+                            errors.includes(problem)
+                          )?.[0]
+                          select(key ?? SETTINGS_KEY)
                         }}
                       >
-                        {problem.replace(
-                          /menus\.(\d+)/g,
-                          (_s, n) => draft.menus[Number(n)]?.name ?? "Menu"
-                        )}
+                        {ivrProblemLabel(draft, problem)}
                       </Button>
                     </li>
                   ))}
@@ -724,88 +625,168 @@ function IvrForm({ row }: { row: IvrResource }) {
             </AlertDescription>
           </Alert>
         ) : null}
-        <div className="grid min-w-0 overflow-hidden rounded-xl border border-border lg:grid-cols-[minmax(0,1fr)_380px]">
-          <main
-            aria-label="Call flow"
-            className="flex min-w-0 flex-col items-center gap-0 overflow-y-auto bg-muted/30 p-5 lg:max-h-[78vh]"
-          >
-            <WorkflowCard
-              icon={PhoneIcon}
-              title="Incoming call"
-              onSelect={() => select({ settings: true })}
-            />
-            <span aria-hidden className="h-6 w-px shrink-0 bg-border-strong" />
-            {draft.businessHours ? (
-              <>
-                <WorkflowCard
-                  icon={ClockIcon}
-                  title="Business hours"
-                  onSelect={() => select({ settings: true })}
-                />
-                <div className="flex w-full flex-col items-center gap-3 py-3">
-                  <Badge variant="secondary">Closed</Badge>
-                  <WorkflowCard
-                    icon={CornerDownRightIcon}
-                    title={actionName(draft.businessHours.closedAction)}
-                    onSelect={() => select({ settings: true })}
-                  />
-                  <Badge variant="secondary">Open</Badge>
-                </div>
-              </>
-            ) : null}
-            <div className="w-full max-w-96">
-              {draft.menus.find((m) => m.id === draft.entryMenuId)
-                ? drawMenu(
-                    draft.menus.find((m) => m.id === draft.entryMenuId)!,
-                    [draft.entryMenuId]
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <main aria-label="Call flow" className="flex min-w-0 flex-col gap-4">
+            <div className="flex h-[78vh] min-h-96 min-w-0">
+              <FlowEditor
+                catalog={ivrCatalog}
+                context={context}
+                steps={graph.root ? [graph.root] : []}
+                selected={
+                  graph.nodes.some((node) => node.key === selected)
+                    ? selected
+                    : (graph.nodes.find(
+                        (node) =>
+                          node.address &&
+                          ivrActionKey(node.address) === selected
+                      )?.key ?? selected)
+                }
+                onSelect={select}
+                stacked={mobile}
+                problems={(node) =>
+                  (problemNodes.get(node.key) ?? []).map((problem) =>
+                    ivrProblemLabel(draft, problem)
                   )
-                : null}
-              {draft.menus
-                .filter(
-                  (m) => m.id !== draft.entryMenuId && !referenced.has(m.id)
-                )
-                .map((m) => (
-                  <div key={m.id} className="mt-6">
-                    {drawMenu(m, [m.id])}
-                  </div>
-                ))}
+                }
+                nodeActions={(node) => (
+                  <>
+                    {node.address &&
+                    (node.kind === "menu" || node.kind === "submenu") ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Edit ${node.menu.name} destination`}
+                        onClick={() => select(ivrActionKey(node.address!))}
+                      >
+                        Edit path
+                      </Button>
+                    ) : null}
+                    {node.kind === "menu" && nextIvrDigit(node.menu) ? (
+                      <FlowAdd
+                        catalog={ivrCatalog}
+                        label={`Add option · Press ${nextIvrDigit(node.menu)}`}
+                        groups={[
+                          {
+                            label: `Press ${nextIvrDigit(node.menu)}`,
+                            types: ivrCatalog.entries.menu.addAfter(node),
+                          },
+                        ]}
+                        disabled={(kind) =>
+                          kind === "menu" && draft.menus.length >= 50
+                        }
+                        onAdd={(kind) => {
+                          const digit = nextIvrDigit(node.menu)
+                          if (!digit) return
+                          const address = {
+                            menuId: node.menu.id,
+                            branch: digit,
+                          }
+                          if (kind === "menu") createMenu(address)
+                          else {
+                            updateMenu(
+                              setIvrBranch(
+                                node.menu,
+                                digit,
+                                newIvrAction(kind, draft)
+                              )
+                            )
+                            select(ivrActionKey(address))
+                          }
+                        }}
+                      />
+                    ) : null}
+                  </>
+                )}
+                nodeBody={(node) => {
+                  if (node.kind !== "menu") return null
+                  const prompt = node.menu.prompt
+                  const rendered =
+                    JSON.stringify(row.promptVoice) ===
+                    JSON.stringify(draft.promptVoice)
+                      ? row.prompt_renders?.find((r) =>
+                          prompt.kind === "tts"
+                            ? r.text === prompt.text &&
+                              r.voice ===
+                                (prompt.voice ??
+                                  draft.promptVoice?.voice ??
+                                  null)
+                            : r.fileId === prompt.fileId
+                        )
+                      : undefined
+                  return (
+                    <>
+                      <ToneBadge
+                        {...promptStatusBadge(
+                          rendered?.status ?? "pending_render",
+                          !!draft.promptVoice
+                        )}
+                      />
+                      {rendered?.audio_url ? (
+                        <AudioPlayer
+                          src={rendered.audio_url}
+                          label={`${node.menu.name} prompt`}
+                        />
+                      ) : null}
+                    </>
+                  )
+                }}
+              />
             </div>
-            <Button
-              variant="outline"
-              className="mt-5"
-              onClick={() => {
-                const m = newIvrMenu(
-                  uniqueSlug(
-                    "New menu",
-                    draft.menus.map((m) => m.id),
-                    "menu"
-                  )
-                )
-                patch({ menus: [...draft.menus, m] })
-                select({ menu: m.id })
-              }}
-            >
-              Add menu
-            </Button>
+            {graph.unreachable.length ? (
+              <Alert variant="warning">
+                <AlertTitle>Menus outside the entry flow</AlertTitle>
+                <AlertDescription>
+                  Connect these menus from a digit option or business hours.
+                  Select a menu to edit or remove it.
+                  <div className="flex flex-wrap gap-2">
+                    {graph.unreachable.map((menu) => (
+                      <Button
+                        key={menu.id}
+                        variant="link"
+                        onClick={() => select(ivrMenuKey(menu.id))}
+                      >
+                        {menu.name}
+                        {problemNodes.has(ivrMenuKey(menu.id))
+                          ? " · Needs attention"
+                          : ""}
+                      </Button>
+                    ))}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : null}
           </main>
-          {!mobile ? (
-            <aside
-              ref={editorPanel}
-              aria-label="Flow editor"
-              className="max-h-[78vh] min-w-0 overflow-y-auto border-l border-border"
-            >
-              {editor}
-            </aside>
-          ) : null}
+          <FlowPanel
+            selection={selected}
+            open={editing}
+            onOpenChange={setEditing}
+            title="Edit call flow"
+          >
+            {editor}
+          </FlowPanel>
         </div>
-        <Sheet open={mobile && editing} onOpenChange={setEditing}>
-          <SheetContent className="overflow-y-auto data-[side=right]:w-full">
-            <SheetHeader>
-              <SheetTitle>Edit call flow</SheetTitle>
-            </SheetHeader>
-            {mobile ? editor : null}
-          </SheetContent>
-        </Sheet>
+        <TypeToConfirmDialog
+          open={removingMenu !== null}
+          onOpenChange={(open) => {
+            if (!open) setRemovingMenu(null)
+          }}
+          title="Remove menu"
+          phrase={removingMenu?.name ?? ""}
+          confirmLabel="Remove menu"
+          description={
+            removingMenu
+              ? `Used by: ${ivrMenuReferences(draft, removingMenu.id).join(", ")}. These destinations will hang up. ${draft.entryMenuId === removingMenu.id ? "The first remaining menu will become the entry menu." : ""}`
+              : ""
+          }
+          onConfirm={() => {
+            if (!removingMenu) return
+            const next = removeIvrMenu(draft, removingMenu.id)
+            setDraft(next)
+            setProblems(null)
+            setRemovingMenu(null)
+            select(ivrMenuKey(next.entryMenuId))
+          }}
+        />
         <Sheet open={testing} onOpenChange={setTesting}>
           <SheetContent className="overflow-y-auto data-[side=right]:w-full">
             <SheetHeader>

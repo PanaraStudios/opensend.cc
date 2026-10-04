@@ -379,7 +379,9 @@ export function MenuFields({
   menu,
   menus,
   onChange,
+  showBranches = true,
 }: {
+  showBranches?: boolean
   menu: IvrMenu
   menus: IvrMenu[]
   onChange: (m: IvrMenu) => void
@@ -415,101 +417,105 @@ export function MenuFields({
           />
         ))}
       </div>
-      <DetailSection
-        title="Options"
-        actions={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={Object.keys(menu.options).length >= 12}
-            onClick={() => {
-              const digit = "1234567890*#"
-                .split("")
-                .find((d) => !menu.options[d])
-              if (digit)
-                patch({
-                  options: { ...menu.options, [digit]: { kind: "hangup" } },
-                })
-            }}
-          >
-            Add option
-          </Button>
-        }
-      >
-        <ResourceTable
-          framed={false}
-          headers={
-            <>
-              <Th>Digit</Th>
-              <Th>Action</Th>
-              <Th />
-            </>
-          }
-        >
-          {Object.entries(menu.options).map(([digit, action]) => (
-            <TableRow key={digit}>
-              <TableCell className="w-16">
-                <OptionSelect
-                  aria-label={`Digit ${digit}`}
-                  value={digit}
-                  items={"0123456789*#"
+      {showBranches ? (
+        <>
+          <DetailSection
+            title="Options"
+            actions={
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Object.keys(menu.options).length >= 12}
+                onClick={() => {
+                  const digit = "1234567890*#"
                     .split("")
-                    .filter((d) => d === digit || !menu.options[d])
-                    .map((d) => ({ value: d, label: d }))}
-                  onChange={(d) => {
-                    const options = { ...menu.options }
-                    delete options[digit]
-                    options[d] = action
-                    patch({ options })
-                  }}
-                />
-              </TableCell>
-              <TableCell>
-                <ActionField
-                  label={`Action for ${digit}`}
-                  value={action}
-                  menus={menus}
-                  onChange={(a) =>
-                    patch({ options: { ...menu.options, [digit]: a } })
-                  }
-                />
-              </TableCell>
-              <TableCell>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  aria-label={`Remove option ${digit}`}
-                  onClick={() => {
-                    const options = { ...menu.options }
-                    delete options[digit]
-                    patch({ options })
-                  }}
-                >
-                  Remove
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </ResourceTable>
-      </DetailSection>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
-          <ActionField
-            label="No input action"
-            menus={menus}
-            value={menu.noInputAction}
-            onChange={(noInputAction) => patch({ noInputAction })}
-          />
-        </Field>
-        <Field>
-          <ActionField
-            label="Invalid input action"
-            menus={menus}
-            value={menu.failureAction}
-            onChange={(failureAction) => patch({ failureAction })}
-          />
-        </Field>
-      </div>
+                    .find((d) => !menu.options[d])
+                  if (digit)
+                    patch({
+                      options: { ...menu.options, [digit]: { kind: "hangup" } },
+                    })
+                }}
+              >
+                Add option
+              </Button>
+            }
+          >
+            <ResourceTable
+              framed={false}
+              headers={
+                <>
+                  <Th>Digit</Th>
+                  <Th>Action</Th>
+                  <Th />
+                </>
+              }
+            >
+              {Object.entries(menu.options).map(([digit, action]) => (
+                <TableRow key={digit}>
+                  <TableCell className="w-16">
+                    <OptionSelect
+                      aria-label={`Digit ${digit}`}
+                      value={digit}
+                      items={"0123456789*#"
+                        .split("")
+                        .filter((d) => d === digit || !menu.options[d])
+                        .map((d) => ({ value: d, label: d }))}
+                      onChange={(d) => {
+                        const options = { ...menu.options }
+                        delete options[digit]
+                        options[d] = action
+                        patch({ options })
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <ActionField
+                      label={`Action for ${digit}`}
+                      value={action}
+                      menus={menus}
+                      onChange={(a) =>
+                        patch({ options: { ...menu.options, [digit]: a } })
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={`Remove option ${digit}`}
+                      onClick={() => {
+                        const options = { ...menu.options }
+                        delete options[digit]
+                        patch({ options })
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+          </DetailSection>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <ActionField
+                label="No input action"
+                menus={menus}
+                value={menu.noInputAction}
+                onChange={(noInputAction) => patch({ noInputAction })}
+              />
+            </Field>
+            <Field>
+              <ActionField
+                label="Invalid input action"
+                menus={menus}
+                value={menu.failureAction}
+                onChange={(failureAction) => patch({ failureAction })}
+              />
+            </Field>
+          </div>
+        </>
+      ) : null}
       {menu.invalidPrompt ? (
         <>
           <FieldLabel>Invalid input prompt</FieldLabel>
