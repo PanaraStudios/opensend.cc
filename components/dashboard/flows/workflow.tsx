@@ -1,4 +1,5 @@
 "use client"
+import { DEFAULT_ZOOM, ZOOM_STEPS, fitZoom } from "@/lib/dashboard/flow-zoom"
 
 import * as React from "react"
 import { MinusIcon, PlusIcon, type LucideIcon } from "lucide-react"
@@ -14,8 +15,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
    step, with the paths of a branching step side by side beneath it. The
    editor and the observability view draw the same graph with different
    cards, so the cards come in as render props. */
-
-const ZOOM_STEPS = [0.5, 0.75, 1, 1.25] as const
 
 export function Connector({ className }: { className?: string }) {
   return (
@@ -144,18 +143,36 @@ export function WorkflowCanvas<Node extends { key: string }>({
 }) {
   const mobile = useIsMobile()
   const stacked = requestedStacked ?? mobile
-  const [zoom, setZoom] = React.useState(2)
+  const [zoom, setZoom] = React.useState(DEFAULT_ZOOM)
+  const [fitted, setFitted] = React.useState(0)
   const canvas = React.useRef<HTMLDivElement>(null)
-  /* Start the desktop graph at its trigger, and the mobile stack at the left
-     edge. Reset only when switching layouts; otherwise preserve the pan. */
+  const graph = React.useRef<HTMLDivElement>(null)
+  /* Open the desktop graph zoomed to fit its width (never above 100%), and the
+     mobile stack at the left edge. Only when switching layouts; otherwise keep
+     the reader's zoom and pan. */
   React.useLayoutEffect(() => {
     const element = canvas.current
-    if (element) {
-      element.scrollLeft = stacked
-        ? 0
-        : (element.scrollWidth - element.clientWidth) / 2
+    if (!element) return
+    if (stacked) {
+      element.scrollLeft = 0
+      return
     }
+    const natural =
+      Math.max(
+        0,
+        ...Array.from(graph.current?.children ?? []).map(
+          (child) => child.getBoundingClientRect().width
+        )
+      ) / ZOOM_STEPS[DEFAULT_ZOOM]
+    setZoom(fitZoom(natural, element.clientWidth))
+    setFitted((count) => count + 1)
   }, [stacked])
+  /* Centre the fitted graph once its zoom has rendered. */
+  React.useLayoutEffect(() => {
+    const element = canvas.current
+    if (element && fitted)
+      element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+  }, [fitted])
 
   /* Dragging the background moves the canvas. The graph lets presses through
      everywhere but its cards and controls, so a press reaches the canvas only
@@ -205,6 +222,7 @@ export function WorkflowCanvas<Node extends { key: string }>({
             "pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10",
             stacked && "min-h-full w-full min-w-0 p-4"
           )}
+          ref={graph}
           style={{ zoom: stacked ? 1 : ZOOM_STEPS[zoom] }}
         >
           {trigger}
