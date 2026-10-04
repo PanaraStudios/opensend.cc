@@ -406,7 +406,7 @@ export function screensTourTests(state: TourState) {
         async (p) => {
           await expect(
             p.getByRole("button", {
-              name: channel === "email" ? "Test email" : "Send test",
+              name: "Send test",
               exact: true,
             })
           ).toBeVisible()
