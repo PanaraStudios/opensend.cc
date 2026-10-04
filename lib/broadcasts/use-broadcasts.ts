@@ -17,7 +17,10 @@ import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { emptyBroadcastStats } from "@/lib/dashboard/broadcast"
 export type BroadcastPatch = Partial<
   Omit<EmailDraft, "id"> &
-    Pick<Broadcast, "segmentId" | "topicId" | "channel" | "whatsapp">
+    Pick<
+      Broadcast,
+      "segmentId" | "topicId" | "channel" | "whatsapp" | "messaging"
+    >
 >
 export function asBroadcast(
   row: Doc<"broadcasts">,
@@ -28,6 +31,7 @@ export function asBroadcast(
     name: row.name,
     channel: row.channel,
     whatsapp: row.whatsapp,
+    messaging: row.messaging,
     subject: row.subject,
     preview: row.preview,
     html: body?.html ?? "",
@@ -45,10 +49,27 @@ export function asBroadcast(
   }
 }
 function wire(patch: BroadcastPatch) {
-  const { content, from, replyTo, segmentId, topicId, whatsapp, ...rest } =
-    patch
+  const {
+    content,
+    from,
+    replyTo,
+    segmentId,
+    topicId,
+    whatsapp,
+    messaging,
+    ...rest
+  } = patch
   return {
     ...rest,
+    ...(messaging
+      ? {
+          messaging: {
+            ...messaging,
+            accountId: messaging.accountId as Id<"channelAccounts">,
+            templateId: messaging.templateId as Id<"templates">,
+          },
+        }
+      : {}),
     ...(whatsapp
       ? {
           whatsapp: {
@@ -89,7 +110,9 @@ export function useBroadcast(id: string) {
                   ? metrics.stats
                   : emptyBroadcastStats(),
               whatsappStats:
-                metrics?.channel === "whatsapp" ? metrics.stats : undefined,
+                metrics && metrics.channel !== "email"
+                  ? metrics.stats
+                  : undefined,
             },
     [result, metrics]
   )

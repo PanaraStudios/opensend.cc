@@ -9,6 +9,7 @@ export type ListBroadcastsResponseSuccess = {
   has_more: boolean;
   data: Pick<
     Broadcast,
+    | 'channel'
     | 'id'
     | 'name'
     | 'audience_id'

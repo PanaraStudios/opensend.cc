@@ -421,7 +421,8 @@ export const counters = {
     {
       namespace: (message) => message.broadcastId!,
       key: (message) => [message.status],
-      where: (message) => message.broadcastId !== undefined,
+      where: (message) =>
+        message.broadcastId !== undefined && !message.broadcastSkipReason,
       retainDeleted: true,
     }
   ),

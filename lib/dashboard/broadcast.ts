@@ -126,3 +126,10 @@ export function broadcastTopicItems(
     ...rows.map((row) => ({ value: row.id, label: row.name })),
   ]
 }
+
+export function broadcastReachabilityLabel(
+  recipients: number,
+  skipped: number
+) {
+  return `${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+}

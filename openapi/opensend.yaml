@@ -22175,10 +22175,12 @@ components:
       properties:
         channel:
           type: string
-          enum: [ email, whatsapp ]
+          enum: [ email, whatsapp, messenger, instagram ]
           description: Missing means email.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
+        messaging:
+          $ref: '#/components/schemas/MessagingBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -22246,9 +22248,13 @@ components:
           description: >-
             Send time, used only when send is true, in ISO 8601 or natural language up to 30 days
             ahead with UTC as the default timezone.
-      description: Create an email broadcast with nonempty HTML or text, or an approved WhatsApp template
-        campaign.
+      description: Create an email broadcast with nonempty HTML or text, an approved WhatsApp template campaign,
+        or a published Messenger/Instagram local template campaign sent only within the recipient’s 24-hour window.
       anyOf:
+        - required: [ channel, messaging ]
+          properties:
+            channel:
+              enum: [ messenger, instagram ]
         - required: [ channel, whatsapp ]
           properties:
             channel:
@@ -22274,10 +22280,12 @@ components:
       properties:
         channel:
           type: string
-          enum: [ email, whatsapp ]
+          enum: [ email, whatsapp, messenger, instagram ]
           description: Missing means email.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
+        messaging:
+          $ref: '#/components/schemas/MessagingBroadcastConfiguration'
         name:
           anyOf:
             - type: string
@@ -22360,7 +22368,7 @@ components:
       properties:
         channel:
           type: string
-          enum: [ email, whatsapp ]
+          enum: [ email, whatsapp, messenger, instagram ]
           description: Missing means email.
         id:
           type: string
@@ -22441,10 +22449,12 @@ components:
       properties:
         channel:
           type: string
-          enum: [ email, whatsapp ]
+          enum: [ email, whatsapp, messenger, instagram ]
           description: Missing means email.
         whatsapp:
           $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
+        messaging:
+          $ref: '#/components/schemas/MessagingBroadcastConfiguration'
         object:
           type: string
           enum:
@@ -24552,6 +24562,10 @@ components:
               type: string
               maxLength: 4096
           additionalProperties: false
+    MessagingBroadcastConfiguration:
+      description: Published local template sent from a connected Page or Instagram account, only within the recipient’s 24-hour window. Message tags are never used.
+      allOf:
+        - $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
     WhatsAppBroadcastConfiguration:
       type: object
       required: [ account_id, template_id, variables ]

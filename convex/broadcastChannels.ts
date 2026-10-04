@@ -11,15 +11,23 @@ import {
   sendEmailRecipient,
 } from "./broadcastEmail"
 import { readBroadcastStats, readWhatsAppStats } from "./broadcastMetrics"
-import { rowChannel } from "../lib/channels"
+import { resolvePageBroadcast } from "./broadcastMessaging"
+import {
+  type Channel,
+  type MessagingChannel,
+  type PageChannel,
+  rowChannel,
+} from "../lib/channels"
 
 // One strategy per supported broadcast channel. Legacy email fields and
 // retained snapshots remain unchanged; adapters tag read results at the edge.
 type Prepared =
   | Awaited<ReturnType<typeof prepareEmailBroadcast>>
   | {
-      channel: "whatsapp"
-      target: NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+      channel: MessagingChannel
+      target:
+        | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+        | Awaited<ReturnType<typeof resolvePageBroadcast>>
     }
 type Adapter = {
   validate(
@@ -57,13 +65,47 @@ type Adapter = {
         stats: Awaited<ReturnType<typeof readBroadcastStats>>
       }
     | {
-        channel: "whatsapp"
+        channel: MessagingChannel
         stats: Awaited<ReturnType<typeof readWhatsAppStats>>
       }
   >
   retained(row: Doc<"broadcasts">): boolean
 }
-export const broadcastChannels: Record<"email" | "whatsapp", Adapter> = {
+function pageAdapter(channel: PageChannel): Adapter {
+  return {
+    validate: async (ctx, org, input, sending = false) => {
+      if (input.whatsapp)
+        throw new Error("Use messaging settings for this channel")
+      if (input.messaging || sending)
+        await resolvePageBroadcast(ctx, org, channel, input.messaging, {
+          draft: !sending,
+        })
+    },
+    initialize: async (_ctx, _org, input) => input,
+    prepare: async (ctx, row) => ({
+      channel,
+      target: await resolvePageBroadcast(
+        ctx,
+        row.organizationId,
+        channel,
+        row.messaging
+      ),
+    }),
+    eligible: async (_ctx, _row, candidates) => candidates,
+    sendRecipient: async (ctx, row, contact, topic, prepared) => {
+      if (prepared.channel !== channel)
+        throw new Error("Invalid broadcast preparation")
+      await sendWhatsAppRecipient(ctx, row, contact, topic, prepared.target)
+    },
+    readStats: async (ctx, row) => ({
+      channel,
+      stats:
+        row.retainedWhatsAppStats ?? (await readWhatsAppStats(ctx, row._id)),
+    }),
+    retained: (row) => !!row.retainedWhatsAppStats,
+  }
+}
+export const broadcastChannels: Record<Channel, Adapter> = {
   email: {
     validate: (ctx, org, input, sending = false) =>
       validateEmailBroadcast(ctx, org, input, sending),
@@ -81,6 +123,8 @@ export const broadcastChannels: Record<"email" | "whatsapp", Adapter> = {
     }),
     retained: (row) => !!row.retainedStats,
   },
+  messenger: pageAdapter("messenger"),
+  instagram: pageAdapter("instagram"),
   whatsapp: {
     validate: async (ctx, org, input, sending = false) => {
       if (input.whatsapp || sending)

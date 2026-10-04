@@ -155,9 +155,7 @@ export function BroadcastsView() {
           {
             value: channel,
             onChange: setChannel,
-            items: MESSAGE_CHANNEL_ITEMS.filter((item) =>
-              ["all", "email", "whatsapp"].includes(item.value)
-            ),
+            items: MESSAGE_CHANNEL_ITEMS,
             "aria-label": "Filter by channel",
           },
           {
@@ -270,7 +268,7 @@ export function BroadcastsView() {
                           Duplicate
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          disabled={item.channel === "whatsapp"}
+                          disabled={(item.channel ?? "email") !== "email"}
                           onClick={() => cloneAsTemplate(item)}
                         >
                           <LayoutTemplateIcon />

@@ -12,6 +12,9 @@ const spec = parse(
   )
 ) as {
   paths: Record<string, Record<string, unknown>>
+  components: {
+    schemas: Record<string, { properties: Record<string, { enum?: string[] }> }>
+  }
 }
 const operations = Object.entries(spec.paths).flatMap(([path, methods]) =>
   Object.keys(methods)
@@ -69,7 +72,13 @@ const overrides: Record<string, Record<string, unknown>> = {
   },
   "create-knowledge-document": { source: "text", text: "Material" },
 
-  send_message: { channel: "email", from: "sender@example.test", to: "person@example.test", subject: "Hello", text: "Hello" },
+  send_message: {
+    channel: "email",
+    from: "sender@example.test",
+    to: "person@example.test",
+    subject: "Hello",
+    text: "Hello",
+  },
   "batch-remove-suppressions": { ids: ["test-id"] },
   "place-whatsapp-call": {
     from: "number",
@@ -97,7 +106,11 @@ const overrides: Record<string, Record<string, unknown>> = {
       },
     ],
   },
-  "create-broadcast": { text: "Hello" },
+  "create-broadcast": {
+    text: "Hello",
+    subject: "Hello",
+    from: "sender@example.com",
+  },
   // html is optional in the schema, since WhatsApp templates have none.
   "create-template": { html: "<p>Hello</p>" },
   "create-contact-import": { content: "email\nperson@example.com" },
@@ -131,7 +144,11 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
   let connection: Awaited<ReturnType<typeof connectClient>>
   let definitions: Map<string, Schema>
   let activeTool = ""
-  const requests: Array<{ method: string; path: string }> = []
+  const requests: Array<{
+    method: string
+    path: string
+    body?: Record<string, unknown>
+  }> = []
   beforeAll(async () => {
     vi.spyOn(console, "error").mockImplementation(() => {})
     connection = await connectClient()
@@ -151,7 +168,13 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
         const headers = new Headers(init?.headers)
         expect(headers.get("authorization")).toBe("Bearer " + fakeKey)
         expect(headers.get("user-agent")).toBe(USER_AGENT)
-        requests.push({ method: init?.method ?? "GET", path: url.pathname })
+        requests.push({
+          method: init?.method ?? "GET",
+          path: url.pathname,
+          ...(typeof init?.body === "string"
+            ? { body: JSON.parse(init.body) }
+            : {}),
+        })
         if (activeTool === "update-broadcast" && init?.method === "GET") {
           return Response.json({
             id: "test-id",
@@ -174,6 +197,47 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
   it("covers the entire registry", () => {
     expect([...definitions.keys()].sort()).toEqual([...toolNames])
   })
+  it.each(["messenger", "instagram"])(
+    "%s broadcast tool sends the additive REST configuration",
+    async (channel) => {
+      requests.length = 0
+      activeTool = "create-broadcast"
+      const result = await connection.client.callTool({
+        name: activeTool,
+        arguments: {
+          channel,
+          name: "Local campaign",
+          segmentId: "segment",
+          messaging: {
+            accountId: "account",
+            templateId: "published",
+            variables: { name: { value: "Friend" } },
+          },
+        },
+      })
+      expect(
+        spec.components.schemas.CreateBroadcastOptions.properties.channel.enum
+      ).toContain(channel)
+      expect(requests).toEqual([
+        {
+          method: "POST",
+          path: "/broadcasts",
+          body: {
+            channel,
+            name: "Local campaign",
+            segment_id: "segment",
+            messaging: {
+              account_id: "account",
+              template_id: "published",
+              variables: { name: { value: "Friend" } },
+            },
+          },
+        },
+      ])
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result)).toContain("contract-test error")
+    }
+  )
   it.each(toolNames)("%s reaches its contracted route", async (name) => {
     requests.length = 0
     activeTool = name

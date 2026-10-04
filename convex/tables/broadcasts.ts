@@ -4,7 +4,9 @@ import { variableSources } from "./variables"
 
 export const broadcastChannel = v.union(
   v.literal("email"),
-  v.literal("whatsapp")
+  v.literal("whatsapp"),
+  v.literal("messenger"),
+  v.literal("instagram")
 )
 export const skipReasonValue = v.union(
   v.literal("no_phone"),
@@ -89,6 +91,7 @@ export const broadcastTables = {
     name: v.string(),
     channel: v.optional(broadcastChannel),
     whatsapp: v.optional(whatsappBroadcast),
+    messaging: v.optional(whatsappBroadcast),
     retainedWhatsAppStats: v.optional(whatsappStatsValue),
     subject: v.string(),
     preview: v.string(),

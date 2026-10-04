@@ -1,9 +1,15 @@
 "use client"
 import {
+  broadcastReachabilityLabel,
   broadcastSegmentItems,
   broadcastTopicItems,
 } from "@/lib/dashboard/broadcast"
 
+import {
+  CHANNELS,
+  BROADCAST_CAPABILITIES,
+  type MessagingChannel,
+} from "@/lib/channels"
 import { TemplateTestAction } from "@/components/dashboard/templates/test-send"
 import { resolveVariables } from "@/lib/meta/variables"
 import * as React from "react"
@@ -47,11 +53,18 @@ import { pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 
 export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
+  const channel = item.channel as MessagingChannel
+  const capability = BROADCAST_CAPABILITIES[channel]
+  const label = CHANNELS[channel].label
   const router = useRouter()
   const commands = useBroadcastCommands()
   const { activeTeamId } = useWorkspace()
   const [config, setConfig] = React.useState<WhatsAppCampaignConfig>(
-    item.whatsapp ?? { accountId: "", templateId: "", variables: {} }
+    item[capability.configKey] ?? {
+      accountId: "",
+      templateId: "",
+      variables: {},
+    }
   )
   const [segmentId, setSegmentId] = React.useState(item.segmentId)
   const [topicId, setTopicId] = React.useState(item.topicId)
@@ -76,11 +89,13 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
     toast.add({ type: "error", title: actionError(error) })
   async function save() {
     if (!config.accountId || !config.templateId)
-      throw new Error("Select a sending number and an approved template")
+      throw new Error(
+        `Select a sender and a ${capability.contentLabel.toLowerCase()}`
+      )
     await commands.updateBroadcast(item.id, {
       segmentId,
       topicId,
-      whatsapp: {
+      [capability.configKey]: {
         accountId: config.accountId,
         templateId: config.templateId,
         variables: config.variables,
@@ -152,7 +167,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
           Save
         </Button>
         <Button
-          data-testid="whatsapp-broadcast-review"
+          data-testid={`${channel}-broadcast-review`}
           disabled={busy}
           onClick={() => void reviewSend()}
         >
@@ -161,18 +176,21 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
       </EditorTopBar>
       <main
         className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6"
-        data-testid="whatsapp-broadcast-form"
+        data-testid={`${channel}-broadcast-form`}
       >
         <Alert>
           <AlertDescription>
-            Meta charges per delivered template message by category
+            {capability.windowRequired
+              ? "Only people who messaged this account within the last 24 hours can receive this broadcast."
+              : "Meta charges per delivered template message by category"}
           </AlertDescription>
         </Alert>
         <SettingsCard
-          title="WhatsApp message"
-          description="Send an approved template from your connected number."
+          title={`${label} message`}
+          description={`Send a ${capability.contentLabel.toLowerCase()} from your connected ${CHANNELS[channel].accountNoun.toLowerCase()}.`}
         >
           <WhatsAppCampaignFields
+            channel={channel}
             config={config}
             onChange={setConfig}
             sample={sample}
@@ -223,20 +241,36 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Review WhatsApp broadcast</DialogTitle>
+            <DialogTitle>Review {label} broadcast</DialogTitle>
             <DialogDescription>
               {sendAt ? formatScheduleHint(sendAt) : "Send now"}
             </DialogDescription>
           </DialogHeader>
           {estimate ? (
-            <div data-testid="whatsapp-broadcast-estimate">
-              <p>
-                {pluralize(estimate.recipients, "recipient")},{" "}
-                {estimate.skipped.toLocaleString()} skipped
-              </p>
-              <p>
-                {estimate.noPhone.toLocaleString()} skipped for lacking a phone
-              </p>
+            <div data-testid={`${channel}-broadcast-estimate`}>
+              {capability.windowRequired ? (
+                <>
+                  <p>
+                    {broadcastReachabilityLabel(
+                      estimate.recipients,
+                      estimate.skipped
+                    )}
+                  </p>
+                  <p>The others can’t be messaged until they write again.</p>
+                  <p>Windows are checked again when each message is sent.</p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {pluralize(estimate.recipients, "recipient")},{" "}
+                    {estimate.skipped.toLocaleString()} skipped
+                  </p>
+                  <p>
+                    {estimate.noPhone.toLocaleString()} skipped for lacking a
+                    phone
+                  </p>
+                </>
+              )}
             </div>
           ) : null}
           <DialogFooter>

@@ -73,6 +73,16 @@ export class Broadcasts {
               },
             }
           : {}),
+        ...('messaging' in payload && payload.messaging
+          ? {
+              channel: payload.channel,
+              messaging: {
+                account_id: payload.messaging!.accountId,
+                template_id: payload.messaging!.templateId,
+                variables: payload.messaging!.variables,
+              },
+            }
+          : {}),
         name: payload.name,
         segment_id: payload.segmentId,
         audience_id: payload.audienceId,
@@ -175,6 +185,26 @@ export class Broadcasts {
     const data = await this.resend.patch<UpdateBroadcastResponseSuccess>(
       `/broadcasts/${id}`,
       {
+        ...(payload.whatsapp
+          ? {
+              channel: payload.channel,
+              whatsapp: {
+                account_id: payload.whatsapp.accountId,
+                template_id: payload.whatsapp.templateId,
+                variables: payload.whatsapp.variables,
+              },
+            }
+          : {}),
+        ...('messaging' in payload && payload.messaging
+          ? {
+              channel: payload.channel,
+              messaging: {
+                account_id: payload.messaging!.accountId,
+                template_id: payload.messaging!.templateId,
+                variables: payload.messaging!.variables,
+              },
+            }
+          : {}),
         name: payload.name,
         segment_id: payload.segmentId,
         audience_id: payload.audienceId,
