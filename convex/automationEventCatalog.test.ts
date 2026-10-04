@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { emitEvent } from "./events"
+import { defineEvent } from "./automationEvents"
 import { upsertContact, contactEventData } from "./audience"
 import { createNote } from "./contactNotes"
 import { startRun } from "./automationRuntime"
@@ -72,6 +73,168 @@ async function setup() {
   }
   return { ...f, contactId, define }
 }
+
+test("saving and enabling an automation does not scan unrelated event definitions", async () => {
+  const f = await setup()
+  await f.t.run(async (ctx) => {
+    for (let i = 0; i < 200; i++)
+      await defineEvent(ctx, f.owner.team, {
+        name: `unrelated.${i}`,
+        schema: [],
+      })
+    await defineEvent(ctx, f.owner.team, {
+      name: "lead.signup",
+      schema: [{ key: "name", type: "string" }],
+    })
+    await defineEvent(ctx, f.owner.team, {
+      name: "lead.confirmed",
+      schema: [{ key: "name", type: "string" }],
+    })
+  })
+  const id = await f.owner.client.mutation(api.automations.create, {
+    organizationId: f.owner.team,
+  })
+  const graph = JSON.stringify([
+    {
+      key: "wait",
+      type: "wait_for_event",
+      eventName: "lead.confirmed",
+      timeout: "1 minute",
+      received: [
+        {
+          key: "profile",
+          type: "contact_update",
+          fields: [
+            {
+              property: "first_name",
+              action: "change",
+              value: "{{trigger.name}} {{steps.wait.payload.name}}",
+            },
+          ],
+        },
+      ],
+      timedOut: [],
+    },
+  ])
+  await f.owner.client.run((ctx) =>
+    ctx.runMutation(
+      api.automations.update,
+      {
+        organizationId: f.owner.team,
+        id,
+        trigger: "lead.signup",
+        graph,
+      },
+      { transactionLimits: { documentsRead: 100 } }
+    )
+  )
+  const result = await f.owner.client.run((ctx) =>
+    ctx.runMutation(
+      api.automations.setStatus,
+      {
+        organizationId: f.owner.team,
+        id,
+        status: "enabled",
+      },
+      { transactionLimits: { documentsRead: 100 } }
+    )
+  )
+  expect(result).toEqual([])
+})
+
+test("contact.deleted automations do not recreate the deleted contact", async () => {
+  const f = await setup()
+  const automationId = await f.define("opensend:contact.deleted", [
+    { key: "hold", type: "delay", duration: "1m" },
+  ])
+  await f.owner.client.mutation(api.contacts.remove, {
+    organizationId: f.owner.team,
+    ids: [f.contactId],
+  })
+  const event = await f.t.run((ctx) =>
+    ctx.db
+      .query("events")
+      .withIndex("by_organizationId_and_type", (q) =>
+        q.eq("organizationId", f.owner.team).eq("type", "contact.deleted")
+      )
+      .first()
+  )
+  expect(event).not.toBeNull()
+  await f.t.mutation(internal.automationRuntime.dispatch, {
+    id: event!._id,
+    phase: "start",
+    cursor: null,
+  })
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("contacts")
+        .withIndex("by_organizationId_and_email", (q) =>
+          q.eq("organizationId", f.owner.team).eq("email", "ada@example.test")
+        )
+        .unique()
+    )
+  ).toBeNull()
+  const run = await f.t.run((ctx) =>
+    ctx.db
+      .query("automationRuns")
+      .withIndex("by_organizationId_and_automationId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("automationId", automationId)
+      )
+      .unique()
+  )
+  expect(run).toMatchObject({
+    payload: { id: f.contactId, email: "ada@example.test" },
+  })
+  expect(run?.contactId).toBeUndefined()
+})
+
+test("an event for a deleted contact cannot attach to a new contact at the same address", async () => {
+  const f = await setup()
+  const automationId = await f.define("opensend:email.opened", [
+    { key: "hold", type: "delay", duration: "1m" },
+  ])
+  const eventId = await f.t.run((ctx) =>
+    emitEvent(ctx, f.owner.team, "email.opened", {
+      id: "email-before-deletion",
+      contact_id: f.contactId,
+      email: "ada@example.test",
+    })
+  )
+  await f.owner.client.mutation(api.contacts.remove, {
+    organizationId: f.owner.team,
+    ids: [f.contactId],
+  })
+  const replacement = await f.t.run(
+    async (ctx) =>
+      (
+        await upsertContact(
+          ctx,
+          f.owner.team,
+          { email: "ada@example.test", firstName: "Replacement" },
+          { properties: [], segmentIds: [] }
+        )
+      ).id
+  )
+  await f.t.mutation(internal.automationRuntime.dispatch, {
+    id: eventId,
+    phase: "start",
+    cursor: null,
+  })
+  const run = await f.t.run((ctx) =>
+    ctx.db
+      .query("automationRuns")
+      .withIndex("by_organizationId_and_automationId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("automationId", automationId)
+      )
+      .unique()
+  )
+  expect(run).not.toBeNull()
+  expect(run?.contactId).toBeUndefined()
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("contacts", replacement)))?.firstName
+  ).toBe("Replacement")
+})
 for (const name of [
   "whatsapp.message.received",
   "instagram.message.received",

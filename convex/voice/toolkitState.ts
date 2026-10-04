@@ -1,6 +1,6 @@
 import { v } from "convex/values"
 import { internalMutation } from "../_generated/server"
-import { envelope, nonce, gatewayCall } from "./gateway"
+import { envelope, nonce, gatewayCall, callTimestamp } from "./gateway"
 import { object, string } from "../../lib/meta/parse"
 import {
   validateToolArguments,
@@ -82,7 +82,8 @@ export const begin = internalMutation({
       callId: call._id,
       eventId: `tool:${id}`,
       kind: "tool",
-      timestampMs: Date.now() - call.botStartedAt!,
+      timestampMs: callTimestamp(call),
+      timeline: "call",
       toolId: id,
       toolName: name,
       arguments: serialized,
@@ -115,6 +116,7 @@ export const finish = internalMutation({
       eventId: crypto.randomUUID(),
       kind: "media",
       timestampMs: row.timestampMs + args.latencyMs,
+      timeline: row.timeline,
       text: JSON.stringify({
         type: "tool_call",
         toolName: row.toolName,

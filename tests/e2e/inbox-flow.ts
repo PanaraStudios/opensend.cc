@@ -329,12 +329,9 @@ export function inboxTests(
     for (const step of ["Queued", "Sent", "Delivered", "Read"])
       await expect(owner.getByText(step, { exact: true }).last()).toBeVisible()
     await expect(owner.getByText("Payload", { exact: true })).toBeVisible()
-    // Seamless details show the message; replies live in its linked Inbox thread.
-    await shots(owner, "detail")
-    await owner.getByRole("link", { name: "Open in Inbox", exact: true }).click()
-    await expect(owner).toHaveURL(
-      new RegExp(`/playground/inbox\\?c=${conversationId}$`)
-    )
+    await expect(
+      owner.getByRole("link", { name: "Open in Inbox", exact: true })
+    ).toHaveAttribute("href", `/playground/inbox?c=${conversationId}`)
     const detailThread = owner.getByTestId("conversation-thread")
     await expect(detailThread).toBeVisible()
     await expect(
@@ -366,7 +363,7 @@ export function inboxTests(
         type: "text",
         text: { body: "Reply from message detail" },
       })
-    await shots(owner, "detail-inbox")
+    await shots(owner, "detail")
     // Reusable conversation module: independent scroll and interactive sends.
     await inbound(
       owner,

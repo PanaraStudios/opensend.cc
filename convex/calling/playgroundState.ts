@@ -28,8 +28,11 @@ export const setup = query({
     await authorize(ctx, args)
     const accounts = await ctx.db
       .query("channelAccounts")
-      .withIndex("by_organizationId_and_channel", (q) =>
-        q.eq("organizationId", args.organizationId).eq("channel", "whatsapp")
+      .withIndex("by_organizationId_and_channel_and_disconnectedAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("channel", "whatsapp")
+          .eq("disconnectedAt", undefined)
       )
       .take(100)
     return {
@@ -41,9 +44,7 @@ export const setup = query({
         !!process.env.CALL_AGENT_WSS_URL?.startsWith("wss://"),
       numbers: await Promise.all(
         accounts
-          .filter(
-            (a) => a.channel === "whatsapp" && a.status !== "disconnected"
-          )
+          .filter((a) => a.status !== "disconnected")
           .map(async (a) => {
             const s = await ctx.db
               .query("callingSettings")

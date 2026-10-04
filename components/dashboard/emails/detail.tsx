@@ -1,4 +1,5 @@
 "use client"
+import { ConversationThread } from "@/components/dashboard/conversation/conversation-thread"
 import { object } from "@/lib/meta/parse"
 import {
   detailThreadMessage,
@@ -618,6 +619,15 @@ export function ChannelMessageDetail() {
       {found.media.length ? (
         <MessageFiles messageId={message._id} media={found.media} />
       ) : null}
+      {/* Reply where the message is: the conversation thread with its composer. */}
+      <div className="frame h-[calc(100svh-14rem)] min-h-0">
+        <div className="panel h-full min-h-0 overflow-hidden p-0">
+          <ConversationThread
+            key={message.conversationId}
+            id={message.conversationId}
+          />
+        </div>
+      </div>
       <JsonSection title="Payload" value={payload} />
     </div>
   )

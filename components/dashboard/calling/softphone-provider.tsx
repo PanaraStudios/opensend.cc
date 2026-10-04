@@ -183,7 +183,7 @@ function TeamSoftphone({
   const setup = useTeamQuery(
     api.calling.playgroundState.setup,
     {},
-    { enabled: !!organizationId }
+    { enabled: !!organizationId, optional: true }
   )
   const [now, setNow] = useState(0)
   const audio = useRef<HTMLAudioElement>(null)
@@ -205,7 +205,7 @@ function TeamSoftphone({
   const state = useTeamQuery(
     api.calling.softphoneState.state,
     {},
-    { enabled: !!organizationId }
+    { enabled: !!organizationId, optional: true }
   )
   const session = useAction(api.calling.softphone.session)
   const revoke = useAction(api.calling.softphone.revoke)
@@ -238,7 +238,7 @@ function TeamSoftphone({
   const caller = useTeamQuery(
     api.calling.playgroundState.detail,
     { id: displayedId! },
-    { enabled: !!organizationId && !!displayedId }
+    { enabled: !!organizationId && !!displayedId, optional: true }
   )
   const waiting =
     state?.calls.filter(

@@ -1693,6 +1693,44 @@ test("lead automation waits then places one bot call with resolved lead variable
     1
   )
 })
+
+test("outbound automation uses trigger and earlier step references from its resolved inputs", async () => {
+  const f = await automationFixture()
+  const id = await f.create("opensend:contact.updated", [
+    {
+      key: "profile",
+      type: "contact_update",
+      fields: [
+        { property: "first_name", action: "change", value: "Updated lead" },
+      ],
+    },
+    {
+      key: "call",
+      type: "place_call",
+      accountId: f.account,
+      route: `bot:${f.botId}`,
+      purpose: "Follow up with {{trigger.first_name}}",
+      variables: { name: "{{steps.profile.contact.first_name}}" },
+      requestPermission: false,
+    },
+  ])
+  const runId = await f.owner.client.mutation(api.automations.test, {
+    organizationId: f.owner.team,
+    id,
+    contactId: f.contactId,
+    payload: { first_name: "Original lead" },
+  })
+  await f.tick()
+  expect(
+    await f.t.run((ctx) => ctx.db.get("automationRuns", runId))
+  ).toMatchObject({ status: "completed" })
+  const calls = await f.t.run((ctx) => ctx.db.query("calls").take(2))
+  expect(calls).toHaveLength(1)
+  expect(calls[0]).toMatchObject({
+    callPurpose: "Follow up with Original lead",
+    callVariables: { name: "Updated lead" },
+  })
+})
 test("permission replies update the contact identity, ignore replay/stale denial and trigger subscribed automations and webhooks", async () => {
   const f = await automationFixture()
   await f.t.run(async (ctx) => {

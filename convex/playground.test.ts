@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { minuteUsage } from "./voice/usage"
+import { insertRow } from "./counts"
 import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 beforeEach(() => {
@@ -61,6 +62,34 @@ async function setup() {
     createArgs: { ...args, accountId: f.account, ivrId },
   }
 }
+test("playground setup finds connected WhatsApp accounts after unrelated accounts", async () => {
+  const f = await inboundFixture()
+  const lateAccount = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const { _id, _creationTime, ...fields } = account
+    void [_id, _creationTime]
+    for (let i = 0; i < 100; i++)
+      await insertRow(ctx, "channelAccounts", {
+        ...fields,
+        externalId: `unrelated-${i}`,
+        channel: i % 2 === 0 ? "messenger" : "whatsapp",
+        status: i % 2 === 0 ? "active" : "disconnected",
+        disconnectedAt: i % 2 === 0 ? undefined : Date.now(),
+      })
+    return insertRow(ctx, "channelAccounts", {
+      ...fields,
+      externalId: "late-whatsapp",
+      handle: "+15550001111",
+    })
+  })
+  const result = await f.owner.client.query(api.calling.playgroundState.setup, {
+    organizationId: f.owner.team,
+  })
+  expect(result.numbers.map((number) => number.id)).toEqual([
+    f.account,
+    lateAccount,
+  ])
+})
 test("playground calls reserve the browser, are marked test and are isolated", async () => {
   const f = await setup()
   const call = await f.owner.client.mutation(
