@@ -748,15 +748,29 @@ export function screensTourTests(state: TourState) {
                   .locator('[data-slot="tabs-list"]')
                   .all()) {
                   const first = list.getByRole("tab").first()
-                  const [listBox, firstBox] = await Promise.all([
-                    list.boundingBox(),
-                    first.boundingBox(),
-                  ])
-                  if (listBox && firstBox)
-                    expect(
-                      firstBox.x,
-                      "F07: first tab remains reachable"
-                    ).toBeGreaterThanOrEqual(listBox.x - 1)
+                  // A dialog makes its background tabs inaccessible. Active tabs
+                  // may also scroll the strip; test reachability at its origin.
+                  if (!(await first.count())) continue
+                  const scrollLeft = await list.evaluate((el) => {
+                    const previous = el.scrollLeft
+                    el.scrollLeft = 0
+                    return previous
+                  })
+                  try {
+                    const [listBox, firstBox] = await Promise.all([
+                      list.boundingBox(),
+                      first.boundingBox(),
+                    ])
+                    if (listBox && firstBox)
+                      expect(
+                        firstBox.x,
+                        "F07: first tab remains reachable at scroll origin"
+                      ).toBeGreaterThanOrEqual(listBox.x - 1)
+                  } finally {
+                    await list.evaluate((el, previous) => {
+                      el.scrollLeft = previous
+                    }, scrollLeft)
+                  }
                 }
               }
               await page.evaluate(() => document.fonts.ready)
