@@ -1,31 +1,49 @@
-# Browser agents (wave 8c)
+# Browser agents
 
 The dashboard shell owns one SIP.js 0.21.2 softphone per team member and browser.
-Choose **Go online** to grant microphone access, unlock the ring sound, register
-`2000`–`2099` over WSS and publish online presence. **Set away** hangs up the
+Open **Softphone** in the sidebar and switch **Online** to grant microphone
+access, unlock the ring sound, register `2000`–`2099` over WSS and publish online presence. **Set away** hangs up the
 current call, unregisters and revokes the session credential. Navigation inside
 the dashboard keeps the browser leg alive. Changing team, signing out or leaving
 the dashboard disposes it. Reload recovery is not implemented.
 
-Incoming gateway calls notify online agents through the existing toast, dialog and
-an audio ring. A Convex mutation claims the call atomically; one winner can answer.
+The sidebar entry appears only for a gateway-mode WhatsApp number routed to
+agents. Its compact popover contains Online/Away, a microphone picker and live
+preview meter, the waiting count, and **Playground › Calls**. Preview streams stop
+when the panel closes; changing microphones applies to the next browser call.
+
+Incoming gateway calls show a floating call card on every dashboard page, with
+the resolved contact name and phone number when known. Online is the audio-unlock
+gesture. If audio remains blocked, the card pulses visually and offers **Enable
+call sounds**. Reduced-motion preferences suppress pulses and popover animation.
+A Convex mutation claims the call atomically; one winner can answer.
 Microphone permission is checked before Graph acceptance. FreeSWITCH bridges to the
 winner only after `accept` succeeds. Outbound calls reserve the agent in the call
 creation transaction, check Meta permission again on the server, and bridge to the
 browser after the remote SDP answer. API-mode calls retain the integrator flow.
 
-The dialog provides mute, local hold/resume, transfer, a DTMF keypad, hangup and a
-timer. Mute disables the browser sender; DTMF uses SIP.js's WebRTC DTMF sender.
+The call card provides **Accept**, **Decline**, mute, transfer, a DTMF keypad,
+hangup and a timer. It minimizes to a keyboard-accessible pill and restores across
+page navigation. Ended, declined and missed calls briefly show their outcome.
+Decline claims the waiting call atomically before rejecting it through the
+existing calling API. Mute disables the browser sender; DTMF uses SIP.js's
+WebRTC DTMF sender.
 Hold gates FreeSWITCH audio in both directions with `uuid_audio`; it does not send
 an SDP update to Janus or Meta. Transfers use `uuid_transfer` on the anchored
 FreeSWITCH leg. A target agent is reserved atomically before external routing.
 Agent transfers are within the same team. Queue choices come only from the
 operator's allowlist; queue definitions remain wave 8d.
 
-**Messages → Calls** lists calls and the first 100 team members (matching the
+**Playground → Calls** lists calls and the first 100 team members (matching the
 controller's 100-slot capacity), including away members without a softphone session.
-Presence expires after 75 seconds without a heartbeat. Browser credentials expire
-after 120 seconds and refresh every 30 seconds. Extension reuse is quarantined
+Only the browser owning the server-issued agent lease can ring or claim calls;
+other tabs stay Away. Going Away stops routing before call teardown. A same-origin
+`/api/softphone/leave` beacon revokes that specific lease when the owning tab closes,
+including when another dashboard tab remains open. Stale beacons cannot revoke a
+new lease. Presence is marked Away after 75 seconds without a heartbeat as a
+fallback for abrupt process termination or failed beacon delivery. Returning from
+the browser back/forward cache requires going Online again. Browser credentials
+expire after 120 seconds and refresh every 30 seconds. Extension reuse is quarantined
 past the old registration lifetime. Passwords exist only in gateway/browser memory,
 never in Convex rows, localStorage, environment variables exposed to the browser,
 or application logs. Gateway restarts lose registrations and active calls.
@@ -194,6 +212,6 @@ authenticated backend and bypasses only the local WSS certificate check. See
 [verification output on FreeSWITCH 1.11.3](calling-gateway.md#freeswitch-1113-verification-2026-10-02).
 It does not validate production certificate trust or public NAT/firewall routing.
 Still verify trusted WSS, two browsers
-racing to answer, two-way audio, mute, hold RTP continuity, agent/queue transfer,
+racing to answer, two-way audio, mute, agent/queue transfer,
 DTMF and remote/local hangup with the operator configuration above. The US live
 business number can validate UIC only, not business-initiated calling.

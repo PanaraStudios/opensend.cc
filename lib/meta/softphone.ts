@@ -19,6 +19,7 @@ export type SoftphoneEvent =
   | "hold"
   | "resume"
   | "hangup"
+  | "hangupFailed"
   | "ended"
   | "fail"
   | "away"
@@ -33,7 +34,7 @@ const transitions: Partial<
   connecting: { connected: "active", hangup: "ending", ended: "idle" },
   active: { hold: "held", hangup: "ending", ended: "idle" },
   held: { resume: "active", hangup: "ending", ended: "idle" },
-  ending: { ended: "idle" },
+  ending: { ended: "idle", hangupFailed: "active" },
   error: { online: "registering", ended: "idle" },
 }
 export function softphoneTransition(

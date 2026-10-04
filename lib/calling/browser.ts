@@ -148,11 +148,28 @@ export class BrowserPhone {
 }
 /** Ring audio is armed by the user's Online gesture, satisfying autoplay policy. */
 export class RingSound {
+  constructor(private readonly changed?: (enabled: boolean) => void) {}
   private context?: AudioContext
   private interval?: ReturnType<typeof setInterval>
+  get enabled() {
+    return this.context?.state === "running"
+  }
   async arm() {
     this.context ??= new AudioContext()
-    await this.context.resume()
+    this.context.onstatechange = () => this.changed?.(this.enabled)
+    // Some browsers leave resume pending when this was called without a gesture.
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        this.context.resume(),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(resolve, 1000)
+        }),
+      ])
+      return this.enabled
+    } finally {
+      clearTimeout(timeout)
+    }
   }
   start() {
     this.stop()

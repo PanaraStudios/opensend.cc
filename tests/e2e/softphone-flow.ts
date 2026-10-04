@@ -88,10 +88,11 @@ export function softphoneTests(
     await expect(
       owner.getByRole("button", { name: "Open softphone", exact: true })
     ).toHaveCount(0)
-    // A gateway-mode number enables the entry even when the gateway is offline.
+    // Only gateway numbers routed to agents enable the softphone entry.
     testBackend("calling/settingsState:store", {
       accountId,
       mode: "gateway",
+      routing: { kind: "agents" },
       settings: "{}",
     })
     await expect(
@@ -112,9 +113,9 @@ export function softphoneTests(
     ).toBeVisible()
     await owner.getByRole("button", { name: "Softphone", exact: true }).click()
     await expect(
-      owner.getByText("Go online to receive and make calls", { exact: true })
+      owner.getByText("Calls waiting: 0", { exact: true })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Close", exact: true }).click()
+    await owner.keyboard.press("Escape")
     await owner.screenshot({
       path: `${process.env.OPENSEND_TEST_RESULTS}/softphone-calls.png`,
       fullPage: true,
@@ -134,12 +135,58 @@ export function softphoneTests(
       owner.getByRole("combobox", { name: "Softphone microphone", exact: true })
     ).toContainText("Default microphone")
     await expect(
-      owner.getByRole("link", { name: "View calls", exact: true })
+      owner.getByRole("meter", { name: "Microphone level" })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Playground › Calls", exact: true })
     ).toHaveAttribute("href", "/playground/calls")
     await expect(
-      owner.getByText("Go online to receive and make calls", { exact: true })
+      owner.getByText("Calls waiting: 0", { exact: true })
     ).toBeVisible()
-    await owner.getByRole("button", { name: "Close", exact: true }).click()
+    await owner.keyboard.press("Escape")
+    // The open panel in both themes, on desktop and at phone width.
+    const originalTheme = await owner.evaluate(() =>
+      localStorage.getItem("theme")
+    )
+    const viewport = owner.viewportSize()
+    for (const [theme, width] of [
+      ["light", 1280],
+      ["dark", 1280],
+      ["dark", 390],
+    ] as const) {
+      await owner.evaluate(
+        (value) => localStorage.setItem("theme", value),
+        theme
+      )
+      await owner.setViewportSize({ width, height: 844 })
+      await owner.goto(`/contacts/${contactId}`)
+      if (width < 768)
+        await owner
+          .getByRole("button", { name: "Toggle Sidebar", exact: true })
+          .first()
+          .click()
+      await owner
+        .getByRole("button", { name: "Open softphone", exact: true })
+        .last()
+        .click()
+      await expect(
+        owner.getByRole("switch", { name: "Online", exact: true })
+      ).toBeVisible()
+      await owner.screenshot({
+        path: `${process.env.OPENSEND_TEST_RESULTS}/softphone-panel-${theme}-${width}.png`,
+        animations: "disabled",
+      })
+      await owner.keyboard.press("Escape")
+    }
+    await owner.evaluate(
+      (value) =>
+        value === null
+          ? localStorage.removeItem("theme")
+          : localStorage.setItem("theme", value),
+      originalTheme
+    )
+    if (viewport) await owner.setViewportSize(viewport)
+    await owner.goto(`/contacts/${contactId}`)
     testBackend("calling/settingsState:store", {
       accountId,
       mode: "api",
