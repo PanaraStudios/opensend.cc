@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
 import type { FlowBranch, FlowSlot } from "./catalog"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 /* The workflow, drawn top to bottom on a dotted canvas: the trigger, then each
    step, with the paths of a branching step side by side beneath it. The
@@ -134,22 +135,27 @@ export function StepList<Node extends { key: string }>({
 export function WorkflowCanvas<Node extends { key: string }>({
   trigger,
   steps,
+  stacked: requestedStacked,
   ...props
 }: GraphProps<Node> & {
   /** The first card. */
   trigger: React.ReactNode
   steps: readonly Node[]
 }) {
+  const mobile = useIsMobile()
+  const stacked = requestedStacked ?? mobile
   const [zoom, setZoom] = React.useState(2)
   const canvas = React.useRef<HTMLDivElement>(null)
-  /* A graph wider than the canvas opens on its middle, where the trigger is,
-     rather than on its left edge. Once: after that the view is the user's. */
+  /* Start the desktop graph at its trigger, and the mobile stack at the left
+     edge. Reset only when switching layouts; otherwise preserve the pan. */
   React.useLayoutEffect(() => {
     const element = canvas.current
     if (element) {
-      element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+      element.scrollLeft = stacked
+        ? 0
+        : (element.scrollWidth - element.clientWidth) / 2
     }
-  }, [])
+  }, [stacked])
 
   /* Dragging the background moves the canvas. The graph lets presses through
      everywhere but its cards and controls, so a press reaches the canvas only
@@ -171,11 +177,11 @@ export function WorkflowCanvas<Node extends { key: string }>({
            scrollbars stay hidden. */
         className={cn(
           "min-h-0 min-w-0 flex-1 cursor-grab touch-none [scrollbar-width:none] overflow-auto rounded-xl border border-border bg-muted/40 bg-[radial-gradient(var(--border-strong)_1px,transparent_1px)] [background-size:24px_24px] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
-          props.stacked && "touch-auto"
+          stacked && "touch-auto"
         )}
         onPointerDown={(event) => {
           if (
-            props.stacked ||
+            stacked ||
             event.button !== 0 ||
             event.target !== event.currentTarget
           )
@@ -197,17 +203,17 @@ export function WorkflowCanvas<Node extends { key: string }>({
              always canvas to drag around. */
           className={cn(
             "pointer-events-none mx-auto flex min-h-[150%] w-max min-w-[150%] flex-col items-center p-10",
-            props.stacked && "min-h-full w-full min-w-0 p-4"
+            stacked && "min-h-full w-full min-w-0 p-4"
           )}
-          style={{ zoom: props.stacked ? 1 : ZOOM_STEPS[zoom] }}
+          style={{ zoom: stacked ? 1 : ZOOM_STEPS[zoom] }}
         >
           {trigger}
-          <StepList {...props} steps={steps} parent={null} />
+          <StepList {...props} stacked={stacked} steps={steps} parent={null} />
         </div>
       </div>
       <ButtonGroup
         orientation="vertical"
-        className={cn("absolute top-3 right-5 z-10", props.stacked && "hidden")}
+        className={cn("absolute top-3 right-5 z-10", stacked && "hidden")}
       >
         <Button
           variant="outline"
