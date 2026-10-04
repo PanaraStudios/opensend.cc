@@ -11,6 +11,7 @@ import {
   DetailHeader,
   DetailSection,
   EmptyState,
+  NotFoundState,
   ResourceTable,
   Th,
   RelativeTime,
@@ -302,8 +303,16 @@ export function IvrEditor({ id }: { id?: string }) {
     api.ivr.definitions.dashboardGet,
     { id: id ?? "" },
     { enabled: !!id }
-  ) as IvrResource | undefined
+  ) as IvrResource | null | undefined
   if (!id) return <IvrList />
+  if (row === null)
+    return (
+      <NotFoundState
+        icon={WorkflowIcon}
+        noun="IVR"
+        backHref="/playground/ivr"
+      />
+    )
   if (!row) return <Skeleton className="h-60 w-full" />
   return <IvrForm key={id} row={row} />
 }

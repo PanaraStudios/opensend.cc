@@ -157,19 +157,17 @@ test("IVR REST CRUD, idempotency, dry-run validation and tenant isolation", asyn
   ).json()
   expect(invalid.valid).toBe(false)
   expect(
-    (
-      await f.owner.client.query(api.ivr.definitions.dashboardGet, {
-        organizationId: f.owner.team,
-        id: f.ivr.id,
-      })
-    ).name
+    (await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+      organizationId: f.owner.team,
+      id: f.ivr.id,
+    }))!.name
   ).toBe("Updated")
-  await expect(
-    f.outsider.client.query(api.ivr.definitions.dashboardGet, {
+  expect(
+    await f.outsider.client.query(api.ivr.definitions.dashboardGet, {
       organizationId: f.outsider.team,
       id: f.ivr.id,
     })
-  ).rejects.toMatchObject({ data: { statusCode: 404 } })
+  ).toBeNull()
   await expect(
     f.owner.client.action(api.ivr.definitions.dashboardWrite, {
       organizationId: f.owner.team,
@@ -199,6 +197,40 @@ test("IVR REST CRUD, idempotency, dry-run validation and tenant isolation", asyn
   expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
   expect((await f.request(`/ivrs/${f.ivr.id}`)).status).toBe(404)
 })
+test("a deleted IVR reads as null in the dashboard but stays a 404 in the API", async () => {
+  const f = await setup()
+  const read = () =>
+    f.owner.client.query(api.ivr.definitions.dashboardGet, {
+      organizationId: f.owner.team,
+      id: f.ivr.id,
+    })
+  expect(await read()).toMatchObject({ id: f.ivr.id })
+  await f.t.run(async (ctx) => {
+    const settings = await ctx.db
+      .query("callingSettings")
+      .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+      .unique()
+    await ctx.db.patch("callingSettings", settings!._id, {
+      routing: { kind: "agents" },
+    })
+  })
+  await f.owner.client.action(api.ivr.definitions.dashboardWrite, {
+    organizationId: f.owner.team,
+    kind: "remove",
+    id: f.ivr.id,
+    body: "{}",
+  })
+  expect(await read()).toBeNull()
+  expect((await f.request(`/ivrs/${f.ivr.id}`)).status).toBe(404)
+  // Missing records do not suppress authorization errors.
+  await expect(
+    f.outsider.client.query(api.ivr.definitions.dashboardGet, {
+      organizationId: f.owner.team,
+      id: f.ivr.id,
+    })
+  ).rejects.toThrow()
+})
+
 test("signed start/next records submenu → voicemail, authenticates audio and rejects stale/replayed decisions", async () => {
   const f = await setup(),
     start = await f.start()

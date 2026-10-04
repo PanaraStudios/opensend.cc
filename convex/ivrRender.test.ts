@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
+import assert from "node:assert/strict"
 import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 import { pcmWav } from "../lib/ivr-renderers"
@@ -80,6 +81,7 @@ test("rendering uses the team key, caches by content hash and exposes ready audi
     api.ivr.definitions.dashboardGet,
     { organizationId: f.owner.team, id: f.id }
   )
+  assert(resource)
   expect(resource.prompt_status).toBe("ready")
   expect(resource.prompt_renders[0].status).toBe("ready")
   expect(resource.prompt_renders[0].audio_url).toBeTruthy()
@@ -110,6 +112,7 @@ test("render failure is per-prompt, secrets stay hidden and failed prompts can r
     api.ivr.definitions.dashboardGet,
     { organizationId: f.owner.team, id: f.id }
   )
+  assert(resource)
   expect(resource.prompt_status).toBe("failed")
   expect(resource.prompt_renders[0].error).toBe("Sarvam: [redacted]")
   expect(JSON.stringify(resource)).not.toContain("private-key-1234")
@@ -175,16 +178,17 @@ test("identical hashes are cached independently for different teams", async () =
     api.ivr.definitions.dashboardGet,
     { organizationId: f.outsider.team, id: foreign.id as string }
   )
+  assert(own && other)
   expect(own.prompt_renders[0].hash).toBe(other.prompt_renders[0].hash)
   expect(own.prompt_renders[0].status).toBe("ready")
   expect(other.prompt_renders[0].status).toBe("pending_render")
   expect(other.prompt_renders[0].audio_url).toBeNull()
-  await expect(
-    f.owner.client.query(api.ivr.definitions.dashboardGet, {
+  expect(
+    await f.owner.client.query(api.ivr.definitions.dashboardGet, {
       organizationId: f.owner.team,
       id: foreign.id as string,
     })
-  ).rejects.toBeDefined()
+  ).toBeNull()
 })
 
 test("PATCH null clears a saved provider voice and business hours", async () => {
@@ -207,6 +211,7 @@ test("PATCH null clears a saved provider voice and business hours", async () => 
     organizationId: f.owner.team,
     id: f.id,
   })
+  assert(row)
   expect(row.promptVoice).toBeUndefined()
   expect(row.businessHours).toBeUndefined()
   await expect(
@@ -249,6 +254,7 @@ test("saving a corrected provider key retries failed content while retaining its
     organizationId: f.owner.team,
     id: f.id,
   })
+  assert(pending && before)
   expect(pending.prompt_status).toBe("pending_render")
   expect(pending.prompt_renders[0].hash).toBe(before.prompt_renders[0].hash)
   http.mockImplementation(async (_url, options) => {
@@ -259,12 +265,10 @@ test("saving a corrected provider key retries failed content while retaining its
   })
   await f.t.action(internal.ivr.rendering.render, { id: f.id })
   expect(
-    (
-      await f.owner.client.query(api.ivr.definitions.dashboardGet, {
-        organizationId: f.owner.team,
-        id: f.id,
-      })
-    ).prompt_status
+    (await f.owner.client.query(api.ivr.definitions.dashboardGet, {
+      organizationId: f.owner.team,
+      id: f.id,
+    }))!.prompt_status
   ).toBe("ready")
 })
 
