@@ -437,14 +437,9 @@ export function BroadcastDetail() {
 
 function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
   const { pageRows, pagination } = useWhatsAppBroadcastRecipients(item.id)
-  const stats = item.whatsappStats ?? {
-    recipients: 0,
-    sent: 0,
-    delivered: 0,
-    read: 0,
-    failed: 0,
-    skipped: 0,
-  }
+  const stats = item.whatsappStats
+  if (!stats) return <Skeleton className="h-40 w-full" />
+
   return (
     <div
       className="flex flex-col gap-6"

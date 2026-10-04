@@ -11,7 +11,7 @@ import {
   internalMutation,
   type MutationCtx,
 } from "./_generated/server"
-import { internal } from "./_generated/api"
+import { components, internal } from "./_generated/api"
 import schema from "./schema"
 import {
   findInstallation,
@@ -124,16 +124,37 @@ export const retry = mutation({
 })
 export const cleanup = query({
   args: { paginationOpts: paginationOptsValidator },
-  returns: paginationResultValidator(schema.doc("sesTenants")),
+  returns: paginationResultValidator(
+    schema.doc("sesTenants").extend({ teamName: v.string() })
+  ),
   handler: async (ctx, { paginationOpts }) => {
     await requireInstallationAdmin(ctx)
-    return ctx.db
+    const page = await ctx.db
       .query("sesTenants")
       .withIndex("by_operation_and_deleted_and_phase", (q) =>
         q.eq("operation", "remove").eq("deleted", false).eq("phase", "failed")
       )
       .order("desc")
       .paginate(paginationOpts)
+    return {
+      ...page,
+      page: await Promise.all(
+        page.page.map(async (tenant) => {
+          const team = await ctx.runQuery(
+            components.betterAuth.adapter.findOne,
+            {
+              model: "organization",
+              where: [{ field: "_id", value: tenant.organizationId }],
+            }
+          )
+          return {
+            ...tenant,
+            teamName:
+              typeof team?.name === "string" ? team.name : "Deleted team",
+          }
+        })
+      ),
+    }
   },
 })
 export const retryCleanup = mutation({

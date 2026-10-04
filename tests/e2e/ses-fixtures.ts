@@ -31,7 +31,7 @@ export function testBackend(name: string, args: unknown, component?: string) {
     { stdio: "pipe", env: process.env, encoding: "utf8" }
   )
 }
-function importFixture(
+export function importFixture(
   table: string,
   row: Record<string, unknown> | Record<string, unknown>[],
   replace = false

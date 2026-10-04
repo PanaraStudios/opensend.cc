@@ -13,6 +13,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 
+import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -31,9 +32,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { toast } from "@/components/ui/toast"
-import { audienceLabel, emailFrom } from "@/lib/dashboard/broadcast"
+import {
+  audienceLabel,
+  broadcastRecipientCheck,
+  emailFrom,
+} from "@/lib/dashboard/broadcast"
 import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
-import { isEmail, pluralize } from "@/lib/dashboard/format"
+import { isEmail } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainOptions } from "@/lib/domains/use-domains"
@@ -42,17 +47,19 @@ import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
 import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
 import { cn } from "@/lib/utils"
 
-type CheckLevel = "ok" | "warn" | "error"
+type CheckLevel = "ok" | "warn" | "error" | "loading"
 
 type Check = { id: string; level: CheckLevel; label: string }
 
 const CHECK_ICON = {
+  loading: Spinner,
   ok: CircleCheckIcon,
   warn: TriangleAlertIcon,
   error: CircleXIcon,
 }
 
 const CHECK_CLASS = {
+  loading: "text-muted-foreground",
   ok: "text-success",
   warn: "text-warning",
   error: "text-destructive",
@@ -68,6 +75,7 @@ function reviewChecks({
   verified,
   audience,
   recipients,
+  recipientsFailed,
   sendAt,
 }: {
   item: Broadcast
@@ -77,7 +85,8 @@ function reviewChecks({
   from: string
   verified: boolean
   audience: string
-  recipients: number
+  recipients: number | null
+  recipientsFailed: boolean
   sendAt: number | null
 }): Check[] {
   const subject = item.subject.trim()
@@ -108,14 +117,7 @@ function reviewChecks({
       level: empty ? "error" : "ok",
       label: empty ? "Add content to continue" : "Content added",
     },
-    {
-      id: "recipients",
-      level: recipients === 0 ? "error" : "ok",
-      label:
-        recipients === 0
-          ? "No contacts in this segment"
-          : `${pluralize(recipients, "contact")} will get this email`,
-    },
+    broadcastRecipientCheck(recipients, recipientsFailed),
     {
       id: "unsubscribe",
       level: unsubscribe ? "ok" : "warn",
@@ -366,7 +368,18 @@ function ReviewBody({
   const { sendBroadcast, updateBroadcast } = useBroadcastCommands()
   const { activeTeamId } = useWorkspace()
   const review = useAction(api.broadcasts.review)
-  const [recipients, setRecipients] = React.useState<number | null>(null)
+  const audienceKey = JSON.stringify([
+    activeTeamId,
+    item.segmentId,
+    item.topicId,
+  ])
+  const [audienceResult, setAudienceResult] = React.useState<{
+    key: string
+    count: number | null
+    failed: boolean
+  } | null>(null)
+  const currentAudience =
+    audienceResult?.key === audienceKey ? audienceResult : null
   React.useEffect(() => {
     if (!activeTeamId) return
     let live = true
@@ -376,18 +389,18 @@ function ReviewBody({
       topicId: item.topicId as Id<"topics"> | null,
     })
       .then((count) => {
-        if (live) setRecipients(count)
+        if (live) setAudienceResult({ key: audienceKey, count, failed: false })
       })
       .catch((error) => {
         if (live) {
-          setRecipients(0)
+          setAudienceResult({ key: audienceKey, count: null, failed: true })
           toast.add({ type: "error", title: actionError(error) })
         }
       })
     return () => {
       live = false
     }
-  }, [activeTeamId, item.segmentId, item.topicId, review])
+  }, [activeTeamId, item.segmentId, item.topicId, review, audienceKey])
   const checks = reviewChecks({
     item,
     html,
@@ -396,9 +409,12 @@ function ReviewBody({
     from: item.from || emailFrom(item, domains),
     verified: domains.some((domain) => domain.status === "verified"),
     audience: audienceLabel(item.segmentId, segments),
-    recipients: recipients ?? 0,
+    recipients: currentAudience?.count ?? null,
+    recipientsFailed: currentAudience?.failed ?? false,
   })
-  const blocked = checks.some((check) => check.level === "error")
+  const blocked = checks.some(
+    (check) => check.level === "error" || check.level === "loading"
+  )
 
   return (
     <>

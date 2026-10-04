@@ -1,4 +1,4 @@
-import { defaultFromAddress } from "./format"
+import { pluralize, defaultFromAddress } from "./format"
 import type { TemplateInput } from "./template"
 import type {
   Broadcast,
@@ -132,4 +132,32 @@ export function broadcastReachabilityLabel(
   skipped: number
 ) {
   return `${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+}
+
+/** Pending audience counts must never look like an empty audience. */
+export function broadcastRecipientCheck(
+  recipients: number | null,
+  failed = false
+): {
+  id: string
+  level: "loading" | "error" | "ok"
+  label: string
+} {
+  return {
+    id: "recipients",
+    level: failed
+      ? "error"
+      : recipients === null
+        ? "loading"
+        : recipients === 0
+          ? "error"
+          : "ok",
+    label: failed
+      ? "Could not load contacts. Reopen review to try again."
+      : recipients === null
+        ? "Loading contacts…"
+        : recipients === 0
+          ? "No contacts in this segment"
+          : `${pluralize(recipients, "contact")} will get this email`,
+  }
 }

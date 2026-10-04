@@ -456,3 +456,33 @@ test("playground setup exposes each team's gateway-mode numbers and bot list rep
   )
   expect(other.numbers.some((n) => n.id === f.account)).toBe(false)
 })
+
+test("playground setup bounds its WhatsApp index page independently of other channels (F21)", async () => {
+  const f = await setup()
+  await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const { _id, _creationTime, ...fields } = account
+    void _id
+    void _creationTime
+    for (let i = 0; i < 105; i++) {
+      await ctx.db.insert("channelAccounts", {
+        ...fields,
+        channel: "messenger",
+        externalId: `page-${i}`,
+      })
+    }
+    for (let i = 0; i < 105; i++) {
+      await ctx.db.insert("channelAccounts", {
+        ...fields,
+        externalId: `phone-${i}`,
+        handle: `Number ${i}`,
+      })
+    }
+  })
+  const result = await f.owner.client.query(api.calling.playgroundState.setup, {
+    organizationId: f.owner.team,
+  })
+  expect(result.numbers).toHaveLength(100)
+  expect(result.numbers[1].label).toBe("Number 0")
+  expect(result.numbers.every((n) => !n.label.startsWith("page-"))).toBe(true)
+})

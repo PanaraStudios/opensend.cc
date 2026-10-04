@@ -26,7 +26,7 @@ export function SesRegions({
     <div className="flex flex-col gap-3">
       {status.regions.map((region) => (
         <div key={region._id} className="flex flex-col gap-2">
-          <Item variant="outline">
+          <Item variant={settings ? "default" : "outline"}>
             <ItemContent className="min-w-0">
               <ItemTitle>{regionLabel(region.region)}</ItemTitle>
               <ItemDescription>

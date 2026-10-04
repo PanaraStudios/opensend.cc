@@ -596,6 +596,10 @@ test("old template rows render from the published copy, including paused templat
     await patchRow(ctx, "channelMessages", sent, {
       preview: "[template: order_update]",
     })
+    const message = (await ctx.db.get("channelMessages", sent))!
+    await patchRow(ctx, "conversations", message.conversationId, {
+      lastPreview: "[template: order_update]",
+    })
     await patchRow(ctx, "templates", template._id, {
       whatsapp: { ...template.whatsapp!, metaStatus: "PAUSED" },
     })
@@ -619,6 +623,32 @@ test("old template rows render from the published copy, including paused templat
   expect(
     await f.member.client.query(api.messages.get, { id: sent })
   ).toMatchObject({ rendered: renderedOrder("Pablo") })
+  const conversation = await f.t.run((ctx) =>
+    ctx.db.get("conversations", message.conversationId)
+  )
+  expect(conversation?.contactId).toBeTruthy()
+  const history = () =>
+    f.member.client.query(api.conversations.contactHistory, {
+      organizationId: f.team,
+      contactId: conversation!.contactId!,
+      paginationOpts: page,
+    })
+  for (const result of [await f.list(), await history()])
+    expect(result.page[0].conversation.lastPreview).toBe(
+      renderedOrder("Pablo").body
+    )
+  expect(
+    (
+      await f.member.client.query(api.messages.sending, {
+        organizationId: f.team,
+        channel: "whatsapp",
+        paginationOpts: page,
+      })
+    ).page[0]
+  ).toMatchObject({
+    message: { preview: renderedOrder("Pablo").body },
+  })
+
   await f.t.run(async (ctx) => {
     const content = (await ctx.db
       .query("channelMessageContents")
@@ -649,10 +679,50 @@ test("old template rows render from the published copy, including paused templat
         paginationOpts: page,
       })
     ).page[0]
-  ).toMatchObject({ rendered: { body: "Template: order_update", buttons: [] } })
+  ).toMatchObject({
+    rendered: { body: "Template content unavailable", buttons: [] },
+  })
   expect(
     await f.member.client.query(api.messages.get, { id: sent })
-  ).toMatchObject({ rendered: { body: "Template: order_update", buttons: [] } })
+  ).toMatchObject({
+    rendered: { body: "Template content unavailable", buttons: [] },
+  })
+  for (const preview of [
+    "order_update",
+    "Template: order_update",
+    "",
+    "Saved sent body",
+  ]) {
+    await f.t.run(async (ctx) => {
+      await patchRow(ctx, "channelMessages", sent, { preview })
+      await patchRow(ctx, "conversations", message.conversationId, {
+        lastPreview: preview,
+      })
+    })
+    const expected =
+      preview === "Saved sent body" ? preview : "Template content unavailable"
+    const [detail, inbox, sending, list, contactHistory] = await Promise.all([
+      f.member.client.query(api.messages.get, { id: sent }),
+      f.member.client.query(api.conversations.messages, {
+        id: message.conversationId,
+        paginationOpts: page,
+      }),
+      f.member.client.query(api.messages.sending, {
+        organizationId: f.team,
+        channel: "whatsapp",
+        paginationOpts: page,
+      }),
+      f.list(),
+      history(),
+    ])
+    expect(detail).toMatchObject({ rendered: { body: expected, buttons: [] } })
+    expect(inbox.page[0]).toMatchObject({
+      rendered: { body: expected, buttons: [] },
+    })
+    expect(sending.page[0]).toMatchObject({ message: { preview: expected } })
+    for (const result of [list, contactHistory])
+      expect(result.page[0].conversation.lastPreview).toBe(expected)
+  }
 })
 
 for (const reference of ["name", "alias", "raw"] as const) {

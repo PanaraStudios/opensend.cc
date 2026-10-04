@@ -29,10 +29,8 @@ import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import { FileUploadField } from "@/components/dashboard/file-upload"
 import { writableCallingSettings } from "@/lib/meta/calling"
-import type {
-  CallingSettings,
-  WhatsAppCall,
-} from "@/packages/sdk/src/whatsapp/calling/interfaces"
+import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
+import type { CallingSettings } from "@/packages/sdk/src/whatsapp/calling/interfaces"
 const statusOptions = [
   { value: "ENABLED", label: "Enabled" },
   { value: "DISABLED", label: "Disabled" },
@@ -86,7 +84,7 @@ export function CallingPanel({
     accountId,
     limit: 20,
     after,
-  }) as { has_more: boolean; data: WhatsAppCall[] } | undefined
+  })
   const save = async (refresh = false) => {
     if (!activeTeamId) return
     setBusy(true)
@@ -564,11 +562,20 @@ export function CallingPanel({
               {log.data.map((call) => (
                 <TableRow key={call.id}>
                   <TableCell>
-                    {call.user_id ?? call.from ?? call.to ?? "Unknown"}
+                    {call.contact_name}
+                    {call.contact_phone ? (
+                      <div className="text-xs text-muted-foreground">
+                        {call.contact_phone}
+                      </div>
+                    ) : null}
                   </TableCell>
-                  <TableCell>{call.direction}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{call.status}</Badge>
+                    {call.direction === "outbound" ? "Outgoing" : "Incoming"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {callOutcomeLabel(call.status)}
+                    </Badge>
                     {call.error ? (
                       <p className="text-muted-foreground">{call.error}</p>
                     ) : null}
