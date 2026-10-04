@@ -828,3 +828,61 @@ test("deleted attachment cleanup follows native pagination across teams and page
       .knowledgeBaseIds
   ).toEqual([f.baseId])
 })
+
+test("a deleted knowledge base or voice bot reads as not found in the dashboard but stays a 404 in the API", async () => {
+  const f = await setup()
+  const read = () =>
+    f.owner.client.query(api.knowledge.resources.dashboardGet, {
+      organizationId: f.organizationId,
+      id: f.baseId,
+    })
+  expect(await read()).toMatchObject({ id: f.baseId })
+  await f.owner.client.action(api.knowledge.resources.dashboardWrite, {
+    organizationId: f.organizationId,
+    id: f.baseId,
+    remove: true,
+    body: "{}",
+  })
+  expect(await read()).toBeNull()
+  expect(
+    await f.owner.client.query(api.knowledge.resources.dashboardList, {
+      organizationId: f.organizationId,
+      knowledgeBaseId: f.baseId,
+      limit: 100,
+    })
+  ).toEqual({ has_more: false, data: [] })
+  expect((await f.request(`/knowledge-bases/${f.baseId}`)).status).toBe(404)
+  // Another team's id is just as missing; other errors still throw.
+  await expect(
+    f.outsider.client.query(api.knowledge.resources.dashboardGet, {
+      organizationId: f.organizationId,
+      id: f.baseId,
+    })
+  ).rejects.toThrow()
+
+  const { id: bot } = await f.owner.client.action(
+    api.voice.resources.dashboardWrite,
+    {
+      organizationId: f.organizationId,
+      kind: "bot",
+      body: JSON.stringify({
+        name: "Deleted bot",
+        provider: "gemini",
+        credentialId: f.credentialId,
+      }),
+    }
+  )
+  const readBot = () =>
+    f.owner.client.query(api.voice.resources.dashboardGet, {
+      organizationId: f.organizationId,
+      id: bot,
+    })
+  expect(await readBot()).toMatchObject({ id: bot })
+  await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.organizationId,
+    kind: "removeBot",
+    id: bot,
+    body: "{}",
+  })
+  expect(await readBot()).toBeNull()
+})
