@@ -388,7 +388,7 @@ function IvrForm({ row }: { row: IvrResource }) {
     select(ivrMenuKey(menu.id))
   }
   const graph = ivrGraph(draft)
-  const problemNodes = ivrProblemNodes(draft, problems ?? [])
+  const problemNodes = ivrProblemNodes(draft, problems ?? [], graph.unreachable)
   const selectedNode = [...graph.nodes, ...ivrEditableNodes(draft)].find(
     (node) => node.key === selected
   )
@@ -741,14 +741,14 @@ function IvrForm({ row }: { row: IvrResource }) {
                 }}
               />
             </div>
-            {graph.unreachable.length ? (
+            {graph.otherMenus.length ? (
               <Alert variant="warning">
                 <AlertTitle>Menus outside the entry flow</AlertTitle>
                 <AlertDescription>
                   Connect these menus from a digit option or business hours.
                   Select a menu to edit or remove it.
                   <div className="flex flex-wrap gap-2">
-                    {graph.unreachable.map((menu) => (
+                    {graph.otherMenus.map((menu) => (
                       <Button
                         key={menu.id}
                         variant="link"
