@@ -1,7 +1,7 @@
 "use client"
 import { PlaceCallFields } from "@/components/dashboard/calling/place-call-fields"
 import { readablePath, referenceErrors } from "@/lib/automation-references"
-import { catalogContactSchema } from "@/lib/event-catalog"
+import { catalogContactSchema, eventLabel } from "@/lib/event-catalog"
 import { FieldError } from "@/components/ui/field"
 import {
   ReferenceInput,
@@ -45,7 +45,6 @@ import {
 import { TemplateThumbnail } from "@/components/dashboard/templates/shared"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
 import {
-  SYSTEM_EVENTS,
   contactFieldLabel,
   operatorTakesValue,
   RULE_OPERATOR_LABELS,
@@ -186,7 +185,9 @@ function EventNameInput(props: {
             variant="outline"
             aria-label={`${props["aria-label"]} picker`}
           >
-            {current?.label ?? (props.value || "Select event")}
+            <span className="truncate">
+              {current?.label ?? (props.value || "Select event")}
+            </span>
           </Button>
         )}
       />
@@ -199,17 +200,9 @@ function EventNameInput(props: {
         />
       ) : null}
       {catalogEvent(catalog, props.value) ? (
-        <div className="flex max-h-40 flex-col gap-1 overflow-auto text-caption text-muted-foreground">
-          <span>{catalogEvent(catalog, props.value)?.description}</span>
-          {flattenSchema(catalogEvent(catalog, props.value)!.schema).map(
-            ({ path, field }) => (
-              <span key={path}>
-                {readablePath(path)} · {field.type} ·{" "}
-                {JSON.stringify(field.example)}
-              </span>
-            )
-          )}
-        </div>
+        <p className="text-caption text-muted-foreground">
+          {catalogEvent(catalog, props.value)?.description}
+        </p>
       ) : null}
     </div>
   )
@@ -247,14 +240,7 @@ export function TriggerCard({
     <WorkflowCard
       data-testid="workflow-node-start"
       icon={EventIcon}
-      title={
-        selected
-          ? "Event"
-          : (SYSTEM_EVENTS.find((event) => event.value === automation.trigger)
-              ?.label ??
-              automation.trigger) ||
-            "Custom event"
-      }
+      title={selected ? "Event" : eventLabel(automation.trigger)}
       tone={automation.trigger ? undefined : "warning"}
       onSelect={locked ? undefined : onSelect}
     >

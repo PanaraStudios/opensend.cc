@@ -11,6 +11,7 @@ import {
 } from "./automation-references"
 import {
   eventCatalog,
+  eventLabel,
   schemaField,
   SYSTEM_EVENT_CATALOG,
 } from "./event-catalog"
@@ -31,6 +32,21 @@ const catalog = eventCatalog(
   [{ name: "paid", schema: [{ key: "total", type: "number" }] }],
   [{ key: "plan" }]
 )
+it("uses catalog labels for system triggers and wire events without renaming custom events", () => {
+  for (const event of SYSTEM_EVENT_CATALOG) {
+    assert.equal(eventLabel(event.trigger), event.label)
+    assert.equal(eventLabel(event.name, "name"), event.label)
+    assert.doesNotMatch(event.label, /opensend:|[_.]/)
+    assert.doesNotMatch(
+      event.description,
+      /quick_reply|cta_url|user_changed_number/
+    )
+  }
+  assert.equal(eventLabel("paid"), "paid")
+  // A custom trigger can share a wire name; only the prefixed system trigger maps.
+  assert.equal(eventLabel("email.sent"), "email.sent")
+  assert.equal(eventLabel(""), "Custom event")
+})
 it("chip spans preserve text, repeated tokens and exact editing offsets", () => {
   const text =
     "Hi {{contact.first_name}}, {{ trigger.message.items[0].name }}! {{contact.first_name}}"

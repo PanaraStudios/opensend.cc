@@ -1975,6 +1975,7 @@ export function SearchableSelect({
     >
       <ComboboxPrimitive.Trigger
         render={trigger(current)}
+        className="max-w-full min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate"
         onKeyDown={(event) => {
           if (
             !open &&
@@ -2026,7 +2027,7 @@ export function SearchableSelect({
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{item.label}</span>
                         {item.description ? (
-                          <span className="text-caption text-muted-foreground">
+                          <span className="text-caption [overflow-wrap:anywhere] whitespace-normal text-muted-foreground">
                             {item.description}
                           </span>
                         ) : null}

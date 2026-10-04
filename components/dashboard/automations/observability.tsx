@@ -1,5 +1,6 @@
 "use client"
 import { stepBranches } from "@/lib/dashboard/automation"
+import { eventLabel } from "@/lib/event-catalog"
 
 import * as React from "react"
 import type { DateRange } from "react-day-picker"
@@ -328,7 +329,7 @@ export function Observability({ automation }: { automation: Automation }) {
           trigger={
             <WorkflowCard
               icon={EventIcon}
-              title={automation.trigger || "Custom event"}
+              title={eventLabel(automation.trigger)}
             >
               <StepFacts
                 stepKey={TRIGGER_KEY}

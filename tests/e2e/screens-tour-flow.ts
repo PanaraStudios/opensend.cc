@@ -30,7 +30,6 @@ async function choose(page: Page, label: string, option: string) {
 /** Runs last: the disposable instance already has messages, identities and runs.
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
-  test.fixme("F05: mobile automation builder, trigger picker and observability await the flow-editor branch", () => {})
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
     test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
@@ -674,20 +673,6 @@ export function screensTourTests(state: TourState) {
             theme
           )
           for (const screen of screens) {
-            if (
-              width === 390 &&
-              [
-                "automation-builder",
-                "automation-trigger-picker",
-                "automation-observability",
-              ].includes(screen.name)
-            ) {
-              test.info().annotations.push({
-                type: "fixme",
-                description: `F05: ${screen.name} at 390px awaits the flow-editor branch (${theme})`,
-              })
-              continue
-            }
             const screenshot = `${screen.name}-${theme}-${width}.png`
             runtime = []
             let openingError: string | undefined

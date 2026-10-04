@@ -86,6 +86,17 @@ export function catalogEvent(
 ) {
   return catalog.find((event) => event.trigger === trigger)
 }
+
+/** Display names come from the catalog; stored triggers and wire names stay intact. */
+export function eventLabel(
+  value: string,
+  key: "trigger" | "name" = "trigger"
+): string {
+  return (
+    SYSTEM_EVENT_CATALOG.find((event) => event[key] === value)?.label ??
+    (value || "Custom event")
+  )
+}
 export function schemaField(
   schema: EventField | undefined,
   path: string

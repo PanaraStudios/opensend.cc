@@ -91,9 +91,19 @@ export function ivrGraph(definition: IvrDefinition) {
   }
   const entry = menus.get(definition.entryMenuId)
   const root = entry ? draw(entry) : undefined
+  // Keep menus outside the entry path accessible in the editor, even when
+  // business hours make them reachable. Continue the same traversal from
+  // the closed destination to match backend validation.
+  const otherMenus = definition.menus.filter((menu) => !visited.has(menu.id))
+  const closedAction = definition.businessHours?.closedAction
+  const closed =
+    closedAction?.kind === "submenu"
+      ? menus.get(closedAction.menuId)
+      : undefined
+  if (closed && !visited.has(closed.id)) draw(closed)
   // Include disconnected cycles too; looking only for unreferenced menus misses them.
   const unreachable = definition.menus.filter((menu) => !visited.has(menu.id))
-  return { root, nodes, unreachable }
+  return { root, nodes, otherMenus, unreachable }
 }
 
 /** All selectable nodes, including incoming paths drawn as full submenus. */
@@ -112,24 +122,6 @@ export function ivrEditableNodes(definition: IvrDefinition): IvrFlowNode[] {
       }
     }),
   ])
-}
-
-/** Backend reachability includes the business-hours closed destination. */
-function unreachableIvrMenus(definition: IvrDefinition): IvrMenu[] {
-  const menus = new Map(definition.menus.map((menu) => [menu.id, menu]))
-  const visited = new Set<string>()
-  function visit(id: string) {
-    if (visited.has(id)) return
-    const menu = menus.get(id)
-    if (!menu) return
-    visited.add(id)
-    for (const [, action] of ivrMenuBranches(menu))
-      if (action.kind === "submenu") visit(action.menuId)
-  }
-  visit(definition.entryMenuId)
-  if (definition.businessHours?.closedAction.kind === "submenu")
-    visit(definition.businessHours.closedAction.menuId)
-  return definition.menus.filter((menu) => !visited.has(menu.id))
 }
 
 export function ivrMenuReferences(
@@ -195,7 +187,8 @@ export function removeIvrMenu(
  * draft's structure; team ownership/provider errors remain in the summary. */
 export function ivrProblemNodes(
   definition: IvrDefinition,
-  problems: readonly string[]
+  problems: readonly string[],
+  unreachable?: readonly IvrMenu[]
 ): Map<string, string[]> {
   const result = new Map<string, string[]>()
   const attach = (key: string, problem: string) =>
@@ -274,9 +267,10 @@ export function ivrProblemNodes(
       }
       if (relevant) attach(node.key, problem)
     }
-    if (/All menus must be reachable/.test(problem))
-      for (const menu of unreachableIvrMenus(definition))
-        attach(ivrMenuKey(menu.id), problem)
+    if (/All menus must be reachable/.test(problem)) {
+      unreachable ??= ivrGraph(definition).unreachable
+      for (const menu of unreachable) attach(ivrMenuKey(menu.id), problem)
+    }
     if (/Menu cycle without input/.test(problem)) {
       // Find menus participating in an automatic cycle, excluding safe predecessors.
       const menus = new Map(definition.menus.map((m) => [m.id, m]))

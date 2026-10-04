@@ -84,6 +84,12 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
         </p>
       ) : null}
       <DetailSection title="IVR path">
+        {ivr === null ? (
+          <p className="text-sm text-muted-foreground">
+            This IVR is no longer available. The recorded call path is shown
+            below.
+          </p>
+        ) : null}
         <IvrPath path={call.ivr_path} menus={ivr?.menus} />
       </DetailSection>
       {call.collected ? (
