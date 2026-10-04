@@ -54,7 +54,9 @@ export const begin = internalMutation({
       status: same ? old.status : ("away" as const),
       extension: same ? old.extension : undefined,
       expiresAt: same ? old.expiresAt : 0,
-      updatedAt: Date.now(),
+      // Credential refresh is not a presence heartbeat. Preserve the timestamp
+      // checked by the pending expiry job when keeping an existing lease.
+      updatedAt: same ? old.updatedAt : Date.now(),
     }
     const id = old?._id ?? (await ctx.db.insert("callAgents", fields))
     if (old) await ctx.db.patch("callAgents", id, fields)

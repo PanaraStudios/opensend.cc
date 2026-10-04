@@ -1,5 +1,4 @@
 import { actorArgs } from "./actor"
-import { findStep, resolveValue } from "../../lib/dashboard/automation"
 import { readGraph } from "../automationDefinition"
 import { v } from "convex/values"
 import { RateLimiter, DAY } from "@convex-dev/rate-limiter"
@@ -276,7 +275,20 @@ export const automationInput = internalQuery({
       { organizationId: run.organizationId, automationRunId: id },
       true
     )
-    const step = findStep(readGraph(run.graph), key)
+    // perform already resolves trigger, contact and prior-step references in a
+    // transaction. Use that snapshot rather than re-resolving a partial scope.
+    const record = await ctx.db
+      .query("automationRunSteps")
+      .withIndex("by_organizationId_and_runId_and_key", (q) =>
+        q
+          .eq("organizationId", run.organizationId)
+          .eq("runId", id)
+          .eq("key", key)
+      )
+      .unique()
+    if (record?.status !== "running" || !record.inputs)
+      throw invalid("Place call step has not been prepared.")
+    const step = readGraph(JSON.stringify([record.inputs]))[0]
     if (step?.type !== "place_call") throw invalid("Place call step not found.")
     const contact = run.contactId
       ? await ctx.db.get("contacts", run.contactId)
@@ -290,30 +302,14 @@ export const automationInput = internalQuery({
             ? "contact_deleted"
             : "no_contact",
       }
-    const scope = {
-      event: run.payload,
-      contact: {
-        id: contact._id,
-        first_name: contact.firstName,
-        last_name: contact.lastName,
-        email: contact.email,
-        phone: contact.phone,
-        properties: contact.properties,
-      },
-    }
     return {
       organizationId: run.organizationId,
       input: {
         contact_id: contact._id,
         from: step.accountId,
         route: step.route,
-        context: String(resolveValue(scope, step.purpose)),
-        variables: Object.fromEntries(
-          Object.entries(step.variables).map(([key, value]) => [
-            key,
-            String(resolveValue(scope, value)),
-          ])
-        ),
+        context: step.purpose,
+        variables: step.variables,
         request_permission: step.requestPermission,
       },
     }

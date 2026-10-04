@@ -421,6 +421,58 @@ test("adjacent creation timestamps stay ordered across tables and one-item pages
   expect(new Set(seen).size).toBe(5)
 })
 
+test("large email bodies page within the hydration budget without losing messages", async () => {
+  const f = await setup()
+  const id = await sent(f, { ...f.email, text: "x".repeat(850000) })
+  const { fields, body } = await f.t.run(async (ctx) => {
+    const row = (await ctx.db.get("emails", ctx.db.normalizeId("emails", id)!))!
+    const { _id, _creationTime, ...fields } = row
+    void _creationTime
+    const content = (await ctx.db
+      .query("emailContents")
+      .withIndex("by_emailId", (q) => q.eq("emailId", _id))
+      .unique())!
+    const {
+      _id: contentId,
+      _creationTime: contentTime,
+      emailId,
+      ...body
+    } = content
+    void [contentId, contentTime, emailId]
+    return { fields, body }
+  })
+  const ids = [id]
+  for (let i = 0; i < 20; i++) {
+    ids.push(
+      await f.t.run(async (ctx) => {
+        const copy = await ctx.db.insert("emails", fields)
+        await ctx.db.insert("emailContents", { ...body, emailId: copy })
+        return copy
+      })
+    )
+  }
+  ids.reverse()
+  const seen: string[] = []
+  let cursor: string | null = null
+  for (let i = 0; i < 30; i++) {
+    const response = await f.call(
+      `/messages?channel=email&direction=outbound&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`
+    )
+    expect(response.status).toBe(200)
+    const page = await response.json()
+    // A 2 MB target may include the final message that crosses it.
+    expect(page.data.length).toBeLessThanOrEqual(2)
+    for (const message of page.data) {
+      expect(message.text).toHaveLength(850000)
+      seen.push(message.id)
+    }
+    cursor = page.next_cursor
+    if (!cursor) break
+  }
+  expect(cursor).toBeNull()
+  expect(seen).toEqual(ids)
+})
+
 test("neutral media delegates to existing content validation and email attachments", async () => {
   const f = await setup()
   const id = await sent(f, {
