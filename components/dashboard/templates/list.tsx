@@ -48,10 +48,10 @@ import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
 type TemplateChannel = NonNullable<EmailTemplate["channel"]>
 import { pluralize } from "@/lib/dashboard/format"
 import {
-  MESSAGE_CHANNEL_ITEMS,
   ChannelCell,
   ChannelCreateMenu,
 } from "@/components/dashboard/channels/shared"
+import { CHANNEL_IDS, CHANNELS } from "@/lib/channels"
 import {
   asTemplate,
   useTemplateCommands,
@@ -63,7 +63,12 @@ type TemplatesLayout = "grid" | "table"
 /** List rows carry their draft markup for the thumbnails. */
 const asListedTemplate = (
   row: FunctionReturnType<typeof api.templates.list>["page"][number]
-) => asTemplate(row, row)
+) => ({ ...asTemplate(row, row), channel: row.channel ?? "email" })
+
+const TEMPLATE_CHANNEL_ITEMS = [
+  { value: "all", label: "All channels" },
+  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
+]
 
 const LAYOUT_ITEMS = [
   { value: "grid" as const, label: "Grid view", icon: LayoutGridIcon },
@@ -211,7 +216,7 @@ export function TemplatesView() {
           {
             value: channel,
             onChange: setChannel,
-            items: MESSAGE_CHANNEL_ITEMS,
+            items: TEMPLATE_CHANNEL_ITEMS,
             "aria-label": "Filter by channel",
           },
           {
