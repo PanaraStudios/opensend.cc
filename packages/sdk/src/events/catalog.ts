@@ -662,6 +662,107 @@ function schemaFor(name: SystemEventName): EventField {
     routing: dynamic("Call routing"),
   })
 }
+export const SYSTEM_EVENT_DESCRIPTIONS = {
+  "call.data_collected": "Your voice bot collected information from a caller.",
+  "call.permission_granted":
+    "A contact gave you permission to call them on WhatsApp.",
+  "call.permission_denied":
+    "A contact declined or revoked permission for WhatsApp calls.",
+  "call.outbound_queued": "Your outbound WhatsApp call is queued to start.",
+  "call.outbound_ringing": "Your outbound WhatsApp call is ringing.",
+  "call.outbound_connected": "A contact answered your outbound WhatsApp call.",
+  "call.outbound_completed": "Your outbound WhatsApp call ended.",
+  "call.outbound_missed":
+    "A contact did not answer your outbound WhatsApp call.",
+  "call.outbound_rejected": "A contact rejected your outbound WhatsApp call.",
+  "call.outbound_failed": "Your outbound WhatsApp call could not be completed.",
+  "email.sent": "Your email was sent.",
+  "email.delivered": "Your email reached the recipient's mail server.",
+  "email.delivery_delayed": "Delivery of your email is delayed.",
+  "email.opened": "A recipient opened your email.",
+  "email.clicked": "A recipient clicked a link in your email.",
+  "email.bounced": "Your email bounced because it could not be delivered.",
+  "email.complained": "A recipient marked your email as spam.",
+  "email.received": "Someone sent an email to your receiving address.",
+  "email.failed": "Your email could not be sent.",
+  "email.scheduled": "Your email is scheduled to be sent later.",
+  "email.suppressed":
+    "Your email was blocked from being sent to a suppressed recipient.",
+  "whatsapp.call.ivr_completed":
+    "A caller finished navigating your WhatsApp phone menu.",
+  "whatsapp.call.ringing": "A WhatsApp call is ringing.",
+  "whatsapp.call.connected": "A WhatsApp call connected.",
+  "whatsapp.call.completed": "A WhatsApp call ended.",
+  "whatsapp.call.failed": "A WhatsApp call could not be completed.",
+  "whatsapp.call.missed": "A WhatsApp call went unanswered.",
+  "whatsapp.call.permission_updated":
+    "A contact's permission for WhatsApp calls changed.",
+  "whatsapp.call.recording_ready":
+    "A recording of your WhatsApp call is ready.",
+  "whatsapp.call.transcription_ready":
+    "A transcript of your WhatsApp call is ready.",
+  "whatsapp.call.bot_completed":
+    "Your voice bot finished handling a WhatsApp call.",
+  "whatsapp.call.transferred":
+    "A WhatsApp call was transferred to another handler.",
+  "whatsapp.message.sent": "Your WhatsApp message was sent.",
+  "whatsapp.message.delivered": "Your WhatsApp message reached the recipient.",
+  "whatsapp.message.read": "A recipient read your WhatsApp message.",
+  "whatsapp.message.played": "A recipient played your WhatsApp audio message.",
+  "whatsapp.message.payment_updated":
+    "The payment status for a WhatsApp message changed.",
+  "whatsapp.message.failed":
+    "Your WhatsApp message could not be sent or delivered.",
+  "whatsapp.message.received":
+    "Someone sent a message to your WhatsApp number.",
+  "messenger.message.sent": "Your Messenger message was sent.",
+  "messenger.message.delivered":
+    "Your Messenger message reached the recipient.",
+  "messenger.message.read": "A recipient read your Messenger message.",
+  "messenger.message.failed":
+    "Your Messenger message could not be sent or delivered.",
+  "messenger.message.received":
+    "Someone sent a message to your Messenger account.",
+  "instagram.message.sent": "Your Instagram message was sent.",
+  "instagram.message.read": "A recipient read your Instagram message.",
+  "instagram.message.failed":
+    "Your Instagram message could not be sent or delivered.",
+  "instagram.message.received":
+    "Someone sent a message to your Instagram account.",
+  "whatsapp.message.read_receipt_sent":
+    "The sender was notified that you read their WhatsApp message.",
+  "whatsapp.message.read_receipt_failed":
+    "The sender could not be notified that you read their WhatsApp message.",
+  "whatsapp.message.typing_failed":
+    "Your typing indicator could not be shown on WhatsApp.",
+  "messenger.message.read_receipt_sent":
+    "The sender was notified that you read their Messenger message.",
+  "messenger.message.read_receipt_failed":
+    "The sender could not be notified that you read their Messenger message.",
+  "messenger.message.typing_failed":
+    "Your typing indicator could not be shown on Messenger.",
+  "instagram.message.read_receipt_sent":
+    "The sender was notified that you read their Instagram message.",
+  "instagram.message.read_receipt_failed":
+    "The sender could not be notified that you read their Instagram message.",
+  "instagram.message.typing_failed":
+    "Your typing indicator could not be shown on Instagram.",
+  "whatsapp.template.status_updated":
+    "Meta changed the status of your WhatsApp template, such as approving, rejecting, or pausing it.",
+  "whatsapp.phone_number.updated":
+    "Your WhatsApp phone number's settings or status changed.",
+  "contact.created": "A contact was added to your audience.",
+  "contact.note_created": "A note was added to a contact.",
+  "contact.updated": "A contact's details changed.",
+  "contact.deleted": "A contact was removed from your audience.",
+  "domain.created": "A domain was added to your account.",
+  "domain.updated": "Your domain's settings or verification status changed.",
+  "domain.deleted": "A domain was removed from your account.",
+  "suppression.added": "An email address was added to your suppression list.",
+  "suppression.removed":
+    "An email address was removed from your suppression list.",
+} satisfies Record<SystemEventName, string>
+
 export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
   SYSTEM_EVENT_NAMES.map((name) => ({
     name,
@@ -681,7 +782,7 @@ export const SYSTEM_EVENT_CATALOG: readonly CatalogEvent[] =
             } as Record<string, string>
           )[name.split(".")[0]],
     label: `${({ email: "Email", whatsapp: "WhatsApp", messenger: "Messenger", instagram: "Instagram", contact: "Contact", call: "Call", domain: "Domain", suppression: "Suppression" } as Record<string, string>)[name.split(".")[0]]} ${label(name.split(".").slice(1).join(" "))}`,
-    description: `Emitted when ${label(name.replace(/\./g, " "))}.`,
+    description: SYSTEM_EVENT_DESCRIPTIONS[name],
     schema: object({
       ...schemaFor(name).fields,
       ...(name.includes(".message.") ||
