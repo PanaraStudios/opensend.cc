@@ -1,4 +1,5 @@
 import { isPublicHostname } from "../net/public-host"
+import { SYSTEM_EVENT_CATALOG } from "../event-catalog"
 import { isHttpsUrl, pluralize } from "./format"
 import {
   WEBHOOK_EVENTS,
@@ -39,6 +40,14 @@ export function webhookEventsLabel(events: readonly WebhookEvent[]): string {
     return "All events"
   }
   return pluralize(events.length, "event")
+}
+
+/** Labels share the same catalogue as automation triggers; stored event names stay intact. */
+export function webhookEventLabel(event: string): string {
+  return (
+    SYSTEM_EVENT_CATALOG.find((item) => item.name === event)?.label ??
+    event.replace(/[_.]/g, " ").replace(/^./, (char) => char.toUpperCase())
+  )
 }
 
 /** Endpoints are posted to from the server, so they must be public HTTPS
