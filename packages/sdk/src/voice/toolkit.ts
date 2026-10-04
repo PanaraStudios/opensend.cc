@@ -2,14 +2,11 @@ import type { Opensend } from "../resend"
 import type { ChannelPage, ChannelRequestOptions } from "../channels/interfaces"
 import type { PaginationOptions } from "../common/interfaces/pagination-options.interface"
 import type {
-  CollectField,
-  CollectedData,
   KnowledgeBaseInput,
   KnowledgeBase,
   KnowledgeDocumentInput,
   KnowledgeDocument,
   KnowledgeMatch,
-  BotToolParameters,
   BotToolInput,
   BotTool,
 } from "./toolkit-types"

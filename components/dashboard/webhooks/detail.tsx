@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TableCell, TableRow } from "@/components/ui/table"
 import {
   DetailHeader,
+  JsonSection,
+  OptionSelect,
   DetailSection,
   DocsButton,
   EmptyState,
@@ -33,8 +35,13 @@ import {
 } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
 import type { WebhookEvent } from "@/lib/dashboard/types"
-import { eventLabel } from "@/lib/event-catalog"
-import { sortWebhookEvents, webhookEventsLabel } from "@/lib/dashboard/webhooks"
+import {
+  WEBHOOK_EVENT_GROUPS,
+  webhookEventSample,
+  webhookEventLabel,
+  sortWebhookEvents,
+  webhookEventsLabel,
+} from "@/lib/dashboard/webhooks"
 import {
   asWebhook,
   asWebhookDelivery,
@@ -51,6 +58,8 @@ export function WebhookDetail() {
   const { id } = useParams<{ id: string }>()
   const { deleteWebhook } = useWebhookCommands()
   const { leaving, deleteAndLeave } = useDeleteRecord("/webhooks")
+  const [sampleEvent, setSampleEvent] =
+    React.useState<WebhookEvent>("email.sent")
   const [status, setStatus] = React.useState("all")
   const [eventType, setEventType] = React.useState("all")
   const result = useQuery(api.webhooks.get, { id })
@@ -134,10 +143,31 @@ export function WebhookDetail() {
         <ul className="flex flex-wrap gap-1.5">
           {webhook.events.map((event) => (
             <li key={event}>
-              <Badge variant="outline">{eventLabel(event, "name")}</Badge>
+              <Badge variant="outline" title={event}>
+                {webhookEventLabel(event)}
+              </Badge>
             </li>
           ))}
         </ul>
+      </DetailSection>
+      <DetailSection title="Sample payload">
+        <p className="text-sm text-muted-foreground">
+          An example from the event catalog. Actual values come from your
+          messages and contacts.
+        </p>
+        <OptionSelect
+          aria-label="Sample event"
+          value={sampleEvent}
+          onChange={(value) => setSampleEvent(value as WebhookEvent)}
+          items={WEBHOOK_EVENT_GROUPS.flatMap((group) =>
+            group.events.map((event) => ({
+              value: event,
+              label: webhookEventLabel(event),
+              group: group.label,
+            }))
+          )}
+        />
+        <JsonSection title="Payload" value={webhookEventSample(sampleEvent)} />
       </DetailSection>
       <DetailSection
         title="Deliveries"
@@ -160,7 +190,7 @@ export function WebhookDetail() {
                   ...sortWebhookEvents(result.delivered as WebhookEvent[]).map(
                     (event) => ({
                       value: event,
-                      label: eventLabel(event, "name"),
+                      label: webhookEventLabel(event),
                     })
                   ),
                 ],
@@ -202,7 +232,7 @@ export function WebhookDetail() {
                 <TableRow key={delivery.id}>
                   <TableCell>
                     <MonoLink href={`/webhooks/${webhook.id}/${delivery.id}`}>
-                      {eventLabel(delivery.event, "name")}
+                      {delivery.event}
                     </MonoLink>
                   </TableCell>
                   <TableCell>

@@ -139,8 +139,15 @@ export type WhatsAppBroadcastOptions = Omit<
     react?: never;
     replyTo?: never;
   };
+export type PageBroadcastOptions = Omit<
+  WhatsAppBroadcastOptions,
+  'channel' | 'whatsapp'
+> & {
+  channel: 'messenger' | 'instagram';
+  messaging: WhatsAppBroadcastConfiguration;
+};
 export type CreateBroadcastOptions =
-  EmailBroadcastOptions | WhatsAppBroadcastOptions;
+  EmailBroadcastOptions | WhatsAppBroadcastOptions | PageBroadcastOptions;
 
 export interface CreateBroadcastRequestOptions extends PostOptions {}
 

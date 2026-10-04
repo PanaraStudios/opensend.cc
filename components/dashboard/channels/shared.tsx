@@ -22,7 +22,6 @@ import {
   copyToClipboard,
 } from "@/components/dashboard/primitives"
 import { channelLabel } from "@/lib/dashboard/format"
-import type { BroadcastChannel } from "@/lib/dashboard/types"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,8 +59,11 @@ import {
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
-import { CHANNEL_LABELS } from "@/lib/dashboard/format"
-import type { Channel, MessagingChannel } from "@/lib/dashboard/types"
+import type {
+  BroadcastChannel,
+  Channel,
+  MessagingChannel,
+} from "@/lib/dashboard/types"
 import { useChannelCommands } from "@/lib/channels/use-channels"
 
 export const ChannelsIcon = RadioTowerIcon
@@ -95,25 +97,29 @@ export function CopyChannelHandleItem({
 export const channelIcon = (channel: Channel) =>
   channel === "email" ? MailIcon : CHANNEL_ICONS[channel]
 
-/** Email and the channels it shares Templates and Messages with. */
+/** Every channel uses the same message and template filters. */
 export const MESSAGE_CHANNEL_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All channels" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: CHANNEL_LABELS.whatsapp },
+  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
 ]
 
 export function ChannelCell({ channel }: { channel?: Channel }) {
   const value = rowChannel({ channel })
   return <IconCell icon={channelIcon(value)}>{channelLabel(value)}</IconCell>
 }
-/** The existing Email/WhatsApp creation menu used by messaging resources. */
+/** Creation choices follow the shared channel registry. */
 export function ChannelCreateMenu({
   noun,
   onCreate,
-}: {
-  noun: "broadcast" | "template"
-  onCreate: (channel: BroadcastChannel) => void
-}) {
+}:
+  | {
+      noun: "template"
+      onCreate: (channel: Channel) => void
+    }
+  | {
+      noun: "broadcast"
+      onCreate: (channel: BroadcastChannel) => void
+    }) {
   const channels = useInstanceChannels()
   return (
     <DropdownMenu>
@@ -126,7 +132,7 @@ export function ChannelCreateMenu({
         <DropdownMenuGroup>
           {MESSAGE_CHANNEL_ITEMS.filter((item) => item.value !== "all").map(
             (item) => {
-              const value = item.value as BroadcastChannel
+              const value = item.value as Channel
               const Icon = channelIcon(value)
               return (
                 <DropdownMenuItem

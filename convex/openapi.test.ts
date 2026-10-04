@@ -1499,6 +1499,71 @@ test("Messenger and Instagram send, read routes and local templates validate rea
       "POST",
       await call(`/templates/${template.id}/publish`, "POST", {})
     )
+    const accountId = f.accounts.find((a) => a.channel === channel)!.id
+    const broadcastRequest = {
+      channel,
+      messaging: {
+        account_id: accountId,
+        template_id: template.id,
+        variables: { name: { value: "Friend" } },
+      },
+      name: `${channel} broadcast`,
+    }
+    validateBody(
+      contract.components.schemas.CreateBroadcastOptions,
+      broadcastRequest
+    )
+    const broadcast = await response(
+      "/broadcasts",
+      "POST",
+      await call("/broadcasts", "POST", broadcastRequest)
+    )
+    const broadcastDetail = await response(
+      "/broadcasts/{id}",
+      "GET",
+      await call(`/broadcasts/${broadcast.id}`)
+    )
+    expect(broadcastDetail).toMatchObject({
+      channel,
+      messaging: broadcastRequest.messaging,
+    })
+    await response("/broadcasts", "GET", await call("/broadcasts"))
+    const update = {
+      channel,
+      messaging: {
+        ...broadcastRequest.messaging,
+        variables: { name: { value: "Updated" } },
+      },
+    }
+    validateBody(contract.components.schemas.UpdateBroadcastOptions, update)
+    await response(
+      "/broadcasts/{id}",
+      "PATCH",
+      await call(`/broadcasts/${broadcast.id}`, "PATCH", update)
+    )
+    expect(
+      (
+        await response(
+          "/broadcasts/{id}",
+          "GET",
+          await call(`/broadcasts/${broadcast.id}`)
+        )
+      ).messaging
+    ).toEqual(update.messaging)
+    const duplicate = await response(
+      "/broadcasts/{id}/duplicate",
+      "POST",
+      await call(`/broadcasts/${broadcast.id}/duplicate`, "POST", {})
+    )
+    expect(
+      (
+        await response(
+          "/broadcasts/{id}",
+          "GET",
+          await call(`/broadcasts/${duplicate.id}`)
+        )
+      ).channel
+    ).toBe(channel)
     const rendered = await response(
       "/messages",
       "POST",

@@ -40,7 +40,7 @@ export function EditorTopBar({
   return (
     <header
       data-testid="editor-topbar"
-      className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2"
+      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2 sm:h-12 sm:flex-nowrap sm:py-0"
     >
       <Button
         variant="ghost"
@@ -81,7 +81,7 @@ export function EditorTopBar({
         />
         {badge}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto">
         <ShortcutAction value="save">{children}</ShortcutAction>
       </div>
     </header>

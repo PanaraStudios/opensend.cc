@@ -1,3 +1,4 @@
+import type { WhatsAppBroadcastConfiguration } from './create-broadcast-options.interface';
 import type { Response } from '../../interfaces';
 
 export interface UpdateBroadcastResponseSuccess {
@@ -5,6 +6,9 @@ export interface UpdateBroadcastResponseSuccess {
 }
 
 export type UpdateBroadcastOptions = {
+  channel?: 'email' | 'whatsapp' | 'messenger' | 'instagram';
+  whatsapp?: WhatsAppBroadcastConfiguration;
+  messaging?: WhatsAppBroadcastConfiguration;
   name?: string;
   segmentId?: string;
   /**

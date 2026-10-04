@@ -261,6 +261,7 @@ export const channelTables = {
     preview: v.string(),
     templateId: v.optional(v.id("templates")),
     broadcastId: v.optional(v.id("broadcasts")),
+    broadcastSkipReason: v.optional(v.literal("window_closed")),
     automationRunId: v.optional(v.id("automationRuns")),
     replyToId: v.optional(v.id("channelMessages")),
     reactionTargetExternalId: v.optional(v.string()),

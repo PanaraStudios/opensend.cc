@@ -7,9 +7,12 @@ import { addBroadcastTools } from "../../src/tools/broadcasts.js"
 const clickedLinks = vi.fn()
 const recipients = vi.fn()
 const duplicate = vi.fn()
+const create = vi.fn()
+const get = vi.fn()
+const update = vi.fn()
 
 const resend = {
-  broadcasts: { clickedLinks, recipients, duplicate },
+  broadcasts: { clickedLinks, recipients, duplicate, create, get, update },
 } as unknown as Opensend
 
 async function makeClient() {
@@ -563,3 +566,53 @@ describe("duplicate-broadcast", () => {
     expect(textOf(result as never)).toContain("Broadcast not found")
   })
 })
+
+for (const channel of ["messenger", "instagram"] as const) {
+  it(`update-broadcast accepts ${channel} without email sender or segment`, async () => {
+    get.mockResolvedValue({
+      data: { id: "campaign", channel, from: null, audience_id: null },
+      error: null,
+    })
+    update.mockResolvedValue({ data: { id: "campaign" }, error: null })
+    const client = await makeClient()
+    const messaging = {
+      accountId: "page",
+      templateId: "published",
+      variables: {},
+    }
+    const result = await client.callTool({
+      name: "update-broadcast",
+      arguments: { broadcastId: "campaign", channel, messaging },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(update).toHaveBeenCalledWith(
+      "campaign",
+      expect.objectContaining({ channel, messaging })
+    )
+  })
+  it(`create-broadcast accepts ${channel} without email fields`, async () => {
+    create.mockResolvedValue({ data: { id: "campaign" }, error: null })
+    const client = await makeClient()
+    const messaging = {
+      accountId: "page",
+      templateId: "published",
+      variables: { name: { contact: "firstName", fallback: "friend" } },
+    }
+    const result = await client.callTool({
+      name: "create-broadcast",
+      arguments: {
+        channel,
+        messaging,
+        name: "Page campaign",
+        segmentId: "segment",
+      },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(create).toHaveBeenCalledWith({
+      channel,
+      messaging,
+      name: "Page campaign",
+      segmentId: "segment",
+    })
+  })
+}

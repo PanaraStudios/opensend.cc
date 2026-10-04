@@ -65,7 +65,7 @@ export function addMessageTools(server: McpServer, opensend: Opensend) {
     {
       title: "List Messages",
       description:
-        "List readable channels newest first with an opaque cursor. Explicit channel filters require that channel's read scope. Use next_cursor to continue with identical filters.",
+        "List messages from readable channels newest first with an opaque cursor. Explicit channel filters require that channel's read scope. Use next_cursor to continue with identical filters.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         channel: channel.optional(),
@@ -88,7 +88,7 @@ export function addMessageTools(server: McpServer, opensend: Opensend) {
     {
       title: "Get Message",
       description:
-        "Retrieve a message in any channel using its raw id. Requires that message's channel read scope.",
+        "Retrieve a message in any channel using its message id. Requires that message's channel read scope.",
       annotations: { readOnlyHint: true },
       inputSchema: { id: z.string() },
     },

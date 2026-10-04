@@ -1,3 +1,8 @@
+import {
+  eventLabel,
+  SYSTEM_EVENT_CATALOG,
+  type EventField,
+} from "../event-catalog"
 import { isPublicHostname } from "../net/public-host"
 import { isHttpsUrl, pluralize } from "./format"
 import {
@@ -6,26 +11,46 @@ import {
   type WebhookEvent,
 } from "./types"
 
-const GROUP_LABELS = {
-  email: "Email",
-  contact: "Contact",
-  domain: "Domain",
-  whatsapp: "WhatsApp",
-  call: "Calls",
-  messenger: "Messenger",
-  instagram: "Instagram",
+/** Catalog groups retain provider-specific events without a second event list. */
+export const WEBHOOK_EVENT_GROUPS = [
+  ...new Set(
+    SYSTEM_EVENT_CATALOG.map((event) =>
+      event.group === "Suppressions" ? "Email" : event.group
+    )
+  ),
+].map((label) => ({
+  id: label.toLowerCase().replaceAll(" ", "-"),
+  label,
+  events: SYSTEM_EVENT_CATALOG.filter(
+    (event) =>
+      (event.group === "Suppressions" ? "Email" : event.group) === label
+  ).map((event) => event.name as WebhookEvent),
+}))
+
+export function webhookEventLabel(name: WebhookEvent): string {
+  return eventLabel(name, "name")
 }
 
-type WebhookEventGroupId = keyof typeof GROUP_LABELS
-
-/** The event types by the resource they are about, in catalogue order. */
-export const WEBHOOK_EVENT_GROUPS = (
-  Object.keys(GROUP_LABELS) as WebhookEventGroupId[]
-).map((id) => ({
-  id,
-  label: GROUP_LABELS[id],
-  events: WEBHOOK_EVENTS.filter((event) => event.startsWith(`${id}.`)),
-}))
+/** Generate a complete example including nested message/contact schemas. */
+export function eventFieldExample(schema: EventField): unknown {
+  if (schema.fields)
+    return Object.fromEntries(
+      Object.entries(schema.fields).map(([key, value]) => [
+        key,
+        eventFieldExample(value),
+      ])
+    )
+  if (schema.items) return [eventFieldExample(schema.items)]
+  return schema.example
+}
+export function webhookEventSample(name: WebhookEvent) {
+  const event = SYSTEM_EVENT_CATALOG.find((event) => event.name === name)!
+  return {
+    type: name,
+    created_at: "2026-10-04T12:00:00.000Z",
+    data: eventFieldExample(event.schema),
+  }
+}
 
 /** Catalogue order, whatever order they were ticked in. */
 export function sortWebhookEvents(

@@ -1,4 +1,6 @@
 "use client"
+import { LocalTemplatePreview } from "./templates/shared"
+import { localTemplate, fillLocalTemplate } from "@/lib/meta/local-templates"
 import { FileUploadField } from "./file-upload"
 
 import * as React from "react"
@@ -194,10 +196,7 @@ export function WhatsAppCampaignFields({
     { enabled: channel !== "whatsapp" }
   )
   const options = channel === "whatsapp" ? whatsappOptions : pageOptions
-  const accountLabel =
-    channel === "whatsapp"
-      ? "Sending number"
-      : `Sending ${CHANNELS[channel].accountNoun.toLowerCase()}`
+  const accountLabel = "Sender"
   const templateLabel =
     channel === "whatsapp" ? "Approved template" : "Published template"
   const selected = options?.selected
@@ -347,6 +346,18 @@ export function WhatsAppCampaignFields({
                 }
               />
             ))}
+          {selected && channel !== "whatsapp" ? (
+            <FieldSet>
+              <FieldLegend variant="label">Preview</FieldLegend>
+              <FieldDescription>Sample contact values</FieldDescription>
+              <LocalTemplatePreview
+                content={fillLocalTemplate(
+                  localTemplate(selected.components),
+                  values
+                )}
+              />
+            </FieldSet>
+          ) : null}
           {selected && channel === "whatsapp" ? (
             <FieldSet>
               <FieldLegend variant="label">Preview</FieldLegend>

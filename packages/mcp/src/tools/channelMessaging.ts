@@ -235,8 +235,8 @@ export function addChannelTools(
     {
       title: `Send ${label} Message`,
       description: whatsapp
-        ? "Send one WhatsApp message. Free-form messages require an open 24-hour customer service window; approved templates can start conversations. Supply exactly one body. from is required for teams with multiple numbers. Returns the queued message id; use get-whatsapp-message for delivery status."
-        : `Send one ${label} message with exactly one text, attachment or stored template. from is required with multiple accounts. Outside the 24-hour window a message tag is required; HUMAN_AGENT works only within 7 days. Returns the queued id; use get-${channel}-message for status.`,
+        ? "Send one WhatsApp message. Free-form messages require an open 24-hour customer service window; approved templates can start conversations. Supply exactly one body. from selects a connected sender and is required for teams with multiple numbers. Returns the queued message id; use get-whatsapp-message for delivery status. Use send_message for the shared multichannel API."
+        : `Send one ${label} message with exactly one text, attachment or stored template. from selects a connected sender and is required with multiple accounts. Outside the 24-hour window a message tag is required; HUMAN_AGENT works only within 7 days. Returns the queued id; use get-${channel}-message for status. Use send_message for the shared multichannel API.`,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -277,9 +277,7 @@ export function addChannelTools(
     `list-${channel}-messages`,
     {
       title: `List ${label} Messages`,
-      description: whatsapp
-        ? "List team WhatsApp messages with cursor pagination and optional status, direction and phone number filters."
-        : `List team ${label} messages with cursors and optional status, direction and account filters.`,
+      description: `List team ${label} messages newest first. Use limit and either after or before (a message id, never both); continue with identical filters. The response contains data and has_more. Filter by status, direction or sender. Use list_messages for a shared multichannel feed with next_cursor.`,
       annotations: { readOnlyHint: true },
       ...(whatsapp ? { outputSchema: whatsappListOutputSchema } : {}),
       inputSchema: {

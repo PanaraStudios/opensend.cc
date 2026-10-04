@@ -262,6 +262,11 @@ export type BroadcastChannel = Infer<typeof broadcastChannel>
 export type SkipReason = Infer<typeof skipReasonValue>
 export type Broadcast = EmailDraft & {
   channel?: BroadcastChannel
+  messaging?: {
+    accountId: string
+    templateId: string
+    variables: Record<string, VariableSource>
+  }
   whatsapp?: {
     accountId: string
     templateId: string
@@ -293,6 +298,8 @@ export type EmailTemplate = EmailDraft & {
   channel?: Infer<typeof channelValue>
   /** A WhatsApp template's Meta settings and review state. */
   whatsapp?: WhatsAppTemplateInfo
+  /** Messenger and Instagram message text and quick replies. */
+  localContent?: import("../meta/local-templates").LocalTemplate
   /** A WhatsApp draft's components, in Meta's creation format. */
   components?: unknown
 }

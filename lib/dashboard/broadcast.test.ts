@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  broadcastReachabilityLabel,
   audienceLabel,
   BROADCAST_STATUS_ORDER,
   broadcastActions,
@@ -124,4 +125,9 @@ describe("fromAddresses", () => {
     )
     assert.equal(emailFrom({}, domains), "Opensend <hello@a.dev>")
   })
+})
+
+it("broadcast review states current reachability including skipped recipients", () => {
+  assert.equal(broadcastReachabilityLabel(1, 2), "1 of 3 can be reached now")
+  assert.equal(broadcastReachabilityLabel(0, 2), "0 of 2 can be reached now")
 })

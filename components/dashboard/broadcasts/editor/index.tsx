@@ -48,7 +48,7 @@ export function BroadcastEditor() {
   }
   if (report) return null
 
-  return item.channel === "whatsapp" ? (
+  return (item.channel ?? "email") !== "email" ? (
     <InstanceChannelConfiguration channel="meta">
       <WhatsAppBroadcastEditor key={item.id} item={item} />
     </InstanceChannelConfiguration>

@@ -83,8 +83,8 @@ test("navigation prefix expires at one second", () => {
 })
 
 test("navigation has every requested destination and no duplicate keys", () => {
-  assert.equal(Object.keys(NAVIGATION_SHORTCUTS).length, 13)
-  assert.equal(new Set(Object.values(NAVIGATION_SHORTCUTS)).size, 13)
+  assert.equal(Object.keys(NAVIGATION_SHORTCUTS).length, 16)
+  assert.equal(new Set(Object.values(NAVIGATION_SHORTCUTS)).size, 16)
   assert.equal(NAVIGATION_SHORTCUTS["/playground"], "p")
   assert.equal(NAVIGATION_SHORTCUTS["/contacts"], "c")
   assert.equal(NAVIGATION_SHORTCUTS["/channels"], "h")
@@ -130,4 +130,11 @@ test("keydown events without a key are ignored before case conversion", () => {
     )
   }
   assert.equal(shortcutEventKey("G"), "g")
+})
+
+test("channel shortcuts preserve email's legacy key and cover Meta channel screens", () => {
+  assert.equal(NAVIGATION_SHORTCUTS["/channels?type=email"], "d")
+  assert.equal(NAVIGATION_SHORTCUTS["/channels?type=whatsapp"], "1")
+  assert.equal(NAVIGATION_SHORTCUTS["/channels?type=messenger"], "2")
+  assert.equal(NAVIGATION_SHORTCUTS["/channels?type=instagram"], "3")
 })

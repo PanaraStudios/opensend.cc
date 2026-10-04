@@ -42,19 +42,20 @@ import {
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { actionError } from "@/lib/action-error"
-import { eventLabel } from "@/lib/event-catalog"
 import type { Webhook, WebhookEvent } from "@/lib/dashboard/types"
 import {
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
   webhookFormError,
+  webhookEventLabel,
 } from "@/lib/dashboard/webhooks"
 import { useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 import { cn } from "@/lib/utils"
 
 export const WebhookIcon = LucideWebhookIcon
 
-/** Groups with longer display labels take one column. */
+/** The longest event name that still fits half the events box; groups with
+    longer names (`whatsapp.template.status_updated`) take one column. */
 const TWO_COLUMN_EVENT_LENGTH = 24
 
 export const WEBHOOK_STATUS_ITEMS: readonly SelectOption[] = [
@@ -184,9 +185,7 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
                       className={cn(
                         "grid gap-2 pl-6",
                         group.events.every(
-                          (event) =>
-                            eventLabel(event, "name").length <=
-                            TWO_COLUMN_EVENT_LENGTH
+                          (event) => event.length <= TWO_COLUMN_EVENT_LENGTH
                         ) && "sm:grid-cols-2"
                       )}
                     >
@@ -204,8 +203,8 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
                           {/* The group row's line height, so every row is
                               the same whole-pixel height and its box sits
                               where the group's does. */}
-                          <span className="leading-5">
-                            {eventLabel(event, "name")}
+                          <span className="text-sm leading-5" title={event}>
+                            {webhookEventLabel(event)}
                           </span>
                         </label>
                       ))}

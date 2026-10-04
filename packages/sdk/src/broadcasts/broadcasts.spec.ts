@@ -26,6 +26,46 @@ describe('Broadcasts', () => {
   afterAll(() => fetchMocker.disableMocks());
 
   describe('create', () => {
+    for (const channel of ['messenger', 'instagram'] as const) {
+      it(`creates and updates a ${channel} broadcast with local template configuration`, async () => {
+        mockSuccessResponse({ id: 'campaign' });
+        const variables = {
+          name: { contact: 'firstName' as const, fallback: 'friend' },
+        };
+        const messaging = {
+          accountId: 'page',
+          templateId: 'published',
+          variables,
+        };
+        await resend.broadcasts.create({
+          channel,
+          messaging,
+          segmentId: 'segment',
+          send: false,
+        });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+          channel,
+          messaging: {
+            account_id: 'page',
+            template_id: 'published',
+            variables,
+          },
+          segment_id: 'segment',
+          send: false,
+        });
+        mockSuccessResponse({ id: 'campaign' });
+        await resend.broadcasts.update('campaign', { channel, messaging });
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({
+          channel,
+          messaging: {
+            account_id: 'page',
+            template_id: 'published',
+            variables,
+          },
+        });
+      });
+    }
+
     it('creates a WhatsApp broadcast without requiring email fields', async () => {
       mockSuccessResponse({ id: 'campaign' });
       const variables = {

@@ -35,6 +35,10 @@ export class ChannelMessages<
       options
     )
   }
+  /** Additive alias matching emails.create; send remains the primary entry point. */
+  create(payload: S, options: ChannelRequestOptions = {}) {
+    return this.send(payload, options)
+  }
   markRead(id: string, options: { typing?: boolean } = {}) {
     return this.client.post<{ id: string }>(
       `/${this.channel}/messages/${encodeURIComponent(id)}/read`,

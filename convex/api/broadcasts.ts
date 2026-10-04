@@ -1,3 +1,4 @@
+import { CHANNEL_IDS, BROADCAST_CAPABILITIES } from "../../lib/channels"
 import { stream, type IndexKey } from "convex-helpers/server/stream"
 import { idempotent } from "./idempotency"
 import { v, type Infer } from "convex/values"
@@ -54,10 +55,11 @@ function inputFields(
   input: Record<string, unknown>,
   required = false
 ): BroadcastInput {
-  const channel = enumField(input, "channel", ["email", "whatsapp"])
-  let whatsapp: BroadcastInput["whatsapp"]
-  if (input.whatsapp !== undefined) {
-    const config = objectBody(input.whatsapp)
+  const channel = enumField(input, "channel", CHANNEL_IDS)
+  const configs: Pick<BroadcastInput, "whatsapp" | "messaging"> = {}
+  for (const key of ["whatsapp", "messaging"] as const) {
+    if (input[key] === undefined) continue
+    const config = objectBody(input[key])
     const accountId = ctx.db.normalizeId(
       "channelAccounts",
       stringField(config, "account_id", true)!
@@ -67,19 +69,20 @@ function inputFields(
       stringField(config, "template_id", true)!
     )
     if (!accountId || !templateId)
-      throw invalid("Invalid WhatsApp account or template id.")
+      throw invalid("Invalid account or template id.")
     const variables = config.variables ?? {}
     const error = variableSourcesError(variables)
     if (error) throw invalid(error)
-    whatsapp = {
+    configs[key] = {
       accountId,
       templateId,
       variables: variables as Record<string, VariableSource>,
     }
   }
-  if (required && channel === "whatsapp" && !whatsapp)
-    throw invalid("Missing whatsapp configuration.")
-  const emailRequired = required && channel !== "whatsapp"
+  const configKey = BROADCAST_CAPABILITIES[channel ?? "email"].configKey
+  if (required && configKey && !configs[configKey])
+    throw invalid(`Missing ${configKey} configuration.`)
+  const emailRequired = required && (channel ?? "email") === "email"
   const segment = input.segment_id ?? input.audience_id
   const segmentId =
     segment == null
@@ -103,7 +106,7 @@ function inputFields(
   })
   const result = {
     ...(channel ? { channel } : {}),
-    ...(whatsapp ? { whatsapp } : {}),
+    ...configs,
     name: stringField(input, "name"),
     from: stringField(input, "from", emailRequired),
     subject: stringField(input, "subject", emailRequired),
@@ -445,7 +448,7 @@ function summary(row: Doc<"broadcasts">) {
   return {
     id: row._id,
     name: row.name,
-    ...(row.channel === "whatsapp" ? { channel: "whatsapp" as const } : {}),
+    ...(row.channel && row.channel !== "email" ? { channel: row.channel } : {}),
     topic_id: row.topicId,
     segment_id: row.segmentId,
     audience_id: row.segmentId,
@@ -561,15 +564,23 @@ export function registerBroadcastRoutes(http: HttpRouter) {
         body: {
           object: "broadcast",
           ...summary(row),
-          ...(row.channel === "whatsapp" && row.whatsapp
-            ? {
-                whatsapp: {
-                  account_id: row.whatsapp.accountId,
-                  template_id: row.whatsapp.templateId,
-                  variables: row.whatsapp.variables,
-                },
-              }
-            : {}),
+          ...Object.fromEntries(
+            (["whatsapp", "messaging"] as const).flatMap((key) => {
+              const config = row[key]
+              return config
+                ? [
+                    [
+                      key,
+                      {
+                        account_id: config.accountId,
+                        template_id: config.templateId,
+                        variables: config.variables,
+                      },
+                    ],
+                  ]
+                : []
+            })
+          ),
           from: row.from ?? null,
           subject: row.subject,
           reply_to:

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict"
-import { describe, it } from "node:test"
+import { describe, it, test } from "node:test"
 
 import { WEBHOOK_EVENTS, type WebhookDelivery } from "./types"
 import {
   deliveryResult,
+  eventFieldExample,
+  webhookEventLabel,
+  webhookEventSample,
   isDeliveryFailed,
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
@@ -28,12 +31,9 @@ function delivery(patch: Partial<WebhookDelivery>): WebhookDelivery {
 }
 
 describe("WEBHOOK_EVENT_GROUPS", () => {
-  it("keeps the existing dashboard groups while REST also supports suppression events", () => {
+  it("includes every catalog event in the dashboard groups", () => {
     const grouped = WEBHOOK_EVENT_GROUPS.flatMap((group) => group.events)
-    // Wave 8 adds backend subscriptions without changing the dashboard UI.
-    const visible = WEBHOOK_EVENTS.filter(
-      (event) => !event.startsWith("suppression.")
-    )
+    const visible = WEBHOOK_EVENTS
     assert.deepEqual([...grouped].sort(), [...visible].sort())
   })
 })
@@ -100,4 +100,41 @@ describe("deliveries", () => {
     assert.equal(isDeliveryFailed(delivery({ status: 500 })), true)
     assert.equal(isDeliveryFailed(delivery({ status: 0 })), true)
   })
+})
+
+test("webhook groups cover the whole catalog exactly once, including suppressions", () => {
+  const events = WEBHOOK_EVENT_GROUPS.flatMap((group) => group.events)
+  assert.deepEqual(new Set(events), new Set(WEBHOOK_EVENTS))
+  assert.equal(events.length, WEBHOOK_EVENTS.length)
+  for (const channel of ["WhatsApp", "Messenger", "Instagram"])
+    assert.ok(
+      WEBHOOK_EVENT_GROUPS.some((group) => group.label.startsWith(channel))
+    )
+  assert.match(
+    webhookEventLabel("instagram.message.read"),
+    /^Instagram message read$/
+  )
+})
+test("every event has a schema-derived sample with nested channel content", () => {
+  for (const type of WEBHOOK_EVENTS) {
+    const sample = webhookEventSample(type)
+    assert.equal(sample.type, type)
+    assert.equal(typeof sample.data, "object")
+    assert.ok(Object.keys(sample.data as object).length)
+  }
+  const data = webhookEventSample("whatsapp.message.received").data as Record<
+    string,
+    unknown
+  >
+  assert.ok(data.message)
+  assert.ok(data.contact)
+  assert.deepEqual(
+    eventFieldExample({
+      type: "array",
+      description: "Values",
+      example: [],
+      items: { type: "string", description: "Value", example: "Ada" },
+    }),
+    ["Ada"]
+  )
 })

@@ -18,6 +18,7 @@ import {
   TemplateMenu,
   usePublishTemplate,
 } from "@/components/dashboard/templates/shared"
+import { PageTemplateEditorScreen } from "./page-editor"
 import { WhatsAppTemplateEditorScreen } from "@/components/dashboard/templates/whatsapp-editor"
 import { actionError } from "@/lib/action-error"
 import { templatePublishLabel } from "@/lib/dashboard/template"
@@ -52,7 +53,9 @@ export function TemplateEditor() {
   const Screen =
     item.channel === "whatsapp"
       ? WhatsAppTemplateEditorScreen
-      : TemplateEditorScreen
+      : item.channel === "messenger" || item.channel === "instagram"
+        ? PageTemplateEditorScreen
+        : TemplateEditorScreen
   return (
     <InstanceChannelConfiguration
       channel={!item.channel || item.channel === "email" ? "email" : "meta"}

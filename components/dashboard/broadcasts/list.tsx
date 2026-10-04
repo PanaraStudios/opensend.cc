@@ -268,7 +268,7 @@ export function BroadcastsView() {
                           Duplicate
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          disabled={item.channel === "whatsapp"}
+                          disabled={(item.channel ?? "email") !== "email"}
                           onClick={() => cloneAsTemplate(item)}
                         >
                           <LayoutTemplateIcon />

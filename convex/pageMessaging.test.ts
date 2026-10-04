@@ -301,9 +301,7 @@ test("inbound Page/IG messages create scoped identities, contacts and windows; p
   ).toBe(true)
   const events = await f.t.run((ctx) => ctx.db.query("events").collect())
   for (const channel of ["messenger", "instagram"])
-    expect(events.map((e) => e.type)).toContain(
-      `${channel}.message.received`
-    )
+    expect(events.map((e) => e.type)).toContain(`${channel}.message.received`)
   await project(
     f,
     pageEnvelope("messenger", {
@@ -520,6 +518,41 @@ test.each([551, 10, 2018278, 190, 4])(
     )
   }
 )
+test.each(["messenger", "instagram"] as const)(
+  "%s template drafts persist cleared quick replies and reject publishing until complete",
+  async (channel) => {
+    const f = await setup()
+    const response = await f.call("/templates", "POST", {
+      channel,
+      name: "Draft replies",
+      text: "Hello",
+      quick_replies: [{ title: "Yes", payload: "YES" }],
+    })
+    expect(response.status).toBe(201)
+    const { id } = await response.json()
+    const quick_replies = [{ title: "", payload: "" }]
+    expect(
+      (await f.call(`/templates/${id}`, "PATCH", { quick_replies })).status
+    ).toBe(200)
+    expect(await (await f.call(`/templates/${id}`)).json()).toMatchObject({
+      quick_replies,
+    })
+    expect((await f.call(`/templates/${id}/publish`, "POST", {})).status).toBe(
+      422
+    )
+    expect(
+      (
+        await f.call(`/templates/${id}`, "PATCH", {
+          quick_replies: [{ title: "Yes", payload: "YES" }],
+        })
+      ).status
+    ).toBe(200)
+    expect((await f.call(`/templates/${id}/publish`, "POST", {})).status).toBe(
+      200
+    )
+  }
+)
+
 test("local templates publish without Meta, substitute variables by alias/id and preserve the published copy", async () => {
   const f = await setup()
   for (const channel of ["messenger", "instagram"] as const) {
@@ -946,3 +979,78 @@ test("statuses resolved once in a batch remain monotonic when read precedes deli
   await project(f, event)
   expect((await f.message(id))?.status).toBe("read")
 })
+
+for (const channel of ["messenger", "instagram"] as const) {
+  test(`dashboard ${channel} tests use the published copy and existing conversation window`, async () => {
+    const f = await setup()
+    const templateId = await f.owner.client.mutation(api.templates.create, {
+      organizationId: f.owner.team,
+      channel,
+      name: "Test greeting",
+      content: {
+        text: "Hi {{{name}}}",
+        quick_replies: [{ title: "Thanks", payload: "THANKS" }],
+      },
+    })
+    const accounts = await f.owner.client.query(api.channels.senders.list, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: { cursor: null, numItems: 10 },
+    })
+    const row = accounts.page.find((row) => row.kind === "account")!
+    const args = {
+      organizationId: f.owner.team,
+      templateId,
+      from: row.kind === "account" ? row.account._id : "",
+      to: channel === "messenger" ? PSID : IGSID,
+      variables: { name: "Ada" },
+    }
+    await expect(
+      f.owner.client.mutation(api.messages.sendTest, args)
+    ).rejects.toThrow("Publish")
+    await f.owner.client.mutation(api.templates.publish, { id: templateId })
+    await f.owner.client.mutation(api.templates.update, {
+      id: templateId,
+      content: { text: "Unpublished edit" },
+    })
+    expect(
+      await f.owner.client.query(api.messages.testDefinition, {
+        organizationId: f.owner.team,
+        templateId,
+      })
+    ).toEqual({ variables: [{ key: "name", label: "Variable {{{name}}}" }] })
+    const listed = await f.owner.client.query(api.templates.list, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+    expect(
+      listed.page.find((template) => template._id === templateId)?.content
+    ).toMatchObject({
+      text: "Unpublished edit",
+      quick_replies: [{ title: "Thanks", payload: "THANKS" }],
+    })
+    const sent = await f.owner.client.mutation(api.messages.sendTest, args)
+    expect(await f.message(sent)).toMatchObject({
+      channel,
+      source: "dashboard",
+      status: "queued",
+      preview: "Hi Ada",
+    })
+    await expect(
+      f.outsider.client.mutation(api.messages.sendTest, {
+        ...args,
+        organizationId: f.outsider.team,
+      })
+    ).rejects.toThrow("Template not found")
+    await f.t.run(async (ctx) => {
+      const message = await ctx.db.get("channelMessages", sent)
+      await ctx.db.patch("conversations", message!.conversationId, {
+        windowExpiresAt: Date.now() - 1,
+      })
+    })
+    await expect(
+      f.owner.client.mutation(api.messages.sendTest, args)
+    ).rejects.toThrow("window")
+  })
+}

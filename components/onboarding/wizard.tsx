@@ -70,7 +70,7 @@ const copy: Record<
     label: "Choose channels",
     title: "Choose channels",
     description:
-      "Choose what this instance uses. You can add either channel later.",
+      "Choose what this instance uses. You can add email or Meta channels later.",
   },
   meta: {
     label: "Meta app",

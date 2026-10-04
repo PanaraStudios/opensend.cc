@@ -1,5 +1,5 @@
 import { broadcastChannels, validateBroadcastSend } from "./broadcastChannels"
-import { rowChannel } from "../lib/channels"
+import { BROADCAST_CAPABILITIES, rowChannel } from "../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -44,6 +44,7 @@ import { TEMPLATE_BODY_LIMIT } from "./templates"
 export const fields = {
   channel: v.optional(broadcastChannel),
   whatsapp: v.optional(whatsappBroadcast),
+  messaging: v.optional(whatsappBroadcast),
   name: v.optional(v.string()),
   subject: v.optional(v.string()),
   preview: v.optional(v.string()),
@@ -78,6 +79,10 @@ async function check(
   organizationId: string,
   input: BroadcastInput
 ) {
+  const configKey = BROADCAST_CAPABILITIES[rowChannel(input)].configKey
+  for (const key of ["whatsapp", "messaging"] as const)
+    if (input[key] && key !== configKey)
+      throw new ConvexError("Choose settings for this broadcast’s channel")
   for (const key of ["name", "subject", "preview", "from", "replyTo"] as const)
     if ((input[key]?.length ?? 0) > (key === "subject" ? 998 : 1000))
       throw new ConvexError(`${key} is too long`)
@@ -184,6 +189,7 @@ export async function duplicateBroadcast(
     name: `${row.name || "Untitled"} copy`,
     channel: row.channel,
     whatsapp: row.whatsapp,
+    messaging: row.messaging,
     subject: row.subject,
     preview: row.preview,
     from: row.from,
@@ -326,7 +332,7 @@ export function broadcastPage(
     search?: string
     status?: Doc<"broadcasts">["status"]
     audience?: string
-    channel?: "email" | "whatsapp"
+    channel?: Infer<typeof broadcastChannel>
   } & {
     organizationId: string
     paginationOpts: PaginationOptions
@@ -429,7 +435,7 @@ export const get = query({
 export async function recipientPage(
   ctx: QueryCtx,
   row: Pick<Doc<"broadcasts">, "organizationId" | "segmentId" | "topicId"> & {
-    channel?: "email" | "whatsapp"
+    channel?: Infer<typeof broadcastChannel>
   },
   cursor: string | null,
   before?: number,

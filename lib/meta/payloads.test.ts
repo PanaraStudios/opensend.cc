@@ -1,7 +1,24 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { whatsappPayload } from "./payloads"
+import {
+  whatsappPayload,
+  pageMessageTextLimit,
+  pageMessageContent,
+} from "./payloads"
 const to = "+16505551234"
+test("editor text limits match send validation for Messenger and Instagram", () => {
+  for (const channel of ["messenger", "instagram"] as const) {
+    const limit = pageMessageTextLimit(channel)
+    assert.equal(limit, channel === "instagram" ? 1000 : 2000)
+    assert.doesNotThrow(() =>
+      pageMessageContent({ text: "x".repeat(limit) }, channel)
+    )
+    assert.throws(
+      () => pageMessageContent({ text: "x".repeat(limit + 1) }, channel),
+      /at most/
+    )
+  }
+})
 test("text previews, normalized recipients, replies and type inference use the Cloud API shape", () => {
   assert.deepEqual(
     whatsappPayload({
