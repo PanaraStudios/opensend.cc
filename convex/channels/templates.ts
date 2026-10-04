@@ -147,10 +147,17 @@ export async function renderedChannelTemplate(
           cache
         )
       : null
+  const preview = message.preview.trim()
+  const fallback =
+    preview &&
+    preview !== string(ref.name) &&
+    !/^\[template:.*\]$|^Template: /i.test(preview)
+      ? preview
+      : "Template content unavailable"
   return components
     ? renderTemplate(components, ref.components)
     : {
-        body: `Template: ${string(ref.name) || message.preview.replace(/^\[template: (.*)\]$/, "$1")}`,
+        body: fallback,
         buttons: [],
       }
 }

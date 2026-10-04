@@ -709,7 +709,7 @@ export function screensTourTests(state: TourState) {
               )
               if (screen.name.startsWith("messages-")) {
                 await expect(page.locator("body")).not.toContainText(
-                  /\[template:|\+BSUID|\+US\./
+                  /\[template:|Template: (catalog_example|footer_example|call_permission|hello_world)|\+BSUID|\+US\./
                 )
                 if (width === 390) {
                   const labels = page.locator(

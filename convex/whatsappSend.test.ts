@@ -219,7 +219,7 @@ test("window rejects every free-form type while templates are allowed; an inboun
   )
   expect(content?.rendered).toBeUndefined()
   expect(await f.member.client.query(api.messages.get, { id })).toMatchObject({
-    rendered: { body: "Template: hello_world", buttons: [] },
+    rendered: { body: "Template content unavailable", buttons: [] },
   })
   await project(f, incoming())
   const text = await send(f)
