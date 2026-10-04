@@ -1,12 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import {
-  expect,
-  test,
-  type ConsoleMessage,
-  type Page,
-  type Route,
-} from "@playwright/test"
+import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { backendRows, client, importFixture } from "./ses-fixtures"
@@ -431,18 +425,58 @@ export function screensTourTests(state: TourState) {
       ).toBeVisible()
     })
     route("broadcast-review", `/broadcasts/${draftId}/edit`, async (p) => {
-      let release!: () => void
-      const pending = new Promise<void>((resolve) => {
-        release = resolve
+      // React's Convex client sends actions on its existing WebSocket.
+      // Hold the request itself so this verifies a real pending action.
+      await p.evaluate(() => {
+        const originalSend = WebSocket.prototype.send
+        const held: (() => void)[] = []
+        const qaWindow = window as Window & {
+          qaAudienceHold?: { pending: () => number; release: () => void }
+        }
+        qaWindow.qaAudienceHold = {
+          pending: () => held.length,
+          release: () => {
+            WebSocket.prototype.send = originalSend
+            for (const send of held.splice(0)) send()
+            delete qaWindow.qaAudienceHold
+          },
+        }
+        WebSocket.prototype.send = function (this: WebSocket, data) {
+          if (typeof data === "string") {
+            try {
+              const frame: unknown = JSON.parse(data)
+              if (
+                frame !== null &&
+                typeof frame === "object" &&
+                "type" in frame &&
+                frame.type === "Action" &&
+                "udfPath" in frame &&
+                frame.udfPath === "broadcasts:review"
+              ) {
+                held.push(() => originalSend.call(this, data))
+                return
+              }
+            } catch {
+              // Other socket traffic keeps its normal transport behavior.
+            }
+          }
+          originalSend.call(this, data)
+        }
       })
-      const holdAudience = async (route: Route) => {
-        const body = route.request().postDataJSON() as { path?: string } | null
-        if (body?.path === "broadcasts:review") await pending
-        await route.continue()
-      }
-      await p.route("**/api/action", holdAudience)
       try {
         await p.getByRole("button", { name: "Review", exact: true }).click()
+        await expect
+          .poll(() =>
+            p.evaluate(
+              () =>
+                (
+                  window as Window & {
+                    qaAudienceHold?: { pending: () => number }
+                  }
+                ).qaAudienceHold?.pending() ?? 0
+            )
+          )
+          .toBe(1)
         await expect(p.getByTestId("review-check-recipients")).toHaveText(
           "Loading contacts…"
         )
@@ -452,12 +486,16 @@ export function screensTourTests(state: TourState) {
         )
         await expect(p.getByTestId("review-send")).toBeDisabled()
       } finally {
-        release()
+        await p.evaluate(() =>
+          (
+            window as Window & { qaAudienceHold?: { release: () => void } }
+          ).qaAudienceHold?.release()
+        )
       }
-      await expect(
-        p.getByTestId("review-check-recipients")
-      ).not.toHaveAttribute("data-level", "loading")
-      await p.unroute("**/api/action", holdAudience)
+      await expect(p.getByTestId("review-check-recipients")).toHaveAttribute(
+        "data-level",
+        "ok"
+      )
       await expect(
         p.getByText("Subject line added", { exact: true })
       ).toBeVisible()
