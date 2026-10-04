@@ -168,11 +168,14 @@ export function WorkflowCanvas<Node extends { key: string }>({
     setFitted((count) => count + 1)
   }, [stacked])
   /* Once the fitted zoom has rendered, centre the first card (the trigger or
-     entry menu): wide graphs branch unevenly, so the middle of the canvas isn't
-     where a flow starts. */
+     IVR entry menu): wide graphs branch unevenly, so the middle of the canvas
+     isn't where a flow starts. */
   React.useLayoutEffect(() => {
     const element = canvas.current
-    const first = graph.current?.firstElementChild
+    /* Cards render parent-first, so the first one is where the flow starts. */
+    const first =
+      graph.current?.querySelector("[data-flow-card]") ??
+      graph.current?.firstElementChild
     if (!element || !fitted) return
     element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
     if (first) {
@@ -308,6 +311,7 @@ export function WorkflowCard({
   return (
     <div
       data-testid={testId}
+      data-flow-card=""
       className={cn(
         "pointer-events-auto flex w-96 max-w-full cursor-auto flex-col gap-3 rounded-xl border bg-card p-3 shadow-card",
         tone === "warning" ? "border-warning" : "border-border",
