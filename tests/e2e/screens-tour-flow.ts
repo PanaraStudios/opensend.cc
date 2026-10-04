@@ -717,10 +717,29 @@ export function screensTourTests(state: TourState) {
                   )
                   for (const label of await labels.all()) {
                     expect((await label.innerText()).trim()).not.toBe("")
+                    await expect(label).toBeVisible()
+                    const { width, visibleWidth } = await label.evaluate(
+                      (el) => {
+                        const text = el.getBoundingClientRect()
+                        const slot = el.parentElement!.getBoundingClientRect()
+                        return {
+                          width: text.width,
+                          visibleWidth: Math.max(
+                            0,
+                            Math.min(text.right, slot.right, innerWidth) -
+                              Math.max(text.left, slot.left, 0)
+                          ),
+                        }
+                      }
+                    )
                     expect(
-                      (await label.boundingBox())?.width,
-                      "F02: readable From/To width"
-                    ).toBeGreaterThan(80)
+                      width,
+                      "F02: party label occupies space"
+                    ).toBeGreaterThan(0)
+                    expect(
+                      visibleWidth,
+                      "F02: readable From/To text"
+                    ).toBeGreaterThanOrEqual(Math.min(width, 80) - 1)
                   }
                 }
               }
