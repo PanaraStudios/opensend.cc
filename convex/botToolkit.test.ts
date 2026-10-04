@@ -671,6 +671,84 @@ test("gateway declares attached tools, validates scalar save_field and durably d
     await f.t.run((ctx) => ctx.db.get("voiceBots", bot.id as Id<"voiceBots">))
   ).toMatchObject({ customToolIds: [], knowledgeBaseIds: [] })
 })
+
+test("knowledge tool timestamps include time before the bot joined the call", async () => {
+  const f = await setup()
+  const now = Date.now()
+  const bot = await f.owner.client.action(api.voice.resources.dashboardWrite, {
+    organizationId: f.organizationId,
+    kind: "bot",
+    body: JSON.stringify({
+      name: "Transferred bot",
+      provider: "gemini",
+      credentialId: f.credentialId,
+      knowledgeBaseIds: [f.baseId],
+    }),
+  })
+  const callId = await f.t.run(async (ctx) => {
+    const row = (await ctx.db.get("voiceBots", bot.id as Id<"voiceBots">))!
+    const {
+      _id,
+      _creationTime,
+      organizationId,
+      createdAt,
+      updatedAt,
+      ...config
+    } = row
+    void [_creationTime, createdAt, updatedAt]
+    return ctx.db.insert("calls", {
+      organizationId,
+      accountId: f.account,
+      botId: _id,
+      botConfig: config,
+      botActive: true,
+      connectedAt: now - 20000,
+      botStartedAt: now - 10000,
+      observedAt: now,
+      direction: "inbound",
+      status: "connected",
+      mode: "gateway",
+    })
+  })
+  const prepared = await f.t.mutation(internal.voice.toolkitState.begin, {
+    nonce: crypto.randomUUID(),
+    expiresAt: now + 30000,
+    data: {
+      callId,
+      organizationId: f.organizationId,
+      toolCall: {
+        id: "search-1",
+        name: "search_knowledge",
+        arguments: { query: "Hours" },
+      },
+    },
+  })
+  await f.t.mutation(internal.voice.toolkitState.finish, {
+    logId: prepared.logId!,
+    result: JSON.stringify({ ok: true, result: { data: [] } }),
+    latencyMs: 250,
+  })
+  const transcript = await f.owner.client.query(
+    internal.voice.resources.transcript,
+    {
+      organizationId: f.organizationId,
+      id: callId,
+      limit: 100,
+    }
+  )
+  expect(transcript.data).toEqual([
+    expect.objectContaining({
+      kind: "media",
+      timeline: "call",
+      timestampMs: 20250,
+    }),
+    expect.objectContaining({
+      kind: "tool",
+      timeline: "call",
+      timestampMs: 20000,
+    }),
+  ])
+})
 test("toolkit REST request and response bodies validate against the published OpenAPI contract", async () => {
   const f = await setup()
   const contract = (await SwaggerParser.dereference(

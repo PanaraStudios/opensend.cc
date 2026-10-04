@@ -491,9 +491,7 @@ export const event = internalMutation({
       kind: data.type === "transcript" ? "transcript" : "media",
       // Transcript lines already include the gateway session offset.
       timestampMs:
-        data.type === "transcript" &&
-        Number.isFinite(supplied) &&
-        supplied >= 0
+        data.type === "transcript" && Number.isFinite(supplied) && supplied >= 0
           ? Math.round(supplied)
           : callTimestamp(call, Number(data.timestamp)),
       timeline: "call",
@@ -513,7 +511,7 @@ export const event = internalMutation({
   },
 })
 /** Milliseconds since the call was answered. */
-function callTimestamp(call: Doc<"calls">, at = Date.now()) {
+export function callTimestamp(call: Doc<"calls">, at = Date.now()) {
   const origin = call.connectedAt ?? call.botStartedAt ?? call._creationTime
   const delta = at - origin
   return Number.isFinite(delta) ? Math.max(0, Math.round(delta)) : 0
