@@ -167,11 +167,20 @@ export function WorkflowCanvas<Node extends { key: string }>({
     setZoom(fitZoom(natural, element.clientWidth))
     setFitted((count) => count + 1)
   }, [stacked])
-  /* Centre the fitted graph once its zoom has rendered. */
+  /* Once the fitted zoom has rendered, centre the first card (the trigger or
+     entry menu): wide graphs branch unevenly, so the middle of the canvas isn't
+     where a flow starts. */
   React.useLayoutEffect(() => {
     const element = canvas.current
-    if (element && fitted)
-      element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+    const first = graph.current?.firstElementChild
+    if (!element || !fitted) return
+    element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+    if (first) {
+      const card = first.getBoundingClientRect(),
+        frame = element.getBoundingClientRect()
+      element.scrollLeft +=
+        card.left + card.width / 2 - (frame.left + frame.width / 2)
+    }
   }, [fitted])
 
   /* Dragging the background moves the canvas. The graph lets presses through
