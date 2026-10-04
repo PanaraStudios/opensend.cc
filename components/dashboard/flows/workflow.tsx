@@ -99,7 +99,9 @@ export function StepList<Node extends { key: string }>({
                         )}
                       />
                       <Connector className="h-4" />
-                      <Badge variant="secondary">{branch.label}</Badge>
+                      {branch.label ? (
+                        <Badge variant="secondary">{branch.label}</Badge>
+                      ) : null}
                       <StepList
                         {...props}
                         steps={branch.steps}
@@ -172,7 +174,12 @@ export function WorkflowCanvas<Node extends { key: string }>({
           props.stacked && "touch-auto"
         )}
         onPointerDown={(event) => {
-          if (event.button !== 0 || event.target !== event.currentTarget) return
+          if (
+            props.stacked ||
+            event.button !== 0 ||
+            event.target !== event.currentTarget
+          )
+            return
           drag.current = { x: event.clientX, y: event.clientY }
           event.currentTarget.setPointerCapture(event.pointerId)
         }}

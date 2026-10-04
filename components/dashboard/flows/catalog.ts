@@ -7,8 +7,13 @@ export type FlowSlot = {
 }
 export type FlowBranch<Node> = {
   id: string
-  label: string
+  label?: string
   steps: readonly Node[]
+}
+export type FlowPresentation = {
+  icon: LucideIcon
+  title: string
+  summary: string | null
 }
 export type FlowNodeProps<Node, Context> = {
   node: Node
@@ -25,9 +30,14 @@ export type FlowNodeKind<Node, Context, Kind extends string = string> = {
   addAfter: (node: Node) => readonly Kind[]
   Editor: ComponentType<FlowNodeProps<Node, Context>>
   /** Existing consumers can keep editing inline on the selected card. */
-  Card?: ComponentType<FlowNodeProps<Node, Context> & { editor: ReactNode }>
+  Card?: ComponentType<
+    FlowNodeProps<Node, Context> & {
+      editor: ReactNode
+      presentation: FlowPresentation
+    }
+  >
   title?: (node: Node, context: Context) => string
-  selectKey?: (node: Node) => string
+  selectKey?: (node: Node, context: Context) => string
 }
 export type FlowCatalog<Node, Context, Kind extends string = string> = {
   kind: (node: Node) => Kind

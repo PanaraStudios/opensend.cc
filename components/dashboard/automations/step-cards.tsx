@@ -31,11 +31,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { EventFormDialog } from "@/components/dashboard/automations/events"
-import {
-  EventIcon,
-  STEP_ICONS,
-} from "@/components/dashboard/automations/shared"
+import { EventIcon } from "@/components/dashboard/automations/shared"
 import { WorkflowCard } from "@/components/dashboard/flows/workflow"
+import type { FlowPresentation } from "@/components/dashboard/flows/catalog"
 import {
   CopyButton,
   MoreMenu,
@@ -52,9 +50,7 @@ import {
   operatorTakesValue,
   RULE_OPERATOR_LABELS,
   ruleError,
-  stepSummary,
   stepTasks,
-  stepTitle,
   UPDATABLE_CONTACT_FIELDS,
 } from "@/lib/dashboard/automation"
 import { formatVariable } from "@/lib/dashboard/email-variables"
@@ -322,6 +318,7 @@ export function StepCard({
   onChange,
   onRemove,
   editor,
+  presentation,
 }: {
   automation: Automation
   step: AutomationStep
@@ -331,6 +328,7 @@ export function StepCard({
   onChange: (step: AutomationStep) => void
   onRemove: () => void
   editor?: React.ReactNode
+  presentation: FlowPresentation
 }) {
   const catalog = useEventCatalog()
   const errors = referenceErrors(
@@ -346,9 +344,9 @@ export function StepCard({
   return (
     <WorkflowCard
       data-testid={`workflow-node-${step.key}`}
-      icon={STEP_ICONS[step.type]}
-      title={stepTitle(step)}
-      summary={selected || !context ? null : stepSummary(step, context)}
+      icon={presentation.icon}
+      title={presentation.title}
+      summary={selected || !context ? null : presentation.summary}
       tone={tasks.length > 0 ? "warning" : undefined}
       onSelect={locked ? undefined : onSelect}
       actions={

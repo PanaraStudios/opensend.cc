@@ -84,13 +84,20 @@ export function FlowNodeEditor<Node, Context, Kind extends string>({
   catalog,
   node,
   context,
+  problems = [],
 }: {
   catalog: FlowCatalog<Node, Context, Kind>
   node: Node
   context: Context
+  problems?: readonly string[]
 }) {
   const Editor = catalog.entries[catalog.kind(node)].Editor
-  return <Editor node={node} context={context} selected onSelect={() => {}} />
+  return (
+    <>
+      {problems.length ? <FieldError>{problems.join("; ")}</FieldError> : null}
+      <Editor node={node} context={context} selected onSelect={() => {}} />
+    </>
+  )
 }
 
 export function FlowEditor<
@@ -138,12 +145,22 @@ export function FlowEditor<
           node,
           context,
           selected: selected === node.key,
-          onSelect: () => onSelect(kind.selectKey?.(node) ?? node.key),
+          onSelect: () => onSelect(kind.selectKey?.(node, context) ?? node.key),
         }
         if (kind.Card) {
           const Card = kind.Card
           const Editor = kind.Editor
-          return <Card {...props} editor={<Editor {...props} />} />
+          return (
+            <Card
+              {...props}
+              editor={<Editor {...props} />}
+              presentation={{
+                icon: kind.icon,
+                title: kind.title?.(node, context) ?? kind.label,
+                summary: kind.summary(node, context),
+              }}
+            />
+          )
         }
         const errors = problems?.(node) ?? []
         return (

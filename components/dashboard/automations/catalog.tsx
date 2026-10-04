@@ -45,7 +45,7 @@ function entry(type: AutomationStepType): Entry {
         onChange={context.onChange}
       />
     ),
-    Card: ({ node, context, selected, onSelect, editor }) => (
+    Card: ({ node, context, selected, onSelect, editor, presentation }) => (
       <StepCard
         automation={context.automation}
         step={node}
@@ -55,6 +55,7 @@ function entry(type: AutomationStepType): Entry {
         onChange={context.onChange}
         onRemove={() => context.onRemove(node)}
         editor={editor}
+        presentation={presentation}
       />
     ),
   }
