@@ -707,6 +707,17 @@ export function screensTourTests(state: TourState) {
                 0,
                 { timeout: 15_000 }
               )
+              if (screen.name === "playground-inbox") {
+                for (const row of await page
+                  .getByTestId("conversation")
+                  .all()) {
+                  await expect(
+                    row.locator('[data-slot="item-description"]')
+                  ).not.toContainText(
+                    /^\s*(?:You:\s*)?(?:hello_world|catalog_example|footer_example|call_permission)\s*$|\[template:|Template: /
+                  )
+                }
+              }
               if (screen.name.startsWith("messages-")) {
                 await expect(page.locator("body")).not.toContainText(
                   /\[template:|Template: (catalog_example|footer_example|call_permission|hello_world)|\+BSUID|\+US\./

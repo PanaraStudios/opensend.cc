@@ -117,6 +117,53 @@ const listItem = v.object({
   handle: v.string(),
 })
 
+/** Historical thread summaries may still contain a template name. Read only
+ * the newest outbound header, then hydrate its body with the shared renderer.
+ * Never substitute an older send for a thread's current preview. */
+async function conversationPreview(
+  ctx: QueryCtx,
+  conversation: Doc<"conversations">,
+  cache: TemplatePageCache
+): Promise<Doc<"conversations">> {
+  if (
+    conversation.channel === "email" ||
+    conversation.lastDirection !== "outbound"
+  )
+    return conversation
+  const message = await ctx.db
+    .query("channelMessages")
+    .withIndex("by_conversationId_and_direction", (q) =>
+      q.eq("conversationId", conversation._id).eq("direction", "outbound")
+    )
+    .order("desc")
+    .first()
+  if (
+    message?.organizationId !== conversation.organizationId ||
+    message.type !== "template" ||
+    message.preview !== conversation.lastPreview
+  )
+    return conversation
+  const [content, account] = await Promise.all([
+    ctx.db
+      .query("channelMessageContents")
+      .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+      .unique(),
+    conversation.accountId
+      ? ctx.db.get("channelAccounts", conversation.accountId)
+      : null,
+  ])
+  const rendered = await renderedChannelTemplate(
+    ctx,
+    message,
+    content,
+    account,
+    cache
+  )
+  return rendered
+    ? { ...conversation, lastPreview: rendered.body.slice(0, 1000) }
+    : conversation
+}
+
 export const list = query({
   args: { ...listFilters.fields, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(listItem),
@@ -144,10 +191,14 @@ export const list = query({
       { rows: 512, bytes: 2 * 1024 * 1024 },
       search
     )
+    const templateCache: TemplatePageCache = new Map()
     const page = await Promise.all(
       result.page.map(async (conversation) => {
-        const { name, handle } = await party(ctx, conversation)
-        return { conversation, name, handle }
+        const [{ name, handle }, rendered] = await Promise.all([
+          party(ctx, conversation),
+          conversationPreview(ctx, conversation, templateCache),
+        ])
+        return { conversation: rendered, name, handle }
       })
     )
     return { ...result, page }
@@ -202,6 +253,7 @@ export const contactHistory = query({
     const result = await mergedStream(sources, ["_creationTime"]).paginate(
       paginationOpts
     )
+    const templateCache: TemplatePageCache = new Map()
     const page = await Promise.all(
       result.page.map(async (conversation) => {
         if (conversation.organizationId !== organizationId) return null
@@ -213,7 +265,11 @@ export const contactHistory = query({
         ])
         if (!latest) return null
         return {
-          conversation,
+          conversation: await conversationPreview(
+            ctx,
+            conversation,
+            templateCache
+          ),
           accountHandle:
             account?.organizationId === organizationId
               ? account.handle
