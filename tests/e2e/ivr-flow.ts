@@ -122,25 +122,55 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
     await owner
       .getByLabel("Prompt text", { exact: true })
       .fill("Press one for support")
-    await owner.getByRole("button", { name: "Add menu", exact: true }).click()
+    const main = owner.getByTestId("workflow-node-menu:main")
+    await main
+      .getByRole("button", { name: "Add option · Press 1", exact: true })
+      .click()
+    await owner.getByRole("menuitem", { name: "New menu", exact: true }).click()
     await owner.getByLabel("Menu name", { exact: true }).fill("Support")
     await owner
       .getByLabel("Prompt text", { exact: true })
       .fill("Leave a message")
-    await owner.getByRole("button", { name: "Main", exact: true }).click()
+    await expect(
+      owner.getByText("Press 1", { exact: true }).first()
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("button", { name: "Support", exact: true })
+    ).toHaveCount(1)
+    await owner.getByRole("button", { name: "Support", exact: true }).click()
     const editor = owner.getByRole("complementary", {
       name: "Flow editor",
       exact: true,
     })
-    await editor
-      .getByRole("button", { name: "Add option", exact: true })
+    const support = owner
+      .locator('[data-testid^="workflow-node-menu:"]')
+      .filter({
+        has: owner.getByRole("button", { name: "Support", exact: true }),
+      })
+    await support
+      .getByRole("button", { name: "Add option · Press 1", exact: true })
       .click()
-    await editor
-      .getByRole("combobox", { name: "Action for 1", exact: true })
+    await owner
+      .getByRole("menuitem", { name: "Go to menu", exact: true })
       .click()
-    await owner.getByRole("option", { name: "Submenu", exact: true }).click()
     await editor.getByRole("combobox", { name: "Submenu", exact: true }).click()
-    await owner.getByRole("option", { name: "Support", exact: true }).click()
+    await owner.getByRole("option", { name: "Main", exact: true }).click()
+    const loop = owner.getByRole("button", { name: "Go to Main", exact: true })
+    await expect(loop).toHaveCount(1)
+    await loop.click()
+    await expect(editor.getByLabel("Menu name", { exact: true })).toHaveValue(
+      "Main"
+    )
+    await owner.getByRole("button", { name: "Support", exact: true }).click()
+    await editor
+      .getByRole("button", { name: "Remove menu", exact: true })
+      .click()
+    const removal = owner.getByRole("alertdialog", {
+      name: "Remove menu",
+      exact: true,
+    })
+    await expect(removal).toContainText("Main · Press 1")
+    await removal.getByRole("button", { name: "Cancel", exact: true }).click()
     await owner.getByRole("button", { name: "Validate", exact: true }).click()
     await expect(owner.getByText("IVR is valid", { exact: true })).toBeVisible()
     await owner.getByRole("button", { name: "Save", exact: true }).click()
@@ -155,6 +185,31 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
       .first()
       .click()
     await playgroundShots(owner, "playground-ivr-destination-selected")
+    const viewport = owner.viewportSize()
+    await owner.setViewportSize({ width: 390, height: 960 })
+    const mobileEditor = owner.getByRole("dialog", {
+      name: "Edit call flow",
+      exact: true,
+    })
+    await mobileEditor
+      .getByRole("button", { name: "Close", exact: true })
+      .click()
+    await expect(owner.getByTestId("workflow")).toBeVisible()
+    await expect
+      .poll(() =>
+        owner.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth
+        )
+      )
+      .toBe(true)
+    await owner.getByRole("button", { name: "Go to Main", exact: true }).click()
+    await expect(
+      mobileEditor.getByLabel("Menu name", { exact: true })
+    ).toHaveValue("Main")
+    await mobileEditor
+      .getByRole("button", { name: "Close", exact: true })
+      .click()
+    if (viewport) await owner.setViewportSize(viewport)
     await owner.getByRole("button", { name: "Test IVR", exact: true }).click()
     const tester = owner.getByRole("dialog", { name: "Test IVR", exact: true })
     const backend = await client(owner)
