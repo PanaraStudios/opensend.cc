@@ -553,6 +553,11 @@ export function screensTourTests(
               await expect(page.locator("html")).toHaveClass(
                 new RegExp(`\\b${theme}\\b`)
               )
+              // Workspace bootstrap uses plain text, before page skeletons mount.
+              await expect(page.locator("body")).not.toContainText(
+                "Loading your account",
+                { timeout: 20_000 }
+              )
               // Wait for reactive lists/details to load, not just server markup.
               await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(
                 0,
