@@ -301,6 +301,17 @@ export function screensTourTests(state: TourState) {
           subject: "Support update",
           html: "<p>Thanks for contacting support.</p>",
           text: "Thanks for contacting support.",
+          ...(channel !== "email"
+            ? {
+                content: {
+                  text: "Thanks for contacting support.",
+                  quick_replies: [
+                    { title: "Support hours", payload: "support" },
+                    { title: "Contact support", payload: "support" },
+                  ],
+                },
+              }
+            : {}),
         })
         templates.push({ _id: id, channel } as Doc<"templates">)
       }
