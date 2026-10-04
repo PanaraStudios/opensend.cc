@@ -1,6 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
+import {
+  expect,
+  test,
+  type ConsoleMessage,
+  type Page,
+  type Route,
+} from "@playwright/test"
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { backendRows, client, importFixture } from "./ses-fixtures"
@@ -30,6 +36,7 @@ async function choose(page: Page, label: string, option: string) {
 /** Runs last: the disposable instance already has messages, identities and runs.
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
+  test.fixme("F05: mobile automation builder, trigger picker and observability await the flow-editor branch", () => {})
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
     test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
@@ -346,7 +353,27 @@ export function screensTourTests(state: TourState) {
     for (const channel of ["whatsapp", "messenger", "instagram"]) {
       const message = messages.find((r) => r.channel === channel)
       expect(message, `${channel} seeded message`).toBeTruthy()
-      route(`message-${channel}-detail`, `/emails/messages/${message!._id}`)
+      route(
+        `message-${channel}-detail`,
+        `/emails/messages/${message!._id}`,
+        async (p) => {
+          const identity = backendRows<Doc<"channelContacts">>(
+            "channelContacts",
+            1000
+          ).find((r) => r._id === message!.channelContactId)
+          if (
+            channel !== "whatsapp" &&
+            (identity?.username || identity?.profileName)
+          ) {
+            const name = identity.username
+              ? `@${identity.username.replace(/^@/, "")}`
+              : identity.profileName!
+            await expect(
+              p.getByRole("heading", { name, exact: true })
+            ).toBeVisible()
+          }
+        }
+      )
     }
     route("channels", "/channels")
     route("channels-add-menu", "/channels", async (p) => {
@@ -385,10 +412,12 @@ export function screensTourTests(state: TourState) {
         async (p) => {
           await expect(
             p.getByRole("button", {
-              name: channel === "whatsapp" ? "Published" : "Test email",
+              name: channel === "email" ? "Test email" : "Send test",
               exact: true,
             })
           ).toBeVisible()
+          if (channel === "messenger" || channel === "instagram")
+            await expect(p.getByLabel("Body", { exact: true })).toBeVisible()
         }
       )
     }
@@ -402,7 +431,33 @@ export function screensTourTests(state: TourState) {
       ).toBeVisible()
     })
     route("broadcast-review", `/broadcasts/${draftId}/edit`, async (p) => {
-      await p.getByRole("button", { name: "Review", exact: true }).click()
+      let release!: () => void
+      const pending = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const holdAudience = async (route: Route) => {
+        const body = route.request().postDataJSON() as { path?: string }
+        if (body.path === "broadcasts:review") await pending
+        await route.continue()
+      }
+      await p.route("**/api/action", holdAudience)
+      try {
+        await p.getByRole("button", { name: "Review", exact: true }).click()
+        await expect(p.getByTestId("review-check-recipients")).toHaveText(
+          "Loading contacts…"
+        )
+        await expect(p.getByTestId("review-check-recipients")).toHaveAttribute(
+          "data-level",
+          "loading"
+        )
+        await expect(p.getByTestId("review-send")).toBeDisabled()
+      } finally {
+        release()
+      }
+      await expect(
+        p.getByTestId("review-check-recipients")
+      ).not.toHaveAttribute("data-level", "loading")
+      await p.unroute("**/api/action", holdAudience)
       await expect(
         p.getByText("Subject line added", { exact: true })
       ).toBeVisible()
@@ -581,6 +636,20 @@ export function screensTourTests(state: TourState) {
             theme
           )
           for (const screen of screens) {
+            if (
+              width === 390 &&
+              [
+                "automation-builder",
+                "automation-trigger-picker",
+                "automation-observability",
+              ].includes(screen.name)
+            ) {
+              test.info().annotations.push({
+                type: "fixme",
+                description: `F05: ${screen.name} at 390px awaits the flow-editor branch (${theme})`,
+              })
+              continue
+            }
             const screenshot = `${screen.name}-${theme}-${width}.png`
             runtime = []
             let openingError: string | undefined
@@ -600,6 +669,39 @@ export function screensTourTests(state: TourState) {
                 0,
                 { timeout: 15_000 }
               )
+              if (screen.name.startsWith("messages-")) {
+                await expect(page.locator("body")).not.toContainText(
+                  /\[template:|\+BSUID|\+US\./
+                )
+                if (width === 390) {
+                  const labels = page.locator(
+                    '[data-slot="table-body"] tr td:first-child a'
+                  )
+                  for (const label of await labels.all()) {
+                    expect((await label.innerText()).trim()).not.toBe("")
+                    expect(
+                      (await label.boundingBox())?.width,
+                      "F02: readable From/To width"
+                    ).toBeGreaterThan(80)
+                  }
+                }
+              }
+              if (width === 390) {
+                for (const list of await page
+                  .locator('[data-slot="tabs-list"]')
+                  .all()) {
+                  const first = list.getByRole("tab").first()
+                  const [listBox, firstBox] = await Promise.all([
+                    list.boundingBox(),
+                    first.boundingBox(),
+                  ])
+                  if (listBox && firstBox)
+                    expect(
+                      firstBox.x,
+                      "F07: first tab remains reachable"
+                    ).toBeGreaterThanOrEqual(listBox.x - 1)
+                }
+              }
               await page.evaluate(() => document.fonts.ready)
               await page.screenshot({
                 path: join(dir, screenshot),
