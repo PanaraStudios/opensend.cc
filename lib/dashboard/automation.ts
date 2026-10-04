@@ -1,5 +1,5 @@
 import { CHANNEL_SEND_STEPS, CHANNELS, channelForSendStep } from "../channels"
-import { SYSTEM_EVENT_CATALOG } from "../event-catalog"
+import { eventLabel, SYSTEM_EVENT_CATALOG } from "../event-catalog"
 import {
   referenceValue,
   resolveReference,
@@ -581,10 +581,7 @@ export function stepSummary(
         ? step.rules.map(ruleText).join(` ${step.match} `)
         : null
     case "wait_for_event":
-      return (
-        SYSTEM_EVENTS.find((event) => event.value === step.eventName)?.label ??
-        (step.eventName || null)
-      )
+      return step.eventName ? eventLabel(step.eventName) : null
     case "send_messenger":
     case "send_instagram":
     case "send_whatsapp":

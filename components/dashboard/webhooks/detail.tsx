@@ -33,6 +33,7 @@ import {
 } from "@/components/dashboard/webhooks/shared"
 import { api } from "@/convex/_generated/api"
 import type { WebhookEvent } from "@/lib/dashboard/types"
+import { eventLabel } from "@/lib/event-catalog"
 import { sortWebhookEvents, webhookEventsLabel } from "@/lib/dashboard/webhooks"
 import {
   asWebhook,
@@ -133,9 +134,7 @@ export function WebhookDetail() {
         <ul className="flex flex-wrap gap-1.5">
           {webhook.events.map((event) => (
             <li key={event}>
-              <Badge variant="outline" className="font-mono">
-                {event}
-              </Badge>
+              <Badge variant="outline">{eventLabel(event, "name")}</Badge>
             </li>
           ))}
         </ul>
@@ -159,7 +158,10 @@ export function WebhookDetail() {
                   /* What was delivered, not what is subscribed to now: past
                      deliveries outlive a change of subscriptions. */
                   ...sortWebhookEvents(result.delivered as WebhookEvent[]).map(
-                    (event) => ({ value: event, label: event })
+                    (event) => ({
+                      value: event,
+                      label: eventLabel(event, "name"),
+                    })
                   ),
                 ],
                 "aria-label": "Filter by event",
@@ -200,7 +202,7 @@ export function WebhookDetail() {
                 <TableRow key={delivery.id}>
                   <TableCell>
                     <MonoLink href={`/webhooks/${webhook.id}/${delivery.id}`}>
-                      {delivery.event}
+                      {eventLabel(delivery.event, "name")}
                     </MonoLink>
                   </TableCell>
                   <TableCell>
