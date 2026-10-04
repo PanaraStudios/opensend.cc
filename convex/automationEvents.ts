@@ -372,14 +372,26 @@ export const options = query({
   },
 })
 
-/** All catalog definitions for this team, also used by save-time validation. */
-export async function teamEventCatalog(ctx: QueryCtx, organizationId: string) {
-  const custom = await ctx.db
-    .query("automationEvents")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId)
-    )
-    .collect()
+/** Save-time validation only needs the graph's bounded set of event names. */
+export async function teamEventCatalog(
+  ctx: QueryCtx,
+  organizationId: string,
+  names?: readonly string[]
+) {
+  const custom = names
+    ? (
+        await Promise.all(
+          [...new Set(names)].map((name) =>
+            findEvent(ctx, organizationId, name)
+          )
+        )
+      ).filter((event) => event !== null)
+    : await ctx.db
+        .query("automationEvents")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId)
+        )
+        .collect()
   return eventCatalog(custom, await listProperties(ctx, organizationId))
 }
 export const catalog = query({

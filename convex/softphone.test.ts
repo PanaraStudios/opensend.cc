@@ -632,6 +632,33 @@ test("heartbeat expiry materializes Away; an earlier timer cannot expire a renew
   ).toBe("away")
 })
 
+test("refreshing credentials cannot cancel the last presence expiry", async () => {
+  const f = await setup()
+  const row = await f.t.run((ctx) =>
+    ctx.db
+      .query("callAgents")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q.eq("organizationId", f.owner.team).eq("userId", f.owner.user._id)
+      )
+      .unique()
+  )
+  vi.setSystemTime(Date.now() + 30000)
+  const refreshed = await f.owner.client.mutation(
+    internal.calling.softphoneState.begin,
+    f.ownerArgs
+  )
+  expect(refreshed.leaseId).toBe(row!.leaseId)
+  vi.setSystemTime(Date.now() + 45000)
+  await f.t.mutation(internal.calling.softphoneState.expire, {
+    id: row!._id,
+    leaseId: row!.leaseId,
+    updatedAt: row!.updatedAt,
+  })
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("callAgents", row!._id)))?.status
+  ).toBe("away")
+})
+
 test("Decline claims the call before rejecting it through the existing call API", async () => {
   const f = await setup()
   vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
