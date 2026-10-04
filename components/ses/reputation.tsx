@@ -53,6 +53,7 @@ export function TenantReputation() {
       ) : (
         <>
           <ResourceTable
+            framed={false}
             headers={
               <>
                 <Th>Team</Th>
