@@ -95,6 +95,7 @@ export function AttachedButtons({ buttons }: { buttons: CardButton[] }) {
             key={index}
             variant="outline"
             size="sm"
+            className="bg-background text-foreground disabled:opacity-100 dark:bg-background"
             disabled
             aria-label={`${button.text} (message preview)`}
           >
