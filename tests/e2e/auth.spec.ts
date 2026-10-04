@@ -39,6 +39,10 @@ import { execFileSync } from "node:child_process"
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
+// DOM trace snapshots inject a script into sandboxed email previews, producing
+// console errors even for benign HTML. Keep action/network traces and screenshots.
+test.use({ trace: { mode: "retain-on-failure", snapshots: false } })
+
 const base = process.env.OPENSEND_BASE_URL ?? "http://localhost:3400"
 const ownerEmail = "owner@example.test"
 const ownerPassword = "Playwright-owner-password-123"

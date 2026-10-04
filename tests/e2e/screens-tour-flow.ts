@@ -30,16 +30,6 @@ async function choose(page: Page, label: string, option: string) {
 /** Runs last: the disposable instance already has messages, identities and runs.
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
-  test.describe("screens tour", () => {
-    // Playwright's trace snapshot script produces console errors in sandboxed
-    // srcdoc frames, even with benign HTML. Screenshots remain the evidence;
-    // console/page errors are still collected without an allowlist.
-    test.use({ trace: "off" })
-    registerTour(state)
-  })
-}
-
-function registerTour(state: TourState) {
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
     test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
