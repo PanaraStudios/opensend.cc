@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AudioPlayer } from "@/components/ui/audio-player"
 import { BotDiagnostics } from "./bot-diagnostics"
 import { IvrPath } from "./tester"
+import { codeLabel } from "@/lib/dashboard/format"
 import {
   callOutcomeLabel,
   ivrActionLabel,
@@ -67,7 +68,7 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
             value: call.bot_outcome
               ? callOutcomeLabel(call.bot_outcome)
               : call.ivr_outcome
-                ? ivrActionLabel(call.ivr_outcome)
+                ? ivrActionLabel(call.ivr_outcome, ivr?.menus)
                 : call.outcome
                   ? callOutcomeLabel(call.outcome)
                   : callOutcomeLabel(call.status),
@@ -102,7 +103,7 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
             {Object.entries(call.collected).map(([key, entry]) => (
               <div key={key}>
                 <dt className="text-sm text-muted-foreground">
-                  {key.replace(/_/g, " ")}
+                  {codeLabel(key)}
                 </dt>
                 <dd className="text-sm font-medium">
                   {typeof entry.value === "boolean"

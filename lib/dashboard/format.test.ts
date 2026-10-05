@@ -6,11 +6,25 @@ import {
   SKIP_REASON_TONE,
   metaTemplateStatusLabel,
   tenantStatusLabel,
+  codeLabel,
+  fieldTypeLabel,
   httpStatusLabel,
   httpStatusTone,
   messagingLimitLabel,
   normalizeHref,
 } from "./format"
+
+describe("readable codes", () => {
+  it("sentence-cases stored codes and field types", () => {
+    assert.equal(codeLabel("payment_updated"), "Payment updated")
+    assert.equal(codeLabel("First_Name"), "First Name")
+    assert.equal(fieldTypeLabel("string"), "String")
+    assert.equal(fieldTypeLabel("boolean"), "Boolean")
+    assert.equal(fieldTypeLabel("enum"), "Choice")
+    assert.equal(fieldTypeLabel("array"), "List")
+    assert.equal(fieldTypeLabel("payment_updated"), "Payment updated")
+  })
+})
 
 describe("normalizeHref", () => {
   it("keeps web addresses, mail and phone links, anchors and merge tags", () => {

@@ -6,6 +6,7 @@ import {
   type IvrMenu,
 } from "../ivr"
 import { pickerSelectedIds } from "./options"
+import { codeLabel } from "./format"
 
 export function newIvrMenu(id = "main"): IvrMenu {
   return {
@@ -51,11 +52,16 @@ export function ivrReferencedBotIds(definition: IvrDefinition): string[] {
   return pickerSelectedIds(ids)
 }
 
-export function ivrActionLabel(action: IvrAction | null | undefined): string {
+export function ivrActionLabel(
+  action: IvrAction | null | undefined,
+  menus?: readonly { id: string; name: string }[]
+): string {
   if (!action) return "—"
   switch (action.kind) {
-    case "submenu":
-      return `Menu: ${action.menuId}`
+    case "submenu": {
+      const name = menus?.find((menu) => menu.id === action.menuId)?.name
+      return name ? `Menu: ${name}` : "Submenu"
+    }
     case "bot":
       return "Voice bot"
     case "agents":
@@ -133,6 +139,13 @@ export function callRouteLabel(
     return name ? `IVR ${name}` : "IVR"
   }
   return call.handling_mode === "api" ? "API" : "Agent"
+}
+
+/** A contact's accept or reject of a call permission request. */
+export function callPermissionReplyLabel(response: string | null | undefined) {
+  if (response === "accept") return "Accepted"
+  if (response === "reject") return "Declined"
+  return codeLabel(response ?? "")
 }
 
 /** WhatsApp calling permission, never the stored code. */

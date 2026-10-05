@@ -62,6 +62,16 @@ test("call outcomes describe routing and preserve timeout/invalid evidence", () 
   )
   assert.equal(ivrActionLabel({ kind: "agents" }), "Transfer to agents")
   assert.equal(ivrActionLabel({ kind: "bot", botId: "support" }), "Voice bot")
+  assert.equal(
+    ivrActionLabel({ kind: "submenu", menuId: "after-hours" }),
+    "Submenu"
+  )
+  assert.equal(
+    ivrActionLabel({ kind: "submenu", menuId: "after-hours" }, [
+      { id: "after-hours", name: "After hours" },
+    ]),
+    "Menu: After hours"
+  )
 })
 
 test("IVR bot name lookups stay inside the picker point-read cap", () => {
@@ -87,8 +97,12 @@ test("IVR bot name lookups stay inside the picker point-read cap", () => {
 })
 
 test("call and permission labels stay readable", async () => {
-  const { callOutcomeLabel, callPermissionLabel, callRouteLabel } =
-    await import("./voice-playground")
+  const {
+    callOutcomeLabel,
+    callPermissionLabel,
+    callPermissionReplyLabel,
+    callRouteLabel,
+  } = await import("./voice-playground")
   assert.equal(callOutcomeLabel("answered"), "Answered")
   assert.equal(callOutcomeLabel("no_answer"), "No answer")
   assert.equal(callOutcomeLabel(null), "In progress")
@@ -96,6 +110,9 @@ test("call and permission labels stay readable", async () => {
   assert.equal(callPermissionLabel("unknown"), "Not checked")
   assert.equal(callPermissionLabel("no_permission"), "No permission")
   assert.equal(callPermissionLabel("permanent"), "Permanent")
+  assert.equal(callPermissionReplyLabel("accept"), "Accepted")
+  assert.equal(callPermissionReplyLabel("reject"), "Declined")
+  assert.equal(callPermissionReplyLabel("maybe_later"), "Maybe later")
   assert.equal(callRouteLabel({ bot_id: "bot", bot_name: "Ada" }), "Bot Ada")
   assert.equal(callRouteLabel({ bot_id: "bot", bot_name: "" }), "Voice bot")
   assert.equal(

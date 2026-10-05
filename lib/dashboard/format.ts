@@ -302,6 +302,28 @@ export function sentenceCase(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+/** A stored code with underscores, keeping the rest of each word. */
+export function codeLabel(value: string): string {
+  return sentenceCase(value.replaceAll("_", " "))
+}
+
+export const FIELD_TYPE_LABELS = {
+  string: "String",
+  number: "Number",
+  boolean: "Boolean",
+  date: "Date",
+  enum: "Choice",
+  object: "Object",
+  array: "List",
+} as const
+
+/** Readable field type. Unknown codes still get a sentence, never the raw token. */
+export function fieldTypeLabel(type: string): string {
+  return (
+    FIELD_TYPE_LABELS[type as keyof typeof FIELD_TYPE_LABELS] ?? codeLabel(type)
+  )
+}
+
 /** How an address is kept and compared. */
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()

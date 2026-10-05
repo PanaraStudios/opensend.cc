@@ -60,16 +60,17 @@ import {
 import { actionError } from "@/lib/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/convex/_generated/api"
+import { fieldTypeLabel } from "@/lib/dashboard/format"
 import type { ContactProperty, PropertyType } from "@/lib/dashboard/types"
 
 type PropertyRow = ContactProperty | (typeof DEFAULT_CONTACT_PROPERTIES)[number]
 const asPropertyRow = (row: Parameters<typeof asProperty>[0]): PropertyRow =>
   asProperty(row)
 
-const PROPERTY_TYPES = [
-  { value: "string", label: "String" },
-  { value: "number", label: "Number" },
-] as const
+const PROPERTY_TYPES = (["string", "number"] as const).map((value) => ({
+  value,
+  label: fieldTypeLabel(value),
+}))
 
 function AddPropertyDialog({
   open,
@@ -268,8 +269,8 @@ export function PropertiesView() {
                       Default
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground capitalize">
-                    {item.type}
+                  <TableCell className="text-muted-foreground">
+                    {fieldTypeLabel(item.type)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">—</TableCell>
                   <TableCell className="text-muted-foreground">—</TableCell>
@@ -280,8 +281,8 @@ export function PropertiesView() {
                   <TableCell>
                     <code className="font-mono text-[13px]">{item.key}</code>
                   </TableCell>
-                  <TableCell className="text-muted-foreground capitalize">
-                    {item.type}
+                  <TableCell className="text-muted-foreground">
+                    {fieldTypeLabel(item.type)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {item.fallbackValue || "—"}
