@@ -357,6 +357,11 @@ function ContactPage({
                         </TableCell>
                         <TableCell>
                           <Switch
+                            aria-label={
+                              subscription === "subscribed"
+                                ? `Unsubscribe ${topic.name}`
+                                : `Subscribe ${topic.name}`
+                            }
                             checked={subscription === "subscribed"}
                             onCheckedChange={(checked) =>
                               setContactTopic(
