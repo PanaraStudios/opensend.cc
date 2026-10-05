@@ -35,8 +35,8 @@
     </configuration>
     <configuration name="switch.conf" description="Media ports">
       <settings>
-        <param name="rtp-start-port" value="20400"/>
-        <param name="rtp-end-port" value="20799"/>
+        <param name="rtp-start-port" value="${FREESWITCH_RTP_START}"/>
+        <param name="rtp-end-port" value="${FREESWITCH_RTP_END}"/>
         <param name="max-sessions" value="200"/>
       </settings>
     </configuration>

@@ -1,4 +1,5 @@
 import { test } from "node:test"
+import { randomBytes } from "node:crypto"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { createServer } from "node:http"
@@ -216,4 +217,27 @@ test("rejects neither credential mode before calling the CLI", async (t) => {
     /CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY.*required/
   )
   assert.deepEqual(calls, [])
+})
+
+test("calling deployment supplies gateway and browser settings without erasing empty values", async (t) => {
+  const f = await fixture(t)
+  const settings = {
+    CALL_GATEWAY_URL: "http://call-gateway:8090",
+    CALL_GATEWAY_SECRET: randomBytes(32).toString("hex"),
+    CALL_AGENT_WSS_URL: "wss://calling.example.test:7443",
+    CALL_AGENT_QUEUES: JSON.stringify({ team: ["support"] }),
+  }
+  const { code, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_DEPLOY_KEY: randomBytes(32).toString("hex"),
+    ...settings,
+  })
+  assert.equal(code, 0)
+  for (const [key, value] of Object.entries(settings))
+    assert.ok(
+      calls.some(
+        (call) => call.args[0] === "env" && call.args[2] === `${key}=${value}`
+      )
+    )
+  assert.equal(calls.at(-1).args[0], "deploy")
 })
