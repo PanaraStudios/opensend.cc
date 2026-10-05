@@ -1016,9 +1016,7 @@ export function EmptyState({
         <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
           <Icon className="size-4" />
         </EmptyMedia>
-        <EmptyTitle role="heading" aria-level={size === "sm" ? 3 : 2}>
-          {title}
-        </EmptyTitle>
+        <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
       {children ? <EmptyContent>{children}</EmptyContent> : null}
@@ -2375,6 +2373,7 @@ export function ListToolbar({
         </InputGroupAddon>
         <InputGroupInput
           ref={search}
+          aria-label={placeholder}
           aria-keyshortcuts="/"
           className="h-full! min-w-0"
           value={query}

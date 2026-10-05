@@ -1,11 +1,14 @@
 "use client"
 
-import { useMemo } from "react"
+import { createContext, useContext, useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Field as FieldPrimitive } from "@base-ui/react/field"
 import { cn } from "cn"
 
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+
+const FieldContext = createContext(false)
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
@@ -75,13 +78,15 @@ function Field({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
   return (
-    <div
-      role="group"
-      data-slot="field"
-      data-orientation={orientation}
-      className={cn(fieldVariants({ orientation }), className)}
-      {...props}
-    />
+    <FieldContext.Provider value={true}>
+      <FieldPrimitive.Root
+        role="group"
+        data-slot="field"
+        data-orientation={orientation}
+        className={cn(fieldVariants({ orientation }), className)}
+        {...props}
+      />
+    </FieldContext.Provider>
   )
 }
 
@@ -102,7 +107,8 @@ function FieldLabel({
   className,
   ...props
 }: React.ComponentProps<typeof Label>) {
-  return (
+  const inField = useContext(FieldContext)
+  const label = (
     <Label
       data-slot="field-label"
       className={cn(
@@ -113,6 +119,9 @@ function FieldLabel({
       {...props}
     />
   )
+  // Labels that wrap a Field (e.g. checkbox cards) retain native association.
+  // Labels inside a Field also name its Base UI controls automatically.
+  return inField ? <FieldPrimitive.Label id={props.id} render={label} /> : label
 }
 
 function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
