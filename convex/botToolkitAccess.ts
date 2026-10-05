@@ -1,4 +1,4 @@
-import { v } from "convex/values"
+import { v, type Infer } from "convex/values"
 import { paginationOptsValidator } from "convex/server"
 import {
   callerValue,
@@ -38,25 +38,27 @@ const outboundLimiter = new RateLimiter(components.rateLimiter, {
     capacity: 2,
   },
   templateSync: { kind: "token bucket", rate: 2, period: MINUTE, capacity: 2 },
+  oidcDiscovery: {
+    kind: "token bucket",
+    rate: 30,
+    period: MINUTE,
+    capacity: 10,
+  },
 })
 const outboundOperation = v.union(
   v.literal("botTest"),
   v.literal("knowledgeIndex"),
   v.literal("knowledgeSearch"),
   v.literal("templatePublish"),
-  v.literal("templateSync")
+  v.literal("templateSync"),
+  v.literal("oidcDiscovery")
 )
 
 /** One allowance per team, shared by dashboard and REST and every resource/key. */
 export async function limitOutbound(
   ctx: MutationCtx,
   organizationId: string,
-  operation:
-    | "botTest"
-    | "knowledgeIndex"
-    | "knowledgeSearch"
-    | "templatePublish"
-    | "templateSync"
+  operation: Infer<typeof outboundOperation>
 ) {
   const result = await outboundLimiter.limit(ctx, operation, {
     key: organizationId,
@@ -70,7 +72,7 @@ export async function limitOutbound(
 }
 
 /** Actions reserve in a committed mutation before IO, so failed IO still counts.
-    Only internal callers use this, after their resource authorization. */
+    Internal callers first authorize their resource or load a configured SSO connection. */
 export const reserveOutbound = internalMutation({
   args: { organizationId: v.string(), operation: outboundOperation },
   returns: v.null(),
