@@ -54,6 +54,7 @@ async def session(websocket: WebSocket):
     await websocket.accept()
     backend = None
     call_id = None
+    owns_call = False
     config = None
     tools = None
     phase = "auth"
@@ -68,6 +69,7 @@ async def session(websocket: WebSocket):
         if call_id in active_calls or len(active_calls) >= 100:
             raise ValueError("Voice session unavailable")
         active_calls.add(call_id)
+        owns_call = True
         phase = "config"
         backend = VoiceBackend(
             os.environ["CALL_GATEWAY_CONVEX_HTTP_URL"], os.environ["CALL_GATEWAY_SECRET"], claims
@@ -226,7 +228,7 @@ async def session(websocket: WebSocket):
             config.get("keys", {}).clear()
         if backend:
             await backend.close()
-        if call_id:
+        if owns_call:
             active_calls.discard(call_id)
 
 

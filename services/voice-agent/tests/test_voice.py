@@ -432,3 +432,43 @@ async def test_tool_router_accepts_zero_false_and_typed_collection_rejects_inval
     assert not (await router.run("invalid", "book_appointment", {"guests": "zero"}))["ok"]
     assert not (await router.run("nan", "book_appointment", {"guests": float("nan")}))["ok"]
     assert backend.tool.call_count == 2
+
+
+async def test_rejected_duplicate_session_cannot_release_the_owners_active_marker(monkeypatch):
+    from voice_agent import app as module
+
+    monkeypatch.setenv("VOICE_AGENT_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_CONVEX_HTTP_URL", "http://fixture.test")
+    monkeypatch.setattr(module, "tokens", None)
+    monkeypatch.setattr(module, "active_calls", set())
+    entered = asyncio.Event()
+
+    async def blocked_config():
+        entered.set()
+        await asyncio.Event().wait()
+
+    def socket(nonce):
+        value = claims()
+        value["nonce"] = nonce
+        return SimpleNamespace(
+            accept=AsyncMock(),
+            receive_json=AsyncMock(return_value={"type": "start", "callId": "call-1", "sessionToken": token(value)}),
+            close=AsyncMock(),
+        )
+
+    with patch.object(module.VoiceBackend, "config", new=AsyncMock(side_effect=blocked_config)) as fetch_config:
+        owner = asyncio.create_task(module.session(socket("owner")))
+        await entered.wait()
+        try:
+            for nonce in ("duplicate", "another-duplicate"):
+                duplicate = socket(nonce)
+                await module.session(duplicate)
+                duplicate.close.assert_awaited_once_with(code=1008, reason="Voice session rejected")
+                assert module.active_calls == {"call-1"}
+            assert fetch_config.await_count == 1
+        finally:
+            owner.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+        assert not module.active_calls
