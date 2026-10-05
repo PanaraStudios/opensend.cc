@@ -3,6 +3,8 @@ import { describe, it } from "node:test"
 
 import {
   canGoNext,
+  cursorNext,
+  cursorPrevious,
   pagedListState,
   hasPages,
   knownTotal,
@@ -18,6 +20,18 @@ const pager = (patch: Partial<Pager>): Pager => ({
   total: null,
   hasMore: true,
   ...patch,
+})
+
+describe("id cursors", () => {
+  it("walks forward and back without losing the first page", () => {
+    const start = { history: [] as (string | undefined)[] }
+    const second = cursorNext(start, "a")
+    const third = cursorNext(second, "b")
+    assert.deepEqual(third, { after: "b", history: [undefined, "a"] })
+    assert.deepEqual(cursorPrevious(third), second)
+    assert.deepEqual(cursorPrevious(second), { after: undefined, history: [] })
+    assert.deepEqual(cursorPrevious(start), { after: undefined, history: [] })
+  })
 })
 
 describe("knownTotal", () => {

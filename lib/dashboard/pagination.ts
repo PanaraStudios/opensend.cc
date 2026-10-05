@@ -7,6 +7,26 @@ import { formatNumber } from "./format"
 /** Rows per page the pager offers. */
 export const PAGE_SIZES = [40, 80, 120] as const
 
+/** An id cursor for REST-style `after` pages. `history` stores the cursors that led here. */
+export type IdCursor = {
+  after?: string
+  history: readonly (string | undefined)[]
+}
+
+export function cursorPrevious(page: IdCursor): IdCursor {
+  return {
+    after: page.history.at(-1),
+    history: page.history.slice(0, -1),
+  }
+}
+
+export function cursorNext(page: IdCursor, id: string | undefined): IdCursor {
+  return {
+    after: id,
+    history: [...page.history, page.after],
+  }
+}
+
 export type Pager = {
   /** Zero-based page on view. */
   page: number

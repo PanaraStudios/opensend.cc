@@ -1,5 +1,10 @@
 "use client"
 import { useState } from "react"
+import {
+  cursorNext,
+  cursorPrevious,
+  type IdCursor,
+} from "@/lib/dashboard/pagination"
 import Link from "next/link"
 import { useAction } from "convex/react"
 import { BookOpenIcon } from "lucide-react"
@@ -44,13 +49,52 @@ const statusLabel = {
   ready: "Ready",
   failed: "Failed",
 }
+
+function useCursorPage(scope: string) {
+  const [state, setState] = useState<{ scope: string } & IdCursor>({
+    scope,
+    history: [],
+  })
+  if (state.scope !== scope) setState({ scope, history: [] })
+  const page: IdCursor = state.scope === scope ? state : { history: [] }
+  return {
+    after: page.after,
+    history: page.history,
+    previous: () => setState({ scope, ...cursorPrevious(page) }),
+    next: (id: string | undefined) =>
+      setState({ scope, ...cursorNext(page, id) }),
+  }
+}
+
+function CursorPager({
+  history,
+  hasMore,
+  onPrevious,
+  onNext,
+}: {
+  history: number
+  hasMore: boolean
+  onPrevious: () => void
+  onNext: () => void
+}) {
+  if (!history && !hasMore) return null
+  return (
+    <div className="flex gap-2">
+      <Button variant="outline" disabled={!history} onClick={onPrevious}>
+        Previous
+      </Button>
+      <Button variant="outline" disabled={!hasMore} onClick={onNext}>
+        Next
+      </Button>
+    </div>
+  )
+}
 export function KnowledgeList() {
-  const [creating, setCreating] = useState(false),
-    [after, setAfter] = useState<string>(),
-    [history, setHistory] = useState<(string | undefined)[]>([])
+  const [creating, setCreating] = useState(false)
+  const page = useCursorPage("bases")
   const list = useTeamQuery(api.knowledge.resources.dashboardList, {
     limit: 25,
-    after,
+    after: page.after,
   }) as { data: KnowledgeBase[]; has_more: boolean } | undefined
   return (
     <SectionChrome
@@ -62,7 +106,7 @@ export function KnowledgeList() {
     >
       {!list ? (
         <Skeleton className="h-40 w-full" />
-      ) : !list.data.length ? (
+      ) : !list.data.length && !page.history.length ? (
         <EmptyState
           icon={BookOpenIcon}
           title="No knowledge bases"
@@ -74,54 +118,44 @@ export function KnowledgeList() {
         </EmptyState>
       ) : (
         <>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Name</Th>
-                <Th>Description</Th>
-                <Th>Status</Th>
-              </>
-            }
-          >
-            {list.data.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/playground/knowledge/${row.id}`}
-                  >
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>{row.description || "—"}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{statusLabel[row.status]}</Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={!history.length}
-              onClick={() => {
-                setAfter(history.at(-1))
-                setHistory(history.slice(0, -1))
-              }}
+          {list.data.length ? (
+            <ResourceTable
+              headers={
+                <>
+                  <Th>Name</Th>
+                  <Th>Description</Th>
+                  <Th>Status</Th>
+                </>
+              }
             >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!list.has_more}
-              onClick={() => {
-                setHistory([...history, after])
-                setAfter(list.data.at(-1)?.id)
-              }}
-            >
-              Next
-            </Button>
-          </div>
+              {list.data.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <Link
+                      className="font-medium hover:underline"
+                      href={`/playground/knowledge/${row.id}`}
+                    >
+                      {row.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{row.description || "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{statusLabel[row.status]}</Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No knowledge bases on this page.
+            </p>
+          )}
+          <CursorPager
+            history={page.history.length}
+            hasMore={list.has_more}
+            onPrevious={page.previous}
+            onNext={() => page.next(list.data.at(-1)?.id)}
+          />
         </>
       )}
       <Dialog open={creating} onOpenChange={setCreating}>
@@ -198,12 +232,14 @@ function BaseDialog({
   )
 }
 export function KnowledgeDetail({ id }: { id: string }) {
+  const page = useCursorPage(id)
   const base = useTeamQuery(api.knowledge.resources.dashboardGet, { id }) as
     KnowledgeBase | null | undefined
   const list = useTeamQuery(api.knowledge.resources.dashboardList, {
     knowledgeBaseId: id,
-    limit: 100,
-  }) as { data: KnowledgeDocument[] } | undefined
+    limit: 25,
+    after: page.after,
+  }) as { data: KnowledgeDocument[]; has_more: boolean } | undefined
   const { activeTeamId } = useWorkspace(),
     write = useAction(api.knowledge.resources.dashboardWrite),
     search = useAction(api.knowledge.search.dashboardSearch)
@@ -250,105 +286,121 @@ export function KnowledgeDetail({ id }: { id: string }) {
             Paste text
           </Button>
         </div>
-        {!list.data.length ? (
+        {!list.data.length && !page.history.length ? (
           <p className="text-sm text-muted-foreground">
             Add a PDF, text, Markdown or DOCX document, a public URL, or pasted
             text.
           </p>
         ) : (
-          <ResourceTable
-            headers={
-              <>
-                <Th>Title</Th>
-                <Th>Source</Th>
-                <Th>Size</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
-              </>
-            }
-          >
-            {list.data.map((doc) => (
-              <TableRow key={doc.id}>
-                <TableCell className="font-medium">{doc.title}</TableCell>
-                <TableCell>
-                  {
-                    {
-                      upload: "Uploaded file",
-                      url: "URL",
-                      text: "Pasted text",
-                    }[doc.source]
-                  }
-                </TableCell>
-                <TableCell>
-                  {doc.byteSize ? formatUploadSize(doc.byteSize) : "—"}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{statusLabel[doc.status]}</Badge>
-                  {doc.error ? (
-                    <p className="mt-1 max-w-sm text-sm text-destructive">
-                      {doc.error}
-                    </p>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditing(doc)
-                        setMode(doc.source)
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={doc.status === "processing"}
-                      onClick={async () => {
-                        try {
-                          await write({
-                            organizationId: activeTeamId!,
-                            id: doc.id,
-                            knowledgeBaseId: id,
-                            body: "{}",
-                          })
-                        } catch (e) {
-                          setError(actionError(e))
-                        }
-                      }}
-                    >
-                      Re-index
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={deleting === doc.id}
-                      onClick={async () => {
-                        setDeleting(doc.id)
-                        try {
-                          await write({
-                            organizationId: activeTeamId!,
-                            id: doc.id,
-                            knowledgeBaseId: id,
-                            remove: true,
-                            body: "{}",
-                          })
-                        } catch (e) {
-                          setError(actionError(e))
-                        } finally {
-                          setDeleting(undefined)
-                        }
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
+          <>
+            {list.data.length ? (
+              <ResourceTable
+                headers={
+                  <>
+                    <Th>Title</Th>
+                    <Th>Source</Th>
+                    <Th>Size</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
+                  </>
+                }
+              >
+                {list.data.map((doc) => (
+                  <TableRow key={doc.id}>
+                    <TableCell className="font-medium">{doc.title}</TableCell>
+                    <TableCell>
+                      {
+                        {
+                          upload: "Uploaded file",
+                          url: "URL",
+                          text: "Pasted text",
+                        }[doc.source]
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {doc.byteSize ? formatUploadSize(doc.byteSize) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {statusLabel[doc.status]}
+                      </Badge>
+                      {doc.error ? (
+                        <p className="mt-1 max-w-sm text-sm text-destructive">
+                          {doc.error}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditing(doc)
+                            setMode(doc.source)
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={doc.status === "processing"}
+                          onClick={async () => {
+                            try {
+                              await write({
+                                organizationId: activeTeamId!,
+                                id: doc.id,
+                                knowledgeBaseId: id,
+                                body: "{}",
+                              })
+                            } catch (e) {
+                              setError(actionError(e))
+                            }
+                          }}
+                        >
+                          Re-index
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={deleting === doc.id}
+                          onClick={async () => {
+                            setDeleting(doc.id)
+                            try {
+                              await write({
+                                organizationId: activeTeamId!,
+                                id: doc.id,
+                                knowledgeBaseId: id,
+                                remove: true,
+                                body: "{}",
+                              })
+                            } catch (e) {
+                              setError(actionError(e))
+                            } finally {
+                              setDeleting(undefined)
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </ResourceTable>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No documents on this page.
+              </p>
+            )}
+            <CursorPager
+              history={page.history.length}
+              hasMore={list.has_more}
+              onPrevious={page.previous}
+              onNext={() => page.next(list.data.at(-1)?.id)}
+            />
+          </>
         )}
       </DetailSection>
       <DetailSection title="Test search">
