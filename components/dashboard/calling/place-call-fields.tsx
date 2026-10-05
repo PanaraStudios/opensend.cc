@@ -47,29 +47,35 @@ export function PlaceCallFields({
     : config.route.startsWith("ivr:")
       ? config.route.slice(4)
       : ""
-  const bots = useResourceOptions(api.voice.resources.botOptions, {
-    selectedIds: pickerSelectedIds(
-      config.route.startsWith("bot:") ? [routeId] : []
-    ),
-  })
-  const ivrs = useResourceOptions(api.ivr.definitions.options, {
-    selectedIds: pickerSelectedIds(
-      config.route.startsWith("ivr:") ? [routeId] : []
-    ),
-  })
+  const { rows: botRows, setSearch: setBotSearch } = useResourceOptions(
+    api.voice.resources.botOptions,
+    {
+      selectedIds: pickerSelectedIds(
+        config.route.startsWith("bot:") ? [routeId] : []
+      ),
+    }
+  )
+  const { rows: ivrRows, setSearch: setIvrSearch } = useResourceOptions(
+    api.ivr.definitions.options,
+    {
+      selectedIds: pickerSelectedIds(
+        config.route.startsWith("ivr:") ? [routeId] : []
+      ),
+    }
+  )
   const onRouteSearch = useCallback(
     (value: string) => {
-      bots.setSearch(value)
-      ivrs.setSearch(value)
+      setBotSearch(value)
+      setIvrSearch(value)
     },
-    [bots.setSearch, ivrs.setSearch]
+    [setBotSearch, setIvrSearch]
   )
-  const botItems = (bots.rows ?? []).map((bot) => ({
+  const botItems = (botRows ?? []).map((bot) => ({
     value: `bot:${bot.id}`,
     label: bot.name,
     group: "Voice bots",
   }))
-  const ivrItems = (ivrs.rows ?? []).map((ivr) => ({
+  const ivrItems = (ivrRows ?? []).map((ivr) => ({
     value: `ivr:${ivr.id}`,
     label: ivr.name,
     group: "IVRs",
