@@ -1,8 +1,8 @@
+import { embedText } from "./net/embedding"
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
   chunkText,
-  embedText,
   knowledgeScope,
   validateCollect,
   validateFieldValue,
@@ -31,8 +31,14 @@ test("chunks are bounded, overlapping, Unicode safe and cover the complete docum
   assert.throws(() => chunkText("x", 10, 10))
 })
 test("Gemini embedding uses retrieval task, native title, header key and 768 normalized dimensions", async () => {
-  const requests: { url: string; init: RequestInit }[] = []
-  const fetcher: typeof fetch = async (url, init) => {
+  const requests: {
+    url: string
+    init: import("./net/public-fetch").PublicFetchOptions
+  }[] = []
+  const fetcher: typeof import("./net/public-fetch").publicFetch = async (
+    url,
+    init
+  ) => {
     requests.push({ url: String(url), init: init! })
     return Response.json({ embedding: { values: Array(768).fill(2) } })
   }
