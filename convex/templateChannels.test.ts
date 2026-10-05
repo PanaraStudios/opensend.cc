@@ -13,9 +13,10 @@ function rejection(run: () => unknown) {
     run()
   } catch (error) {
     expect(error).toBeInstanceOf(ConvexError)
-    const data = (error as ConvexError<unknown>).data
+    const data = (error as ConvexError<{ statusCode: number; message: string } | string>)
+      .data
     if (typeof data === "string") return data
-    const details = data as { statusCode?: number; message?: string }
+    const details = data
     expect(details.statusCode).toBe(422)
     return details.message ?? ""
   }
