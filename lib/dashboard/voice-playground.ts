@@ -1,9 +1,11 @@
 import {
+  menuActions,
   parseIvr,
   type IvrAction,
   type IvrDefinition,
   type IvrMenu,
 } from "../ivr"
+import { pickerSelectedIds } from "./options"
 
 export function newIvrMenu(id = "main"): IvrMenu {
   return {
@@ -37,6 +39,18 @@ export function ivrFormPayload(value: IvrDefinition): IvrDefinition {
     ...(value.businessHours ? { businessHours: value.businessHours } : {}),
   })
 }
+/** Voice bots an IVR graph must name, capped to the picker point-read limit. */
+export function ivrReferencedBotIds(definition: IvrDefinition): string[] {
+  const ids: string[] = []
+  const consider = (action: IvrAction | null | undefined) => {
+    if (action?.kind === "bot" && action.botId) ids.push(action.botId)
+  }
+  for (const menu of definition.menus)
+    for (const action of menuActions(menu)) consider(action)
+  consider(definition.businessHours?.closedAction)
+  return pickerSelectedIds(ids)
+}
+
 export function ivrActionLabel(action: IvrAction | null | undefined): string {
   if (!action) return "—"
   switch (action.kind) {

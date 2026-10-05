@@ -82,6 +82,7 @@ import {
   newIvrMenu,
   ivrFormPayload,
   ivrFormPatch,
+  ivrReferencedBotIds,
 } from "@/lib/dashboard/voice-playground"
 import type { IvrDefinition, IvrMenu } from "@/lib/ivr"
 import {
@@ -362,7 +363,9 @@ function IvrForm({ row }: { row: IvrResource }) {
   const write = useAction(api.ivr.definitions.dashboardWrite),
     render = useAction(api.ivr.rendering.dashboardRender),
     validate = useAction(api.ivr.definitions.dashboardValidate)
-  const bots = useTeamQuery(api.voice.resources.dashboardList, { limit: 100 })
+  const bots = useTeamQuery(api.voice.resources.botOptions, {
+    selectedIds: ivrReferencedBotIds(draft),
+  })
   useEffect(() => {
     document.title = `${row.name} · opensend.cc`
   }, [row.name])
@@ -413,9 +416,7 @@ function IvrForm({ row }: { row: IvrResource }) {
   )
   const context: IvrFlowContext = {
     definition: draft,
-    bots: (bots?.data ?? []).flatMap((bot) =>
-      "name" in bot ? [{ id: bot.id, name: bot.name }] : []
-    ),
+    bots: (bots ?? []).map((bot) => ({ id: bot.id, name: bot.name })),
     updateMenu,
     select,
     createMenu,

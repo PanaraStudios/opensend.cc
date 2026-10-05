@@ -15,6 +15,7 @@ import {
   Th,
   DetailSection,
 } from "@/components/dashboard/primitives"
+import { ResourceSelect } from "@/components/dashboard/resource-picker"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { FileUploadField } from "@/components/dashboard/file-upload"
 import {
@@ -297,7 +298,6 @@ export function ActionField({
   menus: IvrMenu[]
   label?: string
 }) {
-  const bots = useTeamQuery(api.voice.resources.dashboardList, { limit: 100 })
   return (
     <div className="flex flex-col gap-2">
       <Field>
@@ -344,18 +344,13 @@ export function ActionField({
         </Field>
       ) : null}
       {value.kind === "bot" ? (
-        <Field>
-          <FieldLabel>Voice bot</FieldLabel>
-          <OptionSelect
-            aria-label="Voice bot"
-            placeholder="Choose a voice bot"
-            value={value.botId}
-            items={(bots?.data ?? []).flatMap((b) =>
-              "name" in b ? [{ value: b.id, label: b.name }] : []
-            )}
-            onChange={(botId) => onChange({ ...value, botId })}
-          />
-        </Field>
+        <ResourceSelect
+          query={api.voice.resources.botOptions}
+          value={value.botId}
+          onChange={(botId) => onChange({ ...value, botId })}
+          label="Voice bot"
+          placeholder="Choose a voice bot"
+        />
       ) : null}
       {value.kind === "webhook" ? (
         <>

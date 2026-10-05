@@ -7,6 +7,7 @@ import {
   ivrFormPayload,
   ivrActionLabel,
   ivrPathSummary,
+  ivrReferencedBotIds,
 } from "./voice-playground"
 test("IVR form strips metadata and preserves every action and business-hours field", () => {
   const d = newIvr()
@@ -61,6 +62,28 @@ test("call outcomes describe routing and preserve timeout/invalid evidence", () 
   )
   assert.equal(ivrActionLabel({ kind: "agents" }), "Transfer to agents")
   assert.equal(ivrActionLabel({ kind: "bot", botId: "support" }), "Voice bot")
+})
+
+test("IVR bot name lookups stay inside the picker point-read cap", () => {
+  const definition = newIvr()
+  definition.menus[0].options = {
+    "1": { kind: "bot", botId: "bot-a" },
+    "2": { kind: "hangup" },
+  }
+  definition.menus[0].noInputAction = { kind: "bot", botId: "bot-a" }
+  definition.businessHours = {
+    status: "DISABLED",
+    closedAction: { kind: "bot", botId: "bot-b" },
+  }
+  assert.deepEqual(ivrReferencedBotIds(definition), ["bot-a", "bot-b"])
+  definition.menus[0].options = Object.fromEntries(
+    Array.from({ length: 80 }, (_, index) => [
+      String(index),
+      { kind: "bot" as const, botId: `bot-${index}` },
+    ])
+  )
+  assert.equal(ivrReferencedBotIds(definition).length, 64)
+  assert.equal(ivrReferencedBotIds(definition)[0], "bot-0")
 })
 
 test("call and permission labels stay readable", async () => {

@@ -12,6 +12,7 @@ import {
   cursorPagerVisible,
   cursorPrevious,
 } from "@/lib/dashboard/pagination"
+import { pickerSelectedIds } from "@/lib/dashboard/options"
 import { useEffect, useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -41,7 +42,15 @@ export function CallsView() {
   const [after, setAfter] = useState<string>()
   const [history, setHistory] = useState<(string | undefined)[]>([])
   const log = useTeamQuery(api.calling.rows.dashboardList, { limit: 25, after })
-  const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
+  const ivrs = useTeamQuery(
+    api.ivr.definitions.options,
+    {
+      selectedIds: pickerSelectedIds(
+        (log?.data ?? []).map((call) => call.ivr_id)
+      ),
+    },
+    { enabled: !!log }
+  )
   const state = useTeamQuery(api.calling.softphoneState.state)
   return (
     <SectionChrome
@@ -121,7 +130,7 @@ export function CallsView() {
                     {call.direction === "inbound" ? "Incoming" : "Outgoing"}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
-                    {callRouteLabel(call, ivrs?.data)}
+                    {callRouteLabel(call, ivrs)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">

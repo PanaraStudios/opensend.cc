@@ -64,7 +64,6 @@ import {
   newVoiceBot,
   voiceBotFormPayload,
   type VoiceBotResource,
-  type VoiceProviderResource,
 } from "@/lib/dashboard/voice-bot-form"
 import {
   VOICE_STAGE_MODELS,
@@ -74,6 +73,10 @@ import {
   type VoiceStage,
 } from "@/lib/voice-bots"
 import { VoiceChoiceField, ProviderVoiceField, VoiceField } from "./ivr-fields"
+import {
+  ResourceSelect,
+  useResourceOptions,
+} from "@/components/dashboard/resource-picker"
 import { VoiceRouting } from "./routing"
 import { VoiceTester } from "./tester"
 import { ProviderKeySelect, ProviderKeyDialog } from "./provider-keys"
@@ -280,15 +283,20 @@ function CreateBot({ close }: { close: () => void }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [adding, setAdding] = useState(false)
-  const keys = useTeamQuery(api.voice.resources.dashboardList, {
-    limit: 100,
-    providers: true,
-  }) as { data: VoiceProviderResource[] } | undefined
+  const provider = engine === "gemini_live" ? "gemini" : "sarvam"
+  const keys = useResourceOptions(api.voice.resources.providerOptions, {
+    provider,
+  })
+  const elevenKeys = useResourceOptions(
+    api.voice.resources.providerOptions,
+    { provider: "elevenlabs" },
+    { enabled: engine === "cascade" }
+  )
   const { activeTeamId } = useWorkspace(),
     router = useRouter(),
     write = useAction(api.voice.resources.dashboardWrite)
-  const provider = engine === "gemini_live" ? "gemini" : "sarvam"
-  const elevenKey = keys?.data.find((key) => key.provider === "elevenlabs")
+  const key = keys.rows?.[0]
+  const elevenKey = elevenKeys.rows?.[0]
   const catalog = useElevenLabsVoices(
     elevenKey?.id,
     engine === "cascade" && !!elevenKey
@@ -315,7 +323,6 @@ function CreateBot({ close }: { close: () => void }) {
       <form
         onSubmit={async (e) => {
           e.preventDefault()
-          const key = keys?.data.find((k) => k.provider === provider)
           if (!key) {
             setAdding(true)
             return
@@ -330,7 +337,7 @@ function CreateBot({ close }: { close: () => void }) {
               "elevenlabs",
               "eleven_multilingual_v2"
             ).some((item) => item.value === language.split("-")[0])
-              ? keys?.data.find((k) => k.provider === "elevenlabs")
+              ? elevenKey
               : undefined
             const live =
               eleven && catalog.loaded && catalog.hasKey
@@ -435,7 +442,7 @@ function CreateBot({ close }: { close: () => void }) {
             value={instructions.disclosure}
             onChange={(disclosure) => patchInstructions({ disclosure })}
           />
-          {keys && !keys.data.some((k) => k.provider === provider) ? (
+          {keys.rows && !keys.rows.length ? (
             <p className="text-sm text-muted-foreground">
               Add a {VOICE_PROVIDER_LABELS[provider]} key to create this bot.
             </p>
@@ -586,7 +593,6 @@ function BotForm({ row }: { row: VoiceBotResource }) {
     [expand, setExpand] = useState(false),
     [rename, setRename] = useState(false)
   const liveVoices = useRef<ElevenLabsVoice[] | undefined>(undefined)
-  const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, { limit: 100 })
   const write = useAction(api.voice.resources.dashboardWrite)
   const gendered = (next: VoiceBotConfig) =>
     next.engine === "cascade" && next.tts?.provider === "elevenlabs"
@@ -816,13 +822,11 @@ function BotForm({ row }: { row: VoiceBotResource }) {
           </Field>
         ))}
         {draft.tools.includes("transfer_to_ivr") ? (
-          <VoiceChoiceField
-            label="Transfer IVR"
+          <ResourceSelect
+            query={api.ivr.definitions.options}
             value={draft.handoff.ivrId ?? ""}
-            items={(ivrs?.data ?? []).map((v) => ({
-              value: v.id,
-              label: v.name,
-            }))}
+            label="Transfer IVR"
+            placeholder="Choose an IVR"
             onChange={(ivrId) =>
               patch({ handoff: { ...draft.handoff, ivrId } })
             }
