@@ -1,10 +1,85 @@
 import { v } from "convex/values"
 import { paginationOptsValidator } from "convex/server"
-import { callerValue, requireCaller, notFound, type Caller } from "./api/caller"
+import {
+  callerValue,
+  requireCaller,
+  notFound,
+  apiError,
+  type Caller,
+} from "./api/caller"
+import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter"
 import { requireTeam } from "./access"
 import { requireActiveTeam } from "./teamLifecycle"
-import { internalMutation, type QueryCtx } from "./_generated/server"
-import { internal } from "./_generated/api"
+import {
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from "./_generated/server"
+import { components, internal } from "./_generated/api"
+
+const outboundLimiter = new RateLimiter(components.rateLimiter, {
+  botTest: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 10 },
+  knowledgeIndex: {
+    kind: "token bucket",
+    rate: 10,
+    period: MINUTE,
+    capacity: 10,
+  },
+  knowledgeSearch: {
+    kind: "token bucket",
+    rate: 60,
+    period: MINUTE,
+    capacity: 20,
+  },
+  templatePublish: {
+    kind: "token bucket",
+    rate: 10,
+    period: MINUTE,
+    capacity: 2,
+  },
+  templateSync: { kind: "token bucket", rate: 2, period: MINUTE, capacity: 2 },
+})
+const outboundOperation = v.union(
+  v.literal("botTest"),
+  v.literal("knowledgeIndex"),
+  v.literal("knowledgeSearch"),
+  v.literal("templatePublish"),
+  v.literal("templateSync")
+)
+
+/** One allowance per team, shared by dashboard and REST and every resource/key. */
+export async function limitOutbound(
+  ctx: MutationCtx,
+  organizationId: string,
+  operation:
+    | "botTest"
+    | "knowledgeIndex"
+    | "knowledgeSearch"
+    | "templatePublish"
+    | "templateSync"
+) {
+  const result = await outboundLimiter.limit(ctx, operation, {
+    key: organizationId,
+  })
+  if (!result.ok)
+    throw apiError(
+      429,
+      "rate_limit_exceeded",
+      `Too many requests. Try again in ${Math.ceil(result.retryAfter / 1000)} seconds.`
+    )
+}
+
+/** Actions reserve in a committed mutation before IO, so failed IO still counts.
+    Only internal callers use this, after their resource authorization. */
+export const reserveOutbound = internalMutation({
+  args: { organizationId: v.string(), operation: outboundOperation },
+  returns: v.null(),
+  handler: async (ctx, { organizationId, operation }) => {
+    await requireActiveTeam(ctx, organizationId)
+    await limitOutbound(ctx, organizationId, operation)
+    return null
+  },
+})
 export const actor = {
   organizationId: v.string(),
   caller: v.optional(callerValue),

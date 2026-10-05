@@ -32,6 +32,10 @@ async function testTool(
     internal.botTools.resources.authorized,
     { organizationId: args.organizationId, caller: args.caller, id: args.id }
   )
+  await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+    organizationId: args.organizationId,
+    operation: "botTest",
+  })
   const started = Date.now()
   const result = await executeTool(row, args.input)
   return { ...result, latencyMs: Date.now() - started }
