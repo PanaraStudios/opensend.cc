@@ -18,6 +18,7 @@ export type ListWebhookEventsOptions = {
   webhookId: string;
   limit?: number;
   after?: string;
+  before?: string;
 };
 
 export type ListWebhookEventsResponseSuccess = {

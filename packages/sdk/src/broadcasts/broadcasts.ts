@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import {
   buildPaginationQuery,
   buildPaginationUrl,
@@ -105,10 +106,12 @@ export class Broadcasts {
   async send(
     id: string,
     payload?: SendBroadcastOptions,
+    requestOptions: PostOptions = {},
   ): Promise<SendBroadcastResponse> {
     const data = await this.resend.post<SendBroadcastResponseSuccess>(
       `/broadcasts/${id}/send`,
       { scheduled_at: payload?.scheduledAt },
+      requestOptions,
     );
 
     return data;
@@ -162,16 +165,26 @@ export class Broadcasts {
     return data;
   }
 
-  async cancel(id: string): Promise<CancelBroadcastResponse> {
+  async cancel(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<CancelBroadcastResponse> {
     const data = await this.resend.post<CancelBroadcastResponseSuccess>(
       `/broadcasts/${id}/cancel`,
+      undefined,
+      requestOptions,
     );
     return data;
   }
 
-  async duplicate(id: string): Promise<DuplicateBroadcastResponse> {
+  async duplicate(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<DuplicateBroadcastResponse> {
     const data = await this.resend.post<DuplicateBroadcastResponseSuccess>(
       `/broadcasts/${id}/duplicate`,
+      undefined,
+      requestOptions,
     );
     return data;
   }

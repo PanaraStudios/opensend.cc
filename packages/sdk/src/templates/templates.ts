@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { getPaginationQueryProperties } from '../common/utils/get-pagination-query-properties';
 import { parseTemplateToApiOptions } from '../common/utils/parse-template-to-api-options';
 import { render } from '../render';
@@ -40,8 +41,9 @@ export class Templates {
 
   create(
     payload: CreateTemplateOptions,
+    requestOptions: PostOptions = {},
   ): ChainableTemplateResult<CreateTemplateResponse> {
-    const createPromise = this.performCreate(payload);
+    const createPromise = this.performCreate(payload, requestOptions);
     return new ChainableTemplateResult(createPromise, this.publish.bind(this));
   }
   // This creation process is being done separately from the public create so that
@@ -50,6 +52,7 @@ export class Templates {
   // Promise<ChainableTemplateResult<CreateTemplateResponse>> which wouldn't be chainable.
   private async performCreate(
     payload: CreateTemplateOptions,
+    requestOptions: PostOptions = {},
   ): Promise<CreateTemplateResponse> {
     const body: CreateTemplateOptions = { ...payload };
 
@@ -60,6 +63,7 @@ export class Templates {
     return this.resend.post<CreateTemplateResponseSuccess>(
       '/templates',
       parseTemplateToApiOptions(body),
+      requestOptions,
     );
   }
 
@@ -77,7 +81,9 @@ export class Templates {
     return data;
   }
 
-  async list(options: ListTemplatesOptions = {}): Promise<ListTemplatesResponse> {
+  async list(
+    options: ListTemplatesOptions = {},
+  ): Promise<ListTemplatesResponse> {
     const params = new URLSearchParams(
       getPaginationQueryProperties(options).slice(1),
     );
@@ -88,9 +94,12 @@ export class Templates {
 
   duplicate(
     identifier: string,
+    requestOptions: PostOptions = {},
   ): ChainableTemplateResult<DuplicateTemplateResponse> {
     const promiseDuplicate = this.resend.post<DuplicateTemplateResponseSuccess>(
       `/templates/${identifier}/duplicate`,
+      undefined,
+      requestOptions,
     );
     return new ChainableTemplateResult(
       promiseDuplicate,
@@ -98,9 +107,14 @@ export class Templates {
     );
   }
 
-  async publish(identifier: string): Promise<PublishTemplateResponse> {
+  async publish(
+    identifier: string,
+    requestOptions: PostOptions = {},
+  ): Promise<PublishTemplateResponse> {
     const data = await this.resend.post<PublishTemplateResponseSuccess>(
       `/templates/${identifier}/publish`,
+      undefined,
+      requestOptions,
     );
     return data;
   }
