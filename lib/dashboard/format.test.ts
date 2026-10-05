@@ -67,6 +67,21 @@ describe("messagingLimitLabel", () => {
   })
 })
 
+describe("timelineEventLabel", () => {
+  it("keeps email wording and spells channel events", async () => {
+    const { timelineEventLabel } = await import("./format")
+    assert.equal(timelineEventLabel(undefined), "Event")
+    assert.equal(timelineEventLabel("delivery_delayed"), "Delayed")
+    assert.equal(timelineEventLabel("read"), "Read")
+    assert.equal(timelineEventLabel("payment_updated"), "Payment updated")
+    assert.equal(
+      timelineEventLabel("read_receipt_failed"),
+      "Read receipt failed"
+    )
+    assert.equal(timelineEventLabel("typing_failed"), "Typing failed")
+  })
+})
+
 describe("campaign outcomes", () => {
   it("labels technical skip words and keeps opt-outs neutral", () => {
     assert.equal(skipReasonLabel("no_channel_identity"), "No channel identity")
