@@ -30,14 +30,19 @@ import { actionError } from "@/lib/action-error"
 import { threadHref } from "@/lib/messages/links"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
+import { CHANNELS } from "@/lib/channels"
 import type { Contact, Channel } from "@/lib/dashboard/types"
 
-const CHANNEL_ITEMS = [
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "messenger", label: "Messenger" },
-  { value: "instagram", label: "Instagram" },
-  { value: "email", label: "Email" },
-]
+const SEND_CHANNELS = [
+  "whatsapp",
+  "messenger",
+  "instagram",
+  "email",
+] as const satisfies readonly Channel[]
+const CHANNEL_ITEMS = SEND_CHANNELS.map((value) => ({
+  value,
+  label: CHANNELS[value].label,
+}))
 export function SendMessageAction({ contact }: { contact?: Contact }) {
   const [open, setOpen] = React.useState(false)
   const { canWrite } = useTeamRole()
