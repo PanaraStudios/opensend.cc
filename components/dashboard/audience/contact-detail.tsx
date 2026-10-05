@@ -528,10 +528,14 @@ function ContactPage({
                         <ItemContent>
                           <ItemTitle>{broadcast.name}</ItemTitle>
                           <ItemDescription>
-                            {broadcast.subject} ·{" "}
-                            {formatDate(
-                              broadcast.sentAt ?? broadcast.createdAt
-                            )}
+                            {[
+                              broadcast.subject.trim(),
+                              formatDate(
+                                broadcast.sentAt ?? broadcast.createdAt
+                              ),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
                           </ItemDescription>
                         </ItemContent>
                         <RecipientOutcomeBadge
