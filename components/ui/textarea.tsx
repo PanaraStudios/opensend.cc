@@ -22,7 +22,14 @@ function Textarea({
       onValidationClear={onValidationClear}
     >
       <FieldPrimitive.Control
-        render={<textarea {...props} />}
+        render={
+          <textarea
+            {...props}
+            {...(props["aria-label"] && !props["aria-labelledby"]
+              ? { "aria-labelledby": undefined }
+              : {})}
+          />
+        }
         id={props.id}
         disabled={props.disabled}
         name={props.name}

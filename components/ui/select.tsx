@@ -44,6 +44,9 @@ function SelectTrigger({
       data-size={size}
       className={cn(selectTriggerClassName, className)}
       {...props}
+      {...(props["aria-label"] && !props["aria-labelledby"]
+        ? { "aria-labelledby": undefined }
+        : {})}
     >
       {children}
       <SelectPrimitive.Icon

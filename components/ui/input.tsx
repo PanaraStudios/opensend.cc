@@ -35,6 +35,11 @@ function Input({
           className
         )}
         {...props}
+        // An explicitly named control may share a Field with other controls.
+        // Keep its own name instead of Base UI's inherited group label.
+        {...(props["aria-label"] && !props["aria-labelledby"]
+          ? { "aria-labelledby": undefined }
+          : {})}
         name={
           props.name ??
           (credential && type === "password" ? "service-secret" : undefined)

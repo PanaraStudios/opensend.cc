@@ -2095,6 +2095,7 @@ export function OptionSelect({
             type="button"
             id={id}
             aria-label={ariaLabel}
+            {...(ariaLabel ? { "aria-labelledby": undefined } : {})}
             data-slot="select-trigger"
             data-size={size}
             className={cn(selectTriggerClassName, className)}
