@@ -472,7 +472,7 @@ export const rotateSecret = internalMutation({
 export const dashboardRotateSecret = action({
   args: { organizationId: v.string(), id: v.string() },
   returns: v.any(),
-  handler: (ctx, args) =>
+  handler: (ctx, args): Promise<Record<string, unknown>> =>
     ctx.runMutation(internal.ivr.definitions.rotateSecret, {
       ...args,
       webhookSecret: createWebhookSecret(),

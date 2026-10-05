@@ -845,13 +845,19 @@ test("IVR secrets are revealed on write-scoped creation/rotation and redacted ev
     expect(JSON.stringify(body)).not.toContain(initial)
     expect((body.data?.[0] ?? body).webhook_signing_secret).toBe("[redacted]")
   }
-  for (const name of ["dashboardGet", "dashboardList"] as const) {
-    const body = await f.owner.client.query(api.ivr.definitions[name], {
+  for (const body of [
+    await f.owner.client.query(api.ivr.definitions.dashboardGet, {
       organizationId: f.owner.team,
-      ...(name === "dashboardGet" ? { id: f.ivr.id } : { limit: 10 }),
-    })
+      id: f.ivr.id,
+    }),
+    await f.owner.client.query(api.ivr.definitions.dashboardList, {
+      organizationId: f.owner.team,
+      limit: 10,
+    }),
+  ]) {
     expect(JSON.stringify(body)).not.toContain(initial)
   }
+
   expect(
     (
       await (
@@ -888,6 +894,19 @@ test("IVR secrets are revealed on write-scoped creation/rotation and redacted ev
       )
     ).json()
   ).toEqual(rotated)
+  const bodies = await f.t.run((ctx) => ctx.db.query("apiLogBodies").take(100))
+  expect(JSON.stringify(bodies)).not.toContain(initial)
+  expect(JSON.stringify(bodies)).not.toContain(rotated.webhook_signing_secret)
+  const { responseForLog } = await import("./logs")
+  for (const [path, method, body] of [
+    ["/ivrs", "GET", { object: "list", data: [f.ivr] }],
+    [`/ivrs/${f.ivr.id}`, "GET", f.ivr],
+    [`/ivrs/${f.ivr.id}`, "PATCH", f.ivr],
+  ] as const) {
+    expect(responseForLog(path, method, JSON.stringify(body))).not.toContain(
+      initial
+    )
+  }
   const { decryptSecret } = await import("./secrets")
   const row = await f.t.run((ctx) => ctx.db.get("ivrs", f.ivr.id))
   expect(await decryptSecret(row!.webhookSecret)).toBe(
