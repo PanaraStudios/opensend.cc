@@ -6,6 +6,8 @@ import {
   safeMessageUrl,
   messageContentPreview,
 } from "@/lib/dashboard/conversation-content"
+import { codeLabel } from "@/lib/dashboard/format"
+import { callPermissionReplyLabel } from "@/lib/dashboard/voice-playground"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 import { AttachedButtons, BusinessCard, LocationCard } from "./business-card"
 import { ConversationMedia } from "./media"
@@ -122,7 +124,7 @@ export function NormalizedMessageContent({
           {reply.body ? <p>{string(reply.body)}</p> : null}
           {Object.entries(object(content.response)).map(([key, value]) => (
             <p key={key} className="text-xs">
-              <span className="opacity-70">{key.replaceAll("_", " ")}: </span>
+              <span className="opacity-70">{codeLabel(key)}: </span>
               {typeof value === "string" ||
               typeof value === "number" ||
               typeof value === "boolean"
@@ -137,7 +139,9 @@ export function NormalizedMessageContent({
       return (
         <p>
           Call permission:{" "}
-          {string(object(content.call_permission_reply).response)}
+          {callPermissionReplyLabel(
+            string(object(content.call_permission_reply).response)
+          )}
         </p>
       )
     return <BusinessCard message={message} />

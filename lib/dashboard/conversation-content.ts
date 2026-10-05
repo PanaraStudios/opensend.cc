@@ -1,5 +1,6 @@
 /** Presentation helpers for normalized channel content. Never reads `raw`. */
 import { object, string } from "../meta/parse"
+import { callPermissionReplyLabel } from "./voice-playground"
 
 /** Readable text for the same normalized content shown in the conversation. */
 export function messageContentPreview(
@@ -28,7 +29,7 @@ export function messageContentPreview(
       return string(reply.body) || "Form response"
     }
     if (subtype === "call_permission_reply")
-      return `Call permission: ${string(object(content.call_permission_reply).response)}`
+      return `Call permission: ${callPermissionReplyLabel(string(object(content.call_permission_reply).response))}`
     return string(object(content.body).text) || fallback
   }
   if (type === "reaction")

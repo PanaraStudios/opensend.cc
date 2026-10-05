@@ -57,6 +57,7 @@ import {
   asAutomationEvent,
   useAutomationEventCommands,
 } from "@/lib/automation-events/use-automation-events"
+import { fieldTypeLabel } from "@/lib/dashboard/format"
 import {
   AUTOMATION_EVENT_FIELD_TYPES,
   type AutomationEvent,
@@ -65,7 +66,7 @@ import {
 
 const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
   value,
-  label: value,
+  label: fieldTypeLabel(value),
 }))
 
 export function AutomationEventsView() {

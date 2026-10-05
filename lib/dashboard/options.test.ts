@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { includeSelected, matchingOptions } from "./options"
+import {
+  includeSelected,
+  matchingOptions,
+  PICKER_SELECTED_LIMIT,
+  pickerSelectedIds,
+} from "./options"
 
 test("rank exact, prefix and substring matches, preserving tie order", () => {
   assert.deepEqual(
@@ -18,6 +23,15 @@ test("search considers candidates beyond the first twenty", () => {
   assert.deepEqual(
     matchingOptions(rows, "target", (row) => [row]),
     ["target"]
+  )
+})
+test("picker lookups keep unique saved ids inside the point-read cap", () => {
+  const ids = ["b", "a", "", "a", null, "b"]
+  assert.deepEqual(pickerSelectedIds(ids), ["b", "a"])
+  assert.deepEqual(pickerSelectedIds(undefined), [])
+  assert.equal(
+    pickerSelectedIds(Array.from({ length: 80 }, (_, i) => String(i))).length,
+    PICKER_SELECTED_LIMIT
   )
 })
 test("a selected row uses one slot without duplicates or mutating results", () => {

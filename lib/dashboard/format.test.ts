@@ -12,13 +12,17 @@ import {
   automationStatusLabel,
   broadcastStatusLabel,
   channelLabel,
+  codeLabel,
   defaultFromAddress,
   emailStatusLabel,
   exportStatusLabel,
+  fieldTypeLabel,
   formatDate,
   formatDateTime,
   formatNumber,
   formatRelative,
+  metaTemplateStatusLabel,
+  tenantStatusLabel,
   httpStatusLabel,
   httpStatusTone,
   initials,
@@ -28,7 +32,6 @@ import {
   isUrl,
   maskToken,
   messagingLimitLabel,
-  metaTemplateStatusLabel,
   normalizeEmail,
   normalizeHref,
   percent,
@@ -42,7 +45,6 @@ import {
   statusLabel,
   suppressionReasonLabel,
   templateStatusLabel,
-  tenantStatusLabel,
 } from "./format"
 import { REGIONS } from "./types"
 import type {
@@ -58,6 +60,18 @@ import type {
   SuppressionReason,
   TemplateStatus,
 } from "./types"
+
+describe("readable codes", () => {
+  it("sentence-cases stored codes and field types", () => {
+    assert.equal(codeLabel("payment_updated"), "Payment updated")
+    assert.equal(codeLabel("First_Name"), "First Name")
+    assert.equal(fieldTypeLabel("string"), "String")
+    assert.equal(fieldTypeLabel("boolean"), "Boolean")
+    assert.equal(fieldTypeLabel("enum"), "Choice")
+    assert.equal(fieldTypeLabel("array"), "List")
+    assert.equal(fieldTypeLabel("payment_updated"), "Payment updated")
+  })
+})
 
 describe("normalizeHref", () => {
   it("keeps web addresses, mail and phone links, anchors and merge tags", () => {
@@ -114,6 +128,21 @@ describe("messagingLimitLabel", () => {
   })
 })
 
+describe("timelineEventLabel", () => {
+  it("keeps email wording and spells channel events", async () => {
+    const { timelineEventLabel } = await import("./format")
+    assert.equal(timelineEventLabel(undefined), "Event")
+    assert.equal(timelineEventLabel("delivery_delayed"), "Delayed")
+    assert.equal(timelineEventLabel("read"), "Read")
+    assert.equal(timelineEventLabel("payment_updated"), "Payment updated")
+    assert.equal(
+      timelineEventLabel("read_receipt_failed"),
+      "Read receipt failed"
+    )
+    assert.equal(timelineEventLabel("typing_failed"), "Typing failed")
+  })
+})
+
 describe("campaign outcomes", () => {
   it("labels technical skip words and keeps opt-outs neutral", () => {
     assert.equal(skipReasonLabel("no_channel_identity"), "No channel identity")
@@ -127,7 +156,10 @@ describe("campaign outcomes", () => {
   it("uses the same sentence spelling for Meta and tenant statuses", () => {
     assert.equal(metaTemplateStatusLabel("IN_APPEAL"), "In appeal")
     assert.equal(metaTemplateStatusLabel("LIMIT_EXCEEDED"), "Limit exceeded")
-    assert.equal(metaTemplateStatusLabel("PENDING_DELETION"), "Pending deletion")
+    assert.equal(
+      metaTemplateStatusLabel("PENDING_DELETION"),
+      "Pending deletion"
+    )
     assert.equal(tenantStatusLabel("IN_APPEAL"), "In appeal")
     assert.equal(tenantStatusLabel(), "Unknown")
   })

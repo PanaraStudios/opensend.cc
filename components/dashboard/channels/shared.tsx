@@ -183,11 +183,8 @@ export function ChannelCreateMenu({
   )
 }
 
-/** The Channels page's filter: every channel in the registry. */
-export const CHANNEL_FILTER_ITEMS: readonly SelectOption[] = [
-  { value: "all", label: "All channels" },
-  ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
-]
+/** The Channels page uses the same options as the message filters. */
+export const CHANNEL_FILTER_ITEMS = MESSAGE_CHANNEL_ITEMS
 
 /** One way to remove a channel: delete a domain, disconnect a business. */
 export type ChannelRemoval = {

@@ -30,6 +30,12 @@ import { actionError } from "@/lib/action-error"
 import { FileUploadField } from "@/components/dashboard/file-upload"
 import { writableCallingSettings } from "@/lib/meta/calling"
 import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
+import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
 import type { CallingSettings } from "@/packages/sdk/src/whatsapp/calling/interfaces"
 const statusOptions = [
   { value: "ENABLED", label: "Enabled" },
@@ -534,7 +540,7 @@ export function CallingPanel({
       <DetailSection title="Call log">
         {log === undefined ? (
           <Skeleton className="h-40 w-full" />
-        ) : !log.data.length ? (
+        ) : cursorListIsEmpty(log.data.length, history) ? (
           <EmptyState
             size="sm"
             icon={PhoneIcon}
@@ -543,94 +549,107 @@ export function CallingPanel({
           />
         ) : (
           <>
-            <ResourceTable
-              headers={
-                <>
-                  {[
-                    "Contact",
-                    "Direction",
-                    "Status",
-                    "Duration",
-                    "When",
-                    "Files",
-                  ].map((label) => (
-                    <TableHead key={label}>{label}</TableHead>
-                  ))}
-                </>
-              }
-            >
-              {log.data.map((call) => (
-                <TableRow key={call.id}>
-                  <TableCell>
-                    {call.contact_name}
-                    {call.contact_phone ? (
-                      <div className="text-xs text-muted-foreground">
-                        {call.contact_phone}
-                      </div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    {call.direction === "outbound" ? "Outgoing" : "Incoming"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {callOutcomeLabel(call.status)}
-                    </Badge>
-                    {call.error ? (
-                      <p className="text-muted-foreground">{call.error}</p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    {call.duration === null ? "—" : `${call.duration}s`}
-                  </TableCell>
-                  <TableCell>
-                    <RelativeTime at={Date.parse(call.created_at)} />
-                  </TableCell>
-                  <TableCell>
-                    {call.recording?.download_url ? (
-                      <a href={call.recording.download_url}>Recording</a>
-                    ) : null}
-                    {call.transcription?.download_url ? (
-                      <a
-                        className="ml-2"
-                        href={call.transcription.download_url}
-                      >
-                        Transcript
-                      </a>
-                    ) : null}
-                    {call.recording?.error || call.transcription?.error ? (
-                      <p>
-                        {call.recording?.error ?? call.transcription?.error}
-                      </p>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </ResourceTable>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!history.length}
-                onClick={() => {
-                  setAfter(history.at(-1))
-                  setHistory(history.slice(0, -1))
-                }}
+            {log.data.length ? (
+              <ResourceTable
+                headers={
+                  <>
+                    {[
+                      "Contact",
+                      "Direction",
+                      "Status",
+                      "Duration",
+                      "When",
+                      "Files",
+                    ].map((label) => (
+                      <TableHead key={label}>{label}</TableHead>
+                    ))}
+                  </>
+                }
               >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!log.has_more}
-                onClick={() => {
-                  setHistory([...history, after])
-                  setAfter(log.data.at(-1)?.id)
-                }}
-              >
-                Next
-              </Button>
-            </div>
+                {log.data.map((call) => (
+                  <TableRow key={call.id}>
+                    <TableCell>
+                      {call.contact_name}
+                      {call.contact_phone ? (
+                        <div className="text-xs text-muted-foreground">
+                          {call.contact_phone}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {call.direction === "outbound" ? "Outgoing" : "Incoming"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {callOutcomeLabel(call.status)}
+                      </Badge>
+                      {call.error ? (
+                        <p className="text-muted-foreground">{call.error}</p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {call.duration === null ? "—" : `${call.duration}s`}
+                    </TableCell>
+                    <TableCell>
+                      <RelativeTime at={Date.parse(call.created_at)} />
+                    </TableCell>
+                    <TableCell>
+                      {call.recording?.download_url ? (
+                        <a href={call.recording.download_url}>Recording</a>
+                      ) : null}
+                      {call.transcription?.download_url ? (
+                        <a
+                          className="ml-2"
+                          href={call.transcription.download_url}
+                        >
+                          Transcript
+                        </a>
+                      ) : null}
+                      {call.recording?.error || call.transcription?.error ? (
+                        <p>
+                          {call.recording?.error ?? call.transcription?.error}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </ResourceTable>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No calls on this page.
+              </p>
+            )}
+            {cursorPagerVisible(history, log.has_more) ? (
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!history.length}
+                  onClick={() => {
+                    const previous = cursorPrevious({ after, history })
+                    setAfter(previous.after)
+                    setHistory([...previous.history])
+                  }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!log.has_more}
+                  onClick={() => {
+                    const next = cursorNext(
+                      { after, history },
+                      log.data.at(-1)?.id
+                    )
+                    setAfter(next.after)
+                    setHistory([...next.history])
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : null}
           </>
         )}
       </DetailSection>

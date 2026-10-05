@@ -19,6 +19,7 @@ import {
   variableOptions,
   type VariableOption,
 } from "@/lib/automation-references"
+import { fieldTypeLabel } from "@/lib/dashboard/format"
 import { SYSTEM_EVENT_CATALOG, type CatalogEvent } from "@/lib/event-catalog"
 import type { Automation } from "@/lib/dashboard/types"
 import type { VariableSource } from "@/lib/meta/variables"
@@ -47,7 +48,7 @@ export function ReferenceFieldSelect({
           value: option.path,
           label: option.label,
           group: option.group,
-          description: `${option.field.type} · ${option.field.description}`,
+          description: `${fieldTypeLabel(option.field.type)} · ${option.field.description}`,
         }))}
       search={{ onChange: setSearch, placeholder: "Search fields…" }}
       contentClassName="w-96"
@@ -259,7 +260,7 @@ export function ReferenceInput({
             value=""
             items={options
               .filter((option) =>
-                `${option.label} ${option.field.type}`
+                `${option.label} ${fieldTypeLabel(option.field.type)}`
                   .toLowerCase()
                   .includes(search.toLowerCase())
               )
@@ -267,7 +268,7 @@ export function ReferenceInput({
                 value: option.path,
                 label: option.label,
                 group: option.group,
-                description: `${option.field.type} · ${JSON.stringify(option.field.example)} — ${option.field.description}`,
+                description: `${fieldTypeLabel(option.field.type)} · ${JSON.stringify(option.field.example)} — ${option.field.description}`,
               }))}
             search={{ onChange: setSearch, placeholder: "Search variables…" }}
             contentClassName="w-96"

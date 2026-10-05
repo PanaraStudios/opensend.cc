@@ -37,6 +37,7 @@ import { renderHash, renderSpec } from "../../lib/ivr-prompts"
 import { fileUrl } from "../storage/urls"
 import { definition } from "./validators"
 import type { Doc } from "../_generated/dataModel"
+import { pickerArgs, pickerRows } from "../pickerOptions"
 
 export const actor = {
   organizationId: v.string(),
@@ -413,6 +414,22 @@ export const dashboardList = query({
   args: { organizationId: v.string(), ...listArgs },
   returns: v.any(),
   handler: listDefinitions,
+})
+/** IVRs a picker can search, including one that is already saved. */
+export const options = query({
+  args: pickerArgs,
+  returns: v.array(v.object({ id: v.id("ivrs"), name: v.string() })),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const rows = await pickerRows(
+      ctx,
+      "ivrs",
+      args.organizationId,
+      args.search,
+      args.selectedIds
+    )
+    return rows.map((row) => ({ id: row._id, name: row.name }))
+  },
 })
 export const validate = internalQuery({
   args: { ...actor, id: v.string(), body: v.string() },
