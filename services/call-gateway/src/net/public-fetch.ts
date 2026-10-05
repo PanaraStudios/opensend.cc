@@ -120,6 +120,12 @@ function request(
             for (const item of Array.isArray(value) ? value : [value])
               headers.append(key, item)
         if (options.stream) {
+          const status = incoming.statusCode ?? 502
+          if ([204, 205, 304].includes(status)) {
+            resolveResponse(new Response(null, { status, headers }))
+            incoming.destroy()
+            return
+          }
           let size = 0
           const bounded = new Transform({
             transform(chunk: Buffer, _encoding, callback) {

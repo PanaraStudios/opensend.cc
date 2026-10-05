@@ -9,7 +9,12 @@ import {
 } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
-import { actor, authorizeToolkit, ownedToolkit } from "../botToolkitAccess"
+import {
+  actor,
+  authorizeToolkit,
+  ownedToolkit,
+  limitOutbound,
+} from "../botToolkitAccess"
 import { invalid, orNullIfNotFound, type Caller } from "../api/caller"
 import { idempotent } from "../api/idempotency"
 import { listArgs, cursorPage } from "../api/paging"
@@ -312,6 +317,7 @@ export const save = internalMutation({
         storageId = file.storageId
         byteSize = file.size
       }
+      await limitOutbound(ctx, args.organizationId, "knowledgeIndex")
       if (previous?.fileId && previous.fileId !== fileId)
         await deleteFile(ctx, { fileId: previous.fileId })
       const fields = {

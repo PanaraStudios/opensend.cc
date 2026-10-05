@@ -111,14 +111,23 @@ export function parseGraphError(
     )
       error = parsed.error as Record<string, unknown>
   } catch {}
+  const redactions = [
+    ...new Set(
+      secrets
+        .filter(Boolean)
+        .flatMap((secret) => [
+          secret,
+          encodeURIComponent(secret),
+          new URLSearchParams({ value: secret })
+            .toString()
+            .slice("value=".length),
+        ])
+    ),
+  ].sort((a, b) => b.length - a.length)
   const safeString = (value: unknown) => {
     let result = stringOr(value)
-    for (const secret of secrets) {
-      if (!secret || !result) continue
-      result = result
-        .replaceAll(secret, "[REDACTED]")
-        .replaceAll(encodeURIComponent(secret), "[REDACTED]")
-    }
+    for (const secret of redactions)
+      result = result?.replaceAll(secret, "[REDACTED]")
     return result
   }
   const title = safeString(error.error_user_title) ?? safeString(error.title)

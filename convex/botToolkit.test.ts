@@ -81,11 +81,104 @@ async function setup() {
     ...f,
     organizationId,
     credentialId,
+    key,
     baseId: base.id as Id<"knowledgeBases">,
     request,
     doc,
   }
 }
+
+test("bot tests share a team quota across tools, entry points and concurrent requests", async () => {
+  const f = await setup()
+  const net = await import("../lib/net/public-fetch")
+  const outbound = vi
+    .spyOn(net, "publicFetch")
+    .mockRejectedValue(new Error("Endpoint unavailable"))
+  const tool = async (name: string) =>
+    f.owner.client.action(api.botTools.resources.dashboardWrite, {
+      organizationId: f.organizationId,
+      body: JSON.stringify({
+        name,
+        description: "Fixture tool",
+        url: "https://example.test/tool",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      }),
+    })
+  const tools = [await tool("first"), await tool("second")]
+  const results = await Promise.allSettled(
+    Array.from({ length: 11 }, (_, index) =>
+      f.owner.client.action(api.botTools.execute.dashboardTest, {
+        organizationId: f.organizationId,
+        id: tools[index % 2].id,
+        input: {},
+      })
+    )
+  )
+  expect(
+    results.filter((result) => result.status === "fulfilled")
+  ).toHaveLength(10)
+  expect(outbound).toHaveBeenCalledTimes(10)
+  const reply = await f.request(`/bot-tools/${tools[0].id}/test`, "POST", {})
+  expect(reply.status).toBe(429)
+  expect(outbound).toHaveBeenCalledTimes(10)
+  vi.setSystemTime(Date.now() + 60_000)
+  await expect(
+    f.owner.client.action(api.botTools.execute.dashboardTest, {
+      organizationId: f.organizationId,
+      id: tools[0].id,
+      input: {},
+    })
+  ).resolves.toMatchObject({ ok: false })
+})
+
+test("knowledge re-indexing consumes a team quota before scheduling paid work", async () => {
+  const f = await setup()
+  for (let index = 0; index < 10; index++) await f.doc()
+  await expect(f.doc()).rejects.toThrow(/Too many/)
+  const rows = await f.t.run((ctx) =>
+    ctx.db.query("knowledgeDocuments").collect()
+  )
+  expect(rows).toHaveLength(10)
+  // Updating a different existing document cannot reset the team's allowance.
+  await expect(
+    f.owner.client.action(api.knowledge.resources.dashboardWrite, {
+      organizationId: f.organizationId,
+      knowledgeBaseId: f.baseId,
+      id: rows[0]._id,
+      body: JSON.stringify({ title: "Updated" }),
+    })
+  ).rejects.toThrow(/Too many/)
+})
+
+test("knowledge search caps provider calls per team across dashboard and REST", async () => {
+  const f = await setup()
+  const embedding = vi
+    .spyOn(embeddingNet, "publicFetch")
+    .mockImplementation(async () =>
+      Response.json({ embedding: { values: Array(768).fill(1) } })
+    )
+  for (let index = 0; index < 20; index++)
+    await f.owner.client.action(api.knowledge.search.dashboardSearch, {
+      organizationId: f.organizationId,
+      knowledgeBaseIds: [f.baseId],
+      query: "Hours?",
+    })
+  const reply = await f.t.fetch(`/knowledge-bases/${f.baseId}/search`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${f.key.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ query: "Hours?" }),
+  })
+  expect(reply.status).toBe(429)
+  expect(embedding).toHaveBeenCalledTimes(20)
+})
 test("knowledge ingestion uses team credentials, atomically replaces revisions and reports real failures", async () => {
   const f = await setup(),
     doc = await f.doc()
