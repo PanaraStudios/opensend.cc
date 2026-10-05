@@ -1961,7 +1961,7 @@ test.each(["timeout", "gatewayHangup", "blockInbound"] as const)(
   }
 )
 
-test("timeout works without signaling credentials and atomically respects acceptance/newer events", async () => {
+test("timeout works without signaling credentials and atomically respects acceptance", async () => {
   const f = await setup()
   const id = await f.t.run((ctx) =>
     ctx.db.insert("calls", {
@@ -1992,13 +1992,6 @@ test("timeout works without signaling credentials and atomically respects accept
     await f.t.mutation(internal.calling.rows.endLocally, {
       id,
       kind: "timeout",
-    })
-  ).toBeNull()
-  expect(
-    await f.t.mutation(internal.calling.rows.endLocally, {
-      id,
-      kind: "hangup",
-      at: Date.now() - 1,
     })
   ).toBeNull()
   expect((await f.t.run((ctx) => ctx.db.get("calls", id)))?.status).toBe(
@@ -2043,4 +2036,66 @@ test("a Graph connect response arriving after the setup timeout terminates the n
   )
   expect(row?.status).toBe("failed")
   expect(row?.operation).toBeUndefined()
+})
+
+test("a delayed signed media hangup wins over newer acceptance and gateway timestamps", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  const id = await f.t.run((ctx) =>
+    ctx.db.insert("calls", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      direction: "inbound",
+      mode: "gateway",
+      status: "connected",
+      connectedAt: Date.now() - 5000,
+      observedAt: Date.now(),
+      gatewayAt: Date.now(),
+    })
+  )
+  const at = Date.now() - 1000
+  const path = "/calling/gateway/events"
+  const body = JSON.stringify({
+    version: 1,
+    eventId: crypto.randomUUID(),
+    callId: id,
+    timestamp: at,
+    event: "hangup",
+    reason: "SIP hangup",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: signRequest(secret, "POST", path, body),
+        body,
+      })
+    ).status
+  ).toBe(200)
+  const jobs = await f.t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  expect(
+    jobs.some(
+      (job) => job.name.includes("gatewayHangup") && job.args[0].id === id
+    )
+  ).toBe(true)
+  expect(
+    await f.t.mutation(internal.calling.rows.endLocally, {
+      id,
+      kind: "hangup",
+      at,
+      reason: "SIP hangup",
+    })
+  ).not.toBeNull()
+  expect((await f.t.run((ctx) => ctx.db.get("calls", id)))?.status).toBe(
+    "completed"
+  )
+  expect(
+    await f.t.mutation(internal.calling.rows.endLocally, {
+      id,
+      kind: "hangup",
+      at,
+    })
+  ).toBeNull()
 })

@@ -752,10 +752,10 @@ export const endLocally = internalMutation({
       (await retirement(ctx, row.organizationId))
     )
       return null
-    // A racing acceptance or newer webhook must win over a stale timeout/hangup.
+    // Acceptance wins over a timeout, but a terminal media callback cannot be
+    // superseded by a later acceptance webhook or a different server clock.
     if (kind === "timeout" && row.status === "connected") return null
-    if (kind === "hangup" && (at === undefined || at < row.observedAt))
-      return null
+    if (kind === "hangup" && at === undefined) return null
     await ctx.runMutation(internal.calling.rows.finish, {
       id,
       status:

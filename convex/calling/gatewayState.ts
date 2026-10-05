@@ -57,7 +57,10 @@ export const consume = internalMutation({
       await ctx.scheduler.runAfter(0, internal.calling.media.gatewayRecording, {
         id: row._id,
       })
-    } else if (!CALL_TERMINAL.has(row.status) && at >= (row.gatewayAt ?? 0)) {
+    } else if (
+      !CALL_TERMINAL.has(row.status) &&
+      (event === "hangup" || at >= (row.gatewayAt ?? 0))
+    ) {
       if (event === "answer_ready" || event === "offer_ready") {
         const sdp = string(data.answerSdp || data.offerSdp)
         if (row.localSession && row.localSession.sdp !== sdp)
@@ -85,7 +88,7 @@ export const consume = internalMutation({
               }
             : {}),
         })
-      else if (event === "hangup" && at >= row.observedAt)
+      else if (event === "hangup")
         await ctx.scheduler.runAfter(
           0,
           row.test
