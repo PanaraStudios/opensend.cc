@@ -822,3 +822,84 @@ test("IVR bot admission falls back when budget is exhausted", async () => {
     ivrOutcome: { kind: "voicemail" },
   })
 })
+
+test("IVR secrets are revealed on write-scoped creation/rotation and redacted everywhere else", async () => {
+  const f = await setup()
+  const initial = f.ivr.webhook_signing_secret
+  expect(initial).not.toBe("[redacted]")
+  const reader = await f.owner.client.action(api.apiKeys.create, {
+    organizationId: f.owner.team,
+    input: {
+      name: "Reader",
+      permission: "custom",
+      domainId: null,
+      scopes: ["ivrs:read"],
+    },
+  })
+  const headers = { authorization: `Bearer ${reader.token}` }
+  for (const path of ["/ivrs", `/ivrs/${f.ivr.id}`]) {
+    vi.setSystemTime(Date.now() + 1100)
+    const response = await f.t.fetch(path, { headers })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(JSON.stringify(body)).not.toContain(initial)
+    expect((body.data?.[0] ?? body).webhook_signing_secret).toBe("[redacted]")
+  }
+  for (const name of ["dashboardGet", "dashboardList"] as const) {
+    const body = await f.owner.client.query(api.ivr.definitions[name], {
+      organizationId: f.owner.team,
+      ...(name === "dashboardGet" ? { id: f.ivr.id } : { limit: 10 }),
+    })
+    expect(JSON.stringify(body)).not.toContain(initial)
+  }
+  expect(
+    (
+      await (
+        await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { name: "Updated" })
+      ).json()
+    ).webhook_signing_secret
+  ).toBe("[redacted]")
+  vi.setSystemTime(Date.now() + 1100)
+  expect(
+    (
+      await f.t.fetch(`/ivrs/${f.ivr.id}/rotate-signing-secret`, {
+        method: "POST",
+        headers,
+      })
+    ).status
+  ).toBe(403)
+  const rotated = await (
+    await f.request(
+      `/ivrs/${f.ivr.id}/rotate-signing-secret`,
+      "POST",
+      {},
+      "rotate-once"
+    )
+  ).json()
+  expect(rotated.webhook_signing_secret).not.toBe(initial)
+  expect(rotated.webhook_signing_secret).not.toBe("[redacted]")
+  expect(
+    await (
+      await f.request(
+        `/ivrs/${f.ivr.id}/rotate-signing-secret`,
+        "POST",
+        {},
+        "rotate-once"
+      )
+    ).json()
+  ).toEqual(rotated)
+  const { decryptSecret } = await import("./secrets")
+  const row = await f.t.run((ctx) => ctx.db.get("ivrs", f.ivr.id))
+  expect(await decryptSecret(row!.webhookSecret)).toBe(
+    rotated.webhook_signing_secret
+  )
+  expect(
+    (await (await f.request(`/ivrs/${f.ivr.id}`)).json()).webhook_signing_secret
+  ).toBe("[redacted]")
+  await expect(
+    f.outsider.client.action(api.ivr.definitions.dashboardRotateSecret, {
+      organizationId: f.owner.team,
+      id: f.ivr.id,
+    })
+  ).rejects.toThrow()
+})

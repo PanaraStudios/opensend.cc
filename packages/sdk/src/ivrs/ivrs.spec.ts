@@ -40,10 +40,13 @@ it("IVR CRUD and validation use stable encoded paths, cursor parameters and idem
   await client.ivrs.remove("ivr/1")
   await client.ivrs.validate("ivr/1", { entryMenuId: "bad" })
   await client.ivrs.render("ivr/1")
+  await client.ivrs.rotateSigningSecret("ivr/1", {
+    idempotencyKey: "rotate-once",
+  })
   expect(fetcher.mock.calls.map((c) => (c as unknown as [string])[0])).toEqual([
     "https://api.example.test/ivrs",
     "https://api.example.test/ivrs?limit=10&after=cursor",
-    ...["", "", "", "/validate", "/render"].map(
+    ...["", "", "", "/validate", "/render", "/rotate-signing-secret"].map(
       (p) => `https://api.example.test/ivrs/ivr%2F1${p}`
     ),
   ])
@@ -51,7 +54,7 @@ it("IVR CRUD and validation use stable encoded paths, cursor parameters and idem
     fetcher.mock.calls.map(
       (c) => (c as unknown as [string, RequestInit])[1].method
     )
-  ).toEqual(["POST", "GET", "GET", "PATCH", "DELETE", "POST", "POST"])
+  ).toEqual(["POST", "GET", "GET", "PATCH", "DELETE", "POST", "POST", "POST"])
   await client.whatsapp.phoneNumbers.updateCalling("number", {
     routing: { kind: "ivr", ivrId: "ivr" },
   })

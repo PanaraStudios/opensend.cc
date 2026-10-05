@@ -59,6 +59,7 @@ export interface Ivr extends IvrDefinition {
   id: string
   created_at: string
   updated_at: string
+  /** Full secret only on creation/rotation; "[redacted]" on all other responses. */
   webhook_signing_secret: string
   prompt_status: "ready" | "pending_render" | "failed"
   prompt_renders?: {
