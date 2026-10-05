@@ -1,12 +1,13 @@
 # v2 dashboard quality review
 
 Reviewed on 2026-10-05 in `fix/v2-dashboard-review`, parent `d5bdf63`.
+The medium follow-up is `fix/v2-dashboard-review-2`, starting at `cdf7cd8`.
 This clone has no `origin/master` ref. The review covered the v2 dashboard
 areas named in the task: messages, channels, contacts, templates, broadcasts,
 automations and flows, playground, webhooks, API keys, metrics, and settings.
-`lib/` files that only import `convex/` were left out. `CLAUDE.md` was read
-first. No `convex/` edit was required, so `convex/_generated/ai/guidelines.md`
-was not applied to a code change.
+`lib/` files that only import `convex/` were left out of the first pass.
+`CLAUDE.md` was read first. The follow-up reads
+`convex/_generated/ai/guidelines.md` before the picker queries.
 
 Locations below are the final code. Severity is impact. Confidence is how
 directly the code shows the failure.
@@ -29,22 +30,29 @@ directly the code shows the failure.
 | F12 | High / high | `components/dashboard/playground/inbox.tsx:87` | On a narrow screen, opening a thread unmounted the conversation list. Search, channel, status, and the loaded page reset when the user went back. | Fixed in `26db145`. The list stays mounted and is hidden while the thread is open. |
 | F13 | High / high | `components/dashboard/calling/calls-view.tsx:117`, `lib/dashboard/voice-playground.ts:107` | A call with a bot or IVR id and no name rendered `Bot ` or `IVR ` with a trailing space. | Fixed in `0a90a45` and `32b6078`. `callRouteLabel` uses the name when it is present, otherwise `Voice bot` or `IVR`. Tested in `lib/dashboard/voice-playground.test.ts`. |
 
+## Follow-up on `fix/v2-dashboard-review-2`
+
+Medium items with a shared root-cause fix are marked fixed below. The rest stay reported.
+
+| ID | Severity / confidence | Location | What happens | Resolution |
+| --- | --- | --- | --- | --- |
+| R1 | Medium / high | `components/dashboard/playground/bot-tool-fields.tsx`, `components/dashboard/playground/ivr.tsx`, `components/dashboard/playground/ivr-fields.tsx`, `components/dashboard/playground/voice-bots.tsx`, `components/dashboard/playground/provider-keys.tsx`, `components/dashboard/calling/calls-view.tsx`, `components/dashboard/calling/place-call-fields.tsx` | These pickers and name lookups requested `limit: 100` and ignored `has_more`. A saved bot, IVR, knowledge base, tool, or provider key past that page disappeared from the picker. The place-call route loaded pages of 50 with Load more. The provider key table stopped at 100 rows. | Fixed in `daf8cdf`. `convex/pickerOptions.ts` searches a name or label index and point-reads up to 64 saved ids. `components/dashboard/resource-picker.tsx` is the shared select and checklist. The provider key table pages 25 rows with the cursor helpers. `90b5ced` lists the two place-call setters as the search callback dependencies. Tested in `convex/pickerOptions.test.ts` and `lib/dashboard/options.test.ts`. |
+| R2 | Medium / high | `components/dashboard/automations/events.tsx`, `components/dashboard/audience/properties.tsx`, `components/dashboard/automations/references.tsx` | The custom event field type menu labeled the stored values `string`, `number`, `boolean`, and `date`. Reference descriptions showed the same codes. Property types relied on CSS capitalize. | Fixed in `423b903`. `fieldTypeLabel` in `lib/dashboard/format.ts` is the one map. Tested in `lib/dashboard/format.test.ts`. |
+| R3 | Medium / high | `components/dashboard/playground/call-detail.tsx`, `components/dashboard/conversation/business-card.tsx`, `components/dashboard/conversation/message-content.tsx` | Collected call keys, WhatsApp order status, and form reply keys dropped underscores and stayed lowercase, so `payment_updated` read `payment updated`. | Fixed in `423b903`. Those labels use `codeLabel`, which sentence-cases the code and keeps the rest of each word. Tested in `lib/dashboard/format.test.ts`. |
+| R4 | Medium / high | `components/dashboard/conversation/message-content.tsx`, `lib/dashboard/conversation-content.ts` | A call permission reply printed the stored `response` value in the thread and in the text fallback. | Fixed in `423b903`. `callPermissionReplyLabel` maps `accept` to Accepted and `reject` to Declined. Tested in `lib/dashboard/voice-playground.test.ts` and `lib/dashboard/conversation-content.test.ts`. |
+| R5 | Medium / high | `lib/dashboard/voice-playground.ts` | A submenu action read `Menu:` plus the menu slug. Outcome badges used that slug. | Fixed in `423b903`. `ivrActionLabel` takes the menus when the caller has them and shows `Menu:` plus the menu name. Without a name it shows Submenu. The call detail passes the loaded IVR menus. The tester path still resolves the name itself. Tested in `lib/dashboard/voice-playground.test.ts`. |
+| R6 | Medium / medium | `components/dashboard/audience/contact-detail.tsx` | Broadcast history printed `subject`, then ` · `, then the date. An empty subject left a leading separator. | Fixed in `d10f403`. The line joins the trimmed subject and the date when each one is present. |
+| R7 | Medium / high | `components/dashboard/calling/calls-view.tsx`, `components/dashboard/channels/calling.tsx` | An empty page replaced the table and pager with `No calls yet`. If the only rows on a later page disappeared, Previous was gone until reload. | Fixed in `ce21d8b`. `cursorListIsEmpty` is true only when the list itself is empty. `cursorPagerVisible` keeps Previous when history exists. The same check is used on the voice bot, IVR, webhook tool, knowledge, and provider key lists. Tested in `lib/dashboard/pagination.test.ts`. |
+| R11 | Low / high | `components/dashboard/calling/calls-view.tsx`, `components/dashboard/channels/calling.tsx` | Previous and Next for id cursors were written out on the call lists. | Fixed in `ce21d8b`. Both call lists use `cursorPrevious` and `cursorNext`. |
+
 ## Reported, unchanged
 
-| ID | Severity / confidence | Location | What happens |
-| --- | --- | --- | --- |
-| R1 | Medium / high | `components/dashboard/playground/bot-tool-fields.tsx:42`, `components/dashboard/playground/bot-tool-fields.tsx:47`, `components/dashboard/playground/ivr.tsx:346`, `components/dashboard/playground/ivr-fields.tsx:300`, `components/dashboard/playground/voice-bots.tsx:265`, `components/dashboard/playground/voice-bots.tsx:570`, `components/dashboard/playground/provider-keys.tsx:192`, `components/dashboard/playground/provider-keys.tsx:228`, `components/dashboard/calling/calls-view.tsx:38` | These pickers and name lookups request `limit: 100` and ignore `has_more`. A saved bot, IVR, knowledge base, tool, or provider key past that page disappears from the picker while it remains in the saved config. Including the selected ids needs a query change. |
-| R2 | Medium / high | `components/dashboard/automations/events.tsx:66` | The custom event field type menu labels the stored values `string`, `number`, `boolean`, and `date`. Audience property types on the properties page use `String` and `Number`. |
-| R3 | Medium / high | `components/dashboard/playground/call-detail.tsx:105`, `components/dashboard/conversation/business-card.tsx:395`, `components/dashboard/conversation/message-content.tsx:125` | Collected call keys, WhatsApp order status, and form reply keys drop underscores and stay lowercase, so `payment_updated` reads `payment updated`. |
-| R4 | Medium / high | `components/dashboard/conversation/message-content.tsx:136`, `lib/dashboard/conversation-content.ts:30` | A call permission reply prints the stored `response` value in the thread and in the text fallback. |
-| R5 | Medium / high | `lib/dashboard/voice-playground.ts:44` | A submenu action still reads `Menu:` plus the menu slug. The IVR tester path resolves the menu name. Outcome badges still use the slug. |
-| R6 | Medium / medium | `components/dashboard/audience/contact-detail.tsx:531` | Broadcast history prints `subject`, then ` · `, then the date. An empty subject leaves a leading separator. |
-| R7 | Medium / high | `components/dashboard/calling/calls-view.tsx:73`, `components/dashboard/channels/calling.tsx:537` | An empty page replaces the table and pager with `No calls yet`. If the only rows on a later page disappear, Previous is gone until reload. The knowledge lists keep Previous in that case. |
-| R8 | Low / medium | `components/dashboard/emails/detail.tsx:516`, `components/dashboard/emails/detail.tsx:594` | `JSON.parse` runs on message payload and on failed receipt or typing details. Those values are written with `JSON.stringify`. A corrupt stored string would throw and take down the page. |
-| R9 | Low / high | `lib/dashboard/conversation-content.ts:40`, `lib/dashboard/format.ts:35` | `relativeMessageTime` overlaps `formatRelative` and uses different rules. `convex/voice/callerContext.ts` calls the message helper, so the two stay separate. |
-| R10 | Medium / high | `components/dashboard/channels/calling.tsx:562` | Channel call log rows show the contact name as text. The playground call list links each row to `/playground/calls/[id]`. |
-| R11 | Low / high | `components/dashboard/calling/calls-view.tsx:140`, `components/dashboard/channels/calling.tsx:614` | Previous and Next for id cursors are still written out on the call lists. Knowledge uses `cursorNext` and `cursorPrevious`. |
-| R12 | Low / high | `components/dashboard/calling/softphone-provider.tsx:119` | ESLint already warns that the phone effect omits `phone`. This change did not add that effect. The warning remains. |
+| ID | Severity / confidence | Location | What happens | Why it stays reported |
+| --- | --- | --- | --- | --- |
+| R8 | Low / medium | `components/dashboard/emails/detail.tsx` | `JSON.parse` runs on message payload and on failed receipt or typing details. A corrupt stored string would throw and take down the page. | The stored values are written with `JSON.stringify`. Guarding the parse is defensive, and this lane did not find a corrupt payload to fix at the source. |
+| R9 | Low / high | `lib/dashboard/conversation-content.ts`, `lib/dashboard/format.ts` | `relativeMessageTime` overlaps `formatRelative` and uses different rules. | `convex/voice/callerContext.ts` calls the message helper. Collapsing the two would change caller-context wording, so they stay separate. |
+| R10 | Medium / high | `components/dashboard/channels/calling.tsx` | Channel call log rows show the contact name as text. The playground call list links each row to `/playground/calls/[id]`. | This is a product difference between the channel log and the playground, not one broken lookup. Linking the channel log needs a product decision. |
+| R12 | Low / high | `components/dashboard/calling/softphone-provider.tsx:119` | ESLint warns that the phone effect omits `phone`. | The warning was already there. This lane did not add that effect. |
 
 ## Tests
 
@@ -54,6 +62,10 @@ directly the code shows the failure.
 | F2, F4, F5, F13 | `lib/dashboard/voice-playground.test.ts` |
 | F6, F7 | `lib/meta/softphone.test.ts` |
 | F11 | `lib/dashboard/pagination.test.ts` `id cursors` |
+| R1 | `convex/pickerOptions.test.ts`, `lib/dashboard/options.test.ts` |
+| R2, R3 | `lib/dashboard/format.test.ts` `readable codes` |
+| R4, R5 | `lib/dashboard/voice-playground.test.ts`, `lib/dashboard/conversation-content.test.ts` |
+| R7, R11 | `lib/dashboard/pagination.test.ts` `keeps Previous when the current page has no rows` |
 
 F3, F8, F9, F10, and F12 are component structure. This repo's dashboard unit tests cover `lib/` helpers. No e2e file was edited. `tests/e2e/softphone-flow.ts` looks for the button name `Go online`, which is unchanged.
 
@@ -61,15 +73,15 @@ F3, F8, F9, F10, and F12 are component structure. This repo's dashboard unit tes
 
 | Command | Result |
 | --- | --- |
-| `pnpm typecheck` | Passed. |
+| `pnpm typecheck` | Passed on the final tree. |
 | `pnpm lint` | Passed with zero errors. One existing warning at `components/dashboard/calling/softphone-provider.tsx:119`. |
-| `pnpm test` | 657 passed, 119 suites. |
-| `pnpm test:auth --maxWorkers=2` | 1,246 passed, 80 files. |
+| `pnpm test` | 661 passed, 120 suites. |
+| `pnpm test:auth --maxWorkers=2` | 1,247 passed, 81 files. |
 | `pnpm test:sdk` | 627 passed, 4 live tests skipped. |
 | `pnpm test:mcp` | 542 passed, 1 live test skipped. |
-| `pnpm build` | Passed. |
+| `pnpm build` | Passed. The build also typechecked the project. |
 
-Thirteen findings were fixed in eight commits. Twelve findings are reported and unchanged. Public routes, test ids, and REST, SDK, and MCP shapes are unchanged. No schema change, package script edit, `convex/` edit, e2e edit, push, or `convex dev` run.
+F1 through F13 were fixed on `fix/v2-dashboard-review`. This follow-up fixes R1, R2, R3, R4, R5, R6, R7, and R11 in `ce21d8b`, `daf8cdf`, `423b903`, `d10f403`, and `90b5ced`. R8, R9, R10, and R12 stay reported. Public routes, test ids, and REST, SDK, and MCP shapes are unchanged. The schema adds unstaged search indexes on voice bots, provider keys, IVRs, knowledge bases, and webhook tools, so the options queries work in the same deploy. Convex backfills those indexes before the deploy finishes, and a large table can hold the deploy until the backfill completes. No package script edit, e2e edit, push, or `convex dev` run.
 
 ## What the lead should verify
 
@@ -84,3 +96,12 @@ Browser and the Playwright e2e suite were not run here. The calling harness was 
 - The topic subscription switch exposes `Subscribe` or `Unsubscribe` plus the topic name.
 - Channel filters stay email first. The send dialog stays WhatsApp first, with Email, WhatsApp, Messenger, and Instagram labels.
 - At 390px, opening a playground inbox thread and going back keeps the search text, channel, status, and page. The touched screens stay within the viewport in light and dark.
+- Search reaches a voice bot, IVR, knowledge base, webhook tool, or provider key past the first page, and a saved attachment past that page stays checked. The provider key table pages 25 rows. An emptied later page still shows Previous on that table and on the voice bot, IVR, tool, and knowledge lists.
+- Place a call searches voice bots and IVRs from one field.
+- The calls list and the channel call log keep Previous when the current page has no rows.
+- Automation field types read String, Number, Boolean, and Date. Property types use the same labels. A reference for enum, object, or array reads Choice, Object, or List.
+- Collected call keys, WhatsApp order status, and form reply keys sentence-case the stored code. `payment_updated` reads Payment updated. `First_Name` reads First Name.
+- A call permission reply reads Accepted or Declined.
+- A submenu outcome reads Menu plus the menu name, or Submenu when that name is not loaded.
+- Broadcast history with an empty subject shows the date and no leading separator.
+- At 390px, in light and dark, the new pickers and attachment switches stay inside the viewport with no horizontal page scroll.
