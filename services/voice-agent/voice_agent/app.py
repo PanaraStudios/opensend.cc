@@ -182,6 +182,20 @@ async def session(websocket: WebSocket):
             ),
         )
 
+        provider_failed = False
+
+        @worker.event_handler("on_pipeline_error")
+        async def pipeline_error(worker, frame):
+            nonlocal provider_failed
+            if provider_failed:
+                return
+            provider_failed = True
+            # Provider ErrorFrames travel upstream, bypassing downstream telemetry.
+            # Signal a safe terminal outcome even when TTS cannot produce a goodbye.
+            serializer.end_reason = "Voice provider failed"
+            await emit({"type": "end", "reason": serializer.end_reason})
+            await worker.cancel(reason=serializer.end_reason)
+
         @transport.event_handler("on_client_connected")
         async def connected(transport, client):
             await emit({"type": "ready"})

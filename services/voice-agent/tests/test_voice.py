@@ -472,3 +472,39 @@ async def test_rejected_duplicate_session_cannot_release_the_owners_active_marke
             with pytest.raises(asyncio.CancelledError):
                 await owner
         assert not module.active_calls
+
+
+def test_upstream_provider_error_ends_the_session_without_exposing_error_details(monkeypatch):
+    from voice_agent import app as module
+    from pipecat.frames.frames import StartFrame
+    from pipecat.processors.frame_processor import FrameProcessor
+
+    class FailedProvider(FrameProcessor):
+        def __init__(self, emit, tools):
+            super().__init__()
+
+        async def process_frame(self, frame, direction):
+            await super().process_frame(frame, direction)
+            await self.push_frame(frame, direction)
+            if isinstance(frame, StartFrame):
+                await self.push_error(error_msg="Private provider request details")
+
+    monkeypatch.setenv("VOICE_AGENT_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_SECRET", SECRET)
+    monkeypatch.setenv("CALL_GATEWAY_CONVEX_HTTP_URL", "http://fixture.test")
+    monkeypatch.setenv("VOICE_AGENT_FAKE_ENABLED", "true")
+    monkeypatch.setattr(module, "tokens", None)
+    monkeypatch.setattr(module, "active_calls", set())
+    monkeypatch.setattr(module, "FakePipeline", FailedProvider)
+    value = config()
+    value.update(botId="bot-1", maxDurationSeconds=6, toolCatalog=[])
+    with patch.object(module.VoiceBackend, "config", new=AsyncMock(return_value=value)):
+        with TestClient(module.app) as client:
+            with client.websocket_connect("/ws") as socket:
+                socket.send_json({"type": "start", "callId": "call-1", "sessionToken": token(claims())})
+                while True:
+                    message = socket.receive_json()
+                    assert "Private provider" not in json.dumps(message)
+                    if message["type"] == "end":
+                        assert message["reason"] == "Voice provider failed"
+                        break
