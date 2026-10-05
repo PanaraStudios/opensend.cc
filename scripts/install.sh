@@ -436,7 +436,31 @@ backup() (
       compose config --images convex > "$backup_dir/convex-image-id"
     fi
     docker volume inspect "$volume" >/dev/null 2>&1 || die 'Existing Convex volume is missing; upgrade cancelled.'
-    old_image=$(compose config --images migrate)
+    # Use the regular container's immutable image, even if its tag was changed
+    # or removed. ps can also include one-off containers such as log watchers.
+    old_image=
+    migrate_containers=$(compose ps -a -q migrate)
+    for migrate_container in $migrate_containers; do
+      oneoff=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.oneoff" }}' "$migrate_container")
+      case $oneoff in
+        False|false)
+          old_image=$(docker inspect --format '{{.Image}}' "$migrate_container")
+          break ;;
+      esac
+    done
+    if [ -z "$old_image" ]; then
+      # After compose down, resolve the saved service's image. --images migrate
+      # also lists dependency images, so it cannot resolve a single image name.
+      old_image=$(compose config migrate | awk '
+        /^  migrate:$/ { selected=1; next }
+        /^  [^ ]/ { selected=0 }
+        selected && /^    image:/ {
+          sub(/^    image:[[:space:]]*/, "")
+          if ($0 ~ /^\047.*\047$/ || $0 ~ /^".*"$/) $0=substr($0, 2, length($0)-2)
+          print
+        }')
+    fi
+    [ -n "$old_image" ] || die 'Cannot resolve the existing migrate image; upgrade cancelled.'
     docker image inspect "$old_image" >/dev/null 2>&1 || die 'The existing migrate image is missing. Restore it before backing up/upgrading.'
     say 'Stopping the stack for a consistent Convex volume backup.'
     compose stop
