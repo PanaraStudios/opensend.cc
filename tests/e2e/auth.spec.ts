@@ -1571,20 +1571,38 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await save.getByLabel("Client secret").fill("isolated-test-secret")
     await save.getByRole("button", { name: "Save connection" }).click()
     await expect(
+      owner.getByText("Connection saved. Test sign-in before enabling SSO.")
+    ).toBeVisible()
+    await expect(
       owner.getByRole("switch", { name: /Enable SSO/ })
     ).toBeDisabled()
+    // Keep the app session, but require an IdP login so the outbound leg cannot
+    // silently redirect back between assertions. A /profile navigation alone
+    // can be satisfied by a late event from the initial page load.
+    const issuer = new URL(process.env.OPENSEND_OIDC_URL!)
+    await ownerContext.clearCookies({ domain: issuer.hostname })
     await owner.goto("/profile")
-    const connected = owner.waitForEvent("framenavigated", {
-      predicate: (frame) =>
-        frame === owner.mainFrame() &&
-        new URL(frame.url()).pathname === "/profile",
-    })
     await owner
       .getByRole("button", { name: "Continue with SSO", exact: true })
       .click()
-    await connected
-    await owner.waitForLoadState("domcontentloaded")
+    await expect(owner).toHaveURL(
+      (url) =>
+        url.origin === issuer.origin &&
+        url.pathname === `${issuer.pathname}/protocol/openid-connect/auth`
+    )
+    await owner.getByLabel("Username or email").fill("oidc-owner")
+    await owner
+      .getByLabel("Password", { exact: true })
+      .fill("isolated-oidc-password")
+    await owner.getByRole("button", { name: "Sign In", exact: true }).click()
+    await expect(owner).toHaveURL(`${base}/profile`)
+    await expect(
+      owner.getByRole("heading", { name: "Profile", exact: true })
+    ).toBeVisible()
     await owner.goto("/settings/sso")
+    await expect(
+      owner.getByText("Connection test passed.", { exact: true })
+    ).toBeVisible()
     await expect(
       owner.getByRole("switch", { name: /Enable SSO/ })
     ).toBeEnabled()
