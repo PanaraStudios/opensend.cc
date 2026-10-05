@@ -1,4 +1,5 @@
 import { outboundInstructions } from "../../lib/calling/outbound"
+import { insertTranscript, toolLimitReached } from "./transcriptCounts"
 import {
   saveCollectedField,
   completeCollection,
@@ -224,14 +225,7 @@ export const tool = internalMutation({
         previous.arguments === serialized
         ? JSON.parse(previous.result!)
         : { ok: false, error: "Tool id reused with different arguments" }
-    const lifetime = await ctx.db
-      .query("callTranscripts")
-      .withIndex("by_callId", (q) => q.eq("callId", call._id))
-      .take(2001)
-    if (
-      lifetime.length > 2000 ||
-      lifetime.filter((line) => line.kind === "tool").length >= 128
-    )
+    if (await toolLimitReached(ctx, call))
       return { ok: false, error: "Call tool limit reached" }
     let result: { ok: boolean; result?: unknown; error?: string }
     // Side effects and durable deduplication commit in the same transaction.
@@ -265,7 +259,7 @@ export const tool = internalMutation({
         ).slice(0, 512),
       }
     }
-    await ctx.db.insert("callTranscripts", {
+    await insertTranscript(ctx, {
       organizationId: call.organizationId,
       callId: call._id,
       eventId: `tool:${toolCall.id}`,
@@ -304,7 +298,7 @@ async function execute(
             ? { conversationId: person.conversationId }
             : {}),
         })
-      await ctx.db.insert("callTranscripts", {
+      await insertTranscript(ctx, {
         organizationId: call.organizationId,
         callId: call._id,
         eventId: crypto.randomUUID(),
@@ -484,7 +478,7 @@ export const event = internalMutation({
     }
     const line = object(data.transcript)
     const supplied = Number(line.timestampMs)
-    await ctx.db.insert("callTranscripts", {
+    await insertTranscript(ctx, {
       organizationId: call.organizationId,
       callId: call._id,
       eventId,

@@ -1,4 +1,5 @@
 import { v } from "convex/values"
+import { insertTranscript, toolLimitReached } from "./transcriptCounts"
 import { internalMutation } from "../_generated/server"
 import { envelope, nonce, gatewayCall, callTimestamp } from "./gateway"
 import { object, string } from "../../lib/meta/parse"
@@ -68,16 +69,9 @@ export const begin = internalMutation({
             ? JSON.parse(previous.result!)
             : { ok: false, error: "Tool id reused with different arguments" },
       }
-    const lines = await ctx.db
-      .query("callTranscripts")
-      .withIndex("by_callId", (q) => q.eq("callId", call._id))
-      .take(2001)
-    if (
-      lines.length > 2000 ||
-      lines.filter((line) => line.kind === "tool").length >= 128
-    )
+    if (await toolLimitReached(ctx, call))
       return { result: { ok: false, error: "Call tool limit reached" } }
-    const logId = await ctx.db.insert("callTranscripts", {
+    const logId = await insertTranscript(ctx, {
       organizationId: call.organizationId,
       callId: call._id,
       eventId: `tool:${id}`,
@@ -110,7 +104,7 @@ export const finish = internalMutation({
     await ctx.db.patch("callTranscripts", row._id, {
       result: args.result,
     })
-    await ctx.db.insert("callTranscripts", {
+    await insertTranscript(ctx, {
       organizationId: row.organizationId,
       callId: row.callId,
       eventId: crypto.randomUUID(),
