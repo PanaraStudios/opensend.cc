@@ -1,20 +1,44 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
+import AxeBuilder from "@axe-core/playwright"
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { backendRows, client, importFixture } from "./ses-fixtures"
 import { beginOAuth, selectOAuthTeam } from "./oauth-flow"
+import { A11Y_RULE_ALLOWLIST, blocksA11yTour } from "./a11y-policy"
 
 type Screen = { name: string; open: (page: Page) => Promise<void> }
-type Finding = {
+type Scene = {
   screen: string
   theme: string
   width: number
-  kind: string
-  detail: unknown
   screenshot: string
 }
+type Finding = Scene &
+  (
+    | {
+        kind: "a11y"
+        detail: {
+          ruleId: string
+          impact: string | null
+          target: string
+          summary?: string
+          allowlisted: boolean
+        }
+      }
+    | {
+        kind:
+          | "screen-error"
+          | "a11y-scan-error"
+          | "overflow"
+          | "error-boundary"
+          | "runtime-error"
+          | "raw-code"
+        detail: unknown
+      }
+  )
+
 const channels = ["All channels", "Email", "WhatsApp", "Messenger", "Instagram"]
 type TourState = () => {
   owner: Page
@@ -31,7 +55,8 @@ async function choose(page: Page, label: string, option: string) {
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
-    test.setTimeout(20 * 60_000)
+    // The per-scene axe pass adds work to the full visual tour on the QA host.
+    test.setTimeout(30 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
     // Copy the real owner's session into a fresh context, without trace scripts
     // left by earlier tests, and isolate the tour's theme/viewport changes.
@@ -795,6 +820,47 @@ export function screensTourTests(state: TourState) {
                 detail: openingError,
                 screenshot,
               })
+            // Scan even when a scene's readiness/assertion failed, and keep scan
+            // errors as failures so a broken axe run cannot silently pass.
+            try {
+              const result = await new AxeBuilder({ page })
+                .withTags([
+                  "wcag2a",
+                  "wcag2aa",
+                  "wcag21a",
+                  "wcag21aa",
+                  "best-practice",
+                ])
+                .analyze()
+              for (const violation of result.violations) {
+                for (const node of violation.nodes) {
+                  findings.push({
+                    screen: screen.name,
+                    theme,
+                    width,
+                    kind: "a11y",
+                    detail: {
+                      ruleId: violation.id,
+                      impact: violation.impact ?? null,
+                      // Includes frame/shadow ancestry without logging page HTML.
+                      target: node.target.flat().join(" > ").slice(0, 240),
+                      summary: node.failureSummary,
+                      allowlisted: A11Y_RULE_ALLOWLIST.has(violation.id),
+                    },
+                    screenshot,
+                  })
+                }
+              }
+            } catch (error) {
+              findings.push({
+                screen: screen.name,
+                theme,
+                width,
+                kind: "a11y-scan-error",
+                detail: String(error),
+                screenshot,
+              })
+            }
             const evidence = await page.evaluate(() => {
               const overflow =
                 (document.scrollingElement?.scrollWidth ?? 0) > innerWidth
@@ -911,7 +977,11 @@ export function screensTourTests(state: TourState) {
       page.off("pageerror", onError)
       await context.close()
     }
-    const failures = findings.filter((f) => f.kind !== "raw-code")
+    const failures = findings.filter((f) => {
+      if (f.kind === "raw-code") return false
+      if (f.kind === "a11y") return blocksA11yTour(f.detail)
+      return true
+    })
     expect(failures, `See ${join(dir, "findings.json")}`).toEqual([])
   })
 }
