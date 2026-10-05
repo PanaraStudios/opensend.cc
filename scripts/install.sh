@@ -464,13 +464,15 @@ backup() (
     docker image inspect "$old_image" >/dev/null 2>&1 || die 'The existing migrate image is missing. Restore it before backing up/upgrading.'
     say 'Stopping the stack for a consistent Convex volume backup.'
     compose stop
+    # The archive is written as root inside the container, so hand it to the
+    # installing user and restrict it there; the host user can't chmod root's file.
     if ! docker run --rm --pull never --network none --user 0 --entrypoint sh \
+      -e BACKUP_OWNER="$(id -u):$(id -g)" \
       --mount "type=volume,src=$volume,dst=/data,readonly" \
       --mount "type=bind,src=$backup_dir,dst=/backup" "$old_image" \
-      -c 'tar -czf /backup/convex-data.tar.gz -C /data . && tar -tzf /backup/convex-data.tar.gz >/dev/null'; then
+      -c 'tar -czf /backup/convex-data.tar.gz -C /data . && tar -tzf /backup/convex-data.tar.gz >/dev/null && chown "$BACKUP_OWNER" /backup/convex-data.tar.gz && chmod 600 /backup/convex-data.tar.gz'; then
       die 'Volume backup failed. Old configuration is unchanged and services are stopped. Check disk space, then retry.'
     fi
-    chmod 600 "$backup_dir/convex-data.tar.gz"
     [ -s "$backup_dir/convex-data.tar.gz" ] || die 'No volume archive was produced; upgrade cancelled.'
   fi
   say "Backup saved in $backup_dir. Keep it and its private env file for recovery."
