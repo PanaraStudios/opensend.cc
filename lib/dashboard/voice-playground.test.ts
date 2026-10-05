@@ -60,10 +60,28 @@ test("call outcomes describe routing and preserve timeout/invalid evidence", () 
     "main: 1 → support: timeout"
   )
   assert.equal(ivrActionLabel({ kind: "agents" }), "Transfer to agents")
+  assert.equal(ivrActionLabel({ kind: "bot", botId: "support" }), "Voice bot")
+})
+
+test("call and permission labels stay readable", async () => {
+  const { callOutcomeLabel, callPermissionLabel, callRouteLabel } =
+    await import("./voice-playground")
+  assert.equal(callOutcomeLabel("answered"), "Answered")
+  assert.equal(callOutcomeLabel("no_answer"), "No answer")
+  assert.equal(callOutcomeLabel(null), "In progress")
+  assert.equal(callPermissionLabel(undefined), "Not checked")
+  assert.equal(callPermissionLabel("unknown"), "Not checked")
+  assert.equal(callPermissionLabel("no_permission"), "No permission")
+  assert.equal(callPermissionLabel("permanent"), "Permanent")
+  assert.equal(callRouteLabel({ bot_id: "bot", bot_name: "Ada" }), "Bot Ada")
+  assert.equal(callRouteLabel({ bot_id: "bot", bot_name: "" }), "Voice bot")
   assert.equal(
-    ivrActionLabel({ kind: "bot", botId: "support" }),
-    "Bot: support"
+    callRouteLabel({ ivr_id: "ivr" }, [{ id: "ivr", name: "Front desk" }]),
+    "IVR Front desk"
   )
+  assert.equal(callRouteLabel({ ivr_id: "missing" }), "IVR")
+  assert.equal(callRouteLabel({ handling_mode: "api" }), "API")
+  assert.equal(callRouteLabel({}), "Agent")
 })
 
 test("clearing optional IVR settings emits explicit PATCH nulls", async () => {

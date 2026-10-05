@@ -43,7 +43,7 @@ export function ivrActionLabel(action: IvrAction | null | undefined): string {
     case "submenu":
       return `Menu: ${action.menuId}`
     case "bot":
-      return `Bot: ${action.botId}`
+      return "Voice bot"
     case "agents":
       return "Transfer to agents"
     case "voicemail":
@@ -84,12 +84,50 @@ export function callOutcomeLabel(value: string | null | undefined) {
     queued: "Queued",
     ringing: "Ringing",
     connected: "In progress",
+    answered: "Answered",
     rejected: "Rejected",
     missed: "Missed",
     busy: "Busy",
     no_answer: "No answer",
   }
   return value ? (labels[value] ?? "Ended") : "In progress"
+}
+
+const CALL_PERMISSION_LABELS: Record<string, string> = {
+  no_permission: "No permission",
+  temporary: "Temporary",
+  permanent: "Permanent",
+  granted: "Granted",
+  pending: "Pending",
+  denied: "Denied",
+  expired: "Expired",
+}
+
+/** How a call was handled, without a blank name or a raw bot id. */
+export function callRouteLabel(
+  call: {
+    bot_id?: string | null
+    bot_name?: string | null
+    ivr_id?: string | null
+    handling_mode?: string | null
+  },
+  ivrs?: readonly { id: string; name: string }[]
+) {
+  if (call.bot_id) return call.bot_name ? `Bot ${call.bot_name}` : "Voice bot"
+  if (call.ivr_id) {
+    const name = ivrs?.find((ivr) => ivr.id === call.ivr_id)?.name
+    return name ? `IVR ${name}` : "IVR"
+  }
+  return call.handling_mode === "api" ? "API" : "Agent"
+}
+
+/** WhatsApp calling permission, never the stored code. */
+export function callPermissionLabel(status: string | null | undefined) {
+  if (!status || status === "unknown") return "Not checked"
+  return (
+    CALL_PERMISSION_LABELS[status] ??
+    status.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase())
+  )
 }
 
 /** Rename a menu and all incoming references together; IDs are never user inputs. */
