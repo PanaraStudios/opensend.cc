@@ -44,9 +44,8 @@
   --border-strong: #d4d4d4;
   --table-divider: var(--border);
   --fg: #0a0a0a;
-  /* Small labels must also contrast against muted/gradient surfaces. */
-  --fg-muted: #666666;
-  --fg-faint: #686868;
+  --fg-muted: #737373;
+  --fg-faint: #a3a3a3;
 
   /* accent (one accent, one job): near-black, Vercel/Linear-style */
   --brand: #262626; /* top of the button gradient, the ink you actually see */
@@ -62,14 +61,14 @@
   --brand-accent: #a3a3a3;
 
   /* status */
-  --danger: #b91c1c;
+  --danger: #dc2626;
   --danger-fg: #ffffff;
   --danger-soft: #fef2f2;
   --danger-border: #991b1b;
-  --warning: #92400e;
+  --warning: #d97706;
   --warning-fg: #ffffff;
   --warning-soft: #fffbeb;
-  --success: #15803d;
+  --success: #16a34a;
   --success-fg: #ffffff;
   --success-soft: #f0fdf4;
   --info: #2563eb;
@@ -90,7 +89,7 @@
   --gradient-primary: linear-gradient(180deg, #33363b 0%, #171717 100%);
   --gradient-primary-hover: linear-gradient(180deg, #26262a 0%, #0a0a0a 100%);
   /* same 180deg sheen as primary, in a filled red that stays readable on white */
-  --gradient-destructive: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+  --gradient-destructive: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
   --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f1f1f1 100%);
   --gradient-surface-hover: linear-gradient(180deg, #ffffff 0%, #e9e9e9 100%);
   /* grey/white twin of --gradient-primary; tracks --gradient-surface in both modes */
@@ -244,8 +243,7 @@
   --warning-foreground: var(--warning-fg);
   --success-foreground: var(--success-fg);
   --info-foreground: var(--info-fg);
-  /* Form boundaries need 3:1 contrast independently of decorative borders. */
-  --input: #8a8a8a;
+  --input: var(--border);
   --ring: var(--brand);
 
   --chart-1: #262626;
@@ -277,8 +275,7 @@
   --table-divider: rgb(255 255 255 / 0.06);
   --fg: #fafafa;
   --fg-muted: #a1a1a1;
-  --fg-faint: #a3a3a3;
-  --input: #808080;
+  --fg-faint: #737373;
 
   /* Vercel-style flip: the accent goes near-white in dark mode, with dark
      foreground on the light controls */
@@ -313,7 +310,7 @@
   --gradient-primary: linear-gradient(180deg, #ffffff 0%, #e5e5e5 100%);
   --gradient-primary-hover: linear-gradient(180deg, #ffffff 0%, #d4d4d4 100%);
   /* filled red stays a real red in dark mode; --danger stays light for text */
-  --gradient-destructive: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+  --gradient-destructive: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
   --gradient-surface: linear-gradient(180deg, #1c1c1c 0%, #141414 100%);
   --gradient-surface-hover: linear-gradient(180deg, #232323 0%, #191919 100%);
   --gradient-title-em: linear-gradient(180deg, #8a8a8a 0%, #5c5c5c 100%);

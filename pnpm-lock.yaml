@@ -193,7 +193,7 @@ importers:
         specifier: 3.1136.0
         version: 3.1136.0
       '@axe-core/playwright':
-        specifier: ^4.13.0
+        specifier: 4.13.0
         version: 4.13.0(playwright-core@1.63.0)
       '@edge-runtime/vm':
         specifier: 5.0.0
