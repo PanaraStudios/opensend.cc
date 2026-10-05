@@ -22,6 +22,17 @@ Reviewed on 2026-10-05 in `fix/v2-calling-review`, against baseline `d5bdf63`. L
 
 ## Review coverage and boundaries
 
+### R1 tool admission benchmark
+
+`pnpm test:auth --maxWorkers=2 convex/toolAdmission.test.ts` measures the real internal admission mutations with `ctx.meta.getTransactionMetrics()` in convex-test 0.0.58, with transaction limits enabled. The fixture has 1,500 final transcript rows (500–1,999 characters each), 300 media rows and 32 tool rows. Seeding is outside the measured transaction; five distinct tool requests run per lane. Bytes are convex-test's document-size accounting, not deployed transaction telemetry. Wall time includes the local test runtime; the median reduces initial module-loading noise and is not a production latency claim.
+
+| Admission                    | Before documents read (first request) | Before bytes read (first request) | Before wall time (median of five) |
+| ---------------------------- | ------------------------------------: | --------------------------------: | --------------------------------: |
+| Built-in `gateway.tool`      |                                 1,833 |                         2,332,906 |                          23.26 ms |
+| Toolkit `toolkitState.begin` |                                 1,833 |                         2,332,906 |                          22.28 ms |
+
+The first built-in request took 1,583.25 ms including cold module loading; the first toolkit request took 28.88 ms. Both hydrate all 1,832 history rows for two admission counts. This establishes unnecessary read amplification and warrants maintained counters; deployed timing still needs verification by the lead.
+
 Checked gateway HTTP HMAC/auth and nonce handling, directory authentication, per-call operations, Janus/ESL teardown, audio queue bounds, IVR decisions/webhook deadlines, voice tool authority/deduplication, provider/session cleanup, transcript timestamps and billing reservations. Calling REST routes live in `convex/api/calling.ts`, voice REST in `convex/api/voice.ts`, IVR REST in `convex/ivr/routes.ts`; the requested `convex/whatsapp/calling/` directory does not exist here. Reviewed Janus, FreeSWITCH, drachtio and coturn configs statically; no high-confidence config defect was established.
 
 The gateway HTTP server already serializes state-changing operations per call (`services/call-gateway/src/server.ts:315`). A direct-controller concurrency experiment therefore did not establish a production HTTP bug; that speculative change was removed. Production `.collect()` calls were not found in the requested calling/voice/IVR directories. Bounded caller-context hydration and transcript pagination were reviewed; R1 remains the main performance concern.
