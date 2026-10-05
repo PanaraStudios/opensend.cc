@@ -5,6 +5,41 @@ import { channelOutput } from "./channelMessaging.js"
 
 export function addMediaTools(server: McpServer, client: Opensend) {
   server.registerTool(
+    "upload-whatsapp-media",
+    {
+      title: "Upload WhatsApp Media",
+      description:
+        "Upload a base64-encoded file through the multipart WhatsApp media API. Returns a media id for sending messages. For large files use create-media-upload and complete-media-upload.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        content: z
+          .string()
+          .min(1)
+          .regex(
+            /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+          ),
+        contentType: z.string().min(1),
+        filename: z.string().optional(),
+        from: z.string().optional(),
+        idempotencyKey: z.string().optional(),
+      },
+    },
+    async ({ content, contentType, idempotencyKey, ...input }) =>
+      channelOutput(
+        "WhatsApp media",
+        await client.whatsapp.media.upload(
+          {
+            ...input,
+            file: new Blob([Uint8Array.from(Buffer.from(content, "base64"))], {
+              type: contentType,
+            }),
+            type: contentType,
+          },
+          { idempotencyKey }
+        )
+      )
+  )
+  server.registerTool(
     "create-media-upload",
     {
       title: "Create media upload",
@@ -24,9 +59,14 @@ export function addMediaTools(server: McpServer, client: Opensend) {
         size: z.number().int().positive(),
         from: z.string().optional(),
         animated: z.boolean().optional(),
+        idempotencyKey: z.string().optional(),
       }),
     },
-    async (input) => channelOutput("Media", await client.media.create(input))
+    async ({ idempotencyKey, ...input }) =>
+      channelOutput(
+        "Media",
+        await client.media.create(input, { idempotencyKey })
+      )
   )
   server.registerTool(
     "complete-media-upload",
@@ -37,9 +77,13 @@ export function addMediaTools(server: McpServer, client: Opensend) {
       inputSchema: z.object({
         id: z.string(),
         storage_id: z.string().optional(),
+        idempotencyKey: z.string().optional(),
       }),
     },
-    async ({ id, storage_id }) =>
-      channelOutput("Media", await client.media.complete(id, { storage_id }))
+    async ({ id, storage_id, idempotencyKey }) =>
+      channelOutput(
+        "Media",
+        await client.media.complete(id, { storage_id }, { idempotencyKey })
+      )
   )
 }

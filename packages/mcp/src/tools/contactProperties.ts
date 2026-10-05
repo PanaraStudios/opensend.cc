@@ -22,6 +22,7 @@ const CREATE_CONTACT_PROPERTY_TOOL = {
       .describe(
         "Default value when the property is not set for a contact. Must match the specified type."
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -90,12 +91,15 @@ export function addContactPropertyTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-contact-property",
     CREATE_CONTACT_PROPERTY_TOOL,
-    async ({ key, type, fallbackValue }) => {
-      const response = await opensend.contactProperties.create({
-        key,
-        type,
-        fallbackValue,
-      } as Parameters<typeof opensend.contactProperties.create>[0])
+    async ({ key, type, fallbackValue, idempotencyKey }) => {
+      const response = await opensend.contactProperties.create(
+        {
+          key,
+          type,
+          fallbackValue,
+        } as Parameters<typeof opensend.contactProperties.create>[0],
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(

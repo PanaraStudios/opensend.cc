@@ -180,11 +180,18 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     {
       title: "Validate IVR",
       description: "Dry-run shared menu validation without modifying the IVR.",
-      inputSchema: { id: z.string(), ...partial },
+      inputSchema: {
+        id: z.string(),
+        ...partial,
+        idempotencyKey: z.string().optional(),
+      },
       annotations: read,
     },
-    async ({ id, ...input }) =>
-      channelOutput("IVR", await opensend.ivrs.validate(id, input as IvrPatch))
+    async ({ id, idempotencyKey, ...input }) =>
+      channelOutput(
+        "IVR",
+        await opensend.ivrs.validate(id, input as IvrPatch, { idempotencyKey })
+      )
   )
   server.registerTool(
     "render-ivr",
@@ -192,9 +199,10 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
       title: "Render IVR prompts",
       description:
         "Retry failed IVR prompts using the saved team provider key. Returns per-prompt render statuses.",
-      inputSchema: { id: z.string() },
+      inputSchema: { id: z.string(), idempotencyKey: z.string().optional() },
       annotations: write,
     },
-    async ({ id }) => channelOutput("IVR", await opensend.ivrs.render(id))
+    async ({ id, idempotencyKey }) =>
+      channelOutput("IVR", await opensend.ivrs.render(id, { idempotencyKey }))
   )
 }

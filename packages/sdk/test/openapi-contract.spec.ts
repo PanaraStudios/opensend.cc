@@ -1,3 +1,5 @@
+import ts from "typescript"
+import { Opensend } from "../src/resend"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parse } from "yaml"
@@ -109,35 +111,12 @@ const LEGACY = new Set<string>([
 /** Served operations with no SDK method of their own: the SMTP gateway's
     bridge, and the deprecated `/audiences` aliases (the SDK's `audiences`
     is the segments client, which calls `/segments`). */
-const NOT_EXPOSED = new Set<string>([
-  "POST /smtp/auth",
-  "POST /smtp/emails",
-  "POST /audiences",
-  "GET /audiences",
-  "GET /audiences/{}",
-  "DELETE /audiences/{}",
-])
+const exceptions = JSON.parse(
+  readFileSync(join(root, "test/rest-parity-exceptions.json"), "utf8")
+) as Record<string, string>
+const NOT_EXPOSED = new Set(Object.keys(exceptions).map((op) => normalize(op)))
 
-// Lane 5A supplies the REST/OpenAPI implementation at integration. These
-// exact operations come from meta-wave5-contract.md, independently of SDK paths.
-const WAVE5 = new Set([
-  "POST /messenger/messages",
-  "GET /messenger/messages",
-  "GET /messenger/messages/{}",
-  "GET /messenger/pages",
-  "GET /messenger/pages/{}",
-  "GET /messenger/conversations",
-  "GET /messenger/conversations/{}/messages",
-  "POST /instagram/messages",
-  "GET /instagram/messages",
-  "GET /instagram/messages/{}",
-  "GET /instagram/accounts",
-  "GET /instagram/accounts/{}",
-  "GET /instagram/conversations",
-  "GET /instagram/conversations/{}/messages",
-])
-
-describe("OpenAPI and wave 5 binding contract", () => {
+describe("REST and OpenAPI binding contract", () => {
   const sdk = sdkRequests()
   const contract = contractOperations()
 
@@ -145,9 +124,9 @@ describe("OpenAPI and wave 5 binding contract", () => {
     expect(sdk.size).toBeGreaterThan(80)
   })
 
-  it("every SDK request matches OpenAPI or the wave 5 binding contract", () => {
+  it("every SDK request matches OpenAPI", () => {
     const missing = [...sdk].filter(
-      (op) => !contract.has(op) && !WAVE5.has(op) && !LEGACY.has(op)
+      (op) => !contract.has(op) && !LEGACY.has(op)
     )
     expect(missing.sort()).toEqual([])
   })
@@ -159,8 +138,54 @@ describe("OpenAPI and wave 5 binding contract", () => {
     expect(uncovered.sort()).toEqual([])
   })
 
-  it("covers every wave 5 binding operation", () => {
-    expect([...WAVE5].filter((op) => !sdk.has(op))).toEqual([])
+  it("every POST wrapper forwards optional request options", () => {
+    const missing: string[] = []
+    for (const file of sources(join(root, "src"))) {
+      const code = readFileSync(file, "utf8")
+      const tree = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true)
+      const visit = (node: ts.Node) => {
+        if (
+          ts.isCallExpression(node) &&
+          /^this\.(resend|client)\.post$/.test(node.expression.getText(tree)) &&
+          node.arguments.length !== 3
+        )
+          missing.push(
+            file.replace(root + "/", "") +
+              ":" +
+              tree.getLineAndCharacterOfPosition(node.getStart(tree)).line
+          )
+        ts.forEachChild(node, visit)
+      }
+      visit(tree)
+    }
+    expect(missing).toEqual([])
+  })
+
+  it("every inventory SDK binding is a public callable method", () => {
+    const client = new Opensend("fixture-credential", {
+      baseUrl: "https://api.test",
+    })
+    const rows = readFileSync(join(root, "../../docs/qa/dx-parity.md"), "utf8")
+      .split("\n")
+      .filter((line) => /^\| (GET|POST|PATCH|DELETE) \|/.test(line))
+    for (const row of rows) {
+      const columns = row
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+      for (const match of columns[3].matchAll(/`([^`]+)`/g)) {
+        let method: unknown = client
+        for (const key of match[1].split("."))
+          method = (method as Record<string, unknown>)[key]
+        expect(
+          typeof method,
+          columns[0] + " " + columns[1] + " " + match[1]
+        ).toBe("function")
+        expect(match[1]).not.toMatch(
+          /\.perform|\.forwardPassthrough|\.forwardWrapped/
+        )
+      }
+    }
   })
 
   it("keeps the exception lists current", () => {

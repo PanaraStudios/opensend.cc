@@ -8,6 +8,7 @@ const CREATE_SEGMENT_TOOL = {
     "Create a new segment in Opensend. A segment is a group of contacts that can be used to target specific broadcasts.",
   inputSchema: {
     name: z.string().nonempty().describe("Name for the new segment"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -76,8 +77,11 @@ export function addSegmentTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-segment",
     CREATE_SEGMENT_TOOL,
-    async ({ name }) => {
-      const response = await opensend.segments.create({ name })
+    async ({ name, idempotencyKey }) => {
+      const response = await opensend.segments.create(
+        { name },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
