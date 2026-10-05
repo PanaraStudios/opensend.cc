@@ -3,7 +3,9 @@ import Link from "next/link"
 import {
   ivrActionLabel,
   callOutcomeLabel,
+  callRouteLabel,
 } from "@/lib/dashboard/voice-playground"
+import { agentPresenceLabel } from "@/lib/meta/softphone"
 import { useEffect, useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -25,7 +27,9 @@ import { SoftphoneActions } from "./softphone-provider"
 export function CallsView() {
   const [now, setNow] = useState(0)
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000)
+    const tick = () => setNow(Date.now())
+    tick()
+    const timer = setInterval(tick, 5000)
     return () => clearInterval(timer)
   }, [])
   const [after, setAfter] = useState<string>()
@@ -52,7 +56,11 @@ export function CallsView() {
                 {state.agents.map((agent) => (
                   <Badge key={agent.userId} variant="secondary">
                     {agent.name} ·{" "}
-                    {agent.availableUntil > now ? agent.status : "away"}
+                    {agentPresenceLabel(
+                      agent.status,
+                      agent.availableUntil,
+                      now
+                    )}
                   </Badge>
                 ))}
               </span>
@@ -106,18 +114,12 @@ export function CallsView() {
                   {call.direction === "inbound" ? "Incoming" : "Outgoing"}
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
-                  {call.bot_id
-                    ? `Bot ${call.bot_name ?? ""}`
-                    : call.ivr_id
-                      ? `IVR ${ivrs?.data.find((i) => i.id === call.ivr_id)?.name ?? ""}`
-                      : call.handling_mode === "api"
-                        ? "API"
-                        : "Agent"}
+                  {callRouteLabel(call, ivrs?.data)}
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">
                     {call.direction === "outbound" && call.outcome
-                      ? call.outcome.replaceAll("_", " ")
+                      ? callOutcomeLabel(call.outcome)
                       : call.bot_outcome
                         ? callOutcomeLabel(call.bot_outcome)
                         : call.ivr_outcome

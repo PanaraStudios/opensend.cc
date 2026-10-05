@@ -66,7 +66,11 @@ export function PlaygroundCallDetail({ id }: { id: string }) {
             label: "Outcome",
             value: call.bot_outcome
               ? callOutcomeLabel(call.bot_outcome)
-              : ivrActionLabel(call.ivr_outcome),
+              : call.ivr_outcome
+                ? ivrActionLabel(call.ivr_outcome)
+                : call.outcome
+                  ? callOutcomeLabel(call.outcome)
+                  : callOutcomeLabel(call.status),
           },
           {
             label: "Transfer target",
