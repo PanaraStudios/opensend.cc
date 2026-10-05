@@ -36,14 +36,15 @@ export function parseVariables(
 export function fillVariables(
   source: string,
   values: Readonly<Record<string, string | undefined>>,
-  encode: (value: string) => string = (value) => value
+  encode: (value: string, offset: number) => string = (value) => value
 ): string {
   return source.replace(
     VARIABLE_PATTERN,
-    (_match, name: string, fallback?: string) =>
+    (_match, name: string, fallback: string | undefined, offset: number) =>
       encode(
         (Object.hasOwn(values, name) ? values[name] : undefined) ||
-          (fallback ?? "").trim()
+          (fallback ?? "").trim(),
+        offset
       )
   )
 }
