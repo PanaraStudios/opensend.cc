@@ -3,7 +3,9 @@ import { describe, it } from "node:test"
 
 import {
   canGoNext,
+  cursorListIsEmpty,
   cursorNext,
+  cursorPagerVisible,
   cursorPrevious,
   pagedListState,
   hasPages,
@@ -31,6 +33,15 @@ describe("id cursors", () => {
     assert.deepEqual(cursorPrevious(third), second)
     assert.deepEqual(cursorPrevious(second), { after: undefined, history: [] })
     assert.deepEqual(cursorPrevious(start), { after: undefined, history: [] })
+  })
+  it("keeps Previous when the current page has no rows", () => {
+    const later = cursorNext({ history: [] }, "a")
+    assert.equal(cursorListIsEmpty(0, []), true)
+    assert.equal(cursorListIsEmpty(0, later.history), false)
+    assert.equal(cursorListIsEmpty(3, later.history), false)
+    assert.equal(cursorPagerVisible(later.history, false), true)
+    assert.equal(cursorPagerVisible([], false), false)
+    assert.equal(cursorPagerVisible([], true), true)
   })
 })
 

@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import {
+  cursorListIsEmpty,
   cursorNext,
   cursorPrevious,
   type IdCursor,
@@ -106,7 +107,7 @@ export function KnowledgeList() {
     >
       {!list ? (
         <Skeleton className="h-40 w-full" />
-      ) : !list.data.length && !page.history.length ? (
+      ) : cursorListIsEmpty(list.data.length, page.history) ? (
         <EmptyState
           icon={BookOpenIcon}
           title="No knowledge bases"
@@ -286,7 +287,7 @@ export function KnowledgeDetail({ id }: { id: string }) {
             Paste text
           </Button>
         </div>
-        {!list.data.length && !page.history.length ? (
+        {cursorListIsEmpty(list.data.length, page.history) ? (
           <p className="text-sm text-muted-foreground">
             Add a PDF, text, Markdown or DOCX document, a public URL, or pasted
             text.

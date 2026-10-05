@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
 import { WorkflowIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
+import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
 import { api } from "@/convex/_generated/api"
 import {
   SectionChrome,
@@ -117,7 +123,7 @@ export function IvrList() {
     >
       {!list ? (
         <Skeleton className="h-40 w-full" />
-      ) : !list.data.length ? (
+      ) : cursorListIsEmpty(list.data.length, history) ? (
         <EmptyState
           icon={WorkflowIcon}
           title="No IVRs"
@@ -136,79 +142,92 @@ export function IvrList() {
               placeholder="Search by name"
             />
           </Field>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Name</Th>
-                <Th>Menus</Th>
-                <Th className="hidden md:table-cell">Phone numbers</Th>
-                <Th>Prompts</Th>
-                <Th className="hidden md:table-cell">Updated</Th>
-              </>
-            }
-          >
-            {list.data
-              .filter((ivr) =>
-                ivr.name.toLowerCase().includes(search.toLowerCase())
-              )
-              .map((ivr: IvrResource) => (
-                <TableRow key={ivr.id}>
-                  <TableCell className="max-w-40 break-words whitespace-normal">
-                    <Link
-                      className="font-medium hover:underline"
-                      href={`/playground/ivr/${ivr.id}`}
-                    >
-                      {ivr.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{ivr.menus.length}</TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <span className="flex flex-wrap gap-1">
-                      {setup?.numbers
-                        .filter((n) => n.routing === `ivr:${ivr.id}`)
-                        .map((n) => (
-                          <Badge key={n.id} variant="secondary">
-                            {n.label}
-                          </Badge>
-                        ))}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <ToneBadge
-                      {...promptStatusBadge(
-                        ivr.prompt_status,
-                        !!ivr.promptVoice
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <RelativeTime at={Date.parse(ivr.updated_at)} />
-                  </TableCell>
-                </TableRow>
-              ))}
-          </ResourceTable>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              disabled={!history.length}
-              onClick={() => {
-                setAfter(history.at(-1))
-                setHistory(history.slice(0, -1))
-              }}
+          {list.data.length ? (
+            <ResourceTable
+              headers={
+                <>
+                  <Th>Name</Th>
+                  <Th>Menus</Th>
+                  <Th className="hidden md:table-cell">Phone numbers</Th>
+                  <Th>Prompts</Th>
+                  <Th className="hidden md:table-cell">Updated</Th>
+                </>
+              }
             >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!list.has_more}
-              onClick={() => {
-                setHistory([...history, after])
-                setAfter(list.data.at(-1)?.id)
-              }}
-            >
-              Next
-            </Button>
-          </div>
+              {list.data
+                .filter((ivr) =>
+                  ivr.name.toLowerCase().includes(search.toLowerCase())
+                )
+                .map((ivr: IvrResource) => (
+                  <TableRow key={ivr.id}>
+                    <TableCell className="max-w-40 break-words whitespace-normal">
+                      <Link
+                        className="font-medium hover:underline"
+                        href={`/playground/ivr/${ivr.id}`}
+                      >
+                        {ivr.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{ivr.menus.length}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="flex flex-wrap gap-1">
+                        {setup?.numbers
+                          .filter((n) => n.routing === `ivr:${ivr.id}`)
+                          .map((n) => (
+                            <Badge key={n.id} variant="secondary">
+                              {n.label}
+                            </Badge>
+                          ))}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <ToneBadge
+                        {...promptStatusBadge(
+                          ivr.prompt_status,
+                          !!ivr.promptVoice
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <RelativeTime at={Date.parse(ivr.updated_at)} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </ResourceTable>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No IVRs on this page.
+            </p>
+          )}
+          {cursorPagerVisible(history, list.has_more) ? (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={!history.length}
+                onClick={() => {
+                  const previous = cursorPrevious({ after, history })
+                  setAfter(previous.after)
+                  setHistory([...previous.history])
+                }}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!list.has_more}
+                onClick={() => {
+                  const next = cursorNext(
+                    { after, history },
+                    list.data.at(-1)?.id
+                  )
+                  setAfter(next.after)
+                  setHistory([...next.history])
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
       <Dialog open={creating} onOpenChange={setCreating}>

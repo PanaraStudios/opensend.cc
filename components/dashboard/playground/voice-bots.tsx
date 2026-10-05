@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
 import { BotIcon, SettingsIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
+import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
 import { api } from "@/convex/_generated/api"
 import {
   SectionChrome,
@@ -132,7 +138,7 @@ export function VoiceBotList() {
     >
       {!list ? (
         <Skeleton className="h-40 w-full" />
-      ) : !list.data.length ? (
+      ) : cursorListIsEmpty(list.data.length, history) ? (
         <EmptyState
           icon={BotIcon}
           title="No voice bots"
@@ -156,84 +162,97 @@ export function VoiceBotList() {
               placeholder="Search by name"
             />
           </Field>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Name</Th>
-                <Th>Engine</Th>
-                <Th className="hidden md:table-cell">Language</Th>
-                <Th className="hidden xl:table-cell">Phone numbers</Th>
-                <Th className="hidden xl:table-cell">Last test</Th>
-                <Th className="hidden md:table-cell">Updated</Th>
-              </>
-            }
-          >
-            {list.data
-              .filter((b) =>
-                b.name.toLowerCase().includes(search.toLowerCase())
-              )
-              .map((bot) => (
-                <TableRow key={bot.id}>
-                  <TableCell className="max-w-40 break-words whitespace-normal">
-                    <Link
-                      className="font-medium hover:underline"
-                      href={`/playground/voice-bot/${bot.id}`}
-                    >
-                      {bot.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    {engineLabel(bot.engine)}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {voiceLanguageLabel(bot.language)}
-                  </TableCell>
-                  <TableCell className="hidden xl:table-cell">
-                    <span className="flex flex-wrap gap-1">
-                      {setup?.numbers
-                        .filter((n) => n.routing === `bot:${bot.id}`)
-                        .map((n) => (
-                          <Badge key={n.id} variant="secondary">
-                            {n.label}
-                          </Badge>
-                        ))}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden xl:table-cell">
-                    {bot.lastTestAt ? (
-                      <RelativeTime at={bot.lastTestAt} />
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <RelativeTime at={bot.updatedAt} />
-                  </TableCell>
-                </TableRow>
-              ))}
-          </ResourceTable>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              disabled={!history.length}
-              onClick={() => {
-                setAfter(history.at(-1))
-                setHistory(history.slice(0, -1))
-              }}
+          {list.data.length ? (
+            <ResourceTable
+              headers={
+                <>
+                  <Th>Name</Th>
+                  <Th>Engine</Th>
+                  <Th className="hidden md:table-cell">Language</Th>
+                  <Th className="hidden xl:table-cell">Phone numbers</Th>
+                  <Th className="hidden xl:table-cell">Last test</Th>
+                  <Th className="hidden md:table-cell">Updated</Th>
+                </>
+              }
             >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!list.has_more}
-              onClick={() => {
-                setHistory([...history, after])
-                setAfter(list.data.at(-1)?.id)
-              }}
-            >
-              Next
-            </Button>
-          </div>
+              {list.data
+                .filter((b) =>
+                  b.name.toLowerCase().includes(search.toLowerCase())
+                )
+                .map((bot) => (
+                  <TableRow key={bot.id}>
+                    <TableCell className="max-w-40 break-words whitespace-normal">
+                      <Link
+                        className="font-medium hover:underline"
+                        href={`/playground/voice-bot/${bot.id}`}
+                      >
+                        {bot.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {engineLabel(bot.engine)}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {voiceLanguageLabel(bot.language)}
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      <span className="flex flex-wrap gap-1">
+                        {setup?.numbers
+                          .filter((n) => n.routing === `bot:${bot.id}`)
+                          .map((n) => (
+                            <Badge key={n.id} variant="secondary">
+                              {n.label}
+                            </Badge>
+                          ))}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      {bot.lastTestAt ? (
+                        <RelativeTime at={bot.lastTestAt} />
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <RelativeTime at={bot.updatedAt} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </ResourceTable>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No voice bots on this page.
+            </p>
+          )}
+          {cursorPagerVisible(history, list.has_more) ? (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={!history.length}
+                onClick={() => {
+                  const previous = cursorPrevious({ after, history })
+                  setAfter(previous.after)
+                  setHistory([...previous.history])
+                }}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!list.has_more}
+                onClick={() => {
+                  const next = cursorNext(
+                    { after, history },
+                    list.data.at(-1)?.id
+                  )
+                  setAfter(next.after)
+                  setHistory([...next.history])
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
       <CreateVoiceBotDialog open={creating} onOpenChange={setCreating} />

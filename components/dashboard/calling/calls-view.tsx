@@ -6,6 +6,12 @@ import {
   callRouteLabel,
 } from "@/lib/dashboard/voice-playground"
 import { agentPresenceLabel } from "@/lib/meta/softphone"
+import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
 import { useEffect, useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -70,7 +76,7 @@ export function CallsView() {
       />
       {!log ? (
         <Skeleton className="h-40 w-full" />
-      ) : log.data.length === 0 ? (
+      ) : cursorListIsEmpty(log.data.length, history) ? (
         <EmptyState
           icon={PhoneIcon}
           title="No calls yet"
@@ -78,93 +84,106 @@ export function CallsView() {
         />
       ) : (
         <>
-          <ResourceTable
-            headers={
-              <>
-                <Th>Contact</Th>
-                <Th className="hidden md:table-cell">Direction</Th>
-                <Th className="hidden md:table-cell">Route</Th>
-                <Th>Outcome</Th>
-                <Th>Duration</Th>
-                <Th className="hidden md:table-cell">Started</Th>
-              </>
-            }
-          >
-            {log.data.map((call) => (
-              <TableRow key={call.id}>
-                <TableCell>
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/playground/calls/${call.id}`}
-                  >
-                    {call.contact_name}
-                  </Link>
-                  {call.contact_phone ? (
-                    <div className="text-xs text-muted-foreground">
-                      {call.contact_phone}
-                    </div>
-                  ) : null}
-                  {call.test ? (
-                    <Badge variant="secondary" className="ml-2">
-                      Test
+          {log.data.length ? (
+            <ResourceTable
+              headers={
+                <>
+                  <Th>Contact</Th>
+                  <Th className="hidden md:table-cell">Direction</Th>
+                  <Th className="hidden md:table-cell">Route</Th>
+                  <Th>Outcome</Th>
+                  <Th>Duration</Th>
+                  <Th className="hidden md:table-cell">Started</Th>
+                </>
+              }
+            >
+              {log.data.map((call) => (
+                <TableRow key={call.id}>
+                  <TableCell>
+                    <Link
+                      className="font-medium hover:underline"
+                      href={`/playground/calls/${call.id}`}
+                    >
+                      {call.contact_name}
+                    </Link>
+                    {call.contact_phone ? (
+                      <div className="text-xs text-muted-foreground">
+                        {call.contact_phone}
+                      </div>
+                    ) : null}
+                    {call.test ? (
+                      <Badge variant="secondary" className="ml-2">
+                        Test
+                      </Badge>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {call.direction === "inbound" ? "Incoming" : "Outgoing"}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {callRouteLabel(call, ivrs?.data)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {call.direction === "outbound" && call.outcome
+                        ? callOutcomeLabel(call.outcome)
+                        : call.bot_outcome
+                          ? callOutcomeLabel(call.bot_outcome)
+                          : call.ivr_outcome
+                            ? ivrActionLabel(call.ivr_outcome)
+                            : callOutcomeLabel(call.status)}
                     </Badge>
-                  ) : null}
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {call.direction === "inbound" ? "Incoming" : "Outgoing"}
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {callRouteLabel(call, ivrs?.data)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {call.direction === "outbound" && call.outcome
-                      ? callOutcomeLabel(call.outcome)
-                      : call.bot_outcome
-                        ? callOutcomeLabel(call.bot_outcome)
-                        : call.ivr_outcome
-                          ? ivrActionLabel(call.ivr_outcome)
-                          : callOutcomeLabel(call.status)}
-                  </Badge>
-                  {call.error ? (
-                    <p className="mt-1 max-w-xs text-xs text-destructive">
-                      {call.error}
-                    </p>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  {call.duration === null ? "—" : `${call.duration}s`}
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <RelativeTime at={Date.parse(call.created_at)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!history.length}
-              onClick={() => {
-                setAfter(history.at(-1))
-                setHistory(history.slice(0, -1))
-              }}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!log.has_more}
-              onClick={() => {
-                setHistory([...history, after])
-                setAfter(log.data.at(-1)?.id)
-              }}
-            >
-              Next
-            </Button>
-          </div>
+                    {call.error ? (
+                      <p className="mt-1 max-w-xs text-xs text-destructive">
+                        {call.error}
+                      </p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {call.duration === null ? "—" : `${call.duration}s`}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <RelativeTime at={Date.parse(call.created_at)} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResourceTable>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No calls on this page.
+            </p>
+          )}
+          {cursorPagerVisible(history, log.has_more) ? (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!history.length}
+                onClick={() => {
+                  const previous = cursorPrevious({ after, history })
+                  setAfter(previous.after)
+                  setHistory([...previous.history])
+                }}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!log.has_more}
+                onClick={() => {
+                  const next = cursorNext(
+                    { after, history },
+                    log.data.at(-1)?.id
+                  )
+                  setAfter(next.after)
+                  setHistory([...next.history])
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
     </SectionChrome>
