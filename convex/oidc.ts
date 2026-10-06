@@ -1,3 +1,6 @@
+import { MINUTE, RateLimiter } from "@convex-dev/rate-limiter"
+import { v } from "convex/values"
+import { internalMutation } from "./_generated/server"
 import { env } from "./_generated/server"
 import { getOAuthState } from "better-auth/api"
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose"
@@ -7,11 +10,36 @@ import type { ActionCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import { localHttpOrigin } from "../lib/net/public-host"
 
+const discoveryLimiter = new RateLimiter(components.rateLimiter, {
+  oidcDiscovery: {
+    kind: "token bucket",
+    rate: 30,
+    period: MINUTE,
+    capacity: 10,
+  },
+})
+
+/** Reserve before discovery IO so failures still consume the org's allowance. */
+export const reserveDiscovery = internalMutation({
+  args: { organizationId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { organizationId }) => {
+    const result = await discoveryLimiter.limit(ctx, "oidcDiscovery", {
+      key: organizationId,
+    })
+    if (!result.ok)
+      throw new Error("Too many SSO discovery requests; try again later")
+    return null
+  },
+})
+
 export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const connection = await ctx.runQuery(components.betterAuth.sso.connection, {
     organizationId,
   })
   if (!connection) throw new Error("SSO connection not found")
+  // Discovery runs before Better Auth's handler and its rate limits.
+  await ctx.runMutation(internal.oidc.reserveDiscovery, { organizationId })
   const discoveryUrl = `${connection.issuer}/.well-known/openid-configuration`
   const localOrigin =
     env.ALLOW_LOCAL_OIDC === "true"
