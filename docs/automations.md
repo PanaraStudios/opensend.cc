@@ -104,8 +104,14 @@ References checked against the existing UI's scope:
 
 ## System events and mapping between steps
 
-`GET /events/catalog` (scope `events:read`) returns every webhook event and the
-team's custom events, with labels, groups, descriptions and nested schemas.
+`GET /events/catalog` (scope `events:read`) returns a searchable page with
+labels, groups, descriptions and nested schemas. The response is
+`{object: "list", has_more, next_cursor, data}`. System events appear on the
+first page, followed by custom definitions ordered by name. `limit` bounds
+custom definitions per page (default 20, maximum 100); the fixed system catalog
+is included in addition on the first page. `search` searches custom names and
+system labels. Pass `next_cursor` as `after` until `has_more` is false, keeping
+`search` unchanged. Callers without parameters receive a valid first page.
 Each field declares a type, example and description. Objects have `fields`;
 arrays have `items`. Optional and nullable fields describe provider variations.
 `contact.properties` lists that team's property definitions. Provider extension
@@ -189,6 +195,23 @@ when editing references. Variables show only trigger fields, earlier steps on
 the current path, and contact fields. The variable picker inserts at the cursor,
 shows type and example, and previews interpolation with sample values.
 
-SDK: `await opensend.events.catalog()` returns `{ data, error }`. Trigger types
-include `SystemTriggerName`; SDK config uses `eventName` and `filters`.
-MCP: `list-event-catalog` lists events or accepts `event` to show one event's fields.
+SDK: `await opensend.events.catalog({limit, after, search})` returns the usual
+`{data, error, headers}` response; `data` contains the list envelope above.
+Trigger types include `SystemTriggerName`; SDK config uses `eventName` and `filters`.
+MCP: `list-event-catalog` accepts `limit`, `after`, and `search`, or `event` to
+search for one event's fields. It returns the event array and a second text
+block with `has_more` and `next_cursor` for continuation.
+
+Teams can define at most 10,000 custom event types. Creating another definition,
+including automatic registration when saving an automation, fails with
+`422 validation_error`: "This team has reached the limit of 10,000 custom event
+types. Delete unused ones or contact support." Existing definitions above the
+cap remain available; deleting unused definitions frees capacity once the team
+falls below the cap. Sending an undefined event does not create a definition.
+
+The dashboard picker searches names on the server and loads saved trigger and
+wait-step names explicitly, preserving their selection and variable schemas
+past the first page. Convex clients can use `automationEventCatalog.page` or
+`automationEventCatalog.search` with native `paginationOpts`; the deprecated
+`automationEvents.catalog` returns only system events and the first 20 custom
+definitions.

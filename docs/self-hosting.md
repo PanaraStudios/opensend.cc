@@ -658,3 +658,25 @@ retried), reading raw `message/rfc822` from Convex storage. MIME parsing, the
 Receiving list, received-email webhooks, and durable received-mail retention are
 left for that wave. Back up Convex file storage with the database; S3 is not the
 mail archive.
+
+
+### Custom event catalog upgrade (F8)
+
+For an existing large event table, deploy the staging commit `f1706f2` first.
+It mounts `automationEventCounts` and declares `automationEvents.search_name`
+as staged so the name search index backfills without blocking deployment.
+Run `pnpm backend run migrations:backfillCounts` and wait for
+`migrations:countAutomationEvents` to reach `success`. The migration processes
+bounded batches and can be resumed or rerun without double counting.
+
+Until that backfill finishes, new definitions for teams with existing events
+are refused with an initialization message; existing definitions, sends,
+updates and deletes remain available. This prevents an incomplete aggregate
+from authorizing a team already over the 10,000 cap. Fresh installations should
+also run the migration runner before defining events.
+
+After the staged name index finishes backfilling, deploy the catalog activation
+commit `6eebb3a` and its dashboard/SDK/MCP follow-up. The activation removes
+`staged` and enables the paged catalog and dashboard name search. Keep the application
+and SDK/MCP deployment together: catalog responses now use the list envelope
+with `has_more` and `next_cursor`; existing event entry fields are preserved.
