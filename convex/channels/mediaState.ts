@@ -1,9 +1,85 @@
 import { findMetaApp } from "../meta/app"
 import { v } from "convex/values"
-import { internalQuery, internalMutation } from "../_generated/server"
+import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
+import { components, internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
+import {
+  internalQuery,
+  internalMutation,
+  type MutationCtx,
+} from "../_generated/server"
 import { retirement } from "../teamLifecycle"
 import { channelMediaValue } from "../tables/channels"
 import { deleteFile } from "../storage/files"
+
+const pool = new Workpool(components.channelPool, { maxParallelism: 10 })
+type FetchJob = {
+  messageId: Id<"channelMessages">
+  mediaId: string
+  attempt?: number
+}
+const fetchJob = v.object({
+  messageId: v.id("channelMessages"),
+  mediaId: v.string(),
+  attempt: v.number(),
+})
+
+/** Downloads are idempotent: competing completions discard the extra file. */
+export async function enqueueMediaFetch(
+  ctx: MutationCtx,
+  args: FetchJob,
+  runAfter = 0
+) {
+  const job = { ...args, attempt: args.attempt ?? 0 }
+  await pool.enqueueAction(ctx, internal.channels.media.fetch, job, {
+    runAfter,
+    retry: false,
+    onComplete: internal.channels.mediaState.fetchDone,
+    onCompleteExcludeKinds: ["success"],
+    context: job,
+  })
+}
+
+async function fetchFailure(
+  ctx: MutationCtx,
+  args: FetchJob & { error: string; retryable: boolean }
+): Promise<null> {
+  const { messageId, mediaId, error, retryable, attempt = 0 } = args
+  if (retryable && attempt < 5)
+    await enqueueMediaFetch(
+      ctx,
+      { messageId, mediaId, attempt: attempt + 1 },
+      10000 * 2 ** attempt
+    )
+  else
+    await ctx.runMutation(internal.channels.mediaState.complete, {
+      messageId,
+      mediaId,
+      error,
+    })
+  return null
+}
+
+export const retryFetch = internalMutation({
+  args: { ...fetchJob.fields, error: v.string(), retryable: v.boolean() },
+  returns: v.null(),
+  handler: fetchFailure,
+})
+
+/** A crashed scheduled action still exhausts a bounded retry budget. */
+export const fetchDone = internalMutation({
+  args: vOnCompleteArgs(fetchJob),
+  returns: v.null(),
+  handler: async (ctx, { context, result }): Promise<null> => {
+    if (result.kind === "success") return null
+    return fetchFailure(ctx, {
+      ...context,
+      retryable: true,
+      error:
+        result.kind === "failed" ? result.error : "Media download canceled",
+    })
+  },
+})
 
 export const context = internalQuery({
   args: { messageId: v.id("channelMessages"), mediaId: v.string() },

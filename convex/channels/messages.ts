@@ -29,6 +29,7 @@ import {
   recordWhatsAppPhone,
 } from "./identity"
 import { hydratedChannelMessage } from "./payload"
+import { enqueueMediaFetch } from "./mediaState"
 import {
   whatsappMessageMedia,
   validateWhatsAppMediaReference,
@@ -586,7 +587,7 @@ export async function acceptChannelMessage(
         )
         .unique()
       if (!upload || upload.accountId !== message.accountId)
-        await ctx.scheduler.runAfter(0, internal.channels.media.fetch, {
+        await enqueueMediaFetch(ctx, {
           messageId: message._id,
           mediaId: file.mediaId,
         })

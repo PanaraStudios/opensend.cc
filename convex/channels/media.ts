@@ -26,7 +26,14 @@ export const fetch = internalAction({
       messageId,
       mediaId,
     })
-    if (!context) return null
+    if (!context) {
+      await ctx.runMutation(internal.channels.mediaState.complete, {
+        messageId,
+        mediaId,
+        error: "Media cannot be downloaded because the channel is unavailable.",
+      })
+      return null
+    }
     const whatsapp = context.channel === "whatsapp"
     const publicLink =
       !!context.media.url && (!whatsapp || context.direction === "outbound")
@@ -165,21 +172,16 @@ export const fetch = internalAction({
         error.action === "retry" ||
         error.action === "retry_after" ||
         error.status === 404
-      if (retryable && attempt < 5)
-        await ctx.scheduler.runAfter(
-          10000 * 2 ** attempt,
-          internal.channels.media.fetch,
-          { messageId, mediaId, attempt: attempt + 1 }
-        )
-      else
-        await ctx.runMutation(internal.channels.mediaState.complete, {
-          messageId,
-          mediaId,
-          error:
-            error instanceof Error
-              ? error.message
-              : `${label} media fetch failed`,
-        })
+      await ctx.runMutation(internal.channels.mediaState.retryFetch, {
+        messageId,
+        mediaId,
+        attempt,
+        retryable,
+        error:
+          error instanceof Error
+            ? error.message
+            : `${label} media fetch failed`,
+      })
     }
     return null
   },

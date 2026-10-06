@@ -12,6 +12,7 @@ import { retirement } from "../teamLifecycle"
 import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
+import { enqueueMediaFetch } from "../channels/mediaState"
 import { hydratedChannelMessage } from "../channels/payload"
 import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
@@ -159,7 +160,7 @@ async function receive(
     webhookEventId: event._id,
   })
   for (const file of files)
-    await ctx.scheduler.runAfter(0, internal.channels.media.fetch, {
+    await enqueueMediaFetch(ctx, {
       messageId,
       mediaId: file.mediaId,
     })
