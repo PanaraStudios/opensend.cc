@@ -428,7 +428,9 @@ describe("share-email", () => {
     })
 
     expect(result.isError).toBeFalsy()
-    expect(share).toHaveBeenCalledWith("email_1", undefined)
+    expect(share).toHaveBeenCalledWith("email_1", undefined, {
+      idempotencyKey: undefined,
+    })
     expect(textOf(result)).toContain("https://resend.com/share/abc123")
   })
 
@@ -440,7 +442,11 @@ describe("share-email", () => {
     })
 
     expect(result.isError).toBeFalsy()
-    expect(share).toHaveBeenCalledWith("email_1", { expiresIn: "1h 30m" })
+    expect(share).toHaveBeenCalledWith(
+      "email_1",
+      { expiresIn: "1h 30m" },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("passes an empty expiresIn through to the SDK instead of dropping it", async () => {
@@ -450,7 +456,11 @@ describe("share-email", () => {
       arguments: { id: "email_1", expiresIn: "" },
     })
 
-    expect(share).toHaveBeenCalledWith("email_1", { expiresIn: "" })
+    expect(share).toHaveBeenCalledWith(
+      "email_1",
+      { expiresIn: "" },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("surfaces SDK errors", async () => {

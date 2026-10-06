@@ -3,6 +3,12 @@ import { useState } from "react"
 import { useAction } from "convex/react"
 import { WrenchIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
+import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
 import { api } from "@/convex/_generated/api"
 import type { BotTool } from "@/packages/sdk/src/voice/toolkit-types"
 import {
@@ -57,7 +63,7 @@ export function BotToolsList() {
     >
       {!list ? (
         <Skeleton className="h-40 w-full" />
-      ) : !list.data.length ? (
+      ) : cursorListIsEmpty(list.data.length, history) ? (
         <EmptyState
           icon={WrenchIcon}
           title="No webhook tools"
@@ -65,7 +71,7 @@ export function BotToolsList() {
         >
           <Button onClick={() => setEditing("new")}>Create tool</Button>
         </EmptyState>
-      ) : (
+      ) : list.data.length ? (
         <ResourceTable
           headers={
             <>
@@ -111,15 +117,20 @@ export function BotToolsList() {
             </TableRow>
           ))}
         </ResourceTable>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No webhook tools on this page.
+        </p>
       )}
-      {list?.data.length ? (
+      {list && cursorPagerVisible(history, list.has_more) ? (
         <div className="flex gap-2">
           <Button
             variant="outline"
             disabled={!history.length}
             onClick={() => {
-              setAfter(history.at(-1))
-              setHistory(history.slice(0, -1))
+              const previous = cursorPrevious({ after, history })
+              setAfter(previous.after)
+              setHistory([...previous.history])
             }}
           >
             Previous
@@ -128,8 +139,9 @@ export function BotToolsList() {
             variant="outline"
             disabled={!list.has_more}
             onClick={() => {
-              setHistory([...history, after])
-              setAfter(list.data.at(-1)?.id)
+              const next = cursorNext({ after, history }, list.data.at(-1)?.id)
+              setAfter(next.after)
+              setHistory([...next.history])
             }}
           >
             Next

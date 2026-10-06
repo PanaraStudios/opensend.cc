@@ -87,7 +87,11 @@ export const voiceTables = {
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_provider", ["organizationId", "provider"]),
+    .index("by_organizationId_and_provider", ["organizationId", "provider"])
+    .searchIndex("search_label", {
+      searchField: "label",
+      filterFields: ["organizationId", "provider"],
+    }),
   elevenLabsVoiceCaches: defineTable({
     organizationId: v.string(),
     credentialId: v.id("voiceProviders"),
@@ -105,6 +109,10 @@ export const voiceTables = {
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    })
     .index("by_credentialId", ["credentialId"])
     .index("by_stt_credentialId", ["stt.credentialId"])
     .index("by_llm_credentialId", ["llm.credentialId"])

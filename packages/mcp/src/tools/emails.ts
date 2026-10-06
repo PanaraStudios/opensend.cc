@@ -301,6 +301,7 @@ const CANCEL_EMAIL_TOOL = {
     "Cancel a scheduled email that has not yet been sent. Only works for emails that were scheduled using the scheduledAt parameter.",
   inputSchema: {
     id: z.string().describe("The ID of the scheduled email to cancel"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -330,6 +331,7 @@ const SHARE_EMAIL_TOOL = {
       .describe(
         'How long the share link stays valid, as a human-readable duration (e.g. "10m", "2 hours", "1 day", "1h 30m"). Defaults to 48 hours; capped at 48 hours.'
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -1054,24 +1056,28 @@ export function addEmailTools(
     }
   )
 
-  server.registerTool("cancel-email", CANCEL_EMAIL_TOOL, async ({ id }) => {
-    const response = await opensend.emails.cancel(id)
+  server.registerTool(
+    "cancel-email",
+    CANCEL_EMAIL_TOOL,
+    async ({ id, idempotencyKey }) => {
+      const response = await opensend.emails.cancel(id, { idempotencyKey })
 
-    if (response.error) {
-      throw new Error(
-        `Failed to cancel email: ${JSON.stringify(response.error)}`
-      )
-    }
+      if (response.error) {
+        throw new Error(
+          `Failed to cancel email: ${JSON.stringify(response.error)}`
+        )
+      }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Email ${response.data?.id} has been cancelled successfully.`,
-        },
-      ],
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Email ${response.data?.id} has been cancelled successfully.`,
+          },
+        ],
+      }
     }
-  })
+  )
 
   server.registerTool(
     "update-email",
@@ -1099,10 +1105,11 @@ export function addEmailTools(
   server.registerTool(
     "share-email",
     SHARE_EMAIL_TOOL,
-    async ({ id, expiresIn }) => {
+    async ({ id, expiresIn, idempotencyKey }) => {
       const response = await opensend.emails.share(
         id,
-        expiresIn !== undefined ? { expiresIn } : undefined
+        expiresIn !== undefined ? { expiresIn } : undefined,
+        { idempotencyKey }
       )
 
       if (response.error) {

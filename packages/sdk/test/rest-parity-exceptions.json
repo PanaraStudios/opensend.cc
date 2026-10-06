@@ -1,0 +1,8 @@
+{
+  "POST /smtp/auth": "SMTP gateway authentication bridge; uses the gateway protocol rather than a user SDK or MCP operation.",
+  "POST /smtp/emails": "SMTP gateway delivery bridge; use emails.send or send-email for user integrations.",
+  "POST /audiences": "Deprecated segments alias; SDK audiences uses segments and MCP uses create-segment.",
+  "GET /audiences": "Deprecated segments alias; SDK audiences uses segments and MCP uses list-segments.",
+  "GET /audiences/{id}": "Deprecated segments alias; SDK audiences uses segments and MCP uses get-segment.",
+  "DELETE /audiences/{id}": "Deprecated segments alias; SDK audiences uses segments and MCP uses remove-segment."
+}

@@ -1,3 +1,4 @@
+import type { PostOptions } from "../common/interfaces"
 import type { Opensend } from "../resend"
 import { buildPaginationQuery } from "../common/utils/build-pagination-query"
 import type {
@@ -39,10 +40,15 @@ export class ChannelMessages<
   create(payload: S, options: ChannelRequestOptions = {}) {
     return this.send(payload, options)
   }
-  markRead(id: string, options: { typing?: boolean } = {}) {
+  markRead(
+    id: string,
+    options: { typing?: boolean } = {},
+    requestOptions: PostOptions = {}
+  ) {
     return this.client.post<{ id: string }>(
       `/${this.channel}/messages/${encodeURIComponent(id)}/read`,
-      options
+      options,
+      requestOptions
     )
   }
   get(id: string) {

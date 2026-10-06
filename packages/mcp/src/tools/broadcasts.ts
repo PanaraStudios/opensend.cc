@@ -1,3 +1,4 @@
+import { channelPagination, channelPageCheck } from "./channelMessaging.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { CreateBroadcastOptions, Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
@@ -84,6 +85,7 @@ function buildCreateBroadcastInputSchema(
             .describe("Reply-to email address(es)"),
         }
       : {}),
+    idempotencyKey: z.string().optional(),
   }
 }
 
@@ -124,6 +126,7 @@ const SEND_BROADCAST_TOOL = {
       .describe(
         'When to send the broadcast. Value may be in ISO 8601 format (e.g., 2024-08-05T11:52:01.858Z) or in natural language (e.g., "tomorrow at 10am", "in 2 hours", "next day at 9am PST", "Friday at 3pm ET"). If not provided, the broadcast will be sent immediately.'
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -137,7 +140,7 @@ const LIST_BROADCASTS_TOOL = {
 **Returns:** For each broadcast: id, name, segment_id, status, created_at, scheduled_at, sent_at.
 
 **When to use:** User asks "show my broadcasts", "what newsletters did I send?", "list campaigns". Use get-broadcast for full details of one.`,
-  inputSchema: {},
+  inputSchema: channelPagination,
 } as const
 
 const GET_BROADCAST_TOOL = {
@@ -159,6 +162,7 @@ const CANCEL_BROADCAST_TOOL = {
 **When to use:** User wants to "stop", "cancel", or "pause" a broadcast that is currently sending or scheduled to send.`,
   inputSchema: {
     broadcastId: z.string().nonempty().describe("Broadcast ID"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -171,6 +175,7 @@ const DUPLICATE_BROADCAST_TOOL = {
 **When to use:** User wants to "copy", "clone", "duplicate", or "reuse" an existing broadcast as the starting point for a new one.`,
   inputSchema: {
     broadcastId: z.string().nonempty().describe("Broadcast ID"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -343,6 +348,7 @@ export function addBroadcastTools(
       previewText,
       from,
       replyTo,
+      idempotencyKey,
     }) => {
       const fromEmailAddress = from ?? senderEmailAddress
       const replyToEmailAddresses = replyTo ?? replierEmailAddresses
@@ -416,7 +422,9 @@ export function addBroadcastTools(
         )
       }
 
-      const response = await opensend.broadcasts.create(options)
+      const response = await opensend.broadcasts.create(options, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(
@@ -436,11 +444,15 @@ export function addBroadcastTools(
   server.registerTool(
     "send-broadcast",
     SEND_BROADCAST_TOOL,
-    async ({ broadcastId: rawBroadcastId, scheduledAt }) => {
+    async ({ broadcastId: rawBroadcastId, scheduledAt, idempotencyKey }) => {
       const broadcastId = rawBroadcastId.trim()
-      const response = await opensend.broadcasts.send(broadcastId, {
-        scheduledAt,
-      })
+      const response = await opensend.broadcasts.send(
+        broadcastId,
+        {
+          scheduledAt,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -460,8 +472,11 @@ export function addBroadcastTools(
   server.registerTool(
     "list-broadcasts",
     LIST_BROADCASTS_TOOL,
-    async (_args, _ctx) => {
-      const response = await opensend.broadcasts.list()
+    async (input) => {
+      channelPageCheck(input)
+      const response = await opensend.broadcasts.list(
+        input as Parameters<typeof opensend.broadcasts.list>[0]
+      )
 
       if (response.error) {
         throw new Error(
@@ -471,6 +486,7 @@ export function addBroadcastTools(
 
       const broadcasts = response.data.data
       return {
+        structuredContent: response.data,
         content: [
           {
             type: "text",
@@ -569,9 +585,11 @@ export function addBroadcastTools(
   server.registerTool(
     "cancel-broadcast",
     CANCEL_BROADCAST_TOOL,
-    async ({ broadcastId: rawBroadcastId }) => {
+    async ({ broadcastId: rawBroadcastId, idempotencyKey }) => {
       const broadcastId = rawBroadcastId.trim()
-      const response = await opensend.broadcasts.cancel(broadcastId)
+      const response = await opensend.broadcasts.cancel(broadcastId, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(
@@ -591,9 +609,11 @@ export function addBroadcastTools(
   server.registerTool(
     "duplicate-broadcast",
     DUPLICATE_BROADCAST_TOOL,
-    async ({ broadcastId: rawBroadcastId }) => {
+    async ({ broadcastId: rawBroadcastId, idempotencyKey }) => {
       const broadcastId = rawBroadcastId.trim()
-      const response = await opensend.broadcasts.duplicate(broadcastId)
+      const response = await opensend.broadcasts.duplicate(broadcastId, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(

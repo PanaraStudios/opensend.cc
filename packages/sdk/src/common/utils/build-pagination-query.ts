@@ -2,7 +2,7 @@ import type { PaginationOptions } from '../interfaces/pagination-options.interfa
 
 export function buildPaginationUrl(
   base: string,
-  options: PaginationOptions,
+  options: Pick<PaginationOptions, 'limit' | 'after' | 'before'>,
 ): string {
   const queryString = buildPaginationQuery(options);
 
@@ -14,7 +14,9 @@ export function buildPaginationUrl(
  * @param options - Pagination options containing limit and either after or before (but not both)
  * @returns Query string (without leading '?') or empty string if no options
  */
-export function buildPaginationQuery(options: PaginationOptions): string {
+export function buildPaginationQuery(
+  options: Pick<PaginationOptions, 'limit' | 'after' | 'before'>,
+): string {
   const searchParams = new URLSearchParams();
 
   if (options.limit !== undefined) {

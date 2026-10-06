@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { object, array, string } from "@/lib/meta/parse"
 import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
+import { codeLabel } from "@/lib/dashboard/format"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 import { ConversationMedia } from "./media"
 import { FormattedText } from "./formatted-text"
@@ -392,7 +393,7 @@ export function BusinessCard({
           Order {string(commerce.reference_id)}
         </p>
       ) : null}
-      {order.status ? <p>{string(order.status).replaceAll("_", " ")}</p> : null}
+      {order.status ? <p>{codeLabel(string(order.status))}</p> : null}
       {products.length ? <ProductRows rows={products} /> : null}
       {commerce.total_amount ? (
         <p className="font-medium">

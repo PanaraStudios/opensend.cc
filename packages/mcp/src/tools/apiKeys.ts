@@ -26,6 +26,7 @@ const CREATE_API_KEY_TOOL = {
       .describe(
         "Restrict API key to send emails from a specific domain. Applies to sending_access or custom with emails:write."
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -78,13 +79,16 @@ export function addApiKeyTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-api-key",
     CREATE_API_KEY_TOOL,
-    async ({ name, permission, scopes, domainId }) => {
-      const response = await opensend.apiKeys.create({
-        name,
-        permission,
-        scopes,
-        domain_id: domainId,
-      })
+    async ({ name, permission, scopes, domainId, idempotencyKey }) => {
+      const response = await opensend.apiKeys.create(
+        {
+          name,
+          permission,
+          scopes,
+          domain_id: domainId,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(

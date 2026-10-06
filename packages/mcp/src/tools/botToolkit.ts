@@ -244,10 +244,11 @@ export function addBotToolkitTools(server: McpServer, client: Opensend) {
         id: z.string(),
         query: z.string().min(1).max(4096),
         limit: z.number().int().min(1).max(20).optional(),
+        idempotencyKey: z.string().optional(),
       },
     },
-    async ({ id, ...input }) =>
-      output(await client.knowledgeBases.search(id, input))
+    async ({ id, idempotencyKey, ...input }) =>
+      output(await client.knowledgeBases.search(id, input, { idempotencyKey }))
   )
   server.registerTool(
     "test-bot-tool",
@@ -262,9 +263,10 @@ export function addBotToolkitTools(server: McpServer, client: Opensend) {
           z.string(),
           z.union([z.string(), z.number(), z.boolean()])
         ),
+        idempotencyKey: z.string().optional(),
       },
     },
-    async ({ id, arguments: args }) =>
-      output(await client.botTools.test(id, args))
+    async ({ id, arguments: args, idempotencyKey }) =>
+      output(await client.botTools.test(id, args, { idempotencyKey }))
   )
 }

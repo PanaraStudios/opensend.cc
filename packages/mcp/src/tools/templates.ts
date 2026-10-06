@@ -105,6 +105,7 @@ const CREATE_TEMPLATE_TOOL = {
       .array(templateVariableSchema)
       .optional()
       .describe("Array of template variables (up to 50 per template)."),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -202,6 +203,7 @@ const PUBLISH_TEMPLATE_TOOL = {
     "Publish a template in Opensend. Templates must be published before they can be used for sending. Re-publishing a previously published template makes the latest changes live. A WhatsApp template is submitted to Meta for review instead, and can be sent once Meta approves it. Accepts a template ID, alias.",
   inputSchema: {
     id: z.string().nonempty().describe("The template ID, alias"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -214,6 +216,7 @@ const DUPLICATE_TEMPLATE_TOOL = {
       .string()
       .nonempty()
       .describe("The ID, alias of the template to duplicate."),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -232,6 +235,7 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
       text,
       alias,
       variables,
+      idempotencyKey,
     }) => {
       if (channel !== "whatsapp" && !html)
         throw new Error("Email templates need html.")
@@ -247,7 +251,8 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
               text,
               alias,
               variables,
-            } as CreateTemplateOptions)
+            } as CreateTemplateOptions),
+        { idempotencyKey }
       )
 
       if (response.error) {
@@ -462,9 +467,9 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "publish-template",
     PUBLISH_TEMPLATE_TOOL,
-    async ({ id: rawId }) => {
+    async ({ id: rawId, idempotencyKey }) => {
       const id = rawId.trim()
-      const response = await opensend.templates.publish(id)
+      const response = await opensend.templates.publish(id, { idempotencyKey })
 
       if (response.error) {
         throw new Error(
@@ -484,9 +489,11 @@ export function addTemplateTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "duplicate-template",
     DUPLICATE_TEMPLATE_TOOL,
-    async ({ id: rawId }) => {
+    async ({ id: rawId, idempotencyKey }) => {
       const id = rawId.trim()
-      const response = await opensend.templates.duplicate(id)
+      const response = await opensend.templates.duplicate(id, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(

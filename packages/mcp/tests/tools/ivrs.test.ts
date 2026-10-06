@@ -1,8 +1,53 @@
 import { afterEach, expect, it, vi } from "vitest"
-import { connectClient } from "../helpers/client.js"
+import { connectClient, baseUrl } from "../helpers/client.js"
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+it("IVR signing-secret rotation forwards retries and reveals the write response", async () => {
+  const f = await connectClient()
+  try {
+    const tools = (await f.client.listTools()).tools
+    expect(
+      tools.find((t) => t.name === "rotate-ivr-signing-secret")!.annotations
+    ).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    })
+    const rotated = { id: "ivr/1", webhookSecret: "fixture-rotated-secret" }
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) =>
+      Response.json(rotated)
+    )
+    vi.stubGlobal("fetch", fetcher)
+    const result = await f.client.callTool({
+      name: "rotate-ivr-signing-secret",
+      arguments: { id: "ivr/1", idempotencyKey: "rotation-retry" },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(result.structuredContent).toEqual(rotated)
+    expect(JSON.stringify(result.content)).toContain(rotated.webhookSecret)
+    const [url, init] = fetcher.mock.calls[0]
+    expect(url).toBe(`${baseUrl}/ivrs/ivr%2F1/rotate-signing-secret`)
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(init?.body as string)).toEqual({})
+    expect(new Headers(init?.headers).get("idempotency-key")).toBe(
+      "rotation-retry"
+    )
+    const count = fetcher.mock.calls.length
+    expect(
+      (
+        await f.client.callTool({
+          name: "rotate-ivr-signing-secret",
+          arguments: { id: 123 },
+        })
+      ).isError
+    ).toBe(true)
+    expect(fetcher.mock.calls).toHaveLength(count)
+  } finally {
+    await f.close()
+  }
 })
 it("IVR tools expose CRUD, validation, routing and reject malformed inputs before requests", async () => {
   const f = await connectClient()

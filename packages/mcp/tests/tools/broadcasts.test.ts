@@ -536,7 +536,9 @@ describe("duplicate-broadcast", () => {
       arguments: { broadcastId: "bc_1" },
     })
 
-    expect(duplicate).toHaveBeenCalledWith("bc_1")
+    expect(duplicate).toHaveBeenCalledWith("bc_1", {
+      idempotencyKey: undefined,
+    })
     expect(textOf(result as never)).toContain("Broadcast duplicated")
     expect(textOf(result as never)).toContain("New broadcast ID: bc_copy")
   })
@@ -548,7 +550,9 @@ describe("duplicate-broadcast", () => {
       arguments: { broadcastId: "bc_1" },
     })
 
-    expect(duplicate).toHaveBeenCalledWith("bc_1")
+    expect(duplicate).toHaveBeenCalledWith("bc_1", {
+      idempotencyKey: undefined,
+    })
   })
 
   it("surfaces SDK errors", async () => {
@@ -608,11 +612,14 @@ for (const channel of ["messenger", "instagram"] as const) {
       },
     })
     expect(result.isError).not.toBe(true)
-    expect(create).toHaveBeenCalledWith({
-      channel,
-      messaging,
-      name: "Page campaign",
-      segmentId: "segment",
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        channel,
+        messaging,
+        name: "Page campaign",
+        segmentId: "segment",
+      },
+      { idempotencyKey: undefined }
+    )
   })
 }

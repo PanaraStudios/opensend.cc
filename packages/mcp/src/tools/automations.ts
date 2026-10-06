@@ -1,3 +1,4 @@
+import { channelOutput } from "./channelMessaging.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
@@ -171,6 +172,7 @@ ${WORKFLOW_GUIDANCE}`,
         'Initial status. Default: disabled. Use "enabled" to activate immediately.'
       ),
     workflow: workflowSchema,
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -254,6 +256,7 @@ const DUPLICATE_AUTOMATION_TOOL = {
       .string()
       .nonempty()
       .describe("Automation ID of the automation to duplicate"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -313,19 +316,42 @@ const GET_AUTOMATION_RUNS_TOOL = {
 
 export function addAutomationTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
+    "stop-automation",
+    {
+      title: "Stop Automation",
+      description:
+        "Disable an automation to prevent new runs. Existing runs continue to completion. Returns the automation id and disabled status.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+      inputSchema: { id: z.string(), idempotencyKey: z.string().optional() },
+    },
+    async ({ id, idempotencyKey }) =>
+      channelOutput(
+        "Automation",
+        await opensend.automations.stop(id, { idempotencyKey })
+      )
+  )
+
+  server.registerTool(
     "create-automation",
     CREATE_AUTOMATION_TOOL,
-    async ({ name, status, workflow }) => {
+    async ({ name, status, workflow, idempotencyKey }) => {
       const { steps, connections } = workflowToSdkOptions(
         workflow as WorkflowDefinition
       )
 
-      const response = await opensend.automations.create({
-        name,
-        ...(status ? { status } : {}),
-        steps,
-        connections,
-      })
+      const response = await opensend.automations.create(
+        {
+          name,
+          ...(status ? { status } : {}),
+          steps,
+          connections,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -488,9 +514,11 @@ export function addAutomationTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "duplicate-automation",
     DUPLICATE_AUTOMATION_TOOL,
-    async ({ id: rawId }) => {
+    async ({ id: rawId, idempotencyKey }) => {
       const id = rawId.trim()
-      const response = await opensend.automations.duplicate(id)
+      const response = await opensend.automations.duplicate(id, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(

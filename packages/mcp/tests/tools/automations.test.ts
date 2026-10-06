@@ -152,6 +152,7 @@ it("documents Page send constraints and passes Messenger/Instagram shapes to the
         void _next
         return step
       }),
-    })
+    }),
+    { idempotencyKey: undefined }
   )
 })

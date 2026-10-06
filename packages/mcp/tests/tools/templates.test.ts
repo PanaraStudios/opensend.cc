@@ -51,11 +51,14 @@ describe("template empty string fields", () => {
     })
 
     expect(result.isError).toBeFalsy()
-    expect(create).toHaveBeenCalledWith({
-      name: "Welcome",
-      html: "<p>Hello</p>",
-      text: "",
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        name: "Welcome",
+        html: "<p>Hello</p>",
+        text: "",
+      },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("passes empty text through update-template", async () => {
@@ -146,11 +149,14 @@ describe("WhatsApp templates", () => {
       },
     })
     expect(result.isError).toBeFalsy()
-    expect(create).toHaveBeenCalledWith({
-      name: "order_shipped",
-      channel: "whatsapp",
-      whatsapp: { category: "UTILITY", components },
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        name: "order_shipped",
+        channel: "whatsapp",
+        whatsapp: { category: "UTILITY", components },
+      },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("still requires html for an email template", async () => {
