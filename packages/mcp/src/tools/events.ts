@@ -39,6 +39,7 @@ const SEND_EVENT_TOOL = {
       .describe(
         "Optional key-value data passed to the automation. Accessible in steps via event.* variables."
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -93,6 +94,7 @@ Events define named triggers that your application sends to start automations. E
       .string()
       .optional()
       .describe("Cursor for backward pagination (for list)."),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -124,7 +126,7 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "send-event",
     SEND_EVENT_TOOL,
-    async ({ event, contactId, email, payload }) => {
+    async ({ event, contactId, email, payload, idempotencyKey }) => {
       if (!contactId && !email) {
         throw new Error(
           'Either "contactId" or "email" must be provided to identify the contact.'
@@ -138,7 +140,7 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
         ? { event, contactId, payload }
         : { event, email: email!, payload }
 
-      const response = await opensend.events.send(options)
+      const response = await opensend.events.send(options, { idempotencyKey })
 
       if (response.error) {
         throw new Error(
@@ -173,17 +175,29 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "manage-events",
     MANAGE_EVENTS_TOOL,
-    async ({ action, name, identifier, schema, limit, after, before }) => {
+    async ({
+      action,
+      name,
+      identifier,
+      schema,
+      limit,
+      after,
+      before,
+      idempotencyKey,
+    }) => {
       switch (action) {
         case "create": {
           if (!name) {
             throw new Error('The "name" field is required for create.')
           }
 
-          const response = await opensend.events.create({
-            name,
-            ...(schema ? { schema } : {}),
-          })
+          const response = await opensend.events.create(
+            {
+              name,
+              ...(schema ? { schema } : {}),
+            },
+            { idempotencyKey }
+          )
 
           if (response.error) {
             throw new Error(

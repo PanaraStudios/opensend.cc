@@ -38,6 +38,28 @@ test("shared readable previews describe replies, templates and media; times are 
     "Image: Receipt"
   )
   assert.equal(messageContentPreview("audio", {}, "[audio]"), "Audio")
+  assert.equal(
+    messageContentPreview(
+      "interactive",
+      {
+        type: "call_permission_reply",
+        call_permission_reply: { response: "accept" },
+      },
+      "[interactive]"
+    ),
+    "Call permission: Accepted"
+  )
+  assert.equal(
+    messageContentPreview(
+      "interactive",
+      {
+        type: "call_permission_reply",
+        call_permission_reply: { response: "reject" },
+      },
+      "[interactive]"
+    ),
+    "Call permission: Declined"
+  )
   assert.equal(relativeMessageTime(0, 2 * 3600_000), "2h ago")
 })
 

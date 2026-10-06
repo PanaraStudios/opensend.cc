@@ -7,13 +7,13 @@ afterEach(() => {
 describe.each(["messenger", "instagram"] as const)(
   "%s tools through the real SDK",
   (channel) => {
-    it("registers four tools and sends each body with reply fields and idempotency", async () => {
+    it("registers seven tools and sends each body with reply fields and idempotency", async () => {
       const f = await connectClient()
       try {
         const tools = (await f.client.listTools()).tools.filter((t) =>
           t.name.includes(channel)
         )
-        expect(tools).toHaveLength(4)
+        expect(tools).toHaveLength(7)
         expect(
           tools.find((t) => t.name === `get-${channel}-message`)?.annotations
             ?.readOnlyHint

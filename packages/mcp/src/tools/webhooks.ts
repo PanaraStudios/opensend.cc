@@ -1,3 +1,4 @@
+import { channelPagination, channelPageCheck } from "./channelMessaging.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type {
   Opensend,
@@ -51,6 +52,7 @@ const CREATE_WEBHOOK_TOOL = {
   description:
     "Create a new webhook in Opensend. A webhook allows you to receive notifications at a specified URL when certain events occur (e.g. email.sent, email.delivered, email.bounced).",
   inputSchema: {
+    idempotencyKey: z.string().optional(),
     endpoint: z.url().describe("The URL where webhook events will be sent"),
     events: webhookEventSchema
       .array()
@@ -66,7 +68,7 @@ const LIST_WEBHOOKS_TOOL = {
   annotations: { readOnlyHint: true },
   description:
     "List all webhooks from Opensend. Use to get webhook IDs and see which endpoints and events are configured. Not for listing emails, segments, or broadcasts.",
-  inputSchema: {},
+  inputSchema: channelPagination,
 } as const
 
 const GET_WEBHOOK_TOOL = {
@@ -121,6 +123,7 @@ const LIST_WEBHOOK_EVENTS_TOOL = {
 
 **When to use:** User asks "did my webhook receive this?", "why is my endpoint missing events?", or wants the delivery history of a webhook. Use get-webhook-event next for the payload, and list-webhook-event-attempts for what their endpoint returned.`,
   inputSchema: {
+    before: z.string().optional(),
     webhookId: z.string().nonempty().describe("Webhook ID"),
     limit: z
       .number()
@@ -163,6 +166,7 @@ const REPLAY_WEBHOOK_EVENT_TOOL = {
   inputSchema: {
     webhookId: z.string().nonempty().describe("Webhook ID"),
     eventId: z.string().nonempty().describe("Webhook event ID"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -175,6 +179,7 @@ const ROTATE_WEBHOOK_SIGNING_SECRET_TOOL = {
 **When to use:** User believes the signing secret leaked, or wants to rotate it as routine hygiene. For 24 hours, payloads are signed with both the new and the previous secret, so either one verifies them. After that, only the new secret does. The user has that window to update their endpoint's verification code.`,
   inputSchema: {
     webhookId: z.string().nonempty().describe("Webhook ID"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -187,6 +192,7 @@ const LIST_WEBHOOK_EVENT_ATTEMPTS_TOOL = {
 
 **When to use:** An event is in the failed or attempting status and the user wants to know why. This is the tool that shows the endpoint's own error response. Get the event ID from list-webhook-events first.`,
   inputSchema: {
+    before: z.string().optional(),
     webhookId: z.string().nonempty().describe("Webhook ID"),
     eventId: z.string().nonempty().describe("Webhook event ID"),
     limit: z
@@ -212,11 +218,12 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-webhook",
     CREATE_WEBHOOK_TOOL,
-    async ({ endpoint, events }) => {
+    async ({ endpoint, events, idempotencyKey }) => {
       validateEvents(events)
       const response = await opensend.post<CreateWebhookResponseSuccess>(
         "/webhooks",
-        { endpoint, events }
+        { endpoint, events },
+        { idempotencyKey }
       )
 
       if (response.error) {
@@ -242,33 +249,33 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
     }
   )
 
-  server.registerTool(
-    "list-webhooks",
-    LIST_WEBHOOKS_TOOL,
-    async (_args, _ctx) => {
-      const response = await opensend.webhooks.list()
+  server.registerTool("list-webhooks", LIST_WEBHOOKS_TOOL, async (input) => {
+    channelPageCheck(input)
+    const response = await opensend.webhooks.list(
+      input as Parameters<typeof opensend.webhooks.list>[0]
+    )
 
-      if (response.error) {
-        throw new Error(
-          `Failed to list webhooks: ${JSON.stringify(response.error)}`
-        )
-      }
-
-      const webhooks = response.data.data
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Found ${webhooks.length} webhook${webhooks.length === 1 ? "" : "s"}${webhooks.length === 0 ? "." : ":"}`,
-          },
-          ...webhooks.map(({ id, endpoint, status, events, created_at }) => ({
-            type: "text" as const,
-            text: `Endpoint: ${endpoint}\nStatus: ${status}\nEvents: ${events?.join(", ") ?? "none"}\nID: ${id}\nCreated at: ${created_at}`,
-          })),
-        ],
-      }
+    if (response.error) {
+      throw new Error(
+        `Failed to list webhooks: ${JSON.stringify(response.error)}`
+      )
     }
-  )
+
+    const webhooks = response.data.data
+    return {
+      structuredContent: response.data,
+      content: [
+        {
+          type: "text",
+          text: `Found ${webhooks.length} webhook${webhooks.length === 1 ? "" : "s"}${webhooks.length === 0 ? "." : ":"}`,
+        },
+        ...webhooks.map(({ id, endpoint, status, events, created_at }) => ({
+          type: "text" as const,
+          text: `Endpoint: ${endpoint}\nStatus: ${status}\nEvents: ${events?.join(", ") ?? "none"}\nID: ${id}\nCreated at: ${created_at}`,
+        })),
+      ],
+    }
+  })
 
   server.registerTool(
     "get-webhook",
@@ -326,11 +333,13 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "list-webhook-events",
     LIST_WEBHOOK_EVENTS_TOOL,
-    async ({ webhookId, limit, after }) => {
+    async ({ webhookId, limit, after, before }) => {
+      channelPageCheck({ after, before })
       const response = await opensend.webhooks.events.list({
         webhookId,
         ...(limit !== undefined && { limit }),
         ...(after !== undefined && { after }),
+        ...(before !== undefined && { before }),
       })
 
       if (response.error) {
@@ -342,11 +351,13 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
       const events = response.data.data
       if (events.length === 0) {
         return {
+          structuredContent: response.data,
           content: [{ type: "text", text: "No webhook events found." }],
         }
       }
 
       return {
+        structuredContent: response.data,
         content: [
           {
             type: "text",
@@ -403,11 +414,14 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "replay-webhook-event",
     REPLAY_WEBHOOK_EVENT_TOOL,
-    async ({ webhookId, eventId }) => {
-      const response = await opensend.webhooks.events.replay({
-        webhookId,
-        eventId,
-      })
+    async ({ webhookId, eventId, idempotencyKey }) => {
+      const response = await opensend.webhooks.events.replay(
+        {
+          webhookId,
+          eventId,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -427,8 +441,10 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "rotate-webhook-signing-secret",
     ROTATE_WEBHOOK_SIGNING_SECRET_TOOL,
-    async ({ webhookId }) => {
-      const response = await opensend.webhooks.rotateSigningSecret(webhookId)
+    async ({ webhookId, idempotencyKey }) => {
+      const response = await opensend.webhooks.rotateSigningSecret(webhookId, {
+        idempotencyKey,
+      })
 
       if (response.error) {
         throw new Error(
@@ -456,12 +472,14 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "list-webhook-event-attempts",
     LIST_WEBHOOK_EVENT_ATTEMPTS_TOOL,
-    async ({ webhookId, eventId, limit, after }) => {
+    async ({ webhookId, eventId, limit, after, before }) => {
+      channelPageCheck({ after, before })
       const response = await opensend.webhooks.events.attempts.list({
         webhookId,
         eventId,
         ...(limit !== undefined && { limit }),
         ...(after !== undefined && { after }),
+        ...(before !== undefined && { before }),
       })
 
       if (response.error) {
@@ -473,11 +491,13 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
       const attempts = response.data.data
       if (attempts.length === 0) {
         return {
+          structuredContent: response.data,
           content: [{ type: "text", text: "No delivery attempts found." }],
         }
       }
 
       return {
+        structuredContent: response.data,
         content: [
           {
             type: "text",

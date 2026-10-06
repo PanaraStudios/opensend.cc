@@ -50,9 +50,7 @@ export function IvrPath({
               ? (menus.find(
                   (m) => p.action.kind === "submenu" && m.id === p.action.menuId
                 )?.name ?? "Submenu")
-              : p.action.kind === "bot"
-                ? "Voice bot"
-                : ivrActionLabel(p.action)}
+              : ivrActionLabel(p.action)}
           </span>
           <time className="text-xs text-muted-foreground">
             {new Date(p.at).toLocaleTimeString()}

@@ -1,3 +1,4 @@
+import type { PostOptions } from '../../common/interfaces';
 import { buildPaginationUrl } from '../../common/utils/build-pagination-query';
 import type { Resend } from '../../resend';
 import type {
@@ -46,11 +47,14 @@ export class Events {
 
   async replay(
     options: ReplayWebhookEventOptions,
+    requestOptions: PostOptions = {},
   ): Promise<ReplayWebhookEventResponse> {
     const { webhookId, eventId } = options;
 
     const data = await this.resend.post<ReplayWebhookEventResponseSuccess>(
       `/webhooks/${webhookId}/events/${eventId}/replay`,
+      undefined,
+      requestOptions,
     );
     return data;
   }

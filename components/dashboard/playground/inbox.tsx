@@ -83,7 +83,11 @@ export function InboxView() {
         <div className="panel h-full min-h-0 overflow-hidden p-0">
           {mobile ? (
             <div className="flex h-full min-h-0 flex-col">
-              {selected ? thread : list}
+              {/* Keep the list mounted so filters and the page survive opening a thread. */}
+              <div className={selected ? "hidden" : "h-full min-h-0"}>
+                {list}
+              </div>
+              {selected ? <div className="h-full min-h-0">{thread}</div> : null}
             </div>
           ) : (
             <ResizablePanelGroup

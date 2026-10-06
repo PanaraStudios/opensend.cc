@@ -1,9 +1,12 @@
 import {
+  menuActions,
   parseIvr,
   type IvrAction,
   type IvrDefinition,
   type IvrMenu,
 } from "../ivr"
+import { pickerSelectedIds } from "./options"
+import { codeLabel } from "./format"
 
 export function newIvrMenu(id = "main"): IvrMenu {
   return {
@@ -37,13 +40,30 @@ export function ivrFormPayload(value: IvrDefinition): IvrDefinition {
     ...(value.businessHours ? { businessHours: value.businessHours } : {}),
   })
 }
-export function ivrActionLabel(action: IvrAction | null | undefined): string {
+/** Voice bots an IVR graph must name, capped to the picker point-read limit. */
+export function ivrReferencedBotIds(definition: IvrDefinition): string[] {
+  const ids: string[] = []
+  const consider = (action: IvrAction | null | undefined) => {
+    if (action?.kind === "bot" && action.botId) ids.push(action.botId)
+  }
+  for (const menu of definition.menus)
+    for (const action of menuActions(menu)) consider(action)
+  consider(definition.businessHours?.closedAction)
+  return pickerSelectedIds(ids)
+}
+
+export function ivrActionLabel(
+  action: IvrAction | null | undefined,
+  menus?: readonly { id: string; name: string }[]
+): string {
   if (!action) return "—"
   switch (action.kind) {
-    case "submenu":
-      return `Menu: ${action.menuId}`
+    case "submenu": {
+      const name = menus?.find((menu) => menu.id === action.menuId)?.name
+      return name ? `Menu: ${name}` : "Submenu"
+    }
     case "bot":
-      return `Bot: ${action.botId}`
+      return "Voice bot"
     case "agents":
       return "Transfer to agents"
     case "voicemail":
@@ -84,12 +104,57 @@ export function callOutcomeLabel(value: string | null | undefined) {
     queued: "Queued",
     ringing: "Ringing",
     connected: "In progress",
+    answered: "Answered",
     rejected: "Rejected",
     missed: "Missed",
     busy: "Busy",
     no_answer: "No answer",
   }
   return value ? (labels[value] ?? "Ended") : "In progress"
+}
+
+const CALL_PERMISSION_LABELS: Record<string, string> = {
+  no_permission: "No permission",
+  temporary: "Temporary",
+  permanent: "Permanent",
+  granted: "Granted",
+  pending: "Pending",
+  denied: "Denied",
+  expired: "Expired",
+}
+
+/** How a call was handled, without a blank name or a raw bot id. */
+export function callRouteLabel(
+  call: {
+    bot_id?: string | null
+    bot_name?: string | null
+    ivr_id?: string | null
+    handling_mode?: string | null
+  },
+  ivrs?: readonly { id: string; name: string }[]
+) {
+  if (call.bot_id) return call.bot_name ? `Bot ${call.bot_name}` : "Voice bot"
+  if (call.ivr_id) {
+    const name = ivrs?.find((ivr) => ivr.id === call.ivr_id)?.name
+    return name ? `IVR ${name}` : "IVR"
+  }
+  return call.handling_mode === "api" ? "API" : "Agent"
+}
+
+/** A contact's accept or reject of a call permission request. */
+export function callPermissionReplyLabel(response: string | null | undefined) {
+  if (response === "accept") return "Accepted"
+  if (response === "reject") return "Declined"
+  return codeLabel(response ?? "")
+}
+
+/** WhatsApp calling permission, never the stored code. */
+export function callPermissionLabel(status: string | null | undefined) {
+  if (!status || status === "unknown") return "Not checked"
+  return (
+    CALL_PERMISSION_LABELS[status] ??
+    status.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase())
+  )
 }
 
 /** Rename a menu and all incoming references together; IDs are never user inputs. */

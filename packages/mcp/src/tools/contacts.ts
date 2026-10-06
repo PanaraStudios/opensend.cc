@@ -47,6 +47,7 @@ const CREATE_CONTACT_TOOL = {
       )
       .optional()
       .describe("Array of topic subscription configurations"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -159,6 +160,7 @@ const ADD_CONTACT_TO_SEGMENT_TOOL = {
       .string()
       .nonempty()
       .describe("Segment ID to add the contact to"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -270,17 +272,21 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
       properties,
       segmentIds,
       topics,
+      idempotencyKey,
     }) => {
-      const response = await opensend.contacts.create({
-        email,
-        phone,
-        firstName,
-        lastName,
-        unsubscribed,
-        properties,
-        segments: segmentIds?.map((id) => ({ id })),
-        topics,
-      })
+      const response = await opensend.contacts.create(
+        {
+          email,
+          phone,
+          firstName,
+          lastName,
+          unsubscribed,
+          properties,
+          segments: segmentIds?.map((id) => ({ id })),
+          topics,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -505,15 +511,21 @@ export function addContactTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "add-contact-to-segment",
     ADD_CONTACT_TO_SEGMENT_TOOL,
-    async ({ contactId, email, segmentId }) => {
+    async ({ contactId, email, segmentId, idempotencyKey }) => {
       let response
       if (contactId) {
-        response = await opensend.contacts.segments.add({
-          contactId,
-          segmentId,
-        })
+        response = await opensend.contacts.segments.add(
+          {
+            contactId,
+            segmentId,
+          },
+          { idempotencyKey }
+        )
       } else if (email) {
-        response = await opensend.contacts.segments.add({ email, segmentId })
+        response = await opensend.contacts.segments.add(
+          { email, segmentId },
+          { idempotencyKey }
+        )
       } else {
         throw new Error(
           "You must provide either `contactId` or `email` to add a contact to a segment."

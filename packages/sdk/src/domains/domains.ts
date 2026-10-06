@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { buildPaginationUrl } from '../common/utils/build-pagination-query';
 import { parseDomainToApiOptions } from '../common/utils/parse-domain-to-api-options';
 import type { Resend } from '../resend';
@@ -86,9 +87,14 @@ export class Domains {
     return data;
   }
 
-  async verify(id: string): Promise<VerifyDomainsResponse> {
+  async verify(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<VerifyDomainsResponse> {
     const data = await this.resend.post<VerifyDomainsResponseSuccess>(
       `/domains/${id}/verify`,
+      undefined,
+      requestOptions,
     );
     return data;
   }

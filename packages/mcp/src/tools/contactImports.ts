@@ -101,6 +101,7 @@ const CREATE_CONTACT_IMPORT_TOOL = {
       .describe(
         "Topic subscription configurations applied to the imported contacts."
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -160,6 +161,7 @@ export function addContactImportTools(server: McpServer, opensend: Opensend) {
       onConflict,
       segmentIds,
       topics,
+      idempotencyKey,
     }) => {
       const sources = [filePath, content, url].filter(
         (s) => s !== undefined
@@ -189,13 +191,16 @@ export function addContactImportTools(server: McpServer, opensend: Opensend) {
         type: "text/csv",
       })
 
-      const response = await opensend.contacts.imports.create({
-        file,
-        columnMap,
-        onConflict,
-        segments: segmentIds?.map((id) => ({ id })),
-        topics,
-      })
+      const response = await opensend.contacts.imports.create(
+        {
+          file,
+          columnMap,
+          onConflict,
+          segments: segmentIds?.map((id) => ({ id })),
+          topics,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(

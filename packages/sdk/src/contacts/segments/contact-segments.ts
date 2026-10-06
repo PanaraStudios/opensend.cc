@@ -1,3 +1,4 @@
+import type { PostOptions } from '../../common/interfaces';
 import { buildPaginationUrl } from '../../common/utils/build-pagination-query';
 import type { Resend } from '../../resend';
 import type {
@@ -43,6 +44,7 @@ export class ContactSegments {
 
   async add(
     options: AddContactSegmentOptions,
+    requestOptions: PostOptions = {},
   ): Promise<AddContactSegmentResponse> {
     if (!options.contactId && !options.email) {
       return {
@@ -59,6 +61,8 @@ export class ContactSegments {
     const identifier = options.email ? options.email : options.contactId;
     return this.resend.post<AddContactSegmentResponseSuccess>(
       `/contacts/${identifier}/segments/${options.segmentId}`,
+      undefined,
+      requestOptions,
     );
   }
 

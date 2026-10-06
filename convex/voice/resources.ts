@@ -26,6 +26,8 @@ import { encryptSecret } from "../secrets"
 import { idempotent } from "../api/idempotency"
 import schema from "../schema"
 import { validateBot } from "../../lib/voice-bots"
+import { pickerArgs, pickerRows } from "../pickerOptions"
+import { voiceProvider } from "../tables/voice"
 export const actor = {
   organizationId: v.string(),
   caller: v.optional(callerValue),
@@ -150,6 +152,55 @@ export const dashboardList = query({
   },
   returns: v.any(),
   handler: listResources,
+})
+const namedOption = v.object({ id: v.string(), name: v.string() })
+/** Voice bots a picker can search, including one that is already saved. */
+export const botOptions = query({
+  args: pickerArgs,
+  returns: v.array(namedOption),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const rows = await pickerRows(
+      ctx,
+      "voiceBots",
+      args.organizationId,
+      args.search,
+      args.selectedIds
+    )
+    return rows.map((row) => ({ id: row._id, name: row.name }))
+  },
+})
+/** Provider keys a picker can search. The encrypted key stays on the document. */
+export const providerOptions = query({
+  args: {
+    ...pickerArgs,
+    provider: v.optional(voiceProvider),
+  },
+  returns: v.array(
+    v.object({
+      id: v.id("voiceProviders"),
+      provider: voiceProvider,
+      label: v.string(),
+      lastFour: v.string(),
+    })
+  ),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, false, true)
+    const rows = await pickerRows(
+      ctx,
+      "voiceProviders",
+      args.organizationId,
+      args.search,
+      args.selectedIds,
+      args.provider
+    )
+    return rows.map((row) => ({
+      id: row._id,
+      provider: row.provider,
+      label: row.label,
+      lastFour: row.lastFour,
+    }))
+  },
 })
 export const save = internalMutation({
   args: {

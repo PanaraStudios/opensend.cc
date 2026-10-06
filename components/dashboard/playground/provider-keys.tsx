@@ -1,6 +1,12 @@
 "use client"
 import { useState } from "react"
 import {
+  cursorListIsEmpty,
+  cursorNext,
+  cursorPagerVisible,
+  cursorPrevious,
+} from "@/lib/dashboard/pagination"
+import {
   KeyRoundIcon,
   SparklesIcon,
   LanguagesIcon,
@@ -38,6 +44,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { actionError } from "@/lib/action-error"
 import type { VoiceProviderResource } from "@/lib/dashboard/voice-bot-form"
+import { ResourceSelect } from "@/components/dashboard/resource-picker"
 import { VOICE_PROVIDER_LABELS } from "@/lib/dashboard/voice-options"
 import type { VoiceProvider } from "@/lib/voice-bots"
 
@@ -188,31 +195,18 @@ export function ProviderKeySelect({
   value: string
   onChange: (id: string) => void
 }) {
-  const keys = useTeamQuery(api.voice.resources.dashboardList, {
-    limit: 100,
-    providers: true,
-  }) as { data: VoiceProviderResource[] } | undefined
   const [adding, setAdding] = useState(false)
   return (
     <>
-      <Field>
-        <FieldLabel>{label}</FieldLabel>
-        <OptionSelect
-          aria-label={label}
-          placeholder="Choose a provider key"
-          value={value}
-          items={[
-            ...(keys?.data ?? [])
-              .filter((k) => k.provider === provider)
-              .map((k) => ({
-                value: k.id,
-                label: `${k.label} · ••••${k.lastFour}`,
-              })),
-            { value: "add", label: "Add provider key…" },
-          ]}
-          onChange={(v) => (v === "add" ? setAdding(true) : onChange(v))}
-        />
-      </Field>
+      <ResourceSelect
+        query={api.voice.resources.providerOptions}
+        args={{ provider }}
+        label={label}
+        placeholder="Choose a provider key"
+        value={value}
+        extraItems={[{ value: "add", label: "Add provider key…" }]}
+        onChange={(next) => (next === "add" ? setAdding(true) : onChange(next))}
+      />
       <ProviderKeyDialog
         open={adding}
         onOpenChange={setAdding}
@@ -224,10 +218,13 @@ export function ProviderKeySelect({
 }
 export function ProviderKeys() {
   const { activeTeamId } = useWorkspace()
+  const [after, setAfter] = useState<string>()
+  const [history, setHistory] = useState<(string | undefined)[]>([])
   const keys = useTeamQuery(api.voice.resources.dashboardList, {
-    limit: 100,
+    limit: 25,
+    after,
     providers: true,
-  }) as { data: VoiceProviderResource[] } | undefined
+  }) as { data: VoiceProviderResource[]; has_more: boolean } | undefined
   const write = useAction(api.voice.resources.dashboardWrite)
   const [adding, setAdding] = useState(false),
     [deleting, setDeleting] = useState<VoiceProviderResource | null>(null)
@@ -244,51 +241,88 @@ export function ProviderKeys() {
         </p>
         {!keys ? (
           <Skeleton className="h-24 w-full" />
-        ) : !keys.data.length ? (
+        ) : cursorListIsEmpty(keys.data.length, history) ? (
           <EmptyState
             icon={KeyRoundIcon}
             title="No provider keys"
             description="Add a key to start using AI voices and conversations."
           />
         ) : (
-          <ResourceTable
-            headers={
-              <>
-                <Th>Provider</Th>
-                <Th>Label</Th>
-                <Th>Key</Th>
-                <Th className="hidden md:table-cell">Added</Th>
-                <Th />
-              </>
-            }
-          >
-            {keys.data.map((k) => (
-              <TableRow key={k.id}>
-                <TableCell>
-                  <span className="flex items-center gap-2">
-                    <ProviderIcon provider={k.provider} />
-                    {VOICE_PROVIDER_LABELS[k.provider]}
-                  </span>
-                </TableCell>
-                <TableCell className="max-w-32 break-words whitespace-normal">
-                  {k.label}
-                </TableCell>
-                <TableCell>••••{k.lastFour}</TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <RelativeTime at={k.createdAt} />
-                </TableCell>
-                <TableCell>
-                  <MoreMenu>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem onClick={() => setDeleting(k)}>
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </MoreMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </ResourceTable>
+          <>
+            {keys.data.length ? (
+              <ResourceTable
+                headers={
+                  <>
+                    <Th>Provider</Th>
+                    <Th>Label</Th>
+                    <Th>Key</Th>
+                    <Th className="hidden md:table-cell">Added</Th>
+                    <Th />
+                  </>
+                }
+              >
+                {keys.data.map((k) => (
+                  <TableRow key={k.id}>
+                    <TableCell>
+                      <span className="flex items-center gap-2">
+                        <ProviderIcon provider={k.provider} />
+                        {VOICE_PROVIDER_LABELS[k.provider]}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-32 break-words whitespace-normal">
+                      {k.label}
+                    </TableCell>
+                    <TableCell>••••{k.lastFour}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <RelativeTime at={k.createdAt} />
+                    </TableCell>
+                    <TableCell>
+                      <MoreMenu>
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onClick={() => setDeleting(k)}>
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </MoreMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </ResourceTable>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No provider keys on this page.
+              </p>
+            )}
+            {cursorPagerVisible(history, keys.has_more) ? (
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  disabled={!history.length}
+                  onClick={() => {
+                    const previous = cursorPrevious({ after, history })
+                    setAfter(previous.after)
+                    setHistory([...previous.history])
+                  }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!keys.has_more}
+                  onClick={() => {
+                    const next = cursorNext(
+                      { after, history },
+                      keys.data.at(-1)?.id
+                    )
+                    setAfter(next.after)
+                    setHistory([...next.history])
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
       </DetailSection>
       <ProviderKeyDialog open={adding} onOpenChange={setAdding} />

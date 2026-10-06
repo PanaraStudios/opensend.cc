@@ -75,4 +75,7 @@ export type {
 export type * from "./contacts/notes/interfaces"
 
 export type * from "./voice/toolkit"
-export * from './messages';
+export * from "./messages"
+
+export { API_SCOPES, API_RESOURCES } from "../../../lib/api-scopes"
+export type { ApiScope, ApiResource } from "../../../lib/api-scopes"
