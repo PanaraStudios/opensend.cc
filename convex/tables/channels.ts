@@ -145,6 +145,16 @@ export const channelTables = {
       "disconnectedAt",
     ])
     .index("by_channel_and_externalId", ["channel", "externalId"])
+    .index("by_channel_and_externalId_and_disconnectedAt", [
+      "channel",
+      "externalId",
+      "disconnectedAt",
+    ])
+    .index("by_organizationId_and_channel_and_externalId", [
+      "organizationId",
+      "channel",
+      "externalId",
+    ])
     .index("by_connectionId", ["connectionId"])
     .index("by_wabaId", ["wabaId"]),
   /** A person's identity on a channel. Messenger and Instagram ids are
@@ -333,6 +343,11 @@ export const channelTables = {
     .index("by_accountId_and_reactionTargetExternalId", [
       "accountId",
       "reactionTargetExternalId",
+    ])
+    .index("by_accountId_and_reactionTargetExternalId_and_observedAt", [
+      "accountId",
+      "reactionTargetExternalId",
+      "observedAt",
     ]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),

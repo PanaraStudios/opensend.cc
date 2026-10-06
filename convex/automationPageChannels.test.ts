@@ -129,6 +129,39 @@ async function tick(f: Fixture) {
   }
 }
 for (const channel of PAGE_CHANNELS) {
+  test(`${channel} rechecks a queued automation recipient after unsubscribe`, async () => {
+    const f = await setup()
+    const conversation = await project(f, channel)
+    const contact = (await f.t.run((ctx) =>
+      ctx.db.get("contacts", conversation.contactId!)
+    ))!
+    const row = await automation(f, channel, step(f, channel))
+    const id = await f.t.run((ctx) => startRun(ctx, row, contact, {}))
+    await f.t.mutation(internal.automationRuntime.perform, { id, key: "reply" })
+    const message = (
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("channelMessages")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", f.owner.team)
+          )
+          .collect()
+      )
+    ).find((m) => m.automationRunId === id)!
+    await f.owner.client.mutation(api.contacts.update, {
+      id: contact._id,
+      unsubscribed: true,
+    })
+    await f.t.action(internal.channels.deliver.deliver, {
+      id: message._id,
+      generation: message.generation,
+    })
+    expect(graph.to(`/${PAGE_ID}/messages`, "POST")).toHaveLength(0)
+    expect(
+      (await f.t.run((ctx) => ctx.db.get("channelMessages", message._id)))
+        ?.status
+    ).toBe("failed")
+  })
   test(`${channel} inbound system event runs a reply through the shared pipeline`, async () => {
     const f = await setup()
     const templateId =

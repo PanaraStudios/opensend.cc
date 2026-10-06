@@ -283,6 +283,11 @@ test("segment, global opt-out, topic opt-out and suppression resolve server-side
   ).toBe(1)
   const id = await f.create({ segmentId, topicId })
   const recipients = await f.fanout(id)
+  expect(
+    recipients.every(
+      (r) => r.displayIdentity === null && r.displayMessageStatus === null
+    )
+  ).toBe(true)
   // As on Resend, a suppressed address gets a suppressed email, not a send.
   expect(recipients.map((r) => r.email).sort()).toEqual([
     "suppressed@example.com",

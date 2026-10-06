@@ -100,6 +100,43 @@ async function setup(channel: PageChannel) {
   return { ...f, ...people, missing, messaging, scope, id, recipients, fanout }
 }
 for (const channel of PAGE_CHANNELS) {
+  test.each(["unsubscribed", "deleted"] as const)(
+    `${channel} rechecks a queued recipient after %s`,
+    async (change) => {
+      const f = await setup(channel)
+      await f.fanout()
+      const recipient = (await f.recipients()).page.find(
+        (r) => r.contactId === f.open.contactId
+      )!
+      if (change === "deleted")
+        await f.owner.client.mutation(api.contacts.remove, {
+          organizationId: f.owner.team,
+          ids: [f.open.contactId],
+        })
+      else
+        await f.owner.client.mutation(api.contacts.update, {
+          id: f.open.contactId,
+          unsubscribed: true,
+        })
+      await f.t.action(internal.channels.deliver.deliver, {
+        id: recipient.messageId!,
+        generation: 0,
+      })
+      expect(graph.to(`/${PAGE_ID}/messages`, "POST")).toHaveLength(0)
+      expect(
+        (
+          await f.t.run((ctx) =>
+            ctx.db.get("channelMessages", recipient.messageId!)
+          )
+        )?.status
+      ).toBe("failed")
+      expect(
+        (await f.recipients()).page.find(
+          (r) => r.contactId === f.open.contactId
+        )?.settled
+      ).toBe(true)
+    }
+  )
   test(`${channel} reviews reachable count, sends open windows, skips closed/missing identities and retries idempotently`, async () => {
     const f = await setup(channel)
     expect(
@@ -125,6 +162,19 @@ for (const channel of PAGE_CHANNELS) {
       skipReason: "no_channel_identity",
       settled: true,
       failed: false,
+    })
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get("broadcastRecipients", open._id)).toMatchObject({
+        displayMessageStatus: "queued",
+        displayIdentity: { channel, externalId: "101" },
+      })
+      const missing = page.page.find((r) => r.contactId === f.missing)!
+      expect(
+        await ctx.db.get("broadcastRecipients", missing._id)
+      ).toMatchObject({
+        displayMessageStatus: null,
+        displayIdentity: null,
+      })
     })
     expect(skipReasonLabel("window_closed")).toBe("Messaging window closed")
     expect(skipReasonLabel("no_channel_identity")).toBe("No channel identity")

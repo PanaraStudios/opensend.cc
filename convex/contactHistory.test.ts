@@ -25,6 +25,64 @@ afterEach(() => {
 })
 const page = { cursor: null, numItems: 10 }
 
+test("deleting a contact detaches channel identities and historical threads in batches", async () => {
+  const f = await inboundFixture()
+  const links = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const ids = await upsertChannelThread(ctx, account, {
+      externalId: SENDER,
+      phone: `+${SENDER}`,
+      at: Date.now(),
+      direction: "inbound",
+      preview: "Preserved history",
+    })
+    for (let i = 0; i < 60; i++) {
+      const otherId = await insertRow(ctx, "channelAccounts", {
+        ...withoutSystemFields(account),
+        externalId: `number-${i}`,
+      })
+      await upsertChannelThread(
+        ctx,
+        (await ctx.db.get("channelAccounts", otherId))!,
+        {
+          externalId: SENDER,
+          phone: `+${SENDER}`,
+          at: Date.now(),
+          direction: "outbound",
+          preview: "Preserved history",
+        }
+      )
+    }
+    return ids
+  })
+  await f.owner.client.mutation(api.contacts.remove, {
+    organizationId: f.owner.team,
+    ids: [links.contactId],
+  })
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  const remaining = await f.t.run(async (ctx) => ({
+    contact: await ctx.db.get("contacts", links.contactId),
+    identity: await ctx.db.get("channelContacts", links.channelContactId),
+    threads: await ctx.db
+      .query("conversations")
+      .withIndex("by_channelContactId", (q) =>
+        q.eq("channelContactId", links.channelContactId)
+      )
+      .collect(),
+  }))
+  expect(remaining.contact).toBeNull()
+  expect(remaining.identity).toBeDefined()
+  expect(remaining.identity?.contactId).toBeUndefined()
+  expect(remaining.threads).toHaveLength(61)
+  expect(
+    remaining.threads.every(
+      (thread) =>
+        thread.contactId === undefined &&
+        thread.lastPreview === "Preserved history"
+    )
+  ).toBe(true)
+})
+
 test.each(["whatsapp", "messenger"] as const)(
   "%s history works without an email and isolates teams",
   async (channel) => {

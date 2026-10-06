@@ -1,4 +1,9 @@
-# Dashboard query read-cost audit
+# Query read costs
+
+This document preserves the dashboard query audit and the measured broadcast read
+budgets. Each section records its own scope, assumptions, numbers, and validation.
+
+## Dashboard query audit
 
 Audited on `perf/v2-dashboard-queries`, 2026-10-06. Inventory starts with `rg -n 'api\.|useQuery|usePaginatedQuery|useTeamQuery' components app`, follows imported hooks in `lib/`, `useTeamList` (list + count), `useQueries`/metric chunks, and `watchQuery`. Public actions/mutations are excluded. The table includes all 150 reachable public queries, including onboarding, auth, unsubscribe, and one-shot export download queries so these edges are not missed. Sources link to the exported handler; the consumer column records one representative call site. Helpers and component handlers were read as well, particularly `lists.ts`, `counts.ts`, `channels/templates.ts`, `channels/rows.ts`, `audience.ts`, `api/paging.ts`, `betterAuth/{teams,policy,oauth}.ts`, and the resource/list helpers.
 
@@ -165,7 +170,7 @@ A document projection does **not** reduce stored bytes read or exclude other fie
 | [`webhooks.signingSecret`](../../convex/webhooks.ts#L274) | [components/dashboard/webhooks/detail.tsx](../../components/dashboard/webhooks/detail.tsx#L66) | 1 webhook / ~1–2 KiB | _id | This webhook’s config/secret rotation only | fine |
 | [`whatsapp.templates.accounts`](../../convex/whatsapp/templates.ts#L65) | [lib/templates/use-templates.ts](../../lib/templates/use-templates.ts#L183) | ≤100 WABAs / ~30–100 KiB | whatsappBusinessAccounts.by_organizationId | Team WABA metadata only; messages/templates excluded | fine |
 
-## Changes and remaining work
+### Changes and remaining work
 
 The fix for `messages.sending`, `messages.receiving`, and `conversations.list` reserves 4 MiB per retained template-message or Inbox search match through the existing `filteredPage`/`SearchStream` budget, before hydration starts. This covers typical content/published-body reads, historical name lookup fan-out, and account/person headers with headroom. Sparse searches still scan their existing indexed batch; dense searches return shorter pages with continuation/split metadata, so no result is discarded. Non-search pagination and all query return validators are unchanged. `convex/queryCosts.test.ts` exercises actual public Convex queries with 120 matching messages and 256 KiB payloads under explicit nested 2 MiB / 40-document transaction limits, checks rendered values, traverses all message continuations without omissions/duplicates, and replays endCursor with stricter row/byte limits. This is a regression bound for that fixture, not a universal 2 MiB production guarantee: the reservation is conservative and the stream budget permits one-item overshoot. The shared helper now also accepts a per-row reservation: email hits reserve zero downstream bytes, and plain channel messages reserve 2 KiB for contact hydration. Regressions verify that both plain-message queries still return eight requested matches under the same tight limits. Inbox headers do not carry the latest message type, so they conservatively reserve template hydration. The helper already had constant reservation support for template thumbnails; these callers were missing it.
 
@@ -175,10 +180,101 @@ No schema/index change or new component was needed for the implemented search fi
 
 Remaining watches: broadcast list rows share fan-out cursor/settlement fields; template picker metadata is rewritten on autosave; the account snapshot reads capped rosters to compute capped member counts; thread bubbles read whole email bodies for 4000-character snippets; native reactive pages with bodies can expand on endCursor replay; large charts multiply aggregate ranges by channels/statuses/days/steps/domains. Splitting broadcast operational fields while preserving every exposed raw-row value would require a compatibility projection (which would reintroduce list dependencies) or a separate list contract, so this audit records the hot dependency without silently dropping public fields. Time-dependent query helpers (`usage`, reputation, auth invitations/session expiry, thread normalized controls, claims, export URLs, and default metrics ranges) also use wall clocks; these are cache/freshness watches rather than row scans and should be addressed with explicit time arguments or scheduled flags in their owning lanes.
 
-## Lead verification
+### Lead verification
 
 On the deployment host, inspect Convex transaction metrics for large populated aggregate trees and reactive endCursor pages; this worktree did not start `convex dev` or run live benchmarks. Exercise Sending, Receiving, and Inbox searches with many matching template messages: navigate across short/empty/split pages, change filters, receive a live message, and confirm rendered preview text, page totals, and later matches remain reachable. Test the global message search’s first-page suggestions too: it only subscribes to an initial search page, so the conservative hydration reservation can reduce immediate template suggestions; plain messages and email do not pay the template reservation. Confirm existing broadcasts contact history and calling setup stay below the prior ~1 s regression. Calling/voice/IVR behavior belongs to their other branches. Browser/e2e testing should cover light/dark and 390 px; no markup or UI primitives changed here.
 
-## Worktree checks
+### Worktree checks
 
 All required commands completed successfully, sequentially: `pnpm typecheck`, `pnpm lint`, `pnpm test` (653 tests), `pnpm test:auth --maxWorkers=2` (1,251 tests, including five new read-cost regressions), `pnpm test:sdk` (627 passed), `pnpm test:mcp` (542 passed), and `pnpm build`. Lint has zero errors and one existing hook-dependency warning in the excluded calling softphone provider. SDK/MCP scripts already specify two Vitest workers. Their four SDK and one MCP live tests skipped because live-host configuration is absent; no live configuration was supplied or enabled. The required `pnpm test` includes local unit tests of e2e helpers, not the host e2e runner. No `convex dev`, live e2e suite, or calling harness ran. No components, excluded backend lanes, deployment files, service files, SDK/MCP source, scripts, or schema changed.
+
+## Broadcast read budgets
+
+Measured on 2026-10-06 on `perf/v2-broadcast-reads`, starting at
+`fix/v2-pipeline-review`. Covers pipeline review R1, backend review F9,
+and the broadcast recipients/history/metrics watch queries.
+
+Run: `pnpm exec vitest run --config vitest.auth.config.ts convex/broadcastReadCosts.test.ts --maxWorkers=2`.
+The convex-test fixture uses a real authenticated team, a WhatsApp broadcast
+with 5,000 recipients, 100 recipients each on Messenger, Instagram and email,
+and one contact with 300 additional messaging broadcast entries. Each broadcast
+has one channel. Pages contain 100 rows; all messaging rows have message IDs
+and contacts have primary identities. Only the aggregates used by these queries
+are populated in the bulk fixture, in the source rows' transactions.
+
+The test calls public queries via `ctx.runQuery` and reads
+`ctx.meta.getTransactionMetrics()`. These are documents and encoded document
+bytes read, including authorization and component reads, not response bytes
+or a wall-clock latency benchmark. No production limit failure is claimed.
+
+| Watch query | Before documents | Before bytes | After documents | After bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Recipients: WhatsApp, 5k campaign | 405 | 135,645 | 205 | 73,755 |
+| Recipients: Messenger | 405 | 136,247 | 205 | 74,157 |
+| Recipients: Instagram | 405 | 136,247 | 205 | 74,157 |
+| Recipients: email | 305 | 82,249 | 205 | 67,449 |
+| Contact broadcast history: 100 distinct broadcasts/messages | 305 | 108,159 | 205 | 72,392 |
+| Channel metrics: WhatsApp, 5k campaign | 132 | 161,720 | 132 | 161,720 |
+| Channel metrics: Messenger | 60 | 52,432 | 60 | 52,432 |
+| Channel metrics: Instagram | 60 | 52,432 | 60 | 52,432 |
+| Channel metrics: email | 18 | 12,874 | 18 | 12,874 |
+
+Before: messaging recipient pages read 100 recipient rows, 100 contacts,
+100 messages and 100 primary identities, plus five authorization/broadcast
+reads. History reads 100 recipients, 100 broadcasts and 100 messages, plus
+five authorization/contact reads. Metrics already use aggregate trees instead
+of recipient scans; their cost depends on tree depth and status ranges.
+
+After: new recipient rows capture only five primary-identity display fields
+at fan-out (or null for a known absence) and mirror the channel-message status.
+The common message patch/delete writer updates that status in the same
+transaction as the message and its counters; deleting a message writes null.
+These internal fields are omitted from both query responses. Schema additions
+are optional; there are no new indexes or migrations.
+
+Full contacts and broadcasts remain current, including contact deletion,
+phone, names, unsubscribe state and campaign edits. A new recipient's
+primary-identity display is intentionally the fan-out snapshot; later identity
+profile edits do not rewrite historical recipients. Legacy rows with omitted
+fields use the current identity/message lookup. A null snapshot never triggers
+a fallback. This avoids storing copies of full contact or broadcast documents.
+
+For an actual returned page of P rows, new recipients cost P + distinct contacts
++ 5 documents; history costs P + distinct broadcasts + 5 (contact-ID filter).
+Legacy fallbacks add at most one read per distinct message and primary contact
+identity on that page. Fresh 100-row messaging recipient pages save 49.4% of
+document reads and about 45.6% of bytes; history saves 32.8% of documents and
+33.1% of bytes. Distinct broadcast reads remain necessary because the response
+contains the complete current broadcast, not just its display name.
+
+The regressions enforce nested transaction caps of 205 documents / 80,000 bytes
+for new 100-row recipient/history pages; they measure later pages and exhaust
+all 301 history entries without duplicates or omissions. Metrics are capped at
+140 documents / 180,000 bytes for the 5k campaign and 65 documents for the small
+campaigns. Metrics retain their aggregate-based implementation: logarithmic
+tree reads, not per-recipient scans. The bytes here include aggregate nodes and
+may vary with tree shape or document sizes on a real deployment.
+
+Legacy rows with all unique keys still cost 405 documents for messaging
+recipients and 305 for history. Fifty legacy rows mixed into a 100-row new page
+cost 305 and 255 documents respectively. A 100-row legacy page repeating one
+contact/message costs 108 documents for recipients; one broadcast/message costs
+107 for history. Tests also cover live status changes (queued through failure,
+including played), deletion, known-null identities, contact freshness, and
+forwarding native pagination row/byte limits. Existing fan-out tests pin the
+new fields for WhatsApp, Messenger, Instagram, and email writes.
+
+QA host follow-up: compare live transaction metrics/latency for a newly sent
+campaign and a pre-upgrade campaign, paginate recipients and contact history,
+and verify queued/sent/delivered/read/failed status updates plus skip reasons.
+This local measurement does not replace production profiling or browser/e2e
+verification on the lead's host.
+
+Validation in this worktree: `pnpm typecheck`, `pnpm lint`, `pnpm test`
+(653 passed), `pnpm test:auth --maxWorkers=2` (1,278 passed), `pnpm test:sdk`
+(627 passed), `pnpm test:mcp` (542 passed), and `pnpm build` all passed.
+SDK/MCP scripts already set `--maxWorkers=2`. Lint retains one existing
+`react-hooks/exhaustive-deps` warning in the calling softphone component,
+outside this task's edit boundary. Four SDK live tests and one MCP live test
+skip without the live origin/key environment. The browser e2e suite and calling
+harness were not run: those are reserved for the lead's other host.
