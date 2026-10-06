@@ -270,6 +270,13 @@ export const counters = {
       key: (row) => [row.type, row.at],
     }
   ),
+  automationEvents: new Counter<"automationEvents", string>(
+    components.automationEventCounts,
+    {
+      namespace: team,
+      key: () => [],
+    }
+  ),
   automations: new Counter<"automations", string>(components.automationCounts, {
     namespace: team,
     key: (row) => [row.status],
@@ -443,6 +450,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
     counters.broadcastHistory,
   ],
   broadcastEvents: [counters.broadcastEvents],
+  automationEvents: [counters.automationEvents],
   automations: [counters.automations],
   automationRuns: [counters.automationRuns, counters.usageAutomationRuns],
   automationRunSteps: [counters.automationRunSteps],
@@ -475,6 +483,7 @@ const COUNTED: { [T in CountedTable]: Sync<T>[] } = {
   channelAccounts: [counters.channelAccounts],
 }
 export type CountedTable =
+  | "automationEvents"
   | "contactImports"
   | "receivedEmails"
   | "broadcastLinks"

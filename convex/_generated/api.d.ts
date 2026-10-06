@@ -571,6 +571,7 @@ export declare const components: {
   emailMetricCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"emailMetricCounts">;
   domainMetricCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"domainMetricCounts">;
   reputationCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"reputationCounts">;
+  automationEventCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationEventCounts">;
   automationCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationCounts">;
   automationRunCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationRunCounts">;
   automationStepCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"automationStepCounts">;
