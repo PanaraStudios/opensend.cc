@@ -128,7 +128,7 @@ export const cleanup = internalAction({
   args: { id: v.id("calls") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    await cleanupCall(ctx, id)
+    await cleanupCall(ctx, id).catch(() => undefined)
     return null
   },
 })
@@ -256,13 +256,26 @@ export async function connectCall(
     const wacid = string(object(array(reply.calls)[0]).id)
     if (!wacid)
       throw apiError(502, "invalid_meta_response", "Meta returned no call id.")
-    await ctx.runMutation(internal.calling.rows.finish, {
+    const placed = await ctx.runMutation(internal.calling.rows.finish, {
       id,
       wacid,
       status: "ringing",
       session: { sdp_type: "offer", sdp: offerSdp },
       operation,
     })
+    if (CALL_TERMINAL.has(placed.status)) {
+      // The setup deadline may fire while Graph is assigning the remote id.
+      await signal(
+        ctx,
+        {
+          ...target,
+          phoneNumberId: target.account.externalId,
+          connectionId: target.account.connectionId,
+        },
+        { action: "terminate", call_id: wacid }
+      ).catch(() => undefined)
+      throw apiError(409, "call_ended", "Call ended while Meta was placing it.")
+    }
     // A connect webhook may already have supplied the answer before Graph returned.
     const current = await active(ctx, id)
     if (
@@ -630,45 +643,38 @@ export const gatewayConnect = internalAction({
     return null
   },
 })
+async function endLocally(
+  ctx: ActionCtx,
+  args: {
+    id: Id<"calls">
+    kind: "timeout" | "hangup" | "blocked"
+    at?: number
+    reason?: string
+  }
+) {
+  const call = await ctx.runMutation(internal.calling.rows.endLocally, args)
+  if (!call) return
+  const target = await getContext(ctx, args.id)
+  if (target && call.wacid)
+    await signal(ctx, target, {
+      action: "terminate",
+      call_id: call.wacid,
+    }).catch(() => undefined)
+  if (call.mode === "gateway") await cleanupCall(ctx, args.id)
+}
 export const timeout = internalAction({
   args: { id: v.id("calls") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const target = await active(ctx, id)
-    if (!target || target.call.status === "connected") return null
-    if (target.call.wacid)
-      await signal(ctx, target, {
-        action: "terminate",
-        call_id: target.call.wacid,
-      })
-    await ctx.runMutation(internal.calling.rows.finish, {
-      id,
-      status: target.call.wacid ? "missed" : "failed",
-      ...(target.call.wacid
-        ? {}
-        : { error: "Call setup timed out before Meta assigned a call id." }),
-    })
-    if (target.call.mode === "gateway") await cleanupCall(ctx, id)
+    await endLocally(ctx, { id, kind: "timeout" })
     return null
   },
 })
 export const gatewayHangup = internalAction({
   args: { id: v.id("calls"), at: v.number(), reason: v.string() },
   returns: v.null(),
-  handler: async (ctx, { id, at, reason }) => {
-    const target = await active(ctx, id)
-    if (!target || at < target.call.observedAt) return null
-    if (target.call.wacid)
-      await signal(ctx, target, {
-        action: "terminate",
-        call_id: target.call.wacid,
-      })
-    await ctx.runMutation(internal.calling.rows.finish, {
-      id,
-      status: target.call.connectedAt ? "completed" : "missed",
-      error: reason,
-    })
-    await cleanupCall(ctx, id)
+  handler: async (ctx, args) => {
+    await endLocally(ctx, { ...args, kind: "hangup" })
     return null
   },
 })
@@ -686,18 +692,7 @@ export const blockInbound = internalAction({
   args: { id: v.id("calls") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    const target = await active(ctx, id)
-    if (!target) return null
-    if (target.call.wacid)
-      await signal(ctx, target, {
-        action: "terminate",
-        call_id: target.call.wacid,
-      })
-    await ctx.runMutation(internal.calling.rows.finish, {
-      id,
-      status: "missed",
-    })
-    if (target.call.mode === "gateway") await cleanupCall(ctx, id)
+    await endLocally(ctx, { id, kind: "blocked" })
     return null
   },
 })

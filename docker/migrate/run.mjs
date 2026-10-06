@@ -86,6 +86,7 @@ try {
       "--codegen",
       "disable",
     ])
+    await runCli(["run", "migrations:initializeEventCounts", "{}"])
   }
 } catch (error) {
   console.error(`Opensend migrate: ${error.message}`)

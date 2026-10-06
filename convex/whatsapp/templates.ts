@@ -127,6 +127,7 @@ async function changeable(
 export const submitTarget = internalQuery({
   args: { templateId: v.id("templates"), caller: v.optional(callerValue) },
   returns: v.object({
+    organizationId: v.string(),
     name: v.string(),
     updatedAt: v.number(),
     whatsapp: whatsappTemplateValue,
@@ -144,6 +145,7 @@ export const submitTarget = internalQuery({
     if (!access) throw new ConvexError(NOT_CONNECTED)
     const draft = await findDraft(ctx, templateId)
     return {
+      organizationId: template.organizationId,
       name: template.name,
       updatedAt: template.updatedAt,
       whatsapp,

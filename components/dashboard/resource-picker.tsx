@@ -16,6 +16,7 @@ import {
 type PickerArgs = {
   search?: string
   selectedIds?: string[]
+  selectedNames?: string[]
   provider?: VoiceProvider
 }
 type PickerQuery<Result> = FunctionReference<

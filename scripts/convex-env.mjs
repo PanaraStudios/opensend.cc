@@ -18,6 +18,13 @@ export const CONVEX_ENV_KEYS = [
   "OPENSEND_INSTALL_METHOD",
   "OPENSEND_ARCH",
   "OPENSEND_CALLING",
+  "CALL_GATEWAY_URL",
+  "CALL_GATEWAY_SECRET",
+  "CALL_AGENT_WSS_URL",
+  "CALL_AGENT_QUEUES",
+  "CALL_STUN_URLS",
+  "CALL_TURN_URLS",
+  "CALL_TURN_SECRET",
 ]
 
 /** Empty Compose defaults must not erase an existing deployment setting. */

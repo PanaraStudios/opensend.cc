@@ -54,6 +54,7 @@ async def session(websocket: WebSocket):
     await websocket.accept()
     backend = None
     call_id = None
+    owns_call = False
     config = None
     tools = None
     phase = "auth"
@@ -68,6 +69,7 @@ async def session(websocket: WebSocket):
         if call_id in active_calls or len(active_calls) >= 100:
             raise ValueError("Voice session unavailable")
         active_calls.add(call_id)
+        owns_call = True
         phase = "config"
         backend = VoiceBackend(
             os.environ["CALL_GATEWAY_CONVEX_HTTP_URL"], os.environ["CALL_GATEWAY_SECRET"], claims
@@ -180,6 +182,20 @@ async def session(websocket: WebSocket):
             ),
         )
 
+        provider_failed = False
+
+        @worker.event_handler("on_pipeline_error")
+        async def pipeline_error(worker, frame):
+            nonlocal provider_failed
+            if provider_failed:
+                return
+            provider_failed = True
+            # Provider ErrorFrames travel upstream, bypassing downstream telemetry.
+            # Signal a safe terminal outcome even when TTS cannot produce a goodbye.
+            serializer.end_reason = "Voice provider failed"
+            await emit({"type": "end", "reason": serializer.end_reason})
+            await worker.cancel(reason=serializer.end_reason)
+
         @transport.event_handler("on_client_connected")
         async def connected(transport, client):
             await emit({"type": "ready"})
@@ -226,7 +242,7 @@ async def session(websocket: WebSocket):
             config.get("keys", {}).clear()
         if backend:
             await backend.close()
-        if call_id:
+        if owns_call:
             active_calls.discard(call_id)
 
 

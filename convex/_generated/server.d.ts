@@ -28,6 +28,9 @@ import type { DataModel } from "./dataModel.js";
  * `convex.config.ts`.
  */
 type Env = {
+  readonly CONVEX_CLOUD_URL: string;
+  readonly CONVEX_SITE_URL: string;
+  readonly SITE_URL: string;
   readonly OPENSEND_TELEMETRY: string | undefined;
   readonly OPENSEND_TELEMETRY_URL: string | undefined;
   readonly OPENSEND_VERSION: string | undefined;
@@ -35,20 +38,20 @@ type Env = {
   readonly OPENSEND_INSTALL_METHOD: string | undefined;
   readonly OPENSEND_ARCH: string | undefined;
   readonly OPENSEND_CALLING: string | undefined;
-  readonly CONVEX_CLOUD_URL: string;
-  readonly CONVEX_SITE_URL: string;
-  readonly ALLOW_LOCAL_OIDC: string | undefined;
-  readonly BETTER_AUTH_SECRET: string;
-  readonly DOMAIN_CONNECT_KEY: string | undefined;
-  readonly DOMAIN_CONNECT_PRIVATE_KEY: string | undefined;
-  readonly DOMAIN_CONNECT_SIGNER: string | undefined;
-  readonly LOG_AUTH_LINKS: string | undefined;
-  readonly META_GRAPH_ORIGIN: string | undefined;
-  readonly SES_CALLBACK_ORIGIN: string | undefined;
-  readonly SES_ENCRYPTION_KEY: string | undefined;
-  readonly SITE_URL: string;
+  readonly CALL_STUN_URLS: string | undefined;
+  readonly CALL_TURN_URLS: string | undefined;
+  readonly CALL_TURN_SECRET: string | undefined;
   readonly SMTP_HOST: string | undefined;
+  readonly BETTER_AUTH_SECRET: string;
   readonly SSO_ENCRYPTION_KEY: string;
+  readonly ALLOW_LOCAL_OIDC: string | undefined;
+  readonly LOG_AUTH_LINKS: string | undefined;
+  readonly SES_ENCRYPTION_KEY: string | undefined;
+  readonly SES_CALLBACK_ORIGIN: string | undefined;
+  readonly DOMAIN_CONNECT_PRIVATE_KEY: string | undefined;
+  readonly DOMAIN_CONNECT_KEY: string | undefined;
+  readonly DOMAIN_CONNECT_SIGNER: string | undefined;
+  readonly META_GRAPH_ORIGIN: string | undefined;
 };
 
 /**

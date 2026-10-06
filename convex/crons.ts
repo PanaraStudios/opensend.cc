@@ -3,6 +3,12 @@ import { internal } from "./_generated/api"
 
 const crons = cronJobs()
 crons.interval(
+  "inactive gateway calls",
+  { minutes: 1 },
+  internal.calling.rows.reconcileInactive,
+  {}
+)
+crons.interval(
   "pending file expiry",
   { minutes: 15 },
   internal.storage.files.expire,

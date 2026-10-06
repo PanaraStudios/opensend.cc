@@ -19,6 +19,7 @@ import {
   variableOptions,
   type VariableOption,
 } from "@/lib/automation-references"
+import { automationCatalogNames } from "@/lib/dashboard/event-catalog-options"
 import { fieldTypeLabel } from "@/lib/dashboard/format"
 import { SYSTEM_EVENT_CATALOG, type CatalogEvent } from "@/lib/event-catalog"
 import type { Automation } from "@/lib/dashboard/types"
@@ -65,8 +66,10 @@ export function ReferenceFieldSelect({
     />
   )
 }
-export function useEventCatalog(): CatalogEvent[] {
-  const catalog = useTeamQuery(api.automationEvents.catalog, {})
+export function useEventCatalog(selectedNames: string[] = []): CatalogEvent[] {
+  const catalog = useTeamQuery(api.automationEventCatalog.options, {
+    selectedNames,
+  })
   return catalog ?? [...SYSTEM_EVENT_CATALOG]
 }
 export function ReferenceProvider({
@@ -78,7 +81,9 @@ export function ReferenceProvider({
   stepKey: string
   children: React.ReactNode
 }) {
-  const catalog = useEventCatalog()
+  const catalog = useEventCatalog(
+    automationCatalogNames(automation.trigger, automation.steps)
+  )
   return (
     <VariableContext.Provider
       value={variableOptions(

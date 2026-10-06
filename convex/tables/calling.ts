@@ -47,6 +47,7 @@ export const callingTables = {
     expiresAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_reservedCallId", ["reservedCallId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_userId", ["organizationId", "userId"]),
   calls: defineTable({
@@ -94,6 +95,10 @@ export const callingTables = {
     agentExtension: v.optional(v.string()),
     mediaUpAt: v.optional(v.number()),
     gatewayAt: v.optional(v.number()),
+    // Conservative activity upper bound; callbacks write at most every 30 seconds.
+    lastActivityAt: v.optional(v.number()),
+    // Set only when this call has received a signed gateway heartbeat.
+    supportsHeartbeats: v.optional(v.boolean()),
     gatewayRouted: v.optional(v.boolean()),
     ivrId: v.optional(v.id("ivrs")),
     ivrHandoffId: v.optional(v.id("ivrs")),
@@ -109,13 +114,30 @@ export const callingTables = {
     botStartedAt: v.optional(v.number()),
     botSessionStartedAt: v.optional(v.number()),
     botEndedAt: v.optional(v.number()),
+    // Billing can settle before the gateway delivers its final summary/usage.
+    botCompletionPending: v.optional(v.boolean()),
     botActive: v.optional(v.boolean()),
     botDuration: v.optional(v.number()),
     botUsage: v.optional(voiceUsage),
     botSessionUsage: v.optional(voiceUsage),
+    // Admission counters saturate at 2,001 rows / 128 tools. Older calls
+    // initialize them from a bounded indexed scan on admission or insertion.
+    admissionTranscriptCount: v.optional(v.number()),
+    admissionToolCount: v.optional(v.number()),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt", [
+      "mode",
+      "status",
+      "supportsHeartbeats",
+      "lastActivityAt",
+    ])
+    .index("by_mode_and_status_and_lastActivityAt", [
+      "mode",
+      "status",
+      "lastActivityAt",
+    ])
     .index("by_organizationId_and_botId_and_test", [
       "organizationId",
       "botId",

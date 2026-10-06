@@ -33,6 +33,7 @@ import {
 } from "@/lib/dashboard/voice-options"
 import type { VoiceProvider } from "@/lib/voice-bots"
 import { ElevenLabsVoiceField } from "./elevenlabs-voices"
+import { IvrSigningSecret } from "./ivr-secret"
 import type { ElevenLabsVoice } from "@/lib/elevenlabs-voices"
 
 export type PromptRenderInfo = {
@@ -359,6 +360,7 @@ export function ActionField({
             value={value.url}
             onChange={(url) => onChange({ ...value, url })}
           />
+          <IvrSigningSecret />
         </>
       ) : null}
       {value.kind === "playAndHangup" ? (

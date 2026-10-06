@@ -104,22 +104,56 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
     {
       title: "List event catalog",
       description:
-        "List all system and team custom automation triggers with nested typed fields, descriptions and examples. Use before creating event filters or {{trigger.path}} references.",
+        "List a page of system and team custom automation triggers with nested typed fields, descriptions and examples. Use before creating event filters or {{trigger.path}} references.",
       inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe(
+            "Custom event types per page (default 20). System events appear on the first page."
+          ),
+        after: z
+          .string()
+          .optional()
+          .describe(
+            "Opaque next_cursor from the previous catalog page. Keep search unchanged."
+          ),
+        search: z
+          .string()
+          .max(256)
+          .optional()
+          .describe("Search event names on the server."),
         event: z
           .string()
           .optional()
           .describe("Optional event name or trigger name to show its fields"),
       },
     },
-    async ({ event }) => {
-      const response = await opensend.events.catalog()
+    async ({ event, limit, after, search }) => {
+      const response = await opensend.events.catalog({
+        limit,
+        after,
+        search: search ?? event,
+      })
       if (response.error) throw new Error(JSON.stringify(response.error))
       const events = response.data.data.filter(
         (item) => !event || item.name === event || item.trigger === event
       )
       return {
-        content: [{ type: "text", text: JSON.stringify(events, null, 2) }],
+        content: [
+          { type: "text", text: JSON.stringify(events, null, 2) },
+          {
+            type: "text",
+            text: JSON.stringify({
+              object: response.data.object,
+              has_more: response.data.has_more,
+              next_cursor: response.data.next_cursor,
+            }),
+          },
+        ],
       }
     }
   )

@@ -5,9 +5,246 @@ see [Convex file storage](object-storage.md).
 
 Opensend runs as a Docker Compose stack: the Next.js dashboard, a self-hosted Convex backend that stores every team's data and runs sending, events, webhooks and automations, and an optional SMTP gateway. Amazon SES sends and receives the mail. Authentication and team administration use Better Auth 1.6.15 in a locally installed Convex component.
 
+## v2 on a VPS
+
+v2 adds WhatsApp, Messenger and Instagram. Email still uses Amazon SES. You can
+install for Meta messaging without configuring AWS. The optional `calling`
+profile adds Janus, FreeSWITCH, drachtio, call-gateway and voice-agent; the separate
+`calling-turn` profile adds coturn. Messaging works without either profile.
+
+### Requirements and firewall
+
+Use a Linux VPS with Docker and Compose **2.24.4 or newer**, on amd64 or arm64.
+The Compose add-ons use `!override`, which older Compose versions cannot read.
+Plan for 4 GB RAM for messaging, and at least 8 GB for calling. Voice bots and
+many concurrent calls need more; these are starting sizes, not capacity promises.
+Keep enough disk space for the database, file storage, images, recordings, and a
+compressed backup of the entire Convex volume before each upgrade.
+
+Point the app, API and realtime DNS names at the VPS before starting Caddy.
+Calling also needs a DNS name, a stable public IPv4 address (direct or 1:1 NAT),
+and a trusted certificate for that calling name. IPv6-only VPSes and arbitrary
+symmetric NAT are not supported by the scripted calling setup.
+
+| Inbound ports    | Needed for                                                           |
+| ---------------- | -------------------------------------------------------------------- |
+| TCP 80, 443      | Dashboard, API, Meta callbacks and realtime WebSockets through Caddy |
+| UDP 443          | Caddy HTTP/3; optional if your firewall blocks it                    |
+| TCP 7443         | Browser calling over WSS, with a trusted certificate                 |
+| UDP 20000–20199  | Meta to Janus media                                                  |
+| UDP 20400–20799  | Browser to FreeSWITCH media                                          |
+| TCP and UDP 3478 | Optional TURN listener                                               |
+| TCP 5349         | Optional TLS TURN listener                                           |
+| UDP 20800–20999  | Optional TURN relays                                                 |
+
+Open the calling ports in both the provider firewall and the host firewall.
+Forward media ports **1:1**, with the same numbers inside and outside Docker.
+An HTTP reverse proxy cannot carry the UDP media. Do not publish SIP 5060, ESL
+8021, Janus 8088/7088, or drachtio 9022. The gateway's 8090 host mapping stays on
+loopback. UDP 20200–20399 is private Janus-to-FreeSWITCH media; leave it private.
+Allow outbound HTTPS for Meta, SES and voice providers, plus DNS and Janus STUN
+(UDP 19302 by default). Docker's published ports can bypass host firewall rules;
+check the provider firewall and Docker firewall rules as well.
+
+### Fresh install
+
+Once a v2 release has been published, the normal installer command uses its
+prebuilt images. This branch only defines the release workflow; it does not
+publish images or update the installer served by opensend.cc.
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh -s -- install \
+  --domain mail.example.com --api-domain api.mail.example.com \
+  --realtime-domain realtime.mail.example.com --calling no --yes
+```
+
+Add `--version TAG` to choose a published v2 release. No source checkout or build
+tools are needed. Keep the default installation directory when upgrading, or
+always pass the same `--dir`. Create and verify the first account, then follow the
+installation wizard: choose channels, check the public callback URL, and configure
+SES, the Meta app, or both. The API hostname serves callbacks as well as REST;
+the realtime hostname is for browser updates. Meta credentials belong in the
+administrator's Meta form, not installer flags or shell history.
+
+For calling, first obtain a trusted certificate for `calling.example.com` using
+your existing certificate manager. FreeSWITCH reads `wss.pem`, containing the
+private key followed by the full certificate chain. For example, after issuance:
+
+```sh
+sudo install -d -m 700 -o 10002 -g 10002 /srv/opensend-calling-certs
+sudo sh -c 'cat /etc/letsencrypt/live/calling.example.com/privkey.pem /etc/letsencrypt/live/calling.example.com/fullchain.pem > /srv/opensend-calling-certs/wss.pem'
+sudo chown 10002:10002 /srv/opensend-calling-certs/wss.pem
+sudo chmod 600 /srv/opensend-calling-certs/wss.pem
+
+curl -fsSL https://opensend.cc/install.sh | sh -s -- install \
+  --domain mail.example.com --calling yes \
+  --calling-domain calling.example.com --calling-public-ip 203.0.113.10 \
+  --calling-cert-dir /srv/opensend-calling-certs --yes
+```
+
+Replace the example IP with your VPS public IPv4. The installer generates separate
+secrets, saves the profiles in `.env`, and supplies the gateway URL, gateway secret
+and WSS URL to Convex through the migrate container. It never prints these secrets.
+On renewal, replace `wss.pem` atomically, preserve its permissions, and restart
+FreeSWITCH between calls. Caddy's app certificate does not configure FreeSWITCH's
+certificate. Self-signed DTLS certificates are expected; the browser WSS
+certificate must be trusted. `--local` permits a local test certificate.
+
+To change default ports on a new installation, pass `--calling-wss-port`,
+`--janus-rtp-range`, `--freeswitch-rtp-range`, `--turn-port`, and
+`--turn-relay-range`. Ranges use `START-END`; the installer rejects overlaps and
+updates both Docker mappings and media server settings. Saved values win on
+subsequent runs. `--no-start` prepares files without deploying or taking a data
+backup; review and start them by re-running install without that flag. It may
+still use the backend image to generate the admin key.
+
+TURN is optional: add `--turn yes` when browser agents behind strict NAT or
+firewalls get no audio. The installer generates and preserves `CALL_TURN_SECRET`
+and sets `CALL_TURN_URLS` plus `CALL_STUN_URLS=stun:<calling_domain>:<turn_port>`
+to use your own coturn for agent STUN discovery. Existing operator STUN overrides
+are preserved on installation and upgrade; migration supplies these settings to
+Convex. Agents receive one-hour HMAC credentials tied to their owned softphone
+session, refreshed before expiry. The shared secret stays on the server. If either
+TURN URLs or the shared secret are absent, browsers use `CALL_STUN_URLS` only. The Google STUN default
+(`stun:stun.l.google.com:19302`) applies only when `CALL_STUN_URLS` is unset or
+empty. Open TCP/UDP 3478 and UDP 20800–20999, or the saved TURN ports; for optional
+TLS TURN configure certificates and open TCP 5349. See
+[optional TURN](browser-softphone.md#optional-turn-for-agents) for environment,
+TLS configuration, credential details and relay diagnostics. Meta-to-Janus
+media never uses this TURN server. Voice provider credentials and bot settings
+are configured in the dashboard; starting voice-agent does not configure a bot.
+
+### Upgrade from v1 to v2
+
+Use the v2 installer and a published v2 tag, in the existing install directory:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh -s -- upgrade \
+  --dir ./opensend --version TAG --yes
+# --upgrade is an alias for the upgrade command.
+```
+
+The installer preserves existing hostnames, the Compose project name, backend
+image, auth/encryption secrets and image overrides. If you have custom app,
+migrate, SMTP or calling image overrides, supply their new image names in the
+environment on upgrade. Do not change the project name or move the installation
+directory as part of this upgrade. Calling stays off unless you opt in.
+
+The upgrade fetches assets first, then stops the old stack and archives the
+**actual mounted Convex data volume**. This includes the database, auth component
+and local file storage. If the containers were removed with `docker compose down`,
+it finds the retained volume using the saved Compose project labels. It saves
+`convex-data.tar.gz`, the old private `env`, Compose files, proxy files and backend
+image identity under `backups/<timestamp>/`. A backup failure stops the upgrade
+before changing the live configuration or pulling new images. Services may stay
+stopped; fix the failure and re-run. Copy the backup to another machine, and
+regularly rehearse restoring it into a separate project and volume.
+
+After backup, the installer pulls images, starts Convex, runs the one-shot migrate
+image to set the backend environment and deploy functions, requests the resumable
+`migrations:backfillCounts` backfill, then starts the application and any selected
+media services. The backfill runs in the background; older row totals may read
+low until it finishes. A failed deployment does not start the application or
+calling stack. The previous volume is never deleted. The migrate image deploys
+code and schema; there is no separate v2 data-conversion entrypoint today.
+
+Keep the backup and old images. For a failed upgrade, inspect `docker compose logs
+migrate convex`. Before deployment started, the old saved files and images can
+be restored and restarted. After deployment changed the database, rehearse
+recovery from the saved volume and environment into a **new** project; older
+binaries may not understand the upgraded database. Never restore over the only
+working volume. Back up separately configured S3 storage as described in
+[Convex file storage](object-storage.md); the local volume cannot contain external
+objects. Also protect calling recordings and certificates separately: the Convex
+upgrade archive covers neither.
+
+Cloud installs use a Convex export with file storage before upgrading. The export
+uses the old migrate image and aborts the upgrade on failure. It is not a raw
+whole-volume backup; check the pinned CLI's component export/import coverage,
+including auth, and keep the provider's own backups. Scripted calling currently
+requires local Convex: Cloud Node actions cannot reach the private gateway without
+a separately secured public HTTPS proxy. See the
+[manual gateway guide](calling-gateway.md#configuration-and-operation).
+
+### Enable calling later
+
+Prepare the calling DNS name, certificate and firewall, then re-run install:
+
+```sh
+curl -fsSL https://opensend.cc/install.sh | sh -s -- install --dir ./opensend \
+  --calling yes --calling-domain calling.example.com \
+  --calling-public-ip 203.0.113.10 \
+  --calling-cert-dir /srv/opensend-calling-certs --yes
+```
+
+This keeps the saved release, accounts and secrets, backs up existing Convex data,
+and adds the `calling` profile alongside existing profiles such as `smtp`. Calling
+and TURN opt-ins are retained on later runs, including upgrades. `--calling no`
+or `--turn no` does not turn off an already enabled profile. For a temporary
+shutdown, stop the media services explicitly. For a permanent change, stop them,
+edit the saved profiles and `OPENSEND_CALLING` / `OPENSEND_TURN`, and remove the
+calling backend settings with the migrate CLI; do not remove data volumes.
+
+Enable WhatsApp calling for the connected number in its channel settings, using
+Graph signaling with Meta SIP mode disabled. Finish agent routing or bot setup
+before a real call. See [browser deployment](browser-softphone.md) and
+[calling gateway](calling-gateway.md) for team queues and routing. A trusted WSS
+endpoint alone does not give agents access; the backend issues short-lived
+credentials to authorized team members.
+
+### Meta app setup
+
+The installation administrator configures one Meta app for the installation;
+teams connect their own accounts afterward. Follow the setup links in the
+**Meta app** screen for Meta's current product names, review requirements and
+business verification. The screen covers creating a Business app, adding WhatsApp,
+Facebook Login for Business, Messenger and Instagram, and Tech Provider onboarding.
+
+Add the dashboard domain to the app's allowed domains. Enter the app ID and secret,
+plus the WhatsApp Embedded Signup and Facebook Login configuration IDs for the
+channels you use. Save, **Verify**, then **Subscribe webhooks**. Copy the callback
+URL and verify token displayed by Opensend when Meta asks for them. The public
+callback must pass the wizard's check; it is served by the API origin, not the
+realtime origin. Connect accounts from a team's Channels screen and verify the
+necessary permissions, account ownership and app access before testing delivery.
+Development-mode access is limited by Meta; installing the containers does not
+grant production access. See [Meta setup](../components/dashboard/settings-meta.tsx)
+for the exact links shown by this version.
+
+### Troubleshooting v2
+
+- **Image not found:** use a published release tag. The workflow builds all nine
+  Opensend images for amd64 and arm64; a workflow edit does not publish them.
+  Check `docker compose config --images` and `docker compose pull`. Saved image
+  overrides keep their old values unless you replace them on upgrade.
+- **Backup failed:** check free disk space, Docker access and the old migrate image.
+  The script leaves the old configuration intact. Do not use `down -v` to retry.
+- **Migrate failed:** read `docker compose logs migrate convex`. Check that the old
+  instance name, instance secret and admin key remain together. Retry the same
+  upgrade after fixing the error; backfills are resumable.
+- **Meta callback fails:** check public DNS, HTTPS, proxy routing and the callback
+  origin in the wizard. After changing it, verify and subscribe the app again.
+- **Calling unavailable:** confirm `COMPOSE_PROFILES` includes `calling`, then read
+  `docker compose logs call-gateway janus freeswitch voice-agent`. The migrate
+  image must have supplied the gateway and WSS settings to Convex.
+- **Browser WSS fails:** check DNS, TCP 7443 (or your saved WSS port), the certificate
+  hostname/full chain, and UID 10002's access to `wss.pem`. The default localhost
+  certificate is not trusted on a public hostname.
+- **Call connects with no audio:** check public IPv4 advertisement and both UDP
+  ranges in provider/Docker firewall rules. HTTPS working does not prove media
+  works. For restrictive agent networks, enable TURN and check **Relay: on** in
+  the microphone area. Verify the selected relay candidate in browser WebRTC
+  diagnostics. Coturn denies private peers, so FreeSWITCH must advertise its
+  reachable public RTP address.
+- **Missing recordings:** FreeSWITCH stores WAVs in `calling-recordings`. The current
+  Convex recording action requires `CALL_GATEWAY_RECORDINGS_DIR` on its Node
+  action runtime, which this compose stack does not mount. Recording ingestion
+  needs separate runtime wiring; keep recordings backed up and do not assume
+  the installer uploads them. See [calling media](../convex/calling/media.ts).
+
 ## Install with the script
 
-Install Docker with Docker Compose v2 or later, then run:
+Install Docker with Docker Compose 2.24.4 or newer, then run:
 
 ```sh
 curl -fsSL https://opensend.cc/install.sh | sh
@@ -38,14 +275,15 @@ environment variables. Image overrides (`APP_IMAGE`, `MIGRATE_IMAGE`, `SMTP_IMAG
 `CONVEX_IMAGE`), ports (`APP_PORT`, `CONVEX_PORT`, `CONVEX_SITE_PORT`) and
 `COMPOSE_PROJECT_NAME` are saved in `.env`.
 
-Re-running install preserves every existing environment value and secret; replaced
+Re-running install preserves existing settings and secrets; opting into calling
+adds missing settings. Replaced
 Compose files get timestamped backups. Keep `.env` private and back it up along
-with the persistent `convex-data` volume. Upgrade also backs up `.env`, sets the
-release version and redeploys functions through the migrate container. If you use
+with the persistent `convex-data` volume. Upgrade backs up `.env` and Convex data before setting the
+release version and redeploying functions through the migrate container. If you use
 image overrides, supply their new values when upgrading.
 
 ```sh
-# Back up first; keep this one-off container until the export is copied out.
+# Optional additional logical export; upgrade takes its own volume backup.
 cd opensend
 docker compose run --name opensend-backup migrate export --include-file-storage --path /tmp/backup.zip
 docker cp opensend-backup:/tmp/backup.zip ./backup.zip
@@ -117,7 +355,21 @@ pnpm setup
 
 The setup command generates `.env.docker` with mode 0600, generates the admin key using the pinned backend image, builds local images, and starts Convex and the application. A one-shot `migrate` container sets the backend environment and deploys functions before the application starts. Running setup again preserves secrets and the persistent volume. Keep `.env.docker` private and back it up. The Next.js container never receives the deployment admin key, Better Auth secret, or SSO encryption key.
 
-Compose defaults to prebuilt `ghcr.io/panarastudios/opensend-app`, `opensend-migrate`, and `opensend-smtp` images. Set `OPENSEND_VERSION` to pin a release; `APP_IMAGE`, `MIGRATE_IMAGE`, and `SMTP_IMAGE` override individual images. Source setup saves local image names in `.env.docker`, so later Compose commands continue using your builds.
+Compose defaults to prebuilt `ghcr.io/panarastudios/opensend-*` images for the
+app, migrate, SMTP and all six optional media services. Set `OPENSEND_VERSION`
+to pin a release; the corresponding `*_IMAGE` variables override individual
+images. Source setup saves local app/migrate image names in `.env.docker`, so
+later Compose commands continue using your builds. Every Opensend service keeps
+its `build:` definition. With a source checkout and prepared calling settings:
+
+```sh
+docker compose --env-file .env.docker --profile calling build janus freeswitch drachtio call-gateway voice-agent
+docker compose --env-file .env.docker --profile calling up -d --no-build --pull never janus freeswitch drachtio call-gateway voice-agent
+```
+
+A release installation has no source files: use `--no-build` when managing it.
+Building the native media images takes much more CPU, RAM and disk than running
+them; use CI or a separate build host for a small VPS.
 
 Open http://localhost:3000/signup. The first account claims instance setup atomically. Verify its email, sign in, and create a team. Subsequent accounts require a pending invitation matching their email. Deleting the first account does not reopen registration. A team invitation does not become a membership until the recipient accepts it.
 
@@ -660,3 +912,14 @@ left for that wave. Back up Convex file storage with the database; S3 is not the
 mail archive.
 
 Anonymous usage statistics are on by default, with an installation admin switch and a server environment override. See [anonymous usage statistics](telemetry.md) for the exact payload and how to turn sharing off.
+
+### Custom event catalog upgrade (F8)
+
+Use the normal installer upgrade command. The migrate image deploys the name
+search index and automatically starts the resumable custom-event counter
+backfill in bounded batches. No manual migration or second deployment is needed.
+Existing teams may briefly see “Custom event counts are being initialized”
+when adding a definition; existing definitions, sends, updates and deletes
+remain available. New definitions are refused until the count is complete,
+then the 10,000-type cap applies. REST catalog responses keep
+`object: "event_catalog"` and `data`, adding `has_more` and `next_cursor`.

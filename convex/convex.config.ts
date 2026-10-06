@@ -17,6 +17,9 @@ const app = defineApp({
     OPENSEND_INSTALL_METHOD: v.optional(v.string()),
     OPENSEND_ARCH: v.optional(v.string()),
     OPENSEND_CALLING: v.optional(v.string()),
+    CALL_STUN_URLS: v.optional(v.string()),
+    CALL_TURN_URLS: v.optional(v.string()),
+    CALL_TURN_SECRET: v.optional(v.string()),
     SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),
@@ -67,6 +70,7 @@ app.use(aggregate, { name: "emailMetricCounts" })
 app.use(aggregate, { name: "domainMetricCounts" })
 app.use(aggregate, { name: "reputationCounts" })
 app.use(aggregate, { name: "automationCounts" })
+app.use(aggregate, { name: "automationEventCounts" })
 app.use(aggregate, { name: "automationRunCounts" })
 app.use(aggregate, { name: "automationStepCounts" })
 app.use(aggregate, { name: "receivedEmailCounts" })

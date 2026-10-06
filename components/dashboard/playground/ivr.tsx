@@ -77,6 +77,7 @@ import {
 import { uniqueSlug } from "@/lib/dashboard/slug"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { actionError } from "@/lib/action-error"
+import { revealedIvrSigningSecretFromResult } from "@/lib/dashboard/ivr-secret"
 import {
   newIvr,
   newIvrMenu,
@@ -93,6 +94,11 @@ import {
   type PromptRenderInfo,
 } from "./ivr-fields"
 import { IvrPromptVoiceFields } from "./prompt-voice"
+import {
+  IvrRecordProvider,
+  IvrSigningSecret,
+  IvrSigningSecretDialog,
+} from "./ivr-secret"
 import { VoiceRouting } from "./routing"
 import { VoiceTester } from "./tester"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -107,10 +113,14 @@ type IvrResource = IvrDefinition & {
 }
 const SETTINGS_KEY = "ivr-settings"
 export function IvrList() {
+  const router = useRouter()
   const [after, setAfter] = useState<string>(),
     [history, setHistory] = useState<(string | undefined)[]>([]),
     [creating, setCreating] = useState(false),
-    [search, setSearch] = useState("")
+    [search, setSearch] = useState(""),
+    [created, setCreated] = useState<{ id: string; secret: string } | null>(
+      null
+    )
   const list = useTeamQuery(api.ivr.definitions.dashboardList, {
       limit: 25,
       after,
@@ -232,18 +242,41 @@ export function IvrList() {
         </>
       )}
       <Dialog open={creating} onOpenChange={setCreating}>
-        {creating ? <CreateIvr close={() => setCreating(false)} /> : null}
+        {creating ? (
+          <CreateIvr
+            close={() => setCreating(false)}
+            onCreated={(id, secret) => {
+              setCreating(false)
+              if (secret) setCreated({ id, secret })
+              else router.push(`/playground/ivr/${id}`)
+            }}
+          />
+        ) : null}
       </Dialog>
+      <IvrSigningSecretDialog
+        secret={created?.secret ?? null}
+        onOpenChange={(open) => {
+          if (open || !created) return
+          const id = created.id
+          setCreated(null)
+          router.push(`/playground/ivr/${id}`)
+        }}
+      />
     </SectionChrome>
   )
 }
-function CreateIvr({ close }: { close: () => void }) {
+function CreateIvr({
+  close,
+  onCreated,
+}: {
+  close: () => void
+  onCreated: (id: string, secret: string | null) => void
+}) {
   const [draft, setDraft] = useState(newIvr),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("")
   const write = useAction(api.ivr.definitions.dashboardWrite),
-    { activeTeamId } = useWorkspace(),
-    router = useRouter()
+    { activeTeamId } = useWorkspace()
   return (
     <DialogContent>
       <form
@@ -269,8 +302,10 @@ function CreateIvr({ close }: { close: () => void }) {
               kind: "create",
               body: JSON.stringify(ivrFormPayload(initial)),
             })
-            close()
-            router.push(`/playground/ivr/${result.id}`)
+            onCreated(
+              String(result.id),
+              revealedIvrSigningSecretFromResult(result)
+            )
           } catch (e) {
             setError(actionError(e))
           } finally {
@@ -355,7 +390,9 @@ function IvrForm({ row }: { row: IvrResource }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [problems, setProblems] = useState<string[] | null>(null),
-    [deleting, setDeleting] = useState(false)
+    [deleting, setDeleting] = useState(false),
+    [secret, setSecret] = useState<string | null>(null),
+    [createdId, setCreatedId] = useState<string | null>(null)
   const { selected, setSelected } = useFlowSelection(
     ivrMenuKey(row.entryMenuId)
   )
@@ -471,6 +508,9 @@ function IvrForm({ row }: { row: IvrResource }) {
               onChange={(entryMenuId) => patch({ entryMenuId })}
             />
           </DetailSection>
+          <DetailSection title="Webhook signing">
+            <IvrSigningSecret />
+          </DetailSection>
           <IvrPromptVoiceFields
             value={draft.promptVoice}
             onChange={(promptVoice) => patch({ promptVoice })}
@@ -501,352 +541,373 @@ function IvrForm({ row }: { row: IvrResource }) {
     </div>
   )
   return (
-    <PromptRendersContext.Provider
-      value={{
-        renders:
-          JSON.stringify(row.promptVoice) === JSON.stringify(draft.promptVoice)
-            ? (row.prompt_renders ?? [])
-            : [],
-        voice: draft.promptVoice?.voice,
-        provider: draft.promptVoice?.provider,
-        credentialId: draft.promptVoice?.credentialId,
-      }}
-    >
-      <div className="flex min-w-0 flex-col gap-5">
-        <DetailHeader
-          backHref="/playground/ivr"
-          backLabel="IVR"
-          title={row.name}
-          icon={WorkflowIcon}
-          badge={
-            <ToneBadge
-              {...promptStatusBadge(row.prompt_status, !!row.promptVoice)}
-            />
-          }
-          actions={
-            <>
-              {JSON.stringify(draft) !== saved ? (
-                <span className="text-xs text-muted-foreground">
-                  Changes not saved
-                </span>
-              ) : null}
-              <Button variant="outline" onClick={() => select(SETTINGS_KEY)}>
-                Settings
-              </Button>
-              <Button variant="outline" onClick={() => setTesting(true)}>
-                Test IVR
-              </Button>
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true)
-                  setError("")
-                  try {
-                    const result = await validate({
-                      organizationId: activeTeamId!,
-                      id: row.id,
-                      body: JSON.stringify({
-                        ...draft,
-                        promptVoice: draft.promptVoice ?? null,
-                        businessHours: draft.businessHours ?? null,
-                      }),
-                    })
-                    setProblems(result.errors)
-                  } catch (e) {
-                    setError(actionError(e))
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                Validate
-              </Button>
-              <Button disabled={busy} onClick={() => void save()}>
-                {busy ? "Saving…" : "Save"}
-              </Button>
-              <MoreMenu>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      try {
-                        const result = await write({
-                          organizationId: activeTeamId!,
-                          kind: "create",
-                          body: JSON.stringify(
-                            ivrFormPayload({
-                              ...draft,
-                              name: `${draft.name} copy`,
-                            })
-                          ),
-                        })
-                        router.push(`/playground/ivr/${result.id}`)
-                      } catch (e) {
-                        setError(actionError(e))
-                      }
-                    }}
-                  >
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => void navigator.clipboard.writeText(row.id)}
-                  >
-                    Copy ID
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      try {
-                        await render({
-                          organizationId: activeTeamId!,
-                          id: row.id,
-                        })
-                      } catch (e) {
-                        setError(actionError(e))
-                      }
-                    }}
-                  >
-                    Generate prompts
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDeleting(true)}>
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </MoreMenu>
-            </>
-          }
-        />
-        {error ? (
-          <p role="alert" className="text-destructive">
-            {error}
-          </p>
-        ) : null}
-        {problems ? (
-          <Alert
-            role="status"
-            variant={problems.length ? "warning" : "success"}
-          >
-            <AlertTitle>
-              {problems.length ? "Review the call flow" : "IVR is valid"}
-            </AlertTitle>
-            <AlertDescription>
-              {problems.length ? (
-                <ul>
-                  {problems.map((problem, i) => (
-                    <li key={i}>
-                      <Button
-                        variant="link"
-                        className="h-auto text-left whitespace-normal"
-                        onClick={() => {
-                          const key = [...problemNodes].find(([, errors]) =>
-                            errors.includes(problem)
-                          )?.[0]
-                          select(key ?? SETTINGS_KEY)
-                        }}
-                      >
-                        {ivrProblemLabel(draft, problem)}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                "Every menu has a valid destination."
-              )}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <main aria-label="Call flow" className="flex min-w-0 flex-col gap-4">
-            <div className="flex h-[78vh] min-h-96 min-w-0">
-              <FlowEditor
-                catalog={ivrCatalog}
-                context={context}
-                steps={graph.root ? [graph.root] : []}
-                selected={
-                  graph.nodes.some((node) => node.key === selected)
-                    ? selected
-                    : (graph.nodes.find(
-                        (node) =>
-                          node.address &&
-                          ivrActionKey(node.address) === selected
-                      )?.key ?? selected)
-                }
-                onSelect={select}
-                stacked={mobile}
-                problems={(node) =>
-                  (problemNodes.get(node.key) ?? []).map((problem) =>
-                    ivrProblemLabel(draft, problem)
-                  )
-                }
-                nodeActions={(node) => (
-                  <>
-                    {node.address &&
-                    (node.kind === "menu" || node.kind === "submenu") ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Edit ${node.menu.name} destination`}
-                        onClick={() => select(ivrActionKey(node.address!))}
-                      >
-                        Edit path
-                      </Button>
-                    ) : null}
-                    {node.kind === "menu" && nextIvrDigit(node.menu) ? (
-                      <FlowAdd
-                        catalog={ivrCatalog}
-                        label={`Add option · Press ${nextIvrDigit(node.menu)}`}
-                        groups={[
-                          {
-                            label: `Press ${nextIvrDigit(node.menu)}`,
-                            types: ivrCatalog.entries.menu.addAfter(node),
-                          },
-                        ]}
-                        disabled={(kind) =>
-                          kind === "menu" && draft.menus.length >= 50
+    <IvrRecordProvider id={row.id} reveal={setSecret}>
+      <PromptRendersContext.Provider
+        value={{
+          renders:
+            JSON.stringify(row.promptVoice) ===
+            JSON.stringify(draft.promptVoice)
+              ? (row.prompt_renders ?? [])
+              : [],
+          voice: draft.promptVoice?.voice,
+          provider: draft.promptVoice?.provider,
+          credentialId: draft.promptVoice?.credentialId,
+        }}
+      >
+        <div className="flex min-w-0 flex-col gap-5">
+          <DetailHeader
+            backHref="/playground/ivr"
+            backLabel="IVR"
+            title={row.name}
+            icon={WorkflowIcon}
+            badge={
+              <ToneBadge
+                {...promptStatusBadge(row.prompt_status, !!row.promptVoice)}
+              />
+            }
+            actions={
+              <>
+                {JSON.stringify(draft) !== saved ? (
+                  <span className="text-xs text-muted-foreground">
+                    Changes not saved
+                  </span>
+                ) : null}
+                <Button variant="outline" onClick={() => select(SETTINGS_KEY)}>
+                  Settings
+                </Button>
+                <Button variant="outline" onClick={() => setTesting(true)}>
+                  Test IVR
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true)
+                    setError("")
+                    try {
+                      const result = await validate({
+                        organizationId: activeTeamId!,
+                        id: row.id,
+                        body: JSON.stringify({
+                          ...draft,
+                          promptVoice: draft.promptVoice ?? null,
+                          businessHours: draft.businessHours ?? null,
+                        }),
+                      })
+                      setProblems(result.errors)
+                    } catch (e) {
+                      setError(actionError(e))
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                >
+                  Validate
+                </Button>
+                <Button disabled={busy} onClick={() => void save()}>
+                  {busy ? "Saving…" : "Save"}
+                </Button>
+                <MoreMenu>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        try {
+                          const result = await write({
+                            organizationId: activeTeamId!,
+                            kind: "create",
+                            body: JSON.stringify(
+                              ivrFormPayload({
+                                ...draft,
+                                name: `${draft.name} copy`,
+                              })
+                            ),
+                          })
+                          const revealed =
+                            revealedIvrSigningSecretFromResult(result)
+                          if (revealed) {
+                            setCreatedId(String(result.id))
+                            setSecret(revealed)
+                          } else router.push(`/playground/ivr/${result.id}`)
+                        } catch (e) {
+                          setError(actionError(e))
                         }
-                        onAdd={(kind) => {
-                          const digit = nextIvrDigit(node.menu)
-                          if (!digit) return
-                          const address = {
-                            menuId: node.menu.id,
-                            branch: digit,
-                          }
-                          if (kind === "menu") createMenu(address)
-                          else {
-                            updateMenu(
-                              setIvrBranch(
-                                node.menu,
-                                digit,
-                                newIvrAction(kind, draft)
-                              )
-                            )
-                            select(ivrActionKey(address))
-                          }
-                        }}
-                      />
-                    ) : null}
-                  </>
+                      }}
+                    >
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => void navigator.clipboard.writeText(row.id)}
+                    >
+                      Copy ID
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        try {
+                          await render({
+                            organizationId: activeTeamId!,
+                            id: row.id,
+                          })
+                        } catch (e) {
+                          setError(actionError(e))
+                        }
+                      }}
+                    >
+                      Generate prompts
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDeleting(true)}>
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </MoreMenu>
+              </>
+            }
+          />
+          {error ? (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {problems ? (
+            <Alert
+              role="status"
+              variant={problems.length ? "warning" : "success"}
+            >
+              <AlertTitle>
+                {problems.length ? "Review the call flow" : "IVR is valid"}
+              </AlertTitle>
+              <AlertDescription>
+                {problems.length ? (
+                  <ul>
+                    {problems.map((problem, i) => (
+                      <li key={i}>
+                        <Button
+                          variant="link"
+                          className="h-auto text-left whitespace-normal"
+                          onClick={() => {
+                            const key = [...problemNodes].find(([, errors]) =>
+                              errors.includes(problem)
+                            )?.[0]
+                            select(key ?? SETTINGS_KEY)
+                          }}
+                        >
+                          {ivrProblemLabel(draft, problem)}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "Every menu has a valid destination."
                 )}
-                nodeBody={(node) => {
-                  if (node.kind !== "menu") return null
-                  const prompt = node.menu.prompt
-                  const rendered =
-                    JSON.stringify(row.promptVoice) ===
-                    JSON.stringify(draft.promptVoice)
-                      ? row.prompt_renders?.find((r) =>
-                          prompt.kind === "tts"
-                            ? r.text === prompt.text &&
-                              r.voice ===
-                                (prompt.voice ??
-                                  draft.promptVoice?.voice ??
-                                  null)
-                            : r.fileId === prompt.fileId
-                        )
-                      : undefined
-                  return (
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <main
+              aria-label="Call flow"
+              className="flex min-w-0 flex-col gap-4"
+            >
+              <div className="flex h-[78vh] min-h-96 min-w-0">
+                <FlowEditor
+                  catalog={ivrCatalog}
+                  context={context}
+                  steps={graph.root ? [graph.root] : []}
+                  selected={
+                    graph.nodes.some((node) => node.key === selected)
+                      ? selected
+                      : (graph.nodes.find(
+                          (node) =>
+                            node.address &&
+                            ivrActionKey(node.address) === selected
+                        )?.key ?? selected)
+                  }
+                  onSelect={select}
+                  stacked={mobile}
+                  problems={(node) =>
+                    (problemNodes.get(node.key) ?? []).map((problem) =>
+                      ivrProblemLabel(draft, problem)
+                    )
+                  }
+                  nodeActions={(node) => (
                     <>
-                      <ToneBadge
-                        {...promptStatusBadge(
-                          rendered?.status ?? "pending_render",
-                          !!draft.promptVoice
-                        )}
-                      />
-                      {rendered?.audio_url ? (
-                        <AudioPlayer
-                          src={rendered.audio_url}
-                          label={`${node.menu.name} prompt`}
+                      {node.address &&
+                      (node.kind === "menu" || node.kind === "submenu") ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Edit ${node.menu.name} destination`}
+                          onClick={() => select(ivrActionKey(node.address!))}
+                        >
+                          Edit path
+                        </Button>
+                      ) : null}
+                      {node.kind === "menu" && nextIvrDigit(node.menu) ? (
+                        <FlowAdd
+                          catalog={ivrCatalog}
+                          label={`Add option · Press ${nextIvrDigit(node.menu)}`}
+                          groups={[
+                            {
+                              label: `Press ${nextIvrDigit(node.menu)}`,
+                              types: ivrCatalog.entries.menu.addAfter(node),
+                            },
+                          ]}
+                          disabled={(kind) =>
+                            kind === "menu" && draft.menus.length >= 50
+                          }
+                          onAdd={(kind) => {
+                            const digit = nextIvrDigit(node.menu)
+                            if (!digit) return
+                            const address = {
+                              menuId: node.menu.id,
+                              branch: digit,
+                            }
+                            if (kind === "menu") createMenu(address)
+                            else {
+                              updateMenu(
+                                setIvrBranch(
+                                  node.menu,
+                                  digit,
+                                  newIvrAction(kind, draft)
+                                )
+                              )
+                              select(ivrActionKey(address))
+                            }
+                          }}
                         />
                       ) : null}
                     </>
-                  )
-                }}
+                  )}
+                  nodeBody={(node) => {
+                    if (node.kind !== "menu") return null
+                    const prompt = node.menu.prompt
+                    const rendered =
+                      JSON.stringify(row.promptVoice) ===
+                      JSON.stringify(draft.promptVoice)
+                        ? row.prompt_renders?.find((r) =>
+                            prompt.kind === "tts"
+                              ? r.text === prompt.text &&
+                                r.voice ===
+                                  (prompt.voice ??
+                                    draft.promptVoice?.voice ??
+                                    null)
+                              : r.fileId === prompt.fileId
+                          )
+                        : undefined
+                    return (
+                      <>
+                        <ToneBadge
+                          {...promptStatusBadge(
+                            rendered?.status ?? "pending_render",
+                            !!draft.promptVoice
+                          )}
+                        />
+                        {rendered?.audio_url ? (
+                          <AudioPlayer
+                            src={rendered.audio_url}
+                            label={`${node.menu.name} prompt`}
+                          />
+                        ) : null}
+                      </>
+                    )
+                  }}
+                />
+              </div>
+              {graph.otherMenus.length ? (
+                <Alert variant="warning">
+                  <AlertTitle>Menus outside the entry flow</AlertTitle>
+                  <AlertDescription>
+                    Connect these menus from a digit option or business hours.
+                    Select a menu to edit or remove it.
+                    <div className="flex flex-wrap gap-2">
+                      {graph.otherMenus.map((menu) => (
+                        <Button
+                          key={menu.id}
+                          variant="link"
+                          onClick={() => select(ivrMenuKey(menu.id))}
+                        >
+                          {menu.name}
+                          {problemNodes.has(ivrMenuKey(menu.id))
+                            ? " · Needs attention"
+                            : ""}
+                        </Button>
+                      ))}
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </main>
+            <FlowPanel
+              selection={selected}
+              open={editing}
+              onOpenChange={setEditing}
+              title="Edit call flow"
+            >
+              {editor}
+            </FlowPanel>
+          </div>
+          <TypeToConfirmDialog
+            open={removingMenu !== null}
+            onOpenChange={(open) => {
+              if (!open) setRemovingMenu(null)
+            }}
+            title="Remove menu"
+            phrase={removingMenu?.name ?? ""}
+            confirmLabel="Remove menu"
+            description={
+              removingMenu
+                ? `Used by: ${ivrMenuReferences(draft, removingMenu.id).join(", ")}. These destinations will hang up. ${draft.entryMenuId === removingMenu.id ? "The first remaining menu will become the entry menu." : ""}`
+                : ""
+            }
+            onConfirm={() => {
+              if (!removingMenu) return
+              const next = removeIvrMenu(draft, removingMenu.id)
+              setDraft(next)
+              setProblems(null)
+              setRemovingMenu(null)
+              select(ivrMenuKey(next.entryMenuId))
+            }}
+          />
+          <Sheet open={testing} onOpenChange={setTesting}>
+            <SheetContent className="overflow-y-auto data-[side=right]:w-full">
+              <SheetHeader>
+                <SheetTitle>Test IVR</SheetTitle>
+              </SheetHeader>
+              <VoiceTester
+                kind="ivr"
+                id={row.id}
+                name={row.name}
+                menus={draft.menus}
               />
-            </div>
-            {graph.otherMenus.length ? (
-              <Alert variant="warning">
-                <AlertTitle>Menus outside the entry flow</AlertTitle>
-                <AlertDescription>
-                  Connect these menus from a digit option or business hours.
-                  Select a menu to edit or remove it.
-                  <div className="flex flex-wrap gap-2">
-                    {graph.otherMenus.map((menu) => (
-                      <Button
-                        key={menu.id}
-                        variant="link"
-                        onClick={() => select(ivrMenuKey(menu.id))}
-                      >
-                        {menu.name}
-                        {problemNodes.has(ivrMenuKey(menu.id))
-                          ? " · Needs attention"
-                          : ""}
-                      </Button>
-                    ))}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            ) : null}
-          </main>
-          <FlowPanel
-            selection={selected}
-            open={editing}
-            onOpenChange={setEditing}
-            title="Edit call flow"
-          >
-            {editor}
-          </FlowPanel>
+            </SheetContent>
+          </Sheet>
+          <TypeToConfirmDialog
+            open={deleting}
+            onOpenChange={setDeleting}
+            title="Delete IVR"
+            description="Remove phone routing before deleting this IVR."
+            phrase={row.name}
+            confirmLabel="Delete IVR"
+            onConfirm={async () => {
+              await write({
+                organizationId: activeTeamId!,
+                kind: "remove",
+                id: row.id,
+                body: "{}",
+              })
+              router.push("/playground/ivr")
+            }}
+          />
+          <IvrSigningSecretDialog
+            secret={secret}
+            onOpenChange={(open) => {
+              if (open) return
+              const id = createdId
+              setSecret(null)
+              setCreatedId(null)
+              if (id) router.push(`/playground/ivr/${id}`)
+            }}
+          />
         </div>
-        <TypeToConfirmDialog
-          open={removingMenu !== null}
-          onOpenChange={(open) => {
-            if (!open) setRemovingMenu(null)
-          }}
-          title="Remove menu"
-          phrase={removingMenu?.name ?? ""}
-          confirmLabel="Remove menu"
-          description={
-            removingMenu
-              ? `Used by: ${ivrMenuReferences(draft, removingMenu.id).join(", ")}. These destinations will hang up. ${draft.entryMenuId === removingMenu.id ? "The first remaining menu will become the entry menu." : ""}`
-              : ""
-          }
-          onConfirm={() => {
-            if (!removingMenu) return
-            const next = removeIvrMenu(draft, removingMenu.id)
-            setDraft(next)
-            setProblems(null)
-            setRemovingMenu(null)
-            select(ivrMenuKey(next.entryMenuId))
-          }}
-        />
-        <Sheet open={testing} onOpenChange={setTesting}>
-          <SheetContent className="overflow-y-auto data-[side=right]:w-full">
-            <SheetHeader>
-              <SheetTitle>Test IVR</SheetTitle>
-            </SheetHeader>
-            <VoiceTester
-              kind="ivr"
-              id={row.id}
-              name={row.name}
-              menus={draft.menus}
-            />
-          </SheetContent>
-        </Sheet>
-        <TypeToConfirmDialog
-          open={deleting}
-          onOpenChange={setDeleting}
-          title="Delete IVR"
-          description="Remove phone routing before deleting this IVR."
-          phrase={row.name}
-          confirmLabel="Delete IVR"
-          onConfirm={async () => {
-            await write({
-              organizationId: activeTeamId!,
-              kind: "remove",
-              id: row.id,
-              body: "{}",
-            })
-            router.push("/playground/ivr")
-          }}
-        />
-      </div>
-    </PromptRendersContext.Provider>
+      </PromptRendersContext.Provider>
+    </IvrRecordProvider>
   )
 }
