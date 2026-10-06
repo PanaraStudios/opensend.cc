@@ -99,6 +99,7 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  useFieldLabel,
 } from "@/components/ui/field"
 import {
   Combobox,
@@ -2077,6 +2078,7 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  const fieldLabel = useFieldLabel({ "aria-label": ariaLabel })
   if (search)
     return (
       <SearchableSelect
@@ -2095,7 +2097,7 @@ export function OptionSelect({
             type="button"
             id={id}
             aria-label={ariaLabel}
-            {...(ariaLabel ? { "aria-labelledby": undefined } : {})}
+            {...fieldLabel}
             data-slot="select-trigger"
             data-size={size}
             className={cn(selectTriggerClassName, className)}

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
+import { useFieldLabel } from "@/components/ui/field"
 import { cn } from "cn"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
@@ -38,15 +39,14 @@ function SelectTrigger({
 }: SelectPrimitive.Trigger.Props & {
   size?: "sm" | "default"
 }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
       className={cn(selectTriggerClassName, className)}
       {...props}
-      {...(props["aria-label"] && !props["aria-labelledby"]
-        ? { "aria-labelledby": undefined }
-        : {})}
+      {...fieldLabel}
     >
       {children}
       <SelectPrimitive.Icon

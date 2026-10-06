@@ -1,14 +1,36 @@
 "use client"
 
-import { createContext, useContext, useMemo } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { Field as FieldPrimitive } from "@base-ui/react/field"
 import { cn } from "cn"
 
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-const FieldContext = createContext(false)
+const FieldContext = createContext<{
+  labelId: string | undefined
+  setLabelId: React.Dispatch<React.SetStateAction<string | undefined>>
+} | null>(null)
+
+// Only the primary control (or group container) inherits the field label.
+// Radio/checkbox options retain their native labels or explicit names.
+export function useFieldLabel(
+  props: Pick<React.AriaAttributes, "aria-label" | "aria-labelledby">
+) {
+  const field = useContext(FieldContext)
+  return {
+    "aria-labelledby":
+      props["aria-labelledby"] ??
+      (props["aria-label"] ? undefined : field?.labelId),
+  }
+}
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
@@ -77,10 +99,13 @@ function Field({
   orientation = "vertical",
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+  const [labelId, setLabelId] = useState<string>()
+  const context = useMemo(() => ({ labelId, setLabelId }), [labelId])
   return (
-    <FieldContext.Provider value={true}>
-      <FieldPrimitive.Root
+    <FieldContext.Provider value={context}>
+      <div
         role="group"
+        aria-labelledby={props["aria-label"] ? undefined : labelId}
         data-slot="field"
         data-orientation={orientation}
         className={cn(fieldVariants({ orientation }), className)}
@@ -107,8 +132,16 @@ function FieldLabel({
   className,
   ...props
 }: React.ComponentProps<typeof Label>) {
-  const inField = useContext(FieldContext)
-  const label = (
+  const field = useContext(FieldContext)
+  const generatedId = useId()
+  const id = props.id ?? generatedId
+  const setLabelId = field?.setLabelId
+  useEffect(() => {
+    setLabelId?.(id)
+    return () =>
+      setLabelId?.((current) => (current === id ? undefined : current))
+  }, [id, setLabelId])
+  return (
     <Label
       data-slot="field-label"
       className={cn(
@@ -117,11 +150,9 @@ function FieldLabel({
         className
       )}
       {...props}
+      id={id}
     />
   )
-  // Labels that wrap a Field (e.g. checkbox cards) retain native association.
-  // Labels inside a Field also name its Base UI controls automatically.
-  return inField ? <FieldPrimitive.Label id={props.id} render={label} /> : label
 }
 
 function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {

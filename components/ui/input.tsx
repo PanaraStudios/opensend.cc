@@ -4,6 +4,7 @@ import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cn } from "cn"
 import { credentialInputProps } from "@/lib/credential-input"
+import { useFieldLabel } from "@/components/ui/field"
 import {
   InputValidation,
   type InputValidationProps,
@@ -21,6 +22,7 @@ function Input({
   ...props
 }: React.ComponentProps<"input"> &
   InputValidationProps & { credential?: boolean }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <InputValidation
       validationMessage={validationMessage}
@@ -35,11 +37,7 @@ function Input({
           className
         )}
         {...props}
-        // An explicitly named control may share a Field with other controls.
-        // Keep its own name instead of Base UI's inherited group label.
-        {...(props["aria-label"] && !props["aria-labelledby"]
-          ? { "aria-labelledby": undefined }
-          : {})}
+        {...fieldLabel}
         name={
           props.name ??
           (credential && type === "password" ? "service-secret" : undefined)

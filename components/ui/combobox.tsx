@@ -1,4 +1,5 @@
 "use client"
+import { useFieldLabel } from "@/components/ui/field"
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
@@ -62,11 +63,13 @@ function ComboboxInput({
   showTrigger?: boolean
   showClear?: boolean
 }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <InputGroup className={cn("w-auto", className)}>
       <ComboboxPrimitive.Input
         render={<InputGroupInput disabled={disabled} />}
         {...props}
+        {...fieldLabel}
       />
       <InputGroupAddon align="inline-end">
         {showTrigger && (
@@ -271,11 +274,13 @@ function ComboboxChipsInput({
   className,
   ...props
 }: ComboboxPrimitive.Input.Props) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <ComboboxPrimitive.Input
       data-slot="combobox-chip-input"
       className={cn("min-w-16 flex-1 outline-none", className)}
       {...props}
+      {...fieldLabel}
     />
   )
 }

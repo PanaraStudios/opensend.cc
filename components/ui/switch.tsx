@@ -1,6 +1,7 @@
 "use client"
 
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
+import { useFieldLabel } from "@/components/ui/field"
 import { cn } from "cn"
 
 function Switch({
@@ -10,6 +11,7 @@ function Switch({
 }: SwitchPrimitive.Root.Props & {
   size?: "sm" | "default"
 }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <SwitchPrimitive.Root
       data-slot="switch"
@@ -19,6 +21,7 @@ function Switch({
         className
       )}
       {...props}
+      {...fieldLabel}
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
