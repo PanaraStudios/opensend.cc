@@ -7,6 +7,7 @@ import schema from "./schema"
 import { internal } from "./_generated/api"
 import type { Doc } from "./_generated/dataModel"
 import { minuteUsage } from "./voice/usage"
+import { LEGACY_INACTIVE_CALL_MS } from "./calling/activity"
 import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
 
 const modules = import.meta.glob("./**/*.ts")
@@ -59,6 +60,7 @@ async function fixture(patch: Partial<Doc<"calls">> = {}) {
       observedAt: start,
       connectedAt: start,
       lastActivityAt: start,
+      supportsHeartbeats: true,
       operation: "pending",
       operationUntil: start + 300_000,
       ...patch,
@@ -159,9 +161,10 @@ test("stuck call ends at two minutes, frees leases, settles duration and schedul
 })
 
 test("signed activity is throttled, protects suppressed recent activity and ignores terminal rows", async () => {
-  const f = await fixture()
+  const f = await fixture({ supportsHeartbeats: undefined })
   vi.setSystemTime(start + 100_000)
   expect((await f.heartbeat()).status).toBe(200)
+  expect((await f.read())?.supportsHeartbeats).toBe(true)
   expect((await f.read())?.lastActivityAt).toBe(start + 130_000)
   vi.setSystemTime(start + 129_999)
   expect((await f.heartbeat()).status).toBe(200)
@@ -174,6 +177,96 @@ test("signed activity is throttled, protects suppressed recent activity and igno
   expect((await f.read())?.status).toBe("completed")
   expect((await f.heartbeat()).status).toBe(200)
   expect((await f.read())?.lastActivityAt).toBe(start + 130_000)
+})
+
+test.each([true, false])(
+  "heartbeat-less call uses the two-hour fallback (activity field present: %s)",
+  async (hasActivity) => {
+    const f = await fixture({
+      supportsHeartbeats: undefined,
+      lastActivityAt: hasActivity ? start : undefined,
+    })
+    vi.setSystemTime(start + 180_000)
+    await f.reconcile()
+    expect((await f.read())?.status).toBe("connected")
+    expect((await f.read())?.supportsHeartbeats).toBeUndefined()
+    expect(
+      await f.t.mutation(internal.calling.rows.endLocally, {
+        id: f.callId,
+        kind: "inactive",
+      })
+    ).toBeNull()
+    vi.setSystemTime(start + LEGACY_INACTIVE_CALL_MS - 1)
+    await f.reconcile()
+    expect((await f.read())?.status).toBe("connected")
+    vi.setSystemTime(start + LEGACY_INACTIVE_CALL_MS + 1)
+    await f.reconcile()
+    expect(await f.read()).toMatchObject({
+      status: "completed",
+      error: "Ended: no recorded activity for 2 hours",
+    })
+  }
+)
+
+test("the first heartbeat records support even inside an activity throttle window", async () => {
+  const f = await fixture({
+    supportsHeartbeats: undefined,
+    lastActivityAt: start + 30_000,
+  })
+  vi.setSystemTime(start + 10_000)
+  expect((await f.heartbeat()).status).toBe(200)
+  expect(await f.read()).toMatchObject({
+    supportsHeartbeats: true,
+    lastActivityAt: start + 30_000,
+  })
+  vi.setSystemTime(start + 150_000)
+  await f.reconcile()
+  expect((await f.read())?.status).toBe("completed")
+})
+
+test("media activity keeps the legacy timeout and restarts its two-hour window", async () => {
+  const f = await fixture({ supportsHeartbeats: undefined })
+  vi.setSystemTime(start + 60_000)
+  await f.t.mutation(internal.calling.gatewayState.consume, {
+    nonce: crypto.randomUUID(),
+    expiresAt: Date.now() + 60_000,
+    data: {
+      callId: f.callId,
+      eventId: crypto.randomUUID(),
+      event: "media_up",
+      timestamp: Date.now(),
+    },
+  })
+  expect((await f.read())?.supportsHeartbeats).toBeUndefined()
+  vi.setSystemTime(start + LEGACY_INACTIVE_CALL_MS + 1)
+  await f.reconcile()
+  expect((await f.read())?.status).toBe("connected")
+  vi.setSystemTime(start + LEGACY_INACTIVE_CALL_MS + 90_000)
+  await f.reconcile()
+  expect((await f.read())?.status).toBe("completed")
+})
+
+test("a backlog of heartbeat-less calls cannot block two-minute expiry", async () => {
+  const f = await fixture()
+  await f.t.run(async (ctx) => {
+    const { _id, _creationTime, ...fields } = (await ctx.db.get(
+      "calls",
+      f.callId
+    ))!
+    void _id
+    void _creationTime
+    for (let i = 0; i < 55; i++)
+      await ctx.db.insert("calls", {
+        ...fields,
+        supportsHeartbeats: undefined,
+        lastActivityAt: undefined,
+      })
+  })
+  vi.setSystemTime(start + 180_000)
+  await f.reconcile()
+  expect((await f.read())?.status).toBe("completed")
+  const calls = await f.t.run((ctx) => ctx.db.query("calls").collect())
+  expect(calls.filter((call) => call.status === "connected")).toHaveLength(55)
 })
 
 test.each(["reconcile", "hangup"] as const)(

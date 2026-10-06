@@ -97,6 +97,8 @@ export const callingTables = {
     gatewayAt: v.optional(v.number()),
     // Conservative activity upper bound; callbacks write at most every 30 seconds.
     lastActivityAt: v.optional(v.number()),
+    // Set only when this call has received a signed gateway heartbeat.
+    supportsHeartbeats: v.optional(v.boolean()),
     gatewayRouted: v.optional(v.boolean()),
     ivrId: v.optional(v.id("ivrs")),
     ivrHandoffId: v.optional(v.id("ivrs")),
@@ -125,6 +127,12 @@ export const callingTables = {
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
+    .index("by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt", [
+      "mode",
+      "status",
+      "supportsHeartbeats",
+      "lastActivityAt",
+    ])
     .index("by_mode_and_status_and_lastActivityAt", [
       "mode",
       "status",

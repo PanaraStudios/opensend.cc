@@ -1,5 +1,11 @@
 import { completeOnHangup } from "../ivr/runtime"
-import { INACTIVE_CALL_MS, lastActivity } from "./activity"
+import {
+  INACTIVE_CALL_MS,
+  LEGACY_INACTIVE_CALL_MS,
+  inactivityTimeout,
+  inactivityReason,
+  lastActivity,
+} from "./activity"
 import { settleTerminal } from "./terminal"
 import { requireAvailable } from "./agentAccess"
 import { callPageValue, callDetailValue } from "./values"
@@ -768,7 +774,7 @@ export const endLocally = internalMutation({
       kind === "inactive" &&
       (row.mode !== "gateway" ||
         row.status !== "connected" ||
-        lastActivity(row) > Date.now() - INACTIVE_CALL_MS)
+        lastActivity(row) > Date.now() - inactivityTimeout(row))
     )
       return null
     await ctx.runMutation(internal.calling.rows.finish, {
@@ -781,7 +787,11 @@ export const endLocally = internalMutation({
           : kind === "timeout" && !row.wacid
             ? "failed"
             : "missed",
-      ...(reason ? { error: reason } : {}),
+      ...(kind === "inactive"
+        ? { error: inactivityReason(row) }
+        : reason
+          ? { error: reason }
+          : {}),
       ...(kind === "timeout" && !row.wacid
         ? { error: "Call setup timed out before Meta assigned a call id." }
         : {}),
@@ -795,16 +805,32 @@ export const reconcileInactive = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const calls = await ctx.db
+    // Reserve room for heartbeat-enabled calls even with a backlog of old gateways.
+    const legacyCalls = await ctx.db
       .query("calls")
-      .withIndex("by_mode_and_status_and_lastActivityAt", (q) =>
-        q
-          .eq("mode", "gateway")
-          .eq("status", "connected")
-          .lte("lastActivityAt", Date.now() - INACTIVE_CALL_MS)
+      .withIndex(
+        "by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt",
+        (q) =>
+          q
+            .eq("mode", "gateway")
+            .eq("status", "connected")
+            .eq("supportsHeartbeats", undefined)
+            .lte("lastActivityAt", Date.now() - LEGACY_INACTIVE_CALL_MS)
       )
-      .take(50)
-    for (const call of calls) {
+      .take(25)
+    const heartbeatCalls = await ctx.db
+      .query("calls")
+      .withIndex(
+        "by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt",
+        (q) =>
+          q
+            .eq("mode", "gateway")
+            .eq("status", "connected")
+            .eq("supportsHeartbeats", true)
+            .lte("lastActivityAt", Date.now() - INACTIVE_CALL_MS)
+      )
+      .take(50 - legacyCalls.length)
+    for (const call of [...legacyCalls, ...heartbeatCalls]) {
       // Initialize legacy timestamps so recent legacy rows cannot starve older calls.
       if (call.lastActivityAt === undefined)
         await ctx.db.patch("calls", call._id, {
@@ -813,7 +839,6 @@ export const reconcileInactive = internalMutation({
       await ctx.runMutation(internal.calling.rows.endLocally, {
         id: call._id,
         kind: "inactive",
-        reason: "Ended: no audio for 2 minutes",
       })
     }
     return null

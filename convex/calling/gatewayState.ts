@@ -52,7 +52,7 @@ export const consume = internalMutation({
       event,
     })
     if (event === "heartbeat" || event === "media_up")
-      await recordActivity(ctx, row)
+      await recordActivity(ctx, row, event === "heartbeat")
     if (event === "recording_ready") {
       await ctx.db.patch("calls", row._id, {
         gatewayRecordingFile: string(data.recordingFile),
