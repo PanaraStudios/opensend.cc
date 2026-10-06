@@ -203,6 +203,13 @@ test("request counters distinguish API, SDK, MCP and SMTP without exporting agen
       })
     }
   })
+  expect(
+    await f.t.query(internal.telemetry.metric, {
+      field: "smtpRequests30d",
+      team: f.owner.team,
+      now: Date.now(),
+    })
+  ).toBe(1)
   vi.advanceTimersByTime(900_000)
   const payload = await f.owner.client.action(api.telemetry.preview)
   expect(payload?.usage).toMatchObject({
@@ -211,11 +218,13 @@ test("request counters distinguish API, SDK, MCP and SMTP without exporting agen
     mcpRequests24h: "1-9",
     smtpUsed30d: true,
   })
-  const usage = await f.t.query(internal.telemetry.teamUsage, {
-    team: f.owner.team,
-    now: Date.now(),
-  })
-  expect(usage.counts.apiRequests24h).toBe(4)
+  expect(
+    await f.t.query(internal.telemetry.metric, {
+      field: "apiRequests24h",
+      team: f.owner.team,
+      now: Date.now(),
+    })
+  ).toBe(4)
   const page = await f.t.query(internal.telemetry.rows, {
     kind: "clientRequests",
     team: f.owner.team,
@@ -226,12 +235,20 @@ test("request counters distinguish API, SDK, MCP and SMTP without exporting agen
   expect(page.count).toBe(1)
   expect(JSON.stringify(payload)).not.toContain("custom client")
   vi.advanceTimersByTime(30 * TELEMETRY_DAY)
-  const expired = await f.t.query(internal.telemetry.teamUsage, {
-    team: f.owner.team,
-    now: Date.now(),
-  })
-  expect(expired.counts.apiRequests24h).toBe(0)
-  expect(expired.smtpUsed30d).toBe(false)
+  expect(
+    await f.t.query(internal.telemetry.metric, {
+      field: "apiRequests24h",
+      team: f.owner.team,
+      now: Date.now(),
+    })
+  ).toBe(0)
+  expect(
+    await f.t.query(internal.telemetry.metric, {
+      field: "smtpRequests30d",
+      team: f.owner.team,
+      now: Date.now(),
+    })
+  ).toBe(0)
   expect(
     (
       await f.t.query(internal.telemetry.rows, {
@@ -274,4 +291,100 @@ test("collector override is honored and a hanging request aborts at three second
   await vi.advanceTimersByTimeAsync(1)
   await send
   expect(signal?.aborted).toBe(true)
+})
+
+test("global feature pages and aggregate namespaces count independently of the team catalog", async () => {
+  const f = await installed()
+  const { insertRow } = await import("./counts")
+  await f.t.run(async (ctx) => {
+    const connectionId = await ctx.db.insert("metaConnections", {
+      organizationId: f.owner.team,
+      businessId: "test",
+      businessName: "Test business",
+      method: "manual_token",
+      encryptedToken: "ciphertext",
+      tokenLast4: "test",
+      scopes: [],
+      status: "active",
+    })
+    const accountId = await insertRow(ctx, "channelAccounts", {
+      organizationId: f.owner.team,
+      channel: "whatsapp",
+      externalId: "test",
+      connectionId,
+      displayName: "Test account",
+      handle: "Test handle",
+      status: "active",
+      throughputMps: 80,
+    })
+    for (let i = 0; i < 201; i++)
+      await ctx.db.insert("calls", {
+        organizationId: "another-team",
+        accountId,
+        direction: "inbound",
+        status: "completed",
+        mode: "api",
+        observedAt: Date.now(),
+      })
+  })
+  const first = await f.t.query(internal.telemetry.rows, {
+    kind: "calls30d",
+    now: Date.now(),
+    paginationOpts: {
+      numItems: 200,
+      cursor: null,
+      maximumRowsRead: 200,
+      maximumBytesRead: 1_000_000,
+    },
+  })
+  expect(first.count).toBe(200)
+  expect(first.done).toBe(false)
+  const second = await f.t.query(internal.telemetry.rows, {
+    kind: "calls30d",
+    now: Date.now(),
+    paginationOpts: {
+      numItems: 200,
+      cursor: first.cursor,
+      maximumRowsRead: 200,
+      maximumBytesRead: 1_000_000,
+    },
+  })
+  expect(second.count).toBe(1)
+  expect(second.done).toBe(true)
+  const payload = await f.owner.client.action(api.telemetry.preview)
+  expect(payload?.usage.calls30d).toBe("100-999")
+  expect(payload?.usage.whatsappAccounts).toBe("1-9")
+  vi.advanceTimersByTime(30 * TELEMETRY_DAY + 1)
+  expect(
+    (
+      await f.t.query(internal.telemetry.rows, {
+        kind: "calls30d",
+        now: Date.now(),
+        paginationOpts: { numItems: 200, cursor: null },
+      })
+    ).count
+  ).toBe(0)
+})
+
+test("SSO presence uses the enforced index instead of scanning disabled connections", async () => {
+  const f = await installed()
+  const { components } = await import("./_generated/api")
+  for (const enforced of [false, true])
+    await f.t.mutation(components.betterAuth.adapter.create, {
+      input: {
+        model: "sso",
+        data: {
+          organizationId: enforced ? f.owner.team : "another-team",
+          issuer: "https://id.example.test",
+          clientId: "test",
+          encryptedSecret: "ciphertext",
+          revision: "test",
+          tested: true,
+          enforced,
+        },
+      },
+    })
+  expect(
+    (await f.owner.client.action(api.telemetry.preview))?.usage.ssoEnabled
+  ).toBe(true)
 })

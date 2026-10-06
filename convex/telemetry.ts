@@ -12,7 +12,7 @@ import {
 import type { ActionCtx } from "./_generated/server"
 import { api, internal, components } from "./_generated/api"
 import { findInstallation, requireInstallationAdmin } from "./access"
-import { counters } from "./counts"
+import { counters, type KeyPart } from "./counts"
 import { logSourceValue, statusClassValue } from "./tables/api"
 import { CHANNELS, CHANNEL_MESSAGE_STATUSES } from "./tables/channels"
 import { literals } from "./counts"
@@ -23,13 +23,8 @@ import {
   telemetryEnabled,
   TELEMETRY_CAP,
   TELEMETRY_DAY,
-  TELEMETRY_COUNT_FIELDS,
 } from "../lib/telemetry"
-import type {
-  UsageCounts,
-  TelemetryPayload,
-  Deployment,
-} from "../lib/telemetry"
+import type { TelemetryPayload, Deployment } from "../lib/telemetry"
 
 const enabled = (preference?: boolean) =>
   telemetryEnabled(env.OPENSEND_TELEMETRY, preference)
@@ -136,60 +131,82 @@ export const canSend = internalQuery({
   },
 })
 
-// Large data uses existing aggregates. Time windows align to their 15-minute
-// buckets, covering the most recent complete 24 hours without scanning content.
-export const teamUsage = internalQuery({
-  args: { team: v.string(), now: v.number() },
-  handler: async (ctx, { team, now }) => {
+// Enumerate aggregate root metadata rather than walking the team catalog.
+// Each metric stops at its highest band, including namespaces with no live team.
+const aggregates = {
+  emailsSent24h: counters.usageSent,
+  emailsReceived24h: counters.usageReceived,
+  domainsVerified: counters.domains,
+  automationsActive: counters.automations,
+  webhookEndpoints: counters.webhooks,
+  apiKeys: counters.apiKeys,
+  apiRequests24h: counters.apiLogs,
+  smtpRequests30d: counters.apiLogs,
+  whatsappAccounts: counters.channelAccounts,
+  messengerPages: counters.channelAccounts,
+  instagramAccounts: counters.channelAccounts,
+  channelMessages24h: counters.channelMessages,
+}
+const aggregateFields = Object.keys(aggregates) as (keyof typeof aggregates)[]
+export const metric = internalQuery({
+  args: {
+    field: v.union(...aggregateFields.map(v.literal)),
+    team: v.string(),
+    now: v.number(),
+  },
+  handler: async (ctx, { field, team, now }) => {
+    // Presence can use a single indexed row, including the current partial bucket.
+    if (field === "smtpRequests30d")
+      return (await ctx.db
+        .query("apiLogs")
+        .withIndex("by_organizationId_and_source", (q) =>
+          q
+            .eq("organizationId", team)
+            .eq("source", "smtp")
+            .gte("_creationTime", now - 30 * TELEMETRY_DAY)
+        )
+        .first())
+        ? 1
+        : 0
     const end = Math.floor(now / 900_000) * 900_000
-    const range = { from: end - TELEMETRY_DAY, to: end - 1 }
-    const counts = emptyUsage()
-    counts.emailsSent24h =
-      (await counters.usageSent.total(ctx, team, [], range)) ?? 0
-    counts.emailsReceived24h =
-      (await counters.usageReceived.total(ctx, team, [], range)) ?? 0
-    counts.domainsVerified =
-      (await counters.domains.total(ctx, team, [
-        { is: "verified", among: [] },
-      ])) ?? 0
-    counts.automationsActive =
-      (await counters.automations.total(ctx, team, [
-        { is: "enabled", among: [] },
-      ])) ?? 0
-    counts.webhookEndpoints = (await counters.webhooks.total(ctx, team)) ?? 0
-    counts.apiKeys = (await counters.apiKeys.total(ctx, team)) ?? 0
-    const statuses = { among: literals(statusClassValue) }
-    const sources = { is: "api", among: literals(logSourceValue) }
-    counts.apiRequests24h =
-      (await counters.apiLogs.total(ctx, team, [statuses, sources], range)) ?? 0
-    const smtp =
-      (await counters.apiLogs.total(
-        ctx,
-        team,
-        [statuses, { is: "smtp", among: [] }],
-        { from: end - 30 * TELEMETRY_DAY, to: end - 1 }
-      )) ?? 0
-    const accounts = await counters.channelAccounts.prefixTotals(ctx, team, [
-      ["whatsapp"],
-      ["messenger"],
-      ["instagram"],
-    ])
-    ;[
-      counts.whatsappAccounts,
-      counts.messengerPages,
-      counts.instagramAccounts,
-    ] = accounts
-    counts.channelMessages24h =
-      (await counters.channelMessages.total(
-        ctx,
-        team,
-        [{ among: CHANNELS }, { among: CHANNEL_MESSAGE_STATUSES }],
-        range
-      )) ?? 0
-    const sso = await ctx.runQuery(components.betterAuth.sso.connection, {
-      organizationId: team,
-    })
-    return { counts, smtpUsed30d: smtp > 0, ssoEnabled: sso?.enforced ?? false }
+    const channels = {
+      whatsappAccounts: "whatsapp",
+      messengerPages: "messenger",
+      instagramAccounts: "instagram",
+    } as const
+    const parts: KeyPart[] =
+      field === "domainsVerified"
+        ? [{ is: "verified", among: [] }]
+        : field === "automationsActive"
+          ? [{ is: "enabled", among: [] }]
+          : field === "apiRequests24h"
+            ? [
+                { among: literals(statusClassValue) },
+                {
+                  is: "api",
+                  among: literals(logSourceValue),
+                },
+              ]
+            : field === "channelMessages24h"
+              ? [{ among: CHANNELS }, { among: CHANNEL_MESSAGE_STATUSES }]
+              : field in channels
+                ? [{ is: channels[field as keyof typeof channels], among: [] }]
+                : []
+    const timed =
+      field === "emailsSent24h" ||
+      field === "emailsReceived24h" ||
+      field === "apiRequests24h" ||
+      field === "channelMessages24h"
+    const range = timed
+      ? {
+          from: end - TELEMETRY_DAY,
+          to: end - 1,
+        }
+      : {}
+    return Math.min(
+      TELEMETRY_CAP,
+      (await aggregates[field].total(ctx, team, parts, range)) ?? 0
+    )
   },
 })
 // Tables without aggregates are counted in bounded index pages, stopping at
@@ -204,7 +221,7 @@ const rowKind = v.union(
 export const rows = internalQuery({
   args: {
     kind: rowKind,
-    team: v.string(),
+    team: v.optional(v.string()),
     now: v.number(),
     userAgent: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
@@ -216,36 +233,30 @@ export const rows = internalQuery({
       args.kind === "broadcasts30d"
         ? await ctx.db
             .query("broadcasts")
-            .withIndex("by_organizationId", (q) =>
-              q.eq("organizationId", team).gte("_creationTime", since)
-            )
+            .withIndex("by_creation_time", (q) => q.gte("_creationTime", since))
             .paginate(paginationOpts)
         : args.kind === "calls30d"
           ? await ctx.db
               .query("calls")
-              .withIndex("by_organizationId", (q) =>
-                q.eq("organizationId", team).gte("_creationTime", since)
+              .withIndex("by_creation_time", (q) =>
+                q.gte("_creationTime", since)
               )
               .paginate(paginationOpts)
           : args.kind === "ivrs"
             ? await ctx.db
                 .query("ivrs")
-                .withIndex("by_organizationId", (q) =>
-                  q.eq("organizationId", team)
-                )
+                .withIndex("by_creation_time")
                 .paginate(paginationOpts)
             : args.kind === "voiceBots"
               ? await ctx.db
                   .query("voiceBots")
-                  .withIndex("by_organizationId", (q) =>
-                    q.eq("organizationId", team)
-                  )
+                  .withIndex("by_creation_time")
                   .paginate(paginationOpts)
               : await ctx.db
                   .query("apiLogs")
                   .withIndex("by_organizationId_and_userAgent", (q) =>
                     q
-                      .eq("organizationId", team)
+                      .eq("organizationId", team!)
                       .eq("userAgent", args.userAgent!)
                       .gte("_creationTime", now - TELEMETRY_DAY)
                   )
@@ -298,120 +309,129 @@ async function gather(
   })
   if (!identity) return null
   const counts = emptyUsage()
-  let smtpUsed30d = false,
-    ssoEnabled = false
-  let teamCursor: string | null = null
-  do {
-    const page: {
-      page: { _id: string }[]
-      isDone: boolean
-      continueCursor: string
-    } = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-      model: "organization",
-      select: ["_id"],
-      paginationOpts: {
-        numItems: 100,
-        cursor: teamCursor,
-        maximumRowsRead: 100,
-        maximumBytesRead: 1_000_000,
-      },
-    })
-    for (const team of page.page) {
-      counts.teams = Math.min(TELEMETRY_CAP, counts.teams + 1)
-      const usage: {
-        counts: UsageCounts
-        smtpUsed30d: boolean
-        ssoEnabled: boolean
-      } = await ctx.runQuery(internal.telemetry.teamUsage, {
-        team: team._id,
+  let smtpUsed30d = false
+  for (const model of ["organization", "member"] as const) {
+    const field = model === "organization" ? "teams" : "members"
+    let cursor: string | null = null
+    while (counts[field] < TELEMETRY_CAP) {
+      const page: {
+        page: { _id: string }[]
+        isDone: boolean
+        continueCursor: string
+      } = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model,
+        select: ["_id"],
+        paginationOpts: {
+          numItems: Math.min(200, TELEMETRY_CAP - counts[field]),
+          cursor,
+          maximumRowsRead: 200,
+          maximumBytesRead: 1_000_000,
+        },
+      })
+      counts[field] = Math.min(TELEMETRY_CAP, counts[field] + page.page.length)
+      if (page.isDone) break
+      cursor = page.continueCursor
+    }
+  }
+  for (const field of aggregateFields) {
+    let total = 0
+    const cap = field === "smtpRequests30d" ? 1 : TELEMETRY_CAP
+    // Namespace pages contain only B-tree root keys, not application rows.
+    for await (const team of aggregates[field].aggregate.iterNamespaces(
+      ctx,
+      100
+    )) {
+      if (typeof team !== "string") continue
+      const count: number = await ctx.runQuery(internal.telemetry.metric, {
+        field,
+        team,
         now,
       })
-      for (const key of TELEMETRY_COUNT_FIELDS)
-        counts[key] = Math.min(TELEMETRY_CAP, counts[key] + usage.counts[key])
-      smtpUsed30d ||= usage.smtpUsed30d
-      ssoEnabled ||= usage.ssoEnabled
-      for (const kind of [
-        "broadcasts30d",
-        "calls30d",
-        "ivrs",
-        "voiceBots",
-      ] as const) {
+      total = Math.min(cap, total + count)
+      if (total === cap) break
+    }
+    if (field === "smtpRequests30d") smtpUsed30d = total > 0
+    else counts[field] = total
+  }
+  for (const kind of [
+    "broadcasts30d",
+    "calls30d",
+    "ivrs",
+    "voiceBots",
+  ] as const) {
+    let cursor: string | null = null
+    while (counts[kind] < TELEMETRY_CAP) {
+      const page: { count: number; done: boolean; cursor: string } =
+        await ctx.runQuery(internal.telemetry.rows, {
+          kind,
+          now,
+          paginationOpts: {
+            numItems: Math.min(200, TELEMETRY_CAP - counts[kind]),
+            cursor,
+            maximumRowsRead: 200,
+            maximumBytesRead: 1_000_000,
+          },
+        })
+      counts[kind] = Math.min(TELEMETRY_CAP, counts[kind] + page.count)
+      if (page.done) break
+      cursor = page.cursor
+    }
+  }
+  for (const [field, prefix] of [
+    ["sdkRequests24h", "opensend-node:"],
+    ["mcpRequests24h", "opensend-mcp:"],
+  ] as const) {
+    for await (const team of counters.apiLogs.aggregate.iterNamespaces(
+      ctx,
+      100
+    )) {
+      if (typeof team !== "string") continue
+      let after: string | null = null
+      while (counts[field] < TELEMETRY_CAP) {
+        const agent: string | null = await ctx.runQuery(
+          internal.telemetry.nextAgent,
+          { team, prefix, after }
+        )
+        if (!agent) break
         let cursor: string | null = null
-        while (counts[kind] < TELEMETRY_CAP) {
-          const rows: { count: number; done: boolean; cursor: string } =
+        while (counts[field] < TELEMETRY_CAP) {
+          const page: { count: number; done: boolean; cursor: string } =
             await ctx.runQuery(internal.telemetry.rows, {
-              kind,
-              team: team._id,
+              kind: "clientRequests",
+              team,
+              userAgent: agent,
               now,
               paginationOpts: {
-                numItems: Math.min(200, TELEMETRY_CAP - counts[kind]),
+                numItems: Math.min(200, TELEMETRY_CAP - counts[field]),
                 cursor,
                 maximumRowsRead: 200,
                 maximumBytesRead: 1_000_000,
               },
             })
-          counts[kind] = Math.min(TELEMETRY_CAP, counts[kind] + rows.count)
-          if (rows.done) break
-          cursor = rows.cursor
+          counts[field] = Math.min(TELEMETRY_CAP, counts[field] + page.count)
+          if (page.done) break
+          cursor = page.cursor
         }
+        after = agent
       }
-      for (const [field, prefix] of [
-        ["sdkRequests24h", "opensend-node:"],
-        ["mcpRequests24h", "opensend-mcp:"],
-      ] as const) {
-        let after: string | null = null
-        while (counts[field] < TELEMETRY_CAP) {
-          const agent: string | null = await ctx.runQuery(
-            internal.telemetry.nextAgent,
-            { team: team._id, prefix, after }
-          )
-          if (!agent) break
-          let cursor: string | null = null
-          while (counts[field] < TELEMETRY_CAP) {
-            const rows: { count: number; done: boolean; cursor: string } =
-              await ctx.runQuery(internal.telemetry.rows, {
-                kind: "clientRequests",
-                team: team._id,
-                userAgent: agent,
-                now,
-                paginationOpts: {
-                  numItems: Math.min(200, TELEMETRY_CAP - counts[field]),
-                  cursor,
-                  maximumRowsRead: 200,
-                  maximumBytesRead: 1_000_000,
-                },
-              })
-            counts[field] = Math.min(TELEMETRY_CAP, counts[field] + rows.count)
-            if (rows.done) break
-            cursor = rows.cursor
-          }
-          after = agent
-        }
-      }
+      if (counts[field] === TELEMETRY_CAP) break
     }
-    if (page.isDone) break
-    teamCursor = page.continueCursor
-  } while (true)
-  let memberCursor: string | null = null
-  while (counts.members < TELEMETRY_CAP) {
-    const page: {
-      page: { _id: string }[]
-      isDone: boolean
-      continueCursor: string
-    } = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-      model: "member",
-      select: ["_id"],
+  }
+  const sso: { page: unknown[] } = await ctx.runQuery(
+    components.betterAuth.adapter.findMany,
+    {
+      model: "sso",
+      where: [{ field: "enforced", value: true }],
+      select: ["enforced"],
       paginationOpts: {
-        numItems: Math.min(200, TELEMETRY_CAP - counts.members),
-        cursor: memberCursor,
-        maximumRowsRead: 200,
+        numItems: 1,
+        cursor: null,
+        maximumRowsRead: 1,
         maximumBytesRead: 1_000_000,
       },
-    })
-    counts.members = Math.min(TELEMETRY_CAP, counts.members + page.page.length)
-    if (page.isDone) break
-    memberCursor = page.continueCursor
-  }
+    }
+  )
+  const ssoEnabled = sso.page.length > 0
   const deployment: Deployment = {
     backend:
       env.OPENSEND_BACKEND === "convex-cloud"

@@ -108,14 +108,16 @@ Exact feature counts are never sent.
 - `apiRequests24h` counts API-source requests. SDK and MCP requests are recognized
   by the standard `opensend-node:` and `opensend-mcp:` user-agent prefixes;
   custom user agents cannot be recognized. These are subsets of API requests.
-- `smtpUsed30d` indicates an SMTP request in the latest complete 30 days;
+- `smtpUsed30d` indicates an SMTP request in the past 30 days, including the
+  current partial counter bucket;
   `ssoEnabled` indicates at least one team enforcing SSO.
 - `whatsappAccounts`, `messengerPages` and `instagramAccounts` count connected
   channel endpoints. `channelMessages24h` counts channel messages;
   `calls30d` counts calls created in the past 30 days, including test calls.
   `ivrs` and `voiceBots` count configured IVRs and voice bots.
 
-Reads use existing counters or bounded index pages, and counts stop increasing
+Reads use existing counters and their namespace metadata, or bounded index
+pages. SSO presence uses an index on its enabled state. Counts stop increasing
 at the `10k+` range. The pure schema builder has no v2 dependencies: a v1 backport
 sends `"0"` for `whatsappAccounts`, `messengerPages`, `instagramAccounts`,
 `channelMessages24h`, `calls30d`, `ivrs` and `voiceBots`, with `deployment.calling`
