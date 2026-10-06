@@ -658,3 +658,5 @@ retried), reading raw `message/rfc822` from Convex storage. MIME parsing, the
 Receiving list, received-email webhooks, and durable received-mail retention are
 left for that wave. Back up Convex file storage with the database; S3 is not the
 mail archive.
+
+Anonymous usage statistics are on by default, with an installation admin switch and a server environment override. See [anonymous usage statistics](telemetry.md) for the exact payload and how to turn sharing off.

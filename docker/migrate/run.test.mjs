@@ -88,6 +88,8 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     SITE_URL: "https://mail.example.test",
     BETTER_AUTH_SECRET: "",
     SMTP_HOST: "smtp.example.test",
+    OPENSEND_TELEMETRY: "0",
+    OPENSEND_INSTALL_METHOD: "script",
   })
   assert.equal(code, 0)
   assert.ok(requests >= 2)
@@ -96,6 +98,10 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
   )
   assert.ok(
     !calls.some((call) => call.args[2]?.startsWith("BETTER_AUTH_SECRET="))
+  )
+  assert.ok(calls.some((call) => call.args[2] === "OPENSEND_TELEMETRY=0"))
+  assert.ok(
+    calls.some((call) => call.args[2] === "OPENSEND_INSTALL_METHOD=script")
   )
   assert.deepEqual(calls.at(-1).args, [
     "deploy",
@@ -147,8 +153,10 @@ test("cloud deploy skips readiness and selects only the deploy key", async (t) =
     CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
     CONVEX_DEPLOY_KEY: "dev:fake-name|token",
     SITE_URL: "https://mail.example.test",
+    OPENSEND_TELEMETRY: "0",
   })
   assert.equal(code, 0)
+  assert.ok(calls.some((call) => call.args[2] === "OPENSEND_TELEMETRY=0"))
   assert.ok(
     calls.some((call) => call.args[2] === "SITE_URL=https://mail.example.test")
   )
