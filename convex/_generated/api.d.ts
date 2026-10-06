@@ -61,6 +61,7 @@ import type * as authOptions from "../authOptions.js";
 import type * as automationDefinition from "../automationDefinition.js";
 import type * as automationEventOccurrenceRows from "../automationEventOccurrenceRows.js";
 import type * as automationEventRows from "../automationEventRows.js";
+import type * as automationEventCatalog from "../automationEventCatalog.js";
 import type * as automationEvents from "../automationEvents.js";
 import type * as automationRuntime from "../automationRuntime.js";
 import type * as automations from "../automations.js";
@@ -317,6 +318,7 @@ declare const fullApi: ApiFromModules<{
   automationDefinition: typeof automationDefinition;
   automationEventOccurrenceRows: typeof automationEventOccurrenceRows;
   automationEventRows: typeof automationEventRows;
+  automationEventCatalog: typeof automationEventCatalog;
   automationEvents: typeof automationEvents;
   automationRuntime: typeof automationRuntime;
   automations: typeof automations;

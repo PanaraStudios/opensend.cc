@@ -14768,8 +14768,21 @@ paths:
       tags:
         - Events
       summary: List automation event catalog
-      description: All system events and this team's custom events, with typed nested payload fields and contact properties. System trigger names use the opensend colon prefix.
+      description: Paged system and team custom events with typed nested payload fields and contact properties. System events are included on the first page; limit bounds custom definitions (default 20, maximum 100). Subsequent pages contain custom definitions ordered by name, or search relevance. Pass next_cursor as after, keeping search unchanged. System trigger names use the opensend colon prefix.
       x-opensend-scope: events:read
+      parameters:
+        - name: limit
+          in: query
+          description: Custom definitions per page; the first page also includes system events.
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: after
+          in: query
+          description: Opaque next_cursor returned by the previous catalog page.
+          schema: {type: string}
+        - name: search
+          in: query
+          description: Search custom names and system event labels. Keep unchanged while paging.
+          schema: {type: string, maxLength: 256}
       responses:
         '200':
           description: The team's event catalog.
@@ -14780,10 +14793,16 @@ paths:
                 required:
                   - object
                   - data
+                  - has_more
+                  - next_cursor
                 properties:
                   object:
                     type: string
-                    const: event_catalog
+                    const: list
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type: [string, 'null']
                   data:
                     type: array
                     items:
@@ -14792,6 +14811,8 @@ paths:
           $ref: '#/components/responses/Error401'
         '403':
           $ref: '#/components/responses/Error403'
+        '422':
+          $ref: '#/components/responses/Error422'
         '429':
           $ref: '#/components/responses/Error429'
 components:

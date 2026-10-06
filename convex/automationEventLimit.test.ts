@@ -3,7 +3,7 @@ import { runToCompletion } from "@convex-dev/migrations"
 import { api, components, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { counters } from "./counts"
-import { defineEvent } from "./automationEvents"
+import { changeEvent, defineEvent } from "./automationEvents"
 import {
   CUSTOM_EVENT_LIMIT_MESSAGE,
   deleteAutomationEvent,
@@ -23,6 +23,16 @@ test("definition create, edit, delete and auto-registration maintain the team co
   await f.owner.client.mutation(api.automationEvents.ensure, {
     organizationId: org,
     names: ["paid", "signup", "signup"],
+  })
+  expect(
+    await f.t.run((ctx) => counters.automationEvents.total(ctx, org))
+  ).toBe(2)
+  await f.t.run(async (ctx) => {
+    const event = (await ctx.db.get("automationEvents", id))!
+    await changeEvent(ctx, event, {
+      name: "paid.renamed",
+      schema: [{ key: "total", type: "number" }],
+    })
   })
   expect(
     await f.t.run((ctx) => counters.automationEvents.total(ctx, org))
@@ -81,7 +91,10 @@ test("backfill is idempotent across live creation and deletion", async () => {
       updatedAt: 0,
     })
   )
-  await f.t.run((ctx) => defineEvent(ctx, org, { name: "live", schema: [] }))
+  await f.t.mutation(components.migrations.lib.clearAll, {})
+  await expect(
+    f.t.run((ctx) => defineEvent(ctx, org, { name: "live", schema: [] }))
+  ).rejects.toThrow("Custom event counts are being initialized")
   const backfill = async () =>
     f.t.action(async (ctx) => {
       await runToCompletion(
@@ -91,6 +104,11 @@ test("backfill is idempotent across live creation and deletion", async () => {
         { cursor: null }
       )
     })
+  await backfill()
+  expect(
+    await f.t.run((ctx) => counters.automationEvents.total(ctx, org))
+  ).toBe(1)
+  await f.t.run((ctx) => defineEvent(ctx, org, { name: "live", schema: [] }))
   await backfill()
   expect(
     await f.t.run((ctx) => counters.automationEvents.total(ctx, org))

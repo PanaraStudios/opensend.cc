@@ -31,7 +31,6 @@ export const automationEventTables = {
     .searchIndex("search_name", {
       searchField: "name",
       filterFields: ["organizationId"],
-      staged: true,
     })
     .searchIndex("search_searchText", {
       searchField: "searchText",
