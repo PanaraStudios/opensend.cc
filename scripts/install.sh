@@ -577,6 +577,7 @@ if [ "$calling" = yes ]; then
     put_env CALL_TURN_PUBLIC_IP "$calling_ip"
     put_env CALL_TURN_PORT "$turn_port"
     put_env CALL_TURN_RELAY_RANGE "$turn_range"
+    put_env CALL_STUN_URLS "stun:$calling_domain:$turn_port"
     put_env CALL_TURN_URLS "turn:$calling_domain:$turn_port?transport=udp,turn:$calling_domain:$turn_port?transport=tcp"
     if [ -z "$(get_env CALL_TURN_SECRET 2>/dev/null || true)" ]; then
       put_env CALL_TURN_SECRET "$(random_secret)" replace

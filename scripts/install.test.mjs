@@ -238,6 +238,7 @@ test("calling and TURN flags reach Compose, services and backend, without starti
   privateOutput(result, env)
   assert.equal(env.COMPOSE_PROFILES, "calling,calling-turn")
   assert.equal(env.CALL_AGENT_WSS_URL, "wss://calling.example.test:8443")
+  assert.equal(env.CALL_STUN_URLS, "stun:calling.example.test:3479")
   assert.equal(env.JANUS_PUBLIC_IP, "192.0.2.10")
   assert.equal(env.FREESWITCH_PUBLIC_IP, env.JANUS_PUBLIC_IP)
   for (const key of secretKeys) assert.match(env[key], /^[a-f0-9]{64}$/)
@@ -258,6 +259,7 @@ test("calling and TURN flags reach Compose, services and backend, without starti
     "CALL_GATEWAY_URL",
     "CALL_GATEWAY_SECRET",
     "CALL_AGENT_WSS_URL",
+    "CALL_STUN_URLS",
   ])
     assert.equal(config.services.migrate.environment[key], env[key])
   assert.equal(config.services.janus.environment.JANUS_RTP_RANGE, "22000-22199")
@@ -680,9 +682,33 @@ test("plain TURN keeps custom port 5349 without reserving an inactive TLS listen
     f.settings()
   )
   assert.equal(f.settings().CALL_TURN_PORT, "5349")
+  assert.equal(f.settings().CALL_STUN_URLS, "stun:calling.example.test:5349")
   const ports = f.composeConfig().services.coturn.ports
   assert.equal(
     ports.filter((p) => p.target === 5349 && p.protocol === "tcp").length,
     1
+  )
+})
+
+test("TURN upgrade preserves an operator's STUN override", async (t) => {
+  const f = await fixture(t)
+  privateOutput(await f.run(["--no-start", ...callingFlags]), f.settings())
+  const path = join(f.installation, ".env")
+  const stun = "stun:operator.example.test:19302"
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8").replace(
+      /^CALL_STUN_URLS=.*$/m,
+      `CALL_STUN_URLS=${stun}`
+    )
+  )
+  privateOutput(
+    await f.run(["--upgrade", "--no-start", "--version", "itest-b"]),
+    f.settings()
+  )
+  assert.equal(f.settings().CALL_STUN_URLS, stun)
+  assert.equal(
+    f.composeConfig().services.migrate.environment.CALL_STUN_URLS,
+    stun
   )
 })

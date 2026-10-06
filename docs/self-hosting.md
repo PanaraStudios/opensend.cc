@@ -100,12 +100,15 @@ still use the backend image to generate the admin key.
 
 TURN is optional: add `--turn yes` when browser agents behind strict NAT or
 firewalls get no audio. The installer generates and preserves `CALL_TURN_SECRET`
-and sets `CALL_TURN_URLS`; migration supplies both to Convex. Agents receive
-one-hour HMAC credentials tied to their owned softphone session, refreshed before
-expiry. The shared secret stays on the server. Without both variables, browsers
-use `CALL_STUN_URLS` (default `stun:stun.l.google.com:19302`) only. Open TCP/UDP
-3478 and UDP 20800–20999, or the saved TURN ports; for optional TLS TURN configure
-certificates and open TCP 5349. See
+and sets `CALL_TURN_URLS` plus `CALL_STUN_URLS=stun:<calling_domain>:<turn_port>`
+to use your own coturn for agent STUN discovery. Existing operator STUN overrides
+are preserved on installation and upgrade; migration supplies these settings to
+Convex. Agents receive one-hour HMAC credentials tied to their owned softphone
+session, refreshed before expiry. The shared secret stays on the server. If either
+TURN URLs or the shared secret are absent, browsers use `CALL_STUN_URLS` only. The Google STUN default
+(`stun:stun.l.google.com:19302`) applies only when `CALL_STUN_URLS` is unset or
+empty. Open TCP/UDP 3478 and UDP 20800–20999, or the saved TURN ports; for optional
+TLS TURN configure certificates and open TCP 5349. See
 [optional TURN](browser-softphone.md#optional-turn-for-agents) for environment,
 TLS configuration, credential details and relay diagnostics. Meta-to-Janus
 media never uses this TURN server. Voice provider credentials and bot settings
