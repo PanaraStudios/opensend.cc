@@ -15,6 +15,16 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
 
+// These tests use a Docker shim plus real Compose config parsing, with no daemon,
+// Meta, SES, media services or public network required.
+const configTests = spawnSync(
+  process.execPath,
+  ["--test", fileURLToPath(new URL("./install.test.mjs", import.meta.url))],
+  { stdio: "inherit" }
+)
+if (configTests.status !== 0) process.exit(configTests.status || 1)
+if (process.argv.includes("--config-only")) process.exit(0)
+
 const root = fileURLToPath(new URL("..", import.meta.url))
 const installer = resolve(root, "scripts/install.sh")
 const project = `opensend-install-${Date.now()}-${randomBytes(3).toString("hex")}`
@@ -217,7 +227,10 @@ try {
     configured.CONVEX_PUBLIC_URL,
     "https://realtime.mail.example.test"
   )
-  assert.equal(configured.CONVEX_PUBLIC_SITE_URL, "https://api.mail.example.test")
+  assert.equal(
+    configured.CONVEX_PUBLIC_SITE_URL,
+    "https://api.mail.example.test"
+  )
   assert.equal(configured.CONVEX_BACKEND_ORIGIN, configured.CONVEX_PUBLIC_URL)
   assert.ok(statSync(resolve(configuration, "docker/caddy/Caddyfile")).isFile())
 
